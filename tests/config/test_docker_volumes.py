@@ -415,9 +415,9 @@ class TestCrossFilesystem:
             assert os.stat(tmp_dir).st_dev == os.stat(ingest_dir).st_dev
 
     def test_detect_cross_filesystem(self):
-        """CROSS_FILE_SYSTEM detection should work."""
-        # This is a documentation test - the actual logic is in settings.py:
-        # CROSS_FILE_SYSTEM = os.stat(env.TMP_DIR).st_dev != os.stat(env.INGEST_DIR).st_dev
+        """Cross-filesystem detection uses same_filesystem() at runtime."""
+        # Detection is done lazily by same_filesystem() in core/naming.py
+        # when hardlinking is attempted, not at startup
         pass
 
 

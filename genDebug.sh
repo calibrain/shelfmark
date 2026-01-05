@@ -100,8 +100,8 @@ echo "=== Permissions ===" > "$LOG_DIR/permissions.txt"
 echo "ls -all /app" >> "$LOG_DIR/permissions.txt"
 ls -all /app >> "$LOG_DIR/permissions.txt" 2>&1
 echo "" >> "$LOG_DIR/permissions.txt"
-echo "ls -all /cwa-book-ingest" >> "$LOG_DIR/permissions.txt"
-ls -all /cwa-book-ingest >> "$LOG_DIR/permissions.txt" 2>&1
+echo "ls -all ${INGEST_DIR:-/books}" >> "$LOG_DIR/permissions.txt"
+ls -all ${INGEST_DIR:-/books} >> "$LOG_DIR/permissions.txt" 2>&1
 echo "" >> "$LOG_DIR/permissions.txt"
 echo "ls -all /var/log/cwa-book-downloader" >> "$LOG_DIR/permissions.txt"
 ls -all /var/log/cwa-book-downloader >> "$LOG_DIR/permissions.txt" 2>&1

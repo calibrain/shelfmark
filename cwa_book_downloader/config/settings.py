@@ -27,14 +27,8 @@ logger.debug(f"BASE_DIR: {BASE_DIR}")
 if env.ENABLE_LOGGING:
     env.LOG_DIR.mkdir(exist_ok=True)
 
-# Create necessary directories
+# Create staging directory (destination is created by orchestrator using config value)
 env.TMP_DIR.mkdir(exist_ok=True)
-env.INGEST_DIR.mkdir(exist_ok=True)
-
-CROSS_FILE_SYSTEM = os.stat(env.TMP_DIR).st_dev != os.stat(env.INGEST_DIR).st_dev
-logger.debug(f"STAT TMP_DIR: {os.stat(env.TMP_DIR)}")
-logger.debug(f"STAT INGEST_DIR: {os.stat(env.INGEST_DIR)}")
-logger.debug(f"CROSS_FILE_SYSTEM: {CROSS_FILE_SYSTEM}")
 
 # DNS placeholders - actual values set by network.init() from config/ENV
 CUSTOM_DNS: list[str] = []
@@ -453,6 +447,7 @@ def download_settings():
             description="Directory where downloaded files are saved.",
             default="/books",
             required=True,
+            env_var="INGEST_DIR",  # Legacy env var name for backwards compatibility
         ),
         SelectField(
             key="FILE_ORGANIZATION",

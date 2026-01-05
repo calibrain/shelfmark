@@ -100,7 +100,7 @@ COPY --from=frontend-builder /frontend/dist /app/frontend-dist
 # Final setup: permissions and directories in one layer
 # Only creating directories and setting executable bits.
 # Ownership will be handled by the entrypoint script.
-RUN mkdir -p /var/log/cwa-book-downloader /cwa-book-ingest && \
+RUN mkdir -p /var/log/cwa-book-downloader /books && \
     chmod +x /app/entrypoint.sh /app/tor.sh /app/genDebug.sh
 
 # Expose the application port

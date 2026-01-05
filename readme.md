@@ -60,7 +60,7 @@ That's it! Configure settings through the web interface as needed.
 ```yaml
 volumes:
   - /your/config/path:/config             # Config, database, and artwork cache directory
-  - /your/download/path:/cwa-book-ingest  # Downloaded books
+  - /your/download/path:/books  # Downloaded books
 ```
 
 > **Tip**: Point the download volume to your CWA or Booklore ingest folder for automatic import.
@@ -90,7 +90,7 @@ Environment variables work for initial setup and Docker deployments. They serve 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `FLASK_PORT` | Web interface port | `8084` |
-| `INGEST_DIR` | Book download directory | `/cwa-book-ingest` |
+| `INGEST_DIR` | Book download directory | `/books` |
 | `TZ` | Container timezone | `UTC` |
 | `PUID` / `PGID` | Runtime user/group ID (also supports legacy `UID`/`GID`) | `1000` / `1000` |
 | `SEARCH_MODE` | `direct` or `universal` | `direct` |
