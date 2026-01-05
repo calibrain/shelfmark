@@ -9,6 +9,8 @@ from threading import Event
 from typing import Callable, Dict, List, Optional
 from urllib.parse import quote
 
+import requests
+
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 from cwa_book_downloader.download import http as downloader
@@ -60,12 +62,25 @@ _CF_BYPASS_REQUIRED = frozenset({"aa-slow-nowait", "aa-slow-wait", "zlib", "weli
 # Sources whose URLs come from AA page (multiple mirrors)
 _AA_PAGE_SOURCES = frozenset({"aa-slow-nowait", "aa-slow-wait"})
 
-# URL templates for sources that generate URLs from MD5 hash
 _MD5_URL_TEMPLATES = {
     "zlib": "https://z-lib.fm/md5/{md5}",
-    "libgen": "https://libgen.gl/ads.php?md5={md5}",
     "welib": "https://welib.org/md5/{md5}",
 }
+
+_LIBGEN_DOMAINS = [
+    "https://libgen.gl",
+    "https://libgen.li",
+    "https://libgen.bz",
+    "https://libgen.la",
+    "https://libgen.vg",
+]
+
+_LIBGEN_GET_PATTERNS = [
+    re.compile(r'<a\s+href=["\']([^"\']*get\.php\?md5=[^"\']+&key=[^"\']+)["\'][^>]*>\s*<h2[^>]*>GET</h2>\s*</a>', re.IGNORECASE),
+    re.compile(r'<a[^>]+href=["\']([^"\']*get\.php\?md5=[^"\']+&(?:amp;)?key=[^"\']+)["\']', re.IGNORECASE),
+    re.compile(r'<a\s+href=["\']([^"\']*get\.php[^"\']*)["\'][^>]*>[\s\S]*?<h2[^>]*>GET</h2>', re.IGNORECASE),
+    re.compile(r'href=["\']([^"\']*get\.php\?[^"\']*md5=[^"\']*&[^"\']*key=[^"\']+)["\']', re.IGNORECASE),
+]
 
 def _get_source_priority() -> List[Dict]:
     """Get the current source priority configuration."""
@@ -533,6 +548,14 @@ def _get_urls_for_source(
         _url_source_types[url] = source_id
         return [url]
 
+    if source_id == "libgen":
+        urls = []
+        for base_url in _LIBGEN_DOMAINS:
+            url = f"{base_url}/ads.php?md5={book_info.id}"
+            _url_source_types[url] = "libgen"
+            urls.append(url)
+        return urls
+
     # Welib - fetch page and parse for slow_download links
     if source_id == "welib":
         if status_callback:
@@ -628,6 +651,62 @@ def _get_download_urls_from_welib(book_id: str, selector: Optional[network.AAMir
     return list(dict.fromkeys(links))  # Dedupe while preserving order
 
 
+def _extract_libgen_download_url(link: str, cancel_flag: Optional[Event] = None) -> str:
+    """Extract download URL from Libgen ads.php page using direct HTTP."""
+    if cancel_flag and cancel_flag.is_set():
+        return ""
+
+    base_url = "/".join(link.split("/")[:3])
+    logger.debug(f"Libgen fast: trying {link}")
+
+    try:
+        response = requests.get(
+            link,
+            headers=downloader.DOWNLOAD_HEADERS,
+            timeout=(5, 10),
+            allow_redirects=True,
+            proxies=network.get_proxies(),
+        )
+
+        if response.status_code != 200:
+            logger.debug(f"Libgen fast: {link} returned {response.status_code}")
+            return ""
+
+        html = response.text
+        final_url = response.url
+
+        if "libgen" not in final_url.lower() and "ads.php" not in final_url.lower():
+            logger.debug(f"Libgen fast: redirected away to {final_url}")
+            return ""
+
+        if "get.php" not in html:
+            logger.debug(f"Libgen fast: page doesn't contain get.php")
+            return ""
+
+        download_url = None
+        for pattern in _LIBGEN_GET_PATTERNS:
+            match = pattern.search(html)
+            if match:
+                download_url = match.group(1).replace("&amp;", "&").replace("&gt;", ">").replace("&lt;", "<")
+                break
+
+        if not download_url:
+            logger.debug(f"Libgen fast: couldn't extract GET link")
+            return ""
+        if not download_url.startswith("http"):
+            download_url = f"{base_url}/{download_url.lstrip('/')}"
+
+        logger.debug(f"Libgen fast: extracted {download_url}")
+        return download_url
+
+    except requests.exceptions.RequestException as e:
+        logger.debug(f"Libgen fast: request failed: {e}")
+        return ""
+    except Exception as e:
+        logger.warning(f"Libgen fast: unexpected error: {e}")
+        return ""
+
+
 def _download_book(
     book_info: BookInfo,
     book_path: Path,
@@ -690,9 +769,12 @@ def _download_book(
             if cancel_flag and cancel_flag.is_set():
                 return None
 
-            url_attempt_counter += 1
-            friendly_name = _friendly_source_name(url)
-            source_context = f"{friendly_name} (Server #{url_attempt_counter})"
+            if source_id == "libgen":
+                source_context = "Libgen (Fast)"
+            else:
+                url_attempt_counter += 1
+                friendly_name = _friendly_source_name(url)
+                source_context = f"{friendly_name} (Server #{url_attempt_counter})"
 
             result = _try_download_url(
                 url, source_id, book_info, book_path,
@@ -740,6 +822,9 @@ def _get_download_url(
         page = downloader.html_get_page(link, selector=sel, cancel_flag=cancel_flag)
         return downloader.get_absolute_url(link, json.loads(page).get("download_url", ""))
 
+    if "/ads.php?md5=" in link and any(domain in link for domain in _LIBGEN_DOMAINS):
+        return _extract_libgen_download_url(link, cancel_flag)
+
     html = downloader.html_get_page(link, selector=sel, cancel_flag=cancel_flag)
     if not html:
         return ""
@@ -763,10 +848,13 @@ def _get_download_url(
     elif "/slow_download/" in link:
         url = _extract_slow_download_url(soup, link, title, cancel_flag, status_callback, sel, source_context)
 
-    # Libgen (GET button)
     else:
-        get_btn = soup.find("a", string="GET")
-        url = get_btn["href"] if get_btn else ""
+        get_btn = soup.find("a", string="GET") or soup.find("a", string="Download")
+        if get_btn:
+            url = get_btn.get("href", "")
+        else:
+            logger.warning(f"Unknown source type, couldn't find download link: {link}")
+            url = ""
 
     return downloader.get_absolute_url(link, url)
 
@@ -781,21 +869,42 @@ def _extract_slow_download_url(
     source_context: Optional[str] = None
 ) -> str:
     """Extract download URL from AA slow download pages."""
-    # Try "Download now" button variations
+    html_str = str(soup)
+
+    clipboard_match = re.search(r"navigator\.clipboard\.writeText\(['\"]([^'\"]+)['\"]\)", html_str)
+    if clipboard_match:
+        url = clipboard_match.group(1)
+        if url.startswith("http") and "/slow_download/" not in url:
+            return url
+
     dl_link = soup.find("a", href=True, string="📚 Download now")
     if not dl_link:
         dl_link = soup.find("a", href=True, string=lambda s: s and "Download now" in s)
     if dl_link:
         return dl_link["href"]
 
-    # Try finding URL in gray background span (AA's copy URL format)
-    # The URL appears as plain text in <span class="bg-gray-200 ...">http://...</span>
+    for a_tag in soup.find_all("a", href=True):
+        if a_tag.has_attr("download"):
+            href = a_tag["href"]
+            if href.startswith("http") and "/slow_download/" not in href:
+                return href
+
+    for span in soup.find_all("span", class_=lambda c: c and "whitespace-normal" in c):
+        text = span.get_text(strip=True)
+        if text.startswith(("http://", "https://")) and "/slow_download/" not in text:
+            return text
+
     for span in soup.find_all("span", class_=lambda c: c and "bg-gray-200" in c):
         text = span.get_text(strip=True)
         if text.startswith(("http://", "https://")):
             return text
 
-    # Try "copy this URL" pattern (legacy)
+    location_match = re.search(r"window\.location\.href\s*=\s*['\"]([^'\"]+)['\"]", html_str)
+    if location_match:
+        url = location_match.group(1)
+        if url.startswith("http") and "/slow_download/" not in url:
+            return url
+
     copy_text = soup.find(string=lambda s: s and "copy this url" in s.lower())
     if copy_text and copy_text.parent:
         parent = copy_text.parent
@@ -810,19 +919,12 @@ def _extract_slow_download_url(
             if text.startswith("http"):
                 return text
 
-    # Check for countdown timer (waitlist)
-    countdown = soup.find("span", class_="js-partner-countdown")
-    if countdown:
-        # Cap countdown at 10 minutes to prevent malformed HTML from blocking indefinitely
+    countdown_seconds = _extract_countdown_seconds(soup, html_str)
+    if countdown_seconds > 0:
         MAX_COUNTDOWN_SECONDS = 600
-        try:
-            raw_countdown = int(countdown.text)
-        except (ValueError, TypeError):
-            logger.warning(f"Invalid countdown value '{countdown.text}', skipping wait")
-            raw_countdown = 0
-        sleep_time = min(raw_countdown, MAX_COUNTDOWN_SECONDS)
-        if raw_countdown > MAX_COUNTDOWN_SECONDS:
-            logger.warning(f"Countdown {raw_countdown}s exceeds max, capping at {MAX_COUNTDOWN_SECONDS}s")
+        sleep_time = min(countdown_seconds, MAX_COUNTDOWN_SECONDS)
+        if countdown_seconds > MAX_COUNTDOWN_SECONDS:
+            logger.warning(f"Countdown {countdown_seconds}s exceeds max, capping at {MAX_COUNTDOWN_SECONDS}s")
         logger.info(f"AA waitlist: {sleep_time}s for {title}")
 
         # Live countdown with status updates
@@ -842,10 +944,67 @@ def _extract_slow_download_url(
 
         return _get_download_url(link, title, cancel_flag, status_callback, selector, source_context)
 
-    # Debug fallback
     link_texts = [a.get_text(strip=True)[:50] for a in soup.find_all("a", href=True)[:10]]
     logger.warning(f"No download URL found. First 10 links: {link_texts}")
     return ""
+
+
+def _extract_countdown_seconds(soup: BeautifulSoup, html_str: str) -> int:
+    """Extract countdown timer seconds from AA slow download page."""
+    countdown_elem = soup.find("span", class_="js-partner-countdown")
+    if countdown_elem:
+        try:
+            seconds = int(countdown_elem.get_text(strip=True))
+            if 0 < seconds < 300:
+                return seconds
+        except (ValueError, TypeError):
+            pass
+
+    for elem in soup.find_all(["span", "div"], class_=lambda c: c and ("timer" in c.lower() or "countdown" in c.lower())):
+        try:
+            seconds = int(elem.get_text(strip=True))
+            if 0 < seconds < 300:
+                return seconds
+        except (ValueError, TypeError):
+            pass
+
+    countdown_attr = re.search(r'data-countdown=["\'](\d+)["\']', html_str)
+    if countdown_attr:
+        seconds = int(countdown_attr.group(1))
+        if 0 < seconds < 300:
+            return seconds
+
+    js_countdown = re.search(r'countdown:\s*(\d+)', html_str)
+    if js_countdown:
+        seconds = int(js_countdown.group(1))
+        if 0 < seconds < 300:
+            return seconds
+
+    js_var = re.search(r'(?:var|let|const)\s+countdown\s*=\s*(\d+)', html_str)
+    if js_var:
+        seconds = int(js_var.group(1))
+        if 0 < seconds < 300:
+            return seconds
+
+    countdown_secs = re.search(r'countdownSeconds\s*=\s*(\d+)', html_str)
+    if countdown_secs:
+        seconds = int(countdown_secs.group(1))
+        if 0 < seconds < 300:
+            return seconds
+
+    json_countdown = re.search(r'["\']countdown[_-]?seconds["\']\s*:\s*(\d+)', html_str)
+    if json_countdown:
+        seconds = int(json_countdown.group(1))
+        if 0 < seconds < 300:
+            return seconds
+
+    wait_text = re.search(r'wait\s+(\d+)\s+seconds', html_str, re.IGNORECASE)
+    if wait_text:
+        seconds = int(wait_text.group(1))
+        if 0 < seconds < 300:
+            return seconds
+
+    return 0
 
 
 def _book_info_to_release(book_info: BookInfo) -> Release:

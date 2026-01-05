@@ -151,6 +151,38 @@ def _get_release_source_options():
 
 _LANGUAGE_OPTIONS = [{"value": lang["code"], "label": lang["language"]} for lang in _SUPPORTED_BOOK_LANGUAGE]
 
+# Default AA mirror URLs (hardcoded base list)
+_DEFAULT_AA_URLS = [
+    "https://annas-archive.se",
+    "https://annas-archive.li",
+    "https://annas-archive.pm",
+    "https://annas-archive.in",
+]
+
+
+def _get_aa_base_url_options():
+    """Build AA URL options dynamically, including additional mirrors from config."""
+    from cwa_book_downloader.core.config import config
+
+    options = [{"value": "auto", "label": "Auto (Recommended)"}]
+
+    # Add default mirrors
+    for url in _DEFAULT_AA_URLS:
+        # Extract domain for label
+        domain = url.replace("https://", "").replace("http://", "")
+        options.append({"value": url, "label": domain})
+
+    # Add any additional mirrors from config
+    additional = config.get("AA_ADDITIONAL_URLS", "")
+    if additional:
+        for url in additional.split(","):
+            url = url.strip()
+            if url and url not in _DEFAULT_AA_URLS:
+                domain = url.replace("https://", "").replace("http://", "")
+                options.append({"value": url, "label": f"{domain} (custom)"})
+
+    return options
+
 
 def _clear_covers_cache(current_values: dict) -> dict:
     """Clear the cover image cache."""
@@ -628,8 +660,8 @@ def _get_source_priority_options():
         },
         {
             "id": "libgen",
-            "label": "Libgen",
-            "description": "Library Genesis mirrors",
+            "label": "Libgen (Fast)",
+            "description": "Library Genesis. Fast downloads, no bypass needed.",
         },
         {
             "id": "zlib",
@@ -653,9 +685,9 @@ def _get_default_source_priority():
 
     priority = [
         {"id": "aa-fast", "enabled": True},
+        {"id": "libgen", "enabled": True},
         {"id": "aa-slow-nowait", "enabled": True},
         {"id": "aa-slow-wait", "enabled": True},
-        {"id": "libgen", "enabled": True},
     ]
 
     if _LEGACY_PRIORITIZE_WELIB:
@@ -709,14 +741,8 @@ def download_source_settings():
         SelectField(
             key="AA_BASE_URL",
             label="Anna's Archive URL",
-            description="Primary Anna's Archive mirror to use. 'auto' selects automatically.",
-            options=[
-                {"value": "auto", "label": "Auto (Recommended)"},
-                {"value": "https://annas-archive.se", "label": "annas-archive.se"},
-                {"value": "https://annas-archive.li", "label": "annas-archive.li"},
-                {"value": "https://annas-archive.pm", "label": "annas-archive.pm"},
-                {"value": "https://annas-archive.in", "label": "annas-archive.in"},
-            ],
+            description="Primary Anna's Archive mirror to use. 'auto' selects automatically. Custom mirrors added below will appear here.",
+            options=_get_aa_base_url_options,  # Callable - includes additional mirrors dynamically
             default="auto",
         ),
         TextField(

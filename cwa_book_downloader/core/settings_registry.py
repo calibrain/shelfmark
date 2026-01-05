@@ -309,8 +309,8 @@ def sync_env_to_config() -> None:
             save_config_file(tab.name, values_to_sync)
             logger.debug(f"Synced {len(values_to_sync)} ENV values to {tab.name} config: {list(values_to_sync.keys())}")
 
-    # Migrate legacy settings to new format
     migrate_legacy_settings()
+    migrate_libgen_priority()
 
 
 def migrate_legacy_settings() -> None:
@@ -410,6 +410,38 @@ def migrate_legacy_settings() -> None:
     if migrated_sources:
         save_config_file("download_sources", migrated_sources)
         logger.info(f"Migrated content-type routing settings: {list(migrated_sources.keys())}")
+
+
+def migrate_libgen_priority() -> None:
+    """One-time migration to move libgen to position 1 (after aa-fast)."""
+    source_config = load_config_file("download_sources")
+
+    if source_config.get("_LIBGEN_PRIORITY_MIGRATED"):
+        return
+
+    priority = source_config.get("SOURCE_PRIORITY")
+    if not priority:
+        save_config_file("download_sources", {"_LIBGEN_PRIORITY_MIGRATED": True})
+        return
+
+    libgen_index = None
+    for i, entry in enumerate(priority):
+        if entry.get("id") == "libgen":
+            libgen_index = i
+            break
+
+    if libgen_index is None or libgen_index == 1:
+        save_config_file("download_sources", {"_LIBGEN_PRIORITY_MIGRATED": True})
+        return
+
+    libgen_entry = priority.pop(libgen_index)
+    priority.insert(1, libgen_entry)
+
+    save_config_file("download_sources", {
+        "SOURCE_PRIORITY": priority,
+        "_LIBGEN_PRIORITY_MIGRATED": True,
+    })
+    logger.info("Migrated SOURCE_PRIORITY: moved libgen to position 1")
 
 
 def get_setting_value(field: SettingsField, tab_name: str) -> Any:
