@@ -656,7 +656,7 @@ def rotate_dns_and_reset_aa() -> bool:
     configured_url = app_config.get("AA_BASE_URL", "auto")
     if configured_url == "auto" or _aa_base_url in _aa_urls:
         _current_aa_url_index = 0
-        _aa_base_url = _aa_urls[0] if _aa_urls else "https://annas-archive.org"
+        _aa_base_url = _aa_urls[0] if _aa_urls else "https://annas-archive.se"
         logger.info(f"After DNS switch, resetting AA URL to: {_aa_base_url}")
         _save_state(aa_url=_aa_base_url)
     return True
@@ -812,7 +812,7 @@ def _looks_like_ip(s: str) -> bool:
 
 def _build_aa_urls() -> List[str]:
     """Build list of available AA URLs from config."""
-    urls = ["https://annas-archive.org", "https://annas-archive.se", "https://annas-archive.li"]
+    urls = ["https://annas-archive.se", "https://annas-archive.li", "https://annas-archive.pm", "https://annas-archive.in"]
     additional = app_config.get("AA_ADDITIONAL_URLS", "")
     if additional:
         urls.extend(u.strip() for u in additional.split(",") if u.strip())

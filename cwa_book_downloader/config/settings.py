@@ -717,9 +717,10 @@ def download_source_settings():
             description="Primary Anna's Archive mirror to use. 'auto' selects automatically.",
             options=[
                 {"value": "auto", "label": "Auto (Recommended)"},
-                {"value": "https://annas-archive.org", "label": "annas-archive.org"},
                 {"value": "https://annas-archive.se", "label": "annas-archive.se"},
                 {"value": "https://annas-archive.li", "label": "annas-archive.li"},
+                {"value": "https://annas-archive.pm", "label": "annas-archive.pm"},
+                {"value": "https://annas-archive.in", "label": "annas-archive.in"},
             ],
             default="auto",
         ),
