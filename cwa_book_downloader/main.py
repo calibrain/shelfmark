@@ -290,22 +290,13 @@ def favicon(_: Any = None) -> Response:
     """
     return send_from_directory(FRONTEND_DIST, 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
-# Register bypasser warmup callback for when first WebSocket client connects
-# and shutdown callback for when all clients disconnect
-# Use app_config to read from settings file (not just env var) so UI changes work after restart
-if not app_config.get("USING_EXTERNAL_BYPASSER", False):
-    from cwa_book_downloader.bypass.internal_bypasser import warmup as bypasser_warmup, shutdown_if_idle as bypasser_shutdown
-    ws_manager.register_on_first_connect(bypasser_warmup)
-    ws_manager.register_on_all_disconnect(bypasser_shutdown)
-    logger.info("Registered Cloudflare bypasser warmup/shutdown on WebSocket connect/disconnect")
-
 if DEBUG:
     import subprocess
 
     if app_config.get("USING_EXTERNAL_BYPASSER", False):
         _stop_gui = lambda: None
     else:
-        from cwa_book_downloader.bypass.internal_bypasser import _reset_driver as _stop_gui
+        from cwa_book_downloader.bypass.internal_bypasser import _cleanup_orphan_processes as _stop_gui
 
     @app.route('/api/debug', methods=['GET'])
     @login_required

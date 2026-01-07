@@ -151,34 +151,67 @@ def _get_release_source_options():
 
 _LANGUAGE_OPTIONS = [{"value": lang["code"], "label": lang["language"]} for lang in _SUPPORTED_BOOK_LANGUAGE]
 
-# Default AA mirror URLs (hardcoded base list)
-_DEFAULT_AA_URLS = [
-    "https://annas-archive.se",
-    "https://annas-archive.li",
-    "https://annas-archive.pm",
-    "https://annas-archive.in",
-]
-
-
 def _get_aa_base_url_options():
     """Build AA URL options dynamically, including additional mirrors from config."""
-    from cwa_book_downloader.core.config import config
+    from cwa_book_downloader.core.mirrors import DEFAULT_AA_MIRRORS, get_aa_mirrors
 
     options = [{"value": "auto", "label": "Auto (Recommended)"}]
 
+    # Get all mirrors (defaults + custom)
+    all_mirrors = get_aa_mirrors()
+
+    for url in all_mirrors:
+        domain = url.replace("https://", "").replace("http://", "")
+        is_custom = url not in DEFAULT_AA_MIRRORS
+        label = f"{domain} (custom)" if is_custom else domain
+        options.append({"value": url, "label": label})
+
+    return options
+
+
+def _get_zlib_mirror_options():
+    """Build Z-Library mirror options for SelectField."""
+    from cwa_book_downloader.core.mirrors import DEFAULT_ZLIB_MIRRORS
+    from cwa_book_downloader.core.config import config
+
+    options = []
+
     # Add default mirrors
-    for url in _DEFAULT_AA_URLS:
-        # Extract domain for label
+    for url in DEFAULT_ZLIB_MIRRORS:
         domain = url.replace("https://", "").replace("http://", "")
         options.append({"value": url, "label": domain})
 
-    # Add any additional mirrors from config
-    additional = config.get("AA_ADDITIONAL_URLS", "")
+    # Add custom mirrors
+    additional = config.get("ZLIB_ADDITIONAL_URLS", "")
     if additional:
         for url in additional.split(","):
             url = url.strip()
-            if url and url not in _DEFAULT_AA_URLS:
-                domain = url.replace("https://", "").replace("http://", "")
+            if url and url not in DEFAULT_ZLIB_MIRRORS:
+                domain = url.replace("https://", "").replace("http://", "").split("/")[0]
+                options.append({"value": url, "label": f"{domain} (custom)"})
+
+    return options
+
+
+def _get_welib_mirror_options():
+    """Build Welib mirror options for SelectField."""
+    from cwa_book_downloader.core.mirrors import DEFAULT_WELIB_MIRRORS
+    from cwa_book_downloader.core.config import config
+
+    options = []
+
+    # Add default mirrors
+    for url in DEFAULT_WELIB_MIRRORS:
+        domain = url.replace("https://", "").replace("http://", "")
+        options.append({"value": url, "label": domain})
+
+    # Add custom mirrors
+    additional = config.get("WELIB_ADDITIONAL_URLS", "")
+    if additional:
+        for url in additional.split(","):
+            url = url.strip()
+            if url and url not in DEFAULT_WELIB_MIRRORS:
+                domain = url.replace("https://", "").replace("http://", "").split("/")[0]
                 options.append({"value": url, "label": f"{domain} (custom)"})
 
     return options
@@ -624,98 +657,118 @@ def download_settings():
     ]
 
 
-def _get_source_priority_options():
-    """Build source priority options with dynamic disabled states."""
+def _get_fast_source_options():
+    """Fast download sources - display only, not configurable."""
     from cwa_book_downloader.core.config import config
 
     has_donator_key = bool(config.get("AA_DONATOR_KEY", ""))
-    use_cf_bypass = config.get("USE_CF_BYPASS", True)
-    using_external_bypasser = config.get("USING_EXTERNAL_BYPASSER", False)
-    has_internal_bypasser = use_cf_bypass and not using_external_bypasser
 
     return [
         {
             "id": "aa-fast",
             "label": "Anna's Archive (Fast)",
             "description": "Fast downloads for donators",
+            "isPinned": True,
             "isLocked": not has_donator_key,
             "disabledReason": "Requires AA Donator Key" if not has_donator_key else None,
         },
         {
-            "id": "welib",
-            "label": "Welib",
-            "description": "Alternative mirror with good availability",
-            "isLocked": not has_internal_bypasser,
-            "disabledReason": "Requires internal bypasser" if not has_internal_bypasser else None,
+            "id": "libgen",
+            "label": "Library Genesis",
+            "description": "Instant downloads, no bypass needed",
+            "isPinned": True,
         },
+    ]
+
+
+def _get_fast_source_defaults():
+    """Default values for fast sources display."""
+    return [
+        {"id": "aa-fast", "enabled": True},
+        {"id": "libgen", "enabled": True},
+    ]
+
+
+def _get_slow_source_options():
+    """Slow download sources - configurable order. All require bypasser."""
+    from cwa_book_downloader.core.config import config
+
+    bypass_enabled = config.get("USE_CF_BYPASS", True)
+    locked = not bypass_enabled
+    disabled_reason = "Requires Cloudflare bypass" if locked else None
+
+    return [
         {
             "id": "aa-slow-nowait",
             "label": "Anna's Archive (Slowest, No Waitlist)",
-            "description": "Partner servers without countdown",
+            "description": "Partner servers",
+            "isLocked": locked,
+            "disabledReason": disabled_reason,
         },
         {
             "id": "aa-slow-wait",
-            "label": "Anna's Archive (Slow, Waitlist)",
+            "label": "Anna's Archive (Slow with Waitlist)",
             "description": "Partner servers with countdown timer",
+            "isLocked": locked,
+            "disabledReason": disabled_reason,
         },
         {
-            "id": "libgen",
-            "label": "Libgen (Fast)",
-            "description": "Library Genesis. Fast downloads, no bypass needed.",
+            "id": "welib",
+            "label": "Welib",
+            "description": "Alternative mirror",
+            "isLocked": locked,
+            "disabledReason": disabled_reason,
         },
         {
             "id": "zlib",
             "label": "Z-Library",
-            "description": "Z-Library mirrors (requires Cloudflare bypass)",
-            "isLocked": not has_internal_bypasser,
-            "disabledReason": "Requires internal bypasser" if not has_internal_bypasser else None,
+            "description": "Alternative mirror",
+            "isLocked": locked,
+            "disabledReason": disabled_reason,
         },
     ]
 
 
-def _get_default_source_priority():
-    """Default source priority order, respecting legacy env vars.
+def _get_slow_source_defaults():
+    """Default source priority order for slow sources."""
+    from cwa_book_downloader.config.env import _LEGACY_ALLOW_USE_WELIB
 
-    ALLOW_USE_WELIB (default true) controls whether welib is enabled.
-    PRIORITIZE_WELIB (default false) controls whether welib is moved to position 1.
-    """
-    from cwa_book_downloader.config.env import _LEGACY_PRIORITIZE_WELIB, _LEGACY_ALLOW_USE_WELIB
-
-    welib_entry = {"id": "welib", "enabled": _LEGACY_ALLOW_USE_WELIB}
-
-    priority = [
-        {"id": "aa-fast", "enabled": True},
-        {"id": "libgen", "enabled": True},
+    return [
         {"id": "aa-slow-nowait", "enabled": True},
         {"id": "aa-slow-wait", "enabled": True},
+        {"id": "welib", "enabled": _LEGACY_ALLOW_USE_WELIB},
+        {"id": "zlib", "enabled": True},
     ]
-
-    if _LEGACY_PRIORITIZE_WELIB:
-        priority.insert(1, welib_entry)  # After aa-fast
-    else:
-        priority.append(welib_entry)  # Before zlib
-
-    # Z-Library last - it's quite brittle
-    priority.append({"id": "zlib", "enabled": True})
-
-    return priority
 
 
 @register_settings("download_sources", "Download Sources", icon="download", order=21, group="direct_download")
 def download_source_settings():
     """Settings for download source behavior."""
     return [
+        PasswordField(
+            key="AA_DONATOR_KEY",
+            label="Anna's Archive Donator Key",
+            description="Enables fast downloads from Anna's Archive.",
+        ),
         HeadingField(
             key="source_priority_heading",
             title="Source Priority",
-            description="Configure which download sources to use and in what order.",
+            description="Sources are tried in order until a download succeeds.",
+        ),
+        OrderableListField(
+            key="FAST_SOURCES_DISPLAY",
+            label="Fast downloads",
+            description="Always tried first, no waiting or bypass required.",
+            options=_get_fast_source_options,
+            default=_get_fast_source_defaults(),
+            env_supported=False,
         ),
         OrderableListField(
             key="SOURCE_PRIORITY",
-            label="Download Source Order",
-            description="Drag to reorder. Sources are tried from top to bottom until a download succeeds.",
-            options=_get_source_priority_options,
-            default=_get_default_source_priority(),
+            label="Slow downloads",
+            description="Fallback sources, may have waiting. Requires bypasser. Drag to reorder.",
+            options=_get_slow_source_options,
+            default=_get_slow_source_defaults(),
         ),
         NumberField(
             key="MAX_RETRY",
@@ -732,29 +785,6 @@ def download_source_settings():
             default=5,
             min_value=1,
             max_value=60,
-        ),
-        HeadingField(
-            key="aa_settings_heading",
-            title="Anna's Archive",
-            description="Configure Anna's Archive mirror and donator settings.",
-        ),
-        SelectField(
-            key="AA_BASE_URL",
-            label="Anna's Archive URL",
-            description="Primary Anna's Archive mirror to use. 'auto' selects automatically. Custom mirrors added below will appear here.",
-            options=_get_aa_base_url_options,  # Callable - includes additional mirrors dynamically
-            default="auto",
-        ),
-        TextField(
-            key="AA_ADDITIONAL_URLS",
-            label="Additional AA Mirrors",
-            description="Comma-separated list of additional Anna's Archive mirror URLs.",
-            placeholder="https://example.com,https://another.com",
-        ),
-        PasswordField(
-            key="AA_DONATOR_KEY",
-            label="Anna's Archive Donator Key",
-            description="Optional donator key for faster downloads from Anna's Archive.",
         ),
         HeadingField(
             key="content_type_routing_heading",
@@ -830,20 +860,6 @@ def cloudflare_bypass_settings():
             requires_restart=True,
         ),
         CheckboxField(
-            key="BYPASS_WARMUP_ON_CONNECT",
-            label="Warmup on Connect",
-            description="Pre-warm the bypasser when user connects to Web App UI",
-            default=True,
-        ),
-        NumberField(
-            key="BYPASS_RELEASE_INACTIVE_MIN",
-            label="Release Inactive (minutes)",
-            description="Release bypasser resources after this many minutes of inactivity.",
-            default=5,
-            min_value=1,
-            max_value=60,
-        ),
-        CheckboxField(
             key="USING_EXTERNAL_BYPASSER",
             label="Use External Bypasser",
             description="Use FlareSolverr or similar external service instead of built-in bypasser. Caution: May have limitations with custom DNS, Tor and proxies. You may experience slower downloads and and poorer reliability compared to the internal bypasser.",
@@ -877,6 +893,83 @@ def cloudflare_bypass_settings():
             max_value=300000,
             requires_restart=True,
             show_when={"field": "USING_EXTERNAL_BYPASSER", "value": True},
+        ),
+    ]
+
+
+@register_settings("mirrors", "Mirrors", icon="globe", order=23, group="direct_download")
+def mirror_settings():
+    """Configure download source mirrors."""
+    from cwa_book_downloader.core.mirrors import DEFAULT_ZLIB_MIRRORS, DEFAULT_WELIB_MIRRORS
+
+    return [
+        # === ANNA'S ARCHIVE ===
+        HeadingField(
+            key="aa_mirrors_heading",
+            title="Anna's Archive",
+            description="Primary mirror with auto-probe on startup. Additional mirrors used as fallback.",
+        ),
+        SelectField(
+            key="AA_BASE_URL",
+            label="Primary Mirror",
+            description="Select 'Auto' to probe mirrors on startup, or choose a specific mirror.",
+            options=_get_aa_base_url_options,
+            default="auto",
+        ),
+        TextField(
+            key="AA_ADDITIONAL_URLS",
+            label="Additional Mirrors",
+            description="Comma-separated list of custom Anna's Archive mirror URLs.",
+        ),
+
+        # === LIBGEN ===
+        HeadingField(
+            key="libgen_mirrors_heading",
+            title="LibGen",
+            description="All mirrors are tried during download until one succeeds. Defaults: libgen.gl, libgen.li, libgen.bz, libgen.la, libgen.vg",
+        ),
+        TextField(
+            key="LIBGEN_ADDITIONAL_URLS",
+            label="Additional Mirrors",
+            description="Comma-separated list of custom LibGen mirrors to add to the defaults.",
+        ),
+
+        # === Z-LIBRARY ===
+        HeadingField(
+            key="zlib_mirrors_heading",
+            title="Z-Library",
+            description="Z-Library requires Cloudflare bypass. Only the primary mirror is used.",
+        ),
+        SelectField(
+            key="ZLIB_PRIMARY_URL",
+            label="Primary Mirror",
+            description="Z-Library mirror to use for downloads.",
+            options=_get_zlib_mirror_options,
+            default=DEFAULT_ZLIB_MIRRORS[0],
+        ),
+        TextField(
+            key="ZLIB_ADDITIONAL_URLS",
+            label="Additional Mirrors",
+            description="Comma-separated list of custom Z-Library mirror URLs.",
+        ),
+
+        # === WELIB ===
+        HeadingField(
+            key="welib_mirrors_heading",
+            title="Welib",
+            description="Welib requires Cloudflare bypass. Only the primary mirror is used.",
+        ),
+        SelectField(
+            key="WELIB_PRIMARY_URL",
+            label="Primary Mirror",
+            description="Welib mirror to use for downloads.",
+            options=_get_welib_mirror_options,
+            default=DEFAULT_WELIB_MIRRORS[0],
+        ),
+        TextField(
+            key="WELIB_ADDITIONAL_URLS",
+            label="Additional Mirrors",
+            description="Comma-separated list of custom Welib mirror URLs.",
         ),
     ]
 

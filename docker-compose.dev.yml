@@ -8,6 +8,8 @@ services:
       context: .
       dockerfile: Dockerfile
       target: cwa-bd
+    cap_add:
+      - SYS_PTRACE
     environment:
       DEBUG: true
     volumes:

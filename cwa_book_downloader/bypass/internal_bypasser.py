@@ -1,6 +1,5 @@
 import os
 import random
-import signal
 import socket
 import subprocess
 import threading
@@ -15,7 +14,7 @@ import requests
 from seleniumbase import Driver
 
 from cwa_book_downloader.bypass import BypassCancelledException
-from cwa_book_downloader.bypass.fingerprint import clear_screen_size, get_screen_size
+from cwa_book_downloader.bypass.fingerprint import get_screen_size
 from cwa_book_downloader.config import env
 from cwa_book_downloader.config.env import LOG_DIR
 from cwa_book_downloader.config.settings import RECORDING_DIR
@@ -42,18 +41,11 @@ DDOS_GUARD_INDICATORS = [
     "could not verify your browser automatically",
 ]
 
-DRIVER = None
 DISPLAY = {
     "xvfb": None,
     "ffmpeg": None,
 }
-LAST_USED = None
 LOCKED = threading.Lock()
-
-# Flag to track if DNS rotated while a bypass was in progress
-# Chrome will be restarted after the current operation completes
-_dns_rotation_pending = False
-_dns_rotation_lock = threading.Lock()
 
 # Cookie storage - shared with requests library for Cloudflare bypass
 # Structure: {domain: {cookie_name: {value, expiry, ...}}}
@@ -730,70 +722,48 @@ def _build_host_resolver_rules() -> list[str]:
 DRIVER_RESET_ERRORS = {"WebDriverException", "SessionNotCreatedException", "TimeoutException", "MaxRetryError"}
 
 
-def _get(url: str, retry: Optional[int] = None, cancel_flag: Optional[Event] = None) -> str:
-    """Fetch URL with Cloudflare bypass. Retries on failure."""
-    retry = retry if retry is not None else app_config.MAX_RETRY
+def _get(url: str, driver: Driver, cancel_flag: Optional[Event] = None) -> str:
+    """Fetch URL with Cloudflare bypass using provided driver."""
     _check_cancellation(cancel_flag, "Bypass cancelled before starting")
 
+    logger.debug(f"SB_GET: {url}")
+
+    hostname = urlparse(url).hostname or ""
+    if has_valid_cf_cookies(hostname):
+        reconnect_time = 1.0
+        logger.debug(f"Using fast reconnect ({reconnect_time}s) - valid cookies exist")
+    else:
+        reconnect_time = app_config.DEFAULT_SLEEP
+        logger.debug(f"Using standard reconnect ({reconnect_time}s) - no cached cookies")
+
+    logger.debug("Opening URL with SeleniumBase...")
+    driver.uc_open_with_reconnect(url, reconnect_time)
+
+    _check_cancellation(cancel_flag, "Bypass cancelled after page load")
+
     try:
-        logger.debug(f"SB_GET: {url}")
-        sb = _get_driver()
-
-        hostname = urlparse(url).hostname or ""
-        if has_valid_cf_cookies(hostname):
-            reconnect_time = 1.0
-            logger.debug(f"Using fast reconnect ({reconnect_time}s) - valid cookies exist")
-        else:
-            reconnect_time = app_config.DEFAULT_SLEEP
-            logger.debug(f"Using standard reconnect ({reconnect_time}s) - no cached cookies")
-
-        logger.debug("Opening URL with SeleniumBase...")
-        sb.uc_open_with_reconnect(url, reconnect_time)
-
-        _check_cancellation(cancel_flag, "Bypass cancelled after page load")
-
-        try:
-            logger.debug(f"Page loaded - URL: {sb.get_current_url()}, Title: {sb.get_title()}")
-        except Exception as e:
-            logger.debug(f"Could not get page info: {e}")
-
-        logger.debug("Starting bypass process...")
-        if _bypass(sb, cancel_flag=cancel_flag):
-            _extract_cookies_from_driver(sb, url)
-            return sb.page_source
-
-        logger.warning("Bypass completed but page still shows protection")
-        try:
-            body = sb.get_text("body")
-            logger.debug(f"Page content: {body[:500]}..." if len(body) > 500 else body)
-        except Exception:
-            pass
-
-    except BypassCancelledException:
-        raise
+        logger.debug(f"Page loaded - URL: {driver.get_current_url()}, Title: {driver.get_title()}")
     except Exception as e:
-        error_details = f"{type(e).__name__}: {e}"
+        logger.debug(f"Could not get page info: {e}")
 
-        if retry == 0:
-            logger.error(f"Failed after all retries: {error_details}")
-            logger.debug(f"Stack trace: {traceback.format_exc()}")
-            _reset_driver()
-            raise
+    logger.debug("Starting bypass process...")
+    if _bypass(driver, cancel_flag=cancel_flag):
+        _extract_cookies_from_driver(driver, url)
+        return driver.page_source
 
-        logger.warning(f"Bypass failed (retry {app_config.MAX_RETRY - retry + 1}/{app_config.MAX_RETRY}): {error_details}")
-        logger.debug(f"Stack trace: {traceback.format_exc()}")
+    logger.warning("Bypass completed but page still shows protection")
+    try:
+        body = driver.get_text("body")
+        logger.debug(f"Page content: {body[:500]}..." if len(body) > 500 else body)
+    except Exception:
+        pass
 
-        if type(e).__name__ in DRIVER_RESET_ERRORS:
-            logger.info("Restarting bypasser due to browser error...")
-            _reset_driver()
+    return ""
 
-    _check_cancellation(cancel_flag, "Bypass cancelled before retry")
-    return _get(url, retry - 1, cancel_flag)
 
 def get(url: str, retry: Optional[int] = None, cancel_flag: Optional[Event] = None) -> str:
-    """Fetch a URL with protection bypass."""
+    """Fetch a URL with protection bypass. Creates fresh Chrome instance for each bypass."""
     retry = retry if retry is not None else app_config.MAX_RETRY
-    global LAST_USED
 
     with LOCKED:
         # Try cookies first - another request may have completed bypass while waiting
@@ -803,26 +773,54 @@ def get(url: str, retry: Optional[int] = None, cancel_flag: Optional[Event] = No
                 response = requests.get(url, cookies=cookies, proxies=get_proxies(), timeout=(5, 10))
                 if response.status_code == 200:
                     logger.debug("Cookies available after lock wait - skipped Chrome")
-                    LAST_USED = time.time()
                     return response.text
             except Exception:
                 pass
 
-        result = _get(url, retry, cancel_flag)
-        LAST_USED = time.time()
-        return result
+        # Fresh Chrome for each bypass attempt
+        driver = None
+        try:
+            _ensure_display_initialized()
+            driver = _create_driver()
 
-def _init_driver() -> Driver:
-    """Initialize the Chrome driver with undetected-chromedriver settings."""
-    global DRIVER
-    if DRIVER:
-        _reset_driver()
+            for attempt in range(retry):
+                _check_cancellation(cancel_flag, "Bypass cancelled before attempt")
 
+                try:
+                    result = _get(url, driver, cancel_flag)
+                    if result:
+                        return result
+                except BypassCancelledException:
+                    raise
+                except Exception as e:
+                    error_details = f"{type(e).__name__}: {e}"
+                    logger.warning(f"Bypass failed (attempt {attempt + 1}/{retry}): {error_details}")
+                    logger.debug(f"Stack trace: {traceback.format_exc()}")
+
+                    # On driver errors, quit and create fresh driver
+                    if type(e).__name__ in DRIVER_RESET_ERRORS:
+                        logger.info("Restarting Chrome due to browser error...")
+                        _quit_driver(driver)
+                        driver = _create_driver()
+
+            logger.error(f"Bypass failed after {retry} attempts")
+            return ""
+        finally:
+            # Always quit Chrome when done
+            if driver:
+                _quit_driver(driver)
+
+def _create_driver() -> Driver:
+    """Create a fresh Chrome driver instance."""
     chromium_args = _get_chromium_args()
     screen_width, screen_height = get_screen_size()
 
-    logger.debug(f"Initializing Chrome driver with args: {chromium_args}")
+    logger.debug(f"Creating Chrome driver with args: {chromium_args}")
     logger.debug(f"Browser screen size: {screen_width}x{screen_height}")
+
+    # Start FFmpeg recording if debug mode (record each bypass session)
+    if app_config.get("DEBUG", False) and DISPLAY["xvfb"] and not DISPLAY["ffmpeg"]:
+        _start_ffmpeg_recording()
 
     driver = Driver(
         uc=True,
@@ -834,9 +832,173 @@ def _init_driver() -> Driver:
         chromium_arg=chromium_args,
     )
     driver.set_page_load_timeout(60)
-    DRIVER = driver
     time.sleep(app_config.DEFAULT_SLEEP)
+    logger.info("Chrome browser ready")
+    logger.log_resource_usage()
     return driver
+
+
+def _start_ffmpeg_recording() -> None:
+    """Start FFmpeg screen recording for debug mode."""
+    global DISPLAY
+    RECORDING_DIR.mkdir(parents=True, exist_ok=True)
+    display = DISPLAY["xvfb"]
+    timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
+    output_file = RECORDING_DIR / f"screen_recording_{timestamp}.mp4"
+
+    screen_width, screen_height = get_screen_size()
+    display_width = screen_width + 100
+    display_height = screen_height + 150
+
+    ffmpeg_cmd = [
+        "ffmpeg", "-y", "-f", "x11grab",
+        "-video_size", f"{display_width}x{display_height}",
+        "-i", f":{display.display}",
+        "-c:v", "libx264", "-preset", "ultrafast",
+        "-maxrate", "700k", "-bufsize", "1400k", "-crf", "36",
+        "-pix_fmt", "yuv420p", "-tune", "animation",
+        "-x264-params", "bframes=0:deblock=-1,-1",
+        "-r", "15", "-an",
+        output_file.as_posix(),
+        "-nostats", "-loglevel", "0"
+    ]
+    logger.debug("Starting FFmpeg recording to %s", output_file)
+    logger.debug_trace(f"FFmpeg command: {' '.join(ffmpeg_cmd)}")
+    DISPLAY["ffmpeg"] = subprocess.Popen(ffmpeg_cmd)
+
+
+def _close_cdp_sockets() -> int:
+    """Find and close any sockets connected to CDP port 9222.
+
+    This is a workaround for SeleniumBase not properly closing websocket
+    connections when using activate_cdp_mode(). Returns count of closed sockets.
+    """
+    import os
+    closed = 0
+    pid = os.getpid()
+
+    try:
+        fd_path = f'/proc/{pid}/fd'
+        for fd_name in os.listdir(fd_path):
+            try:
+                fd = int(fd_name)
+                link = os.readlink(f'{fd_path}/{fd_name}')
+                if 'socket:' not in link:
+                    continue
+
+                # Check if this socket is connected to port 9222 (CDP)
+                # by reading /proc/net/tcp and matching inode
+                inode = link.split('[')[1].rstrip(']')
+
+                with open('/proc/net/tcp', 'r') as f:
+                    for line in f:
+                        parts = line.split()
+                        if len(parts) < 10:
+                            continue
+                        # Check if this is our socket and connects to port 9222 (0x2406)
+                        if parts[9] == inode:
+                            remote = parts[2]
+                            remote_port = int(remote.split(':')[1], 16)
+                            if remote_port == 9222:
+                                logger.debug(f"Closing CDP socket fd={fd} inode={inode}")
+                                os.close(fd)
+                                closed += 1
+                                break
+            except (ValueError, OSError, IndexError):
+                continue
+    except Exception as e:
+        logger.debug(f"Error scanning for CDP sockets: {e}")
+
+    return closed
+
+
+def _quit_driver(driver: Driver) -> None:
+    """Quit Chrome driver and clean up resources.
+
+    Proper cleanup sequence for SeleniumBase CDP mode:
+    1. Stop CDP browser (closes websocket connections)
+    2. Reconnect WebDriver
+    3. Close window
+    4. Quit driver
+    5. Force-kill any lingering processes
+
+    The CDP websocket connection must be explicitly closed before Chrome is killed,
+    otherwise the sockets end up in CLOSE_WAIT state causing gevent to busy-loop.
+
+    References:
+    - https://github.com/seleniumbase/SeleniumBase/discussions/3768
+    - https://www.selenium.dev/selenium/docs/api/py/selenium_webdriver_common_bidi/selenium.webdriver.common.bidi.cdp.html
+    """
+    if driver is None:
+        return
+
+    logger.debug("Quitting Chrome driver...")
+
+    # Strategy 1: Stop CDP browser if in CDP mode (closes websocket connections)
+    # This is the proper SeleniumBase way to close CDP connections
+    try:
+        if hasattr(driver, 'cdp') and driver.cdp and hasattr(driver.cdp, 'driver'):
+            driver.cdp.driver.stop()
+            logger.debug("Stopped CDP browser (closed websocket)")
+            time.sleep(0.3)
+    except Exception as e:
+        logger.debug(f"CDP stop: {e}")
+
+    # Strategy 2: Reconnect to re-establish WebDriver control before quitting
+    try:
+        driver.reconnect()
+        time.sleep(0.2)
+    except Exception as e:
+        logger.debug(f"Reconnect: {e}")
+
+    # Strategy 3: Close the current window/tab
+    try:
+        driver.close()
+        time.sleep(0.2)
+    except Exception as e:
+        logger.debug(f"Close window: {e}")
+
+    # Strategy 4: Fallback - explicitly close any remaining CDP sockets
+    # This catches any sockets that weren't closed by cdp.driver.stop()
+    closed = _close_cdp_sockets()
+    if closed:
+        logger.debug(f"Closed {closed} remaining CDP socket(s)")
+
+    # Strategy 5: Standard quit
+    try:
+        driver.quit()
+    except Exception as e:
+        logger.debug(f"Quit: {e}")
+
+    # Strategy 6: Force garbage collection
+    import gc
+    gc.collect()
+
+    # Strategy 7: Force-kill any lingering Chrome/chromedriver processes
+    if env.DOCKERMODE:
+        time.sleep(0.3)
+        try:
+            subprocess.run(["pkill", "-9", "-f", "chrom"], capture_output=True, timeout=5)
+        except Exception as e:
+            logger.debug(f"pkill chrome: {e}")
+
+    # Strategy 8: Stop ffmpeg recording if running
+    global DISPLAY
+    if DISPLAY.get("ffmpeg"):
+        try:
+            DISPLAY["ffmpeg"].terminate()
+            DISPLAY["ffmpeg"].wait(timeout=2)
+            logger.debug("Stopped ffmpeg recording")
+        except Exception as e:
+            logger.debug(f"ffmpeg terminate: {e}")
+            try:
+                DISPLAY["ffmpeg"].kill()
+            except Exception:
+                pass
+        DISPLAY["ffmpeg"] = None
+
+    logger.log_resource_usage()
+
 
 def _ensure_display_initialized():
     """Initialize virtual display if needed. Must be called with LOCKED held."""
@@ -858,300 +1020,6 @@ def _ensure_display_initialized():
     logger.info(f"Virtual display started: {display_width}x{display_height}")
     time.sleep(app_config.DEFAULT_SLEEP)
     _reset_pyautogui_display_state()
-
-
-def _get_driver():
-    global DRIVER, DISPLAY, LAST_USED
-    logger.debug("Getting driver...")
-    LAST_USED = time.time()
-    
-    _ensure_display_initialized()
-    
-    # Start FFmpeg recording on first actual bypass request (not during warmup)
-    # This ensures we only record active bypass sessions, not idle time
-    if app_config.get("DEBUG", False) and DISPLAY["xvfb"] and not DISPLAY["ffmpeg"]:
-        RECORDING_DIR.mkdir(parents=True, exist_ok=True)
-        display = DISPLAY["xvfb"]
-        timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
-        output_file = RECORDING_DIR / f"screen_recording_{timestamp}.mp4"
-
-        # Get the display size (screen size + padding)
-        screen_width, screen_height = get_screen_size()
-        display_width = screen_width + 100
-        display_height = screen_height + 150
-
-        ffmpeg_cmd = [
-            "ffmpeg",
-            "-y",
-            "-f", "x11grab",
-            "-video_size", f"{display_width}x{display_height}",
-            "-i", f":{display.display}",
-            "-c:v", "libx264",
-            "-preset", "ultrafast",  # or "veryfast" (trade speed for slightly better compression)
-            "-maxrate", "700k",      # Slightly higher bitrate for text clarity
-            "-bufsize", "1400k",    # Buffer size (2x maxrate)
-            "-crf", "36",  # Adjust as needed:  higher = smaller, lower = better quality (23 is visually lossless)
-            "-pix_fmt", "yuv420p",  # Crucial for compatibility with most players
-            "-tune", "animation",   # Optimize encoding for screen content
-            "-x264-params", "bframes=0:deblock=-1,-1", # Optimize for text, disable b-frames and deblocking
-            "-r", "15",         # Reduce frame rate (if content allows)
-            "-an",                # Disable audio recording (if not needed)
-            output_file.as_posix(),
-            "-nostats", "-loglevel", "0"
-        ]
-        logger.debug("Starting FFmpeg recording to %s", output_file)
-        logger.debug_trace(f"FFmpeg command: {' '.join(ffmpeg_cmd)}")
-        DISPLAY["ffmpeg"] = subprocess.Popen(ffmpeg_cmd)
-    
-    if not DRIVER:
-        return _init_driver()
-
-    # Verify the existing driver is actually healthy (browser process still alive)
-    if not _is_driver_healthy():
-        logger.warning("Existing driver is unhealthy (browser may have crashed), reinitializing...")
-        _reset_driver()
-        _ensure_display_initialized()  # Display was shut down by _reset_driver, reinitialize it
-        return _init_driver()
-
-    logger.log_resource_usage()
-    return DRIVER
-
-def _reset_driver() -> None:
-    """Reset the browser driver and cleanup all associated processes."""
-    logger.log_resource_usage()
-    logger.info("Shutting down Cloudflare bypasser...")
-    global DRIVER, DISPLAY
-
-    clear_screen_size()
-
-    if DRIVER:
-        try:
-            DRIVER.quit()
-        except Exception as e:
-            logger.warning(f"Error quitting driver: {e}")
-        DRIVER = None
-
-    if DISPLAY["xvfb"]:
-        try:
-            DISPLAY["xvfb"].stop()
-        except Exception as e:
-            logger.warning(f"Error stopping display: {e}")
-        DISPLAY["xvfb"] = None
-
-    if DISPLAY["ffmpeg"]:
-        try:
-            DISPLAY["ffmpeg"].send_signal(signal.SIGINT)
-        except Exception as e:
-            logger.debug(f"Error stopping ffmpeg: {e}")
-        DISPLAY["ffmpeg"] = None
-
-    time.sleep(0.5)
-    for process in ["Xvfb", "ffmpeg", "chrom"]:
-        try:
-            os.system(f"pkill -f {process}")
-        except Exception as e:
-            logger.debug(f"Error killing {process}: {e}")
-
-    time.sleep(0.5)
-    logger.info("Cloudflare bypasser shut down")
-    logger.log_resource_usage()
-
-def _restart_chrome_only() -> None:
-    """Restart Chrome (not the display) to pick up new DNS settings.
-
-    Called when DNS provider rotates. Display is kept running to avoid slower full restart.
-    """
-    global DRIVER, LAST_USED
-
-    logger.debug("Restarting Chrome to apply new DNS settings...")
-
-    if DRIVER:
-        try:
-            DRIVER.quit()
-        except Exception as e:
-            logger.debug(f"Error quitting driver during DNS rotation: {e}")
-        DRIVER = None
-
-    try:
-        os.system("pkill -f chrom")
-    except Exception as e:
-        logger.debug(f"Error killing chrome processes: {e}")
-
-    time.sleep(0.5)
-
-    try:
-        _init_driver()
-        LAST_USED = time.time()
-        logger.debug("Chrome restarted with updated DNS settings")
-    except Exception as e:
-        logger.warning(f"Failed to restart Chrome after DNS rotation: {e}")
-
-
-def _on_dns_rotation(provider_name: str, servers: list, doh_url: str) -> None:
-    """Callback invoked when network.py rotates DNS provider.
-
-    Schedules an async Chrome restart to avoid blocking the current request.
-    """
-    global _dns_rotation_pending
-
-    if DRIVER is None:
-        return
-
-    with _dns_rotation_lock:
-        if _dns_rotation_pending:
-            return
-        _dns_rotation_pending = True
-
-    def _async_restart():
-        global _dns_rotation_pending
-        logger.debug(f"DNS rotated to {provider_name} - restarting Chrome in background")
-        with LOCKED:
-            with _dns_rotation_lock:
-                _dns_rotation_pending = False
-            _restart_chrome_only()
-
-    threading.Thread(target=_async_restart, daemon=True).start()
-
-
-def _cleanup_driver() -> None:
-    """Reset driver after inactivity timeout.
-
-    Uses 4x longer timeout when UI clients are connected.
-    """
-    global LAST_USED
-
-    try:
-        from cwa_book_downloader.api.websocket import ws_manager
-        has_active_clients = ws_manager.has_active_connections()
-    except ImportError:
-        ws_manager = None
-        has_active_clients = False
-
-    timeout_minutes = app_config.BYPASS_RELEASE_INACTIVE_MIN
-    if has_active_clients:
-        timeout_minutes *= 4
-
-    with LOCKED:
-        if not LAST_USED or time.time() - LAST_USED < timeout_minutes * 60:
-            return
-
-        logger.info(f"Bypasser idle for {timeout_minutes} min - shutting down")
-        _reset_driver()
-        LAST_USED = None
-        logger.log_resource_usage()
-
-        if has_active_clients and ws_manager:
-            ws_manager.request_warmup_on_next_connect()
-            logger.debug("Requested warmup on next client connect")
-
-def _cleanup_loop() -> None:
-    """Background loop that periodically checks for idle timeout."""
-    while True:
-        _cleanup_driver()
-        time.sleep(max(app_config.BYPASS_RELEASE_INACTIVE_MIN / 2, 1))
-
-
-def _init_cleanup_thread() -> None:
-    """Start the background cleanup thread."""
-    threading.Thread(target=_cleanup_loop, daemon=True).start()
-
-def _should_warmup() -> bool:
-    """Check if warmup should proceed based on configuration."""
-    if not app_config.get("BYPASS_WARMUP_ON_CONNECT", True):
-        logger.debug("Bypasser warmup disabled via config")
-        return False
-    if not env.DOCKERMODE:
-        logger.debug("Bypasser warmup skipped - not in Docker mode")
-        return False
-    if not app_config.get("USE_CF_BYPASS", True):
-        logger.debug("Bypasser warmup skipped - CF bypass disabled")
-        return False
-    if app_config.get("AA_DONATOR_KEY", ""):
-        logger.debug("Bypasser warmup skipped - AA donator key set")
-        return False
-    return True
-
-
-def warmup() -> None:
-    """Pre-initialize the virtual display and Chrome browser.
-
-    Called when a user connects to the web UI. Skipped if warmup is disabled,
-    not in Docker mode, CF bypass is disabled, or AA donator key is set.
-    """
-    global LAST_USED
-
-    if not _should_warmup():
-        return
-
-    with LOCKED:
-        if is_warmed_up():
-            logger.debug("Bypasser already warmed up")
-            return
-
-        _cleanup_orphan_processes()
-
-        if DRIVER is not None or DISPLAY["xvfb"] is not None:
-            logger.info("Resetting stale bypasser state before warmup...")
-            _reset_driver()
-
-        logger.info("Warming up Cloudflare bypasser...")
-
-        try:
-            _ensure_display_initialized()
-
-            if DRIVER is None:
-                logger.info("Pre-initializing Chrome browser...")
-                _init_driver()
-                LAST_USED = time.time()
-                logger.info("Chrome browser ready")
-
-            logger.info("Bypasser warmup complete")
-            logger.log_resource_usage()
-
-        except Exception as e:
-            logger.warning(f"Failed to warm up bypasser: {e}")
-
-def _is_driver_healthy() -> bool:
-    """Check if the Chrome driver is responsive (not just non-None)."""
-    if DRIVER is None:
-        return False
-
-    try:
-        DRIVER.get_current_url()
-        return True
-    except Exception as e:
-        logger.warning(f"Driver health check failed: {type(e).__name__}: {e}")
-        return False
-
-
-def is_warmed_up() -> bool:
-    """Check if the bypasser is fully warmed up (display and browser initialized)."""
-    if DISPLAY["xvfb"] is None or DRIVER is None:
-        return False
-    return _is_driver_healthy()
-
-
-def shutdown_if_idle() -> None:
-    """Start the inactivity countdown when all WebSocket clients disconnect.
-
-    Sets LAST_USED to start the timer. The cleanup loop shuts down after
-    BYPASS_RELEASE_INACTIVE_MIN minutes of inactivity.
-    """
-    global LAST_USED
-
-    with LOCKED:
-        if not is_warmed_up():
-            logger.debug("Bypasser already shut down")
-            return
-
-        LAST_USED = time.time()
-        logger.info(f"All clients disconnected - shutdown after {app_config.BYPASS_RELEASE_INACTIVE_MIN} min of inactivity")
-
-_init_cleanup_thread()
-
-# Register for DNS rotation notifications (Chrome restarts with new DNS settings)
-if app_config.get("USE_CF_BYPASS", True) and not app_config.get("USING_EXTERNAL_BYPASSER", False):
-    network.register_dns_rotation_callback(_on_dns_rotation)
 
 
 def _try_with_cached_cookies(url: str, hostname: str) -> Optional[str]:
