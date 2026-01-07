@@ -175,6 +175,7 @@ def html_get_page(
     use_bypasser: bool = False,
     selector: Optional[network.AAMirrorSelector] = None,
     cancel_flag: Optional[Event] = None,
+    status_callback: Optional[Callable[[str, Optional[str]], None]] = None,
 ) -> str:
     """Fetch HTML content from a URL with retry mechanism."""
     retry = retry if retry is not None else app_config.MAX_RETRY
@@ -192,6 +193,8 @@ def html_get_page(
         try:
             if use_bypasser_now and _is_cf_bypass_enabled():
                 logger.debug(f"GET (bypasser): {current_url}")
+                if status_callback:
+                    status_callback("resolving", "Bypassing protection")
                 try:
                     result = get_bypassed_page(current_url, selector, cancel_flag)
                     return result or ""
@@ -223,6 +226,8 @@ def html_get_page(
                         logger.debug(f"403 but cookies now available - retrying with cookies: {current_url}")
                         continue
                     logger.info(f"403 detected; switching to bypasser: {current_url}")
+                    if status_callback:
+                        status_callback("resolving", "Bypassing protection...")
                     use_bypasser_now = True
                     continue
                 logger.warning(f"403 error, giving up: {current_url}")

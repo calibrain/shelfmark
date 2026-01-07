@@ -811,12 +811,9 @@ def _looks_like_ip(s: str) -> bool:
     return s.replace(".", "").replace(":", "").isdigit()
 
 def _build_aa_urls() -> List[str]:
-    """Build list of available AA URLs from config."""
-    urls = ["https://annas-archive.se", "https://annas-archive.li", "https://annas-archive.pm", "https://annas-archive.in"]
-    additional = app_config.get("AA_ADDITIONAL_URLS", "")
-    if additional:
-        urls.extend(u.strip() for u in additional.split(",") if u.strip())
-    return urls
+    """Build list of available AA URLs from centralized mirror config."""
+    from cwa_book_downloader.core.mirrors import get_aa_mirrors
+    return get_aa_mirrors()
 
 
 def _initialize_aa_state() -> None:

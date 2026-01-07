@@ -62,18 +62,21 @@ _CF_BYPASS_REQUIRED = frozenset({"aa-slow-nowait", "aa-slow-wait", "zlib", "weli
 # Sources whose URLs come from AA page (multiple mirrors)
 _AA_PAGE_SOURCES = frozenset({"aa-slow-nowait", "aa-slow-wait"})
 
-_MD5_URL_TEMPLATES = {
-    "zlib": "https://z-lib.fm/md5/{md5}",
-    "welib": "https://welib.org/md5/{md5}",
-}
+def _get_md5_url_template(source_id: str) -> Optional[str]:
+    """Get URL template for MD5-based sources from centralized config."""
+    from cwa_book_downloader.core import mirrors
 
-_LIBGEN_DOMAINS = [
-    "https://libgen.gl",
-    "https://libgen.li",
-    "https://libgen.bz",
-    "https://libgen.la",
-    "https://libgen.vg",
-]
+    if source_id == "zlib":
+        return mirrors.get_zlib_url_template()
+    elif source_id == "welib":
+        return mirrors.get_welib_url_template()
+    return None
+
+
+def _get_libgen_domains() -> List[str]:
+    """Get LibGen domains from centralized config."""
+    from cwa_book_downloader.core import mirrors
+    return mirrors.get_libgen_mirrors()
 
 _LIBGEN_GET_PATTERNS = [
     re.compile(r'<a\s+href=["\']([^"\']*get\.php\?md5=[^"\']+&key=[^"\']+)["\'][^>]*>\s*<h2[^>]*>GET</h2>\s*</a>', re.IGNORECASE),
@@ -83,8 +86,28 @@ _LIBGEN_GET_PATTERNS = [
 ]
 
 def _get_source_priority() -> List[Dict]:
-    """Get the current source priority configuration."""
-    return config.get("SOURCE_PRIORITY") or []
+    """Get the full source priority list.
+
+    Fast sources (AA Fast, LibGen) are hardcoded first.
+    Slow sources come from user config.
+    """
+    # Fast sources - always first, hardcoded
+    fast_sources = []
+
+    # AA Fast only if donator key is set
+    if config.get("AA_DONATOR_KEY"):
+        fast_sources.append({"id": "aa-fast", "enabled": True})
+
+    # LibGen always available
+    fast_sources.append({"id": "libgen", "enabled": True})
+
+    # User's configured slow sources (config won't contain fast sources)
+    slow_sources = config.get("SOURCE_PRIORITY") or []
+
+    # Filter out any legacy fast source entries from old configs
+    slow_sources = [s for s in slow_sources if s["id"] not in ("aa-fast", "libgen")]
+
+    return fast_sources + slow_sources
 
 
 def _is_source_enabled(source_id: str) -> bool:
@@ -344,7 +367,7 @@ def _parse_book_info_page(soup: BeautifulSoup, book_id: str, fetch_download_coun
                 if size == "" and "." in stripped:
                     size = _normalize_size(f)
 
-    book_title = _find_in_divs(divs, "🔍")[0].strip("🔍").strip()
+    book_title = (_find_in_divs(divs, "🔍") or [""])[0].strip("🔍").strip()
 
     # Extract basic information
     description = _extract_book_description(soup)
@@ -354,8 +377,8 @@ def _parse_book_info_page(soup: BeautifulSoup, book_id: str, fetch_download_coun
         preview=preview,
         title=book_title,
         content=content,
-        publisher=_find_in_divs(divs, "icon-[mdi--company]", is_class=True)[0],
-        author=_find_in_divs(divs, "icon-[mdi--user-edit]", is_class=True)[0],
+        publisher=(_find_in_divs(divs, "icon-[mdi--company]", is_class=True) or [""])[0],
+        author=(_find_in_divs(divs, "icon-[mdi--user-edit]", is_class=True) or [""])[0],
         format=format,
         size=size,
         description=description,
@@ -543,14 +566,15 @@ def _get_urls_for_source(
         return [url]
 
     # MD5-based sources - generate URL from template
-    if source_id in _MD5_URL_TEMPLATES:
-        url = _MD5_URL_TEMPLATES[source_id].format(md5=book_info.id)
+    template = _get_md5_url_template(source_id)
+    if template:
+        url = template.format(md5=book_info.id)
         _url_source_types[url] = source_id
         return [url]
 
     if source_id == "libgen":
         urls = []
-        for base_url in _LIBGEN_DOMAINS:
+        for base_url in _get_libgen_domains():
             url = f"{base_url}/ads.php?md5={book_info.id}"
             _url_source_types[url] = "libgen"
             urls.append(url)
@@ -560,7 +584,7 @@ def _get_urls_for_source(
     if source_id == "welib":
         if status_callback:
             status_callback("resolving", "Fetching welib sources")
-        return _get_download_urls_from_welib(book_info.id, selector=selector, cancel_flag=cancel_flag)
+        return _get_download_urls_from_welib(book_info.id, selector=selector, cancel_flag=cancel_flag, status_callback=status_callback)
 
     # AA page sources - fetch AA page if not already done
     if source_id in _AA_PAGE_SOURCES:
@@ -627,14 +651,21 @@ def _try_download_url(
         return None
 
 
-def _get_download_urls_from_welib(book_id: str, selector: Optional[network.AAMirrorSelector] = None, cancel_flag: Optional[Event] = None) -> List[str]:
+def _get_download_urls_from_welib(
+    book_id: str,
+    selector: Optional[network.AAMirrorSelector] = None,
+    cancel_flag: Optional[Event] = None,
+    status_callback: Optional[Callable[[str, Optional[str]], None]] = None
+) -> List[str]:
     """Get download URLs from welib.org (bypasser required)."""
+    from cwa_book_downloader.core import mirrors
+
     if not _is_source_enabled("welib"):
         return []
-    url = _MD5_URL_TEMPLATES["welib"].format(md5=book_id)
+    url = mirrors.get_welib_url_template().format(md5=book_id)
     logger.info(f"Fetching welib download URLs for {book_id}")
     try:
-        html = downloader.html_get_page(url, use_bypasser=True, selector=selector or network.AAMirrorSelector(), cancel_flag=cancel_flag)
+        html = downloader.html_get_page(url, use_bypasser=True, selector=selector or network.AAMirrorSelector(), cancel_flag=cancel_flag, status_callback=status_callback)
     except Exception as exc:
         logger.error_trace(f"Welib fetch failed for {book_id}: {exc}")
         return []
@@ -819,13 +850,13 @@ def _get_download_url(
 
     # AA fast download API (JSON response)
     if link.startswith(f"{network.get_aa_base_url()}/dyn/api/fast_download.json"):
-        page = downloader.html_get_page(link, selector=sel, cancel_flag=cancel_flag)
+        page = downloader.html_get_page(link, selector=sel, cancel_flag=cancel_flag, status_callback=status_callback)
         return downloader.get_absolute_url(link, json.loads(page).get("download_url", ""))
 
-    if "/ads.php?md5=" in link and any(domain in link for domain in _LIBGEN_DOMAINS):
+    if "/ads.php?md5=" in link and any(domain in link for domain in _get_libgen_domains()):
         return _extract_libgen_download_url(link, cancel_flag)
 
-    html = downloader.html_get_page(link, selector=sel, cancel_flag=cancel_flag)
+    html = downloader.html_get_page(link, selector=sel, cancel_flag=cancel_flag, status_callback=status_callback)
     if not html:
         return ""
 
@@ -838,7 +869,7 @@ def _get_download_url(
         if not dl:
             # Retry after delay if page not fully loaded
             time.sleep(2)
-            html = downloader.html_get_page(link, selector=sel, cancel_flag=cancel_flag)
+            html = downloader.html_get_page(link, selector=sel, cancel_flag=cancel_flag, status_callback=status_callback)
             if html:
                 soup = BeautifulSoup(html, "html.parser")
                 dl = soup.find("a", href=True, class_="addDownloadedBook")

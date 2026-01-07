@@ -101,6 +101,7 @@ export interface OrderableListOption {
   description?: string;
   disabledReason?: string; // Explanation when item cannot be enabled
   isLocked?: boolean; // Item cannot be toggled (e.g., missing dependency)
+  isPinned?: boolean; // Item cannot be reordered (but can still be toggled if not locked)
 }
 
 export interface OrderableListFieldConfig extends BaseField {
