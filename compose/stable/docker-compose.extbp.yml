@@ -1,0 +1,20 @@
+# Uses external Cloudflare bypasser (FlareSolverr/ByParr) instead of built-in Selenium
+services:
+  calibre-web-automated-book-downloader-extbp:
+    image: ghcr.io/calibrain/calibre-web-automated-book-downloader-extbp:latest
+    environment:
+      TZ: America/New_York
+      EXT_BYPASSER_URL: http://flaresolverr:8191
+      # UID: 1000
+      # GID: 100
+      # CWA_DB_PATH: /auth/app.db
+    ports:
+      - 8084:8084
+    restart: unless-stopped
+    volumes:
+      - /tmp/data/calibre-web/ingest:/cwa-book-ingest
+      - /path/to/config:/config
+      # - /cwa/config/path/app.db:/auth/app.db:ro
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest

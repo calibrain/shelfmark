@@ -2,7 +2,7 @@
 services:
   calibre-web-automated-book-downloader-dev:
     extends:
-      file: ./docker-compose.yml
+      file: ./compose/edge/docker-compose.yml
       service: calibre-web-automated-book-downloader
     build:
       context: .

@@ -1,7 +1,7 @@
 # Routes all traffic through Tor - requires NET_ADMIN capability
 services:
   calibre-web-automated-book-downloader-tor:
-    image: ghcr.io/calibrain/calibre-web-automated-book-downloader-tor:latest
+    image: ghcr.io/calibrain/calibre-web-automated-book-downloader-tor:dev
     environment:
       FLASK_PORT: 8084
       # TZ: America/New_York

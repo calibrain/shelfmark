@@ -1,15 +1,18 @@
-# Local development - Tor variant
+# Local development - External bypasser variant
 services:
-  calibre-web-automated-book-downloader-tor-dev:
+  calibre-web-automated-book-downloader-extbp-dev:
     extends:
-      file: ./docker-compose.tor.yml
-      service: calibre-web-automated-book-downloader-tor
+      file: ./compose/edge/docker-compose.extbp.yml
+      service: calibre-web-automated-book-downloader-extbp
     build:
       context: .
       dockerfile: Dockerfile
-      target: cwa-bd-tor
+      target: cwa-bd-extbp
     environment:
       DEBUG: true
+      EXT_BYPASSER_URL: http://flaresolverr:8191
+      EXT_BYPASSER_PATH: /v1
+      EXT_BYPASSER_TIMEOUT: 60000
     volumes:
       - ./.local/config:/config
       - ./.local/books:/books
@@ -17,3 +20,6 @@ services:
       - ./.local/tmp:/tmp/cwa-book-downloader
       # Download client mount - path must match your torrent/usenet client's volume exactly
       # - /path/to/downloads:/path/to/downloads
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest

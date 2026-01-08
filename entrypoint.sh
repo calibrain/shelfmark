@@ -129,6 +129,38 @@ change_ownership /tmp/cwa-book-downloader
 make_writable ${CONFIG_DIR:-/config}
 make_writable ${INGEST_DIR:-/books}
 
+# Fallback to root if config dir is still not writable (common on NAS/Unraid after upgrade from v0.4.0)
+CONFIG_PATH=${CONFIG_DIR:-/config}
+set +e
+test_write "$CONFIG_PATH" >/dev/null 2>&1
+config_ok=$?
+set -e
+
+if [ $config_ok -ne 0 ] && [ "$RUN_UID" != "0" ]; then
+    config_owner=$(stat -c '%u' "$CONFIG_PATH" 2>/dev/null || echo "unknown")
+    if [ "$config_owner" = "0" ]; then
+        echo ""
+        echo "========================================================"
+        echo "WARNING: Permission issue detected!"
+        echo ""
+        echo "Config directory is owned by root but PUID=$RUN_UID."
+        echo "This typically happens after upgrading from v0.4.0 where"
+        echo "PUID/PGID settings were not respected."
+        echo ""
+        echo "Falling back to running as root to prevent data loss."
+        echo ""
+        echo "To fix this permanently, run on your HOST machine:"
+        echo "  chown -R $RUN_UID:$RUN_GID /path/to/config"
+        echo ""
+        echo "Then restart the container."
+        echo "========================================================"
+        echo ""
+        RUN_UID=0
+        RUN_GID=0
+        USERNAME=root
+    fi
+fi
+
 # Always run Gunicorn (even when DEBUG=true) to ensure Socket.IO WebSocket
 # upgrades work reliably on customer machines.
 # Map app LOG_LEVEL (often DEBUG/INFO/...) to gunicorn's --log-level (lowercase).

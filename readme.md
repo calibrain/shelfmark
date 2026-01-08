@@ -43,13 +43,15 @@ A unified web interface for searching and downloading books from multiple source
 
 1. Download the docker-compose file:
    ```bash
-   curl -O https://raw.githubusercontent.com/calibrain/calibre-web-automated-book-downloader/main/docker-compose.yml
+   curl -O https://raw.githubusercontent.com/calibrain/calibre-web-automated-book-downloader/main/compose/stable/docker-compose.yml
    ```
 
 2. Start the service:
    ```bash
    docker compose up -d
    ```
+
+> **Edge users**: If you're tracking the main branch (`:dev` tag), use compose files from `compose/edge/` instead.
 
 3. Open `http://localhost:8084`
 
@@ -114,7 +116,7 @@ docker compose up -d
 ### Tor Variant
 Routes all traffic through Tor for enhanced privacy:
 ```bash
-curl -O https://raw.githubusercontent.com/calibrain/calibre-web-automated-book-downloader/main/docker-compose.tor.yml
+curl -O https://raw.githubusercontent.com/calibrain/calibre-web-automated-book-downloader/main/compose/stable/docker-compose.tor.yml
 docker compose -f docker-compose.tor.yml up -d
 ```
 
@@ -126,7 +128,7 @@ docker compose -f docker-compose.tor.yml up -d
 ### External Cloudflare Resolver
 Use FlareSolverr or ByParr instead of the built-in bypasser:
 ```bash
-curl -O https://raw.githubusercontent.com/calibrain/calibre-web-automated-book-downloader/main/docker-compose.extbp.yml
+curl -O https://raw.githubusercontent.com/calibrain/calibre-web-automated-book-downloader/main/compose/stable/docker-compose.extbp.yml
 docker compose -f docker-compose.extbp.yml up -d
 ```
 

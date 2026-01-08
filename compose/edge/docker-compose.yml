@@ -1,10 +1,9 @@
-# Uses external Cloudflare bypasser (FlareSolverr/ByParr) instead of built-in Selenium
 services:
-  calibre-web-automated-book-downloader-extbp:
-    image: ghcr.io/calibrain/calibre-web-automated-book-downloader-extbp:latest
+  calibre-web-automated-book-downloader:
+    image: ghcr.io/calibrain/calibre-web-automated-book-downloader:dev
+    container_name: calibre-web-automated-book-downloader
     environment:
       # TZ: America/New_York
-      EXT_BYPASSER_URL: http://flaresolverr:8191
       # PUID: 1000
       # PGID: 1000
     ports:
@@ -15,6 +14,3 @@ services:
       - /path/to/config:/config # App configuration
       # Download client mount - path must match your torrent/usenet client's volume exactly
       # - /path/to/downloads:/path/to/downloads
-
-  flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
