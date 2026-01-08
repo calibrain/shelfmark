@@ -96,6 +96,7 @@ Environment variables work for initial setup and Docker deployments. They serve 
 | `TZ` | Container timezone | `UTC` |
 | `PUID` / `PGID` | Runtime user/group ID (also supports legacy `UID`/`GID`) | `1000` / `1000` |
 | `SEARCH_MODE` | `direct` or `universal` | `direct` |
+| `USING_TOR` | Enable Tor routing (requires `NET_ADMIN` capability) | `false` |
 
 Some of the additional options available in Settings:
 - **AA Donator Key** - Use your paid account to skip Cloudflare challenges entirely and use faster, direct downloads
@@ -113,7 +114,9 @@ Some of the additional options available in Settings:
 docker compose up -d
 ```
 
-### Tor Variant
+The standard image includes Tor support built-in but inactive by default.
+
+### Enable Tor Routing
 Routes all traffic through Tor for enhanced privacy:
 ```bash
 curl -O https://raw.githubusercontent.com/calibrain/calibre-web-automated-book-downloader/main/compose/stable/docker-compose.tor.yml
@@ -122,8 +125,9 @@ docker compose -f docker-compose.tor.yml up -d
 
 **Notes:**
 - Requires `NET_ADMIN` and `NET_RAW` capabilities
+- Set `USING_TOR=true` environment variable
 - Timezone is auto-detected from Tor exit node
-- Custom DNS/proxy settings are ignored
+- Custom DNS/proxy settings are ignored when Tor is active
 
 ### External Cloudflare Resolver
 Use FlareSolverr or ByParr instead of the built-in bypasser:

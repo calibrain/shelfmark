@@ -23,9 +23,6 @@ jobs:
           - suffix: ""
             target: cwa-bd
             image_name_suffix: ""
-          - suffix: "-tor"
-            target: cwa-bd-tor
-            image_name_suffix: "-tor"
           - suffix: "-extbp"
             target: cwa-bd-extbp
             image_name_suffix: "-extbp"
@@ -81,3 +78,37 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_name_suffix }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+
+  # Create aliases for backwards compatibility (e.g., -tor points to standard image)
+  create-aliases:
+    needs: build-and-push-images
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create -tor alias for standard image
+        run: |
+          SOURCE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          ALIAS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-tor"
+
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref_name }}"
+            VERSION_NUM="${VERSION#v}"
+            MINOR="${VERSION_NUM%.*}"
+
+            docker buildx imagetools create -t "${ALIAS}:latest" "${SOURCE}:latest"
+            docker buildx imagetools create -t "${ALIAS}:${VERSION_NUM}" "${SOURCE}:${VERSION_NUM}"
+            docker buildx imagetools create -t "${ALIAS}:${MINOR}" "${SOURCE}:${MINOR}"
+            docker buildx imagetools create -t "${ALIAS}:${VERSION}" "${SOURCE}:${VERSION}"
+          else
+            docker buildx imagetools create -t "${ALIAS}:dev" "${SOURCE}:dev"
+          fi

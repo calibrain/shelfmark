@@ -7,9 +7,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: cwa-bd-tor
+      target: cwa-bd
     environment:
       DEBUG: true
+      USING_TOR: true
     volumes:
       - ./.local/config:/config
       - ./.local/books:/books

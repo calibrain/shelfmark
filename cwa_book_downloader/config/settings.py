@@ -377,9 +377,9 @@ def network_settings():
     tor_available = env.TOR_VARIANT_AVAILABLE
     tor_enabled = env.USING_TOR
 
-    # When Tor is enabled (only possible in Tor variant), DNS/proxy settings are overridden
-    # The Tor variant uses iptables to force ALL traffic through Tor - it cannot be disabled
-    tor_overrides_network = tor_available  # If Tor variant, network settings are always managed by Tor
+    # When Tor is enabled, DNS/proxy settings are overridden by iptables rules
+    # Tor uses iptables to force ALL traffic through Tor
+    tor_overrides_network = tor_enabled  # Only override when Tor is actually active
 
     return [
         SelectField(
@@ -436,16 +436,16 @@ def network_settings():
             key="USING_TOR",
             label="Tor Routing",
             description=(
-                "All traffic is routed through Tor in this container variant. This cannot be changed."
-                if tor_available
-                else "Tor routing is not available in this container variant."
+                "All traffic is routed through Tor. Requires container restart to change."
+                if tor_enabled
+                else "Route all traffic through Tor for enhanced privacy."
             ),
-            default=tor_available,  # Reflects actual state: True if Tor variant, False otherwise
-            disabled=True,  # Always disabled - Tor state is determined by container variant
+            default=tor_enabled,  # Reflects actual state from env var
+            disabled=True,  # Tor state requires container restart
             disabled_reason=(
-                "Tor routing is always active in the Tor container variant."
-                if tor_available
-                else "Requires the Tor container variant (calibre-web-automated-book-downloader-tor)."
+                "Tor routing is active. Set USING_TOR=false and restart to disable."
+                if tor_enabled
+                else "Set USING_TOR=true env var and restart with NET_ADMIN/NET_RAW capabilities."
             ),
         ),
         SelectField(

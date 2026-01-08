@@ -68,7 +68,14 @@ RUN apt-get update && \
     # For debug
     zip iputils-ping \
     # For user switching
-    sudo && \
+    sudo \
+    # --- Tor support (activated via USING_TOR=true) ---
+    tor \
+    supervisor \
+    iptables && \
+    # Configure iptables alternatives for tor.sh compatibility
+    update-alternatives --set iptables /usr/sbin/iptables-legacy && \
+    update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy && \
     # Cleanup APT cache *after* all installs in this layer
     apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false && \
     apt-get clean && \
@@ -148,29 +155,6 @@ RUN chmod -R o+rx /usr/bin/chromium && \
     chmod -R o+w /usr/local/lib/python3.10/site-packages/seleniumbase/drivers/
 
 # Default command to run the application entrypoint script
-CMD ["/app/entrypoint.sh"]
-
-FROM cwa-bd AS cwa-bd-tor
-
-ENV USING_TOR=true
-
-# Install Tor and dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    # --- Tor ---
-    tor \
-    # --- Supervisor ---
-    supervisor \
-    # --- iptables ---
-    iptables && \
-    update-alternatives --set iptables /usr/sbin/iptables-legacy && \
-    update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy && \
-    # Cleanup APT cache *after* all installs in this layer
-    apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Override the default command to run Tor
 CMD ["/app/entrypoint.sh"]
 
 FROM base AS cwa-bd-extbp
