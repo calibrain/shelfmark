@@ -1,7 +1,7 @@
 # Uses external Cloudflare bypasser (FlareSolverr/ByParr) instead of built-in Selenium
 services:
-  calibre-web-automated-book-downloader-extbp:
-    image: ghcr.io/calibrain/calibre-web-automated-book-downloader-extbp:dev
+  shelfmark-lite:
+    image: ghcr.io/calibrain/shelfmark-lite:dev
     environment:
       # TZ: America/New_York
       EXT_BYPASSER_URL: http://flaresolverr:8191

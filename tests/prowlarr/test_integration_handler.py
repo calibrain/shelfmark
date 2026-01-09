@@ -11,12 +11,12 @@ from threading import Event
 from typing import List, Optional, Tuple
 import pytest
 
-from cwa_book_downloader.core.config import config
-from cwa_book_downloader.core.settings_registry import save_config_file
-from cwa_book_downloader.core.models import DownloadTask
-from cwa_book_downloader.release_sources.prowlarr.handler import ProwlarrHandler
-from cwa_book_downloader.release_sources.prowlarr.utils import get_protocol
-from cwa_book_downloader.release_sources.prowlarr.cache import cache_release, get_release, remove_release, _cache
+from shelfmark.core.config import config
+from shelfmark.core.settings_registry import save_config_file
+from shelfmark.core.models import DownloadTask
+from shelfmark.release_sources.prowlarr.handler import ProwlarrHandler
+from shelfmark.release_sources.prowlarr.utils import get_protocol
+from shelfmark.release_sources.prowlarr.cache import cache_release, get_release, remove_release, _cache
 
 
 # Test magnet link
@@ -39,7 +39,7 @@ def _is_transmission_available():
     """Check if Transmission is available."""
     _setup_transmission_config()
     try:
-        from cwa_book_downloader.release_sources.prowlarr.clients.transmission import TransmissionClient
+        from shelfmark.release_sources.prowlarr.clients.transmission import TransmissionClient
         client = TransmissionClient()
         success, _ = client.test_connection()
         return success

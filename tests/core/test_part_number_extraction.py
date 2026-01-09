@@ -2,7 +2,7 @@
 
 import pytest
 from pathlib import Path
-from cwa_book_downloader.core.naming import natural_sort_key, assign_part_numbers
+from shelfmark.core.naming import natural_sort_key, assign_part_numbers
 
 
 class TestNaturalSortKey:

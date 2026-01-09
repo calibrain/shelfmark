@@ -1,13 +1,13 @@
-# Local development - External bypasser variant
+# Local development - External bypasser variant (lite)
 services:
-  calibre-web-automated-book-downloader-extbp-dev:
+  shelfmark-lite-dev:
     extends:
       file: ./compose/edge/docker-compose.extbp.yml
-      service: calibre-web-automated-book-downloader-extbp
+      service: shelfmark-lite
     build:
       context: .
       dockerfile: Dockerfile
-      target: cwa-bd-extbp
+      target: shelfmark-lite
     environment:
       DEBUG: true
       EXT_BYPASSER_URL: http://flaresolverr:8191
@@ -16,8 +16,8 @@ services:
     volumes:
       - ./.local/config:/config
       - ./.local/books:/books
-      - ./.local/log:/var/log/cwa-book-downloader
-      - ./.local/tmp:/tmp/cwa-book-downloader
+      - ./.local/log:/var/log/shelfmark
+      - ./.local/tmp:/tmp/shelfmark
       # Download client mount - path must match your torrent/usenet client's volume exactly
       # - /path/to/downloads:/path/to/downloads
 

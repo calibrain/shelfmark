@@ -1,7 +1,7 @@
 services:
-  calibre-web-automated-book-downloader:
-    image: ghcr.io/calibrain/calibre-web-automated-book-downloader:dev
-    container_name: calibre-web-automated-book-downloader
+  shelfmark:
+    image: ghcr.io/calibrain/shelfmark:dev
+    container_name: shelfmark
     environment:
       # TZ: America/New_York
       # PUID: 1000

@@ -2,8 +2,8 @@
 
 # Set up log paths
 LOG_ROOT=${LOG_ROOT:-"/var/log"}
-LOG_DIR="$LOG_ROOT/cwa-book-downloader"
-OUTPUT_FILE_NAME="cwa-book-downloader-debug_BUILD-${BUILD_VERSION:-local}_RELEASE-${RELEASE_VERSION:-NA}_$(date +%Y%m%d-%H%M%S)"
+LOG_DIR="$LOG_ROOT/shelfmark"
+OUTPUT_FILE_NAME="shelfmark-debug_BUILD-${BUILD_VERSION:-local}_RELEASE-${RELEASE_VERSION:-NA}_$(date +%Y%m%d-%H%M%S)"
 OUTPUT_FILE="/tmp/$OUTPUT_FILE_NAME.zip"
 
 # Create LOG_DIR if it doesn't exist
@@ -103,11 +103,11 @@ echo "" >> "$LOG_DIR/permissions.txt"
 echo "ls -all ${INGEST_DIR:-/books}" >> "$LOG_DIR/permissions.txt"
 ls -all ${INGEST_DIR:-/books} >> "$LOG_DIR/permissions.txt" 2>&1
 echo "" >> "$LOG_DIR/permissions.txt"
-echo "ls -all /var/log/cwa-book-downloader" >> "$LOG_DIR/permissions.txt"
-ls -all /var/log/cwa-book-downloader >> "$LOG_DIR/permissions.txt" 2>&1
+echo "ls -all /var/log/shelfmark" >> "$LOG_DIR/permissions.txt"
+ls -all /var/log/shelfmark >> "$LOG_DIR/permissions.txt" 2>&1
 echo "" >> "$LOG_DIR/permissions.txt"
-echo "ls -all /tmp/cwa-book-downloader" >> "$LOG_DIR/permissions.txt"
-ls -all /tmp/cwa-book-downloader >> "$LOG_DIR/permissions.txt" 2>&1
+echo "ls -all /tmp/shelfmark" >> "$LOG_DIR/permissions.txt"
+ls -all /tmp/shelfmark >> "$LOG_DIR/permissions.txt" 2>&1
 echo "" >> "$LOG_DIR/permissions.txt"
 
 # Check Iptables (NAT)

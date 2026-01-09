@@ -7,12 +7,12 @@ Tests the utility functions for parsing release metadata.
 import pytest
 
 # Import the functions to test
-from cwa_book_downloader.release_sources.prowlarr.source import (
+from shelfmark.release_sources.prowlarr.source import (
     _parse_size,
     _extract_format,
     _extract_language,
 )
-from cwa_book_downloader.release_sources.prowlarr.utils import get_protocol_display
+from shelfmark.release_sources.prowlarr.utils import get_protocol_display
 
 
 class TestParseSize:

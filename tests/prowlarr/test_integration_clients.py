@@ -15,9 +15,9 @@ import subprocess
 import time
 import pytest
 
-from cwa_book_downloader.core.config import config
-from cwa_book_downloader.core.settings_registry import save_config_file
-from cwa_book_downloader.release_sources.prowlarr.clients import DownloadStatus
+from shelfmark.core.config import config
+from shelfmark.core.settings_registry import save_config_file
+from shelfmark.release_sources.prowlarr.clients import DownloadStatus
 
 
 # Test magnet link (Ubuntu ISO - legal, small metadata)
@@ -116,7 +116,7 @@ def _try_get_transmission_client():
     """Try to get a working Transmission client, or None if unavailable."""
     _setup_transmission_config()
     try:
-        from cwa_book_downloader.release_sources.prowlarr.clients.transmission import TransmissionClient
+        from shelfmark.release_sources.prowlarr.clients.transmission import TransmissionClient
         client = TransmissionClient()
         client.test_connection()
         return client
@@ -128,7 +128,7 @@ def _try_get_qbittorrent_client():
     """Try to get a working qBittorrent client, or None if unavailable."""
     _setup_qbittorrent_config()
     try:
-        from cwa_book_downloader.release_sources.prowlarr.clients.qbittorrent import QBittorrentClient
+        from shelfmark.release_sources.prowlarr.clients.qbittorrent import QBittorrentClient
         client = QBittorrentClient()
         success, _ = client.test_connection()
         if success:
@@ -142,7 +142,7 @@ def _try_get_deluge_client():
     """Try to get a working Deluge client, or None if unavailable."""
     _setup_deluge_config()
     try:
-        from cwa_book_downloader.release_sources.prowlarr.clients.deluge import DelugeClient
+        from shelfmark.release_sources.prowlarr.clients.deluge import DelugeClient
         client = DelugeClient()
         success, _ = client.test_connection()
         if success:
@@ -156,7 +156,7 @@ def _try_get_nzbget_client():
     """Try to get a working NZBGet client, or None if unavailable."""
     _setup_nzbget_config()
     try:
-        from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import NZBGetClient
+        from shelfmark.release_sources.prowlarr.clients.nzbget import NZBGetClient
         client = NZBGetClient()
         client.test_connection()
         return client
@@ -169,7 +169,7 @@ def _try_get_sabnzbd_client():
     if not _setup_sabnzbd_config():
         return None
     try:
-        from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import SABnzbdClient
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import SABnzbdClient
         client = SABnzbdClient()
         success, _ = client.test_connection()
         if success:

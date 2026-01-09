@@ -21,10 +21,10 @@ jobs:
       matrix:
         include:
           - suffix: ""
-            target: cwa-bd
+            target: shelfmark
             image_name_suffix: ""
           - suffix: "-lite"
-            target: cwa-bd-extbp
+            target: shelfmark-lite
             image_name_suffix: "-lite"
     steps:
       - name: Get current date

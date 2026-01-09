@@ -109,7 +109,7 @@ export const ConfigSetupBanner = ({
           <p className="text-sm opacity-80">
             {showContinueButton
               ? 'To save settings, add a config volume to your Docker Compose file:'
-              : 'CWA Book Downloader now has a settings page! To enable it, add a config volume to your Docker Compose file:'}
+              : 'Shelfmark now has a settings page! To enable it, add a config volume to your Docker Compose file:'}
           </p>
 
           {/* Code snippet */}
@@ -124,7 +124,7 @@ export const ConfigSetupBanner = ({
             >
               <code>
                 <span className="opacity-60">services:</span>{'\n'}
-                <span className="opacity-60">{'  '}cwa-book-downloader:</span>{'\n'}
+                <span className="opacity-60">{'  '}shelfmark:</span>{'\n'}
                 {'    '}volumes:{'\n'}
                 {'      '}- <span className="text-blue-400">/path/to/config</span>:<span className="text-green-400">/config</span>
               </code>

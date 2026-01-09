@@ -1,7 +1,7 @@
 #!/bin/bash
-LOG_DIR=${LOG_ROOT:-/var/log/}/cwa-book-downloader
+LOG_DIR=${LOG_ROOT:-/var/log/}/shelfmark
 mkdir -p $LOG_DIR
-LOG_FILE=${LOG_DIR}/cwa-bd_entrypoint.log
+LOG_FILE=${LOG_DIR}/shelfmark_entrypoint.log
 
 # Cleanup any existing files or folders in the log directory
 rm -rf $LOG_DIR/*
@@ -78,7 +78,7 @@ echo "Username for UID $RUN_UID is $USERNAME"
 
 test_write() {
     folder=$1
-    test_file=$folder/calibre-web-automated-book-downloader_TEST_WRITE
+    test_file=$folder/shelfmark_TEST_WRITE
     mkdir -p $folder
     (
         echo 0123456789_TEST | sudo -E -u "$USERNAME" HOME=/app tee $test_file > /dev/null
@@ -122,8 +122,8 @@ change_ownership() {
 }
 
 change_ownership /app
-change_ownership /var/log/cwa-book-downloader
-change_ownership /tmp/cwa-book-downloader
+change_ownership /var/log/shelfmark
+change_ownership /tmp/shelfmark
 
 # Test write to all folders
 make_writable ${CONFIG_DIR:-/config}
@@ -165,7 +165,7 @@ fi
 # upgrades work reliably on customer machines.
 # Map app LOG_LEVEL (often DEBUG/INFO/...) to gunicorn's --log-level (lowercase).
 gunicorn_loglevel=$([ "$DEBUG" = "true" ] && echo debug || echo "${LOG_LEVEL:-info}" | tr '[:upper:]' '[:lower:]')
-command="gunicorn --log-level ${gunicorn_loglevel} --access-logfile - --error-logfile - --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers 1 -t 300 -b ${FLASK_HOST:-0.0.0.0}:${FLASK_PORT:-8084} cwa_book_downloader.main:app"
+command="gunicorn --log-level ${gunicorn_loglevel} --access-logfile - --error-logfile - --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers 1 -t 300 -b ${FLASK_HOST:-0.0.0.0}:${FLASK_PORT:-8084} shelfmark.main:app"
 
 # If DEBUG and not using an external bypass
 if [ "$DEBUG" = "true" ] && [ "$USING_EXTERNAL_BYPASSER" != "true" ]; then
@@ -223,10 +223,10 @@ fi
 
 # Verify /tmp has at least 1MB of space and is writable/readable
 echo "Verifying /tmp has enough space"
-rm -f /tmp/test.cwa-bd
-if dd if=/dev/zero of=/tmp/test.cwa-bd bs=1M count=1 2>/dev/null && \
-   [ "$(wc -c < /tmp/test.cwa-bd)" -eq 1048576 ]; then
-    rm -f /tmp/test.cwa-bd
+rm -f /tmp/test.shelfmark
+if dd if=/dev/zero of=/tmp/test.shelfmark bs=1M count=1 2>/dev/null && \
+   [ "$(wc -c < /tmp/test.shelfmark)" -eq 1048576 ]; then
+    rm -f /tmp/test.shelfmark
     echo "Success: /tmp is writable and readable"
 else
     echo "Failure: /tmp is not writable or has insufficient space"

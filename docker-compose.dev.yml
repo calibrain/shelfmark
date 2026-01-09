@@ -1,13 +1,13 @@
 # Local development - builds from source with debug enabled
 services:
-  calibre-web-automated-book-downloader-dev:
+  shelfmark-dev:
     extends:
       file: ./compose/edge/docker-compose.yml
-      service: calibre-web-automated-book-downloader
+      service: shelfmark
     build:
       context: .
       dockerfile: Dockerfile
-      target: cwa-bd
+      target: shelfmark
     cap_add:
       - SYS_PTRACE
     environment:
@@ -15,8 +15,8 @@ services:
     volumes:
       - ./.local/config:/config
       - ./.local/books:/books
-      - ./.local/log:/var/log/cwa-book-downloader
-      - ./.local/tmp:/tmp/cwa-book-downloader
-      - ./cwa_book_downloader:/app/cwa_book_downloader:ro
+      - ./.local/log:/var/log/shelfmark
+      - ./.local/tmp:/tmp/shelfmark
+      - ./shelfmark:/app/shelfmark:ro
       # Download client mount - path must match your torrent/usenet client's volume exactly
       # - /path/to/downloads:/path/to/downloads

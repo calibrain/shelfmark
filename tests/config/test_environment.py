@@ -27,13 +27,13 @@ class TestDirectorySetup:
 
     def test_staging_dir_created_on_demand(self):
         """Staging directory should be created if it doesn't exist."""
-        from cwa_book_downloader.download.orchestrator import get_staging_dir
+        from shelfmark.download.orchestrator import get_staging_dir
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_staging = Path(tmpdir) / "staging"
             assert not test_staging.exists()
 
-            with patch("cwa_book_downloader.download.orchestrator.TMP_DIR", test_staging):
+            with patch("shelfmark.download.orchestrator.TMP_DIR", test_staging):
                 result = get_staging_dir()
 
             assert test_staging.exists()
@@ -41,24 +41,24 @@ class TestDirectorySetup:
 
     def test_staging_dir_handles_existing_directory(self):
         """Staging directory creation should be idempotent."""
-        from cwa_book_downloader.download.orchestrator import get_staging_dir
+        from shelfmark.download.orchestrator import get_staging_dir
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_staging = Path(tmpdir) / "staging"
             test_staging.mkdir()
 
-            with patch("cwa_book_downloader.download.orchestrator.TMP_DIR", test_staging):
+            with patch("shelfmark.download.orchestrator.TMP_DIR", test_staging):
                 result = get_staging_dir()
 
             assert result == test_staging
 
     def test_staging_path_handles_special_characters(self):
         """Staging path should handle task IDs with special characters."""
-        from cwa_book_downloader.download.orchestrator import get_staging_path
+        from shelfmark.download.orchestrator import get_staging_path
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch(
-                "cwa_book_downloader.download.orchestrator.TMP_DIR", Path(tmpdir)
+                "shelfmark.download.orchestrator.TMP_DIR", Path(tmpdir)
             ):
                 # Task ID with URL-like characters
                 path = get_staging_path(
@@ -74,11 +74,11 @@ class TestDirectorySetup:
 
     def test_staging_path_normalizes_extension(self):
         """Staging path should handle extensions with or without dot."""
-        from cwa_book_downloader.download.orchestrator import get_staging_path
+        from shelfmark.download.orchestrator import get_staging_path
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch(
-                "cwa_book_downloader.download.orchestrator.TMP_DIR", Path(tmpdir)
+                "shelfmark.download.orchestrator.TMP_DIR", Path(tmpdir)
             ):
                 path1 = get_staging_path("task1", "epub")
                 path2 = get_staging_path("task1", ".epub")
@@ -97,7 +97,7 @@ class TestSupportedFormats:
 
     def test_default_supported_formats(self):
         """Default formats should include common ebook formats."""
-        from cwa_book_downloader.core.config import config
+        from shelfmark.core.config import config
         # Ensure settings are refreshed to pick up defaults
         config.refresh()
 
@@ -109,7 +109,7 @@ class TestSupportedFormats:
 
     def test_format_list_is_lowercase(self):
         """Format list should be normalized to lowercase."""
-        from cwa_book_downloader.core.config import config
+        from shelfmark.core.config import config
         # Ensure settings are refreshed to pick up defaults
         config.refresh()
 
@@ -120,7 +120,7 @@ class TestSupportedFormats:
 
     def test_config_supported_formats_is_list(self):
         """Config should have SUPPORTED_FORMATS as a list."""
-        from cwa_book_downloader.core.config import config
+        from shelfmark.core.config import config
         # Ensure settings are refreshed to pick up defaults
         config.refresh()
 
@@ -140,7 +140,7 @@ class TestContentTypeRouting:
 
     def test_get_ingest_dir_returns_path(self):
         """get_ingest_dir should return a Path for all content types."""
-        from cwa_book_downloader.core.utils import get_ingest_dir, CONTENT_TYPES
+        from shelfmark.core.utils import get_ingest_dir, CONTENT_TYPES
 
         # Default (no content type) should return a Path
         default_path = get_ingest_dir()
@@ -153,7 +153,7 @@ class TestContentTypeRouting:
 
     def test_content_types_list_complete(self):
         """All expected content types should be present in CONTENT_TYPES."""
-        from cwa_book_downloader.core.utils import CONTENT_TYPES
+        from shelfmark.core.utils import CONTENT_TYPES
 
         expected_types = [
             "book (fiction)",
@@ -172,7 +172,7 @@ class TestContentTypeRouting:
 
     def test_get_ingest_dir_unknown_type_returns_default(self):
         """Unknown content types should return the default ingest directory."""
-        from cwa_book_downloader.core.utils import get_ingest_dir
+        from shelfmark.core.utils import get_ingest_dir
 
         default_path = get_ingest_dir()
         unknown_path = get_ingest_dir("unknown content type")
@@ -189,14 +189,14 @@ class TestSettingsSystem:
 
     def test_save_and_load_config(self):
         """Settings should persist to JSON files."""
-        from cwa_book_downloader.core.settings_registry import (
+        from shelfmark.core.settings_registry import (
             save_config_file,
             load_config_file,
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch(
-                "cwa_book_downloader.config.env.CONFIG_DIR", Path(tmpdir)
+                "shelfmark.config.env.CONFIG_DIR", Path(tmpdir)
             ):
                 test_data = {"key1": "value1", "key2": 123, "key3": True}
                 save_config_file("test_plugin", test_data)
@@ -207,11 +207,11 @@ class TestSettingsSystem:
 
     def test_load_missing_config_returns_empty(self):
         """Loading non-existent config should return empty dict."""
-        from cwa_book_downloader.core.settings_registry import load_config_file
+        from shelfmark.core.settings_registry import load_config_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch(
-                "cwa_book_downloader.config.env.CONFIG_DIR", Path(tmpdir)
+                "shelfmark.config.env.CONFIG_DIR", Path(tmpdir)
             ):
                 loaded = load_config_file("nonexistent_plugin")
 
@@ -219,15 +219,15 @@ class TestSettingsSystem:
 
     def test_config_singleton_refresh(self):
         """Config singleton should refresh when settings change."""
-        from cwa_book_downloader.core.config import config
-        from cwa_book_downloader.core.settings_registry import save_config_file
+        from shelfmark.core.config import config
+        from shelfmark.core.settings_registry import save_config_file
 
         # Get initial value
         initial = config.get("TEST_REFRESH_KEY", "default")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch(
-                "cwa_book_downloader.config.env.CONFIG_DIR", Path(tmpdir)
+                "shelfmark.config.env.CONFIG_DIR", Path(tmpdir)
             ):
                 save_config_file("test", {"TEST_REFRESH_KEY": "new_value"})
                 config.refresh()
@@ -237,7 +237,7 @@ class TestSettingsSystem:
     def test_config_env_var_priority(self):
         """Environment variables should take priority over config files."""
         # This tests the priority: ENV > config file > default
-        from cwa_book_downloader.config.env import string_to_bool
+        from shelfmark.config.env import string_to_bool
 
         # Test the string_to_bool helper used for parsing
         assert string_to_bool("true") is True
@@ -263,7 +263,7 @@ class TestArchiveHandling:
 
     def test_is_archive_detects_supported_formats(self):
         """is_archive should detect RAR and ZIP files (not cbr/cbz which are book formats)."""
-        from cwa_book_downloader.download.archive import is_archive
+        from shelfmark.download.archive import is_archive
 
         # RAR and ZIP are archive formats that get extracted
         assert is_archive(Path("book.rar")) is True
@@ -280,7 +280,7 @@ class TestArchiveHandling:
 
     def test_is_archive_case_insensitive(self):
         """Archive detection should be case insensitive."""
-        from cwa_book_downloader.download.archive import is_archive
+        from shelfmark.download.archive import is_archive
 
         assert is_archive(Path("book.RAR")) is True
         assert is_archive(Path("book.ZIP")) is True
@@ -309,14 +309,14 @@ class TestConfigValidation:
 
     def test_missing_required_directory_handling(self):
         """Application should handle missing directories gracefully."""
-        from cwa_book_downloader.download.orchestrator import get_staging_dir
+        from shelfmark.download.orchestrator import get_staging_dir
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Use a path that doesn't exist yet
             nonexistent = Path(tmpdir) / "deeply" / "nested" / "path"
 
             with patch(
-                "cwa_book_downloader.download.orchestrator.TMP_DIR", nonexistent
+                "shelfmark.download.orchestrator.TMP_DIR", nonexistent
             ):
                 result = get_staging_dir()
 
@@ -329,7 +329,7 @@ class TestConfigValidation:
     )
     def test_config_dir_not_writable(self):
         """Application should handle read-only config directory."""
-        from cwa_book_downloader.config.env import _is_config_dir_writable
+        from shelfmark.config.env import _is_config_dir_writable
 
         with tempfile.TemporaryDirectory() as tmpdir:
             readonly_dir = Path(tmpdir) / "readonly"
@@ -338,7 +338,7 @@ class TestConfigValidation:
 
             try:
                 with patch(
-                    "cwa_book_downloader.config.env.CONFIG_DIR", readonly_dir
+                    "shelfmark.config.env.CONFIG_DIR", readonly_dir
                 ):
                     result = _is_config_dir_writable()
                     assert result is False
@@ -356,7 +356,7 @@ class TestDebugConfiguration:
 
     def test_debug_from_env_var(self):
         """DEBUG env var should set debug mode."""
-        from cwa_book_downloader.config.env import string_to_bool
+        from shelfmark.config.env import string_to_bool
 
         # Test the parsing logic
         assert string_to_bool("true") is True
@@ -380,7 +380,7 @@ class TestNetworkConfiguration:
 
     def test_proxy_settings_default(self):
         """Proxy settings should have sensible defaults."""
-        from cwa_book_downloader.core.config import config
+        from shelfmark.core.config import config
         config.refresh()
 
         # Default proxy mode should be 'none' (no proxy)
@@ -388,7 +388,7 @@ class TestNetworkConfiguration:
 
     def test_tor_mode_is_detected(self):
         """Tor mode should be detected from container variant."""
-        from cwa_book_downloader.config.env import TOR_VARIANT_AVAILABLE
+        from shelfmark.config.env import TOR_VARIANT_AVAILABLE
 
         # In regular test environment, Tor should not be available
         # (unless running in Tor container)
@@ -405,7 +405,7 @@ class TestConcurrencyConfiguration:
 
     def test_max_concurrent_downloads_default(self):
         """MAX_CONCURRENT_DOWNLOADS should have a sensible default."""
-        from cwa_book_downloader.core.config import config
+        from shelfmark.core.config import config
         config.refresh()
 
         max_downloads = config.get("MAX_CONCURRENT_DOWNLOADS", 3)
@@ -414,7 +414,7 @@ class TestConcurrencyConfiguration:
 
     def test_download_progress_interval_default(self):
         """DOWNLOAD_PROGRESS_UPDATE_INTERVAL should have a sensible default."""
-        from cwa_book_downloader.core.config import config
+        from shelfmark.core.config import config
         config.refresh()
 
         interval = config.get("DOWNLOAD_PROGRESS_UPDATE_INTERVAL", 1)
@@ -432,7 +432,7 @@ class TestCacheConfiguration:
 
     def test_metadata_cache_ttl_defaults(self):
         """Metadata cache TTLs should have sensible defaults."""
-        from cwa_book_downloader.core.config import config
+        from shelfmark.core.config import config
         config.refresh()
 
         search_ttl = config.get("METADATA_CACHE_SEARCH_TTL", 300)
@@ -445,7 +445,7 @@ class TestCacheConfiguration:
 
     def test_covers_cache_directory(self):
         """Covers cache directory should be under CONFIG_DIR."""
-        from cwa_book_downloader.config.env import CONFIG_DIR
+        from shelfmark.config.env import CONFIG_DIR
 
         covers_dir = CONFIG_DIR / "covers"
         assert covers_dir.parent == CONFIG_DIR
@@ -462,7 +462,7 @@ class TestFileCollisionHandling:
 
     def test_stage_file_handles_collision(self):
         """stage_file should add suffix on collision."""
-        from cwa_book_downloader.download.orchestrator import stage_file
+        from shelfmark.download.orchestrator import stage_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             staging = Path(tmpdir) / "staging"
@@ -476,7 +476,7 @@ class TestFileCollisionHandling:
             (staging / "book.epub").write_text("existing")
 
             with patch(
-                "cwa_book_downloader.download.orchestrator.TMP_DIR", staging
+                "shelfmark.download.orchestrator.TMP_DIR", staging
             ):
                 result = stage_file(source, "task1", copy=True)
 
@@ -486,7 +486,7 @@ class TestFileCollisionHandling:
 
     def test_stage_file_copy_vs_move(self):
         """stage_file should copy or move based on parameter."""
-        from cwa_book_downloader.download.orchestrator import stage_file
+        from shelfmark.download.orchestrator import stage_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             staging = Path(tmpdir) / "staging"
@@ -497,7 +497,7 @@ class TestFileCollisionHandling:
             source1.write_text("content1")
 
             with patch(
-                "cwa_book_downloader.download.orchestrator.TMP_DIR", staging
+                "shelfmark.download.orchestrator.TMP_DIR", staging
             ):
                 result1 = stage_file(source1, "task1", copy=True)
 
@@ -509,7 +509,7 @@ class TestFileCollisionHandling:
             source2.write_text("content2")
 
             with patch(
-                "cwa_book_downloader.download.orchestrator.TMP_DIR", staging
+                "shelfmark.download.orchestrator.TMP_DIR", staging
             ):
                 result2 = stage_file(source2, "task2", copy=False)
 

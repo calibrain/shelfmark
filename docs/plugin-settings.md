@@ -16,7 +16,7 @@ The settings system uses a decorator-based registration pattern. Plugins registe
 Add settings to your plugin in 3 steps:
 
 ```python
-from cwa_book_downloader.core.settings_registry import (
+from shelfmark.core.settings_registry import (
     register_settings,
     TextField,
     PasswordField,
@@ -249,7 +249,7 @@ The field will be greyed out with the specified reason when the condition is met
 Register a group to organize related settings tabs in the sidebar:
 
 ```python
-from cwa_book_downloader.core.settings_registry import register_group
+from shelfmark.core.settings_registry import register_group
 
 # Register a group (do this once, usually in a central config file)
 register_group(
@@ -289,7 +289,7 @@ The `general` tab uses `CONFIG_DIR/settings.json` instead of the plugins subdire
 Use the `config` singleton to read setting values in your plugin code:
 
 ```python
-from cwa_book_downloader.core.config import config
+from shelfmark.core.config import config
 
 # Get a setting value with default fallback
 api_key = config.get("MY_PLUGIN_API_KEY", "")
@@ -312,13 +312,13 @@ The config singleton:
 Here's a complete example for a metadata provider plugin:
 
 ```python
-# cwa_book_downloader/metadata_providers/my_provider.py
+# shelfmark/metadata_providers/my_provider.py
 
-from cwa_book_downloader.metadata_providers.base import (
+from shelfmark.metadata_providers.base import (
     MetadataProvider,
     register_provider,
 )
-from cwa_book_downloader.core.settings_registry import (
+from shelfmark.core.settings_registry import (
     register_settings,
     HeadingField,
     TextField,
@@ -326,7 +326,7 @@ from cwa_book_downloader.core.settings_registry import (
     CheckboxField,
     ActionButton,
 )
-from cwa_book_downloader.core.config import config
+from shelfmark.core.config import config
 
 
 def _test_connection():
@@ -422,15 +422,15 @@ class MyProvider(MetadataProvider):
 Here's a complete example for a release source plugin:
 
 ```python
-# cwa_book_downloader/release_sources/my_source.py
+# shelfmark/release_sources/my_source.py
 
-from cwa_book_downloader.release_sources.base import (
+from shelfmark.release_sources.base import (
     ReleaseSource,
     DownloadHandler,
     register_source,
     register_handler,
 )
-from cwa_book_downloader.core.settings_registry import (
+from shelfmark.core.settings_registry import (
     register_settings,
     HeadingField,
     TextField,
@@ -439,7 +439,7 @@ from cwa_book_downloader.core.settings_registry import (
     SelectField,
     ActionButton,
 )
-from cwa_book_downloader.core.config import config
+from shelfmark.core.config import config
 
 
 def _test_source():

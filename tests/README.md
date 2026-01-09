@@ -1,6 +1,6 @@
 # Test Suite
 
-This directory contains the test suite for CWA Book Downloader. Tests are organized by scope and component.
+This directory contains the test suite for Shelfmark. Tests are organized by scope and component.
 
 ## Quick Start
 
@@ -119,7 +119,7 @@ docker exec test-cwabd python3 -m pytest tests/ -v --tb=short -m "not integratio
 docker exec test-cwabd python3 -m pytest tests/ -v -x -m "not integration"
 
 # Run with coverage (if pytest-cov installed)
-docker exec test-cwabd python3 -m pytest tests/ --cov=cwa_book_downloader -m "not integration"
+docker exec test-cwabd python3 -m pytest tests/ --cov=shelfmark -m "not integration"
 ```
 
 ## Writing New Tests
@@ -133,7 +133,7 @@ class TestMyFeature:
     def test_something(self, monkeypatch):
         # Mock config values
         monkeypatch.setattr(
-            "cwa_book_downloader.module.config.get",
+            "shelfmark.module.config.get",
             lambda key, default="": {"KEY": "value"}.get(key, default),
         )
 
@@ -223,7 +223,7 @@ docker ps | grep -E "qbittorrent|transmission|deluge|nzbget|sabnzbd"
 ```bash
 # Clear the queue between test runs
 docker exec test-cwabd python3 -c "
-from cwa_book_downloader.core.queue import book_queue
+from shelfmark.core.queue import book_queue
 book_queue.clear()
 "
 ```

@@ -1,11 +1,12 @@
-# 📚 Book Downloader
-*calibre-web-automated-book-downloader*
+# 📚 Shelfmark: Book Downloader
 
-<img src="src/frontend/public/logo.png" alt="Book Downloader" width="200">
+Formerly *Calibre Web Automated Book Downloader (CWABD)*
 
-A unified web interface for searching and downloading books from multiple sources — all in one place. Works out of the box with popular web sources, no configuration required. Add metadata providers, additional release sources, and download clients to create a single hub for building your digital library.
+<img src="src/frontend/public/logo.png" alt="Shelfmark" width="200">
 
-**Fully standalone** — no external dependencies required. Works great alongside library tools like [Calibre-Web-Automated](https://github.com/crocodilestick/Calibre-Web-Automated) or [Booklore](https://github.com/booklore-app/booklore) for automatic import.
+A unified web interface for searching and downloading books from multiple sources - all in one place. Works out of the box with popular web sources, no configuration required. Add metadata providers, additional release sources, and download clients to create a single hub for building your digital library.
+
+**Fully standalone** - no external dependencies required. Works great alongside library tools like [Calibre-Web-Automated](https://github.com/crocodilestick/Calibre-Web-Automated), [Booklore](https://github.com/booklore-app/booklore) or [Audiobookshelf](https://github.com/advplyr/audiobookshelf) for automatic import.
 
 ## ✨ Features
 
@@ -61,8 +62,9 @@ That's it! Configure settings through the web interface as needed.
 
 ```yaml
 volumes:
-  - /your/config/path:/config             # Config, database, and artwork cache directory
-  - /your/download/path:/books  # Downloaded books
+  - /your/config/path:/config # Config, database, and artwork cache directory
+  - /your/download/path:/books # Downloaded books
+  - /client/path:/client/path # Optional: For Torrent/Usenet downloads, match your client directory exactly. 
 ```
 
 > **Tip**: Point the download volume to your CWA or Booklore ingest folder for automatic import.
@@ -114,9 +116,9 @@ Some of the additional options available in Settings:
 docker compose up -d
 ```
 
-The standard image includes Tor support built-in but inactive by default.
+The full-featured image with built-in Cloudflare bypass.
 
-### Enable Tor Routing
+#### Enable Tor Routing
 Routes all traffic through Tor for enhanced privacy:
 ```bash
 curl -O https://raw.githubusercontent.com/calibrain/calibre-web-automated-book-downloader/main/compose/stable/docker-compose.tor.yml
@@ -125,22 +127,23 @@ docker compose -f docker-compose.tor.yml up -d
 
 **Notes:**
 - Requires `NET_ADMIN` and `NET_RAW` capabilities
-- Set `USING_TOR=true` environment variable
 - Timezone is auto-detected from Tor exit node
 - Custom DNS/proxy settings are ignored when Tor is active
 
-### External Cloudflare Resolver
-Use FlareSolverr or ByParr instead of the built-in bypasser:
+### Lite
+A smaller image without the built-in Cloudflare bypasser. Ideal for:
+
+- **External bypassers** - Already running FlareSolverr or ByParr for other services
+- **Fast downloads** - Using fast download sources
+- **Alternative sources only** - Exclusively using Prowlarr, IRC, or other sources
+- **Audiobooks** - Downloading from Audiobookshelf-compatible sources
+
 ```bash
-curl -O https://raw.githubusercontent.com/calibrain/calibre-web-automated-book-downloader/main/compose/stable/docker-compose.extbp.yml
-docker compose -f docker-compose.extbp.yml up -d
+curl -O https://raw.githubusercontent.com/calibrain/calibre-web-automated-book-downloader/main/compose/stable/docker-compose.lite.yml
+docker compose -f docker-compose.lite.yml up -d
 ```
 
-Configure the resolver URL in Settings under the Cloudflare tab.
-
-**When to use external vs internal bypasser:**
-- **External** is useful if you already run FlareSolverr for other services (saves resources) or if you rarely need bypassing
-- **Internal** (default) is faster and more reliable for most users - it's optimized specifically for this application
+If you need Cloudflare bypass with the Lite image, configure an external resolver (FlareSolverr/ByParr) in Settings under the Cloudflare tab.
 
 ## 🔐 Authentication
 
@@ -169,7 +172,7 @@ healthcheck:
 
 Logs are available via:
 - `docker logs <container-name>`
-- `/var/log/cwa-book-downloader/` inside the container (when `ENABLE_LOGGING=true`)
+- `/var/log/shelfmark/` inside the container (when `ENABLE_LOGGING=true`)
 
 Log level is configurable via Settings or `LOG_LEVEL` environment variable.
 

@@ -8,7 +8,7 @@ without requiring a running SABnzbd instance.
 from unittest.mock import MagicMock, patch
 import pytest
 
-from cwa_book_downloader.release_sources.prowlarr.clients import DownloadStatus
+from shelfmark.release_sources.prowlarr.clients import DownloadStatus
 
 
 class TestSABnzbdClientIsConfigured:
@@ -22,11 +22,11 @@ class TestSABnzbdClientIsConfigured:
             "SABNZBD_API_KEY": "abc123",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
             SABnzbdClient,
         )
 
@@ -40,11 +40,11 @@ class TestSABnzbdClientIsConfigured:
             "SABNZBD_API_KEY": "abc123",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
             SABnzbdClient,
         )
 
@@ -58,11 +58,11 @@ class TestSABnzbdClientIsConfigured:
             "SABNZBD_API_KEY": "abc123",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
             SABnzbdClient,
         )
 
@@ -76,11 +76,11 @@ class TestSABnzbdClientIsConfigured:
             "SABNZBD_API_KEY": "",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
             SABnzbdClient,
         )
 
@@ -98,7 +98,7 @@ class TestSABnzbdClientTestConnection:
             "SABNZBD_CATEGORY": "cwabd",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -106,10 +106,10 @@ class TestSABnzbdClientTestConnection:
         mock_response.json.return_value = {"version": "4.2.1"}
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.requests.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.requests.get",
             return_value=mock_response,
         ):
-            from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+            from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
                 SABnzbdClient,
             )
 
@@ -129,15 +129,15 @@ class TestSABnzbdClientTestConnection:
             "SABNZBD_CATEGORY": "cwabd",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.requests.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.requests.get",
             side_effect=requests.exceptions.ConnectionError("Connection refused"),
         ):
-            from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+            from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
                 SABnzbdClient,
             )
 
@@ -159,7 +159,7 @@ class TestSABnzbdClientGetStatus:
             "SABNZBD_CATEGORY": "cwabd",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -181,7 +181,7 @@ class TestSABnzbdClientGetStatus:
                 }
             return {}
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
             SABnzbdClient,
         )
 
@@ -208,7 +208,7 @@ class TestSABnzbdClientGetStatus:
             "SABNZBD_CATEGORY": "cwabd",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -229,7 +229,7 @@ class TestSABnzbdClientGetStatus:
                 }
             return {}
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
             SABnzbdClient,
         )
 
@@ -255,7 +255,7 @@ class TestSABnzbdClientGetStatus:
             "SABNZBD_CATEGORY": "cwabd",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -276,7 +276,7 @@ class TestSABnzbdClientGetStatus:
                 }
             return {}
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
             SABnzbdClient,
         )
 
@@ -300,7 +300,7 @@ class TestSABnzbdClientGetStatus:
             "SABNZBD_CATEGORY": "cwabd",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -311,7 +311,7 @@ class TestSABnzbdClientGetStatus:
                 return {"history": {"slots": []}}
             return {}
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
             SABnzbdClient,
         )
 
@@ -335,7 +335,7 @@ class TestSABnzbdClientGetStatus:
             "SABNZBD_CATEGORY": "cwabd",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -356,7 +356,7 @@ class TestSABnzbdClientGetStatus:
                 }
             return {}
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
             SABnzbdClient,
         )
 
@@ -379,7 +379,7 @@ class TestSABnzbdClientGetStatus:
             "SABNZBD_CATEGORY": "cwabd",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -400,7 +400,7 @@ class TestSABnzbdClientGetStatus:
                 }
             return {}
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
             SABnzbdClient,
         )
 
@@ -427,7 +427,7 @@ class TestSABnzbdClientAddDownload:
             "SABNZBD_CATEGORY": "cwabd",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -438,10 +438,10 @@ class TestSABnzbdClientAddDownload:
         }
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.requests.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.requests.get",
             return_value=mock_response,
         ):
-            from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+            from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
                 SABnzbdClient,
             )
 
@@ -461,7 +461,7 @@ class TestSABnzbdClientAddDownload:
             "SABNZBD_CATEGORY": "cwabd",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -472,10 +472,10 @@ class TestSABnzbdClientAddDownload:
         }
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.requests.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.requests.get",
             return_value=mock_response,
         ):
-            from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+            from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
                 SABnzbdClient,
             )
 
@@ -497,7 +497,7 @@ class TestSABnzbdClientRemove:
             "SABNZBD_CATEGORY": "cwabd",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -506,7 +506,7 @@ class TestSABnzbdClientRemove:
                 return {"status": True}
             return {}
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
             SABnzbdClient,
         )
 
@@ -529,7 +529,7 @@ class TestSABnzbdClientRemove:
             "SABNZBD_CATEGORY": "cwabd",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -544,7 +544,7 @@ class TestSABnzbdClientRemove:
                 return {"status": True}  # Found in history
             return {}
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
             SABnzbdClient,
         )
 
@@ -572,7 +572,7 @@ class TestSABnzbdClientFindExisting:
             "SABNZBD_CATEGORY": "cwabd",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -594,7 +594,7 @@ class TestSABnzbdClientFindExisting:
                 }
             return {"history": {"slots": []}}
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
             SABnzbdClient,
         )
 
@@ -619,7 +619,7 @@ class TestSABnzbdClientFindExisting:
             "SABNZBD_CATEGORY": "cwabd",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -641,7 +641,7 @@ class TestSABnzbdClientFindExisting:
                 }
             return {}
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
             SABnzbdClient,
         )
 
@@ -666,7 +666,7 @@ class TestSABnzbdClientFindExisting:
             "SABNZBD_CATEGORY": "cwabd",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd.config.get",
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -677,7 +677,7 @@ class TestSABnzbdClientFindExisting:
                 return {"history": {"slots": []}}
             return {}
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.sabnzbd import (
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
             SABnzbdClient,
         )
 

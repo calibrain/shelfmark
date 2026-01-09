@@ -28,13 +28,13 @@ class TestFreshInstall:
 
     def test_config_dir_created_on_first_save(self):
         """Config directory and plugins subdirectory should be created on first save."""
-        from cwa_book_downloader.core.settings_registry import save_config_file
+        from shelfmark.core.settings_registry import save_config_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / "config"
             # Directory doesn't exist yet
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 result = save_config_file("test_plugin", {"key": "value"})
 
             assert result is True
@@ -44,7 +44,7 @@ class TestFreshInstall:
 
     def test_general_settings_saved_to_settings_json(self):
         """General settings should go to settings.json, not plugins folder."""
-        from cwa_book_downloader.core.settings_registry import (
+        from shelfmark.core.settings_registry import (
             save_config_file,
             _get_config_file_path,
         )
@@ -52,7 +52,7 @@ class TestFreshInstall:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir)
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 path = _get_config_file_path("general")
                 assert path == config_dir / "settings.json"
 
@@ -61,22 +61,22 @@ class TestFreshInstall:
 
     def test_nested_config_directories_created(self):
         """Deeply nested config paths should be created with parents=True."""
-        from cwa_book_downloader.core.settings_registry import _ensure_config_dir
+        from shelfmark.core.settings_registry import _ensure_config_dir
 
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / "deeply" / "nested" / "config"
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 _ensure_config_dir("test_plugin")
 
             assert (config_dir / "plugins").exists()
 
     def test_empty_config_returns_defaults(self):
         """Loading from empty/missing config should return empty dict."""
-        from cwa_book_downloader.core.settings_registry import load_config_file
+        from shelfmark.core.settings_registry import load_config_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", Path(tmpdir)):
+            with patch("shelfmark.config.env.CONFIG_DIR", Path(tmpdir)):
                 result = load_config_file("nonexistent")
 
             assert result == {}
@@ -92,7 +92,7 @@ class TestCorruptedConfig:
 
     def test_invalid_json_returns_empty_dict(self):
         """Invalid JSON in config file should return empty dict, not crash."""
-        from cwa_book_downloader.core.settings_registry import load_config_file
+        from shelfmark.core.settings_registry import load_config_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir)
@@ -102,14 +102,14 @@ class TestCorruptedConfig:
             # Write invalid JSON
             (plugins_dir / "broken.json").write_text("{ invalid json }")
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 result = load_config_file("broken")
 
             assert result == {}
 
     def test_empty_json_file_returns_empty_dict(self):
         """Empty JSON file should return empty dict."""
-        from cwa_book_downloader.core.settings_registry import load_config_file
+        from shelfmark.core.settings_registry import load_config_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir)
@@ -119,7 +119,7 @@ class TestCorruptedConfig:
             # Write empty file
             (plugins_dir / "empty.json").write_text("")
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 result = load_config_file("empty")
 
             # Empty file is invalid JSON, should return {}
@@ -127,7 +127,7 @@ class TestCorruptedConfig:
 
     def test_partial_json_write_recovery(self):
         """Config should handle partially written JSON files."""
-        from cwa_book_downloader.core.settings_registry import load_config_file
+        from shelfmark.core.settings_registry import load_config_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir)
@@ -137,14 +137,14 @@ class TestCorruptedConfig:
             # Simulate interrupted write
             (plugins_dir / "partial.json").write_text('{"key": "val')
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 result = load_config_file("partial")
 
             assert result == {}
 
     def test_null_bytes_in_config_file(self):
         """Config with null bytes should be handled gracefully."""
-        from cwa_book_downloader.core.settings_registry import load_config_file
+        from shelfmark.core.settings_registry import load_config_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir)
@@ -154,7 +154,7 @@ class TestCorruptedConfig:
             # Write file with null bytes
             (plugins_dir / "nullbytes.json").write_bytes(b'{"key": "value\x00"}')
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 # Should either parse (ignoring null) or return empty
                 result = load_config_file("nullbytes")
                 # Just verify it doesn't crash
@@ -162,7 +162,7 @@ class TestCorruptedConfig:
 
     def test_wrong_type_in_config(self):
         """Config with array instead of object should be handled."""
-        from cwa_book_downloader.core.settings_registry import load_config_file
+        from shelfmark.core.settings_registry import load_config_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir)
@@ -172,7 +172,7 @@ class TestCorruptedConfig:
             # Write array instead of object
             (plugins_dir / "wrongtype.json").write_text('["item1", "item2"]')
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 result = load_config_file("wrongtype")
                 # Should return the parsed content (a list) or handle gracefully
                 # Current implementation returns whatever json.load returns
@@ -193,7 +193,7 @@ class TestPermissions:
     )
     def test_read_only_config_dir_save_fails_gracefully(self):
         """Saving to read-only config dir should fail gracefully, not crash."""
-        from cwa_book_downloader.core.settings_registry import save_config_file
+        from shelfmark.core.settings_registry import save_config_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / "readonly"
@@ -201,7 +201,7 @@ class TestPermissions:
             os.chmod(config_dir, stat.S_IRUSR | stat.S_IXUSR)  # r-x
 
             try:
-                with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+                with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                     result = save_config_file("test", {"key": "value"})
 
                 assert result is False
@@ -214,7 +214,7 @@ class TestPermissions:
     )
     def test_read_only_config_file_save_fails_gracefully(self):
         """Saving when config file is read-only should fail gracefully."""
-        from cwa_book_downloader.core.settings_registry import save_config_file
+        from shelfmark.core.settings_registry import save_config_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir)
@@ -226,7 +226,7 @@ class TestPermissions:
             os.chmod(config_file, stat.S_IRUSR)  # Read-only
 
             try:
-                with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+                with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                     result = save_config_file("readonly", {"new": "value"})
 
                 assert result is False
@@ -235,21 +235,21 @@ class TestPermissions:
 
     def test_config_dir_exists_check(self):
         """_is_config_dir_writable should correctly detect writable dirs."""
-        from cwa_book_downloader.config.env import _is_config_dir_writable
+        from shelfmark.config.env import _is_config_dir_writable
 
         with tempfile.TemporaryDirectory() as tmpdir:
             writable_dir = Path(tmpdir) / "writable"
             writable_dir.mkdir()
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", writable_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", writable_dir):
                 assert _is_config_dir_writable() is True
 
     def test_config_dir_not_exists(self):
         """_is_config_dir_writable should return False for non-existent dir."""
-        from cwa_book_downloader.config.env import _is_config_dir_writable
+        from shelfmark.config.env import _is_config_dir_writable
 
         with patch(
-            "cwa_book_downloader.config.env.CONFIG_DIR",
+            "shelfmark.config.env.CONFIG_DIR",
             Path("/nonexistent/path/that/does/not/exist")
         ):
             assert _is_config_dir_writable() is False
@@ -265,7 +265,7 @@ class TestPathEdgeCases:
 
     def test_config_dir_with_spaces(self):
         """Config directory with spaces in path should work."""
-        from cwa_book_downloader.core.settings_registry import (
+        from shelfmark.core.settings_registry import (
             save_config_file,
             load_config_file,
         )
@@ -273,7 +273,7 @@ class TestPathEdgeCases:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / "path with spaces" / "config"
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 save_config_file("test", {"key": "value"})
                 result = load_config_file("test")
 
@@ -281,7 +281,7 @@ class TestPathEdgeCases:
 
     def test_config_dir_with_unicode(self):
         """Config directory with unicode characters should work."""
-        from cwa_book_downloader.core.settings_registry import (
+        from shelfmark.core.settings_registry import (
             save_config_file,
             load_config_file,
         )
@@ -289,7 +289,7 @@ class TestPathEdgeCases:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir) / "配置文件夹" / "config"
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 save_config_file("test", {"key": "value"})
                 result = load_config_file("test")
 
@@ -297,7 +297,7 @@ class TestPathEdgeCases:
 
     def test_config_with_unicode_values(self):
         """Config values with unicode should be preserved."""
-        from cwa_book_downloader.core.settings_registry import (
+        from shelfmark.core.settings_registry import (
             save_config_file,
             load_config_file,
         )
@@ -305,7 +305,7 @@ class TestPathEdgeCases:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir)
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 save_config_file("test", {
                     "title": "日本語タイトル",
                     "author": "Автор книги",
@@ -319,7 +319,7 @@ class TestPathEdgeCases:
 
     def test_very_long_plugin_name(self):
         """Very long plugin names should be handled."""
-        from cwa_book_downloader.core.settings_registry import (
+        from shelfmark.core.settings_registry import (
             save_config_file,
             load_config_file,
         )
@@ -327,7 +327,7 @@ class TestPathEdgeCases:
         long_name = "a" * 200  # Very long name
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", Path(tmpdir)):
+            with patch("shelfmark.config.env.CONFIG_DIR", Path(tmpdir)):
                 # This might fail on some filesystems with path length limits
                 try:
                     result = save_config_file(long_name, {"key": "value"})
@@ -349,7 +349,7 @@ class TestConfigMerging:
 
     def test_save_merges_with_existing(self):
         """Saving should merge with existing values, not replace."""
-        from cwa_book_downloader.core.settings_registry import (
+        from shelfmark.core.settings_registry import (
             save_config_file,
             load_config_file,
         )
@@ -362,7 +362,7 @@ class TestConfigMerging:
             # Write initial config
             (plugins_dir / "merge.json").write_text('{"existing": "value", "old": "data"}')
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 save_config_file("merge", {"new": "value", "existing": "updated"})
                 result = load_config_file("merge")
 
@@ -372,7 +372,7 @@ class TestConfigMerging:
 
     def test_save_handles_nested_objects(self):
         """Saving nested objects should work correctly."""
-        from cwa_book_downloader.core.settings_registry import (
+        from shelfmark.core.settings_registry import (
             save_config_file,
             load_config_file,
         )
@@ -380,7 +380,7 @@ class TestConfigMerging:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir)
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 save_config_file("nested", {
                     "level1": {
                         "level2": {
@@ -473,7 +473,7 @@ class TestVolumeTypes:
         Named volumes are created by Docker as empty directories owned by root.
         The application should handle this gracefully.
         """
-        from cwa_book_downloader.core.settings_registry import (
+        from shelfmark.core.settings_registry import (
             save_config_file,
             load_config_file,
         )
@@ -483,7 +483,7 @@ class TestVolumeTypes:
             config_dir = Path(tmpdir) / "config"
             config_dir.mkdir()
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 # Should create plugins subdirectory and save
                 result = save_config_file("test", {"key": "value"})
                 assert result is True
@@ -497,7 +497,7 @@ class TestVolumeTypes:
 
         Bind mounts may have existing config from a previous installation.
         """
-        from cwa_book_downloader.core.settings_registry import (
+        from shelfmark.core.settings_registry import (
             save_config_file,
             load_config_file,
         )
@@ -513,7 +513,7 @@ class TestVolumeTypes:
                 "QBITTORRENT_URL": "http://old-host:8080",
             }))
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 # New save should merge
                 save_config_file("prowlarr_clients", {
                     "QBITTORRENT_URL": "http://new-host:8080",
@@ -531,13 +531,13 @@ class TestVolumeTypes:
 
         User might manually create /config but not /config/plugins.
         """
-        from cwa_book_downloader.core.settings_registry import save_config_file
+        from shelfmark.core.settings_registry import save_config_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             config_dir = Path(tmpdir)
             # Only config dir exists, not plugins subdir
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 result = save_config_file("test", {"key": "value"})
 
             assert result is True
@@ -555,7 +555,7 @@ class TestConcurrentAccess:
 
     def test_simultaneous_saves_dont_corrupt(self):
         """Multiple saves should not corrupt the config file."""
-        from cwa_book_downloader.core.settings_registry import (
+        from shelfmark.core.settings_registry import (
             save_config_file,
             load_config_file,
         )
@@ -567,11 +567,11 @@ class TestConcurrentAccess:
             results = []
 
             def save_value(key, value):
-                with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+                with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                     result = save_config_file("concurrent", {key: value})
                     results.append(result)
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 threads = [
                     threading.Thread(target=save_value, args=(f"key{i}", f"value{i}"))
                     for i in range(5)
@@ -608,7 +608,7 @@ class TestConfigMigration:
 
     def test_config_with_unknown_keys(self):
         """Config with unknown keys should be preserved."""
-        from cwa_book_downloader.core.settings_registry import (
+        from shelfmark.core.settings_registry import (
             save_config_file,
             load_config_file,
         )
@@ -625,7 +625,7 @@ class TestConfigMigration:
                 "ANOTHER_UNKNOWN": 123,
             }))
 
-            with patch("cwa_book_downloader.config.env.CONFIG_DIR", config_dir):
+            with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 # Save should preserve unknown keys
                 save_config_file("future", {"KNOWN_KEY": "updated"})
                 result = load_config_file("future")

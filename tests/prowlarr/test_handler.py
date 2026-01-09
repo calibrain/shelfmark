@@ -13,10 +13,10 @@ from typing import List, Optional, Tuple
 from unittest.mock import MagicMock, patch, PropertyMock
 import pytest
 
-from cwa_book_downloader.core.models import DownloadTask
-from cwa_book_downloader.release_sources.prowlarr.handler import ProwlarrHandler
-from cwa_book_downloader.release_sources.prowlarr.utils import get_protocol
-from cwa_book_downloader.release_sources.prowlarr.clients import (
+from shelfmark.core.models import DownloadTask
+from shelfmark.release_sources.prowlarr.handler import ProwlarrHandler
+from shelfmark.release_sources.prowlarr.utils import get_protocol
+from shelfmark.release_sources.prowlarr.clients import (
     DownloadStatus,
     DownloadState,
 )
@@ -84,7 +84,7 @@ class TestProwlarrHandlerDownloadErrors:
     def test_download_fails_without_cached_release(self):
         """Test that download fails when release is not in cache."""
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value=None,
         ):
             handler = ProwlarrHandler()
@@ -110,7 +110,7 @@ class TestProwlarrHandlerDownloadErrors:
     def test_download_fails_without_download_url(self):
         """Test that download fails when release has no download URL."""
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value={
                 "protocol": "torrent",
                 "title": "Test Release",
@@ -140,7 +140,7 @@ class TestProwlarrHandlerDownloadErrors:
     def test_download_fails_unknown_protocol(self):
         """Test that download fails with unknown protocol."""
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value={
                 "protocol": "ftp",
                 "downloadUrl": "ftp://example.com/file.zip",
@@ -169,16 +169,16 @@ class TestProwlarrHandlerDownloadErrors:
     def test_download_fails_no_client_configured(self):
         """Test that download fails when no client is configured."""
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value={
                 "protocol": "torrent",
                 "downloadUrl": "magnet:?xt=urn:btih:abc123",
             },
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+            "shelfmark.release_sources.prowlarr.handler.get_client",
             return_value=None,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.list_configured_clients",
+            "shelfmark.release_sources.prowlarr.handler.list_configured_clients",
             return_value=[],
         ):
             handler = ProwlarrHandler()
@@ -231,18 +231,18 @@ class TestProwlarrHandlerExistingDownload:
             mock_client.get_download_path.return_value = str(source_file)
 
             with patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+                "shelfmark.release_sources.prowlarr.handler.get_release",
                 return_value={
                     "protocol": "torrent",
                     "magnetUrl": "magnet:?xt=urn:btih:abc123",
                 },
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+                "shelfmark.release_sources.prowlarr.handler.get_client",
                 return_value=mock_client,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.remove_release",
+                "shelfmark.release_sources.prowlarr.handler.remove_release",
             ), patch(
-                "cwa_book_downloader.download.orchestrator.get_staging_dir",
+                "shelfmark.download.orchestrator.get_staging_dir",
                 return_value=staging_dir,
             ):
                 handler = ProwlarrHandler()
@@ -310,21 +310,21 @@ class TestProwlarrHandlerPolling:
             mock_client.get_download_path.return_value = str(source_file)
 
             with patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+                "shelfmark.release_sources.prowlarr.handler.get_release",
                 return_value={
                     "protocol": "torrent",
                     "magnetUrl": "magnet:?xt=urn:btih:abc123",
                 },
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+                "shelfmark.release_sources.prowlarr.handler.get_client",
                 return_value=mock_client,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.remove_release",
+                "shelfmark.release_sources.prowlarr.handler.remove_release",
             ), patch(
-                "cwa_book_downloader.download.orchestrator.get_staging_dir",
+                "shelfmark.download.orchestrator.get_staging_dir",
                 return_value=staging_dir,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.POLL_INTERVAL",
+                "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
                 0.01,  # Speed up tests
             ):
                 handler = ProwlarrHandler()
@@ -362,16 +362,16 @@ class TestProwlarrHandlerPolling:
         )
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value={
                 "protocol": "torrent",
                 "magnetUrl": "magnet:?xt=urn:btih:abc123",
             },
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+            "shelfmark.release_sources.prowlarr.handler.get_client",
             return_value=mock_client,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.POLL_INTERVAL",
+            "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
             0.01,
         ):
             handler = ProwlarrHandler()
@@ -413,16 +413,16 @@ class TestProwlarrHandlerCancellation:
         )
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value={
                 "protocol": "torrent",
                 "magnetUrl": "magnet:?xt=urn:btih:abc123",
             },
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+            "shelfmark.release_sources.prowlarr.handler.get_client",
             return_value=mock_client,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.POLL_INTERVAL",
+            "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
             0.01,
         ):
             handler = ProwlarrHandler()
@@ -455,7 +455,7 @@ class TestProwlarrHandlerCancel:
     def test_cancel_removes_from_cache(self):
         """Test that cancel removes release from cache."""
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.remove_release"
+            "shelfmark.release_sources.prowlarr.handler.remove_release"
         ) as mock_remove:
             handler = ProwlarrHandler()
             result = handler.cancel("test-task-id")
@@ -466,7 +466,7 @@ class TestProwlarrHandlerCancel:
     def test_cancel_handles_missing_task(self):
         """Test that cancel handles non-existent task gracefully."""
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.remove_release"
+            "shelfmark.release_sources.prowlarr.handler.remove_release"
         ):
             handler = ProwlarrHandler()
             result = handler.cancel("nonexistent-task-id")
@@ -501,21 +501,21 @@ class TestProwlarrHandlerFileStaging:
             mock_client.get_download_path.return_value = str(source_file)
 
             with patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+                "shelfmark.release_sources.prowlarr.handler.get_release",
                 return_value={
                     "protocol": "torrent",
                     "magnetUrl": "magnet:?xt=urn:btih:abc123",
                 },
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+                "shelfmark.release_sources.prowlarr.handler.get_client",
                 return_value=mock_client,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.remove_release",
+                "shelfmark.release_sources.prowlarr.handler.remove_release",
             ), patch(
-                "cwa_book_downloader.download.orchestrator.get_staging_dir",
+                "shelfmark.download.orchestrator.get_staging_dir",
                 return_value=staging_dir,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.POLL_INTERVAL",
+                "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
                 0.01,
             ):
                 handler = ProwlarrHandler()
@@ -564,21 +564,21 @@ class TestProwlarrHandlerFileStaging:
             mock_client.get_download_path.return_value = str(source_dir)
 
             with patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+                "shelfmark.release_sources.prowlarr.handler.get_release",
                 return_value={
                     "protocol": "torrent",
                     "magnetUrl": "magnet:?xt=urn:btih:abc123",
                 },
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+                "shelfmark.release_sources.prowlarr.handler.get_client",
                 return_value=mock_client,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.remove_release",
+                "shelfmark.release_sources.prowlarr.handler.remove_release",
             ), patch(
-                "cwa_book_downloader.download.orchestrator.get_staging_dir",
+                "shelfmark.download.orchestrator.get_staging_dir",
                 return_value=staging_dir,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.POLL_INTERVAL",
+                "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
                 0.01,
             ):
                 handler = ProwlarrHandler()
@@ -630,21 +630,21 @@ class TestProwlarrHandlerFileStaging:
 
             # Use usenet protocol - torrents skip staging and return original path directly
             with patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+                "shelfmark.release_sources.prowlarr.handler.get_release",
                 return_value={
                     "protocol": "usenet",
                     "downloadUrl": "https://indexer.example.com/download/123",
                 },
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+                "shelfmark.release_sources.prowlarr.handler.get_client",
                 return_value=mock_client,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.remove_release",
+                "shelfmark.release_sources.prowlarr.handler.remove_release",
             ), patch(
-                "cwa_book_downloader.download.orchestrator.get_staging_dir",
+                "shelfmark.download.orchestrator.get_staging_dir",
                 return_value=staging_dir,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.POLL_INTERVAL",
+                "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
                 0.01,
             ):
                 handler = ProwlarrHandler()

@@ -10,15 +10,15 @@ import tempfile
 # These override the defaults that try to use system paths like /var/log
 _temp_base = tempfile.mkdtemp(prefix="cwabd_test_")
 
-# LOG_ROOT is the base - LOG_DIR is computed as LOG_ROOT / "cwa-book-downloader"
-# So we set LOG_ROOT to our temp directory to get LOG_DIR = _temp_base/cwa-book-downloader
+# LOG_ROOT is the base - LOG_DIR is computed as LOG_ROOT / "shelfmark"
+# So we set LOG_ROOT to our temp directory to get LOG_DIR = _temp_base/shelfmark
 os.environ["LOG_ROOT"] = _temp_base
 os.environ["CONFIG_DIR"] = os.path.join(_temp_base, "config")
 os.environ["INGEST_DIR"] = os.path.join(_temp_base, "ingest")
 os.environ["TMP_DIR"] = os.path.join(_temp_base, "tmp")
 
 # Create the directories that will be used
-os.makedirs(os.path.join(_temp_base, "cwa-book-downloader"), exist_ok=True)  # LOG_DIR
+os.makedirs(os.path.join(_temp_base, "shelfmark"), exist_ok=True)  # LOG_DIR
 os.makedirs(os.path.join(_temp_base, "config"), exist_ok=True)
 os.makedirs(os.path.join(_temp_base, "ingest"), exist_ok=True)
 os.makedirs(os.path.join(_temp_base, "tmp"), exist_ok=True)

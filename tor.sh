@@ -1,7 +1,7 @@
 #!/bin/bash
-LOG_DIR=${LOG_ROOT:-/var/log/}/cwa-book-downloader
+LOG_DIR=${LOG_ROOT:-/var/log/}/shelfmark
 mkdir -p $LOG_DIR
-LOG_FILE=${LOG_DIR}/cwa-bd_tor.log
+LOG_FILE=${LOG_DIR}/shelfmark_tor.log
 
 exec 3>&1 4>&2
 exec > >(tee -a $LOG_FILE) 2>&1

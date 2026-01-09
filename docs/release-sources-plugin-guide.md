@@ -1,6 +1,6 @@
 # Release Sources Plugin Development Guide
 
-This guide explains how to create custom release source plugins for the CWA Book Downloader. The plugin system allows you to add new sources for searching and downloading books while integrating seamlessly with the existing queue, progress reporting, and settings infrastructure.
+This guide explains how to create custom release source plugins for the Shelfmark. The plugin system allows you to add new sources for searching and downloading books while integrating seamlessly with the existing queue, progress reporting, and settings infrastructure.
 
 ## Table of Contents
 
@@ -77,21 +77,21 @@ class MyHandler(DownloadHandler): ...
 
 ## Quick Start
 
-Create a new file at `cwa_book_downloader/release_sources/my_source.py`:
+Create a new file at `shelfmark/release_sources/my_source.py`:
 
 ```python
 from typing import Callable, List, Optional
 from threading import Event
 
-from cwa_book_downloader.release_sources import (
+from shelfmark.release_sources import (
     Release,
     ReleaseSource,
     DownloadHandler,
     register_source,
     register_handler,
 )
-from cwa_book_downloader.metadata_providers import BookMetadata
-from cwa_book_downloader.core.models import DownloadTask
+from shelfmark.metadata_providers import BookMetadata
+from shelfmark.core.models import DownloadTask
 
 
 @register_source("my_source")
@@ -123,11 +123,11 @@ class MyHandler(DownloadHandler):
         return False  # Cancellation via cancel_flag
 ```
 
-Register the import in `cwa_book_downloader/release_sources/__init__.py`:
+Register the import in `shelfmark/release_sources/__init__.py`:
 
 ```python
 # At the bottom of the file
-from cwa_book_downloader.release_sources import my_source  # noqa: F401, E402
+from shelfmark.release_sources import my_source  # noqa: F401, E402
 ```
 
 ---
@@ -139,8 +139,8 @@ The `ReleaseSource` abstract base class defines the search interface:
 ```python
 from abc import ABC, abstractmethod
 from typing import List
-from cwa_book_downloader.metadata_providers import BookMetadata
-from cwa_book_downloader.release_sources import Release, ReleaseColumnConfig
+from shelfmark.metadata_providers import BookMetadata
+from shelfmark.release_sources import Release, ReleaseColumnConfig
 
 class ReleaseSource(ABC):
     """Interface for searching a release source."""
@@ -237,7 +237,7 @@ The `DownloadHandler` abstract base class defines the download interface:
 from abc import ABC, abstractmethod
 from typing import Callable, Optional
 from threading import Event
-from cwa_book_downloader.core.models import DownloadTask
+from shelfmark.core.models import DownloadTask
 
 class DownloadHandler(ABC):
     """Interface for executing downloads from a source."""
@@ -458,7 +458,7 @@ class BookMetadata:
 ### Decorators
 
 ```python
-from cwa_book_downloader.release_sources import register_source, register_handler
+from shelfmark.release_sources import register_source, register_handler
 
 @register_source("my_source")
 class MySource(ReleaseSource):
@@ -472,7 +472,7 @@ class MyHandler(DownloadHandler):
 ### Registry Functions
 
 ```python
-from cwa_book_downloader.release_sources import (
+from shelfmark.release_sources import (
     get_source,
     get_handler,
     list_available_sources,
@@ -497,8 +497,8 @@ available = list_available_sources()
 
 ```python
 # At the bottom of __init__.py
-from cwa_book_downloader.release_sources import direct_download  # noqa: F401, E402
-from cwa_book_downloader.release_sources import my_source  # noqa: F401, E402
+from shelfmark.release_sources import direct_download  # noqa: F401, E402
+from shelfmark.release_sources import my_source  # noqa: F401, E402
 ```
 
 The `noqa` comments suppress linter warnings about unused imports.
@@ -510,7 +510,7 @@ The `noqa` comments suppress linter warnings about unused imports.
 Register plugin settings using the settings registry decorator:
 
 ```python
-from cwa_book_downloader.core.settings_registry import (
+from shelfmark.core.settings_registry import (
     register_settings,
     HeadingField,
     TextField,
@@ -621,7 +621,7 @@ def test_my_source_connection():
 ### Reading Settings
 
 ```python
-from cwa_book_downloader.core.settings_registry import (
+from shelfmark.core.settings_registry import (
     get_setting_value,
     is_value_from_env,
     load_config_file,
@@ -658,7 +658,7 @@ When a value comes from an ENV var, the UI shows a "locked" badge and the field 
 Customize how releases are displayed in the release modal by overriding `get_column_config()`:
 
 ```python
-from cwa_book_downloader.release_sources import (
+from shelfmark.release_sources import (
     ReleaseColumnConfig,
     ColumnSchema,
     ColumnRenderType,
@@ -907,7 +907,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 from threading import Event
 
-from cwa_book_downloader.release_sources import (
+from shelfmark.release_sources import (
     Release,
     ReleaseSource,
     DownloadHandler,
@@ -921,10 +921,10 @@ from cwa_book_downloader.release_sources import (
     LeadingCellConfig,
     LeadingCellType,
 )
-from cwa_book_downloader.metadata_providers import BookMetadata
-from cwa_book_downloader.core.models import DownloadTask
-from cwa_book_downloader.core.logger import setup_logger
-from cwa_book_downloader.core.settings_registry import (
+from shelfmark.metadata_providers import BookMetadata
+from shelfmark.core.models import DownloadTask
+from shelfmark.core.logger import setup_logger
+from shelfmark.core.settings_registry import (
     register_settings,
     HeadingField,
     TextField,
@@ -934,7 +934,7 @@ from cwa_book_downloader.core.settings_registry import (
     ActionButton,
     load_config_file,
 )
-from cwa_book_downloader.config.env import INGEST_DIR
+from shelfmark.config.env import INGEST_DIR
 
 logger = setup_logger(__name__)
 
@@ -1421,7 +1421,7 @@ PasswordField(
 Use the project's logger for consistent output:
 
 ```python
-from cwa_book_downloader.core.logger import setup_logger
+from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -1437,13 +1437,13 @@ logger.error("Failures")                 # Unrecoverable errors
 
 When creating a new plugin:
 
-1. Create `cwa_book_downloader/release_sources/my_plugin.py`
+1. Create `shelfmark/release_sources/my_plugin.py`
 2. Implement `ReleaseSource` subclass with `@register_source("my_plugin")`
 3. Implement `DownloadHandler` subclass with `@register_handler("my_plugin")`
 4. Add settings with `@register_settings("my_plugin", ...)`
-5. Add import to `cwa_book_downloader/release_sources/__init__.py`:
+5. Add import to `shelfmark/release_sources/__init__.py`:
    ```python
-   from cwa_book_downloader.release_sources import my_plugin  # noqa: F401, E402
+   from shelfmark.release_sources import my_plugin  # noqa: F401, E402
    ```
 6. Test `is_available()` returns `True` when configured
 7. Test search returns valid `Release` objects

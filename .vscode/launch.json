@@ -2,17 +2,17 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python Debugger: Current CWABD File",
+      "name": "Python Debugger: Current Shelfmark File",
       "type": "debugpy",
       "request": "launch",
       "program": "${file}",
       "console": "integratedTerminal",
       "justMyCode": false,
       "env": {
-        "INGEST_DIR": "/tmp/cwa-book-downloader",
-        "TEMP_DIR": "/tmp/cwa-book-downloader",
+        "INGEST_DIR": "/tmp/shelfmark",
+        "TEMP_DIR": "/tmp/shelfmark",
         "LOG_LEVEL": "DEBUG",
-        "LOG_ROOT": "/tmp/cwa-book-downloader",
+        "LOG_ROOT": "/tmp/shelfmark",
         "ENABLE_LOGGING": "true",
         "DOCKERMODE": "false",
         "DEBUG": "true",
@@ -27,7 +27,7 @@
       "preLaunchTask": "docker-compose up (dev)", // Spin up dev containers
       "postDebugTask": "docker-compose down (dev)", // Optional: tear them down
       "env": {
-        "INGEST_DIR": "/tmp/cwa-book-downloader"
+        "INGEST_DIR": "/tmp/shelfmark"
       },
     },
     {
@@ -38,7 +38,7 @@
       "preLaunchTask": "docker-compose up (prod)",
       "postDebugTask": "docker-compose down (prod)",
       "env": {
-        "INGEST_DIR": "/tmp/cwa-book-downloader"
+        "INGEST_DIR": "/tmp/shelfmark"
       },
     },
     {
@@ -54,9 +54,9 @@
   ],
   "compounds": [
     {
-      "name": "Launch CWA-BD",
+      "name": "Launch Shelfmark",
       "configurations": [
-        "Launch cwa-bd app.py",
+        "Launch Shelfmark app.py",
         "Launch Browser"
       ]
     }

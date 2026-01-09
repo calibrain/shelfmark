@@ -6,7 +6,7 @@ import time
 import pytest
 
 # Import the cache module
-from cwa_book_downloader.release_sources.prowlarr import cache
+from shelfmark.release_sources.prowlarr import cache
 
 
 class TestProwlarrCache:

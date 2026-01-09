@@ -16,9 +16,9 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from cwa_book_downloader.core.models import DownloadTask, SearchMode
-from cwa_book_downloader.core.naming import build_library_path, assign_part_numbers
-from cwa_book_downloader.core.utils import is_audiobook
+from shelfmark.core.models import DownloadTask, SearchMode
+from shelfmark.core.naming import build_library_path, assign_part_numbers
+from shelfmark.core.utils import is_audiobook
 
 
 class MockConfig:

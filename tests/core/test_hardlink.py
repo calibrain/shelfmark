@@ -17,7 +17,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from cwa_book_downloader.core.naming import same_filesystem
+from shelfmark.core.naming import same_filesystem
 
 
 class TestStageFile:
@@ -25,13 +25,13 @@ class TestStageFile:
 
     def test_copy_mode_preserves_original(self, tmp_path):
         """copy=True preserves original file (for torrent seeding)."""
-        from cwa_book_downloader.download.orchestrator import stage_file, get_staging_dir
+        from shelfmark.download.orchestrator import stage_file, get_staging_dir
 
         source = tmp_path / "downloads" / "book.epub"
         source.parent.mkdir()
         source.write_bytes(b"content")
 
-        with patch('cwa_book_downloader.download.orchestrator.TMP_DIR', tmp_path / "staging"):
+        with patch('shelfmark.download.orchestrator.TMP_DIR', tmp_path / "staging"):
             staged = stage_file(source, "task123", copy=True)
 
         assert staged.exists()
@@ -40,13 +40,13 @@ class TestStageFile:
 
     def test_move_mode_removes_original(self, tmp_path):
         """copy=False moves file (original deleted)."""
-        from cwa_book_downloader.download.orchestrator import stage_file
+        from shelfmark.download.orchestrator import stage_file
 
         source = tmp_path / "downloads" / "book.epub"
         source.parent.mkdir()
         source.write_bytes(b"content")
 
-        with patch('cwa_book_downloader.download.orchestrator.TMP_DIR', tmp_path / "staging"):
+        with patch('shelfmark.download.orchestrator.TMP_DIR', tmp_path / "staging"):
             staged = stage_file(source, "task123", copy=False)
 
         assert staged.exists()
@@ -54,7 +54,7 @@ class TestStageFile:
 
     def test_handles_filename_collision(self, tmp_path):
         """Adds counter suffix on collision."""
-        from cwa_book_downloader.download.orchestrator import stage_file
+        from shelfmark.download.orchestrator import stage_file
 
         staging = tmp_path / "staging"
         staging.mkdir()
@@ -64,7 +64,7 @@ class TestStageFile:
         source.parent.mkdir()
         source.write_bytes(b"new content")
 
-        with patch('cwa_book_downloader.download.orchestrator.TMP_DIR', staging):
+        with patch('shelfmark.download.orchestrator.TMP_DIR', staging):
             staged = stage_file(source, "task123", copy=True)
 
         assert staged.name == "book_1.epub"
@@ -128,7 +128,7 @@ class TestAtomicHardlink:
 
     def test_creates_hardlink(self, tmp_path):
         """Creates hardlink to source file."""
-        from cwa_book_downloader.download.orchestrator import _atomic_hardlink
+        from shelfmark.download.orchestrator import _atomic_hardlink
 
         source = tmp_path / "source.txt"
         source.write_text("content")
@@ -144,7 +144,7 @@ class TestAtomicHardlink:
 
     def test_handles_collision_with_counter(self, tmp_path):
         """Appends counter suffix when destination exists."""
-        from cwa_book_downloader.download.orchestrator import _atomic_hardlink
+        from shelfmark.download.orchestrator import _atomic_hardlink
 
         source = tmp_path / "source.txt"
         source.write_text("new content")
@@ -159,7 +159,7 @@ class TestAtomicHardlink:
 
     def test_multiple_collisions(self, tmp_path):
         """Increments counter until finding free slot."""
-        from cwa_book_downloader.download.orchestrator import _atomic_hardlink
+        from shelfmark.download.orchestrator import _atomic_hardlink
 
         source = tmp_path / "source.txt"
         source.write_text("new")
@@ -173,7 +173,7 @@ class TestAtomicHardlink:
 
     def test_preserves_extension(self, tmp_path):
         """Keeps extension when adding counter suffix."""
-        from cwa_book_downloader.download.orchestrator import _atomic_hardlink
+        from shelfmark.download.orchestrator import _atomic_hardlink
 
         source = tmp_path / "book.epub"
         source.write_bytes(b"epub content")
@@ -190,7 +190,7 @@ class TestAtomicMove:
 
     def test_moves_file(self, tmp_path):
         """Moves file from source to destination."""
-        from cwa_book_downloader.download.orchestrator import _atomic_move
+        from shelfmark.download.orchestrator import _atomic_move
 
         source = tmp_path / "source.txt"
         source.write_text("content")
@@ -204,7 +204,7 @@ class TestAtomicMove:
 
     def test_handles_collision(self, tmp_path):
         """Appends counter on collision."""
-        from cwa_book_downloader.download.orchestrator import _atomic_move
+        from shelfmark.download.orchestrator import _atomic_move
 
         source = tmp_path / "source.txt"
         source.write_text("new")
@@ -220,7 +220,7 @@ class TestAtomicMove:
 
     def test_cross_filesystem_fallback(self):
         """Falls back to copy when cross-filesystem."""
-        from cwa_book_downloader.download.orchestrator import _atomic_move
+        from shelfmark.download.orchestrator import _atomic_move
         import errno
 
         with tempfile.TemporaryDirectory() as dir1, tempfile.TemporaryDirectory() as dir2:
@@ -242,7 +242,7 @@ class TestHardlinkWithLibraryMode:
     @pytest.fixture
     def mock_config(self):
         """Mock config for library mode."""
-        with patch('cwa_book_downloader.download.orchestrator.config') as mock:
+        with patch('shelfmark.download.orchestrator.config') as mock:
             mock.get = MagicMock(side_effect=lambda key, default=None: {
                 "LIBRARY_PATH": None,
                 "LIBRARY_PATH_AUDIOBOOK": None,
@@ -257,7 +257,7 @@ class TestHardlinkWithLibraryMode:
     @pytest.fixture
     def sample_task(self):
         """Create a sample DownloadTask for testing."""
-        from cwa_book_downloader.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask, SearchMode
 
         return DownloadTask(
             task_id="test123",
@@ -270,7 +270,7 @@ class TestHardlinkWithLibraryMode:
 
     def test_transfer_file_hardlink(self, tmp_path, sample_task):
         """Single file transferred via hardlink."""
-        from cwa_book_downloader.download.orchestrator import _transfer_file_to_library
+        from shelfmark.download.orchestrator import _transfer_file_to_library
 
         library = tmp_path / "library"
         library.mkdir()
@@ -307,7 +307,7 @@ class TestHardlinkWithLibraryMode:
 
     def test_transfer_file_move(self, tmp_path, sample_task):
         """Single file transferred via move."""
-        from cwa_book_downloader.download.orchestrator import _transfer_file_to_library
+        from shelfmark.download.orchestrator import _transfer_file_to_library
 
         library = tmp_path / "library"
         library.mkdir()
@@ -337,7 +337,7 @@ class TestHardlinkWithLibraryMode:
 
     def test_transfer_directory_hardlink_multifile(self, tmp_path, sample_task):
         """Directory with multiple files transferred via hardlinks."""
-        from cwa_book_downloader.download.orchestrator import _transfer_directory_to_library
+        from shelfmark.download.orchestrator import _transfer_directory_to_library
 
         library = tmp_path / "library"
         library.mkdir()
@@ -359,7 +359,7 @@ class TestHardlinkWithLibraryMode:
         sample_task.content_type = "audiobook"
         status_cb = MagicMock()
 
-        with patch('cwa_book_downloader.download.orchestrator._get_supported_formats', return_value=["mp3"]):
+        with patch('shelfmark.download.orchestrator._get_supported_formats', return_value=["mp3"]):
             result = _transfer_directory_to_library(
                 source_dir=source_dir,
                 library_base=str(library),
@@ -393,7 +393,7 @@ class TestHardlinkWithLibraryMode:
 
     def test_transfer_directory_move(self, tmp_path, sample_task):
         """Directory transferred via move (non-torrent)."""
-        from cwa_book_downloader.download.orchestrator import _transfer_directory_to_library
+        from shelfmark.download.orchestrator import _transfer_directory_to_library
 
         library = tmp_path / "library"
         library.mkdir()
@@ -406,7 +406,7 @@ class TestHardlinkWithLibraryMode:
         sample_task.content_type = "audiobook"
         status_cb = MagicMock()
 
-        with patch('cwa_book_downloader.download.orchestrator._get_supported_formats', return_value=["mp3"]):
+        with patch('shelfmark.download.orchestrator._get_supported_formats', return_value=["mp3"]):
             result = _transfer_directory_to_library(
                 source_dir=source_dir,
                 library_base=str(library),
@@ -428,7 +428,7 @@ class TestHardlinkWithLibraryMode:
 
     def test_single_file_in_directory_no_part_number(self, tmp_path, sample_task):
         """Single file in directory doesn't get part number."""
-        from cwa_book_downloader.download.orchestrator import _transfer_directory_to_library
+        from shelfmark.download.orchestrator import _transfer_directory_to_library
 
         library = tmp_path / "library"
         library.mkdir()
@@ -442,7 +442,7 @@ class TestHardlinkWithLibraryMode:
 
         status_cb = MagicMock()
 
-        with patch('cwa_book_downloader.download.orchestrator._get_supported_formats', return_value=["epub"]):
+        with patch('shelfmark.download.orchestrator._get_supported_formats', return_value=["epub"]):
             result = _transfer_directory_to_library(
                 source_dir=source_dir,
                 library_base=str(library),
@@ -464,7 +464,7 @@ class TestHardlinkDecisionLogic:
 
     @pytest.fixture
     def sample_task(self):
-        from cwa_book_downloader.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask, SearchMode
 
         return DownloadTask(
             task_id="test123",
@@ -477,7 +477,7 @@ class TestHardlinkDecisionLogic:
 
     def test_hardlink_enabled_same_filesystem(self, tmp_path, sample_task):
         """Hardlink used when enabled and same filesystem."""
-        from cwa_book_downloader.download.orchestrator import _process_organize_mode
+        from shelfmark.download.orchestrator import _process_organize_mode
 
         library = tmp_path / "library"
         library.mkdir()
@@ -494,7 +494,7 @@ class TestHardlinkDecisionLogic:
 
         status_cb = MagicMock()
 
-        with patch('cwa_book_downloader.download.orchestrator.config') as mock_config:
+        with patch('shelfmark.download.orchestrator.config') as mock_config:
             mock_config.get = MagicMock(side_effect=lambda key, default=None: {
                 "LIBRARY_PATH": str(library),
                 "LIBRARY_TEMPLATE": "{Author}/{Title}",
@@ -510,7 +510,7 @@ class TestHardlinkDecisionLogic:
 
     def test_hardlink_disabled_falls_back_to_move(self, tmp_path, sample_task):
         """Move used when hardlink disabled in config."""
-        from cwa_book_downloader.download.orchestrator import _process_organize_mode
+        from shelfmark.download.orchestrator import _process_organize_mode
 
         library = tmp_path / "library"
         library.mkdir()
@@ -525,7 +525,7 @@ class TestHardlinkDecisionLogic:
 
         status_cb = MagicMock()
 
-        with patch('cwa_book_downloader.download.orchestrator.config') as mock_config:
+        with patch('shelfmark.download.orchestrator.config') as mock_config:
             mock_config.get = MagicMock(side_effect=lambda key, default=None: {
                 "LIBRARY_PATH": str(library),
                 "LIBRARY_TEMPLATE": "{Author}/{Title}",
@@ -541,7 +541,7 @@ class TestHardlinkDecisionLogic:
 
     def test_no_original_path_uses_staging(self, tmp_path, sample_task):
         """Without original_download_path, moves from staging."""
-        from cwa_book_downloader.download.orchestrator import _process_organize_mode
+        from shelfmark.download.orchestrator import _process_organize_mode
 
         library = tmp_path / "library"
         library.mkdir()
@@ -554,7 +554,7 @@ class TestHardlinkDecisionLogic:
 
         status_cb = MagicMock()
 
-        with patch('cwa_book_downloader.download.orchestrator.config') as mock_config:
+        with patch('shelfmark.download.orchestrator.config') as mock_config:
             mock_config.get = MagicMock(side_effect=lambda key, default=None: {
                 "LIBRARY_PATH": str(library),
                 "LIBRARY_TEMPLATE": "{Author}/{Title}",
@@ -574,7 +574,7 @@ class TestHardlinkInodeVerification:
 
     def test_hardlink_shares_inode(self, tmp_path):
         """Hardlinked files share same inode."""
-        from cwa_book_downloader.download.orchestrator import _atomic_hardlink
+        from shelfmark.download.orchestrator import _atomic_hardlink
 
         source = tmp_path / "source.txt"
         source.write_text("shared content")
@@ -588,7 +588,7 @@ class TestHardlinkInodeVerification:
 
     def test_hardlink_reflects_changes(self, tmp_path):
         """Changes to source reflect in hardlink."""
-        from cwa_book_downloader.download.orchestrator import _atomic_hardlink
+        from shelfmark.download.orchestrator import _atomic_hardlink
 
         source = tmp_path / "source.txt"
         source.write_text("original")
@@ -604,7 +604,7 @@ class TestHardlinkInodeVerification:
 
     def test_hardlink_count_increases(self, tmp_path):
         """Link count increases with each hardlink."""
-        from cwa_book_downloader.download.orchestrator import _atomic_hardlink
+        from shelfmark.download.orchestrator import _atomic_hardlink
 
         source = tmp_path / "source.txt"
         source.write_text("content")
@@ -624,7 +624,7 @@ class TestTorrentOptimization:
 
     @pytest.fixture
     def sample_task(self):
-        from cwa_book_downloader.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask, SearchMode
 
         return DownloadTask(
             task_id="test123",
@@ -637,7 +637,7 @@ class TestTorrentOptimization:
 
     def test_is_torrent_source_true(self, tmp_path, sample_task):
         """Detects when source is the torrent client path."""
-        from cwa_book_downloader.download.orchestrator import _is_torrent_source
+        from shelfmark.download.orchestrator import _is_torrent_source
 
         torrent_path = tmp_path / "downloads" / "book.epub"
         torrent_path.parent.mkdir()
@@ -648,7 +648,7 @@ class TestTorrentOptimization:
 
     def test_is_torrent_source_false_no_original(self, tmp_path, sample_task):
         """Returns False when no original_download_path set."""
-        from cwa_book_downloader.download.orchestrator import _is_torrent_source
+        from shelfmark.download.orchestrator import _is_torrent_source
 
         some_path = tmp_path / "staging" / "book.epub"
         sample_task.original_download_path = None
@@ -657,7 +657,7 @@ class TestTorrentOptimization:
 
     def test_is_torrent_source_false_different_path(self, tmp_path, sample_task):
         """Returns False when paths don't match."""
-        from cwa_book_downloader.download.orchestrator import _is_torrent_source
+        from shelfmark.download.orchestrator import _is_torrent_source
 
         torrent_path = tmp_path / "downloads" / "book.epub"
         staging_path = tmp_path / "staging" / "book.epub"
@@ -667,7 +667,7 @@ class TestTorrentOptimization:
 
     def test_library_mode_torrent_no_hardlink_copies(self, tmp_path, sample_task):
         """Library mode copies (not moves) torrent files when hardlink unavailable."""
-        from cwa_book_downloader.download.orchestrator import _transfer_file_to_library
+        from shelfmark.download.orchestrator import _transfer_file_to_library
 
         library = tmp_path / "library"
         library.mkdir()
@@ -698,7 +698,7 @@ class TestTorrentOptimization:
 
     def test_library_mode_non_torrent_moves(self, tmp_path, sample_task):
         """Library mode moves (not copies) non-torrent files."""
-        from cwa_book_downloader.download.orchestrator import _transfer_file_to_library
+        from shelfmark.download.orchestrator import _transfer_file_to_library
 
         library = tmp_path / "library"
         library.mkdir()
@@ -729,7 +729,7 @@ class TestTorrentOptimization:
 
     def test_directory_torrent_copies_all_files(self, tmp_path, sample_task):
         """Multi-file torrent directory copies all files to library."""
-        from cwa_book_downloader.download.orchestrator import _transfer_directory_to_library
+        from shelfmark.download.orchestrator import _transfer_directory_to_library
 
         library = tmp_path / "library"
         library.mkdir()
@@ -742,7 +742,7 @@ class TestTorrentOptimization:
         sample_task.content_type = "audiobook"
         status_cb = MagicMock()
 
-        with patch('cwa_book_downloader.download.orchestrator._get_supported_formats', return_value=["mp3"]):
+        with patch('shelfmark.download.orchestrator._get_supported_formats', return_value=["mp3"]):
             result = _transfer_directory_to_library(
                 source_dir=torrent_dir,
                 library_base=str(library),
@@ -768,8 +768,8 @@ class TestEdgeCases:
 
     def test_empty_directory_returns_none(self, tmp_path):
         """Empty source directory returns None."""
-        from cwa_book_downloader.download.orchestrator import _transfer_directory_to_library
-        from cwa_book_downloader.core.models import DownloadTask, SearchMode
+        from shelfmark.download.orchestrator import _transfer_directory_to_library
+        from shelfmark.core.models import DownloadTask, SearchMode
 
         task = DownloadTask(
             task_id="test",
@@ -787,7 +787,7 @@ class TestEdgeCases:
 
         status_cb = MagicMock()
 
-        with patch('cwa_book_downloader.download.orchestrator._get_supported_formats', return_value=["epub"]):
+        with patch('shelfmark.download.orchestrator._get_supported_formats', return_value=["epub"]):
             result = _transfer_directory_to_library(
                 source_dir=source_dir,
                 library_base=str(library),
@@ -803,8 +803,8 @@ class TestEdgeCases:
 
     def test_nonexistent_source_for_hardlink(self, tmp_path):
         """Missing source file prevents hardlink creation."""
-        from cwa_book_downloader.download.orchestrator import _process_organize_mode
-        from cwa_book_downloader.core.models import DownloadTask, SearchMode
+        from shelfmark.download.orchestrator import _process_organize_mode
+        from shelfmark.core.models import DownloadTask, SearchMode
 
         task = DownloadTask(
             task_id="test",
@@ -824,7 +824,7 @@ class TestEdgeCases:
 
         status_cb = MagicMock()
 
-        with patch('cwa_book_downloader.download.orchestrator.config') as mock_config:
+        with patch('shelfmark.download.orchestrator.config') as mock_config:
             mock_config.get = MagicMock(side_effect=lambda key, default=None: {
                 "LIBRARY_PATH": str(library),
                 "LIBRARY_TEMPLATE": "{Title}",
@@ -840,8 +840,8 @@ class TestEdgeCases:
 
     def test_permission_denied_library_path(self, tmp_path):
         """Handles permission denied on library path."""
-        from cwa_book_downloader.download.orchestrator import _process_organize_mode
-        from cwa_book_downloader.core.models import DownloadTask, SearchMode
+        from shelfmark.download.orchestrator import _process_organize_mode
+        from shelfmark.core.models import DownloadTask, SearchMode
 
         task = DownloadTask(
             task_id="test",
@@ -858,7 +858,7 @@ class TestEdgeCases:
 
         status_cb = MagicMock()
 
-        with patch('cwa_book_downloader.download.orchestrator.config') as mock_config:
+        with patch('shelfmark.download.orchestrator.config') as mock_config:
             mock_config.get = MagicMock(side_effect=lambda key, default=None: {
                 "LIBRARY_PATH": "/nonexistent/protected/path",
                 "LIBRARY_TEMPLATE": "{Title}",

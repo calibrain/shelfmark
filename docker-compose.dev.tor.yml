@@ -1,20 +1,20 @@
 # Local development - Tor variant
 services:
-  calibre-web-automated-book-downloader-tor-dev:
+  shelfmark-tor-dev:
     extends:
       file: ./compose/edge/docker-compose.tor.yml
-      service: calibre-web-automated-book-downloader-tor
+      service: shelfmark-tor
     build:
       context: .
       dockerfile: Dockerfile
-      target: cwa-bd
+      target: shelfmark
     environment:
       DEBUG: true
       USING_TOR: true
     volumes:
       - ./.local/config:/config
       - ./.local/books:/books
-      - ./.local/log:/var/log/cwa-book-downloader
-      - ./.local/tmp:/tmp/cwa-book-downloader
+      - ./.local/log:/var/log/shelfmark
+      - ./.local/tmp:/tmp/shelfmark
       # Download client mount - path must match your torrent/usenet client's volume exactly
       # - /path/to/downloads:/path/to/downloads

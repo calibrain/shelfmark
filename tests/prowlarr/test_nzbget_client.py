@@ -8,7 +8,7 @@ without requiring a running NZBGet instance.
 from unittest.mock import MagicMock, patch
 import pytest
 
-from cwa_book_downloader.release_sources.prowlarr.clients import DownloadStatus
+from shelfmark.release_sources.prowlarr.clients import DownloadStatus
 
 
 class TestNZBGetClientIsConfigured:
@@ -21,11 +21,11 @@ class TestNZBGetClientIsConfigured:
             "NZBGET_URL": "http://localhost:6789",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+        from shelfmark.release_sources.prowlarr.clients.nzbget import (
             NZBGetClient,
         )
 
@@ -38,11 +38,11 @@ class TestNZBGetClientIsConfigured:
             "NZBGET_URL": "http://localhost:6789",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+        from shelfmark.release_sources.prowlarr.clients.nzbget import (
             NZBGetClient,
         )
 
@@ -55,11 +55,11 @@ class TestNZBGetClientIsConfigured:
             "NZBGET_URL": "",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+        from shelfmark.release_sources.prowlarr.clients.nzbget import (
             NZBGetClient,
         )
 
@@ -78,7 +78,7 @@ class TestNZBGetClientTestConnection:
             "NZBGET_CATEGORY": "Books",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -86,10 +86,10 @@ class TestNZBGetClientTestConnection:
         mock_response.json.return_value = {"result": {"Version": "21.1"}}
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.requests.post",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.requests.post",
             return_value=mock_response,
         ):
-            from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+            from shelfmark.release_sources.prowlarr.clients.nzbget import (
                 NZBGetClient,
             )
 
@@ -110,15 +110,15 @@ class TestNZBGetClientTestConnection:
             "NZBGET_CATEGORY": "Books",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.requests.post",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.requests.post",
             side_effect=requests.exceptions.ConnectionError("Connection refused"),
         ):
-            from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+            from shelfmark.release_sources.prowlarr.clients.nzbget import (
                 NZBGetClient,
             )
 
@@ -139,15 +139,15 @@ class TestNZBGetClientTestConnection:
             "NZBGET_CATEGORY": "Books",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.requests.post",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.requests.post",
             side_effect=requests.exceptions.Timeout("Timeout"),
         ):
-            from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+            from shelfmark.release_sources.prowlarr.clients.nzbget import (
                 NZBGetClient,
             )
 
@@ -170,7 +170,7 @@ class TestNZBGetClientRPCCall:
             "NZBGET_CATEGORY": "Books",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -178,10 +178,10 @@ class TestNZBGetClientRPCCall:
         mock_response.json.return_value = {"result": "test_result"}
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.requests.post",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.requests.post",
             return_value=mock_response,
         ) as mock_post:
-            from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+            from shelfmark.release_sources.prowlarr.clients.nzbget import (
                 NZBGetClient,
             )
 
@@ -202,7 +202,7 @@ class TestNZBGetClientRPCCall:
             "NZBGET_CATEGORY": "Books",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -210,10 +210,10 @@ class TestNZBGetClientRPCCall:
         mock_response.json.return_value = {"error": {"message": "Invalid method"}}
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.requests.post",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.requests.post",
             return_value=mock_response,
         ):
-            from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+            from shelfmark.release_sources.prowlarr.clients.nzbget import (
                 NZBGetClient,
             )
 
@@ -236,7 +236,7 @@ class TestNZBGetClientGetStatus:
             "NZBGET_CATEGORY": "Books",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -256,7 +256,7 @@ class TestNZBGetClientGetStatus:
                 ]
             return []
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+        from shelfmark.release_sources.prowlarr.clients.nzbget import (
             NZBGetClient,
         )
 
@@ -285,7 +285,7 @@ class TestNZBGetClientGetStatus:
             "NZBGET_CATEGORY": "Books",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -302,7 +302,7 @@ class TestNZBGetClientGetStatus:
                 ]
             return []
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+        from shelfmark.release_sources.prowlarr.clients.nzbget import (
             NZBGetClient,
         )
 
@@ -330,7 +330,7 @@ class TestNZBGetClientGetStatus:
             "NZBGET_CATEGORY": "Books",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -347,7 +347,7 @@ class TestNZBGetClientGetStatus:
                 ]
             return []
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+        from shelfmark.release_sources.prowlarr.clients.nzbget import (
             NZBGetClient,
         )
 
@@ -373,14 +373,14 @@ class TestNZBGetClientGetStatus:
             "NZBGET_CATEGORY": "Books",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
         def mock_rpc_call(method, params=None):
             return []  # Empty queue and history
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+        from shelfmark.release_sources.prowlarr.clients.nzbget import (
             NZBGetClient,
         )
 
@@ -406,7 +406,7 @@ class TestNZBGetClientGetStatus:
             "NZBGET_CATEGORY": "Books",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -426,7 +426,7 @@ class TestNZBGetClientGetStatus:
                 ]
             return []
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+        from shelfmark.release_sources.prowlarr.clients.nzbget import (
             NZBGetClient,
         )
 
@@ -455,7 +455,7 @@ class TestNZBGetClientAddDownload:
             "NZBGET_CATEGORY": "Books",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -468,13 +468,13 @@ class TestNZBGetClientAddDownload:
         mock_post_response.json.return_value = {"result": 456}
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.requests.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.requests.get",
             return_value=mock_get_response,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.requests.post",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.requests.post",
             return_value=mock_post_response,
         ):
-            from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+            from shelfmark.release_sources.prowlarr.clients.nzbget import (
                 NZBGetClient,
             )
 
@@ -497,15 +497,15 @@ class TestNZBGetClientAddDownload:
             "NZBGET_CATEGORY": "Books",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.requests.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.requests.get",
             side_effect=requests.RequestException("Failed to fetch"),
         ):
-            from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+            from shelfmark.release_sources.prowlarr.clients.nzbget import (
                 NZBGetClient,
             )
 
@@ -528,7 +528,7 @@ class TestNZBGetClientRemove:
             "NZBGET_CATEGORY": "Books",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -537,7 +537,7 @@ class TestNZBGetClientRemove:
                 return True
             return None
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+        from shelfmark.release_sources.prowlarr.clients.nzbget import (
             NZBGetClient,
         )
 
@@ -562,7 +562,7 @@ class TestNZBGetClientRemove:
             "NZBGET_CATEGORY": "Books",
         }
         monkeypatch.setattr(
-            "cwa_book_downloader.release_sources.prowlarr.clients.nzbget.config.get",
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -574,7 +574,7 @@ class TestNZBGetClientRemove:
                 return True
             return None
 
-        from cwa_book_downloader.release_sources.prowlarr.clients.nzbget import (
+        from shelfmark.release_sources.prowlarr.clients.nzbget import (
             NZBGetClient,
         )
 

@@ -8,7 +8,7 @@ import tempfile
 import os
 import shutil
 
-from cwa_book_downloader.core.naming import (
+from shelfmark.core.naming import (
     natural_sort_key,
     assign_part_numbers,
     parse_naming_template,

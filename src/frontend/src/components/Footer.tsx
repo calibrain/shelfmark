@@ -20,7 +20,7 @@ export const Footer = ({ buildVersion, releaseVersion, debug }: FooterProps) => 
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 text-left">
-          <p className="text-sm opacity-80">Calibre Web Book Downloader</p>
+          <p className="text-sm opacity-80">Shelfmark</p>
           <p className="text-xs opacity-60 mt-1">
             Version: {versionDisplay}
             {buildVersion && buildVersion !== 'N/A' && ` (${buildVersion})`}

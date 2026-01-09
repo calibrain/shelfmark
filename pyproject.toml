@@ -1,7 +1,7 @@
 [project]
-name = "cwa-book-downloader"
+name = "shelfmark"
 version = "0.1.0"
-description = "Calibre-Web Automated Book Downloader"
+description = "Shelfmark - Book Downloader"
 requires-python = ">=3.10"
 
 [tool.pytest.ini_options]

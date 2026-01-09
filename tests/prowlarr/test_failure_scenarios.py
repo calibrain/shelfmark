@@ -17,9 +17,9 @@ import shutil
 
 import pytest
 
-from cwa_book_downloader.core.models import DownloadTask
-from cwa_book_downloader.release_sources.prowlarr.handler import ProwlarrHandler
-from cwa_book_downloader.release_sources.prowlarr.clients import (
+from shelfmark.core.models import DownloadTask
+from shelfmark.release_sources.prowlarr.handler import ProwlarrHandler
+from shelfmark.release_sources.prowlarr.clients import (
     DownloadClient,
     DownloadState,
     DownloadStatus,
@@ -201,10 +201,10 @@ class TestClientErrorStates:
         ]
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value=sample_release,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+            "shelfmark.release_sources.prowlarr.handler.get_client",
             return_value=mock_client,
         ):
             result = handler.download(
@@ -235,10 +235,10 @@ class TestClientErrorStates:
         ]
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value=sample_release,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+            "shelfmark.release_sources.prowlarr.handler.get_client",
             return_value=mock_client,
         ):
             result = handler.download(
@@ -266,10 +266,10 @@ class TestClientErrorStates:
         ]
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value=sample_release,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+            "shelfmark.release_sources.prowlarr.handler.get_client",
             return_value=mock_client,
         ):
             result = handler.download(
@@ -299,10 +299,10 @@ class TestConnectionFailures:
         mock_client.add_download_error = ConnectionError("Connection refused")
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value=sample_release,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+            "shelfmark.release_sources.prowlarr.handler.get_client",
             return_value=mock_client,
         ):
             result = handler.download(
@@ -338,10 +338,10 @@ class TestConnectionFailures:
         mock_client.get_status = failing_get_status
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value=sample_release,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+            "shelfmark.release_sources.prowlarr.handler.get_client",
             return_value=mock_client,
         ):
             result = handler.download(
@@ -360,13 +360,13 @@ class TestConnectionFailures:
     ):
         """Handler should report helpful error when no client is configured."""
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value=sample_release,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+            "shelfmark.release_sources.prowlarr.handler.get_client",
             return_value=None,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.list_configured_clients",
+            "shelfmark.release_sources.prowlarr.handler.list_configured_clients",
             return_value=[],
         ):
             result = handler.download(
@@ -415,13 +415,13 @@ class TestCancellation:
         cancel_thread.start()
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value=sample_release,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+            "shelfmark.release_sources.prowlarr.handler.get_client",
             return_value=mock_client,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.POLL_INTERVAL",
+            "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
             0.1,
         ):
             result = handler.download(
@@ -446,10 +446,10 @@ class TestCancellation:
         cancel_flag.set()  # Already cancelled
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value=sample_release,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+            "shelfmark.release_sources.prowlarr.handler.get_client",
             return_value=mock_client,
         ):
             result = handler.download(
@@ -475,7 +475,7 @@ class TestCacheFailures:
     def test_release_not_in_cache(self, handler, recorder, cancel_flag, sample_task):
         """Handler should error when release is not found in cache."""
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value=None,
         ):
             result = handler.download(
@@ -501,7 +501,7 @@ class TestCacheFailures:
         }
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value=release_no_url,
         ):
             result = handler.download(
@@ -525,7 +525,7 @@ class TestCacheFailures:
         }
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value=release_unknown_protocol,
         ):
             result = handler.download(
@@ -564,10 +564,10 @@ class TestFileHandlingFailures:
         mock_client.get_download_path = lambda x: None  # No path available
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value=sample_release,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+            "shelfmark.release_sources.prowlarr.handler.get_client",
             return_value=mock_client,
         ):
             result = handler.download(
@@ -613,16 +613,16 @@ class TestFileHandlingFailures:
             mock_client.get_download_path = lambda x: str(source_file)
 
             with patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+                "shelfmark.release_sources.prowlarr.handler.get_release",
                 return_value=usenet_release,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+                "shelfmark.release_sources.prowlarr.handler.get_client",
                 return_value=mock_client,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.shutil.move",
+                "shelfmark.release_sources.prowlarr.handler.shutil.move",
                 side_effect=PermissionError("Permission denied"),
             ), patch(
-                "cwa_book_downloader.download.orchestrator.get_staging_dir",
+                "shelfmark.download.orchestrator.get_staging_dir",
                 return_value=staging_dir,
             ):
                 result = handler.download(
@@ -669,16 +669,16 @@ class TestProgressCallbacks:
             mock_client.get_download_path = lambda x: str(source_file)
 
             with patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+                "shelfmark.release_sources.prowlarr.handler.get_release",
                 return_value=sample_release,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+                "shelfmark.release_sources.prowlarr.handler.get_client",
                 return_value=mock_client,
             ), patch(
-                "cwa_book_downloader.download.orchestrator.get_staging_dir",
+                "shelfmark.download.orchestrator.get_staging_dir",
                 return_value=staging_dir,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.POLL_INTERVAL",
+                "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
                 0.01,
             ):
                 result = handler.download(
@@ -755,16 +755,16 @@ class TestStatusMessages:
             mock_client.get_download_path = lambda x: str(source_file)
 
             with patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+                "shelfmark.release_sources.prowlarr.handler.get_release",
                 return_value=sample_release,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+                "shelfmark.release_sources.prowlarr.handler.get_client",
                 return_value=mock_client,
             ), patch(
-                "cwa_book_downloader.download.orchestrator.get_staging_dir",
+                "shelfmark.download.orchestrator.get_staging_dir",
                 return_value=staging_dir,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.POLL_INTERVAL",
+                "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
                 0.01,
             ):
                 handler.download(
@@ -814,16 +814,16 @@ class TestStatusMessages:
             mock_client.get_download_path = lambda x: str(source_file)
 
             with patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+                "shelfmark.release_sources.prowlarr.handler.get_release",
                 return_value=sample_release,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+                "shelfmark.release_sources.prowlarr.handler.get_client",
                 return_value=mock_client,
             ), patch(
-                "cwa_book_downloader.download.orchestrator.get_staging_dir",
+                "shelfmark.download.orchestrator.get_staging_dir",
                 return_value=staging_dir,
             ), patch(
-                "cwa_book_downloader.release_sources.prowlarr.handler.POLL_INTERVAL",
+                "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
                 0.01,
             ):
                 handler.download(
@@ -870,13 +870,13 @@ class TestErrorCleanup:
         mock_client.get_status = exploding_get_status
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value=sample_release,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+            "shelfmark.release_sources.prowlarr.handler.get_client",
             return_value=mock_client,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.POLL_INTERVAL",
+            "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
             0.01,
         ):
             result = handler.download(
@@ -910,10 +910,10 @@ class TestErrorCleanup:
         mock_client.remove = failing_remove
 
         with patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_release",
+            "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value=sample_release,
         ), patch(
-            "cwa_book_downloader.release_sources.prowlarr.handler.get_client",
+            "shelfmark.release_sources.prowlarr.handler.get_client",
             return_value=mock_client,
         ):
             # Should not raise, even though remove() fails
