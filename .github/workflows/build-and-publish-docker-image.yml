@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: ${{ github.repository_owner }}/shelfmark
 jobs:
   build-and-push-images:
     runs-on: ubuntu-latest
@@ -79,11 +79,14 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-  # Create aliases for backwards compatibility (e.g., -tor points to standard image)
+  # Create aliases for backwards compatibility
   create-aliases:
     needs: build-and-push-images
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
+    env:
+      # Legacy name for backwards compatibility (hardcoded so it works after rename)
+      LEGACY_NAME: calibre-web-automated-book-downloader
     steps:
       - name: Log in to registry
         uses: docker/login-action@v3
@@ -95,24 +98,47 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Create -tor alias for standard image
+      - name: Create legacy aliases
         run: |
-          SOURCE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-          ALIAS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-tor"
+          # Current image names (follows repo name)
+          STANDARD="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          EXTBP="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-extbp"
+
+          # Legacy image names (hardcoded for backwards compatibility)
+          LEGACY="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.LEGACY_NAME }}"
+          LEGACY_TOR="${LEGACY}-tor"
+          LEGACY_EXTBP="${LEGACY}-extbp"
+
           SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-7)
 
-          # Always create SHA tag
-          docker buildx imagetools create -t "${ALIAS}:sha-${SHA_SHORT}" "${SOURCE}:sha-${SHA_SHORT}"
+          # Helper function to create alias with all standard tags
+          create_alias() {
+            local SOURCE=$1
+            local ALIAS=$2
 
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION="${{ github.ref_name }}"
-            VERSION_NUM="${VERSION#v}"
-            MINOR="${VERSION_NUM%.*}"
+            # Always create SHA tag
+            docker buildx imagetools create -t "${ALIAS}:sha-${SHA_SHORT}" "${SOURCE}:sha-${SHA_SHORT}"
 
-            docker buildx imagetools create -t "${ALIAS}:latest" "${SOURCE}:latest"
-            docker buildx imagetools create -t "${ALIAS}:${VERSION_NUM}" "${SOURCE}:${VERSION_NUM}"
-            docker buildx imagetools create -t "${ALIAS}:${MINOR}" "${SOURCE}:${MINOR}"
-            docker buildx imagetools create -t "${ALIAS}:${VERSION}" "${SOURCE}:${VERSION}"
-          else
-            docker buildx imagetools create -t "${ALIAS}:dev" "${SOURCE}:dev"
-          fi
+            if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+              VERSION="${{ github.ref_name }}"
+              VERSION_NUM="${VERSION#v}"
+              MINOR="${VERSION_NUM%.*}"
+
+              docker buildx imagetools create -t "${ALIAS}:latest" "${SOURCE}:latest"
+              docker buildx imagetools create -t "${ALIAS}:${VERSION_NUM}" "${SOURCE}:${VERSION_NUM}"
+              docker buildx imagetools create -t "${ALIAS}:${MINOR}" "${SOURCE}:${MINOR}"
+              docker buildx imagetools create -t "${ALIAS}:${VERSION}" "${SOURCE}:${VERSION}"
+            else
+              docker buildx imagetools create -t "${ALIAS}:dev" "${SOURCE}:dev"
+            fi
+          }
+
+          # Create legacy aliases pointing to current images
+          # calibre-web-automated-book-downloader → standard image
+          create_alias "${STANDARD}" "${LEGACY}"
+
+          # calibre-web-automated-book-downloader-tor → standard image
+          create_alias "${STANDARD}" "${LEGACY_TOR}"
+
+          # calibre-web-automated-book-downloader-extbp → extbp image
+          create_alias "${EXTBP}" "${LEGACY_EXTBP}"
