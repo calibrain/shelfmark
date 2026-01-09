@@ -99,6 +99,10 @@ jobs:
         run: |
           SOURCE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
           ALIAS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-tor"
+          SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-7)
+
+          # Always create SHA tag
+          docker buildx imagetools create -t "${ALIAS}:sha-${SHA_SHORT}" "${SOURCE}:sha-${SHA_SHORT}"
 
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION="${{ github.ref_name }}"
