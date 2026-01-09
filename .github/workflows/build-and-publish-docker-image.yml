@@ -23,9 +23,9 @@ jobs:
           - suffix: ""
             target: cwa-bd
             image_name_suffix: ""
-          - suffix: "-extbp"
+          - suffix: "-lite"
             target: cwa-bd-extbp
-            image_name_suffix: "-extbp"
+            image_name_suffix: "-lite"
     steps:
       - name: Get current date
         id: date
@@ -102,7 +102,7 @@ jobs:
         run: |
           # Current image names (follows repo name)
           STANDARD="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-          EXTBP="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-extbp"
+          LITE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-lite"
 
           # Legacy image names (hardcoded for backwards compatibility)
           LEGACY="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.LEGACY_NAME }}"
@@ -140,5 +140,5 @@ jobs:
           # calibre-web-automated-book-downloader-tor → standard image
           create_alias "${STANDARD}" "${LEGACY_TOR}"
 
-          # calibre-web-automated-book-downloader-extbp → extbp image
-          create_alias "${EXTBP}" "${LEGACY_EXTBP}"
+          # calibre-web-automated-book-downloader-extbp → lite image
+          create_alias "${LITE}" "${LEGACY_EXTBP}"
