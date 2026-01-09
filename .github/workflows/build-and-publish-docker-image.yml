@@ -20,11 +20,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - suffix: ""
-            target: shelfmark
-            image_name_suffix: ""
-          - suffix: "-lite"
-            target: shelfmark-lite
+          - target: shelfmark
+          - target: shelfmark-lite
             image_name_suffix: "-lite"
     steps:
       - name: Get current date
