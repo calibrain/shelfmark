@@ -1,6 +1,6 @@
 """IRC client implementation using raw sockets.
 
-Minimal IRC client for IRC Highway ebook searches.
+Minimal IRC client for ebook searches.
 """
 
 import re
@@ -17,12 +17,6 @@ from .dcc import DCCOffer, parse_dcc_send
 
 logger = setup_logger(__name__)
 
-
-# IRC Highway server details
-DEFAULT_SERVER = "irc.irchighway.net"
-DEFAULT_PORT_TLS = 6697
-DEFAULT_PORT_PLAIN = 6667
-DEFAULT_CHANNEL = "ebooks"
 
 # Timing
 POST_CONNECT_DELAY = 2.0  # Seconds to wait after connect before joining
@@ -70,21 +64,25 @@ class IRCConnectionError(IRCError):
 
 
 class IRCClient:
-    """Minimal IRC client for per-request ebook searches on IRC Highway."""
+    """Minimal IRC client for per-request ebook searches."""
 
     def __init__(
         self,
         nick: str,
-        server: str = DEFAULT_SERVER,
-        port: Optional[int] = None,
+        server: str,
+        port: int,
         use_tls: bool = True,
         version: str = "Shelfmark 1.0",
     ):
         if not nick:
             raise IRCError("IRC nickname is required")
+        if not server:
+            raise IRCError("IRC server is required")
+        if not port:
+            raise IRCError("IRC port is required")
         self.nick = nick
         self.server = server
-        self.port = port or (DEFAULT_PORT_TLS if use_tls else DEFAULT_PORT_PLAIN)
+        self.port = port
         self.use_tls = use_tls
         self.version = version
 

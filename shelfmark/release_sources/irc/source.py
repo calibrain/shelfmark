@@ -1,6 +1,6 @@
-"""IRC Highway release source plugin.
+"""IRC release source plugin.
 
-Searches IRC Highway #ebooks channel for book releases.
+Searches IRC ebook channels for book releases.
 """
 
 import tempfile
@@ -22,10 +22,11 @@ from shelfmark.release_sources import (
     ReleaseColumnConfig,
     ReleaseProtocol,
     ReleaseSource,
+    SourceActionButton,
     register_source,
 )
 
-from .client import DEFAULT_CHANNEL, IRCClient
+from .client import IRCClient
 from .dcc import DCCError, download_dcc
 from .parser import SearchResult, extract_results_from_zip, parse_results_file
 
@@ -62,11 +63,12 @@ def _enforce_rate_limit() -> None:
 
 @register_source("irc")
 class IRCReleaseSource(ReleaseSource):
-    """Search IRC Highway #ebooks for book releases."""
+    """Search IRC channels for book releases."""
 
     name = "irc"
-    display_name = "IRC Highway"
+    display_name = "IRC"
     supported_content_types = ["ebook"]  # IRC only supports ebooks
+    can_be_default = False  # Exclude from default source options (requires deliberate selection)
 
     def __init__(self):
         # Track online servers from most recent search
@@ -74,8 +76,11 @@ class IRCReleaseSource(ReleaseSource):
 
     @classmethod
     def is_available(cls) -> bool:
-        """Check if IRC is enabled in settings."""
-        return config.get("IRC_ENABLED", False)
+        """Check if IRC is configured (server, channel, and nick are set)."""
+        server = config.get("IRC_SERVER", "")
+        channel = config.get("IRC_CHANNEL", "")
+        nick = config.get("IRC_NICK", "")
+        return bool(server and channel and nick)
 
     def get_column_config(self) -> ReleaseColumnConfig:
         """Configure UI columns for IRC results."""
@@ -111,6 +116,7 @@ class IRCReleaseSource(ReleaseSource):
             online_servers=list(self._online_servers) if self._online_servers else None,
             cache_ttl_seconds=1800,  # 30 minutes - IRC searches are slow, cache longer
             supported_filters=["format"],  # IRC has no language metadata
+            action_button=SourceActionButton(label="Refresh search"),
         )
 
     def search(
@@ -120,10 +126,24 @@ class IRCReleaseSource(ReleaseSource):
         languages: Optional[List[str]] = None,
         content_type: str = "ebook"
     ) -> List[Release]:
-        """Search IRC Highway for books matching metadata."""
+        """Search IRC for books matching metadata.
+
+        The expand_search parameter is repurposed for IRC as a "refresh" flag.
+        When True, it bypasses the cache and forces a fresh search.
+        """
+        from .cache import get_cached_results, cache_results
+
         if not self.is_available():
             logger.debug("IRC source is disabled, skipping search")
             return []
+
+        # Check cache first (unless expand_search/refresh is requested)
+        if not expand_search:
+            cached = get_cached_results(book.provider, book.provider_id)
+            if cached:
+                _emit_status("Using cached results", phase='complete')
+                self._online_servers = set(cached.get("online_servers", []))
+                return cached["releases"]
 
         # Build search query
         query = self._build_query(book)
@@ -136,36 +156,49 @@ class IRCReleaseSource(ReleaseSource):
         # Enforce rate limit
         _enforce_rate_limit()
 
-        search_bot = config.get("IRC_SEARCH_BOT", "search")
+        # Get IRC settings
+        server = config.get("IRC_SERVER", "")
+        port = config.get("IRC_PORT", 6697)
+        channel = config.get("IRC_CHANNEL", "")
         nick = config.get("IRC_NICK", "")
+        search_bot = config.get("IRC_SEARCH_BOT", "")
 
         client = None
         try:
             # Connect to IRC
-            _emit_status("Connecting to IRC Highway...", phase='connecting')
-            client = IRCClient(nick)
+            _emit_status(f"Connecting to {server}...", phase='connecting')
+            client = IRCClient(nick, server, port)
             client.connect()
 
-            _emit_status("Joining #ebooks...", phase='connecting')
-            client.join_channel(DEFAULT_CHANNEL)
+            _emit_status(f"Joining #{channel}...", phase='connecting')
+            client.join_channel(channel)
 
             # Capture online servers (elevated users in channel)
             self._online_servers = client.online_servers
 
             # Send search request
-            client.send_message(f"#{DEFAULT_CHANNEL}", f"@{search_bot} {query}")
+            search_msg = f"@{search_bot} {query}" if search_bot else query
+            client.send_message(f"#{channel}", search_msg)
 
             # Wait for results DCC - this is the long wait
-            _emit_status("Connected to #ebooks - Waiting for results...", phase='searching')
+            _emit_status(f"Connected to #{channel} - Waiting for results...", phase='searching')
             offer = client.wait_for_dcc(timeout=60.0, result_type=True)
             if not offer:
                 logger.info("No search results received")
                 _emit_status("No results found", phase='complete')
                 client.disconnect()
+                # Cache empty result to avoid repeated failed searches
+                cache_results(
+                    book.provider,
+                    book.provider_id,
+                    book.title,
+                    [],
+                    list(self._online_servers) if self._online_servers else None
+                )
                 return []
 
             # Download results file
-            _emit_status("Connected to #ebooks - Downloading results...", phase='downloading')
+            _emit_status(f"Connected to #{channel} - Downloading results...", phase='downloading')
             with tempfile.TemporaryDirectory() as tmpdir:
                 result_path = Path(tmpdir) / offer.filename
                 download_dcc(offer, result_path, timeout=30.0)
@@ -180,7 +213,18 @@ class IRCReleaseSource(ReleaseSource):
 
             # Convert to Release objects
             results = parse_results_file(content)
-            return self._convert_to_releases(results)
+            releases = self._convert_to_releases(results)
+
+            # Cache results
+            cache_results(
+                book.provider,
+                book.provider_id,
+                book.title,
+                releases,
+                list(self._online_servers) if self._online_servers else None
+            )
+
+            return releases
 
         except DCCError as e:
             logger.error(f"DCC error during search: {e}")

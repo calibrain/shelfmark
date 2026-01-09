@@ -107,6 +107,13 @@ class LeadingCellConfig:
 
 
 @dataclass
+class SourceActionButton:
+    """Action button configuration for a release source."""
+    label: str                    # Button text (e.g., "Refresh search")
+    action: str = "expand"        # Action type: "expand" triggers expand_search
+
+
+@dataclass
 class ReleaseColumnConfig:
     """Complete column configuration for a release source."""
     columns: List[ColumnSchema]
@@ -115,6 +122,7 @@ class ReleaseColumnConfig:
     online_servers: Optional[List[str]] = None           # For IRC: list of currently online server nicks
     cache_ttl_seconds: Optional[int] = None              # How long to cache results (default: 5 min)
     supported_filters: Optional[List[str]] = None        # Which filters this source supports: ["format", "language"]
+    action_button: Optional[SourceActionButton] = None   # Custom action button (replaces default expand search)
 
 
 def serialize_column_config(config: ReleaseColumnConfig) -> Dict[str, Any]:
@@ -166,6 +174,13 @@ def serialize_column_config(config: ReleaseColumnConfig) -> Dict[str, Any]:
     if config.supported_filters is not None:
         result["supported_filters"] = config.supported_filters
 
+    # Include action button if specified (replaces default expand search)
+    if config.action_button is not None:
+        result["action_button"] = {
+            "label": config.action_button.label,
+            "action": config.action_button.action,
+        }
+
     return result
 
 
@@ -212,6 +227,7 @@ class ReleaseSource(ABC):
     name: str                        # "direct", "prowlarr"
     display_name: str                # "Direct Download", "Prowlarr"
     supported_content_types: List[str] = ["ebook", "audiobook"]  # Content types this source supports
+    can_be_default: bool = True      # Whether this source can be selected as default in settings
 
     @abstractmethod
     def search(
@@ -303,6 +319,7 @@ def list_available_sources() -> List[dict]:
             "display_name": instance.display_name,
             "enabled": instance.is_available(),
             "supported_content_types": getattr(instance, 'supported_content_types', ["ebook", "audiobook"]),
+            "can_be_default": getattr(instance, 'can_be_default', True),
         })
     return result
 

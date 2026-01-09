@@ -530,6 +530,8 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
         # Support callable options for lazy evaluation (avoids circular imports)
         options = field.options() if callable(field.options) else field.options
         result["options"] = options
+        if field.default is not None:
+            result["default"] = field.default
     elif isinstance(field, MultiSelectField):
         # Support callable options for lazy evaluation (avoids circular imports)
         options = field.options() if callable(field.options) else field.options

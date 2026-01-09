@@ -231,6 +231,11 @@ export interface LeadingCellConfig {
   uppercase?: boolean;               // Force uppercase for badge text
 }
 
+export interface SourceActionButton {
+  label: string;                     // Button text (e.g., "Refresh search")
+  action: string;                    // Action type: "expand" triggers expand_search
+}
+
 export interface ReleaseColumnConfig {
   columns: ColumnSchema[];
   grid_template: string;             // CSS grid-template-columns for dynamic section
@@ -238,6 +243,7 @@ export interface ReleaseColumnConfig {
   online_servers?: string[];         // For IRC: list of currently online server nicks
   cache_ttl_seconds?: number;        // How long to cache results (default: 300 = 5 min)
   supported_filters?: string[];      // Which filters this source supports: ["format", "language"]
+  action_button?: SourceActionButton; // Custom action button (replaces default expand search)
 }
 
 // A downloadable release from any source

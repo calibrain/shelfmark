@@ -1,5 +1,19 @@
 import { ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+// Find the closest scrollable ancestor element
+function getScrollableAncestor(element: HTMLElement | null): HTMLElement | null {
+  let current = element?.parentElement;
+  while (current) {
+    const style = getComputedStyle(current);
+    const overflowY = style.overflowY;
+    if (overflowY === 'auto' || overflowY === 'scroll') {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
 // Simple throttle function to limit how often a function can be called
 function throttle<T extends (...args: unknown[]) => void>(fn: T, delay: number): T {
   let lastCall = 0;
@@ -93,8 +107,18 @@ export const Dropdown = ({
 
     const rect = containerRef.current.getBoundingClientRect();
     const panelHeight = panelRef.current.offsetHeight || panelRef.current.scrollHeight;
-    const spaceBelow = window.innerHeight - rect.bottom - 8;
-    const spaceAbove = rect.top - 8;
+
+    // Check if we're inside a scrollable container and use its bounds
+    const scrollableAncestor = getScrollableAncestor(containerRef.current);
+    const containerBottom = scrollableAncestor
+      ? scrollableAncestor.getBoundingClientRect().bottom
+      : window.innerHeight;
+    const containerTop = scrollableAncestor
+      ? scrollableAncestor.getBoundingClientRect().top
+      : 0;
+
+    const spaceBelow = containerBottom - rect.bottom - 8;
+    const spaceAbove = rect.top - containerTop - 8;
     const shouldOpenUp = spaceBelow < panelHeight && spaceAbove >= panelHeight;
 
     setPanelDirection(shouldOpenUp ? 'up' : 'down');

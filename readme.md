@@ -99,7 +99,6 @@ Environment variables work for initial setup and Docker deployments. They serve 
 | `PUID` / `PGID` | Runtime user/group ID (also supports legacy `UID`/`GID`) | `1000` / `1000` |
 | `SEARCH_MODE` | `direct` or `universal` | `direct` |
 | `USING_TOR` | Enable Tor routing (requires `NET_ADMIN` capability) | `false` |
-| `ENABLE_IRC_SEARCH` | Enable IRC Highway source (requires additional setup in Settings) | `false` |
 
 Some of the additional options available in Settings:
 - **AA Donator Key** - Use your paid account to skip Cloudflare challenges entirely and use faster, direct downloads

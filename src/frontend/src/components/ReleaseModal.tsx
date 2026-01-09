@@ -1616,19 +1616,21 @@ export const ReleaseModal = ({
                         : 'No releases found for this book.'
                     }
                   />
-                  {/* Expand search button - also shown in empty state */}
-                  {!expandedBySource[activeTab] &&
-                   releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type &&
-                   !['title_author', 'expanded'].includes(
-                     releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type ?? ''
-                   ) && (
+                  {/* Action button - plugin-defined or default expand search */}
+                  {(columnConfig.action_button || (
+                    !expandedBySource[activeTab] &&
+                    releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type &&
+                    !['title_author', 'expanded'].includes(
+                      releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type ?? ''
+                    )
+                  )) && (
                     <div className="py-3 text-center">
                       <button
                         type="button"
                         onClick={handleExpandSearch}
                         className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 rounded-full hover-action transition-all duration-200"
                       >
-                        Expand search
+                        {columnConfig.action_button?.label ?? 'Expand search'}
                       </button>
                     </div>
                   )}
@@ -1651,13 +1653,14 @@ export const ReleaseModal = ({
                       />
                     ))}
                   </div>
-                  {/* Expand search button */}
-                  {!expandedBySource[activeTab] &&
-                   !currentTabLoading &&
-                   releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type &&
-                   !['title_author', 'expanded'].includes(
-                     releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type ?? ''
-                   ) && (
+                  {/* Action button - plugin-defined or default expand search */}
+                  {!currentTabLoading && (columnConfig.action_button || (
+                    !expandedBySource[activeTab] &&
+                    releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type &&
+                    !['title_author', 'expanded'].includes(
+                      releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type ?? ''
+                    )
+                  )) && (
                     <div
                       className="py-3 text-center animate-slide-up will-change-transform"
                       style={{
@@ -1670,7 +1673,7 @@ export const ReleaseModal = ({
                         onClick={handleExpandSearch}
                         className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 rounded-full hover-action transition-all duration-200"
                       >
-                        Expand search
+                        {columnConfig.action_button?.label ?? 'Expand search'}
                       </button>
                     </div>
                   )}

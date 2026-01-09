@@ -147,6 +147,7 @@ def _get_release_source_options():
     return [
         {"value": source["name"], "label": source["display_name"]}
         for source in list_available_sources()
+        if source.get("can_be_default", True)
     ]
 
 _LANGUAGE_OPTIONS = [{"value": lang["code"], "label": lang["language"]} for lang in _SUPPORTED_BOOK_LANGUAGE]

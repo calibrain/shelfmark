@@ -12,7 +12,7 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
 from shelfmark.release_sources import DownloadHandler, register_handler
 
-from .client import DEFAULT_CHANNEL, IRCClient
+from .client import IRCClient
 from .dcc import DCCError, download_dcc
 
 logger = setup_logger(__name__)
@@ -30,15 +30,20 @@ class IRCDownloadHandler(DownloadHandler):
         status_callback: Callable[[str, Optional[str]], None],
     ) -> Optional[str]:
         """Download a book via IRC DCC. task.task_id contains the IRC request string."""
-        if not config.get("IRC_ENABLED", False):
-            logger.warning("IRC download attempted but IRC is disabled")
-            status_callback("failed", "IRC source is disabled")
-            return None
-
         download_request = task.task_id
         logger.info(f"IRC download: {download_request[:60]}...")
 
+        # Get IRC settings
+        server = config.get("IRC_SERVER", "")
+        port = config.get("IRC_PORT", 6697)
+        channel = config.get("IRC_CHANNEL", "")
         nick = config.get("IRC_NICK", "")
+
+        if not server or not channel or not nick:
+            logger.warning("IRC not fully configured")
+            status_callback("failed", "IRC not configured")
+            return None
+
         client = None
 
         def check_cancelled() -> bool:
@@ -52,14 +57,14 @@ class IRCDownloadHandler(DownloadHandler):
 
         try:
             # Phase 1: Connect to IRC
-            status_callback("resolving", "Connecting to IRC")
+            status_callback("resolving", f"Connecting to {server}")
 
             if check_cancelled():
                 return None
 
-            client = IRCClient(nick)
+            client = IRCClient(nick, server, port)
             client.connect()
-            client.join_channel(DEFAULT_CHANNEL)
+            client.join_channel(channel)
 
             # Phase 2: Send download request
             status_callback("resolving", "Requesting file from bot")
@@ -68,7 +73,7 @@ class IRCDownloadHandler(DownloadHandler):
                 return None
 
             # Send the full request line to the channel
-            client.send_message(f"#{DEFAULT_CHANNEL}", download_request)
+            client.send_message(f"#{channel}", download_request)
 
             # Phase 3: Wait for DCC offer
             status_callback("resolving", "Waiting for bot response")
