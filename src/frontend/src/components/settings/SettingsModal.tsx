@@ -310,7 +310,7 @@ export const SettingsModal = ({ isOpen, onClose, onShowToast, onSettingsSaved }:
 
       {/* Modal */}
       <div
-        className={`relative w-full max-w-4xl h-[85vh] rounded-xl
+        className={`relative w-full max-w-4xl h-[85vh] max-h-[750px] rounded-xl
                     border border-[var(--border-muted)] shadow-2xl
                     flex flex-col overflow-hidden
                     ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}

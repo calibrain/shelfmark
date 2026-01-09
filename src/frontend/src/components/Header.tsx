@@ -225,7 +225,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
         <button
           onClick={toggleDropdown}
           className={`relative p-2 rounded-full hover-action transition-colors ${
-            isDropdownOpen ? 'bg-gray-100 dark:bg-gray-700' : ''
+            isDropdownOpen ? 'bg-[var(--hover-action)]' : ''
           }`}
           aria-label="User menu"
           aria-expanded={isDropdownOpen}
@@ -408,7 +408,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
 
   return (
     <header
-      className="w-full sticky top-0 z-40 backdrop-blur-sm header-with-fade"
+      className="w-full sticky top-0 z-40 backdrop-blur-sm"
       style={{ background: 'var(--bg)', paddingTop: 'env(safe-area-inset-top)' }}
     >
       <div className={`max-w-full mx-auto px-4 sm:px-6 lg:px-8 transition-all duration-500 ${

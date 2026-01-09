@@ -257,7 +257,7 @@ export const SettingsSidebar = ({
 
   // Desktop: Sidebar navigation
   return (
-    <nav className="w-56 border-r border-[var(--border-muted)] py-2 flex-shrink-0 overflow-y-auto">
+    <nav className="w-60 border-r border-[var(--border-muted)] py-2 flex-shrink-0 overflow-y-auto">
       {sidebarItems.map((item) => {
         if (item.type === 'section') {
           return (

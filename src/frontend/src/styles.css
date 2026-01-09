@@ -58,6 +58,8 @@ input, select, textarea, button,
     --hover-surface: rgba(15, 23, 42, 0.05);
     --hover-action: rgba(15, 23, 42, 0.08);
     --hover-row: rgba(15, 23, 42, 0.07);
+    --scrollbar-thumb: rgba(15, 23, 42, 0.15);
+    --scrollbar-thumb-hover: rgba(15, 23, 42, 0.25);
 }
 
 [data-theme="dark"] {
@@ -71,6 +73,39 @@ input, select, textarea, button,
     --hover-surface: rgba(255, 255, 255, 0.05);
     --hover-action: rgba(255, 255, 255, 0.12);
     --hover-row: rgba(255, 255, 255, 0.08);
+    --scrollbar-thumb: rgba(255, 255, 255, 0.15);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
+}
+
+/* Global scrollbar styling - thin, subtle, theme-aware */
+* {
+    /* Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/* WebKit browsers (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+}
+
+/* Hide scrollbar corner (where horizontal and vertical meet) */
+::-webkit-scrollbar-corner {
+    background: transparent;
 }
 
 * {
@@ -449,7 +484,8 @@ button:disabled {
 /* Responsive to different window sizes */
 .search-initial-state {
     flex: 1;
-    justify-content: center; /* Only add vertical centering in initial state */
+    justify-content: flex-start;
+    padding-top: 20vh; /* Position in upper portion of screen */
 }
 
 /* Mobile-friendly book card layout */
@@ -556,28 +592,6 @@ button:disabled {
         width: 1rem;
         height: 1rem;
     }
-}
-
-/* Sticky Header with Gradient Fade Effect */
-.header-with-fade {
-    overflow: visible;
-}
-
-.header-with-fade::after {
-    content: '';
-    position: absolute;
-    bottom: -20px;
-    left: 0;
-    right: 0;
-    height: 20px;
-    /* Use background-color instead of gradient with CSS variables for smooth transitions */
-    background: var(--bg);
-    opacity: 1;
-    pointer-events: none;
-    /* Create fade effect using mask instead of gradient */
-    mask-image: linear-gradient(to bottom, black 0%, black 20%, transparent 100%);
-    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 20%, transparent 100%);
-    transition: background-color 0.2s ease, opacity 0.2s ease;
 }
 
 /* Skeleton Loader Animation */

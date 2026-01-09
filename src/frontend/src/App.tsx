@@ -608,7 +608,7 @@ function App() {
         />
 
         {isInitialState && !featureNoticeDismissed && (
-          <div className="absolute bottom-4 left-0 right-0 px-4 text-center text-sm text-gray-500 dark:text-gray-400">
+          <div className="absolute bottom-4 left-0 right-0 px-4 text-center text-sm opacity-40">
             <span>We've renamed to Shelfmark. New: Torrent, Usenet, IRC and Audiobook support.</span>
             <button
               onClick={handleDismissFeatureNotice}
