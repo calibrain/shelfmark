@@ -121,6 +121,10 @@ class IRCReleaseSource(ReleaseSource):
         content_type: str = "ebook"
     ) -> List[Release]:
         """Search IRC Highway for books matching metadata."""
+        if not self.is_available():
+            logger.debug("IRC source is disabled, skipping search")
+            return []
+
         # Build search query
         query = self._build_query(book)
         if not query:
@@ -133,13 +137,13 @@ class IRCReleaseSource(ReleaseSource):
         _enforce_rate_limit()
 
         search_bot = config.get("IRC_SEARCH_BOT", "search")
-        nick = config.get("IRC_NICK") or None
+        nick = config.get("IRC_NICK", "")
 
         client = None
         try:
             # Connect to IRC
             _emit_status("Connecting to IRC Highway...", phase='connecting')
-            client = IRCClient(nick=nick)
+            client = IRCClient(nick)
             client.connect()
 
             _emit_status("Joining #ebooks...", phase='connecting')

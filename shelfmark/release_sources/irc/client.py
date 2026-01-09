@@ -3,11 +3,9 @@
 Minimal IRC client for IRC Highway ebook searches.
 """
 
-import random
 import re
 import socket
 import ssl
-import string
 import time
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -76,13 +74,15 @@ class IRCClient:
 
     def __init__(
         self,
-        nick: Optional[str] = None,
+        nick: str,
         server: str = DEFAULT_SERVER,
         port: Optional[int] = None,
         use_tls: bool = True,
         version: str = "Shelfmark 1.0",
     ):
-        self.nick = nick or self._generate_nick()
+        if not nick:
+            raise IRCError("IRC nickname is required")
+        self.nick = nick
         self.server = server
         self.port = port or (DEFAULT_PORT_TLS if use_tls else DEFAULT_PORT_PLAIN)
         self.use_tls = use_tls
@@ -94,12 +94,6 @@ class IRCClient:
 
         # Track online servers (elevated users in channel)
         self.online_servers: set[str] = set()
-
-    @staticmethod
-    def _generate_nick() -> str:
-        """Generate random nickname like 'cwa_abc123'."""
-        suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
-        return f"cwa_{suffix}"
 
     def connect(self) -> None:
         """Connect to IRC server, send USER/NICK, and wait for welcome."""

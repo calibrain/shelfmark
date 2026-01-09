@@ -109,6 +109,15 @@ make_writable() {
         change_ownership $folder
         chmod -R g+r,g+w $folder || echo "Failed to change group permissions for ${folder}, continuing..."
     fi
+    # Fix any misowned subdirectories/files (e.g., from previous runs as root)
+    if [ -d "$folder" ]; then
+        misowned_count=$(find "$folder" -mindepth 1 \( ! -user "$RUN_UID" -o ! -group "$RUN_GID" \) 2>/dev/null | wc -l)
+        if [ "$misowned_count" -gt 0 ]; then
+            echo "Fixing ownership of $misowned_count files/directories in $folder"
+            find "$folder" -mindepth 1 \( ! -user "$RUN_UID" -o ! -group "$RUN_GID" \) \
+                -exec chown "$RUN_UID:$RUN_GID" {} \; 2>/dev/null || true
+        fi
+    fi
     test_write $folder || echo "Failed to test write to ${folder}, continuing..."
 }
 
@@ -128,6 +137,20 @@ change_ownership /tmp/shelfmark
 # Test write to all folders
 make_writable ${CONFIG_DIR:-/config}
 make_writable ${INGEST_DIR:-/books}
+
+# Fix permissions on directories configured in settings
+echo "Checking for additional configured directories..."
+if [ -f /app/scripts/fix_permissions.py ]; then
+    configured_dirs=$(python3 /app/scripts/fix_permissions.py 2>/dev/null || echo "")
+    if [ -n "$configured_dirs" ]; then
+        echo "$configured_dirs" | while read -r dir; do
+            if [ -n "$dir" ] && [ -d "$dir" ]; then
+                echo "Checking configured directory: $dir"
+                make_writable "$dir"
+            fi
+        done
+    fi
+fi
 
 # Fallback to root if config dir is still not writable (common on NAS/Unraid after upgrade from v0.4.0)
 CONFIG_PATH=${CONFIG_DIR:-/config}

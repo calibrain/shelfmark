@@ -609,7 +609,7 @@ function App() {
 
         {isInitialState && !featureNoticeDismissed && (
           <div className="absolute bottom-4 left-0 right-0 px-4 text-center text-sm text-gray-500 dark:text-gray-400">
-            <span>New: Torrent, Usenet and IRC downloads, Audiobook support and more. Configure in Settings</span>
+            <span>We've renamed to Shelfmark. New: Torrent, Usenet, IRC and Audiobook support.</span>
             <button
               onClick={handleDismissFeatureNotice}
               className="ml-2 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 underline"
@@ -701,6 +701,7 @@ function App() {
           setSettingsOpen(true);
         }}
       />
+
     </SearchModeProvider>
   );
 

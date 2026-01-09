@@ -3,6 +3,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Fonts */
+@font-face {
+  font-family: 'Inter';
+  src: url('./assets/fonts/Inter-Variable.ttf') format('truetype');
+  font-weight: 100 900;
+  font-display: swap;
+  font-style: normal;
+}
+
 /* Custom utilities */
 @layer utilities {
     .scrollbar-hide {
@@ -87,7 +96,7 @@ html {
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     line-height: 1.6;
     color: var(--text-color);
     background: var(--background-color);

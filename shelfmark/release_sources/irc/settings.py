@@ -41,8 +41,9 @@ def irc_settings():
         TextField(
             key="IRC_NICK",
             label="Nickname",
-            placeholder="Leave empty for random",
-            description="Your IRC nickname. Leave empty to generate a random one.",
+            placeholder="e.g. myusername",
+            description="Your IRC nickname (required). Must be unique on the IRC network.",
+            required=True,
             env_supported=True,
             show_when={"field": "IRC_ENABLED", "value": True},
         ),

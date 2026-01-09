@@ -30,10 +30,15 @@ class IRCDownloadHandler(DownloadHandler):
         status_callback: Callable[[str, Optional[str]], None],
     ) -> Optional[str]:
         """Download a book via IRC DCC. task.task_id contains the IRC request string."""
+        if not config.get("IRC_ENABLED", False):
+            logger.warning("IRC download attempted but IRC is disabled")
+            status_callback("failed", "IRC source is disabled")
+            return None
+
         download_request = task.task_id
         logger.info(f"IRC download: {download_request[:60]}...")
 
-        nick = config.get("IRC_NICK") or None
+        nick = config.get("IRC_NICK", "")
         client = None
 
         def check_cancelled() -> bool:
@@ -52,7 +57,7 @@ class IRCDownloadHandler(DownloadHandler):
             if check_cancelled():
                 return None
 
-            client = IRCClient(nick=nick)
+            client = IRCClient(nick)
             client.connect()
             client.join_channel(DEFAULT_CHANNEL)
 

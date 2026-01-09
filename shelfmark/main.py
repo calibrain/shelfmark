@@ -1302,8 +1302,8 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
         if source_filter:
             sources_to_search = [source_filter]
         else:
-            # Search all available sources
-            sources_to_search = [src["name"] for src in list_available_sources()]
+            # Search only enabled sources
+            sources_to_search = [src["name"] for src in list_available_sources() if src["enabled"]]
 
         # Search each source for releases
         all_releases = []
