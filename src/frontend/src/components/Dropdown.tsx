@@ -141,57 +141,73 @@ export const Dropdown = ({
   }, [isOpen, updatePanelDirection]);
 
   return (
-    <div className={`relative ${widthClassName}`} ref={containerRef}>
+    <div className={widthClassName} ref={containerRef}>
       {label && (
         <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5" onClick={toggleOpen}>
           {label}
         </label>
       )}
-      {renderTrigger ? (
-        renderTrigger({ isOpen, toggle: toggleOpen })
-      ) : (
-        <button
-          type="button"
-          onClick={toggleOpen}
-          disabled={disabled}
-          className={`w-full px-3 py-2 text-sm rounded-lg border flex items-center justify-between text-left focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 ${buttonClassName}`}
-          style={{
-            background: 'var(--bg-soft)',
-            color: 'var(--text)',
-            borderColor: 'var(--border-muted)',
-          }}
-        >
-          <span className="truncate">
-            {summary ?? <span className="opacity-60">Select an option</span>}
-          </span>
-          <svg
-            className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            strokeWidth="1.5"
+      <div className="relative">
+        {renderTrigger ? (
+          renderTrigger({ isOpen, toggle: toggleOpen })
+        ) : (
+          <button
+            type="button"
+            onClick={toggleOpen}
+            disabled={disabled}
+            className={`w-full px-3 py-2 text-sm border flex items-center justify-between text-left focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-[border-radius] duration-150 ${buttonClassName}`}
+            style={{
+              background: 'var(--bg-soft)',
+              color: 'var(--text)',
+              borderColor: 'var(--border-muted)',
+              borderRadius: isOpen
+                ? panelDirection === 'down'
+                  ? '0.5rem 0.5rem 0 0'
+                  : '0 0 0.5rem 0.5rem'
+                : '0.5rem',
+            }}
           >
-            <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-          </svg>
-        </button>
-      )}
+            <span className="truncate">
+              {summary ?? <span className="opacity-60">Select an option</span>}
+            </span>
+            <svg
+              className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              strokeWidth="1.5"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+            </svg>
+          </button>
+        )}
 
-      {isOpen && (
-        <div
-          ref={panelRef}
-          className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} ${
-            panelDirection === 'down' ? 'mt-2' : 'bottom-full mb-2'
-          } rounded-lg border shadow-lg z-20 ${panelClassName || widthClassName}`}
-          style={{
-            background: 'var(--bg)',
-            borderColor: 'var(--border-muted)',
-          }}
-        >
-          <div className={noScrollLimit ? '' : 'max-h-64 overflow-auto'}>
-            {children({ close })}
+        {isOpen && (
+          <div
+            ref={panelRef}
+            className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} ${
+              panelDirection === 'down'
+                ? renderTrigger ? 'mt-2' : ''
+                : renderTrigger ? 'bottom-full mb-2' : 'bottom-full'
+            } border shadow-lg z-20 ${panelClassName || widthClassName}`}
+            style={{
+              background: 'var(--bg)',
+              borderColor: 'var(--border-muted)',
+              borderRadius: renderTrigger
+                ? '0.5rem'
+                : panelDirection === 'down'
+                  ? '0 0 0.5rem 0.5rem'
+                  : '0.5rem 0.5rem 0 0',
+              marginTop: !renderTrigger && panelDirection === 'down' ? '-1px' : undefined,
+              marginBottom: !renderTrigger && panelDirection === 'up' ? '-1px' : undefined,
+            }}
+          >
+            <div className={noScrollLimit ? '' : 'max-h-64 overflow-auto'}>
+              {children({ close })}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

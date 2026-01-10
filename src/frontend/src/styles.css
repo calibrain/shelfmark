@@ -196,10 +196,10 @@ footer {
     }
 }
 
-@keyframes fade-in-up {
+@keyframes pop-up {
     from {
         opacity: 0;
-        transform: translate3d(0, 10px, 0);
+        transform: translate3d(0, 16px, 0);
     }
     to {
         opacity: 1;
@@ -233,24 +233,36 @@ footer {
     animation: slide-up 0.5s ease-out;
     -webkit-backface-visibility: hidden;
     backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    will-change: transform, opacity;
 }
 
-.animate-fade-in-up {
-    animation: fade-in-up 0.4s ease-out;
+.animate-pop-up {
+    animation: pop-up 0.35s ease-out;
     -webkit-backface-visibility: hidden;
     backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    will-change: transform, opacity;
 }
 
 .animate-fade-in-down {
     animation: fade-in-down 0.2s ease-out;
     -webkit-backface-visibility: hidden;
     backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    will-change: transform, opacity;
 }
 
 .animate-fade-out-up {
     animation: fade-out-up 0.15s ease-in;
     -webkit-backface-visibility: hidden;
     backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    will-change: transform, opacity;
 }
 
 /* Button spinner styles */
@@ -308,6 +320,10 @@ footer {
     max-width: 64rem;
     max-height: 90vh;
     pointer-events: auto;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
 }
 
 /* Responsive Design */
@@ -613,22 +629,22 @@ button:disabled {
 @keyframes settings-modal-enter {
     from {
         opacity: 0;
-        transform: scale(0.95);
+        transform: scale3d(0.95, 0.95, 1);
     }
     to {
         opacity: 1;
-        transform: scale(1);
+        transform: scale3d(1, 1, 1);
     }
 }
 
 @keyframes settings-modal-exit {
     from {
         opacity: 1;
-        transform: scale(1);
+        transform: scale3d(1, 1, 1);
     }
     to {
         opacity: 0;
-        transform: scale(0.95);
+        transform: scale3d(0.95, 0.95, 1);
     }
 }
 
@@ -644,16 +660,28 @@ button:disabled {
 
 .settings-modal-enter {
     animation: settings-modal-enter 0.2s ease-out;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    will-change: transform, opacity;
 }
 
 .settings-modal-exit {
     animation: settings-modal-exit 0.15s ease-in;
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    will-change: transform, opacity;
 }
 
 .animate-fade-in {
     animation: fade-in 0.2s ease-out;
+    will-change: opacity;
 }
 
 .animate-fade-out {
     animation: fade-out 0.15s ease-in;
+    will-change: opacity;
 }

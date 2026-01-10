@@ -137,7 +137,7 @@ export const AdvancedFilters = ({
               placeholder="ISBN"
               autoComplete="off"
               enterKeyHint="search"
-              className="w-full px-3 py-2 rounded-md border"
+              className="w-full px-3 py-2 text-sm rounded-lg border"
               style={{
                 background: 'var(--bg-soft)',
                 color: 'var(--text)',
@@ -160,7 +160,7 @@ export const AdvancedFilters = ({
               placeholder="Author"
               autoComplete="off"
               enterKeyHint="search"
-              className="w-full px-3 py-2 rounded-md border"
+              className="w-full px-3 py-2 text-sm rounded-lg border"
               style={{
                 background: 'var(--bg-soft)',
                 color: 'var(--text)',
@@ -183,7 +183,7 @@ export const AdvancedFilters = ({
               placeholder="Title"
               autoComplete="off"
               enterKeyHint="search"
-              className="w-full px-3 py-2 rounded-md border"
+              className="w-full px-3 py-2 text-sm rounded-lg border"
               style={{
                 background: 'var(--bg-soft)',
                 color: 'var(--text)',

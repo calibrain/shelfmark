@@ -411,12 +411,10 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
       className="w-full sticky top-0 z-40 backdrop-blur-sm"
       style={{ background: 'var(--bg)', paddingTop: 'env(safe-area-inset-top)' }}
     >
-      <div className={`max-w-full mx-auto px-4 sm:px-6 lg:px-8 transition-all duration-500 ${
-        showSearch ? 'h-auto py-4' : 'h-24'
-      }`}>
+      <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-4">
         {/* When search is active: stack on mobile, side-by-side on desktop */}
         {showSearch && (
-          <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-3">
+          <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-3 animate-pop-up">
             {/* Logo + Icon buttons - appear first on mobile (above search), last on desktop (right side) */}
             <div className="flex items-center justify-between w-full lg:w-auto lg:justify-end lg:order-2">
               {/* Logo - visible on mobile only, aligned left */}
@@ -461,7 +459,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
 
         {/* When search is NOT active: show icon buttons only on the right */}
         {!showSearch && (
-          <div className="flex items-center justify-end h-full">
+          <div className="flex items-center justify-end min-h-[48px]">
             <IconButtons />
           </div>
         )}

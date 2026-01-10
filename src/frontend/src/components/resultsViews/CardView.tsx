@@ -46,7 +46,7 @@ export const CardView = ({ book, onDetails, onDownload, onGetReleases, buttonSta
 
   return (
     <article
-      className="book-card overflow-hidden flex flex-col sm:flex-col max-sm:flex-row space-between w-full sm:max-w-[292px] max-sm:h-[180px] h-full transition-shadow duration-300 animate-slide-up will-change-transform"
+      className="book-card overflow-hidden flex flex-col sm:flex-col max-sm:flex-row space-between w-full sm:max-w-[292px] max-sm:h-[180px] h-full transition-shadow duration-300 animate-pop-up will-change-transform"
       style={{
         background: 'var(--bg-soft)',
         borderRadius: '.75rem',

@@ -342,7 +342,7 @@ const ReleaseRow = ({
 
   return (
     <div
-      className="pl-5 pr-2 sm:pr-5 py-2 transition-colors duration-200 hover-row animate-slide-up will-change-transform"
+      className="pl-5 pr-2 sm:pr-5 py-2 transition-colors duration-200 hover-row animate-pop-up will-change-transform"
       style={{
         animationDelay: `${index * 30}ms`,
         animationFillMode: 'both',
@@ -1662,7 +1662,7 @@ export const ReleaseModal = ({
                     )
                   )) && (
                     <div
-                      className="py-3 text-center animate-slide-up will-change-transform"
+                      className="py-3 text-center animate-pop-up will-change-transform"
                       style={{
                         animationDelay: `${filteredReleases.length * 30}ms`,
                         animationFillMode: 'both',

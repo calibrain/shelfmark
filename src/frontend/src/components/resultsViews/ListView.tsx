@@ -100,7 +100,7 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
           return (
             <div
               key={book.id}
-              className="px-1.5 sm:px-2 py-1.5 sm:py-2 transition-colors duration-200 hover-row w-full animate-slide-up will-change-transform"
+              className="px-1.5 sm:px-2 py-1.5 sm:py-2 transition-colors duration-200 hover-row w-full animate-pop-up will-change-transform"
               style={{
                 animationDelay: `${index * 50}ms`,
                 animationFillMode: 'both',

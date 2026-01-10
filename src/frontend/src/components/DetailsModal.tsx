@@ -114,26 +114,25 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
         })
       : [];
   const extendedInfoEntries = [[publisherInfo.label, publisherInfo.value], ...additionalInfo];
-  const infoCardClass = 'rounded-2xl border border-[var(--border-muted)] px-4 py-3 text-sm';
-  const infoCardStyle = { background: 'var(--bg)' };
+  const infoCardClass = 'rounded-2xl border border-[var(--border-muted)] px-4 py-3 text-sm bg-[var(--bg-soft)] sm:bg-[var(--bg)]';
   const infoLabelClass = 'text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400';
   const infoValueClass = 'text-gray-900 dark:text-gray-100';
 
   return (
     <div
-      className="modal-overlay active px-4 py-6 sm:px-6"
+      className="modal-overlay active sm:px-6 sm:py-6"
       onClick={e => {
         if (e.target === e.currentTarget) handleClose();
       }}
     >
       <div
-        className={`details-container w-full max-w-4xl ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`details-container w-full max-w-4xl h-full sm:h-auto ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
       >
-        <div className="flex max-h-[90vh] flex-col overflow-hidden rounded-2xl border border-[var(--border-muted)] bg-[var(--bg-soft)] text-[var(--text)] shadow-2xl">
-          <header className="flex items-start gap-4 border-b border-[var(--border-muted)] px-5 py-4">
+        <div className="flex h-full sm:h-[90vh] sm:max-h-[90vh] flex-col overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border border-[var(--border-muted)] bg-[var(--bg)] sm:bg-[var(--bg-soft)] text-[var(--text)] shadow-none sm:shadow-2xl">
+          <header className="flex items-start gap-4 border-b border-[var(--border-muted)] bg-[var(--bg)] sm:bg-[var(--bg-soft)] px-5 py-4">
             <div className="flex-1 space-y-1">
               <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Book</p>
               <h3 id={titleId} className="text-lg font-semibold leading-snug">
@@ -188,7 +187,7 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
 
               <div className="flex flex-1 flex-col gap-4 sm:gap-5 lg:min-h-0">
                 {book.description && (
-                  <div className={`${infoCardClass} space-y-1`} style={infoCardStyle}>
+                  <div className={`${infoCardClass} space-y-1`}>
                     <p className={infoLabelClass}>Description</p>
                     <p className={`${infoValueClass} whitespace-pre-line`}>{book.description}</p>
                   </div>
@@ -197,7 +196,7 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
                 {/* Metadata grid - adapts columns based on mode and available data */}
                 <div className={`grid grid-cols-2 gap-3 lg:gap-4 ${isMetadata ? 'lg:grid-cols-2' : 'lg:grid-cols-4'}`}>
                   {metadata.map(item => (
-                    <div key={item.label} className={`${infoCardClass} space-y-1`} style={infoCardStyle}>
+                    <div key={item.label} className={`${infoCardClass} space-y-1`}>
                       <p className={infoLabelClass}>{item.label}</p>
                       <p className={infoValueClass}>{item.value}</p>
                     </div>
@@ -205,7 +204,7 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
 
                   {/* Rating box - Universal mode only */}
                   {ratingField && (
-                    <div className={`${infoCardClass} space-y-1`} style={infoCardStyle}>
+                    <div className={`${infoCardClass} space-y-1`}>
                       <p className={infoLabelClass}>{ratingField.label}</p>
                       <p className={`${infoValueClass} flex items-center gap-1.5`}>
                         <svg className="h-4 w-4 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
@@ -218,7 +217,7 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
 
                   {/* Readers box - Universal mode only */}
                   {readersField && (
-                    <div className={`${infoCardClass} space-y-1`} style={infoCardStyle}>
+                    <div className={`${infoCardClass} space-y-1`}>
                       <p className={infoLabelClass}>{readersField.label}</p>
                       <p className={`${infoValueClass} flex items-center gap-1.5`}>
                         <svg className="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -254,7 +253,7 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
 
                 {/* ISBN - Universal mode only */}
                 {isMetadata && (book.isbn_13 || book.isbn_10) && (
-                  <div className={`${infoCardClass} space-y-1`} style={infoCardStyle}>
+                  <div className={`${infoCardClass} space-y-1`}>
                     <p className={infoLabelClass}>ISBN</p>
                     <p className={infoValueClass}>{book.isbn_13 || book.isbn_10}</p>
                   </div>
@@ -262,7 +261,7 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
 
                 {/* Series info - Universal mode only */}
                 {isMetadata && book.series_name && (
-                  <div className={`${infoCardClass} space-y-1`} style={infoCardStyle}>
+                  <div className={`${infoCardClass} space-y-1`}>
                     <p className={infoLabelClass}>Series</p>
                     <div className="flex items-center justify-between gap-2">
                       <p className={infoValueClass}>
@@ -293,7 +292,7 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
 
                 {/* Extended info (publisher, etc.) - Direct Download mode only */}
                 {!isMetadata && extendedInfoEntries.length > 0 && (
-                  <div className={`${infoCardClass} space-y-3`} style={infoCardStyle}>
+                  <div className={`${infoCardClass} space-y-3`}>
                     <ul className="space-y-3 list-none">
                       {extendedInfoEntries.map(([key, value]) => (
                         <li key={key} className="space-y-1">
@@ -308,7 +307,10 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
             </div>
           </div>
 
-          <footer className="border-t border-[var(--border-muted)] bg-[var(--bg-soft)] px-5 py-4">
+          <footer
+            className="border-t border-[var(--border-muted)] bg-[var(--bg)] sm:bg-[var(--bg-soft)] px-5 py-4"
+            style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+          >
             <div className="flex items-center justify-between gap-4">
               {/* Source link - shown for both Universal and Direct Download modes */}
               {book.source_url && (

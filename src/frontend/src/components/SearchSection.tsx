@@ -63,9 +63,9 @@ export const SearchSection = ({
   return (
     <section
       id="search-section"
-      className={`transition-all duration-500 ease-in-out ${
-        isInitialState 
-          ? 'search-initial-state mb-6' 
+      className={`${
+        isInitialState
+          ? 'search-initial-state mb-6'
           : 'mb-3 sm:mb-4'
       } ${showAdvanced ? 'search-advanced-visible' : ''}`}
     >
