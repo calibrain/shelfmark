@@ -81,6 +81,9 @@ jobs:
     needs: build-and-push-images
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      packages: write
     env:
       # Legacy name for backwards compatibility (hardcoded so it works after rename)
       LEGACY_NAME: calibre-web-automated-book-downloader
