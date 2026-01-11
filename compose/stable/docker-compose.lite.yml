@@ -1,16 +1,11 @@
-# Routes all traffic through Tor - requires NET_ADMIN capability
 services:
-  shelfmark-tor:
-    image: ghcr.io/calibrain/shelfmark:latest
+  shelfmark-lite:
+    image: ghcr.io/calibrain/shelfmark-lite:latest
     environment:
-      FLASK_PORT: 8084
       # TZ: America/New_York
-      USING_TOR: true
+      # EXT_BYPASSER_URL: http://flaresolverr:8191 #If using Flaresolverr
       # PUID: 1000
       # PGID: 1000
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
     ports:
       - 8084:8084
     restart: unless-stopped

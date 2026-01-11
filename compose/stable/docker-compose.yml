@@ -1,15 +1,16 @@
 services:
-  calibre-web-automated-book-downloader:
-    image: ghcr.io/calibrain/calibre-web-automated-book-downloader:latest
-    container_name: calibre-web-automated-book-downloader
+  shelfmark:
+    image: ghcr.io/calibrain/shelfmark:latest
+    container_name: shelfmark
     environment:
-      TZ: America/New_York
-      # UID: 1000
-      # GID: 100
-      # CWA_DB_PATH: /auth/app.db
+      # TZ: America/New_York
+      # PUID: 1000
+      # PGID: 1000
     ports:
       - 8084:8084
     restart: unless-stopped
     volumes:
-      - /tmp/data/calibre-web/ingest:/cwa-book-ingest # This is where the books will be downloaded and ingested by your book management application
-      - /path/to/config:/config # Configuration files and database
+      - /path/to/books:/books # Book destination directory
+      - /path/to/config:/config # App configuration
+      # Download client mount - path must match your torrent/usenet client's volume exactly
+      # - /path/to/downloads:/path/to/downloads

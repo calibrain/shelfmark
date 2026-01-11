@@ -24,7 +24,7 @@ export const Footer = ({ buildVersion, releaseVersion, debug }: FooterProps) => 
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-baseline justify-center gap-2">
         <a
-          href="https://github.com/calibrain/calibre-web-automated-book-downloader"
+          href="https://github.com/calibrain/shelfmark"
           target="_blank"
           rel="noopener noreferrer"
           className="text-sm font-medium opacity-70 hover:opacity-100 transition-opacity"

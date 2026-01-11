@@ -44,7 +44,7 @@ A unified web interface for searching and downloading books from multiple source
 
 1. Download the docker-compose file:
    ```bash
-   curl -O https://raw.githubusercontent.com/calibrain/calibre-web-automated-book-downloader/main/compose/stable/docker-compose.yml
+   curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/stable/docker-compose.yml
    ```
 
 2. Start the service:
@@ -121,7 +121,7 @@ The full-featured image with built-in Cloudflare bypass.
 #### Enable Tor Routing
 Routes all traffic through Tor for enhanced privacy:
 ```bash
-curl -O https://raw.githubusercontent.com/calibrain/calibre-web-automated-book-downloader/main/compose/stable/docker-compose.tor.yml
+curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/stable/docker-compose.tor.yml
 docker compose -f docker-compose.tor.yml up -d
 ```
 
@@ -139,7 +139,7 @@ A smaller image without the built-in Cloudflare bypasser. Ideal for:
 - **Audiobooks** - Downloading from Audiobookshelf-compatible sources
 
 ```bash
-curl -O https://raw.githubusercontent.com/calibrain/calibre-web-automated-book-downloader/main/compose/stable/docker-compose.lite.yml
+curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/stable/docker-compose.lite.yml
 docker compose -f docker-compose.lite.yml up -d
 ```
 
@@ -248,4 +248,4 @@ Downloads are written atomically (via intermediate `.crdownload` files) to preve
 
 ## Support
 
-For issues or questions, please [file an issue](https://github.com/calibrain/calibre-web-automated-book-downloader/issues) on GitHub.
+For issues or questions, please [file an issue](https://github.com/calibrain/shelfmark/issues) on GitHub.
