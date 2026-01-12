@@ -4,21 +4,20 @@ Formerly *Calibre Web Automated Book Downloader (CWABD)*
 
 <img src="src/frontend/public/logo.png" alt="Shelfmark" width="200">
 
-A unified web interface for searching and downloading books from multiple sources - all in one place. Works out of the box with popular web sources, no configuration required. Add metadata providers, additional release sources, and download clients to create a single hub for building your digital library.
+Shelfmark is a unified web interface for searching and downloading books and audiobooks from multiple sources - all in one place. Works out of the box with popular web sources, no configuration required. Add metadata providers, additional release sources, and download clients to create a single hub for building your digital library.
 
 **Fully standalone** - no external dependencies required. Works great alongside library tools like [Calibre-Web-Automated](https://github.com/crocodilestick/Calibre-Web-Automated), [Booklore](https://github.com/booklore-app/booklore) or [Audiobookshelf](https://github.com/advplyr/audiobookshelf) for automatic import.
 
 ## ✨ Features
 
 - **One-Stop Interface** - A clean, modern UI to search, browse, and download from multiple sources in one place
+- **Multiple sources** - Popular archive websites, Torrent, Usenet and IRC download support
+- **Audiobook support** - Full audiobook search and download with dedicated processing
 - **Real-Time Progress** - Unified download queue with live status updates across all sources
 - **Two Search Modes**:
-  - **Direct Download** - Search and download from popular web sources
-  - **Universal Mode** - Search metadata providers (Hardcover, Open Library) for richer book discovery and multi-source downloads *(additional sources in development - coming soon!)*
-- **Format Support** - EPUB, MOBI, AZW3, FB2, DJVU, CBZ, CBR and more
+  - **Direct** - Search and download books from popular web sources
+  - **Universal** - Search metadata providers (Hardcover, Open Library) for richer book and audiobook discovery, with multi-source downloads
 - **Cloudflare Bypass** - Built-in bypasser for reliable access to protected sources
-- **PWA Support** - Install as a mobile app for quick access
-- **Docker Deployment** - Up and running in minutes
 
 ## 🖼️ Screenshots
 
@@ -75,17 +74,16 @@ volumes:
 
 ### Search Modes
 
-**Direct Download Mode** (default)
+**Direct** (default)
 - Works out of the box, no setup required
 - Searches a huge library of books directly
 - Returns downloadable releases immediately
 
-**Universal Mode**
-- Cleaner search results via metadata providers (Hardcover, Open Library)
+**Universal**
+- Cleaner search results via metadata providers (Hardcover is recommended)
 - Aggregates releases from multiple configured sources
+- Full Audiobook support
 - Requires manual setup (API keys, additional sources)
-
-Set the mode via Settings or `SEARCH_MODE` environment variable.
 
 ### Environment Variables
 
@@ -102,9 +100,10 @@ Environment variables work for initial setup and Docker deployments. They serve 
 
 Some of the additional options available in Settings:
 - **AA Donator Key** - Use your paid account to skip Cloudflare challenges entirely and use faster, direct downloads
-- **Preferred source** - Enable/disable and reorder available web sources for downloads
+- **Prowlarr** - Configure indexers and download clients to download books and audiobooks
+- **IRC** - Add details for IRC book sources and download directly from the UI
 - **Library Link** - Add a link to your Calibre-Web or Booklore instance in the UI header
-- **Content Folders** - Route fiction, non-fiction, comics, etc. to separate directories
+- **File processing** - Customiseable download paths, file renaming and directory creation with template-based renaming
 - **Network Resilience** - Auto DNS rotation and mirror fallback when sources are unreachable. Custom proxy support (SOCK5 + HTTP/S), Tor routing.
 - **Format & Language** - Filter downloads by preferred formats, languages and sorting order
 - **Metadata Providers** - Configure API keys for Hardcover, Open Library, etc.
@@ -136,7 +135,7 @@ A smaller image without the built-in Cloudflare bypasser. Ideal for:
 - **External bypassers** - Already running FlareSolverr or ByParr for other services
 - **Fast downloads** - Using fast download sources
 - **Alternative sources only** - Exclusively using Prowlarr, IRC, or other sources
-- **Audiobooks** - Downloading from Audiobookshelf-compatible sources
+- **Audiobooks** - Using Shelfmark exclusively for audiobooks
 
 ```bash
 curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/stable/docker-compose.lite.yml
