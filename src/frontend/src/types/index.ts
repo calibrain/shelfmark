@@ -148,6 +148,7 @@ export type ContentType = 'ebook' | 'audiobook';
 
 export interface AppConfig {
   calibre_web_url: string;
+  audiobook_library_url: string;
   debug: boolean;
   build_version: string;
   release_version: string;

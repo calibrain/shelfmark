@@ -613,6 +613,13 @@ def prowlarr_clients_settings():
             default="",
             show_when={"field": "PROWLARR_USENET_CLIENT", "value": "sabnzbd"},
         ),
+        CheckboxField(
+            key="SABNZBD_REMOVE_COMPLETED",
+            label="Remove completed downloads from history",
+            default=True,
+            description="Remove downloads from SABnzbd history after successful import (archives them)",
+            show_when={"field": "PROWLARR_USENET_CLIENT", "value": "sabnzbd"},
+        ),
 
         # Note: Usenet client download path must be mounted identically in both containers.
         SelectField(

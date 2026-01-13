@@ -541,6 +541,7 @@ function App() {
     <SearchModeProvider searchMode={searchMode}>
       <Header
         calibreWebUrl={config?.calibre_web_url || ''}
+        audiobookLibraryUrl={config?.audiobook_library_url || ''}
         debug={config?.debug || false}
         logoUrl="/logo.png"
         showSearch={!isInitialState}

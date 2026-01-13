@@ -268,9 +268,16 @@ def general_settings():
     return [
         TextField(
             key="CALIBRE_WEB_URL",
-            label="Book Management App URL",
-            description="Adds a navigation button to your book manager instance (Calibre-Web Automated, Booklore, etc).",
+            label="Library URL",
+            description="Adds a navigation button to your book library (Calibre-Web Automated, Booklore, etc).",
             placeholder="http://calibre-web:8083",
+        ),
+        TextField(
+            key="AUDIOBOOK_LIBRARY_URL",
+            label="Audiobook Library URL",
+            description="Adds a separate navigation button for your audiobook library (Audiobookshelf, Plex, etc). When both URLs are set, icons are shown instead of text.",
+            placeholder="http://audiobookshelf:8080",
+            env_supported=False,
         ),
         HeadingField(
             key="search_defaults_heading",

@@ -552,7 +552,14 @@ def _download_task(task_id: str, cancel_flag: Event) -> Optional[str]:
             task = book_queue.get_task(task_id)
             if task:
                 book_queue.update_status(task_id, QueueStatus.ERROR)
-                book_queue.update_status_message(task_id, f"Download failed: {type(e).__name__}")
+                # Check for known misconfiguration from earlier versions
+                if isinstance(e, PermissionError) and "/cwa-book-ingest" in str(e):
+                    book_queue.update_status_message(
+                        task_id,
+                        "Destination misconfigured. Go to Settings → Downloads to update."
+                    )
+                else:
+                    book_queue.update_status_message(task_id, f"Download failed: {type(e).__name__}")
         return None
 
 

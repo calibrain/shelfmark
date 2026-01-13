@@ -44,6 +44,14 @@ class ProwlarrHandler(DownloadHandler):
         audiobook_key = audiobook_keys.get(client.name)
         return config.get(audiobook_key, "") or None if audiobook_key else None
 
+    def _cleanup_client_history(self, client, download_id: str) -> None:
+        """Remove completed download from client history if configured."""
+        if client.name == "sabnzbd" and config.get("SABNZBD_REMOVE_COMPLETED", True):
+            try:
+                client.remove(download_id, delete_files=True, archive=True)
+            except Exception as e:
+                logger.warning(f"Failed to remove from SABnzbd history: {e}")
+
     def _build_progress_message(self, status) -> str:
         """Build a progress message from download status."""
         msg = f"{status.progress:.0f}%"
@@ -127,6 +135,7 @@ class ProwlarrHandler(DownloadHandler):
 
                     if result:
                         remove_release(task.task_id)
+                        self._cleanup_client_history(client, download_id)
                     return result
 
                 # Existing but still downloading - join the progress polling
@@ -256,9 +265,10 @@ class ProwlarrHandler(DownloadHandler):
                 status_callback=status_callback,
             )
 
-            # Clean up cache on success
+            # Clean up on success
             if result:
                 remove_release(task.task_id)
+                self._cleanup_client_history(client, download_id)
 
             return result
 

@@ -280,13 +280,14 @@ class SABnzbdClient(DownloadClient):
             logger.error(f"SABnzbd get_status failed ({error_type}): {e}")
             return DownloadStatus.error(f"{error_type}: {e}")
 
-    def remove(self, download_id: str, delete_files: bool = False) -> bool:
+    def remove(self, download_id: str, delete_files: bool = False, archive: bool = True) -> bool:
         """
         Remove a download from SABnzbd.
 
         Args:
             download_id: SABnzbd nzo_id
             delete_files: Whether to delete the files
+            archive: If True, move to archive instead of permanent delete (history only)
 
         Returns:
             True if successful.
@@ -313,11 +314,13 @@ class SABnzbdClient(DownloadClient):
                     "name": "delete",
                     "value": download_id,
                     "del_files": 1 if delete_files else 0,
+                    "archive": 1 if archive else 0,
                 },
             )
 
             if result.get("status"):
-                logger.info(f"Removed NZB from SABnzbd history: {download_id}")
+                action = "archived" if archive else "removed"
+                logger.info(f"NZB {action} from SABnzbd history: {download_id}")
                 return True
 
             return False
