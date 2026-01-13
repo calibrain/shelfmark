@@ -770,7 +770,7 @@ def get(url: str, retry: Optional[int] = None, cancel_flag: Optional[Event] = No
         cookies = get_cf_cookies_for_domain(urlparse(url).hostname or "")
         if cookies:
             try:
-                response = requests.get(url, cookies=cookies, proxies=get_proxies(), timeout=(5, 10))
+                response = requests.get(url, cookies=cookies, proxies=get_proxies(url), timeout=(5, 10))
                 if response.status_code == 200:
                     logger.debug("Cookies available after lock wait - skipped Chrome")
                     return response.text
@@ -1035,7 +1035,7 @@ def _try_with_cached_cookies(url: str, hostname: str) -> Optional[str]:
             headers['User-Agent'] = stored_ua
 
         logger.debug(f"Trying request with cached cookies: {url}")
-        response = requests.get(url, cookies=cookies, headers=headers, proxies=get_proxies(), timeout=(5, 10))
+        response = requests.get(url, cookies=cookies, headers=headers, proxies=get_proxies(url), timeout=(5, 10))
         if response.status_code == 200:
             logger.debug("Cached cookies worked, skipped Chrome bypass")
             return response.text

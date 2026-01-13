@@ -306,8 +306,10 @@ class ProwlarrSource(ReleaseSource):
 
         # Build search query
         query_parts = []
-        if book.title:
-            query_parts.append(book.title)
+        # Prefer search_title if available (cleaner title for searches)
+        search_title = book.search_title or book.title
+        if search_title:
+            query_parts.append(search_title)
         if book.authors:
             # Use first author only - authors may be a list or a single string
             # that contains multiple comma-separated names (from frontend)
@@ -326,12 +328,8 @@ class ProwlarrSource(ReleaseSource):
             logger.warning("No search query available for book")
             return []
 
-        # Get selected indexer IDs from config
+        # Get selected indexer IDs from config (None means search all)
         indexer_ids = self._get_selected_indexer_ids()
-
-        if not indexer_ids:
-            logger.warning("No indexers selected - configure indexers in Prowlarr settings")
-            return []
 
         # Get search categories based on content type
         # Audiobooks use 3030 (Audio/Audiobook), ebooks use 7000 (Books)
@@ -339,18 +337,29 @@ class ProwlarrSource(ReleaseSource):
         categories = None if expand_search else search_categories
         self.last_search_type = "expanded" if expand_search else "categories"
 
-        logger.debug(f"Searching Prowlarr: query='{query}', indexers={indexer_ids}, categories={categories}")
+        indexer_desc = f"indexers={indexer_ids}" if indexer_ids else "all enabled indexers"
+        logger.debug(f"Searching Prowlarr: query='{query}', {indexer_desc}, categories={categories}")
 
         def search_indexers(cats: Optional[List[int]]) -> List[dict]:
-            """Search all indexers with given categories, collecting results."""
+            """Search indexers with given categories, collecting results."""
             results = []
-            for indexer_id in indexer_ids:
+            if indexer_ids:
+                # Search specific indexers one at a time
+                for indexer_id in indexer_ids:
+                    try:
+                        raw = client.search(query=query, indexer_ids=[indexer_id], categories=cats)
+                        if raw:
+                            results.extend(raw)
+                    except Exception as e:
+                        logger.warning(f"Search failed for indexer {indexer_id}: {e}")
+            else:
+                # Search all enabled indexers at once
                 try:
-                    raw = client.search(query=query, indexer_ids=[indexer_id], categories=cats)
+                    raw = client.search(query=query, indexer_ids=None, categories=cats)
                     if raw:
                         results.extend(raw)
                 except Exception as e:
-                    logger.warning(f"Search failed for indexer {indexer_id}: {e}")
+                    logger.warning(f"Search failed for all indexers: {e}")
             return results
 
         all_results = []

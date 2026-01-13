@@ -95,6 +95,29 @@ def _build_source_url(slug: str) -> Optional[str]:
     return f"https://hardcover.app/books/{slug}" if slug else None
 
 
+def _compute_search_title(title: str, subtitle: Optional[str]) -> Optional[str]:
+    """Compute a cleaner search title from title and subtitle.
+
+    When Hardcover uses the "Series: Book Title" format, the subtitle contains
+    the actual book title which is better for searching. For example:
+    - title: "Mistborn: The Final Empire"
+    - subtitle: "The Final Empire"
+    - search_title: "The Final Empire" (better for Prowlarr/indexer searches)
+
+    Skips subtitles that start with series position indicators like "Book One",
+    "Part 1", "Volume 2" as these are descriptors, not the actual title.
+    """
+    if not subtitle or subtitle not in title:
+        return None
+
+    # Skip if subtitle starts with series position indicators
+    skip_prefixes = ('book ', 'part ', 'volume ')
+    if subtitle.lower().startswith(skip_prefixes):
+        return None
+
+    return subtitle
+
+
 @register_provider_kwargs("hardcover")
 def _hardcover_kwargs() -> Dict[str, Any]:
     """Provide Hardcover-specific constructor kwargs."""
@@ -564,6 +587,7 @@ class HardcoverProvider(MetadataProvider):
                 provider_id=str(book_id),
                 title=title,
                 subtitle=subtitle,
+                search_title=_compute_search_title(title, subtitle),
                 provider_display_name="Hardcover",
                 authors=authors,
                 cover_url=cover_url,
@@ -681,11 +705,15 @@ class HardcoverProvider(MetadataProvider):
                 if code3 and code3 not in titles_by_language:
                     titles_by_language[code3] = edition_title
 
+        title = book["title"]
+        subtitle = book.get("subtitle")
+
         return BookMetadata(
             provider="hardcover",
             provider_id=str(book["id"]),
-            title=book["title"],
-            subtitle=book.get("subtitle"),
+            title=title,
+            subtitle=subtitle,
+            search_title=_compute_search_title(title, subtitle),
             provider_display_name="Hardcover",
             authors=authors,
             isbn_10=isbn_10,

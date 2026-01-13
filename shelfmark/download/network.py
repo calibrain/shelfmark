@@ -1,5 +1,6 @@
 """DNS rotation, mirror selection, and network utilities."""
 
+import fnmatch
 import requests
 import urllib.request
 from typing import Sequence, Tuple, Any, Union, cast, List, Optional, Callable
@@ -14,8 +15,58 @@ from shelfmark.core.config import config as app_config
 from datetime import datetime, timedelta
 
 
-def get_proxies() -> dict:
-    """Get current proxy configuration from config singleton."""
+def _get_no_proxy_patterns() -> List[str]:
+    """Get list of NO_PROXY patterns from config."""
+    no_proxy = app_config.get("NO_PROXY", "")
+    if not no_proxy:
+        return []
+    return [p.strip().lower() for p in no_proxy.split(",") if p.strip()]
+
+
+def should_bypass_proxy(url: str) -> bool:
+    """Check if a URL should bypass the proxy based on NO_PROXY patterns.
+
+    Supports:
+    - Exact hostname match: localhost, myhost.local
+    - Wildcard prefix: *.local matches foo.local
+    - Wildcard suffix: 10.* matches 10.1.2.3
+    """
+    if not url:
+        return False
+
+    patterns = _get_no_proxy_patterns()
+    if not patterns:
+        return False
+
+    # Extract hostname from URL
+    try:
+        parsed = urllib.parse.urlparse(url)
+        hostname = (parsed.hostname or "").lower()
+    except Exception:
+        return False
+
+    if not hostname:
+        return False
+
+    for pattern in patterns:
+        # Use fnmatch for wildcard matching (supports * and ?)
+        if fnmatch.fnmatch(hostname, pattern):
+            return True
+
+    return False
+
+
+def get_proxies(url: str = "") -> dict:
+    """Get current proxy configuration from config singleton.
+
+    Args:
+        url: Optional URL to check against NO_PROXY patterns.
+             If provided and matches a pattern, returns empty dict.
+    """
+    # Check NO_PROXY bypass first
+    if url and should_bypass_proxy(url):
+        return {}
+
     proxy_mode = app_config.get("PROXY_MODE", "none")
 
     if proxy_mode == "socks5":
@@ -340,7 +391,7 @@ class DoHResolver:
             response = self.session.get(
                 self.base_url,
                 params=params,
-                proxies=get_proxies(),
+                proxies=get_proxies(self.base_url),
                 timeout=10  # Increased from 5s to handle slow network conditions
             )
             response.raise_for_status()
@@ -834,7 +885,7 @@ def _initialize_aa_state() -> None:
             logger.debug(f"AA_BASE_URL: auto, checking available urls {_aa_urls}")
             for i, url in enumerate(_aa_urls):
                 try:
-                    response = requests.get(url, proxies=get_proxies(), timeout=3)
+                    response = requests.get(url, proxies=get_proxies(url), timeout=3)
                     if response.status_code == 200:
                         _current_aa_url_index = i
                         _aa_base_url = url

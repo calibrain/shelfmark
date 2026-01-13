@@ -178,6 +178,7 @@ class ProwlarrHandler(DownloadHandler):
     ) -> Optional[str]:
         """Poll the download client for progress and handle completion."""
         try:
+            logger.debug(f"Starting poll for {download_id} (content_type={task.content_type})")
             while not cancel_flag.is_set():
                 status = client.get_status(download_id)
                 progress_callback(status.progress)
@@ -185,13 +186,16 @@ class ProwlarrHandler(DownloadHandler):
                 # Check for completion
                 if status.complete:
                     if status.state == DownloadState.ERROR:
+                        logger.error(f"Download {download_id} completed with error: {status.message}")
                         status_callback("error", status.message or "Download failed")
                         return None
                     # Download complete - break to handle file
+                    logger.debug(f"Download {download_id} complete, file_path={status.file_path}")
                     break
 
                 # Check for error state
                 if status.state == DownloadState.ERROR:
+                    logger.error(f"Download {download_id} error state: {status.message}")
                     status_callback("error", status.message or "Download failed")
                     client.remove(download_id, delete_files=True)
                     return None
@@ -214,11 +218,35 @@ class ProwlarrHandler(DownloadHandler):
             # Handle completed file
             source_path = client.get_download_path(download_id)
             if not source_path:
-                status_callback("error", "Could not locate downloaded file")
+                logger.error(
+                    f"Download client returned empty path for completed download. "
+                    f"Client: {client.name}, ID: {download_id}. "
+                    f"Check that the download client's completion folder is accessible to Shelfmark."
+                )
+                status_callback(
+                    "error",
+                    f"Download completed in {client.name} but path not returned. "
+                    f"Check volume mappings and category settings."
+                )
+                return None
+
+            # Verify the path actually exists in our filesystem
+            source_path_obj = Path(source_path)
+            if not source_path_obj.exists():
+                logger.error(
+                    f"Download path does not exist: {source_path}. "
+                    f"Client: {client.name}, ID: {download_id}. "
+                    f"The download client's path may not be mounted in Shelfmark's container. "
+                    f"Ensure both containers use identical volume mappings for the download folder."
+                )
+                status_callback(
+                    "error",
+                    f"Path not accessible: {source_path}. Check volume mappings between {client.name} and Shelfmark."
+                )
                 return None
 
             result = self._handle_completed_file(
-                source_path=Path(source_path),
+                source_path=source_path_obj,
                 protocol=protocol,
                 task=task,
                 status_callback=status_callback,
@@ -279,12 +307,22 @@ class ProwlarrHandler(DownloadHandler):
 
             return str(staged_path)
 
+        except FileNotFoundError as e:
+            logger.error(
+                f"Source file not found during staging: {source_path}. "
+                f"The file may have been moved or deleted by the download client. Error: {e}"
+            )
+            status_callback("error", f"File not found: {source_path}. It may have been moved or deleted.")
+            return None
         except PermissionError as e:
-            logger.error(f"Permission denied staging file: {e}")
-            status_callback("error", f"Permission denied: {e}")
+            logger.error(
+                f"Permission denied staging file from {source_path}. "
+                f"Check that Shelfmark has read access to the download folder. Error: {e}"
+            )
+            status_callback("error", f"Permission denied accessing {source_path}. Check folder permissions.")
             return None
         except Exception as e:
-            logger.error(f"Staging failed: {e}")
+            logger.error(f"Staging failed for {source_path}: {e}")
             status_callback("error", f"Failed to stage file: {e}")
             return None
 

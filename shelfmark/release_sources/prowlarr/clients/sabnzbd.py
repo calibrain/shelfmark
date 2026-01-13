@@ -241,6 +241,7 @@ class SABnzbdClient(DownloadClient):
                 if slot.get("nzo_id") == download_id:
                     status_text = slot.get("status", "").upper()
                     storage = slot.get("storage", "")
+                    logger.debug(f"SABnzbd history: {download_id} status={status_text} storage='{storage}'")
 
                     if status_text == "COMPLETED":
                         return DownloadStatus(
@@ -262,6 +263,7 @@ class SABnzbdClient(DownloadClient):
                         )
 
             # Not found
+            logger.warning(f"SABnzbd: download {download_id} not found in queue or history")
             return DownloadStatus.error("Download not found")
         except Exception as e:
             error_type = type(e).__name__

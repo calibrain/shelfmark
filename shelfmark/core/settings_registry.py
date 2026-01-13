@@ -333,6 +333,16 @@ def migrate_legacy_settings() -> None:
     if "FILE_ORGANIZATION" in downloads_config or "DESTINATION" in downloads_config:
         return
 
+    # Skip migration if no legacy settings exist (fresh install)
+    legacy_keys = {
+        "PROCESSING_MODE", "INGEST_DIR", "LIBRARY_PATH", "USE_BOOK_TITLE",
+        "LIBRARY_TEMPLATE", "PROCESSING_MODE_AUDIOBOOK", "INGEST_DIR_AUDIOBOOK",
+        "LIBRARY_PATH_AUDIOBOOK", "LIBRARY_TEMPLATE_AUDIOBOOK", "TORRENT_HARDLINK",
+        "USE_CONTENT_TYPE_DIRECTORIES",
+    }
+    if not any(key in downloads_config for key in legacy_keys):
+        return
+
     migrated_downloads = {}
     migrated_sources = {}
 
