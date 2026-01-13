@@ -63,7 +63,7 @@ def _system_op(op: str, source: Path, dest: Path) -> None:
     """Execute system command (mv or cp) as final fallback."""
     logger.info(f"Attempting system {op} as final fallback: {source} -> {dest}")
     subprocess.run(
-        [op, str(source), str(dest)],
+        [op, "-f", str(source), str(dest)],
         check=True,
         capture_output=True,
         text=True
