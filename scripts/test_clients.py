@@ -83,6 +83,9 @@ CONFIG = {
         "username": "admin",
         "password": "admin",
     },
+    "rtorrent": {
+        "url": "http://localhost:8000/RPC2",
+    },
 }
 
 # Test magnet link (Ubuntu ISO - legal, small metadata)
@@ -387,6 +390,54 @@ def test_deluge():
             print("  3. Or access Web UI at http://localhost:8112 (password: deluge)")
         return False
 
+def test_rtorrent():
+    """Test rTorrent connection."""
+    print("\n" + "=" * 50)
+    print("Testing rTorrent")
+    print("=" * 50)
+
+    try:
+        import xmlrpc.client
+
+        url = "http://localhost:8000/RPC2"
+        client = xmlrpc.client.ServerProxy(url)
+
+        # Test connection
+        version = client.system.listMethods()
+        print(f"  Connected to rTorrent {version}")
+
+        # Get torrent list
+        torrents = client.download_list()
+        print(f"  Active torrents: {len(torrents)}")
+
+        # Test adding a torrent (then remove it)
+        print("  Testing add/remove torrent...")
+        torrent_hash = client.load.start_verbose(TEST_MAGNET)
+        if torrent_hash:
+            print(f"  Added test torrent: {torrent_hash[:20]}...")
+
+            # Get status
+            status = client.d.get_state(torrent_hash)
+            print(f"  Status: {status}")
+
+            # Remove it
+            client.d.erase(torrent_hash)
+            print("  Removed test torrent")
+        else:
+            print("  WARNING: Could not add test torrent")
+
+        print("  SUCCESS: rTorrent is working!")
+        return True
+
+    except ImportError:
+        print("  ERROR: xmlrpc.client not available")
+        return False
+    except Exception as e:
+        print(f"  ERROR: {e}")
+        if "Connection refused" in str(e):
+            print("  Is the container running? docker ps | grep rtorrent")
+        return False
+
 
 def main():
     print("Download Client Test Suite")
@@ -410,6 +461,7 @@ def main():
     results["qbittorrent"] = test_qbittorrent()
     results["transmission"] = test_transmission()
     results["deluge"] = test_deluge()
+    results["rtorrent"] = test_rtorrent()
 
     # Summary
     print("\n" + "=" * 50)

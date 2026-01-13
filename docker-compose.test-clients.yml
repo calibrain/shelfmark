@@ -14,8 +14,8 @@
 #   - Deluge:       http://localhost:8112 (admin / deluge)
 #   - NZBGet:       http://localhost:6789 (nzbget / tegbzn6789)
 #   - SABnzbd:      http://localhost:8085 (complete setup wizard for API key)
+#   - rTorrent:     http://localhost:8000 (admin / admin - if auth enabled)
 #
-
 
 services:
   shelfmark:
@@ -36,6 +36,7 @@ services:
       #   - Deluge host: deluge (port 58846)
       #   - NZBGet: http://nzbget:6789
       #   - SABnzbd: http://sabnzbd:8080
+      #   - rTorrent: http://rtorrent:80 (XMLRPC via HTTP) or rtorrent (port 5000 for SCGI)
     ports:
       - "8084:8084"
     volumes:
@@ -62,6 +63,7 @@ services:
       - qbittorrent
       - transmission
       - deluge
+      - rtorrent
     restart: unless-stopped
 
   prowlarr:
@@ -158,4 +160,22 @@ services:
       - "58846:58846"  # Daemon RPC
       - "6881:6881"
       - "6881:6881/udp"
+    restart: unless-stopped
+
+  rtorrent:
+    image: crazymax/rtorrent-rutorrent:latest # linuxserver has deprecated their rtorrent image
+    container_name: test-rtorrent
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+    volumes:
+      - ./.local/test-clients/rtorrent/config:/config
+      - ./.local/test-clients/downloads:/downloads
+    ports:
+      - "8000:8000"  # XMLRPC
+      - "8089:8080"  # ruTorrent Web UI
+      - "9000:9000"  # SCGI port
+      - "50000:50000"  # Incoming connections
+      - "6885:6881/udp"
     restart: unless-stopped
