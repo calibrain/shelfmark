@@ -80,23 +80,18 @@ def stage_file(source_path: Path, task_id: str, copy: bool = False) -> Path:
 
 
 def _should_hardlink(task: DownloadTask) -> bool:
-    """Check if download should be hardlinked (Prowlarr torrents only)."""
-    # Only Prowlarr downloads (torrents) can be hardlinked
+    """Check if hardlinking is enabled for this task (Prowlarr torrents only)."""
     if task.source != "prowlarr":
         return False
 
-    # Only applies if we have an original download path from torrent client
     if not task.original_download_path:
         return False
 
-    # Check per-content-type setting
     is_audiobook = check_audiobook(task.content_type)
     key = "HARDLINK_TORRENTS_AUDIOBOOK" if is_audiobook else "HARDLINK_TORRENTS"
 
-    # Check new setting first, then legacy TORRENT_HARDLINK
     hardlink_enabled = config.get(key)
     if hardlink_enabled is None:
-        # Fall back to legacy setting (but only if explicitly set)
         hardlink_enabled = config.get("TORRENT_HARDLINK", False)
 
     return bool(hardlink_enabled)
@@ -231,10 +226,12 @@ def process_directory(
             rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
             logger.debug(f"Also found {len(rejected_files)} file(s) with unsupported formats: {', '.join(rejected_exts)}")
 
-        # Move each book file to destination
+        # Transfer each book file to destination
         final_paths = []
         is_audiobook = check_audiobook(task.content_type)
         organization_mode = _get_file_organization(is_audiobook)
+        use_hardlink = _should_hardlink(task)
+        is_torrent = _is_torrent_source(directory, task)
 
         for book_file in book_files:
             # For multi-file downloads (book packs, series), always preserve original filenames
@@ -260,17 +257,19 @@ def process_directory(
                 filename = book_file.name
 
             dest_path = ingest_dir / filename
-            final_path = _atomic_move(book_file, dest_path)
+            final_path, op = _transfer_single_file(book_file, dest_path, use_hardlink, is_torrent)
             final_paths.append(final_path)
-            logger.debug(f"Moved to destination: {final_path.name}")
+            logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
 
-        shutil.rmtree(directory, ignore_errors=True)
+        if not is_torrent:
+            shutil.rmtree(directory, ignore_errors=True)
 
         return final_paths, None
 
     except Exception as e:
         logger.error(f"Error processing directory: {e}")
-        shutil.rmtree(directory, ignore_errors=True)
+        if not _is_torrent_source(directory, task):
+            shutil.rmtree(directory, ignore_errors=True)
         return [], str(e)
 
 
@@ -532,10 +531,11 @@ def _download_task(task_id: str, cancel_flag: Event) -> Optional[str]:
         # Check cancellation before post-processing
         if cancel_flag.is_set():
             logger.info(f"Download cancelled before post-processing: {task_id}")
-            if temp_file.is_dir():
-                shutil.rmtree(temp_file, ignore_errors=True)
-            else:
-                temp_file.unlink(missing_ok=True)
+            if not _is_torrent_source(temp_file, task):
+                if temp_file.is_dir():
+                    shutil.rmtree(temp_file, ignore_errors=True)
+                else:
+                    temp_file.unlink(missing_ok=True)
             return None
 
         # Post-processing: archive extraction or direct move to ingest
@@ -927,10 +927,13 @@ def _post_process_download(
             status_callback("error", f"Custom script failed: {stderr[:100]}")
             return None
 
-    # Check cancellation before final move
+    use_hardlink = _should_hardlink(task)
+    is_torrent = _is_torrent_source(temp_file, task)
+
     if cancel_flag.is_set():
-        logger.info(f"Download cancelled before final move: {task.task_id}")
-        temp_file.unlink(missing_ok=True)
+        logger.info(f"Download cancelled before final transfer: {task.task_id}")
+        if not is_torrent:
+            temp_file.unlink(missing_ok=True)
         return None
 
     # Determine filename based on organization mode
@@ -954,13 +957,12 @@ def _post_process_download(
     dest_path = destination / filename
 
     try:
-        final_path = _atomic_move(temp_file, dest_path)
+        final_path, op = _transfer_single_file(temp_file, dest_path, use_hardlink, is_torrent)
+        logger.info(f"Download completed ({op}): {final_path.name}")
     except Exception as e:
-        logger.error(f"Failed to move file to destination: {e}")
-        status_callback("error", f"Failed to move file: {e}")
+        logger.error(f"Failed to transfer file to destination: {e}")
+        status_callback("error", f"Failed to transfer file: {e}")
         return None
-
-    logger.info(f"Download completed: {final_path.name}")
 
     status_callback("complete", "Complete")
 
