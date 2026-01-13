@@ -44,6 +44,7 @@ class IRCConnectionManager:
         self._connections: dict[str, IRCClient] = {}
         self._last_used: dict[str, float] = {}
         self._channels: dict[str, str] = {}  # connection_key -> joined channel
+        self._connecting: dict[str, bool] = {}  # Track keys currently being connected
         self._conn_lock = threading.Lock()
         self._cleanup_thread: Optional[threading.Thread] = None
         self._running = True
@@ -112,6 +113,8 @@ class IRCConnectionManager:
             Connected IRCClient instance that has joined the channel
         """
         key = self._connection_key(server, port, nick)
+        need_new_connection = False
+        dead_client = None
 
         with self._conn_lock:
             # Check for existing connection
@@ -130,29 +133,56 @@ class IRCConnectionManager:
 
                 return existing
 
-            # Clean up dead connection if it exists
-            if existing:
-                logger.debug(f"Removing dead connection: {key}")
-                self._connections.pop(key, None)
-                self._last_used.pop(key, None)
-                self._channels.pop(key, None)
-                try:
-                    existing.disconnect()
-                except Exception:
-                    pass
+            # Check if another thread is already connecting
+            if self._connecting.get(key):
+                logger.debug(f"Another thread is connecting to {key}, waiting...")
+                # Release lock and wait, then retry
+                pass  # Fall through to retry logic below
+            else:
+                # Clean up dead connection if it exists
+                if existing:
+                    logger.debug(f"Removing dead connection: {key}")
+                    self._connections.pop(key, None)
+                    self._last_used.pop(key, None)
+                    self._channels.pop(key, None)
+                    dead_client = existing
 
-            # Create new connection
+                # Mark that we're connecting (prevents duplicate attempts)
+                self._connecting[key] = True
+                need_new_connection = True
+
+        # Clean up dead client outside lock
+        if dead_client:
+            try:
+                dead_client.disconnect()
+            except Exception:
+                pass
+
+        # If another thread is connecting, wait and retry
+        if not need_new_connection:
+            time.sleep(0.5)
+            return self.get_connection(server, port, nick, use_tls, channel)
+
+        # Create new connection OUTSIDE the lock to avoid blocking other threads
+        try:
             logger.info(f"Creating new IRC connection to {server}:{port}")
             client = IRCClient(nick, server, port, use_tls=use_tls)
             client.connect()
             client.join_channel(channel)
 
-            # Store connection
-            self._connections[key] = client
-            self._last_used[key] = time.time()
-            self._channels[key] = channel
+            # Store connection (re-acquire lock)
+            with self._conn_lock:
+                self._connections[key] = client
+                self._last_used[key] = time.time()
+                self._channels[key] = channel
+                self._connecting.pop(key, None)
 
             return client
+        except Exception:
+            # Clear connecting flag on failure
+            with self._conn_lock:
+                self._connecting.pop(key, None)
+            raise
 
     def release_connection(self, client: IRCClient) -> None:
         """Mark a connection as available for reuse.

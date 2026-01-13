@@ -171,8 +171,9 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                             logger.info(f"File collision resolved (fallback): {try_path.name}")
                         return try_path
                     except Exception as fallback_error:
-                        # Fallback failed, raise original error
-                        raise e
+                        # Fallback failed, chain exceptions for better debugging
+                        logger.error(f"NFS fallback also failed: {fallback_error}")
+                        raise e from fallback_error
                 raise
 
     raise RuntimeError(f"Could not move file after {max_attempts} attempts: {dest_path}")
@@ -249,7 +250,8 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                         try:
                             _perform_nfs_fallback(source_path, temp_path, is_move=False)
                         except Exception as fallback_error:
-                             raise e
+                            logger.error(f"NFS fallback also failed: {fallback_error}")
+                            raise e from fallback_error
                     else:
                         raise
                 

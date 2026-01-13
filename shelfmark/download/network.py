@@ -42,7 +42,8 @@ def should_bypass_proxy(url: str) -> bool:
     try:
         parsed = urllib.parse.urlparse(url)
         hostname = (parsed.hostname or "").lower()
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Failed to parse URL for proxy bypass check: {url} - {e}")
         return False
 
     if not hostname:

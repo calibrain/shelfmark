@@ -62,7 +62,8 @@ def is_onboarding_complete() -> bool:
                 return True
 
             return False
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning(f"Could not read onboarding status from settings.json: {e}")
         return False
 
 
@@ -438,8 +439,8 @@ def save_onboarding_settings(values: Dict[str, Any]) -> Dict[str, Any]:
         try:
             from shelfmark.core.config import config
             config.refresh()
-        except ImportError:
-            pass
+        except ImportError as e:
+            logger.debug(f"Could not refresh config after onboarding: {e}")
 
         return {"success": True, "message": "Onboarding complete!"}
 
