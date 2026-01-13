@@ -195,6 +195,34 @@ def _test_deluge_connection(current_values: Dict[str, Any] = None) -> Dict[str, 
         return {"success": False, "message": f"Connection failed: {str(e)}"}
 
 
+def _test_rtorrent_connection(current_values: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Test the rTorrent connection using current form values."""
+    from shelfmark.core.config import config
+    from urllib.parse import urlparse
+    from xmlrpc.client import ServerProxy
+
+    current_values = current_values or {}
+
+    url = current_values.get("RTORRENT_URL") or config.get("RTORRENT_URL", "")
+    username = current_values.get("RTORRENT_USERNAME") or config.get("RTORRENT_USERNAME", "")
+    password = current_values.get("RTORRENT_PASSWORD") or config.get("RTORRENT_PASSWORD", "")
+
+    if not url:
+        return {"success": False, "message": "rTorrent URL is required"}
+
+    try:
+        # Add HTTP auth to URL if credentials provided
+        if username and password:
+            parsed = urlparse(url)
+            url = f"{parsed.scheme}://{username}:{password}@{parsed.netloc}{parsed.path}"
+
+        rpc = ServerProxy(url.rstrip("/"))
+        version = rpc.system.client_version()
+        return {"success": True, "message": f"Connected to rTorrent {version}"}
+    except Exception as e:
+        return {"success": False, "message": f"Connection failed: {str(e)}"}
+
+
 def _test_nzbget_connection(current_values: Dict[str, Any] = None) -> Dict[str, Any]:
     """Test the NZBGet connection using current form values."""
     import requests
@@ -359,6 +387,7 @@ def prowlarr_clients_settings():
                 {"value": "qbittorrent", "label": "qBittorrent"},
                 {"value": "transmission", "label": "Transmission"},
                 {"value": "deluge", "label": "Deluge"},
+                {"value": "rtorrent", "label": "rTorrent"},
             ],
             default="",
         ),
@@ -506,6 +535,50 @@ def prowlarr_clients_settings():
             placeholder="",
             default="",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "deluge"},
+        ),
+
+        # --- rTorrent Settings ---
+        TextField(
+            key="RTORRENT_URL",
+            label="rTorrent URL",
+            description="XML-RPC URL of your rTorrent instance",
+            placeholder="http://rtorrent:6881/RPC2",
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "rtorrent"},
+        ),
+        TextField(
+            key="RTORRENT_USERNAME",
+            label="Username",
+            description="HTTP Basic auth username (if authentication enabled)",
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "rtorrent"},
+        ),
+        PasswordField(
+            key="RTORRENT_PASSWORD",
+            label="Password",
+            description="HTTP Basic auth password",
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "rtorrent"},
+        ),
+        ActionButton(
+            key="test_rtorrent",
+            label="Test Connection",
+            description="Verify your rTorrent configuration",
+            style="primary",
+            callback=_test_rtorrent_connection,
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "rtorrent"},
+        ),
+        TextField(
+            key="RTORRENT_LABEL",
+            label="Book Label",
+            description="Label to assign to book downloads in rTorrent",
+            placeholder="cwabd",
+            default="cwabd",
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "rtorrent"},
+        ),
+        TextField(
+            key="RTORRENT_DOWNLOAD_DIR",
+            label="Download Directory",
+            description="Server-side directory where torrents are downloaded (optional, uses rTorrent default if not specified)",
+            placeholder="/downloads",
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "rtorrent"},
         ),
         # Note: Torrent client download path must be mounted identically in both containers.
         # Torrents are always copied (not moved) to preserve seeding capability.
