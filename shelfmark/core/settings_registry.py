@@ -284,7 +284,78 @@ def save_config_file(tab_name: str, values: Dict[str, Any]) -> bool:
         return False
 
 
+def initialize_default_configs() -> bool:
+    """Initialize config files with default values on first startup.
+
+    Creates config files for all settings tabs that don't have one yet,
+    populating them with field default values. This ensures config files
+    exist from first startup rather than only being created on explicit save.
+
+    Returns:
+        True if initialization succeeded or was skipped (already initialized),
+        False if there was an error accessing the config directory.
+    """
+    try:
+        config_dir = _get_config_dir()
+
+        # Check if config directory exists and is writable
+        if not config_dir.exists():
+            logger.warning(f"Config directory does not exist: {config_dir}")
+            return False
+
+        # Test writability
+        test_file = config_dir / ".write_test"
+        try:
+            test_file.touch()
+            test_file.unlink()
+        except (OSError, PermissionError) as e:
+            logger.warning(f"Config directory is not writable: {config_dir} - {e}")
+            return False
+
+        initialized_tabs = []
+
+        for tab in get_all_settings_tabs():
+            config_path = _get_config_file_path(tab.name)
+
+            # Skip if config file already exists
+            if config_path.exists():
+                continue
+
+            # Collect default values for all fields
+            defaults = {}
+            for field in tab.fields:
+                # Skip non-value fields
+                if isinstance(field, (ActionButton, HeadingField)):
+                    continue
+
+                # Only include fields that have a non-None default
+                if field.default is not None:
+                    defaults[field.key] = field.default
+
+            # Create config file with defaults if we have any
+            if defaults:
+                _ensure_config_dir(tab.name)
+                try:
+                    with open(config_path, 'w') as f:
+                        json.dump(defaults, f, indent=2)
+                    initialized_tabs.append(tab.name)
+                except Exception as e:
+                    logger.error(f"Failed to initialize config for {tab.name}: {e}")
+
+        if initialized_tabs:
+            logger.info(f"Initialized default configs for: {initialized_tabs}")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Error during config initialization: {e}")
+        return False
+
+
 def sync_env_to_config() -> None:
+    # Initialize default configs first (for fresh installs)
+    initialize_default_configs()
+
     for tab in get_all_settings_tabs():
         values_to_sync = {}
 

@@ -12,20 +12,20 @@ import { LanguageMultiSelect } from './LanguageMultiSelect';
 import { LANGUAGE_OPTION_ALL, LANGUAGE_OPTION_DEFAULT, getLanguageFilterValues, releaseLanguageMatchesFilter } from '../utils/languageFilters';
 
 // Module-level cache for release search results
-// Key format: `${provider}:${provider_id}:${source}`
+// Key format: `${provider}:${provider_id}:${source}:${contentType}`
 // This persists across modal open/close cycles
 const releaseCache = new Map<string, ReleasesResponse>();
 
-function getCacheKey(provider: string, providerId: string, source: string): string {
-  return `${provider}:${providerId}:${source}`;
+function getCacheKey(provider: string, providerId: string, source: string, contentType: string): string {
+  return `${provider}:${providerId}:${source}:${contentType}`;
 }
 
 // Default cache TTL (5 minutes) - sources can override via column_config.cache_ttl_seconds
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
 const cacheTimestamps = new Map<string, number>();
 
-function getCachedReleases(provider: string, providerId: string, source: string): ReleasesResponse | null {
-  const key = getCacheKey(provider, providerId, source);
+function getCachedReleases(provider: string, providerId: string, source: string, contentType: string): ReleasesResponse | null {
+  const key = getCacheKey(provider, providerId, source, contentType);
   const timestamp = cacheTimestamps.get(key);
   const cached = releaseCache.get(key);
 
@@ -49,8 +49,8 @@ function getCachedReleases(provider: string, providerId: string, source: string)
   return null;
 }
 
-function setCachedReleases(provider: string, providerId: string, source: string, data: ReleasesResponse): void {
-  const key = getCacheKey(provider, providerId, source);
+function setCachedReleases(provider: string, providerId: string, source: string, contentType: string, data: ReleasesResponse): void {
+  const key = getCacheKey(provider, providerId, source, contentType);
   releaseCache.set(key, data);
   cacheTimestamps.set(key, Date.now());
 }
@@ -833,7 +833,7 @@ export const ReleaseModal = ({
     if (releasesBySource[activeTab] !== undefined || loadingBySource[activeTab] || errorBySource[activeTab]) return;
 
     // Check module-level cache first
-    const cached = getCachedReleases(provider, bookId, activeTab);
+    const cached = getCachedReleases(provider, bookId, activeTab, contentType);
     if (cached) {
       setReleasesBySource((prev) => ({ ...prev, [activeTab]: cached }));
       return;
@@ -845,7 +845,7 @@ export const ReleaseModal = ({
 
       try {
         const response = await getReleases(provider, bookId, activeTab, book.title, book.author, undefined, undefined, contentType);
-        setCachedReleases(provider, bookId, activeTab, response);
+        setCachedReleases(provider, bookId, activeTab, contentType, response);
         setReleasesBySource((prev) => ({ ...prev, [activeTab]: response }));
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to fetch releases';
@@ -1550,7 +1550,7 @@ export const ReleaseModal = ({
                                 const bookId = book.provider_id;
 
                                 // Clear cache and state
-                                const key = getCacheKey(provider, bookId, activeTab);
+                                const key = getCacheKey(provider, bookId, activeTab, contentType);
                                 releaseCache.delete(key);
                                 cacheTimestamps.delete(key);
                                 setExpandedBySource((prev) => {
@@ -1577,7 +1577,7 @@ export const ReleaseModal = ({
                                   const response = await getReleases(
                                     provider, bookId, activeTab, book.title, book.author, false, languagesParam, contentType
                                   );
-                                  setCachedReleases(provider, bookId, activeTab, response);
+                                  setCachedReleases(provider, bookId, activeTab, contentType, response);
                                   setReleasesBySource((prev) => ({ ...prev, [activeTab]: response }));
                                 } catch (err) {
                                   const message = err instanceof Error ? err.message : 'Failed to fetch releases';
