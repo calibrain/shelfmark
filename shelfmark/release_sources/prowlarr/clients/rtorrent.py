@@ -37,14 +37,16 @@ class RTorrentClient(DownloadClient):
             raise ValueError("RTORRENT_URL is required")
 
         self._base_url = url.rstrip("/")
-        
+
         username = config.get("RTORRENT_USERNAME", "")
         password = config.get("RTORRENT_PASSWORD", "")
-        
+
         if username and password:
             parsed = urlparse(self._base_url)
-            self._base_url = f"{parsed.scheme}://{username}:{password}@{parsed.netloc}{parsed.path}"
-        
+            self._base_url = (
+                f"{parsed.scheme}://{username}:{password}@{parsed.netloc}{parsed.path}"
+            )
+
         self._rpc = ServerProxy(self._base_url)
         self._download_dir = config.get("RTORRENT_DOWNLOAD_DIR", "")
         self._label = config.get("RTORRENT_LABEL", "")
@@ -87,13 +89,15 @@ class RTorrentClient(DownloadClient):
             commands = []
             if label:
                 commands.append(f"d.custom1.set={label}")
-            
+
             download_dir = self._download_dir or self._get_download_dir()
             if download_dir:
                 commands.append(f"d.directory_base.set={download_dir}")
 
             if torrent_info.torrent_data:
-                self._rpc.load.raw_start("", torrent_info.torrent_data, ";".join(commands))
+                self._rpc.load.raw_start(
+                    "", torrent_info.torrent_data, ";".join(commands)
+                )
             else:
                 add_url = torrent_info.magnet_url or url
                 self._rpc.load.start("", add_url, ";".join(commands))
@@ -120,7 +124,18 @@ class RTorrentClient(DownloadClient):
             Current download status.
         """
         try:
-            torrent_list = self._rpc.d.multicall.filtered("default", f"d.hash={download_id}", "d.hash=", "d.get_state=", "d.get_bytes_done=", "d.get_size_bytes=", "d.get_down_rate=", "d.get_up_rate=", "d.custom1=")
+            torrent_list = self._rpc.d.multicall.filtered(
+                "",
+                "default",
+                f"equal={{d.hash=,{download_id}}}",
+                "d.hash=",
+                "d.get_state=",
+                "d.get_bytes_done=",
+                "d.get_size_bytes=",
+                "d.get_down_rate=",
+                "d.get_up_rate=",
+                "d.custom1=",
+            )
 
             if not torrent_list:
                 return DownloadStatus.error("Torrent not found")
@@ -129,7 +144,15 @@ class RTorrentClient(DownloadClient):
             if not torrent:
                 return DownloadStatus.error("Torrent not found")
 
-            torrent_hash, state, bytes_downloaded, bytes_total, down_rate, up_rate, custom_category = torrent
+            (
+                torrent_hash,
+                state,
+                bytes_downloaded,
+                bytes_total,
+                down_rate,
+                up_rate,
+                custom_category,
+            ) = torrent
 
             if bytes_total > 0:
                 progress = (bytes_downloaded / bytes_total) * 100
@@ -257,4 +280,3 @@ class RTorrentClient(DownloadClient):
             return base_path if base_path else None
         except Exception:
             return None
-

@@ -104,7 +104,9 @@ class TestRTorrentClientTestConnection:
             if "shelfmark.release_sources.prowlarr.clients.rtorrent" in sys.modules:
                 del sys.modules["shelfmark.release_sources.prowlarr.clients.rtorrent"]
 
-            from shelfmark.release_sources.prowlarr.clients.rtorrent import RTorrentClient
+            from shelfmark.release_sources.prowlarr.clients.rtorrent import (
+                RTorrentClient,
+            )
 
             client = RTorrentClient()
             success, message = client.test_connection()
@@ -136,7 +138,9 @@ class TestRTorrentClientTestConnection:
             if "shelfmark.release_sources.prowlarr.clients.rtorrent" in sys.modules:
                 del sys.modules["shelfmark.release_sources.prowlarr.clients.rtorrent"]
 
-            from shelfmark.release_sources.prowlarr.clients.rtorrent import RTorrentClient
+            from shelfmark.release_sources.prowlarr.clients.rtorrent import (
+                RTorrentClient,
+            )
 
             client = RTorrentClient()
             success, message = client.test_connection()
@@ -168,13 +172,160 @@ class TestRTorrentClientTestConnection:
             if "shelfmark.release_sources.prowlarr.clients.rtorrent" in sys.modules:
                 del sys.modules["shelfmark.release_sources.prowlarr.clients.rtorrent"]
 
-            from shelfmark.release_sources.prowlarr.clients.rtorrent import RTorrentClient
+            from shelfmark.release_sources.prowlarr.clients.rtorrent import (
+                RTorrentClient,
+            )
 
             client = RTorrentClient()
             success, message = client.test_connection()
 
             assert success is True
             assert "0.9.8" in message
+
+
+class TestRTorrentClientAddDownload:
+    """Tests for RTorrentClient.add_download()."""
+
+    def test_add_download_magnet(self, monkeypatch):
+        """Test adding a torrent via magnet link."""
+        config_values = {
+            "RTORRENT_URL": "http://localhost:8080/RPC2",
+            "RTORRENT_USERNAME": "",
+            "RTORRENT_PASSWORD": "",
+            "RTORRENT_DOWNLOAD_DIR": "/downloads",
+            "RTORRENT_LABEL": "cwabd",
+        }
+        monkeypatch.setattr(
+            "shelfmark.release_sources.prowlarr.clients.rtorrent.config.get",
+            make_config_getter(config_values),
+        )
+
+        mock_rpc = MagicMock()
+        mock_xmlrpc = create_mock_xmlrpc_module()
+        mock_xmlrpc.ServerProxy.return_value = mock_rpc
+
+        # Mock extract_torrent_info
+        mock_torrent_info = MagicMock()
+        mock_torrent_info.torrent_data = None
+        mock_torrent_info.magnet_url = "magnet:?xt=urn:btih:abc123def456"
+        mock_torrent_info.info_hash = "abc123def456"
+        mock_torrent_info.is_magnet = True
+
+        with patch.dict("sys.modules", {"xmlrpc.client": mock_xmlrpc}):
+            with patch(
+                "shelfmark.release_sources.prowlarr.clients.torrent_utils.extract_torrent_info",
+                return_value=mock_torrent_info,
+            ):
+                if "shelfmark.release_sources.prowlarr.clients.rtorrent" in sys.modules:
+                    del sys.modules[
+                        "shelfmark.release_sources.prowlarr.clients.rtorrent"
+                    ]
+
+                from shelfmark.release_sources.prowlarr.clients.rtorrent import (
+                    RTorrentClient,
+                )
+
+                client = RTorrentClient()
+                result_hash = client.add_download(
+                    "magnet:?xt=urn:btih:abc123def456", "Test Torrent"
+                )
+
+                assert result_hash == "abc123def456"
+                mock_rpc.load.start.assert_called_once()
+                args = mock_rpc.load.start.call_args[0]
+                assert args[1] == "magnet:?xt=urn:btih:abc123def456"
+                assert "d.custom1.set=cwabd" in args[2]
+                assert "d.directory_base.set=/downloads" in args[2]
+
+    def test_add_download_torrent_file(self, monkeypatch):
+        """Test adding a torrent via raw torrent data."""
+        config_values = {
+            "RTORRENT_URL": "http://localhost:8080/RPC2",
+            "RTORRENT_USERNAME": "",
+            "RTORRENT_PASSWORD": "",
+            "RTORRENT_DOWNLOAD_DIR": "/downloads",
+            "RTORRENT_LABEL": "cwabd",
+        }
+        monkeypatch.setattr(
+            "shelfmark.release_sources.prowlarr.clients.rtorrent.config.get",
+            make_config_getter(config_values),
+        )
+
+        mock_rpc = MagicMock()
+        mock_xmlrpc = create_mock_xmlrpc_module()
+        mock_xmlrpc.ServerProxy.return_value = mock_rpc
+
+        # Mock extract_torrent_info
+        mock_torrent_info = MagicMock()
+        mock_torrent_info.torrent_data = b"raw_torrent_data"
+        mock_torrent_info.magnet_url = None
+        mock_torrent_info.info_hash = "abc123def456"
+        mock_torrent_info.is_magnet = False
+
+        with patch.dict("sys.modules", {"xmlrpc.client": mock_xmlrpc}):
+            with patch(
+                "shelfmark.release_sources.prowlarr.clients.torrent_utils.extract_torrent_info",
+                return_value=mock_torrent_info,
+            ):
+                if "shelfmark.release_sources.prowlarr.clients.rtorrent" in sys.modules:
+                    del sys.modules[
+                        "shelfmark.release_sources.prowlarr.clients.rtorrent"
+                    ]
+
+                from shelfmark.release_sources.prowlarr.clients.rtorrent import (
+                    RTorrentClient,
+                )
+
+                client = RTorrentClient()
+                result_hash = client.add_download(
+                    "http://example.com/test.torrent", "Test Torrent"
+                )
+
+                assert result_hash == "abc123def456"
+                mock_rpc.load.raw_start.assert_called_once()
+                args = mock_rpc.load.raw_start.call_args[0]
+                assert args[1] == b"raw_torrent_data"
+                assert "d.custom1.set=cwabd" in args[2]
+
+    def test_add_download_failure(self, monkeypatch):
+        """Test failure when adding a download."""
+        config_values = {
+            "RTORRENT_URL": "http://localhost:8080/RPC2",
+        }
+        monkeypatch.setattr(
+            "shelfmark.release_sources.prowlarr.clients.rtorrent.config.get",
+            make_config_getter(config_values),
+        )
+
+        mock_rpc = MagicMock()
+        mock_rpc.load.start.side_effect = Exception("RPC Error")
+        mock_xmlrpc = create_mock_xmlrpc_module()
+        mock_xmlrpc.ServerProxy.return_value = mock_rpc
+
+        mock_torrent_info = MagicMock()
+        mock_torrent_info.torrent_data = None
+        mock_torrent_info.magnet_url = "magnet:..."
+        mock_torrent_info.info_hash = "abc"
+
+        with patch.dict("sys.modules", {"xmlrpc.client": mock_xmlrpc}):
+            with patch(
+                "shelfmark.release_sources.prowlarr.clients.rtorrent.extract_torrent_info",
+                return_value=mock_torrent_info,
+            ):
+                if "shelfmark.release_sources.prowlarr.clients.rtorrent" in sys.modules:
+                    del sys.modules[
+                        "shelfmark.release_sources.prowlarr.clients.rtorrent"
+                    ]
+
+                from shelfmark.release_sources.prowlarr.clients.rtorrent import (
+                    RTorrentClient,
+                )
+
+                client = RTorrentClient()
+                with pytest.raises(Exception) as excinfo:
+                    client.add_download("magnet:...", "Test")
+
+                assert "RPC Error" in str(excinfo.value)
 
 
 class TestRTorrentClientGetStatus:
@@ -214,7 +365,9 @@ class TestRTorrentClientGetStatus:
             if "shelfmark.release_sources.prowlarr.clients.rtorrent" in sys.modules:
                 del sys.modules["shelfmark.release_sources.prowlarr.clients.rtorrent"]
 
-            from shelfmark.release_sources.prowlarr.clients.rtorrent import RTorrentClient
+            from shelfmark.release_sources.prowlarr.clients.rtorrent import (
+                RTorrentClient,
+            )
 
             client = RTorrentClient()
             status = client.get_status("abc123def456")
@@ -259,7 +412,9 @@ class TestRTorrentClientGetStatus:
             if "shelfmark.release_sources.prowlarr.clients.rtorrent" in sys.modules:
                 del sys.modules["shelfmark.release_sources.prowlarr.clients.rtorrent"]
 
-            from shelfmark.release_sources.prowlarr.clients.rtorrent import RTorrentClient
+            from shelfmark.release_sources.prowlarr.clients.rtorrent import (
+                RTorrentClient,
+            )
 
             client = RTorrentClient()
             status = client.get_status("abc123def456")
@@ -268,7 +423,7 @@ class TestRTorrentClientGetStatus:
             assert status.state_value == "complete"
             assert status.complete is True
             assert status.file_path == "/downloads/test-torrent"
-            assert status.message == "Complete"
+            assert status.message == "Seeding"
 
     def test_get_status_torrent_not_found(self, monkeypatch):
         """Test status when torrent not found."""
@@ -294,7 +449,9 @@ class TestRTorrentClientGetStatus:
             if "shelfmark.release_sources.prowlarr.clients.rtorrent" in sys.modules:
                 del sys.modules["shelfmark.release_sources.prowlarr.clients.rtorrent"]
 
-            from shelfmark.release_sources.prowlarr.clients.rtorrent import RTorrentClient
+            from shelfmark.release_sources.prowlarr.clients.rtorrent import (
+                RTorrentClient,
+            )
 
             client = RTorrentClient()
             status = client.get_status("nonexistent")
@@ -336,7 +493,9 @@ class TestRTorrentClientGetStatus:
             if "shelfmark.release_sources.prowlarr.clients.rtorrent" in sys.modules:
                 del sys.modules["shelfmark.release_sources.prowlarr.clients.rtorrent"]
 
-            from shelfmark.release_sources.prowlarr.clients.rtorrent import RTorrentClient
+            from shelfmark.release_sources.prowlarr.clients.rtorrent import (
+                RTorrentClient,
+            )
 
             client = RTorrentClient()
             status = client.get_status("abc123def456")
@@ -371,7 +530,9 @@ class TestRTorrentClientRemove:
             if "shelfmark.release_sources.prowlarr.clients.rtorrent" in sys.modules:
                 del sys.modules["shelfmark.release_sources.prowlarr.clients.rtorrent"]
 
-            from shelfmark.release_sources.prowlarr.clients.rtorrent import RTorrentClient
+            from shelfmark.release_sources.prowlarr.clients.rtorrent import (
+                RTorrentClient,
+            )
 
             client = RTorrentClient()
             result = client.remove("abc123def456", delete_files=False)
@@ -403,7 +564,9 @@ class TestRTorrentClientRemove:
             if "shelfmark.release_sources.prowlarr.clients.rtorrent" in sys.modules:
                 del sys.modules["shelfmark.release_sources.prowlarr.clients.rtorrent"]
 
-            from shelfmark.release_sources.prowlarr.clients.rtorrent import RTorrentClient
+            from shelfmark.release_sources.prowlarr.clients.rtorrent import (
+                RTorrentClient,
+            )
 
             client = RTorrentClient()
             result = client.remove("abc123def456", delete_files=True)
@@ -436,7 +599,9 @@ class TestRTorrentClientRemove:
             if "shelfmark.release_sources.prowlarr.clients.rtorrent" in sys.modules:
                 del sys.modules["shelfmark.release_sources.prowlarr.clients.rtorrent"]
 
-            from shelfmark.release_sources.prowlarr.clients.rtorrent import RTorrentClient
+            from shelfmark.release_sources.prowlarr.clients.rtorrent import (
+                RTorrentClient,
+            )
 
             client = RTorrentClient()
             result = client.remove("abc123def456")
@@ -471,7 +636,9 @@ class TestRTorrentClientGetDownloadPath:
             if "shelfmark.release_sources.prowlarr.clients.rtorrent" in sys.modules:
                 del sys.modules["shelfmark.release_sources.prowlarr.clients.rtorrent"]
 
-            from shelfmark.release_sources.prowlarr.clients.rtorrent import RTorrentClient
+            from shelfmark.release_sources.prowlarr.clients.rtorrent import (
+                RTorrentClient,
+            )
 
             client = RTorrentClient()
             path = client.get_download_path("abc123def456")
@@ -502,7 +669,9 @@ class TestRTorrentClientGetDownloadPath:
             if "shelfmark.release_sources.prowlarr.clients.rtorrent" in sys.modules:
                 del sys.modules["shelfmark.release_sources.prowlarr.clients.rtorrent"]
 
-            from shelfmark.release_sources.prowlarr.clients.rtorrent import RTorrentClient
+            from shelfmark.release_sources.prowlarr.clients.rtorrent import (
+                RTorrentClient,
+            )
 
             client = RTorrentClient()
             path = client.get_download_path("nonexistent")
