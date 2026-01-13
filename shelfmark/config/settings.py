@@ -493,6 +493,14 @@ def network_settings():
             disabled_reason="Proxy settings are not used when Tor routing is enabled.",
             show_when={"field": "PROXY_MODE", "value": "socks5"},
         ),
+        TextField(
+            key="NO_PROXY",
+            label="No Proxy",
+            description="Comma-separated hosts to bypass proxy (e.g., localhost,127.0.0.1,10.*,*.local)",
+            disabled=tor_overrides_network,
+            disabled_reason="Proxy settings are not used when Tor routing is enabled.",
+            show_when={"field": "PROXY_MODE", "value": ["http", "socks5"]},
+        ),
     ]
 
 

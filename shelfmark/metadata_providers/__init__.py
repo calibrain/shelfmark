@@ -144,6 +144,7 @@ class BookMetadata:
     genres: List[str] = field(default_factory=list)
     source_url: Optional[str] = None  # Link to book on provider's site
     subtitle: Optional[str] = None  # Book subtitle, if any
+    search_title: Optional[str] = None  # Cleaner title for search queries (provider-specific)
 
     # Provider-specific display fields for cards/lists
     display_fields: List[DisplayField] = field(default_factory=list)

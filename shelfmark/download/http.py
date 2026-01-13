@@ -206,7 +206,7 @@ def html_get_page(
             # Try with CF cookies/UA if available (from previous bypass)
             headers = {}
             cookies = _apply_cf_bypass(current_url, headers)
-            response = requests.get(current_url, proxies=get_proxies(), timeout=REQUEST_TIMEOUT, cookies=cookies, headers=headers)
+            response = requests.get(current_url, proxies=get_proxies(current_url), timeout=REQUEST_TIMEOUT, cookies=cookies, headers=headers)
             response.raise_for_status()
             time.sleep(1)
             return response.text
@@ -291,7 +291,7 @@ def download_url(
             logger.info(f"Downloading: {current_url} (attempt {attempt + 1}/{MAX_DOWNLOAD_RETRIES})")
             # Try with CF cookies/UA if available
             cookies = _apply_cf_bypass(current_url, headers)
-            response = requests.get(current_url, stream=True, proxies=get_proxies(), timeout=REQUEST_TIMEOUT, cookies=cookies, headers=headers)
+            response = requests.get(current_url, stream=True, proxies=get_proxies(current_url), timeout=REQUEST_TIMEOUT, cookies=cookies, headers=headers)
             response.raise_for_status()
 
             if status_callback:
@@ -401,7 +401,7 @@ def _try_resume(
             resume_headers = {**(base_headers or DOWNLOAD_HEADERS), 'Range': f'bytes={start_byte}-'}
             cookies = _apply_cf_bypass(url, resume_headers)
             response = requests.get(
-                url, stream=True, proxies=get_proxies(), timeout=REQUEST_TIMEOUT,
+                url, stream=True, proxies=get_proxies(url), timeout=REQUEST_TIMEOUT,
                 headers=resume_headers, cookies=cookies
             )
             

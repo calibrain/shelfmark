@@ -247,6 +247,57 @@ class TestSABnzbdClientGetStatus:
             assert status.complete is True
             assert status.file_path == "/downloads/complete/book"
 
+    def test_get_status_complete_empty_storage(self, monkeypatch):
+        """Test status for completed NZB with empty storage path.
+
+        This can happen if SABnzbd category is misconfigured or files are
+        deleted after completion. The file_path should be empty string.
+        """
+        config_values = {
+            "SABNZBD_URL": "http://localhost:8080",
+            "SABNZBD_API_KEY": "abc123",
+            "SABNZBD_CATEGORY": "cwabd",
+        }
+        monkeypatch.setattr(
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        def mock_api_call(mode, params=None):
+            if mode == "queue":
+                return {"queue": {"slots": []}}
+            if mode == "history":
+                return {
+                    "history": {
+                        "slots": [
+                            {
+                                "nzo_id": "SABnzbd_nzo_abc123",
+                                "status": "Completed",
+                                "storage": "",  # Empty storage path
+                            }
+                        ]
+                    }
+                }
+            return {}
+
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
+            SABnzbdClient,
+        )
+
+        with patch.object(SABnzbdClient, "__init__", lambda x: None):
+            client = SABnzbdClient()
+            client.url = "http://localhost:8080"
+            client.api_key = "abc123"
+            client._category = "cwabd"
+            client._api_call = mock_api_call
+
+            status = client.get_status("SABnzbd_nzo_abc123")
+
+            assert status.progress == 100.0
+            assert status.state_value == "complete"
+            assert status.complete is True
+            assert status.file_path == ""  # Empty, not None
+
     def test_get_status_failed(self, monkeypatch):
         """Test status for failed NZB."""
         config_values = {
