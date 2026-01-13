@@ -33,13 +33,7 @@ def _get_config_dir() -> Path:
 
 
 def is_onboarding_complete() -> bool:
-    """
-    Check if onboarding has been completed.
-
-    For existing users updating from a version without onboarding,
-    we check if they have existing settings configured - if so,
-    we consider onboarding complete and mark it as such.
-    """
+    """Check if onboarding has been completed."""
     config_file = _get_config_dir() / "settings.json"
     if not config_file.exists():
         return False
@@ -47,21 +41,7 @@ def is_onboarding_complete() -> bool:
     try:
         with open(config_file, 'r') as f:
             config = json.load(f)
-
-            # Explicit flag set - they've completed onboarding
-            if config.get(ONBOARDING_STORAGE_KEY, False):
-                return True
-
-            # Check if this is an existing user (has other settings configured)
-            # If settings.json has any keys besides onboarding_complete, they're existing
-            other_keys = [k for k in config.keys() if k != ONBOARDING_STORAGE_KEY]
-            if other_keys:
-                # Existing user - auto-mark onboarding complete
-                logger.info(f"Existing user detected (has settings: {other_keys}), marking onboarding complete")
-                mark_onboarding_complete()
-                return True
-
-            return False
+            return config.get(ONBOARDING_STORAGE_KEY, False)
     except (json.JSONDecodeError, OSError) as e:
         logger.warning(f"Could not read onboarding status from settings.json: {e}")
         return False
