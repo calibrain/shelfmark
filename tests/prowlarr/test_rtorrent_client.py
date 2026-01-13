@@ -84,7 +84,10 @@ class TestRTorrentClientTestConnection:
         """Test successful connection."""
         config_values = {
             "RTORRENT_URL": "http://localhost:8080/RPC2",
-            "RTORRENT_CATEGORY": "test",
+            "RTORRENT_USERNAME": "",
+            "RTORRENT_PASSWORD": "",
+            "RTORRENT_DOWNLOAD_DIR": "/downloads",
+            "RTORRENT_LABEL": "cwabd",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.rtorrent.config.get",
@@ -113,7 +116,10 @@ class TestRTorrentClientTestConnection:
         """Test failed connection."""
         config_values = {
             "RTORRENT_URL": "http://localhost:8080/RPC2",
-            "RTORRENT_CATEGORY": "test",
+            "RTORRENT_USERNAME": "",
+            "RTORRENT_PASSWORD": "",
+            "RTORRENT_DOWNLOAD_DIR": "/downloads",
+            "RTORRENT_LABEL": "cwabd",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.rtorrent.config.get",
@@ -138,6 +144,38 @@ class TestRTorrentClientTestConnection:
             assert success is False
             assert "failed" in message.lower()
 
+    def test_test_connection_with_auth(self, monkeypatch):
+        """Test connection with HTTP authentication."""
+        config_values = {
+            "RTORRENT_URL": "http://localhost:8080/RPC2",
+            "RTORRENT_USERNAME": "testuser",
+            "RTORRENT_PASSWORD": "testpass",
+            "RTORRENT_DOWNLOAD_DIR": "/downloads",
+            "RTORRENT_LABEL": "cwabd",
+        }
+        monkeypatch.setattr(
+            "shelfmark.release_sources.prowlarr.clients.rtorrent.config.get",
+            make_config_getter(config_values),
+        )
+
+        mock_rpc = MagicMock()
+        mock_rpc.system.client_version.return_value = "0.9.8"
+
+        mock_xmlrpc = create_mock_xmlrpc_module()
+        mock_xmlrpc.ServerProxy.return_value = mock_rpc
+
+        with patch.dict("sys.modules", {"xmlrpc.client": mock_xmlrpc}):
+            if "shelfmark.release_sources.prowlarr.clients.rtorrent" in sys.modules:
+                del sys.modules["shelfmark.release_sources.prowlarr.clients.rtorrent"]
+
+            from shelfmark.release_sources.prowlarr.clients.rtorrent import RTorrentClient
+
+            client = RTorrentClient()
+            success, message = client.test_connection()
+
+            assert success is True
+            assert "0.9.8" in message
+
 
 class TestRTorrentClientGetStatus:
     """Tests for RTorrentClient.get_status()."""
@@ -146,7 +184,10 @@ class TestRTorrentClientGetStatus:
         """Test status for downloading torrent."""
         config_values = {
             "RTORRENT_URL": "http://localhost:8080/RPC2",
-            "RTORRENT_CATEGORY": "test",
+            "RTORRENT_USERNAME": "",
+            "RTORRENT_PASSWORD": "",
+            "RTORRENT_DOWNLOAD_DIR": "/downloads",
+            "RTORRENT_LABEL": "cwabd",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.rtorrent.config.get",
@@ -162,7 +203,7 @@ class TestRTorrentClientGetStatus:
                 1048576000,
                 1024000,
                 0,
-                "test",
+                "cwabd",
             ]
         ]
 
@@ -187,7 +228,10 @@ class TestRTorrentClientGetStatus:
         """Test status for seeding (complete) torrent."""
         config_values = {
             "RTORRENT_URL": "http://localhost:8080/RPC2",
-            "RTORRENT_CATEGORY": "test",
+            "RTORRENT_USERNAME": "",
+            "RTORRENT_PASSWORD": "",
+            "RTORRENT_DOWNLOAD_DIR": "/downloads",
+            "RTORRENT_LABEL": "cwabd",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.rtorrent.config.get",
@@ -203,7 +247,7 @@ class TestRTorrentClientGetStatus:
                 1048576000,
                 0,
                 2048000,
-                "test",
+                "cwabd",
             ]
         ]
         mock_rpc.d.get_base_path.return_value = "/downloads/test-torrent"
@@ -230,7 +274,10 @@ class TestRTorrentClientGetStatus:
         """Test status when torrent not found."""
         config_values = {
             "RTORRENT_URL": "http://localhost:8080/RPC2",
-            "RTORRENT_CATEGORY": "test",
+            "RTORRENT_USERNAME": "",
+            "RTORRENT_PASSWORD": "",
+            "RTORRENT_DOWNLOAD_DIR": "/downloads",
+            "RTORRENT_LABEL": "cwabd",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.rtorrent.config.get",
@@ -259,7 +306,10 @@ class TestRTorrentClientGetStatus:
         """Test status with ETA calculation."""
         config_values = {
             "RTORRENT_URL": "http://localhost:8080/RPC2",
-            "RTORRENT_CATEGORY": "test",
+            "RTORRENT_USERNAME": "",
+            "RTORRENT_PASSWORD": "",
+            "RTORRENT_DOWNLOAD_DIR": "/downloads",
+            "RTORRENT_LABEL": "cwabd",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.rtorrent.config.get",
@@ -275,7 +325,7 @@ class TestRTorrentClientGetStatus:
                 1048576000,
                 1048576,
                 0,
-                "test",
+                "cwabd",
             ]
         ]
 
@@ -302,7 +352,10 @@ class TestRTorrentClientRemove:
         """Test successful torrent removal."""
         config_values = {
             "RTORRENT_URL": "http://localhost:8080/RPC2",
-            "RTORRENT_CATEGORY": "test",
+            "RTORRENT_USERNAME": "",
+            "RTORRENT_PASSWORD": "",
+            "RTORRENT_DOWNLOAD_DIR": "/downloads",
+            "RTORRENT_LABEL": "cwabd",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.rtorrent.config.get",
@@ -331,7 +384,10 @@ class TestRTorrentClientRemove:
         """Test torrent removal with file deletion."""
         config_values = {
             "RTORRENT_URL": "http://localhost:8080/RPC2",
-            "RTORRENT_CATEGORY": "test",
+            "RTORRENT_USERNAME": "",
+            "RTORRENT_PASSWORD": "",
+            "RTORRENT_DOWNLOAD_DIR": "/downloads",
+            "RTORRENT_LABEL": "cwabd",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.rtorrent.config.get",
@@ -360,7 +416,10 @@ class TestRTorrentClientRemove:
         """Test failed torrent removal."""
         config_values = {
             "RTORRENT_URL": "http://localhost:8080/RPC2",
-            "RTORRENT_CATEGORY": "test",
+            "RTORRENT_USERNAME": "",
+            "RTORRENT_PASSWORD": "",
+            "RTORRENT_DOWNLOAD_DIR": "/downloads",
+            "RTORRENT_LABEL": "cwabd",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.rtorrent.config.get",
@@ -392,7 +451,10 @@ class TestRTorrentClientGetDownloadPath:
         """Test getting download path successfully."""
         config_values = {
             "RTORRENT_URL": "http://localhost:8080/RPC2",
-            "RTORRENT_CATEGORY": "test",
+            "RTORRENT_USERNAME": "",
+            "RTORRENT_PASSWORD": "",
+            "RTORRENT_DOWNLOAD_DIR": "/downloads",
+            "RTORRENT_LABEL": "cwabd",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.rtorrent.config.get",
@@ -420,7 +482,10 @@ class TestRTorrentClientGetDownloadPath:
         """Test getting download path when torrent not found."""
         config_values = {
             "RTORRENT_URL": "http://localhost:8080/RPC2",
-            "RTORRENT_CATEGORY": "test",
+            "RTORRENT_USERNAME": "",
+            "RTORRENT_PASSWORD": "",
+            "RTORRENT_DOWNLOAD_DIR": "/downloads",
+            "RTORRENT_LABEL": "cwabd",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.rtorrent.config.get",

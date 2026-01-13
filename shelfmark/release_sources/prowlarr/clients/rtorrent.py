@@ -30,15 +30,24 @@ class RTorrentClient(DownloadClient):
 
     def __init__(self):
         """Initialize rTorrent client with settings from config."""
-        from xmlrpc.client import Server, ServerProxy
+        from xmlrpc.client import ServerProxy
 
         url = config.get("RTORRENT_URL", "")
         if not url:
             raise ValueError("RTORRENT_URL is required")
 
         self._base_url = url.rstrip("/")
+        
+        username = config.get("RTORRENT_USERNAME", "")
+        password = config.get("RTORRENT_PASSWORD", "")
+        
+        if username and password:
+            parsed = urlparse(self._base_url)
+            self._base_url = f"{parsed.scheme}://{username}:{password}@{parsed.netloc}{parsed.path}"
+        
         self._rpc = ServerProxy(self._base_url)
-        self._category = config.get("RTORRENT_CATEGORY", "cwabd")
+        self._download_dir = config.get("RTORRENT_DOWNLOAD_DIR", "")
+        self._label = config.get("RTORRENT_LABEL", "")
 
     @staticmethod
     def is_configured() -> bool:
@@ -62,7 +71,7 @@ class RTorrentClient(DownloadClient):
         Args:
             url: Magnet link or .torrent URL
             name: Display name for the torrent
-            category: Category for organization (uses configured default if not specified)
+            category: Category for organization (uses configured label if not specified)
 
         Returns:
             Torrent hash (info_hash).
@@ -71,12 +80,15 @@ class RTorrentClient(DownloadClient):
             Exception: If adding fails.
         """
         try:
-            category = category or self._category
+            label = category or self._label
 
             torrent_info = extract_torrent_info(url)
 
-            commands = [f"d.custom1.set={category}"]
-            download_dir = self._get_download_dir()
+            commands = []
+            if label:
+                commands.append(f"d.custom1.set={label}")
+            
+            download_dir = self._download_dir or self._get_download_dir()
             if download_dir:
                 commands.append(f"d.directory_base.set={download_dir}")
 
