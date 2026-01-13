@@ -298,3 +298,4 @@ from shelfmark.release_sources.prowlarr.clients import nzbget  # noqa: F401, E40
 from shelfmark.release_sources.prowlarr.clients import sabnzbd  # noqa: F401, E402
 from shelfmark.release_sources.prowlarr.clients import transmission  # noqa: F401, E402
 from shelfmark.release_sources.prowlarr.clients import deluge  # noqa: F401, E402
+from shelfmark.release_sources.prowlarr.clients import rtorrent  # noqa: F401, E402
