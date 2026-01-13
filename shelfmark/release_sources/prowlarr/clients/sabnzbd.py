@@ -251,14 +251,24 @@ class SABnzbdClient(DownloadClient):
                             complete=True,
                             file_path=storage,
                         )
-                    else:
-                        # Failed or other status
-                        fail_message = slot.get("fail_message", status_text)
+                    elif status_text == "FAILED":
+                        fail_message = slot.get("fail_message", "Download failed")
                         return DownloadStatus(
                             progress=100,
                             state="error",
-                            message=f"Download failed: {fail_message}",
+                            message=fail_message,
                             complete=True,
+                            file_path=None,
+                        )
+                    else:
+                        # Post-processing states: Queued, QuickCheck, Verifying,
+                        # Repairing, Fetching, Extracting, Moving, Running
+                        # Keep polling - not yet complete
+                        return DownloadStatus(
+                            progress=100,
+                            state="processing",
+                            message=status_text.title(),
+                            complete=False,
                             file_path=None,
                         )
 

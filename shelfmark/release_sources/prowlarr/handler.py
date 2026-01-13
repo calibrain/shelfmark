@@ -202,7 +202,11 @@ class ProwlarrHandler(DownloadHandler):
 
                 # Build status message - use client message if provided, else build progress
                 msg = status.message or self._build_progress_message(status)
-                status_callback("downloading", msg)
+                if status.state == DownloadState.PROCESSING:
+                    # Post-processing (e.g., SABnzbd verifying/extracting)
+                    status_callback("resolving", msg)
+                else:
+                    status_callback("downloading", msg)
 
                 # Wait for next poll (interruptible by cancel)
                 if cancel_flag.wait(timeout=POLL_INTERVAL):

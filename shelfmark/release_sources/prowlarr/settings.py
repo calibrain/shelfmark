@@ -396,8 +396,8 @@ def prowlarr_clients_settings():
             key="QBITTORRENT_CATEGORY",
             label="Book Category",
             description="Category to assign to book downloads in qBittorrent",
-            placeholder="cwabd",
-            default="cwabd",
+            placeholder="books",
+            default="books",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "qbittorrent"},
         ),
         TextField(
@@ -441,8 +441,8 @@ def prowlarr_clients_settings():
             key="TRANSMISSION_CATEGORY",
             label="Book Label",
             description="Label to assign to book downloads in Transmission",
-            placeholder="cwabd",
-            default="cwabd",
+            placeholder="books",
+            default="books",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "transmission"},
         ),
         TextField(
@@ -495,8 +495,8 @@ def prowlarr_clients_settings():
             key="DELUGE_CATEGORY",
             label="Book Label",
             description="Label to assign to book downloads in Deluge",
-            placeholder="cwabd",
-            default="cwabd",
+            placeholder="books",
+            default="books",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "deluge"},
         ),
         TextField(
@@ -601,8 +601,8 @@ def prowlarr_clients_settings():
             key="SABNZBD_CATEGORY",
             label="Book Category",
             description="Category to assign to book downloads in SABnzbd",
-            placeholder="cwabd",
-            default="cwabd",
+            placeholder="books",
+            default="books",
             show_when={"field": "PROWLARR_USENET_CLIENT", "value": "sabnzbd"},
         ),
         TextField(
@@ -617,7 +617,7 @@ def prowlarr_clients_settings():
         # Note: Usenet client download path must be mounted identically in both containers.
         SelectField(
             key="PROWLARR_USENET_ACTION",
-            label="Completion Action",
+            label="NZB Completion Action",
             description="What to do with usenet files after download completes",
             options=[
                 {"value": "move", "label": "Move to ingest"},
