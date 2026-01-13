@@ -20,8 +20,8 @@ from shelfmark.download import orchestrator as backend
 from shelfmark.release_sources.direct_download import SearchUnavailable
 from shelfmark.config.settings import _SUPPORTED_BOOK_LANGUAGE
 from shelfmark.config.env import (
-    BUILD_VERSION, CWA_DB_PATH, DEBUG, FLASK_HOST, FLASK_PORT,
-    RELEASE_VERSION,
+    BUILD_VERSION, CONFIG_DIR, CWA_DB_PATH, DEBUG, FLASK_HOST, FLASK_PORT,
+    RELEASE_VERSION, _is_config_dir_writable,
 )
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
@@ -492,6 +492,7 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
             get_provider_default_sort,
         )
         from shelfmark.config.env import _is_config_dir_writable
+        from shelfmark.core.onboarding import is_onboarding_complete as _get_onboarding_complete
 
         config = {
             "calibre_web_url": app_config.get("CALIBRE_WEB_URL", ""),
@@ -509,6 +510,7 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
             "auto_open_downloads_sidebar": app_config.get("AUTO_OPEN_DOWNLOADS_SIDEBAR", True),
             "download_to_browser": app_config.get("DOWNLOAD_TO_BROWSER", False),
             "settings_enabled": _is_config_dir_writable(),
+            "onboarding_complete": _get_onboarding_complete(),
             # Default sort orders
             "default_sort": app_config.get("AA_DEFAULT_SORT", "relevance"),  # For direct mode (Anna's Archive)
             "metadata_default_sort": get_provider_default_sort(),  # For universal mode
@@ -1536,6 +1538,85 @@ def api_settings_execute_action(tab_name: str, action_key: str) -> Union[Respons
         return jsonify({"error": str(e)}), 500
 
 
+# =============================================================================
+# Onboarding API
+# =============================================================================
+
+
+@app.route('/api/onboarding', methods=['GET'])
+@login_required
+def api_onboarding_get() -> Union[Response, Tuple[Response, int]]:
+    """
+    Get onboarding configuration including steps, fields, and current values.
+
+    Returns:
+        flask.Response: JSON with onboarding steps and values.
+    """
+    try:
+        from shelfmark.core.onboarding import get_onboarding_config
+
+        # Ensure settings are registered
+        import shelfmark.config.settings  # noqa: F401
+
+        config = get_onboarding_config()
+        return jsonify(config)
+    except Exception as e:
+        logger.error_trace(f"Onboarding get error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/onboarding', methods=['POST'])
+@login_required
+def api_onboarding_save() -> Union[Response, Tuple[Response, int]]:
+    """
+    Save onboarding settings and mark as complete.
+
+    Request Body:
+        JSON object with all onboarding field values
+
+    Returns:
+        flask.Response: JSON with success/error status.
+    """
+    try:
+        from shelfmark.core.onboarding import save_onboarding_settings
+
+        # Ensure settings are registered
+        import shelfmark.config.settings  # noqa: F401
+
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "message": "No data provided"}), 400
+
+        result = save_onboarding_settings(data)
+
+        if result["success"]:
+            return jsonify(result)
+        else:
+            return jsonify(result), 400
+    except Exception as e:
+        logger.error_trace(f"Onboarding save error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/onboarding/skip', methods=['POST'])
+@login_required
+def api_onboarding_skip() -> Union[Response, Tuple[Response, int]]:
+    """
+    Skip onboarding and mark as complete without saving any settings.
+
+    Returns:
+        flask.Response: JSON with success status.
+    """
+    try:
+        from shelfmark.core.onboarding import mark_onboarding_complete
+
+        mark_onboarding_complete()
+        return jsonify({"success": True, "message": "Onboarding skipped"})
+    except Exception as e:
+        logger.error_trace(f"Onboarding skip error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 # Catch-all route for React Router (must be last)
 # This handles client-side routing by serving index.html for any unmatched routes
 @app.route('/<path:path>')
@@ -1586,6 +1667,13 @@ def handle_status_request():
         emit('error', {'message': 'Failed to get status'})
 
 logger.log_resource_usage()
+
+# Warn if config directory is not writable (settings won't persist)
+if not _is_config_dir_writable():
+    logger.warning(
+        f"Config directory {CONFIG_DIR} is not writable. Settings will not persist. "
+        "Mount a config volume to enable settings persistence (see docs for details)."
+    )
 
 if __name__ == '__main__':
     logger.info(f"Starting Flask application with WebSocket support on {FLASK_HOST}:{FLASK_PORT} (debug={DEBUG})")

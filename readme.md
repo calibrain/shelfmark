@@ -4,7 +4,7 @@ Formerly *Calibre Web Automated Book Downloader (CWABD)*
 
 <img src="src/frontend/public/logo.png" alt="Shelfmark" width="200">
 
-Shelfmark is a unified web interface for searching and downloading books and audiobooks from multiple sources - all in one place. Works out of the box with popular web sources, no configuration required. Add metadata providers, additional release sources, and download clients to create a single hub for building your digital library.
+Shelfmark is a unified web interface for searching and aggregating books and audiobook downloads from multiple sources - all in one place. Works out of the box with popular web sources, no configuration required. Add metadata providers, additional release sources, and download clients to create a single hub for building your digital library.
 
 **Fully standalone** - no external dependencies required. Works great alongside library tools like [Calibre-Web-Automated](https://github.com/crocodilestick/Calibre-Web-Automated), [Booklore](https://github.com/booklore-app/booklore) or [Audiobookshelf](https://github.com/advplyr/audiobookshelf) for automatic import.
 
@@ -15,7 +15,7 @@ Shelfmark is a unified web interface for searching and downloading books and aud
 - **Audiobook support** - Full audiobook search and download with dedicated processing
 - **Real-Time Progress** - Unified download queue with live status updates across all sources
 - **Two Search Modes**:
-  - **Direct** - Search and download books from popular web sources
+  - **Direct** - Search popular web sources
   - **Universal** - Search metadata providers (Hardcover, Open Library) for richer book and audiobook discovery, with multi-source downloads
 - **Cloudflare Bypass** - Built-in bypasser for reliable access to protected sources
 
@@ -99,7 +99,7 @@ Environment variables work for initial setup and Docker deployments. They serve 
 | `USING_TOR` | Enable Tor routing (requires `NET_ADMIN` capability) | `false` |
 
 Some of the additional options available in Settings:
-- **AA Donator Key** - Use your paid account to skip Cloudflare challenges entirely and use faster, direct downloads
+- **Fast Download Key** - Use your paid account to skip Cloudflare challenges entirely and use faster, direct downloads
 - **Prowlarr** - Configure indexers and download clients to download books and audiobooks
 - **IRC** - Add details for IRC book sources and download directly from the UI
 - **Library Link** - Add a link to your Calibre-Web or Booklore instance in the UI header
@@ -212,7 +212,7 @@ The frontend dev server proxies to the backend on port 8084.
 ├───────────────────┴─────────────────────┴───────────────────┤
 │                     Release Sources                         │
 ├─────────────────────────────────────────────────────────────┤
-│ • Direct Download (Anna's Archive → Libgen → Welib)         │
+│ • Direct Download (Web Sources → Mirrors → Fallbacks)       │
 ├─────────────────────────────────────────────────────────────┤
 │                     Network Layer                           │
 ├─────────────────────────────────────────────────────────────┤

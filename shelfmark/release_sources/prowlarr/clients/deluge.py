@@ -184,7 +184,8 @@ class DelugeClient(DownloadClient):
             deluge_state = _decode(status.get(b'state', b'Unknown'))
             state, message = state_map.get(deluge_state, ('unknown', deluge_state))
             progress = status.get(b'progress', 0)
-            complete = progress >= 100
+            # Don't mark complete while files are being moved
+            complete = progress >= 100 and deluge_state != 'Moving'
 
             if complete:
                 message = "Complete"

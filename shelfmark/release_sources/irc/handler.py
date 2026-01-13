@@ -12,7 +12,7 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
 from shelfmark.release_sources import DownloadHandler, register_handler
 
-from .client import IRCClient
+from .connection_manager import connection_manager
 from .dcc import DCCError, download_dcc
 
 logger = setup_logger(__name__)
@@ -36,6 +36,7 @@ class IRCDownloadHandler(DownloadHandler):
         # Get IRC settings
         server = config.get("IRC_SERVER", "")
         port = config.get("IRC_PORT", 6697)
+        use_tls = config.get("IRC_USE_TLS", True)
         channel = config.get("IRC_CHANNEL", "")
         nick = config.get("IRC_NICK", "")
 
@@ -51,20 +52,24 @@ class IRCDownloadHandler(DownloadHandler):
             if not cancel_flag.is_set():
                 return False
             if client:
-                client.disconnect()
+                connection_manager.close_connection(client)
             status_callback("cancelled", "Cancelled")
             return True
 
         try:
-            # Phase 1: Connect to IRC
+            # Phase 1: Get or reuse IRC connection
             status_callback("resolving", f"Connecting to {server}")
 
             if check_cancelled():
                 return None
 
-            client = IRCClient(nick, server, port)
-            client.connect()
-            client.join_channel(channel)
+            client = connection_manager.get_connection(
+                server=server,
+                port=port,
+                nick=nick,
+                use_tls=use_tls,
+                channel=channel,
+            )
 
             # Phase 2: Send download request
             status_callback("resolving", "Requesting file from bot")
@@ -82,7 +87,7 @@ class IRCDownloadHandler(DownloadHandler):
 
             if not offer:
                 status_callback("error", "No response from bot")
-                client.disconnect()
+                connection_manager.release_connection(client)
                 return None
 
             if check_cancelled():
@@ -106,7 +111,8 @@ class IRCDownloadHandler(DownloadHandler):
                 timeout=60.0,
             )
 
-            client.disconnect()
+            # Release connection for reuse (don't close it)
+            connection_manager.release_connection(client)
 
             if cancel_flag.is_set():
                 # Clean up partial download
@@ -121,14 +127,14 @@ class IRCDownloadHandler(DownloadHandler):
             logger.error(f"DCC error: {e}")
             status_callback("error", str(e))
             if client:
-                client.disconnect()
+                connection_manager.close_connection(client)
             return None
 
         except Exception as e:
             logger.error(f"Download failed: {e}")
             status_callback("error", f"Download failed: {e}")
             if client:
-                client.disconnect()
+                connection_manager.close_connection(client)
             return None
 
     def cancel(self, task_id: str) -> bool:

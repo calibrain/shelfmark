@@ -212,7 +212,9 @@ class QBittorrentClient(DownloadClient):
             }
 
             state, message = state_info.get(torrent.state, ("unknown", torrent.state))
-            complete = torrent.progress >= 1.0
+            # Don't mark complete while files are being moved to final location
+            # (qBittorrent moves files from incomplete → complete folder)
+            complete = torrent.progress >= 1.0 and torrent.state != "moving"
 
             # For active downloads without a special message, leave message as None
             # so the handler can build the progress message

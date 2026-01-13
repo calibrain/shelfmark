@@ -26,6 +26,7 @@ import { Footer } from './components/Footer';
 import { LoginPage } from './pages/LoginPage';
 import { SettingsModal } from './components/settings';
 import { ConfigSetupBanner } from './components/ConfigSetupBanner';
+import { OnboardingModal } from './components/OnboardingModal';
 import { DEFAULT_LANGUAGES, DEFAULT_SUPPORTED_FORMATS } from './data/languages';
 import { buildSearchQuery } from './utils/buildSearchQuery';
 import { SearchModeProvider } from './contexts/SearchModeContext';
@@ -117,6 +118,16 @@ function App() {
   const [downloadsSidebarOpen, setDownloadsSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [configBannerOpen, setConfigBannerOpen] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+
+  // Expose debug function to trigger onboarding from browser console
+  useEffect(() => {
+    (window as unknown as { showOnboarding: () => void }).showOnboarding = () => setOnboardingOpen(true);
+    return () => {
+      delete (window as unknown as { showOnboarding?: () => void }).showOnboarding;
+    };
+  }, []);
+
   const [featureNoticeDismissed, setFeatureNoticeDismissed] = useState(() => {
     return localStorage.getItem('cwa-bd-prowlarr-irc-notice-dismissed') === 'true';
   });
@@ -248,6 +259,11 @@ function App() {
 
       prevSearchModeRef.current = cfg.search_mode;
       setConfig(cfg);
+
+      // Show onboarding modal on first run (settings enabled but not completed yet)
+      if (mode === 'initial' && cfg.settings_enabled && !cfg.onboarding_complete) {
+        setOnboardingOpen(true);
+      }
 
       // Determine the default sort based on search mode
       const defaultSort = cfg.search_mode === 'universal'
@@ -700,6 +716,14 @@ function App() {
           setConfigBannerOpen(false);
           setSettingsOpen(true);
         }}
+      />
+
+      {/* Onboarding wizard shown on first run */}
+      <OnboardingModal
+        isOpen={onboardingOpen}
+        onClose={() => setOnboardingOpen(false)}
+        onComplete={() => loadConfig('settings-saved')}
+        onShowToast={showToast}
       />
 
     </SearchModeProvider>

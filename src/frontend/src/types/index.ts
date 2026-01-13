@@ -162,7 +162,8 @@ export interface AppConfig {
   auto_open_downloads_sidebar: boolean;  // Auto-open sidebar when download is queued
   download_to_browser: boolean;  // Auto-download completed files to browser
   settings_enabled: boolean;  // Whether config directory is mounted and writable
-  default_sort: string;  // Default sort for direct mode (Anna's Archive)
+  onboarding_complete: boolean;  // Whether the user has completed initial setup
+  default_sort: string;  // Default sort for direct mode
   metadata_default_sort: string;  // Default sort for universal mode (from metadata provider)
 }
 

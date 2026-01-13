@@ -1,4 +1,4 @@
-// Direct download mode sort options (Anna's Archive)
+// Direct download mode sort options
 export const SORT_OPTIONS = [
   { value: '', label: 'Most relevant' },
   { value: 'newest', label: 'Newest (publication year)' },
@@ -12,7 +12,7 @@ export const SORT_OPTIONS = [
 // Note: Metadata mode sort options are now dynamic per provider
 // They come from the /api/config endpoint as metadata_sort_options
 
-// Direct download mode content type options (Anna's Archive)
+// Direct download mode content type options
 export const CONTENT_OPTIONS = [
   { value: '', label: 'All' },
   { value: 'book_nonfiction', label: 'Book (non-fiction)' },

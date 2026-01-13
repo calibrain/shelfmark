@@ -805,7 +805,7 @@ export const ReleaseModal = ({
         // Fallback: assume direct_download is available (for ebooks)
         setAvailableSources([{
           name: 'direct_download',
-          display_name: "Anna's Archive",
+          display_name: "Direct Download",
           enabled: true,
           supported_content_types: ['ebook']
         }]);

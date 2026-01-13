@@ -61,7 +61,7 @@ Some parameters support multiple values by repeating the parameter:
 
 ### Direct Download Mode (default)
 
-All parameters are used to filter results from Anna's Archive.
+All parameters are used to filter results from the direct download source.
 
 ### Universal Mode
 

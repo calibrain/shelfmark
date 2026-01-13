@@ -34,7 +34,7 @@ export const buildSearchQuery = ({
     return queryParts.join('&');
   }
 
-  // Direct mode: include all Anna's Archive filters
+  // Direct mode: include all filters
   if (showAdvanced) {
     const { isbn, author, title, content, formats, lang } = advancedFilters;
 

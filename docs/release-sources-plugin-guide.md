@@ -43,7 +43,7 @@ The release sources system is built around two core interfaces:
 - **DownloadHandler**: Executes the actual download with progress reporting
 
 This separation allows:
-- Different search sources (Anna's Archive, Prowlarr, IRC, etc.)
+- Different search sources (Direct Download, Prowlarr, IRC, etc.)
 - Different download protocols (HTTP, torrent, usenet, etc.)
 - Shared queue and progress infrastructure
 
@@ -371,7 +371,7 @@ class Release:
     info_url: Optional[str] = None      # Link to tracker/info page
 
     protocol: Optional[str] = None   # "http", "torrent", "usenet"
-    indexer: Optional[str] = None    # Display name: "Anna's Archive", "MyAnonamouse"
+    indexer: Optional[str] = None    # Display name: "Direct Download", "My Indexer"
     seeders: Optional[int] = None    # For torrents
 
     extra: Dict = field(default_factory=dict)  # Source-specific metadata

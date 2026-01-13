@@ -67,7 +67,7 @@ from shelfmark.core.settings_registry import (
 
 register_group(
     "direct_download",
-    "Anna's Archive",
+    "Direct Download",
     icon="download",
     order=20
 )
@@ -80,7 +80,7 @@ register_group(
 )
 
 
-# Anna's Archive sort options (for Direct mode)
+# Direct mode sort options
 _AA_SORT_OPTIONS = [
     {"value": "relevance", "label": "Most relevant"},
     {"value": "newest", "label": "Newest (publication year)"},
@@ -308,7 +308,7 @@ def search_mode_settings():
         HeadingField(
             key="search_mode_heading",
             title="Search Mode",
-            description="Direct mode searches Anna's Archive and downloads immediately. Universal mode searches book metadata first, letting you choose from multiple release sources including Anna's Archive and Prowlarr.",
+            description="Direct mode searches web sources and downloads immediately. Universal mode supports Prowlarr, IRC and audiobooks with metadata-based searching.",
         ),
         SelectField(
             key="SEARCH_MODE",
@@ -317,8 +317,8 @@ def search_mode_settings():
             options=[
                 {
                     "value": "direct",
-                    "label": "Direct (Anna's Archive)",
-                    "description": "Search Anna's Archive and download directly. Works out of the box.",
+                    "label": "Direct",
+                    "description": "Search web sources for books and download directly. Works out of the box.",
                 },
                 {
                     "value": "universal",
@@ -331,7 +331,7 @@ def search_mode_settings():
         SelectField(
             key="AA_DEFAULT_SORT",
             label="Default Sort Order",
-            description="Default sort order for Anna's Archive search results.",
+            description="Default sort order for search results.",
             options=_AA_SORT_OPTIONS,
             default="relevance",
             env_supported=False,  # UI-only setting
@@ -667,11 +667,11 @@ def _get_fast_source_options():
     return [
         {
             "id": "aa-fast",
-            "label": "Anna's Archive (Fast)",
+            "label": "AA Fast Downloads",
             "description": "Fast downloads for donators",
             "isPinned": True,
             "isLocked": not has_donator_key,
-            "disabledReason": "Requires AA Donator Key" if not has_donator_key else None,
+            "disabledReason": "Requires Donator Key" if not has_donator_key else None,
         },
         {
             "id": "libgen",
@@ -701,14 +701,14 @@ def _get_slow_source_options():
     return [
         {
             "id": "aa-slow-nowait",
-            "label": "Anna's Archive (Slowest, No Waitlist)",
+            "label": "AA Slow Downloads (No Waitlist)",
             "description": "Partner servers",
             "isLocked": locked,
             "disabledReason": disabled_reason,
         },
         {
             "id": "aa-slow-wait",
-            "label": "Anna's Archive (Slow with Waitlist)",
+            "label": "AA Slow Downloads (Waitlist)",
             "description": "Partner servers with countdown timer",
             "isLocked": locked,
             "disabledReason": disabled_reason,
@@ -722,7 +722,7 @@ def _get_slow_source_options():
         },
         {
             "id": "zlib",
-            "label": "Z-Library",
+            "label": "Zlib",
             "description": "Alternative mirror",
             "isLocked": locked,
             "disabledReason": disabled_reason,
@@ -748,8 +748,8 @@ def download_source_settings():
     return [
         PasswordField(
             key="AA_DONATOR_KEY",
-            label="Anna's Archive Donator Key",
-            description="Enables fast downloads from Anna's Archive.",
+            label="Account Donator Key",
+            description="Enables fast download access on AA. Get this from your donator account page.",
         ),
         HeadingField(
             key="source_priority_heading",
@@ -790,12 +790,12 @@ def download_source_settings():
         HeadingField(
             key="content_type_routing_heading",
             title="Content-Type Routing",
-            description="Route downloads to different folders based on content type. Only applies to Anna's Archive downloads.",
+            description="Route downloads to different folders based on content type. Only applies to Direct download source.",
         ),
         CheckboxField(
             key="AA_CONTENT_TYPE_ROUTING",
             label="Enable Content-Type Routing",
-            description="Override destination based on Anna's Archive content type metadata.",
+            description="Override destination based on content type metadata.",
             default=False,
         ),
         TextField(
@@ -904,10 +904,10 @@ def mirror_settings():
     from shelfmark.core.mirrors import DEFAULT_ZLIB_MIRRORS, DEFAULT_WELIB_MIRRORS
 
     return [
-        # === ANNA'S ARCHIVE ===
+        # === PRIMARY SOURCE ===
         HeadingField(
             key="aa_mirrors_heading",
-            title="Anna's Archive",
+            title="Primary Source",
             description="Primary mirror with auto-probe on startup. Additional mirrors used as fallback.",
         ),
         SelectField(
@@ -920,7 +920,7 @@ def mirror_settings():
         TextField(
             key="AA_ADDITIONAL_URLS",
             label="Additional Mirrors",
-            description="Comma-separated list of custom Anna's Archive mirror URLs.",
+            description="Comma-separated list of custom mirror URLs.",
         ),
 
         # === LIBGEN ===

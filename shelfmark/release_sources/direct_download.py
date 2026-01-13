@@ -191,7 +191,7 @@ def search_books(query: str, filters: SearchFilters) -> List[BookInfo]:
     html = downloader.html_get_page(url, selector=selector)
     if not html:
         # Network/mirror exhaustion path bubbles up so API can notify clients
-        raise SearchUnavailable("Unable to reach Anna's Archive. Network restricted or mirrors are blocked.")
+        raise SearchUnavailable("Unable to reach download source. Network restricted or mirrors are blocked.")
 
     if "No files found." in html:
         logger.info(f"No books found for query: {query}")
@@ -1053,7 +1053,7 @@ def _book_info_to_release(book_info: BookInfo) -> Release:
         download_url=book_info.download_urls[0] if book_info.download_urls else None,
         info_url=f"{network.get_aa_base_url()}/md5/{book_info.id}",
         protocol=ReleaseProtocol.HTTP,
-        indexer="Anna's Archive",
+        indexer="Direct Download",
         content_type=book_info.content,  # Preserve content type from source
         extra={
             "author": book_info.author,
@@ -1071,13 +1071,13 @@ def _book_info_to_release(book_info: BookInfo) -> Release:
 @register_source("direct_download")
 class DirectDownloadSource(ReleaseSource):
     """
-    Direct download source - searches Anna's Archive, Libgen, etc.
+    Direct download source - searches web sources for books.
 
     This wraps the search_books() functionality to provide releases
     via the plugin interface.
     """
     name = "direct_download"
-    display_name = "Anna's Archive"
+    display_name = "Direct Download"
     supported_content_types = ["ebook"]  # Direct downloads only support ebooks
 
     def __init__(self):

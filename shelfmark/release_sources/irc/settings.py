@@ -5,6 +5,7 @@ Registers IRC settings for the settings UI.
 
 from shelfmark.core.settings_registry import (
     ActionButton,
+    CheckboxField,
     HeadingField,
     NumberField,
     SelectField,
@@ -60,6 +61,14 @@ def irc_settings():
             label="Port",
             default=6697,
             description="IRC server port (usually 6697 for TLS, 6667 for plain)",
+            env_supported=True,
+        ),
+
+        CheckboxField(
+            key="IRC_USE_TLS",
+            label="Use TLS",
+            default=True,
+            description="Enable TLS/SSL encryption for the IRC connection. Disable for servers that don't support TLS.",
             env_supported=True,
         ),
 

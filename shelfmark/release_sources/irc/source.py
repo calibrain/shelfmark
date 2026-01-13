@@ -26,7 +26,7 @@ from shelfmark.release_sources import (
     register_source,
 )
 
-from .client import IRCClient
+from .connection_manager import connection_manager
 from .dcc import DCCError, download_dcc
 from .parser import SearchResult, extract_results_from_zip, parse_results_file
 
@@ -159,19 +159,22 @@ class IRCReleaseSource(ReleaseSource):
         # Get IRC settings
         server = config.get("IRC_SERVER", "")
         port = config.get("IRC_PORT", 6697)
+        use_tls = config.get("IRC_USE_TLS", True)
         channel = config.get("IRC_CHANNEL", "")
         nick = config.get("IRC_NICK", "")
         search_bot = config.get("IRC_SEARCH_BOT", "")
 
         client = None
         try:
-            # Connect to IRC
+            # Get or reuse IRC connection
             _emit_status(f"Connecting to {server}...", phase='connecting')
-            client = IRCClient(nick, server, port)
-            client.connect()
-
-            _emit_status(f"Joining #{channel}...", phase='connecting')
-            client.join_channel(channel)
+            client = connection_manager.get_connection(
+                server=server,
+                port=port,
+                nick=nick,
+                use_tls=use_tls,
+                channel=channel,
+            )
 
             # Capture online servers (elevated users in channel)
             self._online_servers = client.online_servers
@@ -186,7 +189,8 @@ class IRCReleaseSource(ReleaseSource):
             if not offer:
                 logger.info("No search results received")
                 _emit_status("No results found", phase='complete')
-                client.disconnect()
+                # Release connection for reuse (don't close it)
+                connection_manager.release_connection(client)
                 # Cache empty result to avoid repeated failed searches
                 cache_results(
                     book.provider,
@@ -209,7 +213,8 @@ class IRCReleaseSource(ReleaseSource):
                 else:
                     content = result_path.read_text(errors='replace')
 
-            client.disconnect()
+            # Release connection for reuse (don't close it)
+            connection_manager.release_connection(client)
 
             # Convert to Release objects
             results = parse_results_file(content)
@@ -230,13 +235,13 @@ class IRCReleaseSource(ReleaseSource):
             logger.error(f"DCC error during search: {e}")
             _emit_status(f"DCC error: {e}", phase='error')
             if client:
-                client.disconnect()
+                connection_manager.close_connection(client)
             return []
         except Exception as e:
             logger.error(f"IRC search failed: {e}")
             _emit_status(f"Search failed: {e}", phase='error')
             if client:
-                client.disconnect()
+                connection_manager.close_connection(client)
             return []
 
     def _build_query(self, book: BookMetadata) -> str:

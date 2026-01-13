@@ -29,42 +29,72 @@ export class AuthenticationError extends Error {
   }
 }
 
-// Utility function for JSON fetch with credentials
-async function fetchJSON<T>(url: string, opts: RequestInit = {}): Promise<T> {
-  const res = await fetch(url, {
-    ...opts,
-    credentials: 'include',  // Enable cookies for session
-    headers: {
-      'Content-Type': 'application/json',
-      ...opts.headers,
-    },
-  });
-  
-  if (!res.ok) {
-    // Try to parse error message from response body
-    let errorMessage = `${res.status} ${res.statusText}`;
-    try {
-      const errorData = await res.json();
-      // Prefer user-friendly 'message' field, fall back to 'error'
-      if (errorData.message) {
-        errorMessage = errorData.message;
-      } else if (errorData.error) {
-        errorMessage = errorData.error;
-      }
-    } catch (e) {
-      // Log parse failure for debugging - server may have returned non-JSON (e.g., HTML error page)
-      console.warn(`Failed to parse error response from ${url}:`, e instanceof Error ? e.message : e);
-    }
-
-    // Throw appropriate error based on status code
-    if (res.status === 401) {
-      throw new AuthenticationError(errorMessage);
-    }
-
-    throw new Error(errorMessage);
+// Custom error class for request timeouts
+export class TimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TimeoutError';
   }
-  
-  return res.json();
+}
+
+// Default request timeout in milliseconds (30 seconds)
+const DEFAULT_TIMEOUT_MS = 30000;
+
+// Utility function for JSON fetch with credentials and timeout
+async function fetchJSON<T>(url: string, opts: RequestInit = {}, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, {
+      ...opts,
+      credentials: 'include',  // Enable cookies for session
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...opts.headers,
+      },
+    });
+
+    if (!res.ok) {
+      // Try to parse error message from response body
+      let errorMessage = `${res.status} ${res.statusText}`;
+      try {
+        const errorData = await res.json();
+        // Prefer user-friendly 'message' field, fall back to 'error'
+        if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        }
+      } catch (e) {
+        // Log parse failure for debugging - server may have returned non-JSON (e.g., HTML error page)
+        console.warn(`Failed to parse error response from ${url}:`, e instanceof Error ? e.message : e);
+      }
+
+      // Provide helpful message for gateway/proxy errors
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        errorMessage = `Server unavailable (${res.status}). If using a reverse proxy, check its configuration.`;
+      }
+
+      // Throw appropriate error based on status code
+      if (res.status === 401) {
+        throw new AuthenticationError(errorMessage);
+      }
+
+      throw new Error(errorMessage);
+    }
+
+    return res.json();
+  } catch (error) {
+    // Handle abort/timeout errors
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new TimeoutError('Request timed out. Check your network connection or proxy configuration.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 // API functions
@@ -233,6 +263,47 @@ export const executeSettingsAction = async (
   return fetchJSON<ActionResult>(`${API.settings}/${tabName}/action/${actionKey}`, {
     method: 'POST',
     body: currentValues ? JSON.stringify(currentValues) : undefined,
+  });
+};
+
+// Onboarding API functions
+
+export interface OnboardingStepCondition {
+  field: string;
+  value: unknown;
+}
+
+export interface OnboardingStep {
+  id: string;
+  title: string;
+  tab: string;
+  fields: import('../types/settings').SettingsField[];
+  showWhen?: OnboardingStepCondition[];  // Array of conditions (all must be true)
+  optional?: boolean;
+}
+
+export interface OnboardingConfig {
+  steps: OnboardingStep[];
+  values: Record<string, unknown>;
+  complete: boolean;
+}
+
+export const getOnboarding = async (): Promise<OnboardingConfig> => {
+  return fetchJSON<OnboardingConfig>(`${API_BASE}/onboarding`);
+};
+
+export const saveOnboarding = async (
+  values: Record<string, unknown>
+): Promise<{ success: boolean; message: string }> => {
+  return fetchJSON<{ success: boolean; message: string }>(`${API_BASE}/onboarding`, {
+    method: 'POST',
+    body: JSON.stringify(values),
+  });
+};
+
+export const skipOnboarding = async (): Promise<{ success: boolean; message: string }> => {
+  return fetchJSON<{ success: boolean; message: string }>(`${API_BASE}/onboarding/skip`, {
+    method: 'POST',
   });
 };
 

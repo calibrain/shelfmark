@@ -320,7 +320,7 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-muted)] bg-[var(--bg)] px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-900 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-200"
                 >
-                  View on {isMetadata ? providerDisplay : "Anna's Archive"}
+                  View on {isMetadata ? providerDisplay : "Source"}
                   <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       strokeLinecap="round"

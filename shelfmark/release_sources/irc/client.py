@@ -120,12 +120,50 @@ class IRCClient:
         self._send(f"USER {self.nick} 0 * :{self.nick}")
         self._send(f"NICK {self.nick}")
 
-        # Wait for server to process welcome messages
-        logger.debug(f"Waiting {POST_CONNECT_DELAY}s for server welcome")
-        time.sleep(POST_CONNECT_DELAY)
+        # Wait for 001 (RPL_WELCOME) which confirms registration is complete
+        # Server may take time for hostname lookup, ident check, etc.
+        logger.debug("Waiting for server welcome (001)...")
+        self._socket.settimeout(2.0)  # Short timeout for polling
 
-        self._connected = True
-        logger.info(f"Connected as {self.nick}")
+        start = time.time()
+        timeout = 30.0  # Max wait for registration
+
+        while time.time() - start < timeout:
+            try:
+                data = self._socket.recv(RECV_BUFFER)
+                if not data:
+                    raise IRCConnectionError("Connection closed during registration")
+                self._buffer += data.decode('utf-8', errors='replace')
+            except socket.timeout:
+                continue
+
+            # Process lines looking for 001 or errors
+            while '\r\n' in self._buffer:
+                line, self._buffer = self._buffer.split('\r\n', 1)
+                if not line:
+                    continue
+
+                # Handle PING during registration
+                if line.startswith("PING"):
+                    pong = line.replace("PING", "PONG", 1)
+                    self._send(pong)
+                    logger.debug(f"PONG {pong.split(':')[-1] if ':' in pong else ''}")
+                    continue
+
+                # 001 = RPL_WELCOME - registration complete
+                if " 001 " in line:
+                    self._socket.settimeout(SOCKET_TIMEOUT)  # Restore timeout
+                    self._connected = True
+                    logger.info(f"Connected as {self.nick}")
+                    return
+
+                # Check for fatal errors
+                if " 433 " in line:  # Nickname in use
+                    raise IRCConnectionError("Nickname already in use")
+                if " 432 " in line:  # Erroneous nickname
+                    raise IRCConnectionError("Invalid nickname")
+
+        raise IRCConnectionError("Timeout waiting for server welcome")
 
     def disconnect(self) -> None:
         """Gracefully disconnect from server."""
@@ -153,38 +191,58 @@ class IRCClient:
         self.online_servers.clear()
 
         if wait_for_join:
-            # Wait for end of NAMES list (366) which confirms we're in the channel
-            start = time.time()
-            timeout = 10.0  # 10 seconds should be plenty
+            # Use a short socket timeout during join so we can check elapsed time
+            original_timeout = self._socket.gettimeout()
+            self._socket.settimeout(2.0)  # 2 second recv timeout
 
-            for line in self._recv_lines():
-                if time.time() - start > timeout:
-                    logger.warning(f"Timeout waiting for JOIN confirmation on #{channel}")
-                    break
+            try:
+                start = time.time()
+                timeout = 15.0  # Total wait time for join
 
-                msg = self._parse_message(line)
+                while time.time() - start < timeout:
+                    # Read data with short timeout
+                    try:
+                        data = self._socket.recv(RECV_BUFFER)
+                        if not data:
+                            break
+                        self._buffer += data.decode('utf-8', errors='replace')
+                    except socket.timeout:
+                        continue  # No data yet, check time and retry
 
-                # Handle PING during join wait
-                if msg.event == IRCEvent.PING:
-                    self._handle_ping(msg)
-                    continue
+                    # Process any complete lines in buffer
+                    while '\r\n' in self._buffer:
+                        line, self._buffer = self._buffer.split('\r\n', 1)
+                        if not line:
+                            continue
 
-                # 353 = RPL_NAMREPLY - parse the names list
-                if msg.command == "353":
-                    self._parse_names_list(msg.raw)
-                    continue
+                        msg = self._parse_message(line)
+                        logger.debug(f"JOIN wait recv: {msg.command} - {line[:80]}")
 
-                # 366 = RPL_ENDOFNAMES - channel join is complete
-                if msg.command == "366":
-                    logger.info(f"Joined #{channel} - {len(self.online_servers)} servers online")
-                    return
+                        # Handle PING during join wait
+                        if msg.event == IRCEvent.PING:
+                            self._handle_ping(msg)
+                            continue
 
-                # Check for errors (e.g., banned, channel doesn't exist)
-                if msg.command in ("473", "474", "475", "403"):
-                    logger.error(f"Cannot join #{channel}: {msg.trailing}")
-                    return
+                        # 353 = RPL_NAMREPLY - parse the names list
+                        if msg.command == "353":
+                            self._parse_names_list(msg.raw)
+                            continue
 
-            logger.warning(f"Joined #{channel} (no confirmation received)")
+                        # 366 = RPL_ENDOFNAMES - channel join is complete
+                        if msg.command == "366":
+                            logger.info(f"Joined #{channel} - {len(self.online_servers)} servers online")
+                            return
+
+                        # Check for errors (e.g., banned, channel doesn't exist)
+                        if msg.command in ("473", "474", "475", "403"):
+                            logger.error(f"Cannot join #{channel}: {msg.trailing}")
+                            return
+
+                logger.warning(f"Timeout waiting for JOIN confirmation on #{channel}")
+
+            finally:
+                # Restore original socket timeout
+                self._socket.settimeout(original_timeout)
 
     def send_message(self, target: str, message: str) -> None:
         """Send a PRIVMSG to a channel or user."""
