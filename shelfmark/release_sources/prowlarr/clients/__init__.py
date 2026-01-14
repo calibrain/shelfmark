@@ -11,12 +11,86 @@ Clients register themselves via the @register_client decorator.
 """
 
 import logging
+import os
+import random
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Type, Union
+from functools import wraps
+from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
+
+import requests
 
 _logger = logging.getLogger(__name__)
+
+# Type variable for generic return type
+T = TypeVar('T')
+
+# Exceptions that should trigger a retry
+RETRYABLE_EXCEPTIONS = (
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+    requests.exceptions.HTTPError,
+)
+
+
+def with_retry(
+    max_attempts: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 10.0,
+    jitter: float = 0.5,
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """
+    Decorator for retrying API calls with exponential backoff.
+
+    Args:
+        max_attempts: Maximum number of attempts (default 3)
+        base_delay: Initial delay in seconds (default 1.0)
+        max_delay: Maximum delay cap in seconds (default 10.0)
+        jitter: Random jitter factor 0-1 to add to delay (default 0.5)
+
+    Retries on:
+        - Connection errors
+        - Timeouts
+        - HTTP 5xx server errors
+
+    Does NOT retry on:
+        - HTTP 4xx client errors (bad request, auth failures)
+        - Other exceptions (programming errors)
+    """
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> T:
+            last_exception = None
+
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    return func(*args, **kwargs)
+                except requests.exceptions.HTTPError as e:
+                    # Only retry on server errors (5xx), not client errors (4xx)
+                    if e.response is not None and e.response.status_code < 500:
+                        raise
+                    last_exception = e
+                except RETRYABLE_EXCEPTIONS as e:
+                    last_exception = e
+
+                if attempt < max_attempts:
+                    # Calculate delay with exponential backoff
+                    delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+                    # Add jitter to prevent thundering herd
+                    delay += random.uniform(0, delay * jitter)
+                    _logger.debug(
+                        f"Retry {attempt}/{max_attempts} for {func.__name__} "
+                        f"after {delay:.1f}s (error: {last_exception})"
+                    )
+                    time.sleep(delay)
+
+            # All retries exhausted
+            raise last_exception
+
+        return wrapper
+    return decorator
 
 
 class DownloadState(Enum):
@@ -96,6 +170,49 @@ class DownloadClient(ABC):
     # Class attributes that subclasses must define
     protocol: str
     name: str
+
+    def _log_error(self, method: str, e: Exception, level: str = "error") -> str:
+        """
+        Log a client error with consistent formatting.
+
+        Args:
+            method: Name of the method that failed (e.g., "get_status")
+            e: The exception that was raised
+            level: Log level - "error" or "debug"
+
+        Returns:
+            Formatted error message string (for use in DownloadStatus.error())
+        """
+        error_type = type(e).__name__
+        msg = f"{self.name} {method} failed ({error_type}): {e}"
+        if level == "debug":
+            _logger.debug(msg)
+        else:
+            _logger.error(msg)
+
+        # Reset connection state if client tracks it (e.g., Deluge)
+        if hasattr(self, "_connected"):
+            self._connected = False
+
+        return f"{error_type}: {e}"
+
+    def _build_path(self, *components: str) -> Optional[str]:
+        """
+        Safely build a file path from components.
+
+        Args:
+            *components: Path components to join (e.g., save_path, name)
+
+        Returns:
+            Normalized path string, or None if any component is empty/None.
+        """
+        # Filter out empty/None components
+        valid = [c for c in components if c]
+        if len(valid) != len(components):
+            return None
+
+        # Join and normalize
+        return os.path.normpath(os.path.join(*valid))
 
     def __init_subclass__(cls, **kwargs):
         """Validate that subclasses define required class attributes."""

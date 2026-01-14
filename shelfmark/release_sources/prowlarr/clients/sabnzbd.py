@@ -14,6 +14,7 @@ from shelfmark.release_sources.prowlarr.clients import (
     DownloadClient,
     DownloadStatus,
     register_client,
+    with_retry,
 )
 
 logger = setup_logger(__name__)
@@ -91,6 +92,7 @@ class SABnzbdClient(DownloadClient):
         api_key = config.get("SABNZBD_API_KEY", "")
         return client == "sabnzbd" and bool(url) and bool(api_key)
 
+    @with_retry()
     def _api_call(self, mode: str, params: dict = None) -> Any:
         """
         Make an API call to SABnzbd.
@@ -103,7 +105,7 @@ class SABnzbdClient(DownloadClient):
             JSON response from SABnzbd.
 
         Raises:
-            Exception: If API call fails.
+            Exception: If API call fails after retries.
         """
         api_url = f"{self.url}/api"
 
@@ -241,6 +243,8 @@ class SABnzbdClient(DownloadClient):
                 if slot.get("nzo_id") == download_id:
                     status_text = slot.get("status", "").upper()
                     storage = slot.get("storage", "")
+                    if storage is None:
+                        storage = ""
                     logger.debug(f"SABnzbd history: {download_id} status={status_text} storage='{storage}'")
 
                     if status_text == "COMPLETED":
@@ -276,9 +280,7 @@ class SABnzbdClient(DownloadClient):
             logger.warning(f"SABnzbd: download {download_id} not found in queue or history")
             return DownloadStatus.error("Download not found")
         except Exception as e:
-            error_type = type(e).__name__
-            logger.error(f"SABnzbd get_status failed ({error_type}): {e}")
-            return DownloadStatus.error(f"{error_type}: {e}")
+            return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, delete_files: bool = False, archive: bool = True) -> bool:
         """
@@ -325,8 +327,7 @@ class SABnzbdClient(DownloadClient):
 
             return False
         except Exception as e:
-            error_type = type(e).__name__
-            logger.error(f"SABnzbd remove failed ({error_type}): {e}")
+            self._log_error("remove", e)
             return False
 
     def get_download_path(self, download_id: str) -> Optional[str]:

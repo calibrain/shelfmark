@@ -100,7 +100,7 @@ class QBittorrentClient(DownloadClient):
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
 
-    def add_download(self, url: str, name: str, category: str = None) -> str:
+    def add_download(self, url: str, name: str, category: str | None = None) -> str:
         """
         Add torrent by URL (magnet or .torrent).
 
@@ -230,10 +230,10 @@ class QBittorrentClient(DownloadClient):
                     file_path = torrent.content_path
                 else:
                     # Fallback for Amarr which doesn't populate content_path
-                    save_path = getattr(torrent, 'save_path', '')
-                    name = getattr(torrent, 'name', '')
-                    if save_path and name:
-                        file_path = f"{save_path}/{name}"
+                    file_path = self._build_path(
+                        getattr(torrent, 'save_path', ''),
+                        getattr(torrent, 'name', ''),
+                    )
 
             return DownloadStatus(
                 progress=torrent.progress * 100,
@@ -245,9 +245,7 @@ class QBittorrentClient(DownloadClient):
                 eta=eta,
             )
         except Exception as e:
-            error_type = type(e).__name__
-            logger.error(f"qBittorrent get_status failed ({error_type}): {e}")
-            return DownloadStatus.error(f"{error_type}: {e}")
+            return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, delete_files: bool = False) -> bool:
         """
@@ -270,8 +268,7 @@ class QBittorrentClient(DownloadClient):
             )
             return True
         except Exception as e:
-            error_type = type(e).__name__
-            logger.error(f"qBittorrent remove failed ({error_type}): {e}")
+            self._log_error("remove", e)
             return False
 
     def get_download_path(self, download_id: str) -> Optional[str]:
@@ -284,12 +281,12 @@ class QBittorrentClient(DownloadClient):
             # Prefer content_path, fall back to save_path/name (for Amarr compatibility)
             if getattr(torrent, 'content_path', ''):
                 return torrent.content_path
-            save_path = getattr(torrent, 'save_path', '')
-            name = getattr(torrent, 'name', '')
-            return f"{save_path}/{name}" if save_path and name else None
+            return self._build_path(
+                getattr(torrent, 'save_path', ''),
+                getattr(torrent, 'name', ''),
+            )
         except Exception as e:
-            error_type = type(e).__name__
-            logger.debug(f"qBittorrent get_download_path failed ({error_type}): {e}")
+            self._log_error("get_download_path", e, level="debug")
             return None
 
     def find_existing(self, url: str) -> Optional[Tuple[str, DownloadStatus]]:

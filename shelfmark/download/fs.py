@@ -154,10 +154,24 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                     if attempt > 0:
                         logger.info(f"File collision resolved: {try_path.name}")
                     return try_path
+                except (PermissionError, OSError) as move_error:
+                    if _is_permission_error(move_error):
+                        if try_path.exists() and try_path.stat().st_size == 0:
+                            try_path.unlink(missing_ok=True)
+                        logger.debug(f"Permission error during move, falling back to copyfile: {move_error}")
+                        try:
+                            _perform_nfs_fallback(source_path, try_path, is_move=True)
+                            if attempt > 0:
+                                logger.info(f"File collision resolved (fallback): {try_path.name}")
+                            return try_path
+                        except Exception as fallback_error:
+                            logger.error(f"NFS fallback also failed: {fallback_error}")
+                            raise move_error from fallback_error
+                    raise
                 except Exception:
                     # Clean up the placeholder if move failed
                     if try_path.exists() and try_path.stat().st_size == 0:
-                         try_path.unlink(missing_ok=True)
+                        try_path.unlink(missing_ok=True)
                     raise
             except FileExistsError:
                 continue
@@ -206,6 +220,11 @@ def atomic_hardlink(source_path: Path, dest_path: Path, max_attempts: int = 100)
             return try_path
         except FileExistsError:
             continue
+        except OSError as e:
+            if _is_permission_error(e) or e.errno in (errno.EXDEV, errno.EMLINK):
+                logger.debug(f"Hardlink failed ({e}), falling back to copy: {source_path} -> {dest_path}")
+                return atomic_copy(source_path, dest_path, max_attempts=max_attempts)
+            raise
 
     raise RuntimeError(f"Could not create hardlink after {max_attempts} attempts: {dest_path}")
 

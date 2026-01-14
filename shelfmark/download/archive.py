@@ -9,7 +9,7 @@ from typing import List, Optional, Tuple
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.config import config
-from shelfmark.core.naming import parse_naming_template, sanitize_filename
+from shelfmark.core.naming import assign_part_numbers, build_library_path, parse_naming_template, sanitize_filename
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download.fs import atomic_write, atomic_move
 
@@ -93,16 +93,22 @@ def _build_filename_from_task(task, extension: str, organization_mode: str) -> s
     metadata = {
         "Author": task.author,
         "Title": task.title,
-        "Subtitle": getattr(task, 'subtitle', None),
+        "Subtitle": getattr(task, "subtitle", None),
         "Year": task.year,
-        "Series": getattr(task, 'series_name', None),
-        "SeriesPosition": getattr(task, 'series_position', None),
+        "Series": getattr(task, "series_name", None),
+        "SeriesPosition": getattr(task, "series_position", None),
     }
 
     filename = parse_naming_template(template, metadata)
-    if filename:
-        return f"{sanitize_filename(filename)}.{extension}"
-    return ""
+    if not filename:
+        return ""
+
+    # "rename" mode should never create directories.
+    filename = Path(filename).name
+    filename = sanitize_filename(filename)
+
+    extension = extension.lstrip('.') if extension else ""
+    return f"{filename}.{extension}" if extension else filename
 
 # Check for rarfile availability at module load
 try:
@@ -373,30 +379,65 @@ def process_archive(
 
         logger.info(f"Extracted {len(extracted_files)} {file_type_label} file(s) from archive")
 
-        # Move book files to ingest folder
+        # Move files to ingest folder
         final_paths = []
 
         # Determine file organization mode
         is_audiobook = check_audiobook(task.content_type) if task else False
         organization_mode = _get_file_organization(is_audiobook) if task else "none"
 
-        for extracted_file in extracted_files:
-            # For multi-file archives (book packs, series), always preserve original filenames
-            # since metadata title only applies to the searched book, not the whole pack.
-            # For single files, respect FILE_ORGANIZATION setting.
-            if len(extracted_files) == 1 and organization_mode != "none" and task:
-                # Use the extracted file's actual extension, not the archive's extension
-                extracted_format = extracted_file.suffix.lower().lstrip('.')
-                filename = _build_filename_from_task(task, extracted_format, organization_mode)
-                if not filename:
-                    filename = extracted_file.name
-            else:
-                filename = extracted_file.name
+        metadata = None
+        if task:
+            metadata = {
+                "Author": task.author,
+                "Title": task.title,
+                "Subtitle": getattr(task, "subtitle", None),
+                "Year": task.year,
+                "Series": getattr(task, "series_name", None),
+                "SeriesPosition": getattr(task, "series_position", None),
+            }
 
-            dest_path = ingest_dir / filename
-            final_path = atomic_move(extracted_file, dest_path)
-            final_paths.append(final_path)
-            logger.debug(f"Moved to ingest: {final_path.name}")
+        if organization_mode == "organize" and task and metadata:
+            template = _get_template(is_audiobook, "organize")
+
+            if len(extracted_files) == 1:
+                extracted_file = extracted_files[0]
+                ext = extracted_file.suffix.lower().lstrip(".") or (task.format or "")
+                dest_path = build_library_path(str(ingest_dir), template, metadata, extension=ext or None)
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+                final_path = atomic_move(extracted_file, dest_path)
+                final_paths.append(final_path)
+                logger.debug(f"Moved to destination: {final_path}")
+            else:
+                zero_pad_width = max(len(str(len(extracted_files))), 2)
+                files_with_parts = assign_part_numbers(extracted_files, zero_pad_width)
+
+                for extracted_file, part_number in files_with_parts:
+                    ext = extracted_file.suffix.lower().lstrip(".") or (task.format or "")
+                    file_metadata = {**metadata, "PartNumber": part_number}
+                    dest_path = build_library_path(str(ingest_dir), template, file_metadata, extension=ext or None)
+                    dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+                    final_path = atomic_move(extracted_file, dest_path)
+                    final_paths.append(final_path)
+                    logger.debug(f"Moved to destination: {final_path}")
+        else:
+            for extracted_file in extracted_files:
+                # For multi-file archives (book packs, series), always preserve original filenames
+                # since metadata title only applies to the searched book, not the whole pack.
+                # For single files, respect FILE_ORGANIZATION setting.
+                if len(extracted_files) == 1 and organization_mode == "rename" and task:
+                    # Use the extracted file's actual extension, not the archive's extension
+                    extracted_format = extracted_file.suffix.lower().lstrip(".")
+                    filename = _build_filename_from_task(task, extracted_format, "rename") or extracted_file.name
+                else:
+                    filename = extracted_file.name
+
+                dest_path = ingest_dir / filename
+                final_path = atomic_move(extracted_file, dest_path)
+                final_paths.append(final_path)
+                logger.debug(f"Moved to ingest: {final_path.name}")
 
         # Clean up temp extraction directory and archive
         shutil.rmtree(extract_dir, ignore_errors=True)

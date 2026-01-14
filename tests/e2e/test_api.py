@@ -312,6 +312,29 @@ class TestReleaseDownloadFlow:
             data = resp.json()
             assert data.get("status") == "queued"
 
+    def test_cancel_release_with_slash_id(
+        self, api_client: APIClient, download_tracker: DownloadTracker
+    ):
+        """Cancelling/clearing should work for IDs containing slashes."""
+        test_id = "e2e-test-release/with-slash"
+
+        resp = api_client.post(
+            "/api/releases/download",
+            json={
+                "source": "test_source",
+                "source_id": test_id,
+                "title": "E2E Test Book",
+            },
+        )
+
+        if resp.status_code != 200:
+            pytest.skip("Release download endpoint not available")
+
+        download_tracker.track(test_id)
+
+        cancel_resp = api_client.delete(f"/api/download/{test_id}/cancel")
+        assert cancel_resp.status_code in [200, 204]
+
 
 @pytest.mark.e2e
 class TestReleasesSearch:

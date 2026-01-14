@@ -24,6 +24,39 @@ logger = setup_logger(__name__)
 POLL_INTERVAL = 2
 
 
+def _diagnose_path_issue(path: str) -> str:
+    """
+    Analyze a path and return diagnostic hints for common issues.
+
+    Args:
+        path: The path that failed to be accessed
+
+    Returns:
+        A hint string to help users diagnose the issue.
+    """
+    # Detect Windows-style paths (won't work in Linux containers)
+    if len(path) >= 2 and path[1] == ':':
+        return (
+            f"Path '{path}' appears to be a Windows path. "
+            f"Shelfmark runs in Linux and cannot access Windows paths directly. "
+            f"Ensure your download client uses Linux-style paths (/path/to/files)."
+        )
+
+    # Detect backslashes (Windows path separators)
+    if '\\' in path:
+        return (
+            f"Path '{path}' contains backslashes. "
+            f"This may indicate a Windows path or incorrect path escaping. "
+            f"Linux paths should use forward slashes (/)."
+        )
+
+    # Generic hint for Linux paths
+    return (
+        f"Path '{path}' is not accessible from Shelfmark's container. "
+        f"Ensure both containers have matching volume mounts for this directory."
+    )
+
+
 @register_handler("prowlarr")
 class ProwlarrHandler(DownloadHandler):
     """Handler for Prowlarr downloads via configured torrent or usenet client."""
@@ -51,6 +84,13 @@ class ProwlarrHandler(DownloadHandler):
                 client.remove(download_id, delete_files=True, archive=True)
             except Exception as e:
                 logger.warning(f"Failed to remove from SABnzbd history: {e}")
+
+    def _safe_remove_download(self, client, download_id: str, reason: str) -> None:
+        """Best-effort removal of a failed/cancelled download from the client."""
+        try:
+            client.remove(download_id, delete_files=True)
+        except Exception as e:
+            logger.warning(f"Failed to remove download {download_id} from {client.name} after {reason}: {e}")
 
     def _build_progress_message(self, status) -> str:
         """Build a progress message from download status."""
@@ -123,7 +163,16 @@ class ProwlarrHandler(DownloadHandler):
 
                     source_path = client.get_download_path(download_id)
                     if not source_path:
-                        status_callback("error", "Could not locate existing download file")
+                        logger.error(
+                            f"Could not get path for existing download. "
+                            f"Client: {client.name}, ID: {download_id}. "
+                            f"The download may have been moved or deleted."
+                        )
+                        status_callback(
+                            "error",
+                            f"Could not locate existing download in {client.name}. "
+                            f"Check that the file still exists."
+                        )
                         return None
 
                     result = self._handle_completed_file(
@@ -186,6 +235,10 @@ class ProwlarrHandler(DownloadHandler):
         status_callback: Callable[[str, Optional[str]], None],
     ) -> Optional[str]:
         """Poll the download client for progress and handle completion."""
+        # Track consecutive "not found" errors - torrents may take time to appear in client
+        not_found_count = 0
+        max_not_found_retries = 15  # 15 retries * 2s poll = 30s grace period
+
         try:
             logger.debug(f"Starting poll for {download_id} (content_type={task.content_type})")
             while not cancel_flag.is_set():
@@ -197,6 +250,7 @@ class ProwlarrHandler(DownloadHandler):
                     if status.state == DownloadState.ERROR:
                         logger.error(f"Download {download_id} completed with error: {status.message}")
                         status_callback("error", status.message or "Download failed")
+                        self._safe_remove_download(client, download_id, "completion error")
                         return None
                     # Download complete - break to handle file
                     logger.debug(f"Download {download_id} complete, file_path={status.file_path}")
@@ -204,10 +258,30 @@ class ProwlarrHandler(DownloadHandler):
 
                 # Check for error state
                 if status.state == DownloadState.ERROR:
-                    logger.error(f"Download {download_id} error state: {status.message}")
+                    # "Torrent not found" is often transient - the client may not have indexed it yet
+                    if "not found" in (status.message or "").lower():
+                        not_found_count += 1
+                        if not_found_count < max_not_found_retries:
+                            logger.debug(
+                                f"Download {download_id} not yet visible in client "
+                                f"(attempt {not_found_count}/{max_not_found_retries})"
+                            )
+                            status_callback("resolving", "Waiting for download client...")
+                            if cancel_flag.wait(timeout=POLL_INTERVAL):
+                                break
+                            continue
+                        # Exhausted retries
+                        logger.error(
+                            f"Download {download_id} not found after {max_not_found_retries} attempts"
+                        )
+                    else:
+                        logger.error(f"Download {download_id} error state: {status.message}")
                     status_callback("error", status.message or "Download failed")
-                    client.remove(download_id, delete_files=True)
+                    self._safe_remove_download(client, download_id, "download error")
                     return None
+
+                # Reset not-found counter on successful status check
+                not_found_count = 0
 
                 # Build status message - use client message if provided, else build progress
                 msg = status.message or self._build_progress_message(status)
@@ -238,7 +312,7 @@ class ProwlarrHandler(DownloadHandler):
                 )
                 status_callback(
                     "error",
-                    f"Download completed in {client.name} but path not returned. "
+                    f"Could not locate completed download in {client.name} (path not returned). "
                     f"Check volume mappings and category settings."
                 )
                 return None
@@ -246,16 +320,12 @@ class ProwlarrHandler(DownloadHandler):
             # Verify the path actually exists in our filesystem
             source_path_obj = Path(source_path)
             if not source_path_obj.exists():
+                hint = _diagnose_path_issue(source_path)
                 logger.error(
                     f"Download path does not exist: {source_path}. "
-                    f"Client: {client.name}, ID: {download_id}. "
-                    f"The download client's path may not be mounted in Shelfmark's container. "
-                    f"Ensure both containers use identical volume mappings for the download folder."
+                    f"Client: {client.name}, ID: {download_id}. {hint}"
                 )
-                status_callback(
-                    "error",
-                    f"Path not accessible: {source_path}. Check volume mappings between {client.name} and Shelfmark."
-                )
+                status_callback("error", hint)
                 return None
 
             result = self._handle_completed_file(
@@ -275,10 +345,7 @@ class ProwlarrHandler(DownloadHandler):
         except Exception as e:
             logger.error(f"Error during download polling: {e}")
             status_callback("error", str(e))
-            try:
-                client.remove(download_id, delete_files=True)
-            except Exception as cleanup_error:
-                logger.error(f"Failed to cleanup download {download_id} after error: {cleanup_error}")
+            self._safe_remove_download(client, download_id, "polling exception")
             return None
 
     def _handle_completed_file(

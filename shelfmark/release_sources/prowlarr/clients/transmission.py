@@ -163,9 +163,10 @@ class TransmissionClient(DownloadClient):
             # Get file path for completed downloads
             file_path = None
             if complete:
-                download_dir = torrent.download_dir
-                name = torrent.name
-                file_path = f"{download_dir}/{name}"
+                file_path = self._build_path(
+                    getattr(torrent, 'download_dir', ''),
+                    getattr(torrent, 'name', ''),
+                )
 
             return DownloadStatus(
                 progress=progress,
@@ -180,9 +181,7 @@ class TransmissionClient(DownloadClient):
         except KeyError:
             return DownloadStatus.error("Torrent not found")
         except Exception as e:
-            error_type = type(e).__name__
-            logger.error(f"Transmission get_status failed ({error_type}): {e}")
-            return DownloadStatus.error(f"{error_type}: {e}")
+            return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, delete_files: bool = False) -> bool:
         """
@@ -206,8 +205,7 @@ class TransmissionClient(DownloadClient):
             )
             return True
         except Exception as e:
-            error_type = type(e).__name__
-            logger.error(f"Transmission remove failed ({error_type}): {e}")
+            self._log_error("remove", e)
             return False
 
     def get_download_path(self, download_id: str) -> Optional[str]:
@@ -222,12 +220,12 @@ class TransmissionClient(DownloadClient):
         """
         try:
             torrent = self._client.get_torrent(download_id)
-            download_dir = torrent.download_dir
-            name = torrent.name
-            return f"{download_dir}/{name}"
+            return self._build_path(
+                getattr(torrent, 'download_dir', ''),
+                getattr(torrent, 'name', ''),
+            )
         except Exception as e:
-            error_type = type(e).__name__
-            logger.debug(f"Transmission get_download_path failed ({error_type}): {e}")
+            self._log_error("get_download_path", e, level="debug")
             return None
 
     def find_existing(self, url: str) -> Optional[Tuple[str, DownloadStatus]]:

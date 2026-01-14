@@ -437,6 +437,7 @@ function App() {
       await fetchStatus();
     } catch (error) {
       console.error('Cancel failed:', error);
+      showToast('Failed to cancel/clear download', 'error');
     }
   };
 
@@ -447,6 +448,7 @@ function App() {
       await fetchStatus();
     } catch (error) {
       console.error('Clear completed failed:', error);
+      showToast('Failed to clear finished downloads', 'error');
     }
   };
 

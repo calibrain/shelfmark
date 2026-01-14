@@ -744,7 +744,7 @@ def api_cover(cover_id: str) -> Union[Response, Tuple[Response, int]]:
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/download/<book_id>/cancel', methods=['DELETE'])
+@app.route('/api/download/<path:book_id>/cancel', methods=['DELETE'])
 @login_required
 def api_cancel_download(book_id: str) -> Union[Response, Tuple[Response, int]]:
     """
@@ -765,7 +765,7 @@ def api_cancel_download(book_id: str) -> Union[Response, Tuple[Response, int]]:
         logger.error_trace(f"Cancel download error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/queue/<book_id>/priority', methods=['PUT'])
+@app.route('/api/queue/<path:book_id>/priority', methods=['PUT'])
 @login_required
 def api_set_priority(book_id: str) -> Union[Response, Tuple[Response, int]]:
     """

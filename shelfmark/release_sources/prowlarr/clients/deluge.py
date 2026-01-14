@@ -196,10 +196,10 @@ class DelugeClient(DownloadClient):
 
             file_path = None
             if complete:
-                save_path = _decode(status.get(b'save_path', b''))
-                name = _decode(status.get(b'name', b''))
-                if save_path and name:
-                    file_path = f"{save_path}/{name}"
+                file_path = self._build_path(
+                    _decode(status.get(b'save_path', b'')),
+                    _decode(status.get(b'name', b'')),
+                )
 
             return DownloadStatus(
                 progress=progress,
@@ -212,10 +212,7 @@ class DelugeClient(DownloadClient):
             )
 
         except Exception as e:
-            self._connected = False
-            error_type = type(e).__name__
-            logger.error(f"Deluge get_status failed ({error_type}): {e}")
-            return DownloadStatus.error(f"{error_type}: {e}")
+            return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, delete_files: bool = False) -> bool:
         """
@@ -246,9 +243,7 @@ class DelugeClient(DownloadClient):
             return False
 
         except Exception as e:
-            self._connected = False
-            error_type = type(e).__name__
-            logger.error(f"Deluge remove failed ({error_type}): {e}")
+            self._log_error("remove", e)
             return False
 
     def get_download_path(self, download_id: str) -> Optional[str]:
@@ -271,16 +266,14 @@ class DelugeClient(DownloadClient):
             )
 
             if status:
-                save_path = _decode(status.get(b'save_path', b''))
-                name = _decode(status.get(b'name', b''))
-                if save_path and name:
-                    return f"{save_path}/{name}"
+                return self._build_path(
+                    _decode(status.get(b'save_path', b'')),
+                    _decode(status.get(b'name', b'')),
+                )
             return None
 
         except Exception as e:
-            self._connected = False
-            error_type = type(e).__name__
-            logger.debug(f"Deluge get_download_path failed ({error_type}): {e}")
+            self._log_error("get_download_path", e, level="debug")
             return None
 
     def find_existing(self, url: str) -> Optional[Tuple[str, DownloadStatus]]:

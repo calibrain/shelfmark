@@ -39,6 +39,7 @@ export class TimeoutError extends Error {
 
 // Default request timeout in milliseconds (30 seconds)
 const DEFAULT_TIMEOUT_MS = 30000;
+const EXPANDED_RELEASES_TIMEOUT_MS = 60000;
 
 // Utility function for JSON fetch with credentials and timeout
 async function fetchJSON<T>(url: string, opts: RequestInit = {}, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<T> {
@@ -347,5 +348,6 @@ export const getReleases = async (
   if (contentType) {
     params.set('content_type', contentType);
   }
-  return fetchJSON<ReleasesResponse>(`${API_BASE}/releases?${params.toString()}`);
+  const timeoutMs = expandSearch ? EXPANDED_RELEASES_TIMEOUT_MS : DEFAULT_TIMEOUT_MS;
+  return fetchJSON<ReleasesResponse>(`${API_BASE}/releases?${params.toString()}`, {}, timeoutMs);
 };

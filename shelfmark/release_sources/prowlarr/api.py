@@ -1,7 +1,6 @@
 """Prowlarr API client for connection testing, indexer listing, and search."""
 
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urljoin
 
 import requests
 
@@ -31,7 +30,7 @@ class ProwlarrClient:
         json_data: Optional[Dict[str, Any]] = None,
     ) -> Any:
         """Make an API request to Prowlarr. Returns parsed JSON response."""
-        url = urljoin(self.base_url, endpoint)
+        url = self.base_url + endpoint
         logger.debug(f"Prowlarr API: {method} {url}")
 
         try:

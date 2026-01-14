@@ -142,6 +142,8 @@ export const DownloadsSidebar = ({
     };
 
     const isInProgress = ['queued', 'resolving', 'downloading'].includes(statusName);
+    const isQueued = statusName === 'queued';
+    const isActive = statusName === 'resolving' || statusName === 'downloading';
     const isCompleted = statusName === 'complete';
     const hasError = statusName === 'error';
     
@@ -169,25 +171,27 @@ export const DownloadsSidebar = ({
         className="relative rounded-lg border hover:shadow-md transition-shadow overflow-hidden"
         style={{ borderColor: 'var(--border-muted)', background: 'var(--bg-soft)' }}
       >
-        {/* Cancel/Clear Button - top right corner */}
+        {/* Action Button - top right corner */}
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             onCancel(book.id);
           }}
-          className={`absolute top-1 right-1 z-10 flex items-center justify-center rounded-full transition-colors ${
-            isInProgress
-              ? 'px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30'
-              : 'w-6 h-6 text-gray-500 hover:text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30'
+          className={`absolute top-1 right-1 z-10 flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+            isActive || isQueued
+              ? 'text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30'
+              : 'text-gray-500 hover:text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30'
           }`}
-          title={isInProgress ? "Stop download" : "Clear from list"}
-          aria-label={isInProgress ? "Stop download" : "Clear from list"}
+          title={isActive ? 'Stop download' : isQueued ? 'Remove from queue' : 'Clear from list'}
+          aria-label={isActive ? 'Stop download' : isQueued ? 'Remove from queue' : 'Clear from list'}
         >
-          {isInProgress ? (
-            'Stop'
+          {isActive ? (
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <rect x="6" y="6" width="12" height="12" rx="2" />
+            </svg>
           ) : (
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           )}

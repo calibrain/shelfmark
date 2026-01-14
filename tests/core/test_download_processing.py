@@ -62,6 +62,23 @@ def temp_dirs(tmp_path):
     }
 
 
+def _mock_destination_config(ingest_dir: Path, extra=None):
+    values = {
+        "DESTINATION": str(ingest_dir),
+        "INGEST_DIR": str(ingest_dir),
+    }
+    if extra:
+        values.update(extra)
+    return MagicMock(side_effect=lambda key, default=None: values.get(key, default))
+
+
+def _sync_core_config(mock_config, mock_core_config, mock_archive_config=None):
+    mock_core_config.get = mock_config.get
+    mock_core_config.CUSTOM_SCRIPT = getattr(mock_config, "CUSTOM_SCRIPT", None)
+    if mock_archive_config is not None:
+        mock_archive_config.get = mock_config.get
+
+
 # =============================================================================
 # _atomic_copy Tests
 # =============================================================================
@@ -217,9 +234,16 @@ class TestProcessDirectory:
         directory.mkdir()
         (directory / "book.epub").write_bytes(b"epub content")
 
-        with patch('shelfmark.download.orchestrator.config') as mock_config:
+        with patch('shelfmark.download.orchestrator.config') as mock_config, \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]):
             mock_config.USE_BOOK_TITLE = False
-            mock_config.get = MagicMock(return_value=["epub"])
+            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+                "SUPPORTED_FORMATS": ["epub"],
+                "FILE_ORGANIZATION": "none",
+            }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             final_paths, error = process_directory(
                 directory=directory,
@@ -243,9 +267,16 @@ class TestProcessDirectory:
         (directory / "book1.epub").write_bytes(b"epub1")
         (directory / "book2.epub").write_bytes(b"epub2")
 
-        with patch('shelfmark.download.orchestrator.config') as mock_config:
+        with patch('shelfmark.download.orchestrator.config') as mock_config, \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]):
             mock_config.USE_BOOK_TITLE = False
-            mock_config.get = MagicMock(return_value=["epub"])
+            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+                "SUPPORTED_FORMATS": ["epub"],
+                "FILE_ORGANIZATION": "none",
+            }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             final_paths, error = process_directory(
                 directory=directory,
@@ -265,8 +296,15 @@ class TestProcessDirectory:
         # Use a file type that isn't trackable (not epub, pdf, txt, etc.)
         (directory / "readme.log").write_text("not a book")
 
-        with patch('shelfmark.download.orchestrator.config') as mock_config:
-            mock_config.get = MagicMock(return_value=["epub"])
+        with patch('shelfmark.download.orchestrator.config') as mock_config, \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]):
+            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+                "SUPPORTED_FORMATS": ["epub"],
+                "FILE_ORGANIZATION": "none",
+            }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             final_paths, error = process_directory(
                 directory=directory,
@@ -286,8 +324,15 @@ class TestProcessDirectory:
         directory.mkdir()
         (directory / "book.pdf").write_bytes(b"pdf content")
 
-        with patch('shelfmark.download.orchestrator.config') as mock_config:
-            mock_config.get = MagicMock(return_value=["epub"])  # PDF not supported
+        with patch('shelfmark.download.orchestrator.config') as mock_config, \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]):
+            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+                "SUPPORTED_FORMATS": ["epub"],  # PDF not supported
+                "FILE_ORGANIZATION": "none",
+            }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             final_paths, error = process_directory(
                 directory=directory,
@@ -311,10 +356,17 @@ class TestProcessDirectory:
         archive.write_bytes(b"PK...")  # ZIP signature
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]), \
              patch('shelfmark.download.orchestrator.is_archive', return_value=True), \
              patch('shelfmark.download.orchestrator.process_archive') as mock_extract:
 
-            mock_config.get = MagicMock(return_value=["epub"])
+            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+                "SUPPORTED_FORMATS": ["epub"],
+                "FILE_ORGANIZATION": "none",
+            }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             # Mock successful extraction
             mock_result = MagicMock()
@@ -342,10 +394,17 @@ class TestProcessDirectory:
         (directory / "extra.zip").write_bytes(b"PK...")  # Archive ignored
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]), \
              patch('shelfmark.download.orchestrator.process_archive') as mock_extract:
 
             mock_config.USE_BOOK_TITLE = False
-            mock_config.get = MagicMock(return_value=["epub"])
+            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+                "SUPPORTED_FORMATS": ["epub"],
+                "FILE_ORGANIZATION": "none",
+            }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             final_paths, error = process_directory(
                 directory=directory,
@@ -365,9 +424,16 @@ class TestProcessDirectory:
         directory.mkdir()
         (directory / "random_name.epub").write_bytes(b"content")
 
-        with patch('shelfmark.download.orchestrator.config') as mock_config:
+        with patch('shelfmark.download.orchestrator.config') as mock_config, \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]):
             mock_config.USE_BOOK_TITLE = True
-            mock_config.get = MagicMock(return_value=["epub"])
+            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+                "SUPPORTED_FORMATS": ["epub"],
+                "FILE_ORGANIZATION": "rename",
+            }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             final_paths, error = process_directory(
                 directory=directory,
@@ -389,9 +455,16 @@ class TestProcessDirectory:
         (directory / "Part 1.epub").write_bytes(b"part1")
         (directory / "Part 2.epub").write_bytes(b"part2")
 
-        with patch('shelfmark.download.orchestrator.config') as mock_config:
+        with patch('shelfmark.download.orchestrator.config') as mock_config, \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]):
             mock_config.USE_BOOK_TITLE = True  # Ignored for multi-file
-            mock_config.get = MagicMock(return_value=["epub"])
+            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+                "SUPPORTED_FORMATS": ["epub"],
+                "FILE_ORGANIZATION": "none",
+            }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             final_paths, error = process_directory(
                 directory=directory,
@@ -413,9 +486,16 @@ class TestProcessDirectory:
         subdir.mkdir(parents=True)
         (subdir / "book.epub").write_bytes(b"content")
 
-        with patch('shelfmark.download.orchestrator.config') as mock_config:
+        with patch('shelfmark.download.orchestrator.config') as mock_config, \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]):
             mock_config.USE_BOOK_TITLE = False
-            mock_config.get = MagicMock(return_value=["epub"])
+            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+                "SUPPORTED_FORMATS": ["epub"],
+                "FILE_ORGANIZATION": "none",
+            }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             final_paths, error = process_directory(
                 directory=directory,
@@ -435,10 +515,17 @@ class TestProcessDirectory:
         (directory / "book.epub").write_bytes(b"content")
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]), \
              patch('shelfmark.download.orchestrator._atomic_move', side_effect=Exception("Move failed")):
 
             mock_config.USE_BOOK_TITLE = False
-            mock_config.get = MagicMock(return_value=["epub"])
+            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+                "SUPPORTED_FORMATS": ["epub"],
+                "FILE_ORGANIZATION": "none",
+            }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             final_paths, error = process_directory(
                 directory=directory,
@@ -470,11 +557,15 @@ class TestPostProcessDownload:
         cancel_flag = Event()
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]):
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]):
 
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = None
-            mock_config.get = MagicMock(return_value=None)
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+            mock_config.get = _mock_destination_config(temp_dirs["ingest"])
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             result = _post_process_download(
                 temp_file=temp_file,
@@ -501,11 +592,15 @@ class TestPostProcessDownload:
         cancel_flag = Event()
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]):
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]):
 
             mock_config.USE_BOOK_TITLE = True
             mock_config.CUSTOM_SCRIPT = None
-            mock_config.get = MagicMock(return_value=None)
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+            mock_config.get = _mock_destination_config(temp_dirs["ingest"])
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             result = _post_process_download(
                 temp_file=temp_file,
@@ -517,8 +612,8 @@ class TestPostProcessDownload:
         result_path = Path(result)
         assert "The Way of Kings" in result_path.name
 
-    def test_library_mode_for_universal(self, temp_dirs, sample_task):
-        """Universal mode tries library mode when configured."""
+    def test_organize_mode_for_universal(self, temp_dirs, sample_task):
+        """Universal mode organizes when configured."""
         from shelfmark.download.orchestrator import _post_process_download
 
         library = temp_dirs["base"] / "library"
@@ -530,15 +625,19 @@ class TestPostProcessDownload:
         cancel_flag = Event()
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]):
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]):
 
             mock_config.USE_BOOK_TITLE = True
             mock_config.CUSTOM_SCRIPT = None
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
             mock_config.get = MagicMock(side_effect=lambda key, default=None: {
-                "PROCESSING_MODE": "library",
-                "LIBRARY_PATH": str(library),
-                "LIBRARY_TEMPLATE": "{Author}/{Title}",
+                "DESTINATION": str(library),
+                "FILE_ORGANIZATION": "organize",
+                "TEMPLATE_ORGANIZE": "{Author}/{Title}",
             }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             result = _post_process_download(
                 temp_file=temp_file,
@@ -552,8 +651,8 @@ class TestPostProcessDownload:
         assert library in result_path.parents or result_path.parent == library
         status_cb.assert_called_with("complete", "Complete")
 
-    def test_direct_mode_skips_library(self, temp_dirs, sample_direct_task):
-        """Direct mode skips library mode even when configured."""
+    def test_direct_mode_uses_ingest(self, temp_dirs, sample_direct_task):
+        """Direct mode keeps ingest destination when not organizing."""
         from shelfmark.download.orchestrator import _post_process_download
 
         library = temp_dirs["base"] / "library"
@@ -565,14 +664,18 @@ class TestPostProcessDownload:
         cancel_flag = Event()
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]):
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]):
 
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = None
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
             mock_config.get = MagicMock(side_effect=lambda key, default=None: {
-                "PROCESSING_MODE": "library",  # Configured but ignored
-                "LIBRARY_PATH": str(library),
+                "DESTINATION": str(temp_dirs["ingest"]),
+                "FILE_ORGANIZATION": "none",
             }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             result = _post_process_download(
                 temp_file=temp_file,
@@ -597,11 +700,15 @@ class TestPostProcessDownload:
         cancel_flag.set()  # Already cancelled
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]):
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]):
 
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = None
-            mock_config.get = MagicMock(return_value=None)
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+            mock_config.get = _mock_destination_config(temp_dirs["ingest"])
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             result = _post_process_download(
                 temp_file=temp_file,
@@ -625,12 +732,16 @@ class TestPostProcessDownload:
         cancel_flag = Event()
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]), \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]), \
              patch('shelfmark.download.orchestrator.is_archive', return_value=True), \
              patch('shelfmark.download.orchestrator.process_archive') as mock_extract:
 
             mock_config.CUSTOM_SCRIPT = None
-            mock_config.get = MagicMock(return_value=None)
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+            mock_config.get = _mock_destination_config(temp_dirs["ingest"])
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             mock_result = MagicMock()
             mock_result.success = True
@@ -661,12 +772,21 @@ class TestPostProcessDownload:
         cancel_flag = Event()
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]), \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]), \
              patch('shelfmark.download.orchestrator.is_archive', return_value=False):
 
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = None
-            mock_config.get = MagicMock(return_value=["epub"])
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+                "DESTINATION": str(temp_dirs["ingest"]),
+                "INGEST_DIR": str(temp_dirs["ingest"]),
+                "SUPPORTED_FORMATS": ["epub"],
+                "FILE_ORGANIZATION": "none",
+            }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             result = _post_process_download(
                 temp_file=directory,
@@ -693,13 +813,17 @@ class TestPostProcessDownload:
         cancel_flag = Event()
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]), \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]), \
              patch('shelfmark.download.orchestrator.get_staging_dir', return_value=temp_dirs["staging"]), \
              patch('shelfmark.download.orchestrator.is_archive', return_value=False):
 
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = None
-            mock_config.get = MagicMock(return_value=None)
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+            mock_config.get = _mock_destination_config(temp_dirs["ingest"])
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             result = _post_process_download(
                 temp_file=torrent_path,
@@ -713,6 +837,145 @@ class TestPostProcessDownload:
         assert torrent_path.exists()
         # Result should be in ingest
         assert Path(result).parent == temp_dirs["ingest"]
+
+    def test_torrent_directory_archive_staged_copy(self, temp_dirs, sample_task):
+        """Torrent directories are copied to staging before archive extraction."""
+        from shelfmark.download.orchestrator import _post_process_download
+
+        torrent_dir = temp_dirs["base"] / "downloads" / "pack"
+        torrent_dir.mkdir(parents=True)
+        (torrent_dir / "pack.zip").write_bytes(b"PK\x03\x04")
+
+        sample_task.source = "prowlarr"
+        sample_task.original_download_path = str(torrent_dir)
+
+        status_cb = MagicMock()
+        cancel_flag = Event()
+
+        with patch('shelfmark.download.orchestrator.config') as mock_config, \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.get_staging_dir', return_value=temp_dirs["staging"]), \
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]), \
+             patch('shelfmark.download.orchestrator.process_archive') as mock_extract:
+
+            mock_config.CUSTOM_SCRIPT = None
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+                "DESTINATION": str(temp_dirs["ingest"]),
+                "INGEST_DIR": str(temp_dirs["ingest"]),
+                "HARDLINK_TORRENTS": False,
+                "HARDLINK_TORRENTS_AUDIOBOOK": False,
+                "FILE_ORGANIZATION": "none",
+                "SUPPORTED_FORMATS": ["epub"],
+            }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+
+            mock_result = MagicMock()
+            mock_result.success = True
+            mock_result.final_paths = [temp_dirs["ingest"] / "book.epub"]
+            mock_result.message = "Extracted 1 file"
+            mock_extract.return_value = mock_result
+
+            result = _post_process_download(
+                temp_file=torrent_dir,
+                task=sample_task,
+                cancel_flag=cancel_flag,
+                status_callback=status_cb,
+            )
+
+        assert result is not None
+        assert torrent_dir.exists()
+        assert mock_extract.called
+        archive_path = mock_extract.call_args.kwargs["archive_path"]
+        assert temp_dirs["staging"] in archive_path.parents
+
+    def test_torrent_directory_hardlink_does_not_delete(self, temp_dirs, sample_task):
+        """Torrent directories are never deleted when hardlinking is enabled."""
+        from shelfmark.download.orchestrator import _post_process_download
+
+        torrent_dir = temp_dirs["base"] / "downloads" / "pack"
+        torrent_dir.mkdir(parents=True)
+        (torrent_dir / "pack.zip").write_bytes(b"PK\x03\x04")
+
+        sample_task.source = "prowlarr"
+        sample_task.original_download_path = str(torrent_dir)
+
+        status_cb = MagicMock()
+        cancel_flag = Event()
+
+        with patch('shelfmark.download.orchestrator.config') as mock_config, \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.same_filesystem', return_value=True):
+
+            mock_config.CUSTOM_SCRIPT = None
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+                "DESTINATION": str(temp_dirs["ingest"]),
+                "INGEST_DIR": str(temp_dirs["ingest"]),
+                "HARDLINK_TORRENTS": True,
+                "HARDLINK_TORRENTS_AUDIOBOOK": True,
+                "FILE_ORGANIZATION": "none",
+                "SUPPORTED_FORMATS": ["epub"],
+            }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+
+            result = _post_process_download(
+                temp_file=torrent_dir,
+                task=sample_task,
+                cancel_flag=cancel_flag,
+                status_callback=status_cb,
+            )
+
+        assert result is None
+        assert torrent_dir.exists()
+
+    def test_torrent_hardlink_different_filesystem_stages_copy(self, temp_dirs, sample_task):
+        """Torrent hardlinking falls back to staging copy when filesystems differ."""
+        from shelfmark.download.orchestrator import _post_process_download
+
+        torrent_path = temp_dirs["base"] / "downloads" / "book.epub"
+        torrent_path.parent.mkdir(parents=True)
+        torrent_path.write_bytes(b"content")
+
+        sample_task.source = "prowlarr"
+        sample_task.original_download_path = str(torrent_path)
+
+        status_cb = MagicMock()
+        cancel_flag = Event()
+
+        with patch('shelfmark.download.orchestrator.config') as mock_config, \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.get_staging_dir', return_value=temp_dirs["staging"]), \
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]), \
+             patch('shelfmark.download.orchestrator.same_filesystem', return_value=False), \
+             patch('shelfmark.download.orchestrator.is_archive', return_value=False):
+
+            mock_config.USE_BOOK_TITLE = False
+            mock_config.CUSTOM_SCRIPT = None
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+                "DESTINATION": str(temp_dirs["ingest"]),
+                "INGEST_DIR": str(temp_dirs["ingest"]),
+                "HARDLINK_TORRENTS": True,
+                "HARDLINK_TORRENTS_AUDIOBOOK": True,
+                "FILE_ORGANIZATION": "none",
+            }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+
+            result = _post_process_download(
+                temp_file=torrent_path,
+                task=sample_task,
+                cancel_flag=cancel_flag,
+                status_callback=status_cb,
+            )
+
+        assert result is not None
+        result_path = Path(result)
+        assert torrent_path.exists()
+        assert os.stat(torrent_path).st_ino != os.stat(result_path).st_ino
 
     def test_audiobook_uses_dedicated_ingest(self, temp_dirs, sample_task):
         """Audiobooks use dedicated ingest directory when configured."""
@@ -729,14 +992,20 @@ class TestPostProcessDownload:
         cancel_flag = Event()
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]), \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]), \
              patch('shelfmark.download.orchestrator.is_archive', return_value=False):
 
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = None
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
             mock_config.get = MagicMock(side_effect=lambda key, default=None: {
-                "INGEST_DIR_AUDIOBOOK": str(audiobook_ingest),
+                "DESTINATION": str(temp_dirs["ingest"]),
+                "INGEST_DIR": str(temp_dirs["ingest"]),
+                "DESTINATION_AUDIOBOOK": str(audiobook_ingest),
             }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             result = _post_process_download(
                 temp_file=temp_file,
@@ -768,13 +1037,17 @@ class TestCustomScriptExecution:
         cancel_flag = Event()
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]), \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]), \
              patch('shelfmark.download.orchestrator.is_archive', return_value=False), \
              patch('subprocess.run') as mock_run:
 
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = "/path/to/script.sh"
-            mock_config.get = MagicMock(return_value=None)
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+            mock_config.get = _mock_destination_config(temp_dirs["ingest"])
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             mock_run.return_value = MagicMock(stdout="", returncode=0)
 
@@ -801,13 +1074,17 @@ class TestCustomScriptExecution:
         cancel_flag = Event()
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]), \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]), \
              patch('shelfmark.download.orchestrator.is_archive', return_value=False), \
              patch('subprocess.run', side_effect=FileNotFoundError("not found")):
 
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = "/nonexistent/script.sh"
-            mock_config.get = MagicMock(return_value=None)
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+            mock_config.get = _mock_destination_config(temp_dirs["ingest"])
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             result = _post_process_download(
                 temp_file=temp_file,
@@ -830,13 +1107,17 @@ class TestCustomScriptExecution:
         cancel_flag = Event()
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]), \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]), \
              patch('shelfmark.download.orchestrator.is_archive', return_value=False), \
              patch('subprocess.run', side_effect=PermissionError("not executable")):
 
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = "/path/to/script.sh"
-            mock_config.get = MagicMock(return_value=None)
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+            mock_config.get = _mock_destination_config(temp_dirs["ingest"])
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             result = _post_process_download(
                 temp_file=temp_file,
@@ -860,13 +1141,17 @@ class TestCustomScriptExecution:
         cancel_flag = Event()
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]), \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]), \
              patch('shelfmark.download.orchestrator.is_archive', return_value=False), \
              patch('subprocess.run', side_effect=subprocess.TimeoutExpired("script", 300)):
 
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = "/path/to/script.sh"
-            mock_config.get = MagicMock(return_value=None)
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+            mock_config.get = _mock_destination_config(temp_dirs["ingest"])
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             result = _post_process_download(
                 temp_file=temp_file,
@@ -890,13 +1175,17 @@ class TestCustomScriptExecution:
         cancel_flag = Event()
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]), \
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]), \
              patch('shelfmark.download.orchestrator.is_archive', return_value=False), \
              patch('subprocess.run') as mock_run:
 
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = "/path/to/script.sh"
-            mock_config.get = MagicMock(return_value=None)
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+            mock_config.get = _mock_destination_config(temp_dirs["ingest"])
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             error = subprocess.CalledProcessError(1, "script", stderr="Something failed")
             mock_run.side_effect = error
@@ -931,11 +1220,15 @@ class TestDownloadProcessingIntegration:
         cancel_flag = Event()
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]):
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]):
 
             mock_config.USE_BOOK_TITLE = True
             mock_config.CUSTOM_SCRIPT = None
-            mock_config.get = MagicMock(return_value=None)
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
+            mock_config.get = _mock_destination_config(temp_dirs["ingest"])
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             result = _post_process_download(
                 temp_file=temp_file,
@@ -956,8 +1249,8 @@ class TestDownloadProcessingIntegration:
         # Final status reported
         status_cb.assert_called_with("complete", "Complete")
 
-    def test_full_universal_library_flow(self, temp_dirs, sample_task):
-        """Full flow: download → library mode with organization."""
+    def test_full_universal_organize_flow(self, temp_dirs, sample_task):
+        """Full flow: download → organize mode with directories."""
         from shelfmark.download.orchestrator import _post_process_download
 
         library = temp_dirs["base"] / "library"
@@ -969,15 +1262,19 @@ class TestDownloadProcessingIntegration:
         cancel_flag = Event()
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]):
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]):
 
             mock_config.USE_BOOK_TITLE = True
             mock_config.CUSTOM_SCRIPT = None
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
             mock_config.get = MagicMock(side_effect=lambda key, default=None: {
-                "PROCESSING_MODE": "library",
-                "LIBRARY_PATH": str(library),
-                "LIBRARY_TEMPLATE": "{Author}/{Title}",
+                "DESTINATION": str(library),
+                "FILE_ORGANIZATION": "organize",
+                "TEMPLATE_ORGANIZE": "{Author}/{Title}",
             }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             result = _post_process_download(
                 temp_file=temp_file,
@@ -995,8 +1292,8 @@ class TestDownloadProcessingIntegration:
         assert not temp_file.exists()
         status_cb.assert_called_with("complete", "Complete")
 
-    def test_library_fallback_to_ingest(self, temp_dirs, sample_task):
-        """Falls back to ingest when library mode fails."""
+    def test_invalid_destination_returns_none(self, temp_dirs, sample_task):
+        """Invalid destination returns None."""
         from shelfmark.download.orchestrator import _post_process_download
 
         temp_file = temp_dirs["staging"] / "book.epub"
@@ -1006,14 +1303,18 @@ class TestDownloadProcessingIntegration:
         cancel_flag = Event()
 
         with patch('shelfmark.download.orchestrator.config') as mock_config, \
-             patch('shelfmark.download.orchestrator.get_ingest_dir', return_value=temp_dirs["ingest"]):
+             patch('shelfmark.core.config.config') as mock_core_config,\
+             patch('shelfmark.download.archive.config') as mock_archive_config,\
+             patch('shelfmark.download.orchestrator.TMP_DIR', temp_dirs["staging"]):
 
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = None
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
             mock_config.get = MagicMock(side_effect=lambda key, default=None: {
-                "PROCESSING_MODE": "library",
-                "LIBRARY_PATH": None,  # Not configured
+                "DESTINATION": "relative/path",
+                "FILE_ORGANIZATION": "organize",
             }.get(key, default))
+            _sync_core_config(mock_config, mock_core_config, mock_archive_config)
 
             result = _post_process_download(
                 temp_file=temp_file,
@@ -1022,6 +1323,4 @@ class TestDownloadProcessingIntegration:
                 status_callback=status_cb,
             )
 
-        result_path = Path(result)
-        # Falls back to ingest
-        assert result_path.parent == temp_dirs["ingest"]
+        assert result is None

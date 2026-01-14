@@ -15,6 +15,7 @@ from shelfmark.release_sources.prowlarr.clients import (
     DownloadClient,
     DownloadStatus,
     register_client,
+    with_retry,
 )
 
 logger = setup_logger(__name__)
@@ -45,6 +46,7 @@ class NZBGetClient(DownloadClient):
         url = config.get("NZBGET_URL", "")
         return client == "nzbget" and bool(url)
 
+    @with_retry()
     def _rpc_call(self, method: str, params: list = None) -> Any:
         """
         Make a JSON-RPC call to NZBGet.
@@ -57,7 +59,7 @@ class NZBGetClient(DownloadClient):
             Result from NZBGet.
 
         Raises:
-            Exception: If RPC call fails.
+            Exception: If RPC call fails after retries.
         """
         rpc_url = f"{self.url}/jsonrpc"
 
@@ -226,7 +228,10 @@ class NZBGetClient(DownloadClient):
             for item in history:
                 if item.get("NZBID") == nzb_id:
                     status = item.get("Status", "")
-                    dest_dir = item.get("DestDir", "")
+                    # Prefer FinalDir (post-processing result) over DestDir (original)
+                    final_dir = item.get("FinalDir", "") or None
+                    dest_dir = item.get("DestDir", "") or None
+                    file_path = final_dir or dest_dir  # Use FinalDir if available
 
                     if "SUCCESS" in status:
                         return DownloadStatus(
@@ -234,7 +239,7 @@ class NZBGetClient(DownloadClient):
                             state="complete",
                             message="Complete",
                             complete=True,
-                            file_path=dest_dir,
+                            file_path=file_path,
                         )
                     else:
                         return DownloadStatus(
@@ -248,9 +253,7 @@ class NZBGetClient(DownloadClient):
             # Not found in queue or history
             return DownloadStatus.error("Download not found")
         except Exception as e:
-            error_type = type(e).__name__
-            logger.error(f"NZBGet get_status failed ({error_type}): {e}")
-            return DownloadStatus.error(f"{error_type}: {e}")
+            return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, delete_files: bool = False) -> bool:
         """
@@ -273,8 +276,7 @@ class NZBGetClient(DownloadClient):
                 logger.info(f"Removed NZB from NZBGet: {download_id}")
             return bool(result)
         except Exception as e:
-            error_type = type(e).__name__
-            logger.error(f"NZBGet remove failed ({error_type}): {e}")
+            self._log_error("remove", e)
             return False
 
     def get_download_path(self, download_id: str) -> Optional[str]:
