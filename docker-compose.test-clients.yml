@@ -177,5 +177,5 @@ services:
       - "8089:8080"  # ruTorrent Web UI
       - "9000:9000"  # SCGI port
       - "50000:50000"  # Incoming connections
-      - "6885:6881/udp"
+      - "6881:6881/udp"
     restart: unless-stopped

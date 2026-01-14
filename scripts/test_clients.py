@@ -421,16 +421,21 @@ def test_rtorrent():
         if label:
             commands.append(f"d.custom1.set={label}")
 
-        download_dir = "/home/user/files/downloads/def/TV"
+        download_dir = "/downloads"
         if download_dir:
             commands.append(f"d.directory_base.set={download_dir}")
 
+        # rtorrent is weird in that it doesn't return the torrent ID/hash on add
         client.load.start("", TEST_MAGNET, ";".join(commands))
         
+        # but we know that it is 3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0 from the magnet link
+        torrent_id = "3B245504CF5F11BBDBE1201CEA6A6BF45AEE1BC0" # rtorrent uses uppercase hashes
+        print(f"  Added test torrent: {torrent_id}")
+
         torrent_list = client.d.multicall.filtered(
             "",
             "default",
-            "equal=d.hash=,cat=3B245504CF5F11BBDBE1201CEA6A6BF45AEE1BC0",
+            f"equal=d.hash=,cat={torrent_id}",
             "d.hash=",
             "d.state=",
             "d.completed_bytes=",
@@ -438,13 +443,15 @@ def test_rtorrent():
             "d.down.rate=",
             "d.up.rate=",
             "d.custom1=",
+            "d.complete=",
         )
-        print(f". Torrent list after add: {torrent_list}")
-
-                # Get status
-
-            # Remove it
-        # client.d.erase("3B245504CF5F11BBDBE1201CEA6A6BF45AEE1BC0")
+        torrent = torrent_list[0]
+        if not torrent:
+            print("  ERROR: Could not find added torrent in list")
+            return False
+        
+        
+        client.d.erase(torrent_id)
         print("  Removed test torrent")
 
         print("  SUCCESS: rTorrent is working!")
@@ -468,20 +475,20 @@ def main():
 
     results = {}
 
-    # # Test usenet clients
-    # print("\n" + "=" * 50)
-    # print("USENET CLIENTS")
-    # print("=" * 50)
-    # results["nzbget"] = test_nzbget()
-    # results["sabnzbd"] = test_sabnzbd()
+    # Test usenet clients
+    print("\n" + "=" * 50)
+    print("USENET CLIENTS")
+    print("=" * 50)
+    results["nzbget"] = test_nzbget()
+    results["sabnzbd"] = test_sabnzbd()
 
-    # # Test torrent clients
-    # print("\n" + "=" * 50)
-    # print("TORRENT CLIENTS")
-    # print("=" * 50)
-    # results["qbittorrent"] = test_qbittorrent()
-    # results["transmission"] = test_transmission()
-    # results["deluge"] = test_deluge()
+    # Test torrent clients
+    print("\n" + "=" * 50)
+    print("TORRENT CLIENTS")
+    print("=" * 50)
+    results["qbittorrent"] = test_qbittorrent()
+    results["transmission"] = test_transmission()
+    results["deluge"] = test_deluge()
     results["rtorrent"] = test_rtorrent()
 
     # Summary
