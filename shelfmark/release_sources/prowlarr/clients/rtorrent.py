@@ -129,11 +129,11 @@ class RTorrentClient(DownloadClient):
                 "default",
                 f"equal={{d.hash=,{download_id}}}",
                 "d.hash=",
-                "d.get_state=",
-                "d.get_bytes_done=",
-                "d.get_size_bytes=",
-                "d.get_down_rate=",
-                "d.get_up_rate=",
+                "d.state=",
+                "d.completed_bytes=",
+                "d.size_bytes=",
+                "d.down.rate=",
+                "d.up.rate=",
                 "d.custom1=",
             )
 

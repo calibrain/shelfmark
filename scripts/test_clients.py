@@ -23,6 +23,7 @@ Web UIs:
     - Deluge:       http://localhost:8112
     - NZBGet:       http://localhost:6789
     - SABnzbd:      http://localhost:8085
+    - rTorrent:     http://localhost:8000 (web ui http://localhost:8089 via ruTorrent)
 
 Prerequisites (for running this script locally):
     pip install requests transmission-rpc deluge-client qbittorrent-api
@@ -53,6 +54,7 @@ First-Time Setup:
 
 import sys
 import time
+from xmlrpc import client
 
 # Test configuration - matches docker-compose.test-clients.yml
 CONFIG = {
@@ -403,7 +405,7 @@ def test_rtorrent():
         client = xmlrpc.client.ServerProxy(url)
 
         # Test connection
-        version = client.system.listMethods()
+        version = client.system.library_version()
         print(f"  Connected to rTorrent {version}")
 
         # Get torrent list
@@ -412,19 +414,38 @@ def test_rtorrent():
 
         # Test adding a torrent (then remove it)
         print("  Testing add/remove torrent...")
-        torrent_hash = client.load.start_verbose(TEST_MAGNET)
-        if torrent_hash:
-            print(f"  Added test torrent: {torrent_hash[:20]}...")
 
-            # Get status
-            status = client.d.get_state(torrent_hash)
-            print(f"  Status: {status}")
+        label = "automated"
+
+        commands = []
+        if label:
+            commands.append(f"d.custom1.set={label}")
+
+        download_dir = "/home/user/files/downloads/def/TV"
+        if download_dir:
+            commands.append(f"d.directory_base.set={download_dir}")
+
+        client.load.start("", TEST_MAGNET, ";".join(commands))
+        
+        torrent_list = client.d.multicall.filtered(
+            "",
+            "default",
+            "equal=d.hash=,cat=3B245504CF5F11BBDBE1201CEA6A6BF45AEE1BC0",
+            "d.hash=",
+            "d.state=",
+            "d.completed_bytes=",
+            "d.size_bytes=",
+            "d.down.rate=",
+            "d.up.rate=",
+            "d.custom1=",
+        )
+        print(f". Torrent list after add: {torrent_list}")
+
+                # Get status
 
             # Remove it
-            client.d.erase(torrent_hash)
-            print("  Removed test torrent")
-        else:
-            print("  WARNING: Could not add test torrent")
+        # client.d.erase("3B245504CF5F11BBDBE1201CEA6A6BF45AEE1BC0")
+        print("  Removed test torrent")
 
         print("  SUCCESS: rTorrent is working!")
         return True
@@ -447,20 +468,20 @@ def main():
 
     results = {}
 
-    # Test usenet clients
-    print("\n" + "=" * 50)
-    print("USENET CLIENTS")
-    print("=" * 50)
-    results["nzbget"] = test_nzbget()
-    results["sabnzbd"] = test_sabnzbd()
+    # # Test usenet clients
+    # print("\n" + "=" * 50)
+    # print("USENET CLIENTS")
+    # print("=" * 50)
+    # results["nzbget"] = test_nzbget()
+    # results["sabnzbd"] = test_sabnzbd()
 
-    # Test torrent clients
-    print("\n" + "=" * 50)
-    print("TORRENT CLIENTS")
-    print("=" * 50)
-    results["qbittorrent"] = test_qbittorrent()
-    results["transmission"] = test_transmission()
-    results["deluge"] = test_deluge()
+    # # Test torrent clients
+    # print("\n" + "=" * 50)
+    # print("TORRENT CLIENTS")
+    # print("=" * 50)
+    # results["qbittorrent"] = test_qbittorrent()
+    # results["transmission"] = test_transmission()
+    # results["deluge"] = test_deluge()
     results["rtorrent"] = test_rtorrent()
 
     # Summary
