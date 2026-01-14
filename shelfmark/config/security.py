@@ -172,14 +172,15 @@ def security_settings():
     if cwa_db_available:
         auth_method_options.append({"label": "Calibre-Web Database", "value": "cwa"})
 
+    auth_method_description = "Select the authentication method for accessing Shelfmark."
+    if not cwa_db_available:
+        auth_method_description += " Calibre-Web database option requires mounting your Calibre-Web app.db to /auth/app.db."
+
     fields = [
         SelectField(
             key="AUTH_METHOD",
             label="Authentication Method",
-            description=(
-                "Select the authentication method for accessing Shelfmark."
-                " Calibre-Web database option requires mounting your Calibre-Web app.db to /auth/app.db." if not cwa_db_available else ""
-            ),
+            description=auth_method_description,
             options=auth_method_options,
             default="none",
             env_supported=False,

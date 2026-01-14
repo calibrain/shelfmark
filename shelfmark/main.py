@@ -257,19 +257,22 @@ def proxy_auth_middleware():
         return None
     
     # Skip for public endpoints that don't need auth
-    if request.path in ['/api/health', '/api/auth/check']:
+    if request.path == '/api/health':
         return None
-    
+
     from shelfmark.core.settings_registry import load_config_file
-    
+
     try:
         security_config = load_config_file("security")
         user_header = security_config.get("PROXY_AUTH_USER_HEADER", "X-Auth-User")
-        
+
         # Extract username from proxy header
         username = request.headers.get(user_header)
-        
+
         if not username:
+            if request.path.startswith('/api/auth/'):
+                return None
+
             logger.warning(f"Proxy auth enabled but no username found in header '{user_header}'")
             return jsonify({"error": "Authentication required. Proxy header not set."}), 401
         
@@ -318,17 +321,20 @@ def login_required(f):
             return jsonify({"error": "Unauthorized"}), 401
 
         # Check admin access for settings endpoints (proxy and CWA modes)
-        if request.path.startswith('/api/settings') or request.path.startswith('/api/onboarding'):
+        if auth_mode in ("proxy", "cwa") and (request.path.startswith('/api/settings') or request.path.startswith('/api/onboarding')):
             from shelfmark.core.settings_registry import load_config_file
-            
+
             try:
                 security_config = load_config_file("security")
-                
-                restrict_to_admin = security_config.get("PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN" if auth_mode == "proxy" else "CWA_RESTRICT_SETTINGS_TO_ADMIN", False)
+
+                if auth_mode == "proxy":
+                    restrict_to_admin = security_config.get("PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", False)
+                else:
+                    restrict_to_admin = security_config.get("CWA_RESTRICT_SETTINGS_TO_ADMIN", False)
 
                 if restrict_to_admin and not session.get('is_admin', False):
                     return jsonify({"error": "Admin access required"}), 403
-            
+
             except Exception as e:
                 logger.error(f"Admin access check error: {e}")
                 return jsonify({"error": "Internal Server Error"}), 500
@@ -948,6 +954,10 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
         if not data:
             return jsonify({"error": "No data provided"}), 400
 
+        auth_mode = get_auth_mode()
+        if auth_mode == "proxy":
+            return jsonify({"error": "Proxy authentication is enabled"}), 401
+
         username = data.get('username', '').strip()
         password = data.get('password', '')
         remember_me = data.get('remember_me', False)
@@ -964,10 +974,8 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
                 "error": f"Account temporarily locked due to multiple failed login attempts. Try again in {int(remaining_time)} minutes."
             }), 429
 
-        auth_mode = get_auth_mode()
-
         # If no authentication is configured, authentication always succeeds
-        if auth_mode == "none" or auth_mode == "proxy":
+        if auth_mode == "none":
             session['user_id'] = username
             session.permanent = remember_me
             clear_failed_logins(username)

@@ -84,7 +84,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
   const handleLogout = useCallback(async () => {
     try {
       const { logout_url } = await logout();
-      if (logout_url?.startsWith('http')) {
+      if (logout_url?.startsWith('https://') || logout_url?.startsWith('http://')) {
         window.location.href = logout_url;
         return;
       }

@@ -152,6 +152,8 @@ Authentication is optional but recommended for shared or exposed instances. Thre
 
 **2. Proxy (Forward) Authentication**
 
+Proxy auth trusts headers set by your reverse proxy (e.g. `X-Auth-User`). Ensure Shelfmark is not directly exposed, and configure your proxy to strip/overwrite these headers for all inbound requests.
+
 **3. Calibre-Web Database**
 
 If you're running Calibre-Web, you can reuse its user database by mounting it:
