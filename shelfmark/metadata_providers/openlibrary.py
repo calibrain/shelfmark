@@ -558,6 +558,5 @@ def openlibrary_settings():
             description="Default sort order for Open Library search results.",
             options=_OPENLIBRARY_SORT_OPTIONS,
             default="relevance",
-            env_supported=False,  # UI-only setting
         ),
     ]

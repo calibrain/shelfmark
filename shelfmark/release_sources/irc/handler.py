@@ -100,7 +100,7 @@ class IRCDownloadHandler(DownloadHandler):
             ext = Path(offer.filename).suffix.lstrip('.') or task.format or "epub"
 
             # Stage to temp directory (lazy import to avoid circular import)
-            from shelfmark.download.orchestrator import get_staging_path
+            from shelfmark.download.staging import get_staging_path
             staging_path = get_staging_path(task.task_id, ext)
 
             download_dcc(

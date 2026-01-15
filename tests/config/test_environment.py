@@ -347,6 +347,68 @@ class TestConfigValidation:
 
 
 # =============================================================================
+# Settings Validation Tests
+# =============================================================================
+
+
+class TestSettingsValidation:
+    """Tests for settings save-time validation."""
+
+    def test_downloads_books_rename_template_rejects_path_separators(self):
+        import shelfmark.config.settings  # noqa: F401
+        from shelfmark.core.settings_registry import update_settings
+
+        result = update_settings(
+            "downloads",
+            {
+                "FILE_ORGANIZATION": "rename",
+                "TEMPLATE_RENAME": "{Author}/{Title}",
+            },
+        )
+
+        assert result["success"] is False
+        assert "Naming Template" in result["message"]
+        assert "Organize" in result["message"]
+
+    def test_downloads_audiobooks_rename_template_rejects_path_separators(self):
+        import shelfmark.config.settings  # noqa: F401
+        from shelfmark.core.settings_registry import update_settings
+
+        result = update_settings(
+            "downloads",
+            {
+                "FILE_ORGANIZATION_AUDIOBOOK": "rename",
+                "TEMPLATE_AUDIOBOOK_RENAME": "{Author}/{Title}",
+            },
+        )
+
+        assert result["success"] is False
+        assert "Naming Template" in result["message"]
+        assert "Organize" in result["message"]
+
+    def test_downloads_books_rename_validation_uses_existing_values(self):
+        import shelfmark.config.settings  # noqa: F401
+        from shelfmark.core.settings_registry import update_settings
+
+        with patch(
+            "shelfmark.config.settings.load_config_file",
+            return_value={
+                "BOOKS_OUTPUT_MODE": "folder",
+                "TEMPLATE_RENAME": "{Author}/{Title}",
+            },
+        ):
+            result = update_settings(
+                "downloads",
+                {
+                    "FILE_ORGANIZATION": "rename",
+                },
+            )
+
+        assert result["success"] is False
+        assert "Naming Template" in result["message"]
+
+
+# =============================================================================
 # Debug and Logging Configuration Tests
 # =============================================================================
 

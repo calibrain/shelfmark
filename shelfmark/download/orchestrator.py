@@ -8,7 +8,6 @@ import hashlib
 import os
 import random
 import shutil
-import subprocess
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -24,13 +23,17 @@ from shelfmark.config.env import TMP_DIR
 from shelfmark.core.utils import get_destination, get_aa_content_type_dir, is_audiobook as check_audiobook, transform_cover_url
 from shelfmark.core.naming import build_library_path, same_filesystem, assign_part_numbers, parse_naming_template, sanitize_filename
 from shelfmark.download.archive import (
+    ArchiveExtractionError,
+    extract_archive,
     is_archive,
-    process_archive,
     _get_file_organization,
     _get_template,
     _get_supported_formats as _get_book_formats,
     _get_supported_audiobook_formats,
 )
+from shelfmark.download.outputs import resolve_output_handler
+from shelfmark.download.staging import StageAction, STAGE_COPY, STAGE_MOVE, STAGE_NONE, stage_path
+import shelfmark.download.staging as staging_utils
 from shelfmark.release_sources import get_handler, get_source_display_name
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import BookInfo, DownloadTask, QueueStatus, SearchFilters, SearchMode
@@ -40,44 +43,38 @@ logger = setup_logger(__name__)
 
 
 # =============================================================================
-# Staging Directory Helpers
+# Task Download and Processing
 # =============================================================================
+
 # Handlers should use these to get paths in the staging area.
 # The orchestrator handles moving staged files to the ingest folder.
 
+def _sync_staging_tmp_dir() -> None:
+    staging_utils.TMP_DIR = TMP_DIR
+
+
 def get_staging_dir() -> Path:
     """Get the staging directory for downloads."""
-    TMP_DIR.mkdir(parents=True, exist_ok=True)
-    return TMP_DIR
+    _sync_staging_tmp_dir()
+    return staging_utils.get_staging_dir()
 
 
 def get_staging_path(task_id: str, extension: str) -> Path:
     """Get a staging path for a download."""
-    staging_dir = get_staging_dir()
-    # Hash task_id in case it contains invalid filename chars (e.g., Prowlarr URLs)
-    safe_id = hashlib.md5(task_id.encode()).hexdigest()[:16]
-    return staging_dir / f"{safe_id}.{extension.lstrip('.')}"
+    _sync_staging_tmp_dir()
+    return staging_utils.get_staging_path(task_id, extension)
+
+
+def build_staging_dir(prefix: str | None, task_id: str) -> Path:
+    """Build a dedicated staging directory for output processing."""
+    _sync_staging_tmp_dir()
+    return staging_utils.build_staging_dir(prefix, task_id)
 
 
 def stage_file(source_path: Path, task_id: str, copy: bool = False) -> Path:
     """Stage a file for ingest processing. Use copy=True for torrents to preserve seeding."""
-    staging_dir = get_staging_dir()
-    # Stage with original filename, add counter suffix if collision
-    staged_path = staging_dir / source_path.name
-    if staged_path.exists():
-        counter = 1
-        while staged_path.exists():
-            staged_path = staging_dir / f"{source_path.stem}_{counter}{source_path.suffix}"
-            counter += 1
-
-    if copy:
-        shutil.copy2(str(source_path), str(staged_path))
-        logger.debug(f"Copied to staging: {source_path} -> {staged_path}")
-    else:
-        shutil.move(str(source_path), str(staged_path))
-        logger.debug(f"Moved to staging: {source_path} -> {staged_path}")
-
-    return staged_path
+    _sync_staging_tmp_dir()
+    return staging_utils.stage_file(source_path, task_id, copy=copy)
 
 
 def _should_hardlink(task: DownloadTask) -> bool:
@@ -196,13 +193,21 @@ def _resolve_hardlink_source(
 
 
 @dataclass(frozen=True)
-class _ProcessingPlan:
-    destination: Path
-    organization_mode: str
-    use_hardlink: bool
+class _OutputPlan:
+    mode: str
+    stage_action: StageAction
+    staging_dir: Path
     allow_archive_extraction: bool
-    stage_copy: bool
-    hardlink_source: Optional[Path]
+    transfer_plan: Optional[_TransferPlan] = None
+
+
+@dataclass(frozen=True)
+class _PreparedFiles:
+    output_plan: _OutputPlan
+    working_path: Path
+    files: List[Path]
+    rejected_files: List[Path]
+    cleanup_paths: List[Path]
 
 
 @dataclass(frozen=True)
@@ -211,31 +216,38 @@ class _PlanStep:
     details: Dict[str, Any]
 
 
-def _build_processing_plan(
+def build_output_plan(
     temp_file: Path,
     task: DownloadTask,
-    status_callback,
-) -> Optional[_ProcessingPlan]:
-    """Build a processing plan for staging, extraction, and transfer."""
-    is_audiobook = check_audiobook(task.content_type)
-    organization_mode = _get_file_organization(is_audiobook)
-    destination = _get_final_destination(task)
-
-    if not _validate_destination(destination, status_callback):
-        return None
+    output_mode: str,
+    destination: Optional[Path] = None,
+    status_callback=None,
+) -> _OutputPlan:
+    """Build an output plan that describes staging behavior for an output mode."""
+    if output_mode == "booklore":
+        is_torrent = _is_torrent_source(temp_file, task)
+        if is_torrent or not _is_within_tmp_dir(temp_file):
+            stage_action = STAGE_COPY
+        else:
+            stage_action = STAGE_MOVE
+        staging_dir = build_staging_dir("booklore", task.task_id)
+        return _OutputPlan(
+            mode=output_mode,
+            stage_action=stage_action,
+            staging_dir=staging_dir,
+            allow_archive_extraction=True,
+        )
 
     transfer_plan = _resolve_hardlink_source(temp_file, task, destination, status_callback)
     is_torrent = _is_torrent_source(temp_file, task)
-    stage_copy = is_torrent and not transfer_plan.use_hardlink
-    hardlink_source = transfer_plan.source_path if transfer_plan.use_hardlink else None
-
-    return _ProcessingPlan(
-        destination=destination,
-        organization_mode=organization_mode,
-        use_hardlink=transfer_plan.use_hardlink,
+    stage_action = STAGE_COPY if is_torrent and not transfer_plan.use_hardlink else STAGE_NONE
+    staging_dir = get_staging_dir()
+    return _OutputPlan(
+        mode=output_mode,
+        stage_action=stage_action,
+        staging_dir=staging_dir,
         allow_archive_extraction=transfer_plan.allow_archive_extraction,
-        stage_copy=stage_copy,
-        hardlink_source=hardlink_source,
+        transfer_plan=transfer_plan,
     )
 
 
@@ -287,32 +299,295 @@ def _safe_cleanup_path(path: Optional[Path], task: DownloadTask) -> None:
         logger.debug(f"Cleanup failed for {path}: {e}")
 
 
-def _stage_processing_path(source: Path, copy: bool) -> Path:
-    """Stage a file or directory into TMP_DIR for safe processing."""
-    staging_dir = get_staging_dir()
-    staged_path = staging_dir / source.name
+def _build_extract_dir(parent: Path, archive_path: Path) -> Path:
+    base_dir = parent / f"extract_{archive_path.stem}"
     counter = 1
+    extract_dir = base_dir
+    while extract_dir.exists():
+        extract_dir = parent / f"extract_{archive_path.stem}_{counter}"
+        counter += 1
+    extract_dir.mkdir(parents=True, exist_ok=True)
+    return extract_dir
 
-    if source.is_dir():
-        while staged_path.exists():
-            staged_path = staging_dir / f"{source.name}_{counter}"
-            counter += 1
-        if copy:
-            shutil.copytree(str(source), str(staged_path))
+
+def _format_not_supported_error(rejected_files: List[Path], content_type: Optional[str]) -> str:
+    file_type_label = "audiobook" if check_audiobook(content_type) else "book"
+    rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
+    rejected_list = ", ".join(rejected_exts)
+    supported_formats = _get_supported_formats(content_type)
+    logger.warning(
+        f"Found {len(rejected_files)} {file_type_label}(s) but none match supported formats. "
+        f"Rejected formats: {rejected_list}. Supported: {', '.join(sorted(supported_formats))}"
+    )
+    return (
+        f"Found {len(rejected_files)} {file_type_label}(s) but format not supported ({rejected_list}). "
+        "Enable in Settings > Formats."
+    )
+
+
+def _extract_archive_files(
+    archive_path: Path,
+    output_dir: Path,
+    content_type: Optional[str],
+    cleanup_archive: bool,
+) -> Tuple[List[Path], List[Path], List[Path], Optional[str]]:
+    try:
+        extracted_files, warnings, rejected_files = extract_archive(archive_path, output_dir, content_type)
+    except ArchiveExtractionError as e:
+        logger.warning(f"Archive extraction failed for {archive_path.name}: {e}")
+        return [], [], [], str(e)
+
+    for warning in warnings:
+        logger.debug(warning)
+
+    if cleanup_archive:
+        archive_path.unlink(missing_ok=True)
+
+    cleanup_paths = [output_dir]
+
+    if not extracted_files:
+        if rejected_files:
+            return [], rejected_files, cleanup_paths, _format_not_supported_error(rejected_files, content_type)
+        file_type_label = "audiobook" if check_audiobook(content_type) else "book"
+        return [], rejected_files, cleanup_paths, f"No {file_type_label} files found in archive"
+
+    return extracted_files, rejected_files, cleanup_paths, None
+
+
+def _collect_directory_files(
+    directory: Path,
+    task: DownloadTask,
+    allow_archive_extraction: bool,
+    status_callback=None,
+    cleanup_archives: bool = False,
+) -> Tuple[List[Path], List[Path], List[Path], Optional[str]]:
+    content_type = task.content_type
+    book_files, rejected_files = _find_book_files_in_directory(directory, content_type)
+
+    archive_files = [f for f in directory.rglob("*") if f.is_file() and is_archive(f)]
+
+    if book_files:
+        if archive_files:
+            logger.debug(
+                f"Ignoring {len(archive_files)} archive(s) - already have {len(book_files)} book file(s)"
+            )
+        if rejected_files:
+            rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
+            logger.debug(
+                f"Also found {len(rejected_files)} file(s) with unsupported formats: {', '.join(rejected_exts)}"
+            )
+        return book_files, rejected_files, [], None
+
+    if archive_files:
+        if not allow_archive_extraction:
+            logger.warning("Archive extraction disabled when torrent hardlinking is enabled")
+            return [], rejected_files, [], "Archive extraction is disabled when torrent hardlinking is enabled"
+
+        if status_callback:
+            status_callback("resolving", "Extracting archives")
+        all_files: List[Path] = []
+        all_errors: List[str] = []
+        cleanup_paths: List[Path] = []
+
+        for archive in archive_files:
+            extract_dir = _build_extract_dir(directory, archive)
+            extracted_files, archive_rejected, archive_cleanup, error = _extract_archive_files(
+                archive_path=archive,
+                output_dir=extract_dir,
+                content_type=content_type,
+                cleanup_archive=cleanup_archives,
+            )
+            if error:
+                all_errors.append(f"{archive.name}: {error}")
+            if archive_rejected:
+                rejected_files.extend(archive_rejected)
+            if extracted_files:
+                all_files.extend(extracted_files)
+            if archive_cleanup:
+                cleanup_paths.extend(archive_cleanup)
+
+        if all_files:
+            return all_files, rejected_files, cleanup_paths, None
+        if all_errors:
+            return [], rejected_files, cleanup_paths, "; ".join(all_errors)
+        if rejected_files:
+            return [], rejected_files, cleanup_paths, _format_not_supported_error(rejected_files, content_type)
+
+        return [], rejected_files, cleanup_paths, "No book files found in archives"
+
+    if rejected_files:
+        return [], rejected_files, [], _format_not_supported_error(rejected_files, content_type)
+
+    return [], rejected_files, [], "No book files found in download"
+
+
+def _collect_staged_files(
+    working_path: Path,
+    task: DownloadTask,
+    allow_archive_extraction: bool,
+    status_callback,
+    cleanup_archives: bool,
+) -> Tuple[List[Path], List[Path], List[Path], Optional[str]]:
+    if working_path.is_dir():
+        if status_callback:
+            status_callback("resolving", "Processing download folder")
+        return _collect_directory_files(
+            working_path,
+            task,
+            allow_archive_extraction=allow_archive_extraction,
+            status_callback=status_callback,
+            cleanup_archives=cleanup_archives,
+        )
+
+    if is_archive(working_path) and allow_archive_extraction:
+        if status_callback:
+            status_callback("resolving", "Extracting archive")
+        extract_dir = _build_extract_dir(working_path.parent, working_path)
+        return _extract_archive_files(
+            archive_path=working_path,
+            output_dir=extract_dir,
+            content_type=task.content_type,
+            cleanup_archive=cleanup_archives,
+        )
+
+    return [working_path], [], [], None
+
+
+def _cleanup_output_staging(
+    output_plan: _OutputPlan,
+    working_path: Path,
+    task: DownloadTask,
+    cleanup_paths: Optional[List[Path]] = None,
+) -> None:
+    if output_plan.stage_action != STAGE_NONE:
+        cleanup_target = output_plan.staging_dir
+        if output_plan.staging_dir == TMP_DIR:
+            cleanup_target = working_path
+        _safe_cleanup_path(cleanup_target, task)
+
+    if cleanup_paths:
+        for path in cleanup_paths:
+            _safe_cleanup_path(path, task)
+
+
+def prepare_output_files(
+    temp_file: Path,
+    task: DownloadTask,
+    output_mode: str,
+    status_callback,
+    destination: Optional[Path] = None,
+) -> Optional[_PreparedFiles]:
+    output_plan = build_output_plan(
+        temp_file,
+        task,
+        output_mode=output_mode,
+        destination=destination,
+        status_callback=status_callback,
+    )
+
+    working_path = temp_file
+    if output_plan.stage_action != STAGE_NONE:
+        step_label = "Staging torrent files" if output_plan.stage_action == STAGE_COPY else "Staging files"
+        status_callback("resolving", step_label)
+        working_path = stage_path(working_path, output_plan.staging_dir, output_plan.stage_action)
+
+    cleanup_archives = output_plan.stage_action != STAGE_NONE or _is_within_tmp_dir(working_path)
+
+    files, rejected_files, cleanup_paths, error = _collect_staged_files(
+        working_path=working_path,
+        task=task,
+        allow_archive_extraction=output_plan.allow_archive_extraction,
+        status_callback=status_callback,
+        cleanup_archives=cleanup_archives,
+    )
+    if error:
+        status_callback("error", error)
+        _cleanup_output_staging(output_plan, working_path, task, cleanup_paths)
+        return None
+
+    if output_plan.stage_action == STAGE_NONE and _is_within_tmp_dir(working_path):
+        cleanup_paths = [*cleanup_paths, working_path]
+
+    return _PreparedFiles(
+        output_plan=output_plan,
+        working_path=working_path,
+        files=files,
+        rejected_files=rejected_files,
+        cleanup_paths=cleanup_paths,
+    )
+
+
+def _transfer_book_files(
+    book_files: List[Path],
+    destination: Path,
+    task: DownloadTask,
+    use_hardlink: bool,
+    is_torrent: bool,
+    organization_mode: Optional[str] = None,
+) -> Tuple[List[Path], Optional[str]]:
+    if not book_files:
+        return [], "No book files found"
+
+    is_audiobook = check_audiobook(task.content_type)
+    organization_mode = organization_mode or _get_file_organization(is_audiobook)
+    final_paths: List[Path] = []
+
+    if organization_mode == "organize":
+        template = _get_template(is_audiobook, "organize")
+        metadata = _build_metadata_dict(task)
+
+        if len(book_files) == 1:
+            source_file = book_files[0]
+            ext = source_file.suffix.lstrip('.') or task.format or ""
+            dest_path = build_library_path(str(destination), template, metadata, extension=ext or None)
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+            final_path, op = _transfer_single_file(source_file, dest_path, use_hardlink, is_torrent)
+            final_paths.append(final_path)
+            logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
         else:
-            shutil.move(str(source), str(staged_path))
-    else:
-        while staged_path.exists():
-            staged_path = staging_dir / f"{source.stem}_{counter}{source.suffix}"
-            counter += 1
-        if copy:
-            shutil.copy2(str(source), str(staged_path))
+            zero_pad_width = max(len(str(len(book_files))), 2)
+            files_with_parts = assign_part_numbers(book_files, zero_pad_width)
+
+            for source_file, part_number in files_with_parts:
+                ext = source_file.suffix.lstrip('.') or task.format or ""
+                file_metadata = {**metadata, "PartNumber": part_number}
+                dest_path = build_library_path(str(destination), template, file_metadata, extension=ext or None)
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+                final_path, op = _transfer_single_file(source_file, dest_path, use_hardlink, is_torrent)
+                final_paths.append(final_path)
+                logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
+
+        return final_paths, None
+
+    for book_file in book_files:
+        # For multi-file downloads (book packs, series), always preserve original filenames
+        # since metadata title only applies to the searched book, not the whole pack.
+        # For single files, respect FILE_ORGANIZATION setting.
+        if len(book_files) == 1 and organization_mode != "none":
+            if not task.format:
+                task.format = book_file.suffix.lower().lstrip('.')
+
+            template = _get_template(is_audiobook, "rename")
+            metadata = _build_metadata_dict(task)
+            extension = book_file.suffix.lstrip('.') or task.format or ""
+
+            filename = parse_naming_template(template, metadata)
+            filename = Path(filename).name if filename else ""
+            if filename and extension:
+                filename = f"{sanitize_filename(filename)}.{extension}"
+            else:
+                filename = book_file.name
         else:
-            shutil.move(str(source), str(staged_path))
+            filename = book_file.name
 
-    logger.debug(f"Staged {'directory' if source.is_dir() else 'file'}: {staged_path.name}")
-    return staged_path
+        dest_path = destination / filename
+        final_path, op = _transfer_single_file(book_file, dest_path, use_hardlink, is_torrent)
+        final_paths.append(final_path)
+        logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
 
+    return final_paths, None
 
 def _find_book_files_in_directory(directory: Path, content_type: str = None) -> Tuple[List[Path], List[Path]]:
     """Find book files matching supported formats. Returns (matches, rejected)."""
@@ -346,144 +621,40 @@ def process_directory(
 ) -> Tuple[List[Path], Optional[str]]:
     """Process staged directory: find book files, extract archives, move to ingest."""
     try:
-        content_type = task.content_type
-        book_files, rejected_files = _find_book_files_in_directory(directory, content_type)
         is_torrent = _is_torrent_source(directory, task)
+        book_files, _, cleanup_paths, error = _collect_directory_files(
+            directory,
+            task,
+            allow_archive_extraction=allow_archive_extraction,
+            status_callback=None,
+            cleanup_archives=not is_torrent,
+        )
 
-        # Find archives in directory (ZIP/RAR)
-        archive_files = [f for f in directory.rglob("*") if f.is_file() and is_archive(f)]
-
-        if not book_files:
-            # No direct book files - check for archives to extract
-            if archive_files:
-                if not allow_archive_extraction:
-                    logger.warning("Archive extraction disabled when torrent hardlinking is enabled")
-                    return [], "Archive extraction is disabled when torrent hardlinking is enabled"
-
-                logger.info(f"No book files found, extracting {len(archive_files)} archive(s)")
-                all_final_paths = []
-                all_errors = []
-
-                for archive in archive_files:
-                    result = process_archive(
-                        archive_path=archive,
-                        temp_dir=directory,
-                        ingest_dir=ingest_dir,
-                        archive_id=f"{task.task_id}_{archive.stem}",
-                        task=task,
-                    )
-                    if result.success:
-                        all_final_paths.extend(result.final_paths)
-                    elif result.error:
-                        all_errors.append(f"{archive.name}: {result.error}")
-
-                # Clean up directory after processing archives unless it's the torrent source
-                if not is_torrent:
-                    _safe_cleanup_path(directory, task)
-
-                if all_final_paths:
-                    return all_final_paths, None
-                elif all_errors:
-                    return [], "; ".join(all_errors)
-                else:
-                    return [], "No book files found in archives"
-
-            # No book files and no archives
+        if error:
             if not is_torrent:
                 _safe_cleanup_path(directory, task)
+                for cleanup_path in cleanup_paths:
+                    _safe_cleanup_path(cleanup_path, task)
+            return [], error
 
-            if rejected_files:
-                # Files were found but didn't match supported formats
-                rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
-                rejected_list = ", ".join(rejected_exts)
-                supported_formats = _get_supported_formats(content_type)
-                logger.warning(
-                    f"Found {len(rejected_files)} file(s) but none match supported formats. "
-                    f"Rejected formats: {rejected_list}. Supported: {', '.join(sorted(supported_formats))}"
-                )
-                return [], f"Found {len(rejected_files)} file(s) but format not supported ({rejected_list}). Enable in Settings > Formats."
-
-            return [], "No book files found in download"
-
-        # We have book files - use them directly, skip any archives
-        if archive_files:
-            logger.debug(f"Ignoring {len(archive_files)} archive(s) - already have {len(book_files)} book file(s)")
-
-        logger.info(f"Found {len(book_files)} book file(s) in directory")
-
-        if rejected_files:
-            rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
-            logger.debug(f"Also found {len(rejected_files)} file(s) with unsupported formats: {', '.join(rejected_exts)}")
-
-        # Transfer each book file to destination
-        final_paths = []
-        is_audiobook = check_audiobook(task.content_type)
-        organization_mode = _get_file_organization(is_audiobook)
         if use_hardlink is None:
             use_hardlink = _should_hardlink(task)
 
-        if organization_mode == "organize":
-            template = _get_template(is_audiobook, "organize")
-            metadata = _build_metadata_dict(task)
+        final_paths, error = _transfer_book_files(
+            book_files,
+            destination=ingest_dir,
+            task=task,
+            use_hardlink=use_hardlink,
+            is_torrent=is_torrent,
+        )
 
-            if len(book_files) == 1:
-                source_file = book_files[0]
-                ext = source_file.suffix.lstrip('.') or task.format or ""
-                dest_path = build_library_path(str(ingest_dir), template, metadata, extension=ext or None)
-                dest_path.parent.mkdir(parents=True, exist_ok=True)
-
-                final_path, op = _transfer_single_file(source_file, dest_path, use_hardlink, is_torrent)
-                final_paths.append(final_path)
-                logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
-            else:
-                zero_pad_width = max(len(str(len(book_files))), 2)
-                files_with_parts = assign_part_numbers(book_files, zero_pad_width)
-
-                for source_file, part_number in files_with_parts:
-                    ext = source_file.suffix.lstrip('.') or task.format or ""
-                    file_metadata = {**metadata, "PartNumber": part_number}
-                    dest_path = build_library_path(str(ingest_dir), template, file_metadata, extension=ext or None)
-                    dest_path.parent.mkdir(parents=True, exist_ok=True)
-
-                    final_path, op = _transfer_single_file(source_file, dest_path, use_hardlink, is_torrent)
-                    final_paths.append(final_path)
-                    logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
-
-            if not is_torrent:
-                _safe_cleanup_path(directory, task)
-
-            return final_paths, None
-        for book_file in book_files:
-            # For multi-file downloads (book packs, series), always preserve original filenames
-            # since metadata title only applies to the searched book, not the whole pack.
-            # For single files, respect FILE_ORGANIZATION setting.
-            if len(book_files) == 1 and organization_mode != "none":
-                # Update task format from actual file if not already set
-                # (Prowlarr releases may not know the format until download completes)
-                if not task.format:
-                    task.format = book_file.suffix.lower().lstrip('.')
-
-                # Apply template to generate filename
-                template = _get_template(is_audiobook, "rename")
-                metadata = _build_metadata_dict(task)
-                extension = book_file.suffix.lstrip('.') or task.format or ""
-
-                filename = parse_naming_template(template, metadata)
-                filename = Path(filename).name if filename else ""
-                if filename and extension:
-                    filename = f"{sanitize_filename(filename)}.{extension}"
-                else:
-                    filename = book_file.name
-            else:
-                filename = book_file.name
-
-            dest_path = ingest_dir / filename
-            final_path, op = _transfer_single_file(book_file, dest_path, use_hardlink, is_torrent)
-            final_paths.append(final_path)
-            logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
+        if error:
+            return [], error
 
         if not is_torrent:
             _safe_cleanup_path(directory, task)
+            for cleanup_path in cleanup_paths:
+                _safe_cleanup_path(cleanup_path, task)
 
         return final_paths, None
 
@@ -953,176 +1124,15 @@ def _post_process_download(
     elif task.search_mode not in (SearchMode.DIRECT, SearchMode.UNIVERSAL):
         logger.warning(f"Task {task.task_id} has invalid search_mode '{task.search_mode}', defaulting to Direct mode behavior")
 
-    plan = _build_processing_plan(temp_file, task, status_callback)
-    if not plan:
-        return None
+    output_handler = resolve_output_handler(task)
+    if output_handler:
+        logger.debug(f"Using output mode: {output_handler.mode}")
+        return output_handler.handler(temp_file, task, cancel_flag, status_callback)
 
-    logger.debug(
-        "Processing plan details: mode=%s destination=%s hardlink=%s stage_copy=%s extract_archives=%s",
-        plan.organization_mode,
-        plan.destination,
-        plan.use_hardlink,
-        plan.stage_copy,
-        plan.allow_archive_extraction,
-    )
+    from shelfmark.download.outputs.folder import process_folder_output
 
-    steps: List[_PlanStep] = []
-    working_path = temp_file
-    if plan.stage_copy:
-        _record_step(steps, "stage_copy", source=str(working_path), dest=str(TMP_DIR))
-        status_callback("resolving", "Staging torrent files")
-        working_path = _stage_processing_path(working_path, copy=True)
+    return process_folder_output(temp_file, task, cancel_flag, status_callback)
 
-    # Handle archive extraction (RAR/ZIP) - only if torrent hardlinking is disabled
-    if is_archive(working_path) and plan.allow_archive_extraction:
-        _record_step(steps, "extract_archive", archive=str(working_path), dest=str(plan.destination))
-        _log_plan_steps(steps)
-        logger.info(f"Archive detected, extracting: {working_path.name}")
-        status_callback("resolving", "Extracting archive")
-
-        result = process_archive(
-            archive_path=working_path,
-            temp_dir=TMP_DIR,
-            ingest_dir=plan.destination,
-            archive_id=task.task_id,
-            task=task,
-        )
-
-        if result.success:
-            status_callback("complete", result.message)
-            return str(result.final_paths[0])
-        else:
-            status_callback("error", result.error)
-            return None
-
-    # Handle directory (multi-file torrent/usenet downloads)
-    if working_path.is_dir():
-        _record_step(steps, "process_directory", source=str(working_path), dest=str(plan.destination))
-        _log_plan_steps(steps)
-        logger.info(f"Directory detected, processing: {working_path.name}")
-        status_callback("resolving", "Processing download folder")
-
-        final_paths, error = process_directory(
-            directory=working_path,
-            ingest_dir=plan.destination,
-            task=task,
-            allow_archive_extraction=plan.allow_archive_extraction,
-            use_hardlink=plan.use_hardlink,
-        )
-
-        if error:
-            status_callback("error", error)
-            return None
-
-        if not final_paths:
-            status_callback("error", "No book files found")
-            return None
-
-        message = "Complete" if len(final_paths) == 1 else f"Complete ({len(final_paths)} files)"
-        status_callback("complete", message)
-        return str(final_paths[0])
-
-    # Non-archive: run custom script if configured, then move to destination
-    if config.CUSTOM_SCRIPT:
-        _record_step(steps, "custom_script", script=str(config.CUSTOM_SCRIPT))
-        _log_plan_steps(steps)
-        logger.info(f"Running custom script: {config.CUSTOM_SCRIPT}")
-        try:
-            result = subprocess.run(
-                [config.CUSTOM_SCRIPT, str(working_path)],
-                check=True,
-                timeout=300,  # 5 minute timeout
-                capture_output=True,
-                text=True,
-            )
-            if result.stdout:
-                logger.debug(f"Custom script stdout: {result.stdout.strip()}")
-        except FileNotFoundError:
-            logger.error(f"Custom script not found: {config.CUSTOM_SCRIPT}")
-            status_callback("error", f"Custom script not found: {config.CUSTOM_SCRIPT}")
-            return None
-        except PermissionError:
-            logger.error(f"Custom script not executable: {config.CUSTOM_SCRIPT}")
-            status_callback("error", f"Custom script not executable: {config.CUSTOM_SCRIPT}")
-            return None
-        except subprocess.TimeoutExpired:
-            logger.error(f"Custom script timed out after 300s: {config.CUSTOM_SCRIPT}")
-            status_callback("error", "Custom script timed out")
-            return None
-        except subprocess.CalledProcessError as e:
-            stderr = e.stderr.strip() if e.stderr else "No error output"
-            logger.error(f"Custom script failed (exit code {e.returncode}): {stderr}")
-            status_callback("error", f"Custom script failed: {stderr[:100]}")
-            return None
-
-    source_path = plan.hardlink_source or working_path
-    is_torrent = _is_torrent_source(source_path, task)
-    is_torrent_for_label = is_torrent or plan.stage_copy
-
-    if cancel_flag.is_set():
-        logger.info(f"Download cancelled before final transfer: {task.task_id}")
-        if not is_torrent:
-            _safe_cleanup_path(working_path, task)
-        return None
-
-    # Determine filename based on organization mode
-    if plan.organization_mode == "none":
-        dest_path = plan.destination / working_path.name
-    else:
-        metadata = _build_metadata_dict(task)
-        extension = working_path.suffix.lstrip('.') or task.format or ""
-
-        if plan.organization_mode == "organize":
-            template = _get_template(check_audiobook(task.content_type), "organize")
-            dest_path = build_library_path(str(plan.destination), template, metadata, extension=extension or None)
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
-        else:
-            template = _get_template(check_audiobook(task.content_type), "rename")
-            filename = parse_naming_template(template, metadata)
-            filename = Path(filename).name if filename else ""
-            if filename and extension:
-                filename = f"{sanitize_filename(filename)}.{extension}"
-            elif not filename:
-                filename = working_path.name
-            dest_path = plan.destination / filename
-
-    if plan.use_hardlink:
-        op_label = "Hardlinking"
-    elif is_torrent_for_label:
-        op_label = "Copying"
-    else:
-        op_label = "Moving"
-
-
-    status_callback("resolving", f"{op_label} file")
-    _record_step(
-        steps,
-        "transfer",
-        op=op_label.lower(),
-        source=str(source_path),
-        dest=str(dest_path),
-        hardlink=plan.use_hardlink,
-        torrent=is_torrent_for_label,
-    )
-    if plan.stage_copy:
-        _record_step(steps, "cleanup_staging", path=str(working_path))
-    _log_plan_steps(steps)
-
-    try:
-        final_path, op = _transfer_single_file(source_path, dest_path, plan.use_hardlink, is_torrent)
-        reported_op = "copy" if plan.stage_copy and op == "move" else op
-        logger.info(f"Download completed ({reported_op}): {final_path.name}")
-    except Exception as e:
-        logger.error(f"Failed to transfer file to destination: {e}")
-        status_callback("error", f"Failed to transfer file: {e}")
-        return None
-
-    if plan.stage_copy:
-        _safe_cleanup_path(working_path, task)
-
-    status_callback("complete", "Complete")
-
-    return str(final_path)
 
 def update_download_progress(book_id: str, progress: float) -> None:
     """Update download progress with throttled WebSocket broadcasts."""

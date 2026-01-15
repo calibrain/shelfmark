@@ -231,6 +231,21 @@ def extract_archive(
     return matched_files, warnings, rejected_files
 
 
+def extract_archive_raw(
+    archive_path: Path,
+    output_dir: Path,
+) -> Tuple[List[Path], List[str]]:
+    """Extract archive without filtering (returns all extracted files)."""
+    suffix = archive_path.suffix.lower().lstrip(".")
+
+    if suffix == "zip":
+        return _extract_zip(archive_path, output_dir)
+    if suffix == "rar":
+        return _extract_rar(archive_path, output_dir)
+
+    raise ArchiveExtractionError(f"Unsupported archive format: {suffix}")
+
+
 def _extract_files_from_archive(archive, output_dir: Path) -> List[Path]:
     """Extract files from ZipFile or RarFile to output_dir with security checks."""
     extracted_files = []

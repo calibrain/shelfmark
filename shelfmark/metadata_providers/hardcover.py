@@ -835,7 +835,6 @@ def hardcover_settings():
             label="API Key",
             description="Get your API key from hardcover.app/account/api",
             required=True,
-            env_supported=False,  # UI-only setting, no ENV var support
         ),
         ActionButton(
             key="test_connection",
@@ -850,7 +849,6 @@ def hardcover_settings():
             description="Default sort order for Hardcover search results.",
             options=_HARDCOVER_SORT_OPTIONS,
             default="relevance",
-            env_supported=False,  # UI-only setting
         ),
         CheckboxField(
             key="HARDCOVER_EXCLUDE_COMPILATIONS",

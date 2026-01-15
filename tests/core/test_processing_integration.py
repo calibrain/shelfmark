@@ -462,3 +462,107 @@ def test_archive_extraction_organize_multifile_assigns_part_numbers(tmp_path):
     assert len(files) == 2
     assert files[0].name == "Archive Audio - 01.mp3"
     assert files[1].name == "Archive Audio - 02.mp3"
+
+
+@pytest.mark.integration
+def test_booklore_mode_uploads_and_cleans_staging(tmp_path):
+    from shelfmark.download.orchestrator import _post_process_download
+
+    staging = tmp_path / "staging"
+    staging.mkdir()
+
+    temp_file = staging / "book.epub"
+    temp_file.write_text("content")
+
+    task = DownloadTask(
+        task_id="direct-booklore",
+        source="direct_download",
+        title="The Way of Kings",
+        author="Brandon Sanderson",
+        format="epub",
+        search_mode=SearchMode.DIRECT,
+    )
+
+    statuses = []
+    status_cb = lambda status, message: statuses.append((status, message))
+    uploaded_files = []
+
+    def _upload_stub(_config, _token, file_path):
+        uploaded_files.append(file_path)
+        assert file_path.exists()
+
+    booklore_values = {
+        "BOOKS_OUTPUT_MODE": "booklore",
+        "BOOKLORE_HOST": "http://booklore:6060",
+        "BOOKLORE_USERNAME": "booklore",
+        "BOOKLORE_PASSWORD": "secret",
+        "BOOKLORE_LIBRARY_ID": 1,
+        "BOOKLORE_PATH_ID": 2,
+        "BOOKLORE_VERIFY_TLS": True,
+        "BOOKLORE_REFRESH_AFTER_UPLOAD": False,
+    }
+
+    with patch("shelfmark.download.outputs.booklore.config") as mock_config, \
+         patch("shelfmark.download.outputs.booklore.booklore_login", return_value="token"), \
+         patch("shelfmark.download.outputs.booklore.booklore_upload_file", side_effect=_upload_stub), \
+         patch("shelfmark.download.orchestrator.TMP_DIR", staging):
+        mock_config.get = MagicMock(side_effect=lambda key, default=None: booklore_values.get(key, default))
+
+        result = _post_process_download(temp_file, task, Event(), status_cb)
+
+    assert result is not None
+    assert uploaded_files
+    assert not temp_file.exists()
+    assert list(staging.iterdir()) == []
+    assert any("Booklore" in (message or "") for _, message in statuses)
+
+
+@pytest.mark.integration
+def test_booklore_mode_rejects_unsupported_files(tmp_path):
+    from shelfmark.download.orchestrator import _post_process_download
+
+    staging = tmp_path / "staging"
+    staging.mkdir()
+
+    temp_file = staging / "book.mobi"
+    temp_file.write_text("content")
+
+    task = DownloadTask(
+        task_id="direct-booklore-unsupported",
+        source="direct_download",
+        title="Unsupported Book",
+        author="Tester",
+        format="mobi",
+        search_mode=SearchMode.DIRECT,
+    )
+
+    status_cb = MagicMock()
+
+    booklore_values = {
+        "BOOKS_OUTPUT_MODE": "booklore",
+        "BOOKLORE_HOST": "http://booklore:6060",
+        "BOOKLORE_USERNAME": "booklore",
+        "BOOKLORE_PASSWORD": "secret",
+        "BOOKLORE_LIBRARY_ID": 1,
+        "BOOKLORE_PATH_ID": 2,
+        "BOOKLORE_VERIFY_TLS": True,
+        "BOOKLORE_REFRESH_AFTER_UPLOAD": False,
+    }
+
+    with patch("shelfmark.download.outputs.booklore.config") as mock_config, \
+         patch("shelfmark.download.outputs.booklore.booklore_login") as mock_login, \
+         patch("shelfmark.download.outputs.booklore.booklore_upload_file") as mock_upload, \
+         patch("shelfmark.download.orchestrator.TMP_DIR", staging):
+        mock_config.get = MagicMock(side_effect=lambda key, default=None: booklore_values.get(key, default))
+
+        result = _post_process_download(temp_file, task, Event(), status_cb)
+
+    assert result is None
+    assert mock_login.call_count == 0
+    assert mock_upload.call_count == 0
+    assert not temp_file.exists()
+    assert list(staging.iterdir()) == []
+
+    errors = [call for call in status_cb.call_args_list if call.args[0] == "error"]
+    assert errors
+    assert "Booklore does not support" in errors[-1].args[1]

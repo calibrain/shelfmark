@@ -25,6 +25,8 @@ export interface ShowWhenCondition {
   notEmpty?: boolean; // If true, show when field has any non-empty value
 }
 
+export type ShowWhen = ShowWhenCondition | ShowWhenCondition[];
+
 // Conditional disable configuration
 export interface DisabledWhenCondition {
   field: string; // The field key to check
@@ -42,7 +44,7 @@ export interface BaseField {
   fromEnv?: boolean; // True if value is set via environment variable
   disabled?: boolean; // True if field is disabled/greyed out
   disabledReason?: string; // Explanation shown when field is disabled
-  showWhen?: ShowWhenCondition; // Conditional visibility based on another field's value
+  showWhen?: ShowWhen; // Conditional visibility based on another field's value
   disabledWhen?: DisabledWhenCondition; // Conditional disable based on another field's value
   requiresRestart?: boolean; // True if changing this setting requires a container restart
   universalOnly?: boolean; // Only show in Universal search mode (hide in Direct mode)
@@ -80,6 +82,7 @@ export interface SelectFieldConfig extends BaseField {
   value: string;
   options: SelectOption[];
   default?: string;
+  filterByField?: string; // Field key whose value filters options via childOf property
 }
 
 export interface MultiSelectFieldConfig extends BaseField {
@@ -122,7 +125,7 @@ export interface HeadingFieldConfig {
   description?: string;
   linkUrl?: string;
   linkText?: string;
-  showWhen?: ShowWhenCondition; // Conditional visibility based on another field's value
+  showWhen?: ShowWhen; // Conditional visibility based on another field's value
   universalOnly?: boolean; // Only show in Universal search mode (hide in Direct mode)
 }
 
@@ -162,9 +165,18 @@ export interface SettingsResponse {
   groups: SettingsGroup[];
 }
 
+export interface SettingsActionEffects {
+  // Apply value updates to other fields in the current tab/step
+  setValues?: Record<string, unknown>;
+
+  // Override select options for fields (SelectField / MultiSelectField)
+  setSelectOptions?: Record<string, SelectOption[]>;
+}
+
 export interface ActionResult {
   success: boolean;
   message: string;
+  effects?: SettingsActionEffects;
 }
 
 export interface UpdateResult {

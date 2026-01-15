@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useRef } from 'react';
 import { SelectFieldConfig } from '../../../types/settings';
 import { DropdownList } from '../../DropdownList';
 
@@ -6,17 +7,39 @@ interface SelectFieldProps {
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  filterValue?: string;
 }
 
-export const SelectField = ({ field, value, onChange, disabled }: SelectFieldProps) => {
-  // disabled prop is already computed by SettingsContent.getDisabledState()
+export const SelectField = ({ field, value, onChange, disabled, filterValue }: SelectFieldProps) => {
   const isDisabled = disabled ?? false;
+
+  const prevFilterValue = useRef(filterValue);
+
+  // Filter options based on filterValue (cascading dropdown support)
+  const filteredOptions = useMemo(() => {
+    if (!filterValue) {
+      return field.options.filter((opt) => !opt.childOf);
+    }
+    // Filter to options that belong to the selected parent or have no parent
+    return field.options.filter((opt) => !opt.childOf || opt.childOf === filterValue);
+  }, [field.options, filterValue]);
+
+  // Clear selection when filter value changes and current value is not in filtered options
+  useEffect(() => {
+    if (prevFilterValue.current !== filterValue && filterValue !== undefined) {
+      const currentValueInOptions = filteredOptions.some((opt) => opt.value === value);
+      if (!currentValueInOptions && value) {
+        onChange('');
+      }
+    }
+    prevFilterValue.current = filterValue;
+  }, [filterValue, filteredOptions, value, onChange]);
 
   // Use field's default value as fallback when value is empty
   const effectiveValue = value || field.default || '';
 
   // Convert options to DropdownList format
-  const dropdownOptions = field.options.map((opt) => ({
+  const dropdownOptions = filteredOptions.map((opt) => ({
     value: opt.value,
     label: opt.label,
     description: opt.description,
@@ -30,7 +53,7 @@ export const SelectField = ({ field, value, onChange, disabled }: SelectFieldPro
 
   if (isDisabled) {
     // When disabled, show a static display instead of the dropdown
-    const selectedOption = field.options.find((opt) => opt.value === effectiveValue);
+    const selectedOption = filteredOptions.find((opt) => opt.value === effectiveValue);
     return (
       <div className="w-full px-3 py-2 rounded-lg border border-[var(--border-muted)] bg-[var(--bg-soft)] text-sm opacity-60 cursor-not-allowed">
         {selectedOption?.label || 'Select...'}

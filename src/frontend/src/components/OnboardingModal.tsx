@@ -16,6 +16,7 @@ import {
   HeadingFieldConfig,
   ActionButtonConfig,
   ActionResult,
+  ShowWhenCondition,
 } from '../types/settings';
 import { FieldWrapper } from './settings/shared';
 import {
@@ -35,6 +36,24 @@ interface OnboardingModalProps {
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
+function evaluateShowWhenCondition(
+  showWhen: ShowWhenCondition,
+  values: Record<string, unknown>
+): boolean {
+  const currentValue = values[showWhen.field];
+
+  if (showWhen.notEmpty) {
+    if (Array.isArray(currentValue)) {
+      return currentValue.length > 0;
+    }
+    return currentValue !== undefined && currentValue !== null && currentValue !== '';
+  }
+
+  return Array.isArray(showWhen.value)
+    ? showWhen.value.includes(currentValue as string)
+    : currentValue === showWhen.value;
+}
+
 // Check if a field should be visible based on showWhen condition
 function isFieldVisible(
   field: SettingsField,
@@ -43,20 +62,11 @@ function isFieldVisible(
   const showWhen = field.showWhen;
   if (!showWhen) return true;
 
-  const currentValue = values[showWhen.field];
-
-  // Handle notEmpty condition
-  if (showWhen.notEmpty) {
-    if (Array.isArray(currentValue)) {
-      return currentValue.length > 0;
-    }
-    return currentValue !== undefined && currentValue !== null && currentValue !== '';
+  if (Array.isArray(showWhen)) {
+    return showWhen.every((condition) => evaluateShowWhenCondition(condition, values));
   }
 
-  // Handle array of allowed values or single value
-  return Array.isArray(showWhen.value)
-    ? showWhen.value.includes(currentValue as string)
-    : currentValue === showWhen.value;
+  return evaluateShowWhenCondition(showWhen, values);
 }
 
 // Check if a step should be visible based on its showWhen conditions (all must be true)
