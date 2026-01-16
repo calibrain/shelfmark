@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 from typing import Literal
 
-from shelfmark.config.env import TMP_DIR
+from shelfmark.config import env as env_config
 from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -18,8 +18,9 @@ STAGE_MOVE: StageAction = "move"
 
 def get_staging_dir() -> Path:
     """Get the staging directory for downloads."""
-    TMP_DIR.mkdir(parents=True, exist_ok=True)
-    return TMP_DIR
+    tmp_dir = env_config.TMP_DIR
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    return tmp_dir
 
 
 def get_staging_path(task_id: str, extension: str) -> Path:

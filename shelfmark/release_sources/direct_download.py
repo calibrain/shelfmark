@@ -20,7 +20,7 @@ from shelfmark.core.config import config
 from shelfmark.core.utils import CONTENT_TYPES
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import BookInfo, SearchFilters, DownloadTask
-from shelfmark.metadata_providers import BookMetadata
+from shelfmark.metadata_providers import BookMetadata, group_languages_by_localized_title
 from shelfmark.release_sources import (
     Release,
     ReleaseProtocol,
@@ -1181,14 +1181,11 @@ class DirectDownloadSource(ReleaseSource):
         author = book.authors[0] if book.authors else ""
 
         # Group languages by localized title to avoid duplicate searches
-        if lang_filter and book.titles_by_language:
-            title_to_langs: Dict[str, List[str]] = {}
-            for lang in lang_filter:
-                title = book.titles_by_language.get(lang, book.title)
-                title_to_langs.setdefault(title, []).append(lang)
-            searches = list(title_to_langs.items())
-        else:
-            searches = [(book.title, lang_filter)]
+        searches = group_languages_by_localized_title(
+            base_title=book.title,
+            languages=lang_filter,
+            titles_by_language=book.titles_by_language,
+        )
 
         # Execute searches with deduplication
         seen_ids: set = set()

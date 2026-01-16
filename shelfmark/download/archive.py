@@ -3,112 +3,19 @@
 import os
 import shutil
 import zipfile
-from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.config import config
-from shelfmark.core.naming import assign_part_numbers, build_library_path, parse_naming_template, sanitize_filename
+from shelfmark.download.postprocess.policy import (
+    get_supported_audiobook_formats,
+    get_supported_formats,
+)
 from shelfmark.core.utils import is_audiobook as check_audiobook
-from shelfmark.download.fs import atomic_write, atomic_move
+from shelfmark.download.fs import atomic_write
 
 logger = setup_logger(__name__)
 
-
-def _get_supported_formats() -> List[str]:
-    """Get current supported formats from config singleton."""
-    formats = config.get("SUPPORTED_FORMATS", ["epub", "mobi", "azw3", "fb2", "djvu", "cbz", "cbr"])
-    # Handle both list (from MultiSelectField) and comma-separated string (legacy/env)
-    if isinstance(formats, str):
-        return [fmt.strip().lower() for fmt in formats.split(",") if fmt.strip()]
-    return [fmt.lower() for fmt in formats]
-
-
-def _get_supported_audiobook_formats() -> List[str]:
-    """Get current supported audiobook formats from config singleton."""
-    formats = config.get("SUPPORTED_AUDIOBOOK_FORMATS", ["m4b", "mp3"])
-    # Handle both list (from MultiSelectField) and comma-separated string (legacy/env)
-    if isinstance(formats, str):
-        return [fmt.strip().lower() for fmt in formats.split(",") if fmt.strip()]
-    return [fmt.lower() for fmt in formats]
-
-
-def _get_file_organization(is_audiobook: bool) -> str:
-    """Get the file organization mode for the content type."""
-    key = "FILE_ORGANIZATION_AUDIOBOOK" if is_audiobook else "FILE_ORGANIZATION"
-    mode = config.get(key, "rename")
-
-    # Handle legacy settings migration
-    if mode not in ("none", "rename", "organize"):
-        legacy_key = "PROCESSING_MODE_AUDIOBOOK" if is_audiobook else "PROCESSING_MODE"
-        legacy_mode = config.get(legacy_key, "ingest")
-        if legacy_mode == "library":
-            return "organize"
-        if config.get("USE_BOOK_TITLE", True):
-            return "rename"
-        return "none"
-
-    return mode
-
-
-def _get_template(is_audiobook: bool, organization_mode: str) -> str:
-    """Get the template for the content type and organization mode."""
-    # Determine the correct key based on content type and organization mode
-    if is_audiobook:
-        if organization_mode == "organize":
-            key = "TEMPLATE_AUDIOBOOK_ORGANIZE"
-        else:
-            key = "TEMPLATE_AUDIOBOOK_RENAME"
-    else:
-        if organization_mode == "organize":
-            key = "TEMPLATE_ORGANIZE"
-        else:
-            key = "TEMPLATE_RENAME"
-
-    template = config.get(key, "")
-
-    # Fallback to legacy keys if new keys are empty
-    if not template:
-        legacy_key = "TEMPLATE_AUDIOBOOK" if is_audiobook else "TEMPLATE"
-        template = config.get(legacy_key, "")
-
-    if not template:
-        legacy_key = "LIBRARY_TEMPLATE_AUDIOBOOK" if is_audiobook else "LIBRARY_TEMPLATE"
-        template = config.get(legacy_key, "")
-
-    if not template:
-        if organization_mode == "organize":
-            return "{Author}/{Title} ({Year})"
-        return "{Author} - {Title} ({Year})"
-
-    return template
-
-
-def _build_filename_from_task(task, extension: str, organization_mode: str) -> str:
-    """Build a filename from task metadata using the configured template."""
-    is_audiobook = check_audiobook(task.content_type)
-
-    template = _get_template(is_audiobook, organization_mode)
-    metadata = {
-        "Author": task.author,
-        "Title": task.title,
-        "Subtitle": getattr(task, "subtitle", None),
-        "Year": task.year,
-        "Series": getattr(task, "series_name", None),
-        "SeriesPosition": getattr(task, "series_position", None),
-    }
-
-    filename = parse_naming_template(template, metadata)
-    if not filename:
-        return ""
-
-    # "rename" mode should never create directories.
-    filename = Path(filename).name
-    filename = sanitize_filename(filename)
-
-    extension = extension.lstrip('.') if extension else ""
-    return f"{filename}.{extension}" if extension else filename
 
 # Check for rarfile availability at module load
 try:
@@ -148,9 +55,9 @@ def _is_supported_file(file_path: Path, content_type: Optional[str] = None) -> b
     """Check if file matches user's supported formats setting based on content type."""
     ext = file_path.suffix.lower().lstrip(".")
     if check_audiobook(content_type):
-        supported_formats = _get_supported_audiobook_formats()
+        supported_formats = get_supported_audiobook_formats()
     else:
-        supported_formats = _get_supported_formats()
+        supported_formats = get_supported_formats()
     return ext in supported_formats
 
 
@@ -330,176 +237,3 @@ def _extract_rar(archive_path: Path, output_dir: Path) -> Tuple[List[Path], List
         raise ArchiveExtractionError(f"Permission denied: {e}")
 
 
-@dataclass
-class ArchiveResult:
-    """Result of archive processing."""
-
-    success: bool
-    final_paths: List[Path]
-    message: str
-    error: Optional[str] = None
-
-
-def process_archive(
-    archive_path: Path,
-    temp_dir: Path,
-    ingest_dir: Path,
-    archive_id: str,
-    task: Optional["DownloadTask"] = None,
-) -> ArchiveResult:
-    """Extract archive, filter to supported formats, move to ingest directory."""
-    extract_dir = temp_dir / f"extract_{archive_id}"
-    content_type = task.content_type if task else None
-    is_audiobook = check_audiobook(content_type)
-    file_type_label = "audiobook" if is_audiobook else "book"
-
-    try:
-        # Create temp extraction directory
-        os.makedirs(extract_dir, exist_ok=True)
-        os.makedirs(ingest_dir, exist_ok=True)
-
-        # Extract to temp directory (filters based on content type)
-        extracted_files, warnings, rejected_files = extract_archive(archive_path, extract_dir, content_type)
-
-        if not extracted_files:
-            # Clean up and return error
-            shutil.rmtree(extract_dir, ignore_errors=True)
-            archive_path.unlink(missing_ok=True)
-
-            if rejected_files:
-                # Found files but they weren't in supported formats
-                rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
-                rejected_list = ", ".join(rejected_exts)
-                supported_formats = _get_supported_audiobook_formats() if is_audiobook else _get_supported_formats()
-                logger.warning(
-                    f"Found {len(rejected_files)} {file_type_label}(s) in archive but format not supported. "
-                    f"Rejected: {rejected_list}. Supported: {', '.join(sorted(supported_formats))}"
-                )
-                return ArchiveResult(
-                    success=False,
-                    final_paths=[],
-                    message="",
-                    error=f"Found {len(rejected_files)} {file_type_label}(s) but format not supported ({rejected_list}). Enable in Settings > Formats.",
-                )
-
-            return ArchiveResult(
-                success=False,
-                final_paths=[],
-                message="",
-                error=f"No {file_type_label} files found in archive",
-            )
-
-        for warning in warnings:
-            logger.debug(warning)
-
-        logger.info(f"Extracted {len(extracted_files)} {file_type_label} file(s) from archive")
-
-        # Move files to ingest folder
-        final_paths = []
-
-        # Determine file organization mode
-        is_audiobook = check_audiobook(task.content_type) if task else False
-        organization_mode = _get_file_organization(is_audiobook) if task else "none"
-
-        metadata = None
-        if task:
-            metadata = {
-                "Author": task.author,
-                "Title": task.title,
-                "Subtitle": getattr(task, "subtitle", None),
-                "Year": task.year,
-                "Series": getattr(task, "series_name", None),
-                "SeriesPosition": getattr(task, "series_position", None),
-            }
-
-        if organization_mode == "organize" and task and metadata:
-            template = _get_template(is_audiobook, "organize")
-
-            if len(extracted_files) == 1:
-                extracted_file = extracted_files[0]
-                ext = extracted_file.suffix.lower().lstrip(".") or (task.format or "")
-                dest_path = build_library_path(str(ingest_dir), template, metadata, extension=ext or None)
-                dest_path.parent.mkdir(parents=True, exist_ok=True)
-
-                final_path = atomic_move(extracted_file, dest_path)
-                final_paths.append(final_path)
-                logger.debug(f"Moved to destination: {final_path}")
-            else:
-                zero_pad_width = max(len(str(len(extracted_files))), 2)
-                files_with_parts = assign_part_numbers(extracted_files, zero_pad_width)
-
-                for extracted_file, part_number in files_with_parts:
-                    ext = extracted_file.suffix.lower().lstrip(".") or (task.format or "")
-                    file_metadata = {**metadata, "PartNumber": part_number}
-                    dest_path = build_library_path(str(ingest_dir), template, file_metadata, extension=ext or None)
-                    dest_path.parent.mkdir(parents=True, exist_ok=True)
-
-                    final_path = atomic_move(extracted_file, dest_path)
-                    final_paths.append(final_path)
-                    logger.debug(f"Moved to destination: {final_path}")
-        else:
-            for extracted_file in extracted_files:
-                # For multi-file archives (book packs, series), always preserve original filenames
-                # since metadata title only applies to the searched book, not the whole pack.
-                # For single files, respect FILE_ORGANIZATION setting.
-                if len(extracted_files) == 1 and organization_mode == "rename" and task:
-                    # Use the extracted file's actual extension, not the archive's extension
-                    extracted_format = extracted_file.suffix.lower().lstrip(".")
-                    filename = _build_filename_from_task(task, extracted_format, "rename") or extracted_file.name
-                else:
-                    filename = extracted_file.name
-
-                dest_path = ingest_dir / filename
-                final_path = atomic_move(extracted_file, dest_path)
-                final_paths.append(final_path)
-                logger.debug(f"Moved to ingest: {final_path.name}")
-
-        # Clean up temp extraction directory and archive
-        shutil.rmtree(extract_dir, ignore_errors=True)
-        archive_path.unlink(missing_ok=True)
-
-        # Build success message with format info
-        formats = [p.suffix.lstrip(".").upper() for p in final_paths]
-        if len(formats) == 1:
-            message = f"Complete ({formats[0]})"
-        else:
-            message = f"Complete ({len(formats)} files)"
-
-        return ArchiveResult(
-            success=True,
-            final_paths=final_paths,
-            message=message,
-        )
-
-    except PasswordProtectedError:
-        logger.warning(f"Password-protected archive: {archive_path.name}")
-        shutil.rmtree(extract_dir, ignore_errors=True)
-        archive_path.unlink(missing_ok=True)
-        return ArchiveResult(
-            success=False,
-            final_paths=[],
-            message="",
-            error="Archive is password protected",
-        )
-
-    except CorruptedArchiveError as e:
-        logger.warning(f"Corrupted archive: {e}")
-        shutil.rmtree(extract_dir, ignore_errors=True)
-        archive_path.unlink(missing_ok=True)
-        return ArchiveResult(
-            success=False,
-            final_paths=[],
-            message="",
-            error=f"Corrupted archive: {e}",
-        )
-
-    except ArchiveExtractionError as e:
-        logger.warning(f"Archive extraction failed: {e}")
-        shutil.rmtree(extract_dir, ignore_errors=True)
-        archive_path.unlink(missing_ok=True)
-        return ArchiveResult(
-            success=False,
-            final_paths=[],
-            message="",
-            error=f"Extraction failed: {e}",
-        )

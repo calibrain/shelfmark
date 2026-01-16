@@ -242,7 +242,7 @@ class TestProwlarrHandlerExistingDownload:
             ), patch(
                 "shelfmark.release_sources.prowlarr.handler.remove_release",
             ), patch(
-                "shelfmark.download.orchestrator.get_staging_dir",
+                "shelfmark.download.staging.get_staging_dir",
                 return_value=staging_dir,
             ):
                 handler = ProwlarrHandler()
@@ -321,7 +321,7 @@ class TestProwlarrHandlerPolling:
             ), patch(
                 "shelfmark.release_sources.prowlarr.handler.remove_release",
             ), patch(
-                "shelfmark.download.orchestrator.get_staging_dir",
+                "shelfmark.download.staging.get_staging_dir",
                 return_value=staging_dir,
             ), patch(
                 "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
@@ -512,7 +512,7 @@ class TestProwlarrHandlerFileStaging:
             ), patch(
                 "shelfmark.release_sources.prowlarr.handler.remove_release",
             ), patch(
-                "shelfmark.download.orchestrator.get_staging_dir",
+                "shelfmark.download.staging.get_staging_dir",
                 return_value=staging_dir,
             ), patch(
                 "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
@@ -575,7 +575,7 @@ class TestProwlarrHandlerFileStaging:
             ), patch(
                 "shelfmark.release_sources.prowlarr.handler.remove_release",
             ), patch(
-                "shelfmark.download.orchestrator.get_staging_dir",
+                "shelfmark.download.staging.get_staging_dir",
                 return_value=staging_dir,
             ), patch(
                 "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
@@ -641,7 +641,7 @@ class TestProwlarrHandlerFileStaging:
             ), patch(
                 "shelfmark.release_sources.prowlarr.handler.remove_release",
             ), patch(
-                "shelfmark.download.orchestrator.get_staging_dir",
+                "shelfmark.download.staging.get_staging_dir",
                 return_value=staging_dir,
             ), patch(
                 "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",

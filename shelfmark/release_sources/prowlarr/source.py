@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.metadata_providers import BookMetadata
+from shelfmark.metadata_providers import BookMetadata, build_localized_search_titles
 from shelfmark.release_sources import (
     Release,
     ReleaseSource,
@@ -304,12 +304,8 @@ class ProwlarrSource(ReleaseSource):
             logger.warning("Prowlarr not configured - skipping search")
             return []
 
-        # Build search query
-        query_parts = []
-        # Prefer search_title if available (cleaner title for searches)
-        search_title = book.search_title or book.title
-        if search_title:
-            query_parts.append(search_title)
+        # Build search queries (optionally include localized titles)
+        query_author = ""
         if book.authors:
             # Use first author only - authors may be a list or a single string
             # that contains multiple comma-separated names (from frontend)
@@ -317,14 +313,34 @@ class ProwlarrSource(ReleaseSource):
             # If first author contains comma, split and use only the primary author
             if "," in first_author:
                 first_author = first_author.split(",")[0].strip()
-            query_parts.append(first_author)
+            query_author = first_author
 
-        query = " ".join(query_parts)
-        if not query:
+        # Prefer search_title if available (cleaner title for searches)
+        search_title = book.search_title or book.title
+
+        language_preferences = languages or ([book.language] if book.language else None)
+        search_titles = build_localized_search_titles(
+            base_title=search_title,
+            languages=language_preferences,
+            titles_by_language=book.titles_by_language,
+            # Keep the existing search_title behavior for English while still
+            # allowing additional localized searches for other languages.
+            excluded_languages={"en", "eng", "english"},
+        )
+
+        queries = [
+            " ".join(part for part in [title, query_author] if part).strip()
+            for title in search_titles
+        ]
+        queries = [q for q in queries if q]
+
+        if not queries:
             # Try ISBN as fallback
-            query = book.isbn_13 or book.isbn_10 or ""
+            isbn_query = book.isbn_13 or book.isbn_10 or ""
+            if isbn_query:
+                queries = [isbn_query]
 
-        if not query:
+        if not queries:
             logger.warning("No search query available for book")
             return []
 
@@ -338,9 +354,12 @@ class ProwlarrSource(ReleaseSource):
         self.last_search_type = "expanded" if expand_search else "categories"
 
         indexer_desc = f"indexers={indexer_ids}" if indexer_ids else "all enabled indexers"
-        logger.debug(f"Searching Prowlarr: query='{query}', {indexer_desc}, categories={categories}")
+        if len(queries) == 1:
+            logger.debug(f"Searching Prowlarr: query='{queries[0]}', {indexer_desc}, categories={categories}")
+        else:
+            logger.debug(f"Searching Prowlarr: {len(queries)} queries, {indexer_desc}, categories={categories}")
 
-        def search_indexers(cats: Optional[List[int]]) -> List[dict]:
+        def search_indexers(query: str, cats: Optional[List[int]]) -> List[dict]:
             """Search indexers with given categories, collecting results."""
             results = []
             if indexer_ids:
@@ -362,16 +381,36 @@ class ProwlarrSource(ReleaseSource):
                     logger.warning(f"Search failed for all indexers: {e}")
             return results
 
-        all_results = []
         try:
-            all_results = search_indexers(categories)
-
-            # Auto-expand: if no results with categories and auto-expand enabled, retry without
             auto_expand_enabled = config.get("PROWLARR_AUTO_EXPAND", False)
-            if not all_results and categories and auto_expand_enabled:
-                logger.info("Prowlarr: no results with category filter, auto-expanding search")
-                all_results = search_indexers(None)
-                self.last_search_type = "expanded"
+
+            seen_keys: set[str] = set()
+            all_results: List[dict] = []
+
+            for idx, query in enumerate(queries, start=1):
+                if len(queries) > 1:
+                    logger.debug(f"Prowlarr query {idx}/{len(queries)}: '{query}'")
+
+                raw_results = search_indexers(query=query, cats=categories)
+
+                # Auto-expand: if no results with categories and auto-expand enabled, retry without
+                if not raw_results and categories and auto_expand_enabled:
+                    logger.info(f"Prowlarr: no results for query '{query}' with category filter, auto-expanding search")
+                    raw_results = search_indexers(query=query, cats=None)
+                    self.last_search_type = "expanded"
+
+                for r in raw_results:
+                    key = (
+                        r.get("guid")
+                        or r.get("downloadUrl")
+                        or r.get("magnetUrl")
+                        or r.get("infoUrl")
+                        or f"{r.get('indexerId')}:{r.get('title')}"
+                    )
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    all_results.append(r)
 
             results = [_prowlarr_result_to_release(r, content_type) for r in all_results]
 

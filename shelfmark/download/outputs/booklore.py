@@ -7,12 +7,12 @@ from typing import Any, Dict, List, Mapping, Optional
 
 import requests
 
-from shelfmark.core.config import config
+import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download.outputs import register_output
-from shelfmark.download.staging import STAGE_NONE
+from shelfmark.download.staging import STAGE_MOVE, STAGE_NONE, build_staging_dir
 
 logger = setup_logger(__name__)
 
@@ -73,12 +73,12 @@ def build_booklore_config(values: Mapping[str, Any]) -> BookloreConfig:
     )
 
 
-def booklore_login(config: BookloreConfig) -> str:
-    url = f"{config.base_url}/api/v1/auth/login"
-    payload = {"username": config.username, "password": config.password}
+def booklore_login(booklore_config: BookloreConfig) -> str:
+    url = f"{booklore_config.base_url}/api/v1/auth/login"
+    payload = {"username": booklore_config.username, "password": booklore_config.password}
 
     try:
-        response = requests.post(url, json=payload, timeout=30, verify=config.verify_tls)
+        response = requests.post(url, json=payload, timeout=30, verify=booklore_config.verify_tls)
     except requests.exceptions.ConnectionError as exc:
         raise BookloreError("Could not connect to Booklore") from exc
     except requests.exceptions.Timeout as exc:
@@ -106,12 +106,12 @@ def booklore_login(config: BookloreConfig) -> str:
     return token
 
 
-def booklore_list_libraries(config: BookloreConfig, token: str) -> list[dict[str, Any]]:
-    url = f"{config.base_url}/api/v1/libraries"
+def booklore_list_libraries(booklore_config: BookloreConfig, token: str) -> list[dict[str, Any]]:
+    url = f"{booklore_config.base_url}/api/v1/libraries"
     headers = {"Authorization": f"Bearer {token}"}
 
     try:
-        response = requests.get(url, headers=headers, timeout=30, verify=config.verify_tls)
+        response = requests.get(url, headers=headers, timeout=30, verify=booklore_config.verify_tls)
         response.raise_for_status()
     except requests.exceptions.RequestException as exc:
         raise BookloreError(f"Failed to fetch Booklore libraries: {exc}") from exc
@@ -122,10 +122,12 @@ def booklore_list_libraries(config: BookloreConfig, token: str) -> list[dict[str
         raise BookloreError("Invalid Booklore libraries response") from exc
 
 
-def booklore_upload_file(config: BookloreConfig, token: str, file_path: Path) -> None:
-    url = f"{config.base_url}/api/v1/files/upload"
+def booklore_upload_file(booklore_config: BookloreConfig, token: str, file_path: Path) -> None:
+    url = f"{booklore_config.base_url}/api/v1/files/upload"
     headers = {"Authorization": f"Bearer {token}"}
-    params = {"libraryId": config.library_id, "pathId": config.path_id}
+    params = {"libraryId": booklore_config.library_id, "pathId": booklore_config.path_id}
+
+    response = None
 
     try:
         with file_path.open("rb") as handle:
@@ -135,14 +137,15 @@ def booklore_upload_file(config: BookloreConfig, token: str, file_path: Path) ->
                 params=params,
                 files={"file": (file_path.name, handle)},
                 timeout=60,
-                verify=config.verify_tls,
+                verify=booklore_config.verify_tls,
             )
         response.raise_for_status()
     except requests.exceptions.HTTPError as exc:
         message = response.text.strip() if response is not None else ""
         if message:
             message = f": {message[:200]}"
-        raise BookloreError(f"Booklore upload failed ({response.status_code}){message}") from exc
+        status_code = response.status_code if response is not None else "unknown"
+        raise BookloreError(f"Booklore upload failed ({status_code}){message}") from exc
     except requests.exceptions.ConnectionError as exc:
         raise BookloreError("Could not connect to Booklore") from exc
     except requests.exceptions.Timeout as exc:
@@ -151,12 +154,12 @@ def booklore_upload_file(config: BookloreConfig, token: str, file_path: Path) ->
         raise BookloreError(f"Booklore upload failed: {exc}") from exc
 
 
-def booklore_refresh_library(config: BookloreConfig, token: str) -> None:
-    url = f"{config.base_url}/api/v1/libraries/{config.library_id}/refresh"
+def booklore_refresh_library(booklore_config: BookloreConfig, token: str) -> None:
+    url = f"{booklore_config.base_url}/api/v1/libraries/{booklore_config.library_id}/refresh"
     headers = {"Authorization": f"Bearer {token}"}
 
     try:
-        response = requests.put(url, headers=headers, timeout=30, verify=config.verify_tls)
+        response = requests.put(url, headers=headers, timeout=30, verify=booklore_config.verify_tls)
         response.raise_for_status()
     except requests.exceptions.RequestException as exc:
         raise BookloreError(f"Booklore refresh failed: {exc}") from exc
@@ -165,16 +168,16 @@ def booklore_refresh_library(config: BookloreConfig, token: str) -> None:
 def _supports_booklore(task: DownloadTask) -> bool:
     if check_audiobook(task.content_type):
         return False
-    return config.get("BOOKS_OUTPUT_MODE", "folder") == BOOKLORE_OUTPUT_MODE
+    return core_config.config.get("BOOKS_OUTPUT_MODE", "folder") == BOOKLORE_OUTPUT_MODE
 
 
 def _get_booklore_settings() -> Dict[str, Any]:
     return {
-        "BOOKLORE_HOST": config.get("BOOKLORE_HOST", ""),
-        "BOOKLORE_USERNAME": config.get("BOOKLORE_USERNAME", ""),
-        "BOOKLORE_PASSWORD": config.get("BOOKLORE_PASSWORD", ""),
-        "BOOKLORE_LIBRARY_ID": config.get("BOOKLORE_LIBRARY_ID"),
-        "BOOKLORE_PATH_ID": config.get("BOOKLORE_PATH_ID"),
+        "BOOKLORE_HOST": core_config.config.get("BOOKLORE_HOST", ""),
+        "BOOKLORE_USERNAME": core_config.config.get("BOOKLORE_USERNAME", ""),
+        "BOOKLORE_PASSWORD": core_config.config.get("BOOKLORE_PASSWORD", ""),
+        "BOOKLORE_LIBRARY_ID": core_config.config.get("BOOKLORE_LIBRARY_ID"),
+        "BOOKLORE_PATH_ID": core_config.config.get("BOOKLORE_PATH_ID"),
     }
 
 
@@ -193,7 +196,12 @@ def _post_process_booklore(
     cancel_flag: Event,
     status_callback,
 ) -> Optional[str]:
-    from shelfmark.download.orchestrator import _cleanup_output_staging, prepare_output_files
+    from shelfmark.download.postprocess.pipeline import (
+        OutputPlan,
+        cleanup_output_staging,
+        is_managed_workspace_path,
+        prepare_output_files,
+    )
 
     if cancel_flag.is_set():
         logger.info("Task %s: cancelled before Booklore upload", task.task_id)
@@ -207,7 +215,21 @@ def _post_process_booklore(
         return None
 
     status_callback("resolving", "Preparing Booklore upload")
-    prepared = prepare_output_files(temp_file, task, BOOKLORE_OUTPUT_MODE, status_callback)
+
+    output_plan = OutputPlan(
+        mode=BOOKLORE_OUTPUT_MODE,
+        stage_action=STAGE_MOVE if is_managed_workspace_path(temp_file) else STAGE_NONE,
+        staging_dir=build_staging_dir("booklore", task.task_id),
+        allow_archive_extraction=True,
+    )
+
+    prepared = prepare_output_files(
+        temp_file,
+        task,
+        BOOKLORE_OUTPUT_MODE,
+        status_callback,
+        output_plan=output_plan,
+    )
     if not prepared:
         return None
 
@@ -258,7 +280,7 @@ def _post_process_booklore(
         status_callback("error", f"Booklore upload failed: {e}")
         return None
     finally:
-        _cleanup_output_staging(
+        cleanup_output_staging(
             prepared.output_plan,
             prepared.working_path,
             task,

@@ -8,11 +8,13 @@ import pytest
 
 # Import the functions to test
 from shelfmark.release_sources.prowlarr.source import (
+    ProwlarrSource,
     _parse_size,
     _extract_format,
     _extract_language,
 )
 from shelfmark.release_sources.prowlarr.utils import get_protocol_display
+from shelfmark.metadata_providers import BookMetadata
 
 
 class TestParseSize:
@@ -220,3 +222,85 @@ class TestExtractLanguage:
         assert _extract_language("Book [GERMAN]") == "de"
         assert _extract_language("Book [german]") == "de"
         assert _extract_language("Book [German]") == "de"
+
+
+class TestProwlarrLocalizedQueries:
+    def test_search_uses_localized_titles_when_available(self, monkeypatch):
+        class FakeClient:
+            def __init__(self):
+                self.queries: list[str] = []
+
+            def search(self, query: str, indexer_ids=None, categories=None):
+                self.queries.append(query)
+                return []
+
+        import shelfmark.release_sources.prowlarr.source as prowlarr_source
+
+        def fake_get(key: str, default=None):
+            values = {
+                "PROWLARR_INDEXERS": "",
+                "PROWLARR_AUTO_EXPAND": False,
+            }
+            return values.get(key, default)
+
+        monkeypatch.setattr(prowlarr_source.config, "get", fake_get)
+
+        fake_client = FakeClient()
+        source = ProwlarrSource()
+        monkeypatch.setattr(source, "_get_client", lambda: fake_client)
+
+        book = BookMetadata(
+            provider="hardcover",
+            provider_id="219252",
+            title="The Lightning Thief",
+            authors=["Rick Riordan"],
+            titles_by_language={"hu": "A villámtolvaj"},
+        )
+
+        source.search(book, languages=["en", "hu"], content_type="ebook")
+
+        assert "The Lightning Thief Rick Riordan" in fake_client.queries
+        assert "A villámtolvaj Rick Riordan" in fake_client.queries
+        assert len(fake_client.queries) == 2
+
+    def test_search_does_not_override_search_title_for_english(self, monkeypatch):
+        class FakeClient:
+            def __init__(self):
+                self.queries: list[str] = []
+
+            def search(self, query: str, indexer_ids=None, categories=None):
+                self.queries.append(query)
+                return []
+
+        import shelfmark.release_sources.prowlarr.source as prowlarr_source
+
+        def fake_get(key: str, default=None):
+            values = {
+                "PROWLARR_INDEXERS": "",
+                "PROWLARR_AUTO_EXPAND": False,
+            }
+            return values.get(key, default)
+
+        monkeypatch.setattr(prowlarr_source.config, "get", fake_get)
+
+        fake_client = FakeClient()
+        source = ProwlarrSource()
+        monkeypatch.setattr(source, "_get_client", lambda: fake_client)
+
+        book = BookMetadata(
+            provider="hardcover",
+            provider_id="123",
+            title="Mistborn: The Final Empire",
+            search_title="The Final Empire",
+            authors=["Brandon Sanderson"],
+            titles_by_language={
+                "en": "Mistborn: The Final Empire",
+                "hu": "A végső birodalom",
+            },
+        )
+
+        source.search(book, languages=["en", "hu"], content_type="ebook")
+
+        assert "The Final Empire Brandon Sanderson" in fake_client.queries
+        assert "A végső birodalom Brandon Sanderson" in fake_client.queries
+        assert "Mistborn: The Final Empire Brandon Sanderson" not in fake_client.queries

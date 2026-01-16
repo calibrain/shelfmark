@@ -27,13 +27,13 @@ class TestDirectorySetup:
 
     def test_staging_dir_created_on_demand(self):
         """Staging directory should be created if it doesn't exist."""
-        from shelfmark.download.orchestrator import get_staging_dir
+        from shelfmark.download.staging import get_staging_dir
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_staging = Path(tmpdir) / "staging"
             assert not test_staging.exists()
 
-            with patch("shelfmark.download.orchestrator.TMP_DIR", test_staging):
+            with patch("shelfmark.config.env.TMP_DIR", test_staging):
                 result = get_staging_dir()
 
             assert test_staging.exists()
@@ -41,24 +41,24 @@ class TestDirectorySetup:
 
     def test_staging_dir_handles_existing_directory(self):
         """Staging directory creation should be idempotent."""
-        from shelfmark.download.orchestrator import get_staging_dir
+        from shelfmark.download.staging import get_staging_dir
 
         with tempfile.TemporaryDirectory() as tmpdir:
             test_staging = Path(tmpdir) / "staging"
             test_staging.mkdir()
 
-            with patch("shelfmark.download.orchestrator.TMP_DIR", test_staging):
+            with patch("shelfmark.config.env.TMP_DIR", test_staging):
                 result = get_staging_dir()
 
             assert result == test_staging
 
     def test_staging_path_handles_special_characters(self):
         """Staging path should handle task IDs with special characters."""
-        from shelfmark.download.orchestrator import get_staging_path
+        from shelfmark.download.staging import get_staging_path
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch(
-                "shelfmark.download.orchestrator.TMP_DIR", Path(tmpdir)
+                "shelfmark.config.env.TMP_DIR", Path(tmpdir)
             ):
                 # Task ID with URL-like characters
                 path = get_staging_path(
@@ -74,11 +74,11 @@ class TestDirectorySetup:
 
     def test_staging_path_normalizes_extension(self):
         """Staging path should handle extensions with or without dot."""
-        from shelfmark.download.orchestrator import get_staging_path
+        from shelfmark.download.staging import get_staging_path
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch(
-                "shelfmark.download.orchestrator.TMP_DIR", Path(tmpdir)
+                "shelfmark.config.env.TMP_DIR", Path(tmpdir)
             ):
                 path1 = get_staging_path("task1", "epub")
                 path2 = get_staging_path("task1", ".epub")
@@ -309,14 +309,14 @@ class TestConfigValidation:
 
     def test_missing_required_directory_handling(self):
         """Application should handle missing directories gracefully."""
-        from shelfmark.download.orchestrator import get_staging_dir
+        from shelfmark.download.staging import get_staging_dir
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Use a path that doesn't exist yet
             nonexistent = Path(tmpdir) / "deeply" / "nested" / "path"
 
             with patch(
-                "shelfmark.download.orchestrator.TMP_DIR", nonexistent
+                "shelfmark.config.env.TMP_DIR", nonexistent
             ):
                 result = get_staging_dir()
 
@@ -524,7 +524,7 @@ class TestFileCollisionHandling:
 
     def test_stage_file_handles_collision(self):
         """stage_file should add suffix on collision."""
-        from shelfmark.download.orchestrator import stage_file
+        from shelfmark.download.staging import stage_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             staging = Path(tmpdir) / "staging"
@@ -538,7 +538,7 @@ class TestFileCollisionHandling:
             (staging / "book.epub").write_text("existing")
 
             with patch(
-                "shelfmark.download.orchestrator.TMP_DIR", staging
+                "shelfmark.config.env.TMP_DIR", staging
             ):
                 result = stage_file(source, "task1", copy=True)
 
@@ -548,7 +548,7 @@ class TestFileCollisionHandling:
 
     def test_stage_file_copy_vs_move(self):
         """stage_file should copy or move based on parameter."""
-        from shelfmark.download.orchestrator import stage_file
+        from shelfmark.download.staging import stage_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
             staging = Path(tmpdir) / "staging"
@@ -559,7 +559,7 @@ class TestFileCollisionHandling:
             source1.write_text("content1")
 
             with patch(
-                "shelfmark.download.orchestrator.TMP_DIR", staging
+                "shelfmark.config.env.TMP_DIR", staging
             ):
                 result1 = stage_file(source1, "task1", copy=True)
 
@@ -571,7 +571,7 @@ class TestFileCollisionHandling:
             source2.write_text("content2")
 
             with patch(
-                "shelfmark.download.orchestrator.TMP_DIR", staging
+                "shelfmark.config.env.TMP_DIR", staging
             ):
                 result2 = stage_file(source2, "task2", copy=False)
 

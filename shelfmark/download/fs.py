@@ -12,8 +12,10 @@ import time
 from pathlib import Path
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.download.permissions_debug import log_transfer_permission_context
 
 logger = setup_logger(__name__)
+
 
 
 _VERIFY_IO_WAIT_SECONDS = 3.0
@@ -119,6 +121,8 @@ def _perform_nfs_fallback(source: Path, dest: Path, is_move: bool) -> None:
         # Clean up failed copy attempt if it exists
         dest.unlink(missing_ok=True)
 
+        if _is_permission_error(copy_error):
+            log_transfer_permission_context("nfs_fallback_copyfile", source=source, dest=dest, error=copy_error)
         logger.error("Fallback copyfile failed (%s -> %s): %s", source, dest, copy_error)
 
         # Fallback 2: system command
@@ -131,6 +135,7 @@ def _perform_nfs_fallback(source: Path, dest: Path, is_move: bool) -> None:
             if is_move:
                 source.unlink(missing_ok=True)
         except subprocess.CalledProcessError as sys_error:
+            log_transfer_permission_context("nfs_fallback_system", source=source, dest=dest, error=sys_error)
             logger.error("System %s failed (%s -> %s): %s", op, source, dest, sys_error.stderr)
             dest.unlink(missing_ok=True)
             raise
@@ -223,6 +228,12 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                 continue
             except (PermissionError, OSError) as e:
                 if _is_permission_error(e):
+                    log_transfer_permission_context(
+                        "atomic_move",
+                        source=source_path,
+                        dest=try_path,
+                        error=e,
+                    )
                     logger.debug(
                         "Permission error during move, falling back to copyfile (%s -> %s): %s",
                         source_path,
@@ -276,6 +287,13 @@ def atomic_hardlink(source_path: Path, dest_path: Path, max_attempts: int = 100)
             continue
         except OSError as e:
             if _is_permission_error(e) or e.errno in (errno.EXDEV, errno.EMLINK):
+                if _is_permission_error(e):
+                    log_transfer_permission_context(
+                        "atomic_hardlink",
+                        source=source_path,
+                        dest=try_path,
+                        error=e,
+                    )
                 logger.debug(
                     "Hardlink failed (%s), falling back to copy: %s -> %s",
                     e,
@@ -324,6 +342,12 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                 except (PermissionError, OSError) as e:
                     # Handle NFS permission errors immediately here
                     if _is_permission_error(e):
+                        log_transfer_permission_context(
+                            "atomic_copy",
+                            source=source_path,
+                            dest=temp_path,
+                            error=e,
+                        )
                         logger.debug(
                             "Permission error during copy, falling back to copyfile (%s -> %s): %s",
                             source_path,

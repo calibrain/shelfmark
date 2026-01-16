@@ -6,6 +6,7 @@ from pathlib import Path
 from threading import Event
 from typing import Any, Optional, List
 
+import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook as check_audiobook
@@ -31,11 +32,9 @@ class _ProcessingPlan:
 
 
 def _supports_folder_output(task: DownloadTask) -> bool:
-    from shelfmark.download.orchestrator import config as orchestrator_config
-
     if check_audiobook(task.content_type):
         return True
-    return orchestrator_config.get("BOOKS_OUTPUT_MODE", FOLDER_OUTPUT_MODE) == FOLDER_OUTPUT_MODE
+    return core_config.config.get("BOOKS_OUTPUT_MODE", FOLDER_OUTPUT_MODE) == FOLDER_OUTPUT_MODE
 
 
 def _build_processing_plan(
@@ -43,18 +42,18 @@ def _build_processing_plan(
     task: DownloadTask,
     status_callback,
 ) -> Optional[_ProcessingPlan]:
-    from shelfmark.download.orchestrator import (
-        _get_file_organization,
-        _get_final_destination,
-        _validate_destination,
+    from shelfmark.download.postprocess.pipeline import (
         build_output_plan,
+        get_final_destination,
+        validate_destination,
     )
+    from shelfmark.download.postprocess.policy import get_file_organization
 
     is_audiobook = check_audiobook(task.content_type)
-    organization_mode = _get_file_organization(is_audiobook)
-    destination = _get_final_destination(task)
+    organization_mode = get_file_organization(is_audiobook)
+    destination = get_final_destination(task)
 
-    if not _validate_destination(destination, status_callback):
+    if not validate_destination(destination, status_callback):
         return None
 
     output_plan = build_output_plan(
@@ -89,15 +88,14 @@ def process_folder_output(
     status_callback,
 ) -> Optional[str]:
     """Post-process download to the configured folder destination."""
-    from shelfmark.download.orchestrator import (
-        _cleanup_output_staging,
-        _is_torrent_source,
-        _log_plan_steps,
-        _record_step,
-        _safe_cleanup_path,
-        _transfer_book_files,
-        config as orchestrator_config,
+    from shelfmark.download.postprocess.pipeline import (
+        cleanup_output_staging,
+        is_torrent_source,
+        log_plan_steps,
         prepare_output_files,
+        record_step,
+        safe_cleanup_path,
+        transfer_book_files,
     )
 
     plan = _build_processing_plan(temp_file, task, status_callback)
@@ -127,21 +125,21 @@ def process_folder_output(
     steps: List[Any] = []
     if prepared.output_plan.stage_action != STAGE_NONE:
         step_name = f"stage_{prepared.output_plan.stage_action}"
-        _record_step(steps, step_name, source=str(temp_file), dest=str(prepared.output_plan.staging_dir))
+        record_step(steps, step_name, source=str(temp_file), dest=str(prepared.output_plan.staging_dir))
 
     # Run custom script only for non-archive single files (matches legacy behavior)
-    if orchestrator_config.CUSTOM_SCRIPT and prepared.working_path.is_file() and not is_archive(prepared.working_path):
-        _record_step(steps, "custom_script", script=str(orchestrator_config.CUSTOM_SCRIPT))
-        _log_plan_steps(task.task_id, steps)
+    if core_config.config.CUSTOM_SCRIPT and prepared.working_path.is_file() and not is_archive(prepared.working_path):
+        record_step(steps, "custom_script", script=str(core_config.config.CUSTOM_SCRIPT))
+        log_plan_steps(task.task_id, steps)
         logger.info(
             "Task %s: running custom script %s on %s",
             task.task_id,
-            orchestrator_config.CUSTOM_SCRIPT,
+            core_config.config.CUSTOM_SCRIPT,
             prepared.working_path,
         )
         try:
             result = subprocess.run(
-                [orchestrator_config.CUSTOM_SCRIPT, str(prepared.working_path)],
+                [core_config.config.CUSTOM_SCRIPT, str(prepared.working_path)],
                 check=True,
                 timeout=300,  # 5 minute timeout
                 capture_output=True,
@@ -150,22 +148,22 @@ def process_folder_output(
             if result.stdout:
                 logger.debug("Task %s: custom script stdout: %s", task.task_id, result.stdout.strip())
         except FileNotFoundError:
-            logger.error("Task %s: custom script not found: %s", task.task_id, orchestrator_config.CUSTOM_SCRIPT)
-            status_callback("error", f"Custom script not found: {orchestrator_config.CUSTOM_SCRIPT}")
+            logger.error("Task %s: custom script not found: %s", task.task_id, core_config.config.CUSTOM_SCRIPT)
+            status_callback("error", f"Custom script not found: {core_config.config.CUSTOM_SCRIPT}")
             return None
         except PermissionError:
             logger.error(
                 "Task %s: custom script not executable: %s",
                 task.task_id,
-                orchestrator_config.CUSTOM_SCRIPT,
+                core_config.config.CUSTOM_SCRIPT,
             )
-            status_callback("error", f"Custom script not executable: {orchestrator_config.CUSTOM_SCRIPT}")
+            status_callback("error", f"Custom script not executable: {core_config.config.CUSTOM_SCRIPT}")
             return None
         except subprocess.TimeoutExpired:
             logger.error(
                 "Task %s: custom script timed out after 300s: %s",
                 task.task_id,
-                orchestrator_config.CUSTOM_SCRIPT,
+                core_config.config.CUSTOM_SCRIPT,
             )
             status_callback("error", "Custom script timed out")
             return None
@@ -184,9 +182,9 @@ def process_folder_output(
     # path and disable hardlinking for this transfer.
     use_hardlink = plan.use_hardlink and prepared.output_plan.stage_action == STAGE_NONE
     source_path = plan.hardlink_source if use_hardlink and plan.hardlink_source else prepared.working_path
-    is_torrent = _is_torrent_source(source_path, task)
+    is_torrent = is_torrent_source(source_path, task)
 
-    usenet_action = orchestrator_config.get("PROWLARR_USENET_ACTION", "move")
+    usenet_action = core_config.config.get("PROWLARR_USENET_ACTION", "move")
     is_usenet = task.source == "prowlarr" and not task.original_download_path
 
     # For external usenet downloads, always copy from the client path.
@@ -197,7 +195,7 @@ def process_folder_output(
 
     if cancel_flag.is_set():
         logger.info("Task %s: cancelled before final transfer", task.task_id)
-        _cleanup_output_staging(
+        cleanup_output_staging(
             prepared.output_plan,
             prepared.working_path,
             task,
@@ -216,7 +214,7 @@ def process_folder_output(
         op_label = "Moving"
 
     status_callback("resolving", f"{op_label} file")
-    _record_step(
+    record_step(
         steps,
         "transfer",
         op=op_label.lower(),
@@ -226,10 +224,10 @@ def process_folder_output(
         torrent=copy_for_label,
     )
     if prepared.output_plan.stage_action != STAGE_NONE:
-        _record_step(steps, "cleanup_staging", path=str(prepared.working_path))
-    _log_plan_steps(task.task_id, steps)
+        record_step(steps, "cleanup_staging", path=str(prepared.working_path))
+    log_plan_steps(task.task_id, steps)
 
-    final_paths, error = _transfer_book_files(
+    final_paths, error = transfer_book_files(
         prepared.files,
         destination=plan.destination,
         task=task,
@@ -252,7 +250,7 @@ def process_folder_output(
         op_label.lower(),
     )
 
-    _cleanup_output_staging(
+    cleanup_output_staging(
         prepared.output_plan,
         prepared.working_path,
         task,

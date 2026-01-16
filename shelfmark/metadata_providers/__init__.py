@@ -159,6 +159,101 @@ class BookMetadata:
     titles_by_language: Dict[str, str] = field(default_factory=dict)
 
 
+def group_languages_by_localized_title(
+    base_title: str,
+    languages: Optional[List[str]],
+    titles_by_language: Optional[Dict[str, str]] = None,
+) -> List[tuple[str, Optional[List[str]]]]:
+    """Group language codes by localized title.
+
+    Release sources that support language filtering (e.g., Anna's Archive)
+    may want to run separate searches per localized title, while still
+    passing the correct language filters per query.
+
+    Args:
+        base_title: Fallback title when no localized title exists.
+        languages: Requested language codes (e.g., ["en", "hu"]).
+        titles_by_language: Mapping of language identifiers to localized titles.
+
+    Returns:
+        List of (title, languages) tuples. If languages is None/empty, returns
+        [(base_title, None)].
+    """
+    if not base_title:
+        return []
+
+    if not languages:
+        return [(base_title, None)]
+
+    normalized_langs = [lang.strip() for lang in languages if lang and lang.strip()]
+    if not normalized_langs:
+        return [(base_title, None)]
+
+    if not titles_by_language:
+        return [(base_title, normalized_langs)]
+
+    title_to_langs: Dict[str, List[str]] = {}
+    for lang in normalized_langs:
+        localized_title = titles_by_language.get(lang) or base_title
+        title_to_langs.setdefault(localized_title, []).append(lang)
+
+    return list(title_to_langs.items())
+
+
+def build_localized_search_titles(
+    base_title: str,
+    languages: Optional[List[str]],
+    titles_by_language: Optional[Dict[str, str]] = None,
+    excluded_languages: Optional[set[str]] = None,
+) -> List[str]:
+    """Build a list of titles to search for, including localized editions.
+
+    This is useful for release sources that *can't* pass language filters to
+    an upstream search API (e.g., Prowlarr), but still want to broaden matches
+    by searching for localized edition titles.
+
+    The list always includes base_title first.
+
+    Args:
+        base_title: Primary title to search for.
+        languages: User language preferences (order matters).
+        titles_by_language: Mapping of language identifiers to localized titles.
+        excluded_languages: Optional set of normalized language identifiers to skip.
+
+    Returns:
+        List of unique titles to search for, in priority order.
+    """
+    if not base_title:
+        return []
+
+    titles: List[str] = [base_title]
+    seen = {base_title}
+
+    if not languages or not titles_by_language:
+        return titles
+
+    excluded = {lang.lower() for lang in (excluded_languages or set())}
+
+    for lang in languages:
+        if not lang:
+            continue
+        normalized_lang = lang.strip()
+        if not normalized_lang:
+            continue
+        if normalized_lang.lower() in excluded:
+            continue
+
+        localized_title = titles_by_language.get(normalized_lang)
+        if not localized_title:
+            continue
+
+        if localized_title not in seen:
+            seen.add(localized_title)
+            titles.append(localized_title)
+
+    return titles
+
+
 @dataclass
 class SearchResult:
     """Result from a metadata search with pagination info."""

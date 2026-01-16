@@ -616,7 +616,7 @@ class TestFileHandlingFailures:
             ), patch(
                 "shelfmark.release_sources.prowlarr.handler.remove_release",
             ), patch(
-                "shelfmark.download.orchestrator.get_staging_dir",
+                "shelfmark.download.staging.get_staging_dir",
             ) as mock_get_staging, patch(
                 "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
                 0.01,
@@ -671,7 +671,7 @@ class TestProgressCallbacks:
                 "shelfmark.release_sources.prowlarr.handler.get_client",
                 return_value=mock_client,
             ), patch(
-                "shelfmark.download.orchestrator.get_staging_dir",
+                "shelfmark.download.staging.get_staging_dir",
                 return_value=staging_dir,
             ), patch(
                 "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
@@ -757,7 +757,7 @@ class TestStatusMessages:
                 "shelfmark.release_sources.prowlarr.handler.get_client",
                 return_value=mock_client,
             ), patch(
-                "shelfmark.download.orchestrator.get_staging_dir",
+                "shelfmark.download.staging.get_staging_dir",
                 return_value=staging_dir,
             ), patch(
                 "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
@@ -816,7 +816,7 @@ class TestStatusMessages:
                 "shelfmark.release_sources.prowlarr.handler.get_client",
                 return_value=mock_client,
             ), patch(
-                "shelfmark.download.orchestrator.get_staging_dir",
+                "shelfmark.download.staging.get_staging_dir",
                 return_value=staging_dir,
             ), patch(
                 "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",

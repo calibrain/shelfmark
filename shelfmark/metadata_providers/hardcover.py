@@ -390,7 +390,11 @@ class HardcoverProvider(MetadataProvider):
                         primary_books_count
                     }
                 }
-                editions(limit: 20, order_by: {users_count: desc}) {
+                editions(
+                    distinct_on: language_id
+                    order_by: [{language_id: asc}, {users_count: desc}]
+                    limit: 200
+                ) {
                     title
                     language {
                         language
