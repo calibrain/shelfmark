@@ -469,7 +469,6 @@ def test_booklore_mode_uploads_and_cleans_staging(tmp_path):
         "BOOKLORE_PASSWORD": "secret",
         "BOOKLORE_LIBRARY_ID": 1,
         "BOOKLORE_PATH_ID": 2,
-        "BOOKLORE_REFRESH_AFTER_UPLOAD": False,
     }
 
     with patch("shelfmark.core.config.config") as mock_config, \
@@ -514,7 +513,6 @@ def test_booklore_mode_rejects_unsupported_files(tmp_path):
         "BOOKLORE_PASSWORD": "secret",
         "BOOKLORE_LIBRARY_ID": 1,
         "BOOKLORE_PATH_ID": 2,
-        "BOOKLORE_REFRESH_AFTER_UPLOAD": False,
     }
 
     with patch("shelfmark.core.config.config") as mock_config, \

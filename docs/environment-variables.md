@@ -116,6 +116,7 @@ Indicates the application is running inside a Docker container.
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `CALIBRE_WEB_URL` | Adds a navigation button to your book library (Calibre-Web Automated, Booklore, etc). | string | _none_ |
+| `AUDIOBOOK_LIBRARY_URL` | Adds a separate navigation button for your audiobook library (Audiobookshelf, Plex, etc). When both URLs are set, icons are shown instead of text. | string | _none_ |
 | `SUPPORTED_FORMATS` | Book formats to include in search results. ZIP/RAR archives are extracted automatically and book files are used if found. | string (comma-separated) | `epub,mobi,azw3,fb2,djvu,cbz,cbr` |
 | `SUPPORTED_AUDIOBOOK_FORMATS` | Audiobook formats to include in search results. ZIP/RAR archives are extracted automatically and audiobook files are used if found. | string (comma-separated) | `m4b,mp3` |
 | `BOOK_LANGUAGE` | Default language filter for searches. | string (comma-separated) | `en` |
@@ -128,6 +129,15 @@ Indicates the application is running inside a Docker container.
 **Library URL**
 
 Adds a navigation button to your book library (Calibre-Web Automated, Booklore, etc).
+
+- **Type:** string
+- **Default:** _none_
+
+#### `AUDIOBOOK_LIBRARY_URL`
+
+**Audiobook Library URL**
+
+Adds a separate navigation button for your audiobook library (Audiobookshelf, Plex, etc). When both URLs are set, icons are shown instead of text.
 
 - **Type:** string
 - **Default:** _none_
@@ -166,8 +176,10 @@ Default language filter for searches.
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `SEARCH_MODE` | How you want to search for and download books. | string (choice) | `direct` |
+| `AA_DEFAULT_SORT` | Default sort order for search results. | string (choice) | `relevance` |
 | `METADATA_PROVIDER` | Choose which metadata provider to use for book searches. | string (choice) | `openlibrary` |
 | `METADATA_PROVIDER_AUDIOBOOK` | Metadata provider for audiobook searches. Uses the book provider if not set. | string (choice) | _empty string_ |
+| `DEFAULT_RELEASE_SOURCE` | The release source tab to open by default in the release modal. | string (choice) | `direct_download` |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -181,6 +193,16 @@ How you want to search for and download books.
 - **Type:** string (choice)
 - **Default:** `direct`
 - **Options:** Direct, Universal
+
+#### `AA_DEFAULT_SORT`
+
+**Default Sort Order**
+
+Default sort order for search results.
+
+- **Type:** string (choice)
+- **Default:** `relevance`
+- **Options:** Most relevant, Newest (publication year), Oldest (publication year), Largest (filesize), Smallest (filesize), Newest (open sourced), Oldest (open sourced)
 
 #### `METADATA_PROVIDER`
 
@@ -202,6 +224,16 @@ Metadata provider for audiobook searches. Uses the book provider if not set.
 - **Default:** _empty string_
 - **Options:** Use book provider, No providers enabled
 
+#### `DEFAULT_RELEASE_SOURCE`
+
+**Default Release Source**
+
+The release source tab to open by default in the release modal.
+
+- **Type:** string (choice)
+- **Default:** `direct_download`
+- **Options:** Direct Download, Prowlarr
+
 </details>
 
 ## Downloads
@@ -211,21 +243,21 @@ Metadata provider for audiobook searches. Uses the book provider if not set.
 | `BOOKS_OUTPUT_MODE` | Choose where completed book files are sent. | string (choice) | `folder` |
 | `INGEST_DIR` | Directory where downloaded files are saved. | string | `/books` |
 | `FILE_ORGANIZATION` | Choose how downloaded book files are named and organized. | string (choice) | `rename` |
-| `TEMPLATE_RENAME` | Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle} | string | `{Author} - {Title} ({Year})` |
+| `TEMPLATE_RENAME` | Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Rename templates are filename-only (no '/' or '\'); use Organize for folders. | string | `{Author} - {Title} ({Year})` |
 | `TEMPLATE_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle} | string | `{Author}/{Title} ({Year})` |
 | `HARDLINK_TORRENTS` | Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder. | boolean | `false` |
 | `BOOKLORE_HOST` | Base URL of your Booklore instance | string | _none_ |
 | `BOOKLORE_USERNAME` | Booklore account username | string | _none_ |
 | `BOOKLORE_PASSWORD` | Booklore account password | string (secret) | _none_ |
-| `BOOKLORE_LIBRARY_ID` | Booklore library ID to upload into | number | `0` |
-| `BOOKLORE_PATH_ID` | Booklore library path ID for uploads | number | `0` |
-| `BOOKLORE_VERIFY_TLS` | Verify HTTPS certificates when connecting to Booklore | boolean | `true` |
-| `BOOKLORE_REFRESH_AFTER_UPLOAD` | Trigger a Booklore library refresh after uploads complete | boolean | `false` |
+| `BOOKLORE_LIBRARY_ID` | Booklore library to upload into. | string (choice) | _none_ |
+| `BOOKLORE_PATH_ID` | Booklore library path for uploads. | string (choice) | _none_ |
 | `DESTINATION_AUDIOBOOK` | Leave empty to use Books destination. | string | _none_ |
 | `FILE_ORGANIZATION_AUDIOBOOK` | Choose how downloaded audiobook files are named and organized. | string (choice) | `rename` |
-| `TEMPLATE_AUDIOBOOK_RENAME` | Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber} | string | `{Author} - {Title}` |
+| `TEMPLATE_AUDIOBOOK_RENAME` | Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Rename templates are filename-only (no '/' or '\'); use Organize for folders. | string | `{Author} - {Title}` |
 | `TEMPLATE_AUDIOBOOK_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber} | string | `{Author}/{Title}` |
 | `HARDLINK_TORRENTS_AUDIOBOOK` | Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder. | boolean | `true` |
+| `AUTO_OPEN_DOWNLOADS_SIDEBAR` | Automatically open the downloads sidebar when a new download is queued. | boolean | `false` |
+| `DOWNLOAD_TO_BROWSER` | Automatically download completed files to your browser. | boolean | `false` |
 | `MAX_CONCURRENT_DOWNLOADS` | Maximum number of simultaneous downloads. | number | `3` |
 | `STATUS_TIMEOUT` | How long to keep completed/failed downloads in the queue display. | number | `3600` |
 
@@ -266,7 +298,7 @@ Choose how downloaded book files are named and organized.
 
 **Naming Template**
 
-Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}
+Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Rename templates are filename-only (no '/' or '\'); use Organize for folders.
 
 - **Type:** string
 - **Default:** `{Author} - {Title} ({Year})`
@@ -321,43 +353,23 @@ Booklore account password
 
 #### `BOOKLORE_LIBRARY_ID`
 
-**Library ID**
+**Library**
 
-Booklore library ID to upload into
+Booklore library to upload into.
 
-- **Type:** number
-- **Default:** `0`
+- **Type:** string (choice)
+- **Default:** _none_
 - **Required:** Yes
-- **Constraints:** min: 1
 
 #### `BOOKLORE_PATH_ID`
 
-**Path ID**
+**Path**
 
-Booklore library path ID for uploads
+Booklore library path for uploads.
 
-- **Type:** number
-- **Default:** `0`
+- **Type:** string (choice)
+- **Default:** _none_
 - **Required:** Yes
-- **Constraints:** min: 1
-
-#### `BOOKLORE_VERIFY_TLS`
-
-**Verify TLS**
-
-Verify HTTPS certificates when connecting to Booklore
-
-- **Type:** boolean
-- **Default:** `true`
-
-#### `BOOKLORE_REFRESH_AFTER_UPLOAD`
-
-**Refresh Library After Upload**
-
-Trigger a Booklore library refresh after uploads complete
-
-- **Type:** boolean
-- **Default:** `false`
 
 #### `DESTINATION_AUDIOBOOK`
 
@@ -382,7 +394,7 @@ Choose how downloaded audiobook files are named and organized.
 
 **Naming Template**
 
-Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}
+Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Rename templates are filename-only (no '/' or '\'); use Organize for folders.
 
 - **Type:** string
 - **Default:** `{Author} - {Title}`
@@ -404,6 +416,24 @@ Create hardlinks instead of copying. Preserves seeding but archives won't be ext
 
 - **Type:** boolean
 - **Default:** `true`
+
+#### `AUTO_OPEN_DOWNLOADS_SIDEBAR`
+
+**Auto-Open Downloads Sidebar**
+
+Automatically open the downloads sidebar when a new download is queued.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `DOWNLOAD_TO_BROWSER`
+
+**Download to Browser**
+
+Automatically download completed files to your browser.
+
+- **Type:** boolean
+- **Default:** `false`
 
 #### `MAX_CONCURRENT_DOWNLOADS`
 
@@ -740,6 +770,8 @@ How long to keep cached search results before they expire.
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `HARDCOVER_ENABLED` | Enable Hardcover as a metadata provider for book searches | boolean | `false` |
+| `HARDCOVER_API_KEY` | Get your API key from hardcover.app/account/api | string (secret) | _none_ |
+| `HARDCOVER_DEFAULT_SORT` | Default sort order for Hardcover search results. | string (choice) | `relevance` |
 | `HARDCOVER_EXCLUDE_COMPILATIONS` | Filter out compilations, anthologies, and omnibus editions from search results | boolean | `false` |
 | `HARDCOVER_EXCLUDE_UNRELEASED` | Filter out books with a release year in the future | boolean | `false` |
 
@@ -754,6 +786,26 @@ Enable Hardcover as a metadata provider for book searches
 
 - **Type:** boolean
 - **Default:** `false`
+
+#### `HARDCOVER_API_KEY`
+
+**API Key**
+
+Get your API key from hardcover.app/account/api
+
+- **Type:** string (secret)
+- **Default:** _none_
+- **Required:** Yes
+
+#### `HARDCOVER_DEFAULT_SORT`
+
+**Default Sort Order**
+
+Default sort order for Hardcover search results.
+
+- **Type:** string (choice)
+- **Default:** `relevance`
+- **Options:** Most relevant, Most popular, Highest rated, Newest, Oldest
 
 #### `HARDCOVER_EXCLUDE_COMPILATIONS`
 
@@ -780,6 +832,7 @@ Filter out books with a release year in the future
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `OPENLIBRARY_ENABLED` | Enable Open Library as a metadata provider for book searches | boolean | `false` |
+| `OPENLIBRARY_DEFAULT_SORT` | Default sort order for Open Library search results. | string (choice) | `relevance` |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -792,6 +845,16 @@ Enable Open Library as a metadata provider for book searches
 
 - **Type:** boolean
 - **Default:** `false`
+
+#### `OPENLIBRARY_DEFAULT_SORT`
+
+**Default Sort Order**
+
+Default sort order for Open Library search results.
+
+- **Type:** string (choice)
+- **Default:** `relevance`
+- **Options:** Most relevant, Newest, Oldest
 
 </details>
 
@@ -844,6 +907,7 @@ Default sort order for Google Books search results.
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `AA_DONATOR_KEY` | Enables fast download access on AA. Get this from your donator account page. | string (secret) | _none_ |
+| `FAST_SOURCES_DISPLAY` | Always tried first, no waiting or bypass required. | JSON array | _see UI for defaults_ |
 | `SOURCE_PRIORITY` | Fallback sources, may have waiting. Requires bypasser. Drag to reorder. | JSON array | _see UI for defaults_ |
 | `MAX_RETRY` | Maximum retry attempts for failed downloads. | number | `10` |
 | `DEFAULT_SLEEP` | Wait time between download retry attempts. | number | `5` |
@@ -868,6 +932,15 @@ Enables fast download access on AA. Get this from your donator account page.
 
 - **Type:** string (secret)
 - **Default:** _none_
+
+#### `FAST_SOURCES_DISPLAY`
+
+**Fast downloads**
+
+Always tried first, no waiting or bypass required.
+
+- **Type:** JSON array
+- **Default:** _see UI for defaults_
 
 #### `SOURCE_PRIORITY`
 
@@ -1195,7 +1268,7 @@ Automatically retry search without category filtering if no results are found
 | `TRANSMISSION_CATEGORY_AUDIOBOOK` | Label for audiobook downloads. Leave empty to use the book label. | string | _empty string_ |
 | `DELUGE_HOST` | Hostname/IP or full URL of your Deluge Web UI (deluge-web) | string | `localhost` |
 | `DELUGE_PORT` | Deluge Web UI port (default: 8112) | string | `8112` |
-| `DELUGE_PASSWORD` | Deluge Web UI password | string (secret) | _none_ |
+| `DELUGE_PASSWORD` | Deluge Web UI password (default: deluge) | string (secret) | _none_ |
 | `DELUGE_CATEGORY` | Label to assign to book downloads in Deluge | string | `books` |
 | `DELUGE_CATEGORY_AUDIOBOOK` | Label for audiobook downloads. Leave empty to use the book label. | string | _empty string_ |
 | `PROWLARR_USENET_CLIENT` | Choose which usenet client to use | string (choice) | _empty string_ |
@@ -1208,7 +1281,7 @@ Automatically retry search without category filtering if no results are found
 | `SABNZBD_API_KEY` | Found in SABnzbd: Config > General > API Key | string (secret) | _none_ |
 | `SABNZBD_CATEGORY` | Category to assign to book downloads in SABnzbd | string | `books` |
 | `SABNZBD_CATEGORY_AUDIOBOOK` | Category for audiobook downloads. Leave empty to use the book category. | string | _empty string_ |
-| `PROWLARR_USENET_ACTION` | Copy into ingest, optionally cleanup in client | string (choice) | `move` |
+| `PROWLARR_USENET_ACTION` | Copy files into your ingest folder, optionally cleaning up the usenet client | string (choice) | `move` |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -1453,9 +1526,7 @@ Category for audiobook downloads. Leave empty to use the book category.
 
 **NZB Completion Action**
 
-What to do with usenet files after download completes.
-
-When set to "move", Shelfmark copies files into the ingest folder and then instructs your usenet client to delete its own completed download.
+Copy files into your ingest folder, optionally cleaning up the usenet client
 
 - **Type:** string (choice)
 - **Default:** `move`

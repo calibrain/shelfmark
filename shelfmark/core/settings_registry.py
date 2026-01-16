@@ -563,7 +563,7 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
     """
     # HeadingField has a different structure - handle separately
     if isinstance(field, HeadingField):
-        result = {
+        result: Dict[str, Any] = {
             "key": field.key,
             "type": field.get_field_type(),
             "title": field.title,
@@ -578,7 +578,7 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
             result["universalOnly"] = True
         return result
 
-    result = {
+    result: Dict[str, Any] = {
         "key": field.key,
         "label": field.label,
         "type": field.get_field_type(),
@@ -641,6 +641,10 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
                 value = []
             elif isinstance(value, list):
                 value = [str(v) for v in value]
+            elif isinstance(value, str):
+                # Support legacy/manual configs where MultiSelect values were saved
+                # as comma-separated strings.
+                value = [v.strip() for v in value.split(",") if v.strip()]
             else:
                 value = []
 
@@ -832,16 +836,22 @@ def update_settings(tab_name: str, values: Dict[str, Any]) -> Dict[str, Any]:
     # Save to config file
     if save_config_file(tab_name, values_to_save):
         # Refresh the config singleton so live settings take effect immediately
+        config_obj = None
         try:
-            from shelfmark.core.config import config
-            config.refresh()
+            from shelfmark.core.config import config as config_obj
+
+            config_obj.refresh()
         except ImportError:
-            pass  # Config module not yet available during initial setup
+            config_obj = None  # Config module not yet available during initial setup
 
         # Apply DNS settings changes live (network tab)
         dns_keys = {"CUSTOM_DNS", "CUSTOM_DNS_MANUAL", "USE_DOH"}
-        if tab_name == "network" and dns_keys.intersection(values_to_save.keys()):
-            _apply_dns_settings(config)
+        if (
+            config_obj is not None
+            and tab_name == "network"
+            and dns_keys.intersection(values_to_save.keys())
+        ):
+            _apply_dns_settings(config_obj)
 
         # Sync metadata provider selection when a provider's enabled state changes
         tab = get_settings_tab(tab_name)

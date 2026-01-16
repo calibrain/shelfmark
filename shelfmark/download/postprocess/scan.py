@@ -293,4 +293,26 @@ def collect_staged_files(
 
         return extracted_files, rejected_files, cleanup_paths, error
 
-    return [working_path], [], [], None
+    # Single-file download result (non-archive).
+    # Ensure we respect the user's supported format settings.
+    suffix = working_path.suffix.lower()
+    supported_formats = get_supported_formats(task.content_type)
+    supported_exts = {f".{fmt}" for fmt in supported_formats}
+
+    is_audiobook = check_audiobook(task.content_type)
+    if is_audiobook:
+        trackable_exts = {'.m4b', '.mp3', '.m4a', '.flac', '.ogg', '.wma', '.aac', '.wav'}
+    else:
+        trackable_exts = {
+            '.pdf', '.epub', '.mobi', '.azw', '.azw3', '.fb2', '.djvu', '.cbz', '.cbr',
+            '.doc', '.docx', '.rtf', '.txt',
+        }
+
+    if suffix in supported_exts:
+        return [working_path], [], [], None
+
+    if suffix in trackable_exts:
+        return [], [working_path], [], _format_not_supported_error([working_path], task)
+
+    file_type_label = "audiobook" if is_audiobook else "book"
+    return [], [], [], f"Unsupported {file_type_label} file type: {suffix or working_path.name}"
