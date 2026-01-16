@@ -104,12 +104,30 @@ class ProwlarrHandler(DownloadHandler):
         except Exception as e:
             logger.warning(f"Failed to cleanup usenet download {download_id} in {getattr(client, 'name', 'client')}: {e}")
 
-    def _safe_remove_download(self, client, download_id: str, reason: str) -> None:
-        """Best-effort removal of a failed/cancelled download from the client."""
+    def _safe_remove_download(self, client, download_id: str, protocol: str, reason: str) -> None:
+        """Best-effort removal of a failed/cancelled download from the client.
+
+        Safety policy:
+        - torrents: never remove or delete client data (avoid breaking seeding)
+        - usenet: keep legacy behavior (delete client files on removal)
+        """
+
+        if protocol != "usenet":
+            logger.info(
+                "Skipping download client cleanup for protocol=%s after %s (client=%s id=%s)",
+                protocol,
+                reason,
+                getattr(client, "name", "client"),
+                download_id,
+            )
+            return
+
         try:
             client.remove(download_id, delete_files=True)
         except Exception as e:
-            logger.warning(f"Failed to remove download {download_id} from {client.name} after {reason}: {e}")
+            logger.warning(
+                f"Failed to remove download {download_id} from {client.name} after {reason}: {e}"
+            )
 
     def _build_progress_message(self, status) -> str:
         """Build a progress message from download status."""
@@ -269,7 +287,7 @@ class ProwlarrHandler(DownloadHandler):
                     if status.state == DownloadState.ERROR:
                         logger.error(f"Download {download_id} completed with error: {status.message}")
                         status_callback("error", status.message or "Download failed")
-                        self._safe_remove_download(client, download_id, "completion error")
+                        self._safe_remove_download(client, download_id, protocol, "completion error")
                         return None
                     # Download complete - break to handle file
                     logger.debug(f"Download {download_id} complete, file_path={status.file_path}")
@@ -296,7 +314,7 @@ class ProwlarrHandler(DownloadHandler):
                     else:
                         logger.error(f"Download {download_id} error state: {status.message}")
                     status_callback("error", status.message or "Download failed")
-                    self._safe_remove_download(client, download_id, "download error")
+                    self._safe_remove_download(client, download_id, protocol, "download error")
                     return None
 
                 # Reset not-found counter on successful status check
@@ -316,8 +334,18 @@ class ProwlarrHandler(DownloadHandler):
 
             # Handle cancellation
             if cancel_flag.is_set():
-                logger.info(f"Download cancelled, removing from {client.name}: {download_id}")
-                client.remove(download_id, delete_files=True)
+                if protocol == "usenet":
+                    logger.info(f"Download cancelled, removing from {client.name}: {download_id}")
+                    try:
+                        client.remove(download_id, delete_files=True)
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to remove download {download_id} from {client.name} after cancellation: {e}"
+                        )
+                else:
+                    logger.info(
+                        f"Download cancelled for protocol={protocol}; leaving in {client.name}: {download_id}"
+                    )
                 status_callback("cancelled", "Cancelled")
                 return None
 
@@ -364,7 +392,7 @@ class ProwlarrHandler(DownloadHandler):
         except Exception as e:
             logger.error(f"Error during download polling: {e}")
             status_callback("error", str(e))
-            self._safe_remove_download(client, download_id, "polling exception")
+            self._safe_remove_download(client, download_id, protocol, "polling exception")
             return None
 
     def _handle_completed_file(

@@ -216,8 +216,7 @@ class TestClientErrorStates:
         assert result is None
         assert recorder.had_error
         assert "Tracker returned error" in recorder.last_message
-        assert mock_client.remove_called
-        assert mock_client.remove_with_delete  # Should delete files on error
+        assert not mock_client.remove_called
 
     def test_client_returns_error_with_complete_flag(
         self, handler, mock_client, recorder, cancel_flag, sample_task, sample_release
@@ -228,7 +227,7 @@ class TestClientErrorStates:
                 progress=100,
                 state=DownloadState.ERROR,
                 message="Download corrupted",
-                complete=True,  # Complete but errored
+                complete=True,
                 file_path=None,
             ),
         ]
@@ -249,6 +248,8 @@ class TestClientErrorStates:
 
         assert result is None
         assert recorder.had_error
+        assert recorder.last_message == "Download corrupted"
+        assert not mock_client.remove_called
 
     def test_error_without_message_uses_default(
         self, handler, mock_client, recorder, cancel_flag, sample_task, sample_release
@@ -258,7 +259,7 @@ class TestClientErrorStates:
             DownloadStatus(
                 progress=0,
                 state=DownloadState.ERROR,
-                message=None,  # No message
+                message=None,
                 complete=False,
                 file_path=None,
             ),
@@ -281,6 +282,7 @@ class TestClientErrorStates:
         assert result is None
         assert recorder.had_error
         assert recorder.last_message == "Download failed"
+        assert not mock_client.remove_called
 
 
 # =============================================================================
@@ -434,8 +436,7 @@ class TestCancellation:
 
         assert result is None
         assert "cancelled" in recorder.statuses
-        assert mock_client.remove_called
-        assert mock_client.remove_with_delete
+        assert not mock_client.remove_called
 
     def test_cancel_before_download_starts(
         self, handler, mock_client, recorder, sample_task, sample_release
@@ -460,7 +461,7 @@ class TestCancellation:
 
         assert result is None
         # Should have been cancelled quickly
-        assert mock_client.remove_called
+        assert not mock_client.remove_called
 
 
 # =============================================================================
@@ -847,7 +848,7 @@ class TestErrorCleanup:
     def test_cleanup_on_poll_exception(
         self, handler, mock_client, recorder, cancel_flag, sample_task, sample_release
     ):
-        """Download should be removed from client after polling exception."""
+        """Torrent downloads should not be removed after polling exception."""
         call_count = 0
 
         def exploding_get_status(download_id):
@@ -883,8 +884,7 @@ class TestErrorCleanup:
             )
 
         assert result is None
-        assert mock_client.remove_called
-        assert mock_client.remove_with_delete
+        assert not mock_client.remove_called
 
     def test_cleanup_continues_even_if_remove_fails(
         self, handler, mock_client, recorder, cancel_flag, sample_task, sample_release
@@ -900,14 +900,22 @@ class TestErrorCleanup:
             ),
         ]
 
+        remove_attempted = False
+
         def failing_remove(download_id, delete_files=False):
+            nonlocal remove_attempted
+            remove_attempted = True
             raise ConnectionError("Client not responding")
 
         mock_client.remove = failing_remove
 
+        usenet_release = dict(sample_release)
+        usenet_release["protocol"] = "usenet"
+        usenet_release["downloadUrl"] = "https://indexer.example.com/download/123"
+
         with patch(
             "shelfmark.release_sources.prowlarr.handler.get_release",
-            return_value=sample_release,
+            return_value=usenet_release,
         ), patch(
             "shelfmark.release_sources.prowlarr.handler.get_client",
             return_value=mock_client,
@@ -922,3 +930,4 @@ class TestErrorCleanup:
 
         assert result is None
         assert recorder.had_error
+        assert remove_attempted

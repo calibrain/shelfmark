@@ -392,14 +392,14 @@ class TestProwlarrHandlerPolling:
 
             assert result is None
             assert recorder.last_status == "error"
-            mock_client.remove.assert_called_once()
+            mock_client.remove.assert_not_called()
 
 
 class TestProwlarrHandlerCancellation:
     """Tests for download cancellation."""
 
-    def test_cancellation_removes_download(self):
-        """Test that cancellation removes the download from client."""
+    def test_cancellation_does_not_remove_torrent(self):
+        """Test that torrent cancellation does not remove from client."""
         mock_client = MagicMock()
         mock_client.name = "test_client"
         mock_client.find_existing.return_value = None
@@ -446,7 +446,7 @@ class TestProwlarrHandlerCancellation:
 
             assert result is None
             assert "cancelled" in recorder.statuses
-            mock_client.remove.assert_called_with("download_id", delete_files=True)
+            mock_client.remove.assert_not_called()
 
 
 class TestProwlarrHandlerCancel:
