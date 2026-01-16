@@ -279,9 +279,33 @@ def _decode_port(port: Union[str, bytes, int, None]) -> int:
     return int(port)
 
 def _is_local_address(host_str: str) -> bool:
-    """Check if an address is local or private and should bypass custom DNS."""
-    if host_str == 'localhost':
+    """Check if an address is local/private and should bypass custom DNS.
+
+    Returns True for:
+    - 'localhost'
+    - Private/loopback/link-local IP addresses
+    - Simple hostnames without a dot (e.g., 'booklore', 'prowlarr') - likely Docker service names
+    - Hostnames ending in common internal TLDs (.local, .internal, .lan, .home, .docker)
+    """
+    if not host_str:
+        return False
+
+    host_lower = host_str.lower()
+
+    # Check for localhost
+    if host_lower == 'localhost':
         return True
+
+    # Check for simple hostnames (no dot = likely internal Docker/container name)
+    if '.' not in host_str:
+        return True
+
+    # Check for common internal TLDs
+    internal_tlds = ('.local', '.internal', '.lan', '.home', '.docker', '.localdomain')
+    if any(host_lower.endswith(tld) for tld in internal_tlds):
+        return True
+
+    # Check for private/loopback/link-local IP addresses
     try:
         addr = ipaddress.ip_address(host_str)
         return addr.is_private or addr.is_loopback or addr.is_link_local

@@ -59,9 +59,8 @@ def _setup_deluge_config():
     save_config_file("prowlarr_clients", {
         "PROWLARR_TORRENT_CLIENT": "deluge",
         "DELUGE_HOST": "deluge",
-        "DELUGE_PORT": "58846",
-        "DELUGE_USERNAME": "admin",
-        "DELUGE_PASSWORD": "admin",
+        "DELUGE_PORT": "8112",
+        "DELUGE_PASSWORD": "deluge",
         "DELUGE_CATEGORY": "test",
     })
     config.refresh()

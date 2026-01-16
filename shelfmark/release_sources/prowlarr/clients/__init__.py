@@ -256,14 +256,13 @@ class DownloadClient(ABC):
         pass
 
     @abstractmethod
-    def add_download(self, url: str, name: str, category: str = "cwabd") -> str:
-        """
-        Add a download to the client.
+    def add_download(self, url: str, name: str, category: Optional[str] = None) -> str:
+        """Add a download to the client.
 
         Args:
             url: Download URL (magnet link, .torrent URL, or NZB URL)
             name: Display name for the download
-            category: Category/label for organization
+            category: Category/label for organization (None = client default)
 
         Returns:
             Client-specific download ID (hash for torrents, ID for NZBGet).

@@ -712,7 +712,7 @@ def execute_action(tab_name: str, action_key: str, current_values: Optional[Dict
                 try:
                     # Check if callback accepts current_values parameter
                     sig = inspect.signature(field.callback)
-                    if 'current_values' in sig.parameters:
+                    if "current_values" in sig.parameters:
                         return field.callback(current_values=current_values or {})
                     else:
                         return field.callback()

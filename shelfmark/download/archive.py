@@ -472,7 +472,7 @@ def process_archive(
         )
 
     except PasswordProtectedError:
-        logger.error(f"Password-protected archive: {archive_path.name}")
+        logger.warning(f"Password-protected archive: {archive_path.name}")
         shutil.rmtree(extract_dir, ignore_errors=True)
         archive_path.unlink(missing_ok=True)
         return ArchiveResult(
@@ -483,7 +483,7 @@ def process_archive(
         )
 
     except CorruptedArchiveError as e:
-        logger.error(f"Corrupted archive: {e}")
+        logger.warning(f"Corrupted archive: {e}")
         shutil.rmtree(extract_dir, ignore_errors=True)
         archive_path.unlink(missing_ok=True)
         return ArchiveResult(
@@ -494,7 +494,7 @@ def process_archive(
         )
 
     except ArchiveExtractionError as e:
-        logger.error(f"Archive extraction failed: {e}")
+        logger.warning(f"Archive extraction failed: {e}")
         shutil.rmtree(extract_dir, ignore_errors=True)
         archive_path.unlink(missing_ok=True)
         return ArchiveResult(

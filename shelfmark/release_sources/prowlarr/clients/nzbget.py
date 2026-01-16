@@ -98,7 +98,7 @@ class NZBGetClient(DownloadClient):
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
 
-    def add_download(self, url: str, name: str, category: str = None) -> str:
+    def add_download(self, url: str, name: str, category: Optional[str] = None) -> str:
         """
         Add NZB by URL.
 
@@ -256,28 +256,44 @@ class NZBGetClient(DownloadClient):
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, delete_files: bool = False) -> bool:
-        """
-        Remove a download from NZBGet.
+        """Remove a download from NZBGet.
+
+        NZBGet can remove items from either the active queue (Group* commands) or from
+        history (History* commands). Completed downloads are typically in history.
 
         Args:
             download_id: NZBGet NZBID
-            delete_files: Whether to permanently delete (vs move to history)
+            delete_files: Whether to permanently delete downloaded files
 
         Returns:
             True if successful.
         """
         try:
             nzb_id = int(download_id)
-            # editqueue params: Command (str), Param (str), IDs (int[])
-            # GroupFinalDelete = permanent removal, GroupDelete = move to history
-            command = "GroupFinalDelete" if delete_files else "GroupDelete"
-            result = self._rpc_call("editqueue", [command, "", [nzb_id]])
-            if result:
-                logger.info(f"Removed NZB from NZBGet: {download_id}")
-            return bool(result)
-        except Exception as e:
+        except (TypeError, ValueError) as e:
             self._log_error("remove", e)
             return False
+
+        if delete_files:
+            # Sonarr uses HistoryDelete for NZBGet; keep that as a fallback for
+            # older NZBGet versions where HistoryFinalDelete may not exist.
+            commands = ["GroupFinalDelete", "HistoryFinalDelete", "HistoryDelete"]
+        else:
+            commands = ["GroupDelete", "HistoryDelete"]
+
+        last_error: Optional[Exception] = None
+        for command in commands:
+            try:
+                result = self._rpc_call("editqueue", [command, 0, "", nzb_id])
+                if result:
+                    logger.info(f"Removed NZB from NZBGet ({command}): {download_id}")
+                    return True
+            except Exception as e:
+                last_error = e
+
+        if last_error is not None:
+            self._log_error("remove", last_error)
+        return False
 
     def get_download_path(self, download_id: str) -> Optional[str]:
         """

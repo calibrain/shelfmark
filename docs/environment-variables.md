@@ -1193,10 +1193,9 @@ Automatically retry search without category filtering if no results are found
 | `TRANSMISSION_PASSWORD` | Transmission RPC password | string (secret) | _none_ |
 | `TRANSMISSION_CATEGORY` | Label to assign to book downloads in Transmission | string | `books` |
 | `TRANSMISSION_CATEGORY_AUDIOBOOK` | Label for audiobook downloads. Leave empty to use the book label. | string | _empty string_ |
-| `DELUGE_HOST` | Hostname or IP of your Deluge daemon | string | `localhost` |
-| `DELUGE_PORT` | Deluge daemon RPC port (default: 58846). IMPORTANT: Ensure "Allow Remote Connections" is enabled in Deluge settings. | string | `58846` |
-| `DELUGE_USERNAME` | Deluge daemon username (from auth file) | string | _none_ |
-| `DELUGE_PASSWORD` | Deluge daemon password (from auth file) | string (secret) | _none_ |
+| `DELUGE_HOST` | Hostname/IP or full URL of your Deluge Web UI (deluge-web) | string | `localhost` |
+| `DELUGE_PORT` | Deluge Web UI port (default: 8112) | string | `8112` |
+| `DELUGE_PASSWORD` | Deluge Web UI password | string (secret) | _none_ |
 | `DELUGE_CATEGORY` | Label to assign to book downloads in Deluge | string | `books` |
 | `DELUGE_CATEGORY_AUDIOBOOK` | Label for audiobook downloads. Leave empty to use the book label. | string | _empty string_ |
 | `PROWLARR_USENET_CLIENT` | Choose which usenet client to use | string (choice) | _empty string_ |
@@ -1209,8 +1208,7 @@ Automatically retry search without category filtering if no results are found
 | `SABNZBD_API_KEY` | Found in SABnzbd: Config > General > API Key | string (secret) | _none_ |
 | `SABNZBD_CATEGORY` | Category to assign to book downloads in SABnzbd | string | `books` |
 | `SABNZBD_CATEGORY_AUDIOBOOK` | Category for audiobook downloads. Leave empty to use the book category. | string | _empty string_ |
-| `SABNZBD_REMOVE_COMPLETED` | Remove downloads from SABnzbd history after successful import (archives them) | boolean | `true` |
-| `PROWLARR_USENET_ACTION` | What to do with usenet files after download completes | string (choice) | `move` |
+| `PROWLARR_USENET_ACTION` | Copy into ingest, optionally cleanup in client | string (choice) | `move` |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -1317,36 +1315,27 @@ Label for audiobook downloads. Leave empty to use the book label.
 
 #### `DELUGE_HOST`
 
-**Deluge Host**
+**Deluge Web UI Host/URL**
 
-Hostname or IP of your Deluge daemon
+Hostname/IP or full URL of your Deluge Web UI (deluge-web)
 
 - **Type:** string
 - **Default:** `localhost`
 
 #### `DELUGE_PORT`
 
-**Deluge Port**
+**Deluge Web UI Port**
 
-Deluge daemon RPC port (default: 58846). IMPORTANT: Ensure "Allow Remote Connections" is enabled in Deluge settings.
-
-- **Type:** string
-- **Default:** `58846`
-
-#### `DELUGE_USERNAME`
-
-**Username**
-
-Deluge daemon username (from auth file)
+Deluge Web UI port (default: 8112)
 
 - **Type:** string
-- **Default:** _none_
+- **Default:** `8112`
 
 #### `DELUGE_PASSWORD`
 
 **Password**
 
-Deluge daemon password (from auth file)
+Deluge Web UI password (default: deluge)
 
 - **Type:** string (secret)
 - **Default:** _none_
@@ -1460,23 +1449,16 @@ Category for audiobook downloads. Leave empty to use the book category.
 - **Type:** string
 - **Default:** _empty string_
 
-#### `SABNZBD_REMOVE_COMPLETED`
-
-**Remove completed downloads from history**
-
-Remove downloads from SABnzbd history after successful import (archives them)
-
-- **Type:** boolean
-- **Default:** `true`
-
 #### `PROWLARR_USENET_ACTION`
 
 **NZB Completion Action**
 
-What to do with usenet files after download completes
+What to do with usenet files after download completes.
+
+When set to "move", Shelfmark copies files into the ingest folder and then instructs your usenet client to delete its own completed download.
 
 - **Type:** string (choice)
 - **Default:** `move`
-- **Options:** Move to ingest, Copy to ingest
+- **Options:** Copy and remove from client, Copy (keep in client)
 
 </details>

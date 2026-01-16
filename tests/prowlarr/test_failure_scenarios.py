@@ -13,7 +13,6 @@ from threading import Event, Thread
 from typing import List, Optional, Tuple
 from unittest.mock import MagicMock, patch, PropertyMock
 import tempfile
-import shutil
 
 import pytest
 
@@ -581,12 +580,10 @@ class TestFileHandlingFailures:
         assert recorder.had_error
         assert "locate" in recorder.last_message.lower()
 
-    def test_permission_denied_on_move(
+    def test_usenet_returns_original_path(
         self, handler, mock_client, recorder, cancel_flag, sample_task
     ):
-        """Handler should report permission errors during file staging (usenet only - torrents skip staging)."""
-        # Use usenet protocol - torrents skip staging and return original path directly
-        # Default usenet action is "move", so we mock shutil.move
+        """Usenet downloads return the original client path without staging."""
         usenet_release = {
             "guid": "test-task-123",
             "title": "Test Book",
@@ -607,8 +604,6 @@ class TestFileHandlingFailures:
         with tempfile.TemporaryDirectory() as tmpdir:
             source_file = Path(tmpdir) / "source.epub"
             source_file.write_text("test content")
-            staging_dir = Path(tmpdir) / "staging"
-            staging_dir.mkdir()
 
             mock_client.get_download_path = lambda x: str(source_file)
 
@@ -619,11 +614,12 @@ class TestFileHandlingFailures:
                 "shelfmark.release_sources.prowlarr.handler.get_client",
                 return_value=mock_client,
             ), patch(
-                "shelfmark.release_sources.prowlarr.handler.shutil.move",
-                side_effect=PermissionError("Permission denied"),
+                "shelfmark.release_sources.prowlarr.handler.remove_release",
             ), patch(
                 "shelfmark.download.orchestrator.get_staging_dir",
-                return_value=staging_dir,
+            ) as mock_get_staging, patch(
+                "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
+                0.01,
             ):
                 result = handler.download(
                     task=sample_task,
@@ -632,9 +628,9 @@ class TestFileHandlingFailures:
                     status_callback=recorder.status_callback,
                 )
 
-        assert result is None
-        assert recorder.had_error
-        assert "permission" in recorder.last_message.lower()
+        assert result == str(source_file)
+        assert not recorder.had_error
+        mock_get_staging.assert_not_called()
 
 
 # =============================================================================

@@ -62,17 +62,14 @@ def build_booklore_config(values: Mapping[str, Any]) -> BookloreConfig:
     library_id = _parse_int(values.get("BOOKLORE_LIBRARY_ID"), "Booklore library ID")
     path_id = _parse_int(values.get("BOOKLORE_PATH_ID"), "Booklore path ID")
 
-    verify_tls = bool(values.get("BOOKLORE_VERIFY_TLS", True))
-    refresh_after_upload = bool(values.get("BOOKLORE_REFRESH_AFTER_UPLOAD", False))
-
     return BookloreConfig(
         base_url=base_url.rstrip("/"),
         username=username,
         password=password,
         library_id=library_id,
         path_id=path_id,
-        verify_tls=verify_tls,
-        refresh_after_upload=refresh_after_upload,
+        verify_tls=True,
+        refresh_after_upload=True,  # Always refresh library after upload
     )
 
 
@@ -178,8 +175,6 @@ def _get_booklore_settings() -> Dict[str, Any]:
         "BOOKLORE_PASSWORD": config.get("BOOKLORE_PASSWORD", ""),
         "BOOKLORE_LIBRARY_ID": config.get("BOOKLORE_LIBRARY_ID"),
         "BOOKLORE_PATH_ID": config.get("BOOKLORE_PATH_ID"),
-        "BOOKLORE_VERIFY_TLS": config.get("BOOKLORE_VERIFY_TLS", True),
-        "BOOKLORE_REFRESH_AFTER_UPLOAD": config.get("BOOKLORE_REFRESH_AFTER_UPLOAD", False),
     }
 
 
@@ -201,12 +196,13 @@ def _post_process_booklore(
     from shelfmark.download.orchestrator import _cleanup_output_staging, prepare_output_files
 
     if cancel_flag.is_set():
-        logger.info(f"Download cancelled before Booklore upload: {task.task_id}")
+        logger.info("Task %s: cancelled before Booklore upload", task.task_id)
         return None
 
     try:
         booklore_config = build_booklore_config(_get_booklore_settings())
     except BookloreError as e:
+        logger.warning("Task %s: Booklore configuration error: %s", task.task_id, e)
         status_callback("error", str(e))
         return None
 
@@ -215,6 +211,8 @@ def _post_process_booklore(
     if not prepared:
         return None
 
+    logger.debug("Task %s: prepared %d file(s) for Booklore upload", task.task_id, len(prepared.files))
+
     try:
         unsupported_files = [
             file_path
@@ -222,14 +220,17 @@ def _post_process_booklore(
             if file_path.suffix.lower() not in BOOKLORE_SUPPORTED_EXTENSIONS
         ]
         if unsupported_files:
-            status_callback("error", _booklore_format_error(unsupported_files))
+            error_message = _booklore_format_error(unsupported_files)
+            logger.warning("Task %s: %s", task.task_id, error_message)
+            status_callback("error", error_message)
             return None
 
         token = booklore_login(booklore_config)
+        logger.info("Task %s: uploading %d file(s) to Booklore", task.task_id, len(prepared.files))
 
         for index, file_path in enumerate(prepared.files, start=1):
             if cancel_flag.is_set():
-                logger.info(f"Download cancelled during Booklore upload: {task.task_id}")
+                logger.info("Task %s: cancelled during Booklore upload", task.task_id)
                 return None
             status_callback("resolving", f"Uploading to Booklore ({index}/{len(prepared.files)})")
             booklore_upload_file(booklore_config, token, file_path)
@@ -238,7 +239,9 @@ def _post_process_booklore(
             try:
                 booklore_refresh_library(booklore_config, token)
             except BookloreError as e:
-                logger.warning(f"Booklore refresh failed: {e}")
+                logger.warning("Task %s: Booklore refresh failed: %s", task.task_id, e)
+
+        logger.info("Task %s: uploaded %d file(s) to Booklore", task.task_id, len(prepared.files))
 
         message = "Uploaded to Booklore"
         if len(prepared.files) > 1:
@@ -247,10 +250,11 @@ def _post_process_booklore(
         return f"booklore://{task.task_id}"
 
     except BookloreError as e:
+        logger.warning("Task %s: Booklore upload failed: %s", task.task_id, e)
         status_callback("error", str(e))
         return None
     except Exception as e:
-        logger.error(f"Booklore upload failed: {e}")
+        logger.error_trace("Task %s: unexpected error uploading to Booklore: %s", task.task_id, e)
         status_callback("error", f"Booklore upload failed: {e}")
         return None
     finally:

@@ -15,14 +15,28 @@ export const SelectField = ({ field, value, onChange, disabled, filterValue }: S
 
   const prevFilterValue = useRef(filterValue);
 
+  const normalizedOptions = useMemo(
+    () =>
+      field.options.map((opt) => ({
+        ...opt,
+        value: String(opt.value),
+        childOf:
+          opt.childOf === undefined || opt.childOf === null
+            ? undefined
+            : String(opt.childOf),
+        label: opt.label ?? String(opt.value),
+      })),
+    [field.options]
+  );
+
   // Filter options based on filterValue (cascading dropdown support)
   const filteredOptions = useMemo(() => {
     if (!filterValue) {
-      return field.options.filter((opt) => !opt.childOf);
+      return normalizedOptions.filter((opt) => !opt.childOf);
     }
     // Filter to options that belong to the selected parent or have no parent
-    return field.options.filter((opt) => !opt.childOf || opt.childOf === filterValue);
-  }, [field.options, filterValue]);
+    return normalizedOptions.filter((opt) => !opt.childOf || opt.childOf === filterValue);
+  }, [normalizedOptions, filterValue]);
 
   // Clear selection when filter value changes and current value is not in filtered options
   useEffect(() => {

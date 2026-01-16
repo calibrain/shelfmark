@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   SettingsTab,
   SettingsField,
@@ -14,7 +14,6 @@ import {
   ActionButtonConfig,
   HeadingFieldConfig,
   ShowWhenCondition,
-  SelectOption,
 } from '../../types/settings';
 import { FieldWrapper } from './shared';
 import {
@@ -171,9 +170,13 @@ const renderField = (
     case 'SelectField': {
       const selectConfig = field as SelectFieldConfig;
       // Get filter value for cascading dropdowns
-      const filterValue = selectConfig.filterByField
-        ? (allValues[selectConfig.filterByField] as string | undefined)
+      const rawFilterValue = selectConfig.filterByField
+        ? allValues[selectConfig.filterByField]
         : undefined;
+      const filterValue =
+        rawFilterValue === undefined || rawFilterValue === null || rawFilterValue === ''
+          ? undefined
+          : String(rawFilterValue);
       return (
         <SelectField
           field={selectConfig}
@@ -223,68 +226,12 @@ export const SettingsContent = ({
 }: SettingsContentProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Dynamic select options populated by action button responses
-  const [selectOptionsOverrides, setSelectOptionsOverrides] = useState<Record<string, SelectOption[]>>({});
-
-  // Reset scroll position (and action-driven UI state) when tab changes
+  // Reset scroll position when tab changes
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = 0;
     }
-    setSelectOptionsOverrides({});
   }, [tab.name]);
-
-  // Wrapped action handler that can apply generic side-effects
-  const handleAction = useCallback(
-    async (key: string): Promise<ActionResult> => {
-      const result = await onAction(key);
-
-      if (result.success && result.effects) {
-        const effects = result.effects;
-
-        if (effects.setSelectOptions) {
-          setSelectOptionsOverrides((prev) => ({
-            ...prev,
-            ...effects.setSelectOptions,
-          }));
-        }
-
-        if (effects.setValues) {
-          Object.entries(effects.setValues).forEach(([fieldKey, value]) => {
-            onChange(fieldKey, value);
-          });
-        }
-      }
-
-      return result;
-    },
-    [onAction, onChange]
-  );
-
-  // Apply action-driven select option overrides to fields
-  const getEnhancedField = useCallback(
-    (field: SettingsField): SettingsField => {
-      const optionsOverride = selectOptionsOverrides[field.key];
-      if (!optionsOverride) return field;
-
-      if (field.type === 'SelectField') {
-        return {
-          ...(field as SelectFieldConfig),
-          options: optionsOverride,
-        };
-      }
-
-      if (field.type === 'MultiSelectField') {
-        return {
-          ...(field as MultiSelectFieldConfig),
-          options: optionsOverride,
-        };
-      }
-
-      return field;
-    },
-    [selectOptionsOverrides]
-  );
 
   // Memoize the visible fields to avoid recalculating on every render
   const visibleFields = useMemo(
@@ -302,27 +249,25 @@ export const SettingsContent = ({
       >
         <div className="space-y-5">
           {visibleFields.map((field) => {
-              // Apply action-driven dynamic options (if any)
-              const enhancedField = getEnhancedField(field);
-              const disabledState = getDisabledState(enhancedField, values);
-              return (
-                <FieldWrapper
-                  key={`${tab.name}-${field.key}`}
-                  field={enhancedField}
-                  disabledOverride={disabledState.disabled}
-                  disabledReasonOverride={disabledState.reason}
-                >
-                  {renderField(
-                    enhancedField,
-                    values[field.key],
-                    (v) => onChange(field.key, v),
-                    () => handleAction(field.key),
-                    disabledState.disabled,
-                    values
-                  )}
-                </FieldWrapper>
-              );
-            })}
+            const disabledState = getDisabledState(field, values);
+            return (
+              <FieldWrapper
+                key={`${tab.name}-${field.key}`}
+                field={field}
+                disabledOverride={disabledState.disabled}
+                disabledReasonOverride={disabledState.reason}
+              >
+                {renderField(
+                  field,
+                  values[field.key],
+                  (v) => onChange(field.key, v),
+                  () => onAction(field.key),
+                  disabledState.disabled,
+                  values
+                )}
+              </FieldWrapper>
+            );
+          })}
         </div>
       </div>
 

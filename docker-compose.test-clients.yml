@@ -11,7 +11,7 @@
 #   - Prowlarr:     http://localhost:9696 (no auth by default)
 #   - qBittorrent:  http://localhost:8080 (check container logs for temp password)
 #   - Transmission: http://localhost:9091 (admin / admin)
-#   - Deluge:       http://localhost:8112 (admin / deluge)
+#   - Deluge:       http://localhost:8112 (password: deluge)
 #   - NZBGet:       http://localhost:6789 (nzbget / tegbzn6789)
 #   - SABnzbd:      http://localhost:8085 (complete setup wizard for API key)
 #   - rTorrent:     http://localhost:8000 (admin / admin - if auth enabled)
@@ -33,7 +33,7 @@ services:
       # Use Docker service names for URLs:
       #   - qBittorrent: http://qbittorrent:8080
       #   - Transmission: http://transmission:9091
-      #   - Deluge host: deluge (port 58846)
+      #   - Deluge Web UI: http://deluge:8112
       #   - NZBGet: http://nzbget:6789
       #   - SABnzbd: http://sabnzbd:8080
       #   - rTorrent: http://rtorrent:80 (XMLRPC via HTTP) or rtorrent (port 5000 for SCGI)

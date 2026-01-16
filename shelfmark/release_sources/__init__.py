@@ -252,8 +252,14 @@ class ReleaseSource(ABC):
 
 
 class DownloadHandler(ABC):
-    """Interface for executing downloads. Handlers stage files to TMP_DIR;
-    orchestrator handles post-processing and move to INGEST_DIR.
+    """Interface for executing downloads.
+
+    A handler may either:
+    - download directly into ``TMP_DIR`` (managed by Shelfmark), or
+    - return a path owned by an external client (e.g. torrent/usenet).
+
+    The orchestrator is responsible for post-processing (archive extraction, output mode
+    handling) and transferring files into their final destination.
     """
 
     @abstractmethod
@@ -264,8 +270,16 @@ class DownloadHandler(ABC):
         progress_callback: Callable[[float], None],
         status_callback: Callable[[str, Optional[str]], None]
     ) -> Optional[str]:
-        """Execute download and return path to staged file in TMP_DIR."""
+        """Execute download and return a path to the downloaded payload."""
         pass
+
+    def post_process_cleanup(self, task: DownloadTask, success: bool) -> None:
+        """Optional hook called after orchestrator post-processing.
+
+        This is primarily used for external download clients, where the handler may need
+        to trigger client-side cleanup only after Shelfmark has safely imported the files.
+        """
+        return
 
     @abstractmethod
     def cancel(self, task_id: str) -> bool:

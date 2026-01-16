@@ -593,3 +593,40 @@ class TestNZBGetClientRemove:
             # Test with delete_files=False
             client.remove("456", delete_files=False)
             assert calls[-1][1][0] == "GroupDelete"
+
+    def test_remove_falls_back_to_history_delete(self, monkeypatch):
+        """If HistoryFinalDelete is unsupported, fall back to HistoryDelete (Sonarr behavior)."""
+        config_values = {
+            "NZBGET_URL": "http://localhost:6789",
+            "NZBGET_USERNAME": "nzbget",
+            "NZBGET_PASSWORD": "password",
+            "NZBGET_CATEGORY": "Books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.release_sources.prowlarr.clients.nzbget.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        calls = []
+
+        def mock_rpc_call(method, params=None):
+            if method == "editqueue":
+                calls.append((method, params))
+                # Succeed only on HistoryDelete.
+                return params is not None and params[0] == "HistoryDelete"
+            return None
+
+        from shelfmark.release_sources.prowlarr.clients.nzbget import NZBGetClient
+
+        with patch.object(NZBGetClient, "__init__", lambda x: None):
+            client = NZBGetClient()
+            client.url = "http://localhost:6789"
+            client.username = "nzbget"
+            client.password = "password"
+            client._category = "Books"
+            client._rpc_call = mock_rpc_call
+
+            result = client.remove("123", delete_files=True)
+
+        assert result is True
+        assert [call[1][0] for call in calls] == ["GroupFinalDelete", "HistoryFinalDelete", "HistoryDelete"]

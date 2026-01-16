@@ -6,6 +6,11 @@ import json
 from typing import Any
 
 from shelfmark.config import env
+from shelfmark.config.booklore_settings import (
+    get_booklore_library_options,
+    get_booklore_path_options,
+    test_booklore_connection,
+)
 from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -153,135 +158,6 @@ def _get_release_source_options():
         if source.get("can_be_default", True)
     ]
 
-
-def _test_booklore_connection(current_values=None):
-    """Test the Booklore connection using current form values.
-
-    This is intentionally tolerant of unset library/path IDs so users can
-    validate credentials and then load library/path options via the UI.
-    """
-
-    from shelfmark.core.config import config
-    from shelfmark.download.outputs.booklore import (
-        BookloreConfig,
-        BookloreError,
-        booklore_list_libraries,
-        booklore_login,
-    )
-
-    current_values = current_values or {}
-
-    def _get_value(key: str, default: Any = None) -> Any:
-        value = current_values.get(key)
-        if value not in (None, ""):
-            return value
-        if default is None:
-            return config.get(key)
-        return config.get(key, default)
-
-    base_url = str(_get_value("BOOKLORE_HOST", "") or "").strip()
-    username = str(_get_value("BOOKLORE_USERNAME", "") or "").strip()
-    password = _get_value("BOOKLORE_PASSWORD", "") or ""
-    verify_tls = bool(_get_value("BOOKLORE_VERIFY_TLS", True))
-    refresh_after_upload = bool(_get_value("BOOKLORE_REFRESH_AFTER_UPLOAD", False))
-
-    if not base_url:
-        return {"success": False, "message": "Booklore URL is required"}
-    if not username:
-        return {"success": False, "message": "Booklore username is required"}
-    if not password:
-        return {"success": False, "message": "Booklore password is required"}
-
-    try:
-        # library_id/path_id are not used for login/library listing
-        booklore_config = BookloreConfig(
-            base_url=base_url.rstrip("/"),
-            username=username,
-            password=password,
-            library_id=1,
-            path_id=1,
-            verify_tls=verify_tls,
-            refresh_after_upload=refresh_after_upload,
-        )
-
-        token = booklore_login(booklore_config)
-        libraries = booklore_list_libraries(booklore_config, token) or []
-
-        library_options: list[dict[str, Any]] = []
-        path_options: list[dict[str, Any]] = []
-
-        for library in libraries:
-            if not isinstance(library, dict):
-                continue
-
-            library_id = library.get("id")
-            if library_id is None:
-                continue
-
-            library_name = str(library.get("name") or f"Library {library_id}")
-            library_id_str = str(library_id)
-
-            library_options.append({"value": library_id_str, "label": library_name})
-
-            paths = library.get("paths") or []
-            if not isinstance(paths, list):
-                continue
-
-            for path in paths:
-                if not isinstance(path, dict):
-                    continue
-
-                path_id = path.get("id")
-                if path_id is None:
-                    continue
-
-                path_label = str(path.get("path") or path.get("name") or f"Path {path_id}")
-                path_options.append(
-                    {
-                        "value": str(path_id),
-                        "label": f"{library_name}: {path_label}",
-                        "childOf": library_id_str,
-                    }
-                )
-
-        effects: dict[str, Any] = {
-            "setSelectOptions": {
-                "BOOKLORE_LIBRARY_ID": library_options,
-                "BOOKLORE_PATH_ID": path_options,
-            }
-        }
-
-        set_values: dict[str, Any] = {}
-
-        current_library_id = _get_value("BOOKLORE_LIBRARY_ID")
-        current_path_id = _get_value("BOOKLORE_PATH_ID")
-
-        if current_library_id in (None, "") and len(library_options) == 1:
-            set_values["BOOKLORE_LIBRARY_ID"] = library_options[0]["value"]
-
-        effective_library_id = (
-            str(current_library_id)
-            if current_library_id not in (None, "")
-            else set_values.get("BOOKLORE_LIBRARY_ID")
-        )
-
-        if current_path_id in (None, "") and effective_library_id:
-            matching_paths = [
-                opt for opt in path_options if opt.get("childOf") == effective_library_id
-            ]
-            if len(matching_paths) == 1:
-                set_values["BOOKLORE_PATH_ID"] = matching_paths[0]["value"]
-
-        if set_values:
-            effects["setValues"] = set_values
-
-        message = "Connected to Booklore"
-        if library_options:
-            message = f"Connected to Booklore ({len(library_options)} libraries)"
-
-        return {"success": True, "message": message, "effects": effects}
-    except BookloreError as e:
-        return {"success": False, "message": str(e)}
 
 
 _LANGUAGE_OPTIONS = [{"value": lang["code"], "label": lang["language"]} for lang in _SUPPORTED_BOOK_LANGUAGE]
@@ -699,8 +575,8 @@ def download_settings():
                 },
                 {
                     "value": "booklore",
-                    "label": "BookLore (API)",
-                    "description": "Upload files directly to BookLore",
+                    "label": "Booklore (API)",
+                    "description": "Upload files directly to Booklore",
                 },
             ],
             default="folder",
@@ -810,40 +686,26 @@ def download_settings():
         SelectField(
             key="BOOKLORE_LIBRARY_ID",
             label="Library",
-            description="Booklore library to upload into. Use Test Connection to load options.",
-            options=[],
+            description="Booklore library to upload into.",
+            options=get_booklore_library_options,
             required=True,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
         ),
         SelectField(
             key="BOOKLORE_PATH_ID",
             label="Path",
-            description="Booklore library path for uploads. Use Test Connection to load options.",
-            options=[],
+            description="Booklore library path for uploads.",
+            options=get_booklore_path_options,
             required=True,
             filter_by_field="BOOKLORE_LIBRARY_ID",
-            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
-        ),
-        CheckboxField(
-            key="BOOKLORE_VERIFY_TLS",
-            label="Verify TLS",
-            description="Verify HTTPS certificates when connecting to BookLore",
-            default=True,
-            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
-        ),
-        CheckboxField(
-            key="BOOKLORE_REFRESH_AFTER_UPLOAD",
-            label="Refresh Library After Upload",
-            description="Trigger a BookLore library refresh after uploads complete",
-            default=False,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
         ),
         ActionButton(
             key="test_booklore",
             label="Test Connection",
-            description="Verify your BookLore configuration",
+            description="Verify your Booklore configuration",
             style="primary",
-            callback=_test_booklore_connection,
+            callback=test_booklore_connection,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
         ),
 

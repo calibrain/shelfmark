@@ -498,7 +498,6 @@ def test_booklore_mode_uploads_and_cleans_staging(tmp_path):
         "BOOKLORE_PASSWORD": "secret",
         "BOOKLORE_LIBRARY_ID": 1,
         "BOOKLORE_PATH_ID": 2,
-        "BOOKLORE_VERIFY_TLS": True,
         "BOOKLORE_REFRESH_AFTER_UPLOAD": False,
     }
 
@@ -545,7 +544,6 @@ def test_booklore_mode_rejects_unsupported_files(tmp_path):
         "BOOKLORE_PASSWORD": "secret",
         "BOOKLORE_LIBRARY_ID": 1,
         "BOOKLORE_PATH_ID": 2,
-        "BOOKLORE_VERIFY_TLS": True,
         "BOOKLORE_REFRESH_AFTER_UPLOAD": False,
     }
 

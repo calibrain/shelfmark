@@ -78,5 +78,6 @@ def stage_path(source: Path, staging_dir: Path, action: StageAction) -> Path:
         else:
             shutil.move(str(source), str(staged_path))
 
-    logger.debug(f"Staged {'directory' if source.is_dir() else 'file'}: {staged_path.name}")
+    staged_kind = "directory" if source.is_dir() else "file"
+    logger.debug("Staged %s via %s: %s -> %s", staged_kind, action, source, staged_path)
     return staged_path

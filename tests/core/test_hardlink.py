@@ -311,14 +311,14 @@ class TestAtomicMove:
 
         monkeypatch.setattr(os, "rename", _raise_exdev)
 
-        with patch("shelfmark.download.fs.shutil.move", side_effect=PermissionError("no")) as mock_move, \
+        with patch("shelfmark.download.fs.shutil.copy2", side_effect=PermissionError("no")) as mock_copy, \
              patch("shelfmark.download.fs._perform_nfs_fallback", side_effect=_fallback_copy) as mock_fallback:
             result = _atomic_move(source, dest)
 
         assert result == dest
         assert not source.exists()
         assert dest.read_text() == "content"
-        assert mock_move.called
+        assert mock_copy.called
         assert mock_fallback.called
 
 
@@ -620,17 +620,17 @@ class TestHardlinkDecisionLogic:
         assert not staged.exists()
 
     def test_no_original_path_uses_staging(self, tmp_path, sample_task):
-        """Without original_download_path, moves from staging."""
+        """Non-prowlarr downloads move staged files into destination."""
         library = tmp_path / "library"
         library.mkdir()
         staged = tmp_path / "staging" / "book.epub"
         staged.parent.mkdir()
         staged.write_bytes(b"content")
 
-        # No original_download_path (direct download scenario)
+        # Simulate a non-external download (e.g. direct download) where Shelfmark owns the
+        # temp file in TMP_DIR and can safely move it.
+        sample_task.source = "direct_download"
         sample_task.original_download_path = None
-
-        status_cb = MagicMock()
 
         result, _ = _run_organize_post_process(
             temp_file=staged,
@@ -640,7 +640,6 @@ class TestHardlinkDecisionLogic:
         )
 
         assert result is not None
-        # Staged file should be moved
         assert not staged.exists()
 
 
@@ -1079,25 +1078,23 @@ class TestTorrentSourceCleanupProtection:
 
     # ==================== NON-TORRENT TESTS (USENET/DIRECT) ====================
 
-    def test_usenet_epub_no_original_path_moves_file(self, tmp_path):
-        """Usenet: No original_download_path - file should be MOVED (not preserved).
+    def test_usenet_epub_no_original_path_copies_file(self, tmp_path):
+        """Usenet: files are copied into destination and source is preserved.
 
-        Simulates: User downloads via NZBGet/SABnzbd.
-        Handler stages to /tmp/shelfmark/ (no original_download_path set).
-        Library mode should MOVE the file (no seeding needed).
+        For external usenet downloads, Shelfmark treats the client path as read-only and
+        avoids deleting anything itself. Client-side cleanup is handled separately.
         """
         from shelfmark.download.orchestrator import _post_process_download
         from shelfmark.core.models import DownloadTask, SearchMode
 
-        staging = tmp_path / "staging"
-        staging.mkdir()
-        staged_file = staging / "book.epub"
-        staged_file.write_bytes(b"usenet epub content")
+        downloads = tmp_path / "downloads" / "complete"
+        downloads.mkdir(parents=True)
+        usenet_file = downloads / "book.epub"
+        usenet_file.write_bytes(b"usenet epub content")
 
         library = tmp_path / "library"
         library.mkdir()
 
-        # Usenet task - NO original_download_path
         task = DownloadTask(
             task_id="nzbget_12345",
             source="prowlarr",
@@ -1105,7 +1102,7 @@ class TestTorrentSourceCleanupProtection:
             author="Test Author",
             format="epub",
             search_mode=SearchMode.UNIVERSAL,
-            original_download_path=None,  # Usenet doesn't need seeding
+            original_download_path=None,
         )
 
         status_cb = MagicMock()
@@ -1116,11 +1113,11 @@ class TestTorrentSourceCleanupProtection:
             mock_orch.CUSTOM_SCRIPT = None
             mock_utils.get = self._make_config_mock(str(library), hardlink=True)
             mock_utils.CUSTOM_SCRIPT = None
-            result = _post_process_download(staged_file, task, Event(), status_cb)
+            result = _post_process_download(usenet_file, task, Event(), status_cb)
 
         assert result is not None
-        # Usenet file should be MOVED (deleted from staging)
-        assert not staged_file.exists(), "Usenet staged file should be moved, not copied"
+        assert usenet_file.exists(), "Usenet source file should be preserved"
+        assert Path(result).exists()
 
     def test_direct_download_moves_file(self, tmp_path):
         """Direct download (Anna's Archive): File should be MOVED.

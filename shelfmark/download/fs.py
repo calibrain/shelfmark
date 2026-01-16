@@ -8,11 +8,43 @@ import errno
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
+
+
+_VERIFY_IO_WAIT_SECONDS = 3.0
+
+
+def _verify_transfer_size(
+    dest: Path,
+    expected_size: int,
+    action: str,
+) -> None:
+    """Verify file transfer completed successfully.
+
+    Some filesystems (especially remote NAS/CIFS/NFS) can report stale sizes briefly
+    after large writes. Do a second stat after a short delay before declaring failure.
+    """
+    actual_size = dest.stat().st_size
+    if actual_size == expected_size:
+        return
+
+    logger.debug(
+        f"File {action} size mismatch, waiting for filesystem sync: {dest} "
+        f"({actual_size} != {expected_size})"
+    )
+    time.sleep(_VERIFY_IO_WAIT_SECONDS)
+
+    actual_size = dest.stat().st_size
+    if actual_size != expected_size:
+        raise IOError(
+            f"File {action} incomplete, data loss may have occurred. "
+            f"'{dest}' was {actual_size} bytes instead of expected {expected_size}."
+        )
 
 
 def atomic_write(dest_path: Path, data: bytes, max_attempts: int = 100) -> Path:
@@ -40,7 +72,7 @@ def atomic_write(dest_path: Path, data: bytes, max_attempts: int = 100) -> Path:
         try_path = dest_path if attempt == 0 else parent / f"{base}_{attempt}{ext}"
         try:
             # O_CREAT | O_EXCL fails atomically if file exists
-            fd = os.open(str(try_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            fd = os.open(str(try_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
             try:
                 os.write(fd, data)
             finally:
@@ -61,7 +93,7 @@ def _is_permission_error(e: Exception) -> bool:
 
 def _system_op(op: str, source: Path, dest: Path) -> None:
     """Execute system command (mv or cp) as final fallback."""
-    logger.info(f"Attempting system {op} as final fallback: {source} -> {dest}")
+    logger.warning("Attempting system %s as final fallback: %s -> %s", op, source, dest)
     subprocess.run(
         [op, "-f", str(source), str(dest)],
         check=True,
@@ -71,32 +103,35 @@ def _system_op(op: str, source: Path, dest: Path) -> None:
 
 
 def _perform_nfs_fallback(source: Path, dest: Path, is_move: bool) -> None:
-    """Handle NFS permission errors by falling back to copyfile -> system op."""
+    """Handle NFS/SMB permission errors by falling back to copyfile -> system op."""
+    expected_size = source.stat().st_size
+
     try:
         # Fallback 1: copy content only
         shutil.copyfile(str(source), str(dest))
-        
+        _verify_transfer_size(dest, expected_size, "copy")
+
         if is_move:
-             # Verify copy success before removing source
-            if dest.exists() and dest.stat().st_size == source.stat().st_size:
-                source.unlink()
-                return
-            else:
-                raise IOError(f"Copy verification failed for {source} -> {dest}")
+            source.unlink()
+        return
 
     except Exception as copy_error:
         # Clean up failed copy attempt if it exists
-        if dest.exists():
-            dest.unlink(missing_ok=True)
-            
-        logger.error(f"Fallback copyfile failed: {copy_error}")
-        
+        dest.unlink(missing_ok=True)
+
+        logger.error("Fallback copyfile failed (%s -> %s): %s", source, dest, copy_error)
+
         # Fallback 2: system command
         op = "mv" if is_move else "cp"
         try:
             _system_op(op, source, dest)
+            # Best-effort verify after external command.
+            if dest.exists():
+                _verify_transfer_size(dest, expected_size, op)
+            if is_move:
+                source.unlink(missing_ok=True)
         except subprocess.CalledProcessError as sys_error:
-            logger.error(f"System {op} failed: {sys_error.stderr}")
+            logger.error("System %s failed (%s -> %s): %s", op, source, dest, sys_error.stderr)
             dest.unlink(missing_ok=True)
             raise
 
@@ -143,50 +178,69 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
             # Race condition: file created between exists() check and rename()
             continue
         except OSError as e:
-            # Cross-filesystem - fall back to exclusive create + move
+            # Cross-filesystem - fall back to exclusive create + verified copy + delete.
             if e.errno != errno.EXDEV:
                 raise
+
+            expected_size = source_path.stat().st_size
+
             try:
-                fd = os.open(str(try_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                # Claim destination path atomically.
+                fd = os.open(str(try_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
                 os.close(fd)
+
+                # Copy to a temp file first, then replace to avoid partial files.
+                temp_path = try_path.parent / f".{try_path.name}.tmp"
                 try:
-                    shutil.move(str(source_path), str(try_path))
+                    try:
+                        shutil.copy2(str(source_path), str(temp_path))
+                    except (PermissionError, OSError) as copy_error:
+                        if _is_permission_error(copy_error):
+                            logger.debug(
+                                "Permission error during move-copy, falling back to copyfile (%s -> %s): %s",
+                                source_path,
+                                temp_path,
+                                copy_error,
+                            )
+                            _perform_nfs_fallback(source_path, temp_path, is_move=False)
+                        else:
+                            raise
+
+                    temp_path.replace(try_path)
+                    _verify_transfer_size(try_path, expected_size, "move")
+                    source_path.unlink()
+
                     if attempt > 0:
                         logger.info(f"File collision resolved: {try_path.name}")
                     return try_path
-                except (PermissionError, OSError) as move_error:
-                    if _is_permission_error(move_error):
-                        if try_path.exists() and try_path.stat().st_size == 0:
-                            try_path.unlink(missing_ok=True)
-                        logger.debug(f"Permission error during move, falling back to copyfile: {move_error}")
-                        try:
-                            _perform_nfs_fallback(source_path, try_path, is_move=True)
-                            if attempt > 0:
-                                logger.info(f"File collision resolved (fallback): {try_path.name}")
-                            return try_path
-                        except Exception as fallback_error:
-                            logger.error(f"NFS fallback also failed: {fallback_error}")
-                            raise move_error from fallback_error
-                    raise
+
                 except Exception:
-                    # Clean up the placeholder if move failed
-                    if try_path.exists() and try_path.stat().st_size == 0:
-                        try_path.unlink(missing_ok=True)
+                    try_path.unlink(missing_ok=True)
+                    temp_path.unlink(missing_ok=True)
                     raise
+
             except FileExistsError:
                 continue
             except (PermissionError, OSError) as e:
-                # Handle NFS permission errors (e.g. inability to set metadata)
                 if _is_permission_error(e):
-                    logger.debug(f"Permission error during move, falling back to copyfile: {e}")
+                    logger.debug(
+                        "Permission error during move, falling back to copyfile (%s -> %s): %s",
+                        source_path,
+                        try_path,
+                        e,
+                    )
                     try:
                         _perform_nfs_fallback(source_path, try_path, is_move=True)
                         if attempt > 0:
                             logger.info(f"File collision resolved (fallback): {try_path.name}")
                         return try_path
                     except Exception as fallback_error:
-                        # Fallback failed, chain exceptions for better debugging
-                        logger.error(f"NFS fallback also failed: {fallback_error}")
+                        logger.error(
+                            "NFS fallback also failed (%s -> %s): %s",
+                            source_path,
+                            try_path,
+                            fallback_error,
+                        )
                         raise e from fallback_error
                 raise
 
@@ -222,7 +276,12 @@ def atomic_hardlink(source_path: Path, dest_path: Path, max_attempts: int = 100)
             continue
         except OSError as e:
             if _is_permission_error(e) or e.errno in (errno.EXDEV, errno.EMLINK):
-                logger.debug(f"Hardlink failed ({e}), falling back to copy: {source_path} -> {dest_path}")
+                logger.debug(
+                    "Hardlink failed (%s), falling back to copy: %s -> %s",
+                    e,
+                    source_path,
+                    dest_path,
+                )
                 return atomic_copy(source_path, dest_path, max_attempts=max_attempts)
             raise
 
@@ -254,7 +313,7 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
         try_path = dest_path if attempt == 0 else parent / f"{base}_{attempt}{ext}"
         try:
             # Atomically claim the destination by creating an exclusive file
-            fd = os.open(str(try_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            fd = os.open(str(try_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
             os.close(fd)
             
             # Copy to temp file first, then replace to avoid partial files
@@ -265,16 +324,27 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                 except (PermissionError, OSError) as e:
                     # Handle NFS permission errors immediately here
                     if _is_permission_error(e):
-                        logger.debug(f"Permission error during copy, falling back to copyfile: {e}")
+                        logger.debug(
+                            "Permission error during copy, falling back to copyfile (%s -> %s): %s",
+                            source_path,
+                            temp_path,
+                            e,
+                        )
                         try:
                             _perform_nfs_fallback(source_path, temp_path, is_move=False)
                         except Exception as fallback_error:
-                            logger.error(f"NFS fallback also failed: {fallback_error}")
+                            logger.error(
+                                "NFS fallback also failed (%s -> %s): %s",
+                                source_path,
+                                temp_path,
+                                fallback_error,
+                            )
                             raise e from fallback_error
                     else:
                         raise
                 
                 temp_path.replace(try_path)
+                _verify_transfer_size(try_path, source_path.stat().st_size, "copy")
                 if attempt > 0:
                     logger.info(f"File collision resolved: {try_path.name}")
                 return try_path

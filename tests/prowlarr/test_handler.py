@@ -604,7 +604,7 @@ class TestProwlarrHandlerFileStaging:
                 assert (staged_dir / "cover.jpg").exists()
 
     def test_handles_duplicate_filename(self):
-        """Test handling of duplicate filename during staging (usenet only - torrents skip staging)."""
+        """Usenet downloads return the original file path (no staging)."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             source_file = Path(tmp_dir) / "source" / "book.epub"
             source_file.parent.mkdir(parents=True)
@@ -664,8 +664,35 @@ class TestProwlarrHandlerFileStaging:
                 )
 
                 assert result is not None
-                # Should have a different name (with counter)
-                staged_file = Path(result)
-                assert staged_file.exists()
-                assert staged_file.name != "book.epub"
-                assert staged_file.read_text() == "new content"
+                returned_file = Path(result)
+                assert returned_file == source_file
+                assert returned_file.exists()
+                assert returned_file.read_text() == "new content"
+
+
+class TestProwlarrHandlerPostProcessCleanup:
+    def test_usenet_move_triggers_client_cleanup(self):
+        handler = ProwlarrHandler()
+        task = DownloadTask(task_id="cleanup-test", source="prowlarr", title="Test")
+
+        mock_client = MagicMock()
+        mock_client.name = "nzbget"
+        handler._cleanup_refs[task.task_id] = (mock_client, "123", "usenet")
+
+        with patch("shelfmark.release_sources.prowlarr.handler.config.get", return_value="move"):
+            handler.post_process_cleanup(task, success=True)
+
+        mock_client.remove.assert_called_once_with("123", delete_files=True)
+
+    def test_usenet_copy_does_not_cleanup(self):
+        handler = ProwlarrHandler()
+        task = DownloadTask(task_id="cleanup-test", source="prowlarr", title="Test")
+
+        mock_client = MagicMock()
+        mock_client.name = "nzbget"
+        handler._cleanup_refs[task.task_id] = (mock_client, "123", "usenet")
+
+        with patch("shelfmark.release_sources.prowlarr.handler.config.get", return_value="copy"):
+            handler.post_process_cleanup(task, success=True)
+
+        mock_client.remove.assert_not_called()

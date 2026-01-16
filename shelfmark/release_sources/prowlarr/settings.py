@@ -162,35 +162,96 @@ def _test_transmission_connection(current_values: Dict[str, Any] = None) -> Dict
 
 
 def _test_deluge_connection(current_values: Dict[str, Any] = None) -> Dict[str, Any]:
-    """Test the Deluge connection using current form values."""
+    """Test Deluge Web UI JSON-RPC connection using current form values."""
+    from urllib.parse import urlparse
+
+    import requests
     from shelfmark.core.config import config
 
     current_values = current_values or {}
 
-    host = current_values.get("DELUGE_HOST") or config.get("DELUGE_HOST", "localhost")
-    port = current_values.get("DELUGE_PORT") or config.get("DELUGE_PORT", "58846")
-    username = current_values.get("DELUGE_USERNAME") or config.get("DELUGE_USERNAME", "")
+    raw_host = current_values.get("DELUGE_HOST") or config.get("DELUGE_HOST", "localhost")
+    raw_port = current_values.get("DELUGE_PORT") or config.get("DELUGE_PORT", "8112")
     password = current_values.get("DELUGE_PASSWORD") or config.get("DELUGE_PASSWORD", "")
 
-    if not host:
+    if not raw_host:
         return {"success": False, "message": "Deluge host is required"}
     if not password:
         return {"success": False, "message": "Deluge password is required"}
 
-    try:
-        from deluge_client import DelugeRPCClient
+    raw_host = str(raw_host)
+    raw_port = str(raw_port or "8112")
 
-        client = DelugeRPCClient(
-            host=host,
-            port=int(port),
-            username=username,
-            password=password,
-        )
-        client.connect()
-        version = client.call('daemon.info')
+    scheme = "http"
+    base_path = ""
+    host = raw_host
+    port = int(raw_port) if raw_port.isdigit() else 8112
+
+    # Allow DELUGE_HOST to be a full URL (e.g. http://deluge:8112)
+    if raw_host.startswith(("http://", "https://")):
+        parsed = urlparse(raw_host)
+        scheme = parsed.scheme or "http"
+        host = parsed.hostname or "localhost"
+        if parsed.port is not None:
+            port = parsed.port
+        base_path = (parsed.path or "").rstrip("/")
+    else:
+        # Allow "host:port" in DELUGE_HOST for convenience.
+        if ":" in raw_host and raw_host.count(":") == 1:
+            host_part, port_part = raw_host.split(":", 1)
+            if host_part and port_part.isdigit():
+                host = host_part
+                port = int(port_part)
+
+    rpc_url = f"{scheme}://{host}:{port}{base_path}/json"
+
+    def rpc_call(session: requests.Session, rpc_id: int, method: str, *params: Any) -> Any:
+        payload = {"id": rpc_id, "method": method, "params": list(params)}
+        resp = session.post(rpc_url, json=payload, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("error"):
+            error = data["error"]
+            if isinstance(error, dict):
+                raise Exception(error.get("message") or str(error))
+            raise Exception(str(error))
+        return data.get("result")
+
+    try:
+        session = requests.Session()
+
+        if rpc_call(session, 1, "auth.login", password) is not True:
+            return {"success": False, "message": "Deluge Web UI authentication failed"}
+
+        if rpc_call(session, 2, "web.connected") is not True:
+            hosts = rpc_call(session, 3, "web.get_hosts") or []
+            if not hosts:
+                return {
+                    "success": False,
+                    "message": "Deluge Web UI isn't connected to Deluge core (no hosts configured). Add/connect a daemon in Deluge Web UI → Connection Manager.",
+                }
+
+            host_id = hosts[0][0]
+            for entry in hosts:
+                if isinstance(entry, list) and len(entry) >= 2 and entry[1] in {"127.0.0.1", "localhost"}:
+                    host_id = entry[0]
+                    break
+
+            rpc_call(session, 4, "web.connect", host_id)
+
+            if rpc_call(session, 5, "web.connected") is not True:
+                return {
+                    "success": False,
+                    "message": "Deluge Web UI couldn't connect to Deluge core. Check Deluge Web UI → Connection Manager.",
+                }
+
+        version = rpc_call(session, 6, "daemon.info")
         return {"success": True, "message": f"Connected to Deluge {version}"}
-    except ImportError:
-        return {"success": False, "message": "deluge-client package not installed"}
+
+    except requests.exceptions.ConnectionError:
+        return {"success": False, "message": "Could not connect to Deluge Web UI"}
+    except requests.exceptions.Timeout:
+        return {"success": False, "message": "Connection timed out"}
     except Exception as e:
         return {"success": False, "message": f"Connection failed: {str(e)}"}
 
@@ -486,30 +547,24 @@ def prowlarr_clients_settings():
         # --- Deluge Settings ---
         TextField(
             key="DELUGE_HOST",
-            label="Deluge Host",
-            description="Hostname or IP of your Deluge daemon",
-            placeholder="localhost",
+            label="Deluge Web UI Host/URL",
+            description="Hostname/IP or full URL of your Deluge Web UI (deluge-web)",
+            placeholder="http://deluge:8112",
             default="localhost",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "deluge"},
         ),
         TextField(
             key="DELUGE_PORT",
-            label="Deluge Port",
-            description="Deluge daemon RPC port (default: 58846). IMPORTANT: Ensure \"Allow Remote Connections\" is enabled in Deluge settings.",
-            placeholder="58846",
-            default="58846",
-            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "deluge"},
-        ),
-        TextField(
-            key="DELUGE_USERNAME",
-            label="Username",
-            description="Deluge daemon username (from auth file)",
+            label="Deluge Web UI Port",
+            description="Deluge Web UI port (default: 8112)",
+            placeholder="8112",
+            default="8112",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "deluge"},
         ),
         PasswordField(
             key="DELUGE_PASSWORD",
             label="Password",
-            description="Deluge daemon password (from auth file)",
+            description="Deluge Web UI password (default: deluge)",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "deluge"},
         ),
         ActionButton(
@@ -686,22 +741,14 @@ def prowlarr_clients_settings():
             default="",
             show_when={"field": "PROWLARR_USENET_CLIENT", "value": "sabnzbd"},
         ),
-        CheckboxField(
-            key="SABNZBD_REMOVE_COMPLETED",
-            label="Remove completed downloads from history",
-            default=True,
-            description="Remove downloads from SABnzbd history after successful import (archives them)",
-            show_when={"field": "PROWLARR_USENET_CLIENT", "value": "sabnzbd"},
-        ),
-
         # Note: Usenet client download path must be mounted identically in both containers.
         SelectField(
             key="PROWLARR_USENET_ACTION",
             label="NZB Completion Action",
-            description="What to do with usenet files after download completes",
+            description="Copy files into your ingest folder, optionally cleaning up the usenet client",
             options=[
-                {"value": "move", "label": "Move to ingest"},
-                {"value": "copy", "label": "Copy to ingest"},
+                {"value": "move", "label": "Copy and remove from client"},
+                {"value": "copy", "label": "Copy (keep in client)"},
             ],
             default="move",
             show_when={"field": "PROWLARR_USENET_CLIENT", "notEmpty": True},

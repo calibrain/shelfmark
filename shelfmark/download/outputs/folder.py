@@ -4,7 +4,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
-from typing import Optional, List
+from typing import Any, Optional, List
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
@@ -105,7 +105,8 @@ def process_folder_output(
         return None
 
     logger.debug(
-        "Processing plan details: mode=%s destination=%s hardlink=%s stage_action=%s extract_archives=%s",
+        "Processing plan for task %s: mode=%s destination=%s hardlink=%s stage_action=%s extract_archives=%s",
+        task.task_id,
         plan.organization_mode,
         plan.destination,
         plan.use_hardlink,
@@ -123,7 +124,7 @@ def process_folder_output(
     if not prepared:
         return None
 
-    steps: List[object] = []
+    steps: List[Any] = []
     if prepared.output_plan.stage_action != STAGE_NONE:
         step_name = f"stage_{prepared.output_plan.stage_action}"
         _record_step(steps, step_name, source=str(temp_file), dest=str(prepared.output_plan.staging_dir))
@@ -131,8 +132,13 @@ def process_folder_output(
     # Run custom script only for non-archive single files (matches legacy behavior)
     if orchestrator_config.CUSTOM_SCRIPT and prepared.working_path.is_file() and not is_archive(prepared.working_path):
         _record_step(steps, "custom_script", script=str(orchestrator_config.CUSTOM_SCRIPT))
-        _log_plan_steps(steps)
-        logger.info(f"Running custom script: {orchestrator_config.CUSTOM_SCRIPT}")
+        _log_plan_steps(task.task_id, steps)
+        logger.info(
+            "Task %s: running custom script %s on %s",
+            task.task_id,
+            orchestrator_config.CUSTOM_SCRIPT,
+            prepared.working_path,
+        )
         try:
             result = subprocess.run(
                 [orchestrator_config.CUSTOM_SCRIPT, str(prepared.working_path)],
@@ -142,43 +148,69 @@ def process_folder_output(
                 text=True,
             )
             if result.stdout:
-                logger.debug(f"Custom script stdout: {result.stdout.strip()}")
+                logger.debug("Task %s: custom script stdout: %s", task.task_id, result.stdout.strip())
         except FileNotFoundError:
-            logger.error(f"Custom script not found: {orchestrator_config.CUSTOM_SCRIPT}")
+            logger.error("Task %s: custom script not found: %s", task.task_id, orchestrator_config.CUSTOM_SCRIPT)
             status_callback("error", f"Custom script not found: {orchestrator_config.CUSTOM_SCRIPT}")
             return None
         except PermissionError:
-            logger.error(f"Custom script not executable: {orchestrator_config.CUSTOM_SCRIPT}")
+            logger.error(
+                "Task %s: custom script not executable: %s",
+                task.task_id,
+                orchestrator_config.CUSTOM_SCRIPT,
+            )
             status_callback("error", f"Custom script not executable: {orchestrator_config.CUSTOM_SCRIPT}")
             return None
         except subprocess.TimeoutExpired:
-            logger.error(f"Custom script timed out after 300s: {orchestrator_config.CUSTOM_SCRIPT}")
+            logger.error(
+                "Task %s: custom script timed out after 300s: %s",
+                task.task_id,
+                orchestrator_config.CUSTOM_SCRIPT,
+            )
             status_callback("error", "Custom script timed out")
             return None
         except subprocess.CalledProcessError as e:
             stderr = e.stderr.strip() if e.stderr else "No error output"
-            logger.error(f"Custom script failed (exit code {e.returncode}): {stderr}")
+            logger.error(
+                "Task %s: custom script failed (exit code %s): %s",
+                task.task_id,
+                e.returncode,
+                stderr,
+            )
             status_callback("error", f"Custom script failed: {stderr[:100]}")
             return None
 
-    source_path = plan.hardlink_source or prepared.working_path
+    # If we staged a copy into TMP_DIR (e.g. for custom script), transfer from the staged
+    # path and disable hardlinking for this transfer.
+    use_hardlink = plan.use_hardlink and prepared.output_plan.stage_action == STAGE_NONE
+    source_path = plan.hardlink_source if use_hardlink and plan.hardlink_source else prepared.working_path
     is_torrent = _is_torrent_source(source_path, task)
-    is_torrent_for_label = is_torrent or prepared.output_plan.stage_action != STAGE_NONE
+
+    usenet_action = orchestrator_config.get("PROWLARR_USENET_ACTION", "move")
+    is_usenet = task.source == "prowlarr" and not task.original_download_path
+
+    # For external usenet downloads, always copy from the client path.
+    # "Move" is implemented as a client-side cleanup after import.
+    preserve_source = is_usenet
+
+    copy_for_label = is_torrent or preserve_source or prepared.output_plan.stage_action != STAGE_NONE
 
     if cancel_flag.is_set():
-        logger.info(f"Download cancelled before final transfer: {task.task_id}")
-        if not is_torrent:
-            _cleanup_output_staging(
-                prepared.output_plan,
-                prepared.working_path,
-                task,
-                prepared.cleanup_paths,
-            )
+        logger.info("Task %s: cancelled before final transfer", task.task_id)
+        _cleanup_output_staging(
+            prepared.output_plan,
+            prepared.working_path,
+            task,
+            prepared.cleanup_paths,
+        )
         return None
 
-    if plan.use_hardlink:
+    if use_hardlink:
         op_label = "Hardlinking"
-    elif is_torrent_for_label:
+    elif is_usenet and usenet_action == "move" and prepared.output_plan.stage_action == STAGE_NONE:
+        # Presented as a move, but implemented as copy + client cleanup.
+        op_label = "Moving"
+    elif copy_for_label:
         op_label = "Copying"
     else:
         op_label = "Moving"
@@ -190,25 +222,35 @@ def process_folder_output(
         op=op_label.lower(),
         source=str(source_path),
         dest=str(plan.destination),
-        hardlink=plan.use_hardlink,
-        torrent=is_torrent_for_label,
+        hardlink=use_hardlink,
+        torrent=copy_for_label,
     )
     if prepared.output_plan.stage_action != STAGE_NONE:
         _record_step(steps, "cleanup_staging", path=str(prepared.working_path))
-    _log_plan_steps(steps)
+    _log_plan_steps(task.task_id, steps)
 
     final_paths, error = _transfer_book_files(
         prepared.files,
         destination=plan.destination,
         task=task,
-        use_hardlink=plan.use_hardlink,
+        use_hardlink=use_hardlink,
         is_torrent=is_torrent,
+        preserve_source=preserve_source,
         organization_mode=plan.organization_mode,
     )
 
     if error:
+        logger.warning("Task %s: transfer failed: %s", task.task_id, error)
         status_callback("error", error)
         return None
+
+    logger.info(
+        "Task %s: transferred %d file(s) to %s (%s)",
+        task.task_id,
+        len(final_paths),
+        plan.destination,
+        op_label.lower(),
+    )
 
     _cleanup_output_staging(
         prepared.output_plan,

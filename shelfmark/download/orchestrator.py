@@ -10,10 +10,11 @@ import random
 import shutil
 import threading
 import time
+import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 from threading import Event, Lock
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from shelfmark.release_sources import direct_download
@@ -109,23 +110,42 @@ def _get_final_destination(task: DownloadTask) -> Path:
 
 
 def _validate_destination(destination: Path, status_callback) -> bool:
-    """Validate destination path is absolute, exists, and writable."""
+    """Validate destination path is absolute, exists, and writable.
+
+    Use an actual write+delete probe (like Sonarr) rather than `os.access()`, which can
+    report writable even when the underlying filesystem/ACLs/NAS permissions will fail
+    at runtime.
+    """
     if not destination.is_absolute():
         logger.warning(f"Destination must be absolute: {destination}")
         status_callback("error", f"Destination must be absolute: {destination}")
+        return False
+
+    if destination.exists() and not destination.is_dir():
+        logger.warning(f"Destination is not a directory: {destination}")
+        status_callback("error", f"Destination is not a directory: {destination}")
         return False
 
     if not destination.exists():
         try:
             destination.mkdir(parents=True, exist_ok=True)
         except (OSError, PermissionError) as e:
-            logger.warning(f"Cannot create destination: {e}")
-            status_callback("error", f"Cannot create destination: {e}")
+            logger.warning(f"Cannot create destination: {destination} ({e})")
+            status_callback("error", f"Cannot create destination: {destination} ({e})")
             return False
 
-    if not os.access(destination, os.W_OK):
-        logger.warning(f"Destination not writable: {destination}")
-        status_callback("error", f"Destination not writable: {destination}")
+    # Verify the path is writable with a real write test.
+    try:
+        test_path = destination / f".shelfmark_write_test_{uuid.uuid4().hex}.tmp"
+        test_content = (
+            f"This file was created to verify if '{destination}' is writable. "
+            "It should've been automatically deleted. Feel free to delete it.\n"
+        )
+        test_path.write_text(test_content)
+        test_path.unlink(missing_ok=True)
+    except Exception as e:
+        logger.warning(f"Destination not writable: {destination} ({e})")
+        status_callback("error", f"Destination not writable: {destination} ({e})")
         return False
 
     return True
@@ -143,7 +163,7 @@ def _build_metadata_dict(task: DownloadTask) -> dict:
     }
 
 
-def _get_supported_formats(content_type: str = None) -> List[str]:
+def _get_supported_formats(content_type: Optional[str] = None) -> List[str]:
     """Get current supported formats from config singleton based on content type."""
     if check_audiobook(content_type):
         return _get_supported_audiobook_formats()
@@ -225,12 +245,13 @@ def build_output_plan(
 ) -> _OutputPlan:
     """Build an output plan that describes staging behavior for an output mode."""
     if output_mode == "booklore":
-        is_torrent = _is_torrent_source(temp_file, task)
-        if is_torrent or not _is_within_tmp_dir(temp_file):
-            stage_action = STAGE_COPY
-        else:
-            stage_action = STAGE_MOVE
         staging_dir = build_staging_dir("booklore", task.task_id)
+
+        # Avoid copying external download-client payloads into TMP_DIR just for upload.
+        # If the handler already produced a temp file, we can move it into the dedicated
+        # Booklore staging directory for easier cleanup.
+        stage_action = STAGE_MOVE if _is_within_tmp_dir(temp_file) else STAGE_NONE
+
         return _OutputPlan(
             mode=output_mode,
             stage_action=stage_action,
@@ -239,9 +260,13 @@ def build_output_plan(
         )
 
     transfer_plan = _resolve_hardlink_source(temp_file, task, destination, status_callback)
-    is_torrent = _is_torrent_source(temp_file, task)
-    stage_action = STAGE_COPY if is_torrent and not transfer_plan.use_hardlink else STAGE_NONE
+    runs_custom_script = bool(config.CUSTOM_SCRIPT) and temp_file.is_file() and not is_archive(temp_file)
+
+    # Only stage when we need a mutable copy (e.g. custom script) and the
+    # download is outside TMP_DIR (external download clients).
+    stage_action = STAGE_COPY if runs_custom_script and not _is_within_tmp_dir(temp_file) else STAGE_NONE
     staging_dir = get_staging_dir()
+
     return _OutputPlan(
         mode=output_mode,
         stage_action=stage_action,
@@ -256,12 +281,12 @@ def _record_step(steps: List[_PlanStep], name: str, **details: Any) -> None:
     steps.append(_PlanStep(name=name, details=details))
 
 
-def _log_plan_steps(steps: List[_PlanStep]) -> None:
+def _log_plan_steps(task_id: str, steps: List[_PlanStep]) -> None:
     """Log a compact summary of processing steps."""
     if not steps:
         return
     summary = " -> ".join(step.name for step in steps)
-    logger.debug(f"Processing plan: {summary}")
+    logger.debug("Processing plan for %s: %s", task_id, summary)
 
 
 def _is_within_tmp_dir(path: Path) -> bool:
@@ -288,7 +313,7 @@ def _safe_cleanup_path(path: Optional[Path], task: DownloadTask) -> None:
     if not path or _is_original_download(path, task):
         return
     if not _is_within_tmp_dir(path):
-        logger.warning(f"Skipping cleanup for non-temp path: {path}")
+        logger.debug("Skip cleanup (outside TMP_DIR) for task %s: %s", task.task_id, path)
         return
     try:
         if path.is_dir():
@@ -296,7 +321,7 @@ def _safe_cleanup_path(path: Optional[Path], task: DownloadTask) -> None:
         elif path.exists():
             path.unlink(missing_ok=True)
     except (OSError, PermissionError) as e:
-        logger.debug(f"Cleanup failed for {path}: {e}")
+        logger.warning("Cleanup failed for task %s (%s): %s", task.task_id, path, e)
 
 
 def _build_extract_dir(parent: Path, archive_path: Path) -> Path:
@@ -310,14 +335,19 @@ def _build_extract_dir(parent: Path, archive_path: Path) -> Path:
     return extract_dir
 
 
-def _format_not_supported_error(rejected_files: List[Path], content_type: Optional[str]) -> str:
+def _format_not_supported_error(rejected_files: List[Path], task: DownloadTask) -> str:
+    content_type = task.content_type
     file_type_label = "audiobook" if check_audiobook(content_type) else "book"
     rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
     rejected_list = ", ".join(rejected_exts)
     supported_formats = _get_supported_formats(content_type)
     logger.warning(
-        f"Found {len(rejected_files)} {file_type_label}(s) but none match supported formats. "
-        f"Rejected formats: {rejected_list}. Supported: {', '.join(sorted(supported_formats))}"
+        "Task %s: found %d %s(s) but none match supported formats. Rejected formats: %s. Supported: %s",
+        task.task_id,
+        len(rejected_files),
+        file_type_label,
+        rejected_list,
+        ", ".join(sorted(supported_formats)),
     )
     return (
         f"Found {len(rejected_files)} {file_type_label}(s) but format not supported ({rejected_list}). "
@@ -328,17 +358,29 @@ def _format_not_supported_error(rejected_files: List[Path], content_type: Option
 def _extract_archive_files(
     archive_path: Path,
     output_dir: Path,
-    content_type: Optional[str],
+    task: DownloadTask,
     cleanup_archive: bool,
 ) -> Tuple[List[Path], List[Path], List[Path], Optional[str]]:
+    content_type = task.content_type
+
     try:
         extracted_files, warnings, rejected_files = extract_archive(archive_path, output_dir, content_type)
     except ArchiveExtractionError as e:
-        logger.warning(f"Archive extraction failed for {archive_path.name}: {e}")
+        logger.warning(
+            "Task %s: archive extraction failed for %s: %s",
+            task.task_id,
+            archive_path.name,
+            e,
+        )
         return [], [], [], str(e)
 
-    for warning in warnings:
-        logger.debug(warning)
+    if warnings:
+        logger.debug(
+            "Task %s: archive warnings for %s: %s",
+            task.task_id,
+            archive_path.name,
+            "; ".join(warnings),
+        )
 
     if cleanup_archive:
         archive_path.unlink(missing_ok=True)
@@ -347,11 +389,75 @@ def _extract_archive_files(
 
     if not extracted_files:
         if rejected_files:
-            return [], rejected_files, cleanup_paths, _format_not_supported_error(rejected_files, content_type)
+            return [], rejected_files, cleanup_paths, _format_not_supported_error(rejected_files, task)
         file_type_label = "audiobook" if check_audiobook(content_type) else "book"
         return [], rejected_files, cleanup_paths, f"No {file_type_label} files found in archive"
 
+    logger.debug(
+        "Task %s: extracted %d file(s) from archive %s",
+        task.task_id,
+        len(extracted_files),
+        archive_path.name,
+    )
+
     return extracted_files, rejected_files, cleanup_paths, None
+
+
+def _scan_directory_tree(
+    directory: Path,
+    content_type: Optional[str],
+) -> Tuple[List[Path], List[Path], List[Path], Optional[str]]:
+    """Scan a directory tree for book files, trackable-but-unsupported files, and archives.
+
+    Uses an `os.walk()` based scan to tolerate PermissionError on individual
+    subdirectories (common on mixed permission NAS mounts).
+    """
+    try:
+        with os.scandir(directory) as it:
+            next(it, None)
+    except PermissionError as e:
+        logger.warning(f"Permission denied scanning directory: {directory} ({e})")
+        return [], [], [], f"Permission denied accessing download folder: {directory}"
+    except (FileNotFoundError, NotADirectoryError, OSError) as e:
+        logger.warning(f"Cannot access download folder: {directory} ({e})")
+        return [], [], [], f"Cannot access download folder: {directory} ({e})"
+
+    book_files: List[Path] = []
+    rejected_files: List[Path] = []
+    archive_files: List[Path] = []
+
+    supported_formats = _get_supported_formats(content_type)
+    supported_exts = {f".{fmt}" for fmt in supported_formats}
+
+    is_audiobook = check_audiobook(content_type)
+    if is_audiobook:
+        trackable_exts = {'.m4b', '.mp3', '.m4a', '.flac', '.ogg', '.wma', '.aac', '.wav'}
+    else:
+        trackable_exts = {
+            '.pdf', '.epub', '.mobi', '.azw', '.azw3', '.fb2', '.djvu', '.cbz', '.cbr',
+            '.doc', '.docx', '.rtf', '.txt',
+        }
+
+    def onerror(error: OSError) -> None:
+        if isinstance(error, PermissionError):
+            logger.debug(f"Skipping inaccessible path during scan: {error}")
+        else:
+            logger.debug(f"Error scanning directory tree: {error}")
+
+    for root, _, files in os.walk(directory, onerror=onerror):
+        for filename in files:
+            file_path = Path(root) / filename
+            suffix = file_path.suffix.lower()
+
+            if suffix in supported_exts:
+                book_files.append(file_path)
+            elif suffix in trackable_exts:
+                rejected_files.append(file_path)
+
+            if is_archive(file_path):
+                archive_files.append(file_path)
+
+    return book_files, rejected_files, archive_files, None
 
 
 def _collect_directory_files(
@@ -362,39 +468,51 @@ def _collect_directory_files(
     cleanup_archives: bool = False,
 ) -> Tuple[List[Path], List[Path], List[Path], Optional[str]]:
     content_type = task.content_type
-    book_files, rejected_files = _find_book_files_in_directory(directory, content_type)
-
-    archive_files = [f for f in directory.rglob("*") if f.is_file() and is_archive(f)]
+    book_files, rejected_files, archive_files, scan_error = _scan_directory_tree(directory, content_type)
+    if scan_error:
+        return [], [], [], scan_error
 
     if book_files:
         if archive_files:
             logger.debug(
-                f"Ignoring {len(archive_files)} archive(s) - already have {len(book_files)} book file(s)"
+                "Task %s: ignoring %d archive(s) - already have %d book file(s)",
+                task.task_id,
+                len(archive_files),
+                len(book_files),
             )
         if rejected_files:
             rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
             logger.debug(
-                f"Also found {len(rejected_files)} file(s) with unsupported formats: {', '.join(rejected_exts)}"
+                "Task %s: also found %d file(s) with unsupported formats: %s",
+                task.task_id,
+                len(rejected_files),
+                ", ".join(rejected_exts),
             )
         return book_files, rejected_files, [], None
 
     if archive_files:
         if not allow_archive_extraction:
-            logger.warning("Archive extraction disabled when torrent hardlinking is enabled")
+            logger.warning(
+                "Task %s: archive extraction disabled (torrent hardlinking enabled) for %s",
+                task.task_id,
+                directory,
+            )
             return [], rejected_files, [], "Archive extraction is disabled when torrent hardlinking is enabled"
 
         if status_callback:
             status_callback("resolving", "Extracting archives")
+        logger.info("Task %s: extracting %d archive(s)", task.task_id, len(archive_files))
+
         all_files: List[Path] = []
         all_errors: List[str] = []
         cleanup_paths: List[Path] = []
 
         for archive in archive_files:
-            extract_dir = _build_extract_dir(directory, archive)
+            extract_dir = build_staging_dir("extract", task.task_id)
             extracted_files, archive_rejected, archive_cleanup, error = _extract_archive_files(
                 archive_path=archive,
                 output_dir=extract_dir,
-                content_type=content_type,
+                task=task,
                 cleanup_archive=cleanup_archives,
             )
             if error:
@@ -407,16 +525,22 @@ def _collect_directory_files(
                 cleanup_paths.extend(archive_cleanup)
 
         if all_files:
+            logger.info(
+                "Task %s: extracted %d file(s) from %d archive(s)",
+                task.task_id,
+                len(all_files),
+                len(archive_files),
+            )
             return all_files, rejected_files, cleanup_paths, None
         if all_errors:
             return [], rejected_files, cleanup_paths, "; ".join(all_errors)
         if rejected_files:
-            return [], rejected_files, cleanup_paths, _format_not_supported_error(rejected_files, content_type)
+            return [], rejected_files, cleanup_paths, _format_not_supported_error(rejected_files, task)
 
         return [], rejected_files, cleanup_paths, "No book files found in archives"
 
     if rejected_files:
-        return [], rejected_files, [], _format_not_supported_error(rejected_files, content_type)
+        return [], rejected_files, [], _format_not_supported_error(rejected_files, task)
 
     return [], rejected_files, [], "No book files found in download"
 
@@ -442,13 +566,26 @@ def _collect_staged_files(
     if is_archive(working_path) and allow_archive_extraction:
         if status_callback:
             status_callback("resolving", "Extracting archive")
-        extract_dir = _build_extract_dir(working_path.parent, working_path)
-        return _extract_archive_files(
+
+        logger.info("Task %s: extracting archive %s", task.task_id, working_path.name)
+
+        extract_dir = build_staging_dir("extract", task.task_id)
+        extracted_files, rejected_files, cleanup_paths, error = _extract_archive_files(
             archive_path=working_path,
             output_dir=extract_dir,
-            content_type=task.content_type,
+            task=task,
             cleanup_archive=cleanup_archives,
         )
+
+        if extracted_files:
+            logger.info(
+                "Task %s: extracted %d file(s) from archive %s",
+                task.task_id,
+                len(extracted_files),
+                working_path.name,
+            )
+
+        return extracted_files, rejected_files, cleanup_paths, error
 
     return [working_path], [], [], None
 
@@ -523,6 +660,7 @@ def _transfer_book_files(
     task: DownloadTask,
     use_hardlink: bool,
     is_torrent: bool,
+    preserve_source: bool = False,
     organization_mode: Optional[str] = None,
 ) -> Tuple[List[Path], Optional[str]]:
     if not book_files:
@@ -542,7 +680,13 @@ def _transfer_book_files(
             dest_path = build_library_path(str(destination), template, metadata, extension=ext or None)
             dest_path.parent.mkdir(parents=True, exist_ok=True)
 
-            final_path, op = _transfer_single_file(source_file, dest_path, use_hardlink, is_torrent)
+            final_path, op = _transfer_single_file(
+                source_file,
+                dest_path,
+                use_hardlink,
+                is_torrent,
+                preserve_source=preserve_source,
+            )
             final_paths.append(final_path)
             logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
         else:
@@ -555,7 +699,13 @@ def _transfer_book_files(
                 dest_path = build_library_path(str(destination), template, file_metadata, extension=ext or None)
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
 
-                final_path, op = _transfer_single_file(source_file, dest_path, use_hardlink, is_torrent)
+                final_path, op = _transfer_single_file(
+                    source_file,
+                    dest_path,
+                    use_hardlink,
+                    is_torrent,
+                    preserve_source=preserve_source,
+                )
                 final_paths.append(final_path)
                 logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
 
@@ -583,32 +733,23 @@ def _transfer_book_files(
             filename = book_file.name
 
         dest_path = destination / filename
-        final_path, op = _transfer_single_file(book_file, dest_path, use_hardlink, is_torrent)
+        final_path, op = _transfer_single_file(
+            book_file,
+            dest_path,
+            use_hardlink,
+            is_torrent,
+            preserve_source=preserve_source,
+        )
         final_paths.append(final_path)
         logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
 
     return final_paths, None
 
-def _find_book_files_in_directory(directory: Path, content_type: str = None) -> Tuple[List[Path], List[Path]]:
+def _find_book_files_in_directory(directory: Path, content_type: Optional[str] = None) -> Tuple[List[Path], List[Path]]:
     """Find book files matching supported formats. Returns (matches, rejected)."""
-    book_files = []
-    rejected_files = []
-    supported_formats = _get_supported_formats(content_type)
-    supported_exts = {f".{fmt}" for fmt in supported_formats}
-
-    is_audiobook = check_audiobook(content_type)
-    if is_audiobook:
-        trackable_exts = {'.m4b', '.mp3', '.m4a', '.flac', '.ogg', '.wma', '.aac', '.wav'}
-    else:
-        trackable_exts = {'.pdf', '.epub', '.mobi', '.azw', '.azw3', '.fb2', '.djvu', '.cbz', '.cbr', '.doc', '.docx', '.rtf', '.txt'}
-
-    for file_path in directory.rglob("*"):
-        if file_path.is_file():
-            if file_path.suffix.lower() in supported_exts:
-                book_files.append(file_path)
-            elif file_path.suffix.lower() in trackable_exts:
-                rejected_files.append(file_path)
-
+    book_files, rejected_files, _, scan_error = _scan_directory_tree(directory, content_type)
+    if scan_error:
+        return [], []
     return book_files, rejected_files
 
 
@@ -659,7 +800,7 @@ def process_directory(
         return final_paths, None
 
     except Exception as e:
-        logger.error(f"Error processing directory: {e}")
+        logger.error_trace("Task %s: error processing directory %s: %s", task.task_id, directory, e)
         if not _is_torrent_source(directory, task):
             _safe_cleanup_path(directory, task)
         return [], str(e)
@@ -888,13 +1029,21 @@ def _download_task(task_id: str, cancel_flag: Event) -> Optional[str]:
     try:
         # Check for cancellation before starting
         if cancel_flag.is_set():
-            logger.info(f"Download cancelled before starting: {task_id}")
+            logger.info("Task %s: cancelled before starting", task_id)
             return None
 
         task = book_queue.get_task(task_id)
         if not task:
-            logger.error(f"Task not found in queue: {task_id}")
+            logger.error("Task not found in queue: %s", task_id)
             return None
+
+        title_label = task.title or "Unknown title"
+        logger.info(
+            "Task %s: starting download (%s) - %s",
+            task_id,
+            get_source_display_name(task.source),
+            title_label,
+        )
 
         def progress_callback(progress: float) -> None:
             update_download_progress(task_id, progress)
@@ -922,21 +1071,37 @@ def _download_task(task_id: str, cancel_flag: Event) -> Optional[str]:
 
         # Check cancellation before post-processing
         if cancel_flag.is_set():
-            logger.info(f"Download cancelled before post-processing: {task_id}")
+            logger.info("Task %s: cancelled before post-processing", task_id)
             if not _is_torrent_source(temp_file, task):
                 _safe_cleanup_path(temp_file, task)
             return None
 
+        logger.info("Task %s: download finished; starting post-processing", task_id)
+        logger.debug("Task %s: post-processing input path: %s", task_id, temp_file)
+
         # Post-processing: archive extraction or direct move to ingest
-        return _post_process_download(
-            temp_file, task, cancel_flag, status_callback
-        )
+        result = _post_process_download(temp_file, task, cancel_flag, status_callback)
+
+        if cancel_flag.is_set():
+            logger.info("Task %s: post-processing cancelled", task_id)
+        elif result:
+            logger.info("Task %s: post-processing complete", task_id)
+            logger.debug("Task %s: post-processing result: %s", task_id, result)
+        else:
+            logger.warning("Task %s: post-processing failed", task_id)
+
+        try:
+            handler.post_process_cleanup(task, success=bool(result))
+        except Exception as e:
+            logger.warning("Post-processing cleanup hook failed for %s: %s", task_id, e)
+
+        return result
 
     except Exception as e:
         if cancel_flag.is_set():
-            logger.info(f"Download cancelled during error handling: {task_id}")
+            logger.info("Task %s: cancelled during error handling", task_id)
         else:
-            logger.error_trace(f"Error downloading: {e}")
+            logger.error_trace("Task %s: error downloading: %s", task_id, e)
             # Update task status so user sees the failure
             task = book_queue.get_task(task_id)
             if task:
@@ -948,7 +1113,10 @@ def _download_task(task_id: str, cancel_flag: Event) -> Optional[str]:
                         "Destination misconfigured. Go to Settings → Downloads to update."
                     )
                 else:
-                    book_queue.update_status_message(task_id, f"Download failed: {type(e).__name__}")
+                    if isinstance(e, PermissionError):
+                        book_queue.update_status_message(task_id, f"Permission denied: {e}")
+                    else:
+                        book_queue.update_status_message(task_id, f"Download failed: {type(e).__name__}")
         return None
 
 
@@ -983,8 +1151,13 @@ def _transfer_single_file(
     dest_path: Path,
     use_hardlink: bool,
     is_torrent: bool,
+    preserve_source: bool = False,
 ) -> Tuple[Path, str]:
-    """Transfer a file via hardlink, copy, or move. Returns (final_path, operation_name)."""
+    """Transfer a file via hardlink, copy, or move.
+
+    Returns:
+        (final_path, operation_name)
+    """
     if use_hardlink:
         final_path = _atomic_hardlink(source_path, dest_path)
         try:
@@ -997,7 +1170,7 @@ def _transfer_single_file(
             return final_path, "hardlink"
         return final_path, "copy"
 
-    if is_torrent:
+    if is_torrent or preserve_source:
         return _atomic_copy(source_path, dest_path), "copy"
 
     return _atomic_move(source_path, dest_path), "move"
@@ -1024,7 +1197,7 @@ def _transfer_file_to_library(
     logger.info(f"Library {op}: {final_path}")
 
     # Cleanup staged files (but never the torrent source - that stays for seeding)
-    if use_hardlink and not _is_torrent_source(temp_file, task):
+    if use_hardlink and temp_file and not _is_torrent_source(temp_file, task):
         _safe_cleanup_path(temp_file, task)
 
     status_callback("complete", "Complete")
@@ -1043,12 +1216,13 @@ def _transfer_directory_to_library(
 ) -> Optional[str]:
     """Transfer all files from a directory to the library with template-based naming."""
     content_type = task.content_type.lower() if task.content_type else None
-    supported_formats = _get_supported_formats(content_type)
-
-    source_files = [
-        f for f in source_dir.rglob("*")
-        if f.is_file() and f.suffix.lower().lstrip('.') in supported_formats
-    ]
+    source_files, _, _, scan_error = _scan_directory_tree(source_dir, content_type)
+    if scan_error:
+        logger.warning(scan_error)
+        status_callback("error", scan_error)
+        if temp_file:
+            _safe_cleanup_path(temp_file, task)
+        return None
 
     if not source_files:
         logger.warning(f"No supported files in {source_dir.name}")
@@ -1099,7 +1273,7 @@ def _transfer_directory_to_library(
     logger.info(f"Created {len(transferred_paths)} library {operation} in {base_library_path.parent}")
 
     # Cleanup staging (but never the torrent source - that stays for seeding)
-    if use_hardlink and not _is_torrent_source(temp_file, task):
+    if use_hardlink and temp_file and not _is_torrent_source(temp_file, task):
         _safe_cleanup_path(temp_file, task)
     elif not is_torrent:
         _safe_cleanup_path(temp_file, task)
@@ -1120,17 +1294,25 @@ def _post_process_download(
     """Post-process download: extract archives, apply naming template, move to destination."""
     # Validate search_mode
     if task.search_mode is None:
-        logger.warning(f"Task {task.task_id} has no search_mode set, defaulting to Direct mode behavior")
+        logger.warning(
+            "Task %s: missing search_mode; defaulting to Direct mode behavior",
+            task.task_id,
+        )
     elif task.search_mode not in (SearchMode.DIRECT, SearchMode.UNIVERSAL):
-        logger.warning(f"Task {task.task_id} has invalid search_mode '{task.search_mode}', defaulting to Direct mode behavior")
+        logger.warning(
+            "Task %s: invalid search_mode=%s; defaulting to Direct mode behavior",
+            task.task_id,
+            task.search_mode,
+        )
 
     output_handler = resolve_output_handler(task)
     if output_handler:
-        logger.debug(f"Using output mode: {output_handler.mode}")
+        logger.info("Task %s: using output mode %s", task.task_id, output_handler.mode)
         return output_handler.handler(temp_file, task, cancel_flag, status_callback)
 
     from shelfmark.download.outputs.folder import process_folder_output
 
+    logger.info("Task %s: using output mode folder", task.task_id)
     return process_folder_output(temp_file, task, cancel_flag, status_callback)
 
 

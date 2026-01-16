@@ -26,7 +26,7 @@ Web UIs:
     - rTorrent:     http://localhost:8000 (web ui http://localhost:8089 via ruTorrent)
 
 Prerequisites (for running this script locally):
-    pip install requests transmission-rpc deluge-client qbittorrent-api
+    pip install requests transmission-rpc qbittorrent-api
 
 First-Time Setup:
     qBittorrent:
@@ -38,10 +38,7 @@ First-Time Setup:
         - No setup needed, credentials pre-configured (admin/admin)
 
     Deluge:
-        1. Access Web UI at http://localhost:8112 (default password: deluge)
-        2. Add auth line to .local/test-clients/deluge/config/auth:
-           echo "admin:admin:10" >> .local/test-clients/deluge/config/auth
-        3. Restart: docker restart test-deluge
+        - Access Web UI at http://localhost:8112 (default password: deluge)
 
     NZBGet:
         - No setup needed, credentials pre-configured (admin/admin)
@@ -80,10 +77,8 @@ CONFIG = {
         "password": "admin",
     },
     "deluge": {
-        "host": "localhost",
-        "port": 58846,
-        "username": "admin",
-        "password": "admin",
+        "url": "http://localhost:8112",
+        "password": "deluge",
     },
     "rtorrent": {
         "url": "http://localhost:8000/RPC2",
@@ -330,46 +325,79 @@ def test_transmission():
 
 
 def test_deluge():
-    """Test Deluge connection."""
+    """Test Deluge Web UI (JSON-RPC) connection."""
+    import requests
+
     print("\n" + "=" * 50)
     print("Testing Deluge")
     print("=" * 50)
 
+    base_url = CONFIG["deluge"]["url"].rstrip("/")
+    password = CONFIG["deluge"]["password"]
+    rpc_url = f"{base_url}/json"
+
+    def rpc_call(session: requests.Session, rpc_id: int, method: str, *params):
+        payload = {"id": rpc_id, "method": method, "params": list(params)}
+        resp = session.post(rpc_url, json=payload, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("error"):
+            err = data["error"]
+            if isinstance(err, dict):
+                raise Exception(err.get("message") or str(err))
+            raise Exception(str(err))
+        return data.get("result")
+
     try:
-        from deluge_client import DelugeRPCClient
+        session = requests.Session()
 
-        client = DelugeRPCClient(
-            host=CONFIG["deluge"]["host"],
-            port=CONFIG["deluge"]["port"],
-            username=CONFIG["deluge"]["username"],
-            password=CONFIG["deluge"]["password"],
-        )
+        # Authenticate to Deluge Web
+        if rpc_call(session, 1, "auth.login", password) is not True:
+            raise Exception("Authentication failed (check Deluge Web UI password)")
 
-        # Test connection
-        client.connect()
-        version = client.call("daemon.info")
+        # Ensure Deluge Web is connected to a daemon
+        if rpc_call(session, 2, "web.connected") is not True:
+            hosts = rpc_call(session, 3, "web.get_hosts") or []
+            if not hosts:
+                raise Exception(
+                    "Deluge Web UI isn't connected to Deluge core (no hosts configured). "
+                    "Add/connect a daemon in Deluge Web UI → Connection Manager."
+                )
+
+            host_id = hosts[0][0]
+            for entry in hosts:
+                if isinstance(entry, list) and len(entry) >= 2 and entry[1] in {"127.0.0.1", "localhost"}:
+                    host_id = entry[0]
+                    break
+
+            rpc_call(session, 4, "web.connect", host_id)
+
+            if rpc_call(session, 5, "web.connected") is not True:
+                raise Exception(
+                    "Deluge Web UI couldn't connect to Deluge core. "
+                    "Check Deluge Web UI → Connection Manager."
+                )
+
+        version = rpc_call(session, 6, "daemon.info")
         print(f"  Connected to Deluge {version}")
 
-        # Get torrent list
-        torrents = client.call("core.get_torrents_status", {}, ["name"])
+        torrents = rpc_call(session, 7, "core.get_torrents_status", {}, ["name"]) or {}
         print(f"  Active torrents: {len(torrents)}")
 
         # Test adding a torrent (then remove it)
         print("  Testing add/remove torrent...")
-        torrent_id = client.call("core.add_torrent_magnet", TEST_MAGNET, {"add_paused": True})
+        torrent_id = rpc_call(session, 8, "core.add_torrent_magnet", TEST_MAGNET, {"add_paused": True})
 
         if torrent_id:
+            torrent_id = str(torrent_id)
             print(f"  Added test torrent: {torrent_id[:20]}...")
 
-            # Get status
-            status = client.call("core.get_torrent_status", torrent_id, ["state", "progress"])
-            state = status.get(b"state", b"unknown")
-            if isinstance(state, bytes):
-                state = state.decode()
-            print(f"  Status: {state}")
+            status = rpc_call(session, 9, "core.get_torrent_status", torrent_id, ["state", "progress"]) or {}
+            state = status.get("state", "unknown") if isinstance(status, dict) else "unknown"
+            progress = status.get("progress", 0) if isinstance(status, dict) else 0
+            print(f"  Status: {state} ({progress:.1f}%)")
 
-            # Remove it
-            client.call("core.remove_torrent", torrent_id, True)
+            rpc_call(session, 10, "core.remove_torrent", torrent_id, True)
             print("  Removed test torrent")
         else:
             print("  WARNING: Could not add test torrent")
@@ -377,19 +405,17 @@ def test_deluge():
         print("  SUCCESS: Deluge is working!")
         return True
 
-    except ImportError:
-        print("  ERROR: deluge-client not installed")
-        print("  Run: pip install deluge-client")
+    except requests.exceptions.ConnectionError:
+        print("  ERROR: Could not connect to Deluge Web UI")
+        print("  Is the container running? docker ps | grep deluge")
+        return False
+    except requests.exceptions.Timeout:
+        print("  ERROR: Deluge Web UI connection timed out")
         return False
     except Exception as e:
         print(f"  ERROR: {e}")
-        if "Connection refused" in str(e):
-            print("  Is the container running? docker ps | grep deluge")
-        elif "Bad login" in str(e) or "auth" in str(e).lower():
-            print("\n  Deluge auth setup required:")
-            print("  1. Add 'admin:admin:10' to .local/test-clients/deluge/config/auth")
-            print("  2. Restart: docker restart test-deluge")
-            print("  3. Or access Web UI at http://localhost:8112 (password: deluge)")
+        if "auth" in str(e).lower() or "login" in str(e).lower():
+            print("  Check Deluge Web UI password (default: deluge)")
         return False
 
 def test_rtorrent():

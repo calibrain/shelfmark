@@ -165,18 +165,9 @@ export interface SettingsResponse {
   groups: SettingsGroup[];
 }
 
-export interface SettingsActionEffects {
-  // Apply value updates to other fields in the current tab/step
-  setValues?: Record<string, unknown>;
-
-  // Override select options for fields (SelectField / MultiSelectField)
-  setSelectOptions?: Record<string, SelectOption[]>;
-}
-
 export interface ActionResult {
   success: boolean;
   message: string;
-  effects?: SettingsActionEffects;
 }
 
 export interface UpdateResult {

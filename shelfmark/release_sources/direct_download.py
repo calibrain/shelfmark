@@ -1300,7 +1300,7 @@ class DirectDownloadHandler(DownloadHandler):
         handle bypass, move to final location.
         """
         try:
-            logger.info(f"Starting download: {book_info.title}")
+            logger.debug("Starting download: %s", book_info.title)
 
             # Prepare paths - use descriptive staging filename, orchestrator will rename
             # based on FILE_ORGANIZATION setting
