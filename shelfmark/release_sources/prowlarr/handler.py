@@ -53,7 +53,8 @@ def _diagnose_path_issue(path: str) -> str:
     # Generic hint for Linux paths
     return (
         f"Path '{path}' is not accessible from Shelfmark's container. "
-        f"Ensure both containers have matching volume mounts for this directory."
+        f"Ensure both containers have matching volume mounts for this directory, "
+        f"or configure Remote Path Mappings in Settings > Advanced."
     )
 
 
@@ -295,8 +296,32 @@ class ProwlarrHandler(DownloadHandler):
 
                 # Check for error state
                 if status.state == DownloadState.ERROR:
-                    # "Torrent not found" is often transient - the client may not have indexed it yet
-                    if "not found" in (status.message or "").lower():
+                    message = (status.message or "").strip()
+                    message_lower = message.lower()
+
+                    # Only treat *actual* "not found" as retryable.
+                    # qBittorrent auth/network/API failures should surface immediately (more actionable)
+                    # and must not be confused with "torrent missing".
+                    retryable_not_found = any(
+                        token in message_lower
+                        for token in (
+                            "torrent not found",
+                            "not found in qbittorrent",
+                            "download not found",
+                        )
+                    )
+
+                    non_retryable = any(
+                        token in message_lower
+                        for token in (
+                            "authentication failed",
+                            "cannot connect",
+                            "timed out",
+                            "api request failed",
+                        )
+                    )
+
+                    if retryable_not_found and not non_retryable:
                         not_found_count += 1
                         if not_found_count < max_not_found_retries:
                             logger.debug(
@@ -307,12 +332,14 @@ class ProwlarrHandler(DownloadHandler):
                             if cancel_flag.wait(timeout=POLL_INTERVAL):
                                 break
                             continue
-                        # Exhausted retries
+
                         logger.error(
                             f"Download {download_id} not found after {max_not_found_retries} attempts"
                         )
                     else:
+                        # Fail fast on actionable errors (auth, connectivity, API issues)
                         logger.error(f"Download {download_id} error state: {status.message}")
+
                     status_callback("error", status.message or "Download failed")
                     self._safe_remove_download(client, download_id, protocol, "download error")
                     return None
@@ -364,16 +391,41 @@ class ProwlarrHandler(DownloadHandler):
                 )
                 return None
 
-            # Verify the path actually exists in our filesystem
+            # Apply remote path mappings (client path -> shelfmark container path)
+            from shelfmark.core.path_mappings import (
+                get_client_host_identifier,
+                parse_remote_path_mappings,
+                remap_remote_to_local,
+            )
+
             source_path_obj = Path(source_path)
             if not source_path_obj.exists():
-                hint = _diagnose_path_issue(source_path)
-                logger.error(
-                    f"Download path does not exist: {source_path}. "
-                    f"Client: {client.name}, ID: {download_id}. {hint}"
+                host = get_client_host_identifier(client) or ""
+                mapping_value = config.get("PROWLARR_REMOTE_PATH_MAPPINGS", [])
+                mappings = parse_remote_path_mappings(mapping_value)
+                remapped = remap_remote_to_local(
+                    mappings=mappings,
+                    host=host,
+                    remote_path=source_path_obj,
                 )
-                status_callback("error", hint)
-                return None
+
+                if remapped != source_path_obj and remapped.exists():
+                    logger.info(
+                        "Remapped download path for %s (%s): %s -> %s",
+                        client.name,
+                        download_id,
+                        source_path_obj,
+                        remapped,
+                    )
+                    source_path_obj = remapped
+                else:
+                    hint = _diagnose_path_issue(source_path)
+                    logger.error(
+                        f"Download path does not exist: {source_path}. "
+                        f"Client: {client.name}, ID: {download_id}. {hint}"
+                    )
+                    status_callback("error", hint)
+                    return None
 
             result = self._handle_completed_file(
                 source_path=source_path_obj,

@@ -14,6 +14,7 @@ import {
   ActionButtonConfig,
   HeadingFieldConfig,
   ShowWhenCondition,
+  TableFieldConfig,
 } from '../../types/settings';
 import { FieldWrapper } from './shared';
 import {
@@ -26,6 +27,7 @@ import {
   OrderableListField,
   ActionButton,
   HeadingField,
+  TableField,
 } from './fields';
 
 interface SettingsContentProps {
@@ -207,6 +209,15 @@ const renderField = (
       );
     case 'ActionButton':
       return <ActionButton field={field as ActionButtonConfig} onAction={onAction} disabled={isDisabled} />;
+    case 'TableField':
+      return (
+        <TableField
+          field={field as TableFieldConfig}
+          value={(value as Record<string, unknown>[]) ?? []}
+          onChange={onChange}
+          disabled={isDisabled}
+        />
+      );
     case 'HeadingField':
       return <HeadingField field={field as HeadingFieldConfig} />;
     default:

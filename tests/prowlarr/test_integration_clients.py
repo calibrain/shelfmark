@@ -311,7 +311,7 @@ class TestTransmissionIntegration:
 
             # State should be a known value
             valid_states = {"downloading", "complete", "error", "seeding", "paused", "queued", "fetching_metadata"}
-            assert status.state in valid_states
+            assert status.state.value in valid_states
 
             # Complete should be boolean
             assert isinstance(status.complete, bool)
@@ -396,7 +396,7 @@ class TestQBittorrentIntegration:
             assert 0 <= status.progress <= 100
 
             valid_states = {"downloading", "complete", "error", "seeding", "paused", "queued", "fetching_metadata", "stalled"}
-            assert status.state in valid_states
+            assert status.state.value in valid_states
 
             assert isinstance(status.complete, bool)
         finally:
@@ -480,7 +480,7 @@ class TestDelugeIntegration:
             assert 0 <= status.progress <= 100
 
             valid_states = {"downloading", "complete", "error", "seeding", "paused", "queued", "fetching_metadata", "checking"}
-            assert status.state in valid_states
+            assert status.state.value in valid_states
 
             assert isinstance(status.complete, bool)
         finally:

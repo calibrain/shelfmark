@@ -6,6 +6,7 @@ Uses the transmission-rpc library to communicate with Transmission's RPC API.
 
 from typing import Optional, Tuple
 
+
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.release_sources.prowlarr.clients import (
@@ -49,7 +50,7 @@ class TransmissionClient(DownloadClient):
             username=username if username else None,
             password=password if password else None,
         )
-        self._category = config.get("TRANSMISSION_CATEGORY", "cwabd")
+        self._category = config.get("TRANSMISSION_CATEGORY", "books")
 
     @staticmethod
     def is_configured() -> bool:
@@ -67,7 +68,7 @@ class TransmissionClient(DownloadClient):
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
 
-    def add_download(self, url: str, name: str, category: str = None) -> str:
+    def add_download(self, url: str, name: str, category: Optional[str] = None) -> str:
         """
         Add torrent by URL (magnet or .torrent).
 
@@ -83,21 +84,21 @@ class TransmissionClient(DownloadClient):
             Exception: If adding fails.
         """
         try:
-            category = category or self._category
+            resolved_category = category or self._category or ""
 
             torrent_info = extract_torrent_info(url)
 
             if torrent_info.torrent_data:
                 torrent = self._client.add_torrent(
                     torrent=torrent_info.torrent_data,
-                    labels=[category],
+                    labels=[resolved_category] if resolved_category else None,
                 )
             else:
                 # Use magnet URL if available, otherwise original URL
                 add_url = torrent_info.magnet_url or url
                 torrent = self._client.add_torrent(
                     torrent=add_url,
-                    labels=[category],
+                    labels=[resolved_category] if resolved_category else None,
                 )
 
             torrent_hash = torrent.hashString.lower()
@@ -163,9 +164,13 @@ class TransmissionClient(DownloadClient):
             # Get file path for completed downloads
             file_path = None
             if complete:
+                # Output path is downloadDir + torrent name (with ':' replaced)
+                torrent_name = getattr(torrent, 'name', '')
+                if isinstance(torrent_name, str):
+                    torrent_name = torrent_name.replace(':', '_')
                 file_path = self._build_path(
                     getattr(torrent, 'download_dir', ''),
-                    getattr(torrent, 'name', ''),
+                    torrent_name,
                 )
 
             return DownloadStatus(
@@ -219,11 +224,14 @@ class TransmissionClient(DownloadClient):
             Content path (file or directory), or None.
         """
         try:
-            torrent = self._client.get_torrent(download_id)
-            return self._build_path(
-                getattr(torrent, 'download_dir', ''),
-                getattr(torrent, 'name', ''),
-            )
+             torrent = self._client.get_torrent(download_id)
+             torrent_name = getattr(torrent, 'name', '')
+             if isinstance(torrent_name, str):
+                 torrent_name = torrent_name.replace(':', '_')
+             return self._build_path(
+                 getattr(torrent, 'download_dir', ''),
+                 torrent_name,
+             )
         except Exception as e:
             self._log_error("get_download_path", e, level="debug")
             return None

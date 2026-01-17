@@ -3,7 +3,7 @@
 This implementation talks to Deluge via the Web UI JSON-RPC API (``/json``).
 
 Why Web UI API instead of daemon RPC (port 58846)?
-- Matches the approach used by common automation apps (e.g. Sonarr/Radarr)
+- Matches the approach used by common automation apps
 - Avoids requiring Deluge daemon ``auth`` file credentials (username/password)
 
 Requirements:
@@ -91,7 +91,7 @@ class DelugeClient(DownloadClient):
         self._connected = False
         self._rpc_id = 0
 
-        self._category = str(config.get("DELUGE_CATEGORY", "cwabd") or "cwabd")
+        self._category = str(config.get("DELUGE_CATEGORY", "books") or "books")
 
     def _next_rpc_id(self) -> int:
         self._rpc_id += 1
@@ -288,6 +288,7 @@ class DelugeClient(DownloadClient):
 
             file_path = None
             if complete:
+                # Output path is save_path + torrent name
                 file_path = self._build_path(
                     str(status.get("save_path", "")),
                     str(status.get("name", "")),

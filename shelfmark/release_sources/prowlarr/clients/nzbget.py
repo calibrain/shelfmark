@@ -47,7 +47,7 @@ class NZBGetClient(DownloadClient):
         return client == "nzbget" and bool(url)
 
     @with_retry()
-    def _rpc_call(self, method: str, params: list = None) -> Any:
+    def _rpc_call(self, method: str, params: Optional[list] = None) -> Any:
         """
         Make a JSON-RPC call to NZBGet.
 
@@ -233,6 +233,15 @@ class NZBGetClient(DownloadClient):
                     dest_dir = item.get("DestDir", "") or None
                     file_path = final_dir or dest_dir  # Use FinalDir if available
 
+                    # Normalize for consistent downstream use.
+                    if isinstance(file_path, str) and file_path:
+                        import os
+
+                        file_path = os.path.normpath(file_path)
+                    else:
+                        file_path = None
+
+
                     if "SUCCESS" in status:
                         return DownloadStatus(
                             progress=100,
@@ -275,7 +284,7 @@ class NZBGetClient(DownloadClient):
             return False
 
         if delete_files:
-            # Sonarr uses HistoryDelete for NZBGet; keep that as a fallback for
+            # Keep HistoryDelete as a fallback for
             # older NZBGet versions where HistoryFinalDelete may not exist.
             commands = ["GroupFinalDelete", "HistoryFinalDelete", "HistoryDelete"]
         else:

@@ -105,6 +105,7 @@ class TestProwlarrHandlerDownloadErrors:
 
             assert result is None
             assert recorder.last_status == "error"
+            assert recorder.last_message is not None
             assert "cache" in recorder.last_message.lower()
 
     def test_download_fails_without_download_url(self):
@@ -135,6 +136,7 @@ class TestProwlarrHandlerDownloadErrors:
 
             assert result is None
             assert recorder.last_status == "error"
+            assert recorder.last_message is not None
             assert "url" in recorder.last_message.lower()
 
     def test_download_fails_unknown_protocol(self):
@@ -164,6 +166,7 @@ class TestProwlarrHandlerDownloadErrors:
 
             assert result is None
             assert recorder.last_status == "error"
+            assert recorder.last_message is not None
             assert "protocol" in recorder.last_message.lower()
 
     def test_download_fails_no_client_configured(self):
@@ -199,6 +202,7 @@ class TestProwlarrHandlerDownloadErrors:
 
             assert result is None
             assert recorder.last_status == "error"
+            assert recorder.last_message is not None
             assert "client" in recorder.last_message.lower()
 
 
@@ -269,6 +273,129 @@ class TestProwlarrHandlerExistingDownload:
 
 class TestProwlarrHandlerPolling:
     """Tests for download polling behavior."""
+
+    def test_retries_torrent_not_found_errors(self):
+        """"Torrent not found" should be treated as transient."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source_file = Path(tmp_dir) / "source" / "book.epub"
+            source_file.parent.mkdir(parents=True)
+            source_file.write_text("test content")
+
+            staging_dir = Path(tmp_dir) / "staging"
+            staging_dir.mkdir()
+
+            poll_count = [0]
+
+            def mock_get_status(download_id):
+                poll_count[0] += 1
+                if poll_count[0] <= 2:
+                    return DownloadStatus(
+                        progress=0,
+                        state=DownloadState.ERROR,
+                        message="Torrent not found in qBittorrent",
+                        complete=False,
+                        file_path=None,
+                    )
+
+                return DownloadStatus(
+                    progress=100,
+                    state=DownloadState.COMPLETE,
+                    message="Complete",
+                    complete=True,
+                    file_path=str(source_file),
+                )
+
+            mock_client = MagicMock()
+            mock_client.name = "qbittorrent"
+            mock_client.find_existing.return_value = None
+            mock_client.add_download.return_value = "download_id"
+            mock_client.get_status.side_effect = mock_get_status
+            mock_client.get_download_path.return_value = str(source_file)
+
+            with patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value={
+                    "protocol": "torrent",
+                    "magnetUrl": "magnet:?xt=urn:btih:abc123",
+                },
+            ), patch(
+                "shelfmark.release_sources.prowlarr.handler.get_client",
+                return_value=mock_client,
+            ), patch(
+                "shelfmark.release_sources.prowlarr.handler.remove_release",
+            ), patch(
+                "shelfmark.download.staging.get_staging_dir",
+                return_value=staging_dir,
+            ), patch(
+                "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
+                0.01,
+            ):
+                handler = ProwlarrHandler()
+                task = DownloadTask(
+                    task_id="poll-not-found-test",
+                    source="prowlarr",
+                    title="Test Book",
+                )
+                cancel_flag = Event()
+                recorder = ProgressRecorder()
+
+                result = handler.download(
+                    task=task,
+                    cancel_flag=cancel_flag,
+                    progress_callback=recorder.progress_callback,
+                    status_callback=recorder.status_callback,
+                )
+
+                assert result is not None
+                assert poll_count[0] >= 3
+                assert "resolving" in recorder.statuses
+
+    def test_fails_fast_on_auth_errors(self):
+        """Auth/API errors should not be retried as "not found"."""
+        mock_client = MagicMock()
+        mock_client.name = "qbittorrent"
+        mock_client.find_existing.return_value = None
+        mock_client.add_download.return_value = "download_id"
+        mock_client.get_status.return_value = DownloadStatus(
+            progress=0,
+            state=DownloadState.ERROR,
+            message="qBittorrent authentication failed (HTTP 403)",
+            complete=False,
+            file_path=None,
+        )
+
+        with patch(
+            "shelfmark.release_sources.prowlarr.handler.get_release",
+            return_value={
+                "protocol": "torrent",
+                "magnetUrl": "magnet:?xt=urn:btih:abc123",
+            },
+        ), patch(
+            "shelfmark.release_sources.prowlarr.handler.get_client",
+            return_value=mock_client,
+        ), patch(
+            "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
+            0.01,
+        ):
+            handler = ProwlarrHandler()
+            task = DownloadTask(
+                task_id="poll-auth-fail-test",
+                source="prowlarr",
+                title="Test Book",
+            )
+            cancel_flag = Event()
+            recorder = ProgressRecorder()
+
+            result = handler.download(
+                task=task,
+                cancel_flag=cancel_flag,
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
+
+            assert result is None
+            assert recorder.last_status == "error"
+            assert "authentication failed" in (recorder.last_message or "").lower()
 
     def test_polls_until_complete(self):
         """Test that handler polls until download is complete."""

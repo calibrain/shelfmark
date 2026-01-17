@@ -355,6 +355,7 @@ class TestRTorrentClientGetStatus:
                 1024000,
                 0,
                 "cwabd",
+                0,
             ]
         ]
 
@@ -401,6 +402,7 @@ class TestRTorrentClientGetStatus:
                 0,
                 2048000,
                 "cwabd",
+                1,
             ]
         ]
         mock_rpc.d.get_base_path.return_value = "/downloads/test-torrent"
@@ -483,6 +485,7 @@ class TestRTorrentClientGetStatus:
                 1048576,
                 0,
                 "cwabd",
+                0,
             ]
         ]
 

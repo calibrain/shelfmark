@@ -3,7 +3,47 @@
 import os
 from pathlib import Path
 import json
-from typing import Any
+from typing import Any, Dict
+
+
+def _on_save_advanced(values: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate advanced settings before persisting."""
+
+    mappings = values.get("PROWLARR_REMOTE_PATH_MAPPINGS")
+    if mappings is None:
+        return {"error": False, "values": values}
+
+    if not isinstance(mappings, list):
+        return {
+            "error": True,
+            "message": "Remote path mappings must be a list",
+            "values": values,
+        }
+
+    cleaned = []
+    for entry in mappings:
+        if not isinstance(entry, dict):
+            continue
+
+        host = str(entry.get("host", "") or "").strip().lower()
+        remote_path = str(entry.get("remotePath", "") or "").strip()
+        local_path = str(entry.get("localPath", "") or "").strip()
+
+        if not host or not remote_path or not local_path:
+            continue
+
+        if not local_path.startswith("/"):
+            return {
+                "error": True,
+                "message": "Local Path must be an absolute path",
+                "values": values,
+            }
+
+        cleaned.append({"host": host, "remotePath": remote_path, "localPath": local_path})
+
+    values["PROWLARR_REMOTE_PATH_MAPPINGS"] = cleaned
+    return {"error": False, "values": values}
+
 
 from shelfmark.config import env
 from shelfmark.config.booklore_settings import (
@@ -68,6 +108,7 @@ from shelfmark.core.settings_registry import (
     SelectField,
     MultiSelectField,
     OrderableListField,
+    TableField,
     HeadingField,
     ActionButton,
 )
@@ -1125,6 +1166,53 @@ def mirror_settings():
 def advanced_settings():
     """Advanced settings for power users."""
     return [
+        HeadingField(
+            key="remote_path_mappings_heading",
+            title="Remote Path Mappings",
+            description=(
+                "If your download client reports paths that don't exist inside the Shelfmark container, "
+                "add a mapping from the client's path to the path inside Shelfmark. "
+                "This is commonly needed when the download client is running on another machine, "
+                "or when Docker volume mounts differ between containers."
+            ),
+        ),
+        TableField(
+            key="PROWLARR_REMOTE_PATH_MAPPINGS",
+            label="Prowlarr: Remote Path Mappings",
+            description="Map remote paths (as reported by the download client) to local paths (inside the Shelfmark container).",
+            columns=[
+                {
+                    "key": "host",
+                    "label": "Client",
+                    "type": "select",
+                    "options": [
+                        {"value": "qbittorrent", "label": "qBittorrent"},
+                        {"value": "transmission", "label": "Transmission"},
+                        {"value": "deluge", "label": "Deluge"},
+                        {"value": "rtorrent", "label": "rTorrent"},
+                        {"value": "nzbget", "label": "NZBGet"},
+                        {"value": "sabnzbd", "label": "SABnzbd"},
+                    ],
+                    "defaultValue": "qbittorrent",
+                },
+                {
+                    "key": "remotePath",
+                    "label": "Remote Path",
+                    "type": "path",
+                    "placeholder": "/downloads",
+                },
+                {
+                    "key": "localPath",
+                    "label": "Local Path",
+                    "type": "path",
+                    "placeholder": "/data/downloads",
+                },
+            ],
+            default=[],
+            add_label="Add Mapping",
+            empty_message="No mappings configured.",
+            env_supported=False,
+        ),
         TextField(
             key="CUSTOM_SCRIPT",
             label="Custom Script Path",
@@ -1227,3 +1315,6 @@ def advanced_settings():
             callback=_clear_metadata_cache,
         ),
     ]
+
+
+register_on_save("advanced", _on_save_advanced)

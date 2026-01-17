@@ -67,6 +67,33 @@ def _parse_speed(slot: dict) -> Optional[int]:
 class SABnzbdClient(DownloadClient):
     """SABnzbd download client using REST API."""
 
+    @staticmethod
+    def _resolve_completed_storage_path(storage: str, title: str) -> str:
+        """Normalize SABnzbd's `storage` into a stable "job root" folder.
+
+        Walks up parent directories looking for a directory named exactly like the
+        job `title`.
+
+        This helps when SABnzbd reports a nested path (e.g. sorting/post-processing)
+        but we want the root folder for the completed job.
+        """
+        from pathlib import Path
+
+        storage = storage or ""
+        title = (title or "").strip()
+        if not storage or not title:
+            return storage
+
+        # SAB returns absolute paths; don't require existence on disk.
+        path = Path(storage)
+        best_match: Path | None = None
+
+        for parent in [path, *path.parents]:
+            if parent.name == title:
+                best_match = parent
+
+        return str(best_match) if best_match is not None else storage
+
     protocol = "usenet"
     name = "sabnzbd"
 
@@ -82,7 +109,7 @@ class SABnzbdClient(DownloadClient):
 
         self.url = url.rstrip("/")
         self.api_key = api_key
-        self._category = config.get("SABNZBD_CATEGORY", "cwabd")
+        self._category = config.get("SABNZBD_CATEGORY", "books")
 
     @staticmethod
     def is_configured() -> bool:
@@ -93,7 +120,7 @@ class SABnzbdClient(DownloadClient):
         return client == "sabnzbd" and bool(url) and bool(api_key)
 
     @with_retry()
-    def _api_call(self, mode: str, params: dict = None) -> Any:
+    def _api_call(self, mode: str, params: Optional[dict] = None) -> Any:
         """
         Make an API call to SABnzbd.
 
@@ -142,7 +169,7 @@ class SABnzbdClient(DownloadClient):
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
 
-    def add_download(self, url: str, name: str, category: str = None) -> str:
+    def add_download(self, url: str, name: str, category: Optional[str] = None) -> str:
         """
         Add NZB by URL.
 
@@ -248,12 +275,15 @@ class SABnzbdClient(DownloadClient):
                     logger.debug(f"SABnzbd history: {download_id} status={status_text} storage='{storage}'")
 
                     if status_text == "COMPLETED":
+                        title = slot.get("name") or slot.get("nzb_name") or ""
+                        resolved_storage = self._resolve_completed_storage_path(storage, title)
+
                         return DownloadStatus(
                             progress=100,
                             state="complete",
                             message="Complete",
                             complete=True,
-                            file_path=storage,
+                            file_path=resolved_storage,
                         )
                     elif status_text == "FAILED":
                         fail_message = slot.get("fail_message", "Download failed")

@@ -803,13 +803,11 @@ def test_custom_script_external_source_stages_copy_and_preserves_source(tmp_path
     # Original external file must be preserved.
     assert original.exists()
 
-    # Script should have run against a staged copy inside TMP.
+    # Script should have run against the final imported file.
     assert mock_run.call_count == 1
     script_args = mock_run.call_args[0][0]
     assert script_args[0] == "/path/to/script.sh"
-    staged_path = Path(script_args[1])
-    assert staging in staged_path.parents
-    assert staged_path != original
+    assert Path(script_args[1]) == result_path
 
     # Staging directory should be cleaned.
     assert list(staging.iterdir()) == []

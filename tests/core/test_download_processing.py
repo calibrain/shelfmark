@@ -333,6 +333,7 @@ class TestProcessDirectory:
             )
 
         assert final_paths == []
+        assert error is not None
         assert "format not supported" in error
         assert ".pdf" in error
 
@@ -446,6 +447,7 @@ class TestProcessDirectory:
             )
 
         assert final_paths == []
+        assert error is not None
         assert "Move failed" in error
         # Directory should be cleaned up
         assert not directory.exists()
@@ -517,6 +519,7 @@ class TestPostProcessDownload:
                 status_callback=status_cb,
             )
 
+        assert result is not None
         result_path = Path(result)
         assert "The Way of Kings" in result_path.name
 
@@ -588,6 +591,7 @@ class TestPostProcessDownload:
                 status_callback=status_cb,
             )
 
+        assert result is not None
         result_path = Path(result)
         # Should go to ingest, not library
         assert result_path.parent == temp_dirs["ingest"]
@@ -660,6 +664,7 @@ class TestPostProcessDownload:
                 status_callback=status_cb,
             )
 
+        assert result is not None
         result_path = Path(result)
         assert result_path.parent == audiobook_ingest
 
@@ -704,7 +709,55 @@ class TestCustomScriptExecution:
         assert result is not None
         mock_run.assert_called_once()
         call_args = mock_run.call_args
-        assert call_args[0][0] == ["/path/to/script.sh", str(temp_file)]
+        result_path = Path(result)
+        assert call_args[0][0] == ["/path/to/script.sh", str(result_path)]
+
+    def test_runs_custom_script_for_directory_download_once(self, temp_dirs):
+        """Runs custom script once after transferring a directory download."""
+        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+
+        download_dir = temp_dirs["staging"] / "release"
+        download_dir.mkdir()
+        (download_dir / "01.mp3").write_bytes(b"a")
+        (download_dir / "02.mp3").write_bytes(b"b")
+
+        task = DownloadTask(
+            task_id="test-dir",
+            source="direct_download",
+            title="My Book",
+            author="An Author",
+            format="mp3",
+            search_mode=SearchMode.DIRECT,
+            content_type="audiobook",
+        )
+
+        status_cb = MagicMock()
+        cancel_flag = Event()
+
+        with patch('shelfmark.core.config.config') as mock_config, \
+             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]), \
+             patch('subprocess.run') as mock_run:
+
+            mock_config.USE_BOOK_TITLE = False
+            mock_config.CUSTOM_SCRIPT = "/path/to/script.sh"
+            _sync_core_config(mock_config, mock_config)
+            mock_config.get = _mock_destination_config(temp_dirs["ingest"], {"FILE_ORGANIZATION_AUDIOBOOK": "none"})
+            _sync_core_config(mock_config, mock_config)
+
+            mock_run.return_value = MagicMock(stdout="", returncode=0)
+
+            result = _post_process_download(
+                temp_file=download_dir,
+                task=task,
+                cancel_flag=cancel_flag,
+                status_callback=status_cb,
+            )
+
+        assert result is not None
+        assert mock_run.call_count == 1
+        script_args = mock_run.call_args[0][0]
+        assert script_args[0] == "/path/to/script.sh"
+        assert Path(script_args[1]) == temp_dirs["ingest"]
 
     def test_script_not_found_error(self, temp_dirs, sample_direct_task):
         """Returns error when script not found."""

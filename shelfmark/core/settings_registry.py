@@ -95,6 +95,20 @@ class OrderableListField(FieldBase):
 
 
 @dataclass
+class TableField(FieldBase):
+    """Editable table of structured rows."""
+
+    # Column definitions: [{key, label, type, placeholder?, options?, defaultValue?}, ...]
+    columns: Any = field(default_factory=list)  # list or callable
+
+    # Value format: list of objects
+    default: List[Dict[str, Any]] = field(default_factory=list)
+
+    add_label: str = "Add"
+    empty_message: str = ""
+
+
+@dataclass
 class ActionButton:
     key: str                              # Action identifier
     label: str                            # Button text
@@ -535,6 +549,14 @@ def _parse_env_value(value: str, field: SettingsField) -> Any:
         except json.JSONDecodeError:
             logger.warning(f"Invalid JSON for {field.key}, using default")
             return field.default
+    elif isinstance(field, TableField):
+        # Parse JSON array: [{"col": "value"}, ...]
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, list) else field.default
+        except json.JSONDecodeError:
+            logger.warning(f"Invalid JSON for {field.key}, using default")
+            return field.default
     else:
         return value
 
@@ -625,6 +647,11 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
         # Support callable options for lazy evaluation (avoids circular imports)
         options = field.options() if callable(field.options) else field.options
         result["options"] = options
+    elif isinstance(field, TableField):
+        columns = field.columns() if callable(field.columns) else field.columns
+        result["columns"] = columns
+        result["addLabel"] = field.add_label
+        result["emptyMessage"] = field.empty_message
     elif isinstance(field, ActionButton):
         result["style"] = field.style
         result["description"] = field.description
@@ -646,6 +673,11 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
                 # as comma-separated strings.
                 value = [v.strip() for v in value.split(",") if v.strip()]
             else:
+                value = []
+        elif isinstance(field, TableField):
+            if value is None:
+                value = []
+            elif not isinstance(value, list):
                 value = []
 
         result["value"] = value if value is not None else ""

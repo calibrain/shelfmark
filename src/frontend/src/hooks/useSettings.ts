@@ -37,6 +37,11 @@ function getFieldValue(field: SettingsField): unknown {
   if (field.type === 'ActionButton' || field.type === 'HeadingField') {
     return undefined;
   }
+
+  if (field.type === 'TableField') {
+    return (field as unknown as { value?: unknown }).value ?? [];
+  }
+
   // All other fields have a value property
   return field.value ?? '';
 }

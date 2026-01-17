@@ -8,6 +8,7 @@ export type FieldType =
   | 'SelectField'
   | 'MultiSelectField'
   | 'OrderableListField'
+  | 'TableField'
   | 'ActionButton'
   | 'HeadingField';
 
@@ -118,6 +119,31 @@ export interface ActionButtonConfig extends BaseField {
   style: 'default' | 'primary' | 'danger';
 }
 
+export interface TableFieldColumnOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+export type TableFieldColumnType = 'text' | 'select' | 'checkbox' | 'path';
+
+export interface TableFieldColumn {
+  key: string;
+  label: string;
+  type: TableFieldColumnType;
+  placeholder?: string;
+  options?: TableFieldColumnOption[];
+  defaultValue?: string | boolean;
+}
+
+export interface TableFieldConfig extends BaseField {
+  type: 'TableField';
+  value: Record<string, unknown>[];
+  columns: TableFieldColumn[];
+  addLabel?: string;
+  emptyMessage?: string;
+}
+
 export interface HeadingFieldConfig {
   key: string;
   type: 'HeadingField';
@@ -138,6 +164,7 @@ export type SettingsField =
   | SelectFieldConfig
   | MultiSelectFieldConfig
   | OrderableListFieldConfig
+  | TableFieldConfig
   | ActionButtonConfig
   | HeadingFieldConfig;
 

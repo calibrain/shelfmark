@@ -595,7 +595,7 @@ class TestNZBGetClientRemove:
             assert calls[-1][1][0] == "GroupDelete"
 
     def test_remove_falls_back_to_history_delete(self, monkeypatch):
-        """If HistoryFinalDelete is unsupported, fall back to HistoryDelete (Sonarr behavior)."""
+        """If HistoryFinalDelete is unsupported, fall back to HistoryDelete."""
         config_values = {
             "NZBGET_URL": "http://localhost:6789",
             "NZBGET_USERNAME": "nzbget",

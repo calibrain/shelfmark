@@ -95,7 +95,7 @@ class TestSABnzbdClientTestConnection:
         config_values = {
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
-            "SABNZBD_CATEGORY": "cwabd",
+            "SABNZBD_CATEGORY": "books",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
@@ -126,7 +126,7 @@ class TestSABnzbdClientTestConnection:
         config_values = {
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "wrong",
-            "SABNZBD_CATEGORY": "cwabd",
+            "SABNZBD_CATEGORY": "books",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
@@ -156,7 +156,7 @@ class TestSABnzbdClientGetStatus:
         config_values = {
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
-            "SABNZBD_CATEGORY": "cwabd",
+            "SABNZBD_CATEGORY": "books",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
@@ -205,7 +205,7 @@ class TestSABnzbdClientGetStatus:
         config_values = {
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
-            "SABNZBD_CATEGORY": "cwabd",
+            "SABNZBD_CATEGORY": "books",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
@@ -222,7 +222,8 @@ class TestSABnzbdClientGetStatus:
                             {
                                 "nzo_id": "SABnzbd_nzo_abc123",
                                 "status": "Completed",
-                                "storage": "/downloads/complete/book",
+                                "storage": "/downloads/complete/book/Sorted/Subfolder",
+                                "name": "book",
                             }
                         ]
                     }
@@ -245,7 +246,7 @@ class TestSABnzbdClientGetStatus:
             assert status.progress == 100.0
             assert status.state_value == "complete"
             assert status.complete is True
-            assert status.file_path == "/downloads/complete/book"
+            assert status.file_path == "/downloads/complete/book"  # resolved to job root
 
     def test_get_status_complete_empty_storage(self, monkeypatch):
         """Test status for completed NZB with empty storage path.
@@ -256,7 +257,7 @@ class TestSABnzbdClientGetStatus:
         config_values = {
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
-            "SABNZBD_CATEGORY": "cwabd",
+            "SABNZBD_CATEGORY": "books",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
@@ -303,7 +304,7 @@ class TestSABnzbdClientGetStatus:
         config_values = {
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
-            "SABNZBD_CATEGORY": "cwabd",
+            "SABNZBD_CATEGORY": "books",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
@@ -348,7 +349,7 @@ class TestSABnzbdClientGetStatus:
         config_values = {
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
-            "SABNZBD_CATEGORY": "cwabd",
+            "SABNZBD_CATEGORY": "books",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
@@ -383,7 +384,7 @@ class TestSABnzbdClientGetStatus:
         config_values = {
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
-            "SABNZBD_CATEGORY": "cwabd",
+            "SABNZBD_CATEGORY": "books",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
@@ -427,7 +428,7 @@ class TestSABnzbdClientGetStatus:
         config_values = {
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
-            "SABNZBD_CATEGORY": "cwabd",
+            "SABNZBD_CATEGORY": "books",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
@@ -475,7 +476,7 @@ class TestSABnzbdClientAddDownload:
         config_values = {
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
-            "SABNZBD_CATEGORY": "cwabd",
+            "SABNZBD_CATEGORY": "books",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
@@ -509,7 +510,7 @@ class TestSABnzbdClientAddDownload:
         config_values = {
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
-            "SABNZBD_CATEGORY": "cwabd",
+            "SABNZBD_CATEGORY": "books",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
@@ -545,7 +546,7 @@ class TestSABnzbdClientRemove:
         config_values = {
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
-            "SABNZBD_CATEGORY": "cwabd",
+            "SABNZBD_CATEGORY": "books",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
@@ -577,7 +578,7 @@ class TestSABnzbdClientRemove:
         config_values = {
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
-            "SABNZBD_CATEGORY": "cwabd",
+            "SABNZBD_CATEGORY": "books",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
@@ -620,7 +621,7 @@ class TestSABnzbdClientFindExisting:
         config_values = {
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
-            "SABNZBD_CATEGORY": "cwabd",
+            "SABNZBD_CATEGORY": "books",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
@@ -667,7 +668,7 @@ class TestSABnzbdClientFindExisting:
         config_values = {
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
-            "SABNZBD_CATEGORY": "cwabd",
+            "SABNZBD_CATEGORY": "books",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
@@ -714,7 +715,7 @@ class TestSABnzbdClientFindExisting:
         config_values = {
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
-            "SABNZBD_CATEGORY": "cwabd",
+            "SABNZBD_CATEGORY": "books",
         }
         monkeypatch.setattr(
             "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -127,19 +128,19 @@ def process_folder_output(
         step_name = f"stage_{prepared.output_plan.stage_action}"
         record_step(steps, step_name, source=str(temp_file), dest=str(prepared.output_plan.staging_dir))
 
-    # Run custom script only for non-archive single files (matches legacy behavior)
-    if core_config.config.CUSTOM_SCRIPT and prepared.working_path.is_file() and not is_archive(prepared.working_path):
-        record_step(steps, "custom_script", script=str(core_config.config.CUSTOM_SCRIPT))
+    def run_custom_script(script_path: str, target_path: Path, phase: str) -> bool:
+        record_step(steps, "custom_script", script=str(script_path), target=str(target_path), phase=phase)
         log_plan_steps(task.task_id, steps)
         logger.info(
-            "Task %s: running custom script %s on %s",
+            "Task %s: running custom script %s on %s (%s)",
             task.task_id,
-            core_config.config.CUSTOM_SCRIPT,
-            prepared.working_path,
+            script_path,
+            target_path,
+            phase,
         )
         try:
             result = subprocess.run(
-                [core_config.config.CUSTOM_SCRIPT, str(prepared.working_path)],
+                [script_path, str(target_path)],
                 check=True,
                 timeout=300,  # 5 minute timeout
                 capture_output=True,
@@ -147,26 +148,19 @@ def process_folder_output(
             )
             if result.stdout:
                 logger.debug("Task %s: custom script stdout: %s", task.task_id, result.stdout.strip())
+            return True
         except FileNotFoundError:
-            logger.error("Task %s: custom script not found: %s", task.task_id, core_config.config.CUSTOM_SCRIPT)
-            status_callback("error", f"Custom script not found: {core_config.config.CUSTOM_SCRIPT}")
-            return None
+            logger.error("Task %s: custom script not found: %s", task.task_id, script_path)
+            status_callback("error", f"Custom script not found: {script_path}")
+            return False
         except PermissionError:
-            logger.error(
-                "Task %s: custom script not executable: %s",
-                task.task_id,
-                core_config.config.CUSTOM_SCRIPT,
-            )
-            status_callback("error", f"Custom script not executable: {core_config.config.CUSTOM_SCRIPT}")
-            return None
+            logger.error("Task %s: custom script not executable: %s", task.task_id, script_path)
+            status_callback("error", f"Custom script not executable: {script_path}")
+            return False
         except subprocess.TimeoutExpired:
-            logger.error(
-                "Task %s: custom script timed out after 300s: %s",
-                task.task_id,
-                core_config.config.CUSTOM_SCRIPT,
-            )
+            logger.error("Task %s: custom script timed out after 300s: %s", task.task_id, script_path)
             status_callback("error", "Custom script timed out")
-            return None
+            return False
         except subprocess.CalledProcessError as e:
             stderr = e.stderr.strip() if e.stderr else "No error output"
             logger.error(
@@ -176,7 +170,9 @@ def process_folder_output(
                 stderr,
             )
             status_callback("error", f"Custom script failed: {stderr[:100]}")
-            return None
+            return False
+
+    # Custom script is run post-transfer (see below).
 
     # If we staged a copy into TMP_DIR (e.g. for custom script), transfer from the staged
     # path and disable hardlinking for this transfer.
@@ -249,6 +245,25 @@ def process_folder_output(
         plan.destination,
         op_label.lower(),
     )
+
+    # Run custom script once per successful task, after transfer.
+    if core_config.config.CUSTOM_SCRIPT:
+        if len(final_paths) == 1:
+            target_path = final_paths[0]
+        else:
+            try:
+                target_path = Path(os.path.commonpath([str(p.parent) for p in final_paths]))
+            except ValueError:
+                target_path = plan.destination
+
+        if not run_custom_script(core_config.config.CUSTOM_SCRIPT, target_path, phase="post_transfer"):
+            cleanup_output_staging(
+                prepared.output_plan,
+                prepared.working_path,
+                task,
+                prepared.cleanup_paths,
+            )
+            return None
 
     cleanup_output_staging(
         prepared.output_plan,

@@ -66,7 +66,7 @@ class RTorrentClient(DownloadClient):
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
 
-    def add_download(self, url: str, name: str, category: str = None) -> str:
+    def add_download(self, url: str, name: str, category: Optional[str] = None) -> str:
         """
         Add torrent by URL (magnet or .torrent).
 
@@ -142,6 +142,7 @@ class RTorrentClient(DownloadClient):
                 "d.up.rate=",
                 "d.custom1=",
                 "d.complete=",
+                "d.up.total=",
             )
             logger.debug(f"Fetched torrent status from rTorrent for: {download_id} - {torrent_list}")
             if not torrent_list:
@@ -165,6 +166,13 @@ class RTorrentClient(DownloadClient):
                 complete,
             ) = torrent
 
+            try:
+                state = int(state)
+            except Exception:
+                state = 0
+
+            complete = bool(complete)
+
             if bytes_total > 0:
                 progress = (bytes_downloaded / bytes_total) * 100
             else:
@@ -173,8 +181,11 @@ class RTorrentClient(DownloadClient):
             bytes_left = max(0, bytes_total - bytes_downloaded)
 
             state_map = {
-                0: ("stopped", "Stopped"),
-                1: ("started", "Started"),
+                0: ("paused", "Paused"),
+                1: ("downloading", "Downloading"),
+                2: ("downloading", "Downloading"),
+                3: ("downloading", "Downloading"),
+                4: ("seeding", "Seeding"),
             }
 
             state_str, message = state_map.get(state, ("unknown", "Unknown state"))
@@ -281,9 +292,13 @@ class RTorrentClient(DownloadClient):
             return "/downloads"
 
     def _get_torrent_path(self, download_id: str) -> Optional[str]:
-        """Get the file path of a torrent by hash."""
+        """Get the file path of a torrent by hash.
+
+        Uses `d.base_path` for the item output path. In the xmlrpc interface
+        this corresponds to `d.get_base_path()`.
+        """
         try:
-            base_path = self._rpc.d.directory(download_id)
+            base_path = self._rpc.d.get_base_path(download_id)
             return base_path if base_path else None
         except Exception:
             return None

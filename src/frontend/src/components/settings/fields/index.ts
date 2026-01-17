@@ -6,4 +6,5 @@ export { SelectField } from './SelectField';
 export { MultiSelectField } from './MultiSelectField';
 export { OrderableListField } from './OrderableListField';
 export { ActionButton } from './ActionButton';
+export { TableField } from './TableField';
 export { HeadingField } from './HeadingField';
