@@ -209,6 +209,86 @@ class TestProwlarrHandlerDownloadErrors:
 class TestProwlarrHandlerExistingDownload:
     """Tests for handling existing downloads."""
 
+    def test_prefers_magnet_url_for_torrents(self):
+        """If both downloadUrl and magnetUrl exist, torrents should use magnetUrl."""
+        mock_client = MagicMock()
+        mock_client.name = "qbittorrent"
+        mock_client.find_existing.return_value = None
+
+        with patch(
+            "shelfmark.release_sources.prowlarr.handler.get_release",
+            return_value={
+                "protocol": "torrent",
+                "downloadUrl": "https://prowlarr.example.com/api/v1/indexer/1/download/123",
+                "magnetUrl": "magnet:?xt=urn:btih:abc123&dn=test",
+                "title": "Test Release",
+            },
+        ), patch(
+            "shelfmark.release_sources.prowlarr.handler.get_client",
+            return_value=mock_client,
+        ), patch(
+            "shelfmark.release_sources.prowlarr.handler.remove_release",
+        ), patch.object(
+            ProwlarrHandler,
+            "_poll_and_complete",
+            return_value=None,
+        ):
+            handler = ProwlarrHandler()
+            task = DownloadTask(task_id="torrent-prefers-magnet", source="prowlarr", title="Test Book")
+            cancel_flag = Event()
+            recorder = ProgressRecorder()
+
+            handler.download(
+                task=task,
+                cancel_flag=cancel_flag,
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
+
+            assert mock_client.find_existing.call_count == 1
+            called_url = mock_client.find_existing.call_args.args[0]
+            assert called_url == "magnet:?xt=urn:btih:abc123&dn=test"
+
+    def test_prefers_download_url_for_usenet(self):
+        """If both downloadUrl and magnetUrl exist, usenet should use downloadUrl."""
+        mock_client = MagicMock()
+        mock_client.name = "sabnzbd"
+        mock_client.find_existing.return_value = None
+
+        with patch(
+            "shelfmark.release_sources.prowlarr.handler.get_release",
+            return_value={
+                "protocol": "usenet",
+                "downloadUrl": "https://prowlarr.example.com/api/v1/indexer/1/download/456",
+                "magnetUrl": "magnet:?xt=urn:btih:abc123&dn=test",
+                "title": "Test Release",
+            },
+        ), patch(
+            "shelfmark.release_sources.prowlarr.handler.get_client",
+            return_value=mock_client,
+        ), patch(
+            "shelfmark.release_sources.prowlarr.handler.remove_release",
+        ), patch.object(
+            ProwlarrHandler,
+            "_poll_and_complete",
+            return_value=None,
+        ):
+            handler = ProwlarrHandler()
+            task = DownloadTask(task_id="usenet-prefers-download", source="prowlarr", title="Test Book")
+            cancel_flag = Event()
+            recorder = ProgressRecorder()
+
+            handler.download(
+                task=task,
+                cancel_flag=cancel_flag,
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
+
+            assert mock_client.find_existing.call_count == 1
+            called_url = mock_client.find_existing.call_args.args[0]
+            assert called_url == "https://prowlarr.example.com/api/v1/indexer/1/download/456"
+
     def test_uses_existing_complete_download(self):
         """Test that handler uses existing complete download."""
         with tempfile.TemporaryDirectory() as tmp_dir:

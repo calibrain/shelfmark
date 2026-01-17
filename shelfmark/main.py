@@ -1391,6 +1391,8 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
         # Content type for audiobook vs ebook search
         content_type = request.args.get('content_type', 'ebook').strip()
 
+        manual_query = request.args.get('manual_query', '').strip()
+
         if not provider or not book_id:
             return jsonify({"error": "Parameters 'provider' and 'book_id' are required"}), 400
 
@@ -1429,7 +1431,10 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
                 source = get_source(source_name)
                 source_instances[source_name] = source
                 logger.debug(f"Searching {source_name} for '{book.title}' by {book.authors} (expand={expand_search}, content_type={content_type})")
-                releases = source.search(book, expand_search=expand_search, languages=languages, content_type=content_type)
+                from shelfmark.release_sources.search_plan import build_release_search_plan
+
+                plan = build_release_search_plan(book, languages=languages, manual_query=manual_query)
+                releases = source.search(book, plan, expand_search=expand_search, content_type=content_type)
                 all_releases.extend(releases)
             except ValueError:
                 errors.append(f"Unknown source: {source_name}")

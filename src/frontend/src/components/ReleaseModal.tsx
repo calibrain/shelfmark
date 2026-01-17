@@ -622,6 +622,8 @@ export const ReleaseModal = ({
   // A specific value means "show only that format"
   const [formatFilter, setFormatFilter] = useState<string>('');
   const [languageFilter, setLanguageFilter] = useState<string[]>([LANGUAGE_OPTION_DEFAULT]);
+  const [manualQuery, setManualQuery] = useState<string>('');
+  const [showManualQuery, setShowManualQuery] = useState<boolean>(false);
 
   // Sort state - keyed by source name, persisted to localStorage
   // null means "Default" (backend order), undefined means "not set yet"
@@ -844,7 +846,7 @@ export const ReleaseModal = ({
       setErrorBySource((prev) => ({ ...prev, [activeTab]: null }));
 
       try {
-        const response = await getReleases(provider, bookId, activeTab, book.title, book.author, undefined, undefined, contentType);
+        const response = await getReleases(provider, bookId, activeTab, book.title, book.author, undefined, undefined, contentType, manualQuery.trim() || undefined);
         setCachedReleases(provider, bookId, activeTab, contentType, response);
         setReleasesBySource((prev) => ({ ...prev, [activeTab]: response }));
       } catch (err) {
@@ -856,7 +858,7 @@ export const ReleaseModal = ({
     };
 
     fetchReleases();
-  }, [book, activeTab, releasesBySource, loadingBySource, errorBySource, contentType]);
+  }, [book, activeTab, releasesBySource, loadingBySource, errorBySource, contentType, manualQuery]);
 
   // Handler for expanding search (title+author instead of ISBN)
   // Fetches additional results and merges with existing ISBN results
@@ -879,7 +881,7 @@ export const ReleaseModal = ({
 
       // Fetch with expand_search=true (title+author search)
       const expandedResponse = await getReleases(
-        provider, bookId, activeTab, book.title, book.author, true, languagesParam, contentType
+        provider, bookId, activeTab, book.title, book.author, true, languagesParam, contentType, manualQuery.trim() || undefined
       );
 
       // Merge with existing results, deduplicating by source_id
@@ -906,7 +908,7 @@ export const ReleaseModal = ({
     } finally {
       setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
     }
-  }, [activeTab, book, languageFilter, bookLanguages, defaultLanguages, contentType]);
+  }, [activeTab, book, languageFilter, bookLanguages, defaultLanguages, contentType, manualQuery]);
 
   // Build list of tabs to show
   // Only show enabled sources that support the current content type
@@ -1230,20 +1232,22 @@ export const ReleaseModal = ({
                 {book.author || 'Unknown author'}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleClose}
-              className="rounded-full p-2 text-gray-500 transition-colors hover-action hover:text-gray-900 dark:hover:text-gray-100 flex-shrink-0"
-              aria-label="Close"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={handleClose}
+                className="rounded-full p-2 text-gray-500 transition-colors hover-action hover:text-gray-900 dark:hover:text-gray-100"
+                aria-label="Close"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </header>
 
-          {/* Scrollable content */}
-          <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto">
+           {/* Scrollable content */}
+           <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto">
             {/* Book summary - scrolls with content */}
             <div ref={bookSummaryRef} className="flex gap-4 px-5 py-4 border-b border-[var(--border-muted)]">
               {book.preview ? (
@@ -1401,123 +1405,137 @@ export const ReleaseModal = ({
                     </div>
                   </div>
 
-                  {/* Sort dropdown - only show if source has sortable columns */}
-                  {sortableColumns.length > 0 && (
-                    <Dropdown
-                      align="right"
-                      widthClassName="w-auto flex-shrink-0"
-                      panelClassName="w-48"
-                      renderTrigger={({ isOpen, toggle }) => (
-                        <button
-                          type="button"
-                          onClick={toggle}
-                          className={`relative p-2 rounded-full transition-colors hover-surface text-gray-500 dark:text-gray-400 ${
-                            isOpen ? 'bg-[var(--hover-surface)]' : ''
-                          }`}
-                          aria-label="Sort releases"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5 7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5" />
-                          </svg>
-                          {currentSort && (
-                            <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full" />
-                          )}
-                        </button>
-                      )}
+                  <div className="flex items-center gap-3 pl-2 pr-1">
+                    {/* Manual query button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowManualQuery((prev) => !prev)}
+                      className={`p-2.5 rounded-full transition-colors hover-surface text-gray-500 dark:text-gray-400 ${
+                        manualQuery.trim() ? 'text-emerald-600 dark:text-emerald-400' : ''
+                      }`}
+                      aria-label="Manual search query"
+                      title="Manual query"
                     >
-                      {({ close }) => (
-                        <div className="py-1">
-                          {/* Default option - no client-side sorting */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleSortChange(null, null);
-                              close();
-                            }}
-                            className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between hover-surface rounded ${
-                              !currentSort
-                                ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                                : 'text-gray-700 dark:text-gray-300'
-                            }`}
-                          >
-                            <span>Default</span>
-                            {!currentSort && (
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                              </svg>
-                            )}
-                          </button>
-                          {sortableColumns.map((col) => {
-                            const sortKey = col.sort_key || col.key;
-                            const isSelected = currentSort?.key === sortKey;
-                            const direction = isSelected ? currentSort?.direction : null;
-                            return (
-                              <button
-                                key={sortKey}
-                                type="button"
-                                onClick={() => {
-                                  handleSortChange(sortKey, col);
-                                  // Don't close - allow toggling direction
-                                  if (!isSelected) close();
-                                }}
-                                className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between hover-surface rounded ${
-                                  isSelected
-                                    ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                                    : 'text-gray-700 dark:text-gray-300'
-                                }`}
-                              >
-                                <span>{col.label}</span>
-                                {isSelected && direction && (
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                                    {direction === 'asc' ? (
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
-                                    ) : (
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                                    )}
-                                  </svg>
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </Dropdown>
-                  )}
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 0 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                      </svg>
+                    </button>
 
-                  {/* Filter funnel button - stays fixed */}
-                  {/* Only show filter button if source supports at least one filter type */}
-                  {((columnConfig.supported_filters?.includes('format') && availableFormats.length > 0) ||
-                    (columnConfig.supported_filters?.includes('language') && bookLanguages.length > 0)) && (
-                    <Dropdown
-                      align="right"
-                      widthClassName="w-auto flex-shrink-0"
-                      panelClassName="w-56"
-                      noScrollLimit
-                      renderTrigger={({ isOpen, toggle }) => {
-                        // Active filter: format is set, or language is not just default
-                        const hasLanguageFilter = !(languageFilter.length === 1 && languageFilter[0] === LANGUAGE_OPTION_DEFAULT);
-                        const hasActiveFilter = formatFilter !== '' || hasLanguageFilter;
-                        return (
+                    {/* Sort dropdown - only show if source has sortable columns */}
+                    {sortableColumns.length > 0 && (
+                      <Dropdown
+                        align="right"
+                        widthClassName="w-auto flex-shrink-0"
+                        panelClassName="w-48"
+                        renderTrigger={({ isOpen, toggle }) => (
                           <button
                             type="button"
                             onClick={toggle}
-                            className={`relative p-2 rounded-full transition-colors ${
-                              isOpen
-                                ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
-                                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+                            className={`relative p-2.5 rounded-full transition-colors hover-surface text-gray-500 dark:text-gray-400 ${
+                              isOpen ? 'bg-[var(--hover-surface)]' : ''
                             }`}
-                            aria-label="Filter releases"
+                            aria-label="Sort releases"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5 7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5" />
                             </svg>
-                            {hasActiveFilter && (
+                            {currentSort && (
                               <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full" />
                             )}
                           </button>
-                        );
-                      }}
-                    >
+                        )}
+                      >
+                        {({ close }) => (
+                          <div className="py-1">
+                            {/* Default option - no client-side sorting */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleSortChange(null, null);
+                                close();
+                              }}
+                              className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between hover-surface rounded ${
+                                !currentSort
+                                  ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                                  : 'text-gray-700 dark:text-gray-300'
+                              }`}
+                            >
+                              <span>Default</span>
+                              {!currentSort && (
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                                </svg>
+                              )}
+                            </button>
+                            {sortableColumns.map((col) => {
+                              const sortKey = col.sort_key || col.key;
+                              const isSelected = currentSort?.key === sortKey;
+                              const direction = isSelected ? currentSort?.direction : null;
+                              return (
+                                <button
+                                  key={sortKey}
+                                  type="button"
+                                  onClick={() => {
+                                    handleSortChange(sortKey, col);
+                                    // Don't close - allow toggling direction
+                                    if (!isSelected) close();
+                                  }}
+                                  className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between hover-surface rounded ${
+                                    isSelected
+                                      ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                                      : 'text-gray-700 dark:text-gray-300'
+                                  }`}
+                                >
+                                  <span>{col.label}</span>
+                                  {isSelected && direction && (
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                      {direction === 'asc' ? (
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+                                      ) : (
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                      )}
+                                    </svg>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </Dropdown>
+                    )}
+
+                    {/* Filter funnel button - stays fixed */}
+                    {/* Only show filter button if source supports at least one filter type */}
+                    {((columnConfig.supported_filters?.includes('format') && availableFormats.length > 0) ||
+                      (columnConfig.supported_filters?.includes('language') && bookLanguages.length > 0)) && (
+                      <Dropdown
+                        align="right"
+                        widthClassName="w-auto flex-shrink-0"
+                        panelClassName="w-56"
+                        noScrollLimit
+                        renderTrigger={({ isOpen, toggle }) => {
+                          // Active filter: format is set, or language is not just default
+                          const hasLanguageFilter = !(languageFilter.length === 1 && languageFilter[0] === LANGUAGE_OPTION_DEFAULT);
+                          const hasActiveFilter = formatFilter !== '' || hasLanguageFilter;
+                          return (
+                            <button
+                              type="button"
+                              onClick={toggle}
+                              className={`relative p-2.5 rounded-full transition-colors hover-surface text-gray-500 dark:text-gray-400 ${
+                                isOpen ? 'bg-[var(--hover-surface)]' : ''
+                              }`}
+                              aria-label="Filter releases"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+                              </svg>
+                              {hasActiveFilter && (
+                                <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full" />
+                              )}
+                            </button>
+                          );
+                        }}
+                      >
                       {({ close }) => (
                         <div className="p-4 space-y-4">
                           {columnConfig.supported_filters?.includes('format') && availableFormats.length > 0 && (
@@ -1538,8 +1556,8 @@ export const ReleaseModal = ({
                               defaultLanguageCodes={defaultLanguages}
                             />
                           )}
-                          {/* Apply button - for AA, re-fetches with language filter; for others, just closes */}
-                          {activeTab === 'direct_download' && (
+                          {/* Apply button - re-fetch with server-side filters/expansion (e.g. language-aware searches) */}
+                          {(activeTab === 'direct_download' || activeTab === 'prowlarr') && (
                             <button
                               type="button"
                               onClick={async () => {
@@ -1575,7 +1593,7 @@ export const ReleaseModal = ({
                                     : langCodes;
 
                                   const response = await getReleases(
-                                    provider, bookId, activeTab, book.title, book.author, false, languagesParam, contentType
+                                    provider, bookId, activeTab, book.title, book.author, false, languagesParam, contentType, manualQuery.trim() || undefined
                                   );
                                   setCachedReleases(provider, bookId, activeTab, contentType, response);
                                   setReleasesBySource((prev) => ({ ...prev, [activeTab]: response }));
@@ -1595,9 +1613,85 @@ export const ReleaseModal = ({
                       )}
                     </Dropdown>
                   )}
+                  </div>
                 </div>
               )}
             </div>
+
+            {/* Manual query panel (below source tabs) */}
+            {showManualQuery && (
+              <div className="px-5 py-3 border-b border-[var(--border-muted)] bg-[var(--bg)] sm:bg-[var(--bg-soft)]">
+                <form
+                  className="flex items-center gap-2"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!book?.provider || !book?.provider_id) return;
+
+                    const q = manualQuery.trim();
+                    if (!q) return;
+
+                    const provider = book.provider;
+                    const bookId = book.provider_id;
+
+                    // Clear cache + clear visible results so user gets feedback.
+                    const key = getCacheKey(provider, bookId, activeTab, contentType);
+                    releaseCache.delete(key);
+                    cacheTimestamps.delete(key);
+                    setExpandedBySource((prev) => {
+                      const next = { ...prev };
+                      delete next[activeTab];
+                      return next;
+                    });
+                    setErrorBySource((prev) => ({ ...prev, [activeTab]: null }));
+                    setReleasesBySource((prev) => ({ ...prev, [activeTab]: null }));
+
+                    setLoadingBySource((prev) => ({ ...prev, [activeTab]: true }));
+                    try {
+                      const response = await getReleases(
+                        provider,
+                        bookId,
+                        activeTab,
+                        book.title,
+                        book.author,
+                        false,
+                        undefined,
+                        contentType,
+                        q
+                      );
+                      setCachedReleases(provider, bookId, activeTab, contentType, response);
+                      setReleasesBySource((prev) => ({ ...prev, [activeTab]: response }));
+                    } catch (err) {
+                      const message = err instanceof Error ? err.message : 'Failed to fetch releases';
+                      setErrorBySource((prev) => ({ ...prev, [activeTab]: message }));
+                    } finally {
+                      setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
+                    }
+                  }}
+                >
+                  <input
+                    type="text"
+                    value={manualQuery}
+                    onChange={(e) => setManualQuery(e.target.value)}
+                    placeholder="Type a custom search query (overrides all sources)"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border-muted)] bg-[var(--bg)] text-[var(--text)]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={currentTabLoading || !manualQuery.trim()}
+                    className={`px-3 py-2 text-sm font-medium text-white rounded-lg transition-colors ${
+                      currentTabLoading || !manualQuery.trim()
+                        ? 'bg-emerald-600/60 cursor-not-allowed'
+                        : 'bg-emerald-600 hover:bg-emerald-700'
+                    }`}
+                  >
+                    {currentTabLoading ? 'Searching…' : 'Search'}
+                  </button>
+                </form>
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Manual query overrides ISBN/title/author/language expansion.
+                </p>
+              </div>
+            )}
 
             {/* Release list content */}
             <div className="min-h-[200px]">

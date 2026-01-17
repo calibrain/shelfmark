@@ -325,7 +325,8 @@ export const getReleases = async (
   author?: string,
   expandSearch?: boolean,
   languages?: string[],
-  contentType?: string
+  contentType?: string,
+  manualQuery?: string
 ): Promise<ReleasesResponse> => {
   const params = new URLSearchParams({
     provider,
@@ -348,6 +349,9 @@ export const getReleases = async (
   }
   if (contentType) {
     params.set('content_type', contentType);
+  }
+  if (manualQuery) {
+    params.set('manual_query', manualQuery);
   }
   const timeoutMs = expandSearch ? EXPANDED_RELEASES_TIMEOUT_MS : DEFAULT_TIMEOUT_MS;
   return fetchJSON<ReleasesResponse>(`${API_BASE}/releases?${params.toString()}`, {}, timeoutMs);

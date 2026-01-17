@@ -4,7 +4,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from threading import Event
-from typing import List, Optional, Dict, Type, Callable, Literal, Any
+from typing import List, Optional, Dict, Type, Callable, Literal, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from shelfmark.release_sources.search_plan import ReleaseSearchPlan
 
 from shelfmark.core.models import DownloadTask
 from shelfmark.metadata_providers import BookMetadata
@@ -233,8 +236,8 @@ class ReleaseSource(ABC):
     def search(
         self,
         book: BookMetadata,
+        plan: "ReleaseSearchPlan",
         expand_search: bool = False,
-        languages: Optional[List[str]] = None,
         content_type: str = "ebook"
     ) -> List[Release]:
         """Search for releases of a book."""
@@ -245,8 +248,7 @@ class ReleaseSource(ABC):
         """Check if this source is configured and reachable."""
         pass
 
-    @classmethod
-    def get_column_config(cls) -> ReleaseColumnConfig:
+    def get_column_config(self) -> ReleaseColumnConfig:
         """Get column configuration for release list UI. Override for custom columns."""
         return _default_column_config()
 

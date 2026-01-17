@@ -1,13 +1,17 @@
 """Prowlarr release source - searches indexers for book releases (torrents/usenet)."""
 
 import re
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from shelfmark.release_sources.search_plan import ReleaseSearchPlan
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.metadata_providers import BookMetadata, build_localized_search_titles
+from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources import (
     Release,
+    ReleaseProtocol,
     ReleaseSource,
     register_source,
     ReleaseColumnConfig,
@@ -20,7 +24,7 @@ from shelfmark.release_sources import (
 )
 from shelfmark.release_sources.prowlarr.api import ProwlarrClient
 from shelfmark.release_sources.prowlarr.cache import cache_release
-from shelfmark.release_sources.prowlarr.utils import get_protocol_display
+from shelfmark.release_sources.prowlarr.utils import get_preferred_download_url, get_protocol
 
 logger = setup_logger(__name__)
 
@@ -136,11 +140,11 @@ def _prowlarr_result_to_release(result: dict, search_content_type: str = "ebook"
     title = result.get("title", "Unknown")
     size_bytes = result.get("size")
     indexer = result.get("indexer", "Unknown")
-    protocol = get_protocol_display(result)
+    protocol = get_protocol(result)
     seeders = result.get("seeders")
     leechers = result.get("leechers")
     categories = result.get("categories", [])
-    is_torrent = protocol == "torrent"
+    is_torrent = protocol == ReleaseProtocol.TORRENT
 
     # Format peers display string: "seeders / leechers"
     peers_display = (
@@ -167,9 +171,15 @@ def _prowlarr_result_to_release(result: dict, search_content_type: str = "ebook"
         language=_extract_language(title),
         size=_parse_size(size_bytes),
         size_bytes=size_bytes,
-        download_url=result.get("downloadUrl") or result.get("magnetUrl"),
+        download_url=get_preferred_download_url(result),
         info_url=result.get("infoUrl") or result.get("guid"),
-        protocol=protocol,
+        protocol=(
+            ReleaseProtocol.TORRENT
+            if protocol == "torrent"
+            else ReleaseProtocol.NZB
+            if protocol == "usenet"
+            else None
+        ),
         indexer=indexer,
         seeders=seeders if is_torrent else None,
         peers=peers_display,
@@ -195,8 +205,7 @@ class ProwlarrSource(ReleaseSource):
     def __init__(self):
         self.last_search_type: Optional[str] = None
 
-    @classmethod
-    def get_column_config(cls) -> ReleaseColumnConfig:
+    def get_column_config(self) -> ReleaseColumnConfig:
         """Column configuration for Prowlarr releases."""
         return ReleaseColumnConfig(
             columns=[
@@ -254,7 +263,7 @@ class ProwlarrSource(ReleaseSource):
             ],
             grid_template="minmax(0,2fr) minmax(80px,1fr) 60px 70px 90px 80px",
             leading_cell=LeadingCellConfig(type=LeadingCellType.NONE),  # No leading cell for Prowlarr
-            supported_filters=[],  # Prowlarr has unreliable format/language metadata; content_type is auto-detected
+            supported_filters=["language"],  # Enables multi-language query expansion; Prowlarr language metadata is unreliable
         )
 
     def _get_client(self) -> Optional[ProwlarrClient]:
@@ -294,8 +303,8 @@ class ProwlarrSource(ReleaseSource):
     def search(
         self,
         book: BookMetadata,
+        plan: "ReleaseSearchPlan",  # noqa: F821
         expand_search: bool = False,
-        languages: Optional[List[str]] = None,
         content_type: str = "ebook"
     ) -> List[Release]:
         """Search Prowlarr indexers for releases matching the book."""
@@ -304,43 +313,11 @@ class ProwlarrSource(ReleaseSource):
             logger.warning("Prowlarr not configured - skipping search")
             return []
 
-        # Build search queries (optionally include localized titles)
-        query_author = ""
-        if book.search_author:
-            query_author = book.search_author
-        elif book.authors:
-            # Use first author only - authors may be a list or a single string
-            # that contains multiple comma-separated names (from frontend)
-            first_author = book.authors[0]
-            # If first author contains comma, split and use only the primary author
-            if "," in first_author:
-                first_author = first_author.split(",")[0].strip()
-            query_author = first_author
-
-        # Prefer search_title if available (cleaner title for searches)
-        search_title = book.search_title or book.title
-
-        language_preferences = languages or ([book.language] if book.language else None)
-        search_titles = build_localized_search_titles(
-            base_title=search_title,
-            languages=language_preferences,
-            titles_by_language=book.titles_by_language,
-            # Keep the existing search_title behavior for English while still
-            # allowing additional localized searches for other languages.
-            excluded_languages={"en", "eng", "english"},
-        )
-
-        queries = [
-            " ".join(part for part in [title, query_author] if part).strip()
-            for title in search_titles
-        ]
+        queries = [v.query for v in plan.title_variants if v.query]
         queries = [q for q in queries if q]
 
-        if not queries:
-            # Try ISBN as fallback
-            isbn_query = book.isbn_13 or book.isbn_10 or ""
-            if isbn_query:
-                queries = [isbn_query]
+        if not queries and plan.isbn_candidates:
+            queries = list(plan.isbn_candidates)
 
         if not queries:
             logger.warning("No search query available for book")
@@ -352,8 +329,16 @@ class ProwlarrSource(ReleaseSource):
         # Get search categories based on content type
         # Audiobooks use 3030 (Audio/Audiobook), ebooks use 7000 (Books)
         search_categories = [3030] if content_type == "audiobook" else [7000]
-        categories = None if expand_search else search_categories
-        self.last_search_type = "expanded" if expand_search else "categories"
+
+        # Manual query override should behave like normal Prowlarr searches:
+        # - default: search within the content-type categories
+        # - expand: rerun without categories
+        if plan.manual_query:
+            categories = None if expand_search else search_categories
+            self.last_search_type = "manual_expanded" if expand_search else "manual_query"
+        else:
+            categories = None if expand_search else search_categories
+            self.last_search_type = "expanded" if expand_search else "categories"
 
         indexer_desc = f"indexers={indexer_ids}" if indexer_ids else "all enabled indexers"
         if len(queries) == 1:
@@ -417,8 +402,8 @@ class ProwlarrSource(ReleaseSource):
             results = [_prowlarr_result_to_release(r, content_type) for r in all_results]
 
             if results:
-                torrent_count = sum(1 for r in results if r.protocol == "torrent")
-                nzb_count = sum(1 for r in results if r.protocol == "nzb")
+                torrent_count = sum(1 for r in results if r.protocol == ReleaseProtocol.TORRENT)
+                nzb_count = sum(1 for r in results if r.protocol == ReleaseProtocol.NZB)
                 indexers = sorted(set(r.indexer for r in results if r.indexer))
                 indexer_str = ", ".join(indexers) if indexers else "unknown"
                 logger.info(f"Prowlarr: {len(results)} results ({torrent_count} torrent, {nzb_count} nzb) from {indexer_str}")

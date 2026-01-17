@@ -16,7 +16,7 @@ from shelfmark.release_sources.prowlarr.clients import (
     get_client,
     list_configured_clients,
 )
-from shelfmark.release_sources.prowlarr.utils import get_protocol
+from shelfmark.release_sources.prowlarr.utils import get_preferred_download_url, get_protocol
 
 logger = setup_logger(__name__)
 
@@ -165,7 +165,7 @@ class ProwlarrHandler(DownloadHandler):
                 return None
 
             # Extract download URL
-            download_url = prowlarr_result.get("downloadUrl") or prowlarr_result.get("magnetUrl")
+            download_url = get_preferred_download_url(prowlarr_result)
             if not download_url:
                 status_callback("error", "No download URL available")
                 return None

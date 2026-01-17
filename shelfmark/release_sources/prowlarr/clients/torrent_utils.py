@@ -5,10 +5,11 @@ import hashlib
 import re
 from dataclasses import dataclass
 from typing import Optional, Tuple
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
 
+from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -32,7 +33,16 @@ class TorrentInfo:
 
 
 def extract_torrent_info(url: str, fetch_torrent: bool = True) -> TorrentInfo:
-    """Extract info_hash from magnet link or .torrent URL."""
+    """Extract info_hash from magnet link or .torrent URL.
+
+    Notes:
+        When the URL points at Prowlarr's proxied download endpoint, it typically
+        requires the `X-Api-Key` header. If `PROWLARR_API_KEY` is configured,
+        include it for the torrent fetch request.
+
+        This mirrors how Sonarr builds an authenticated download request via the
+        indexer when grabbing torrent files.
+    """
     is_magnet = url.startswith("magnet:")
 
     # Try to extract hash from magnet URL
@@ -44,25 +54,36 @@ def extract_torrent_info(url: str, fetch_torrent: bool = True) -> TorrentInfo:
     if not fetch_torrent:
         return TorrentInfo(info_hash=None, torrent_data=None, is_magnet=False)
 
+    headers: dict[str, str] = {}
+    api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()
+    if api_key:
+        headers["X-Api-Key"] = api_key
+
+    def resolve_url(current: str, location: str) -> str:
+        if not location:
+            return current
+        # Support relative redirect locations
+        return urljoin(current, location)
+
     try:
         logger.debug(f"Fetching torrent file from: {url[:80]}...")
 
         # Use allow_redirects=False to handle magnet link redirects manually
         # Some indexers redirect download URLs to magnet links
-        resp = requests.get(url, timeout=30, allow_redirects=False)
+        resp = requests.get(url, timeout=30, allow_redirects=False, headers=headers)
 
         # Check if this is a redirect to a magnet link
         if resp.status_code in (301, 302, 303, 307, 308):
-            redirect_url = resp.headers.get("Location", "")
+            redirect_url = resolve_url(url, resp.headers.get("Location", ""))
             if redirect_url.startswith("magnet:"):
-                logger.debug(f"Download URL redirected to magnet link")
+                logger.debug("Download URL redirected to magnet link")
                 info_hash = extract_hash_from_magnet(redirect_url)
                 return TorrentInfo(
                     info_hash=info_hash, torrent_data=None, is_magnet=True, magnet_url=redirect_url
                 )
             # Not a magnet redirect, follow it manually
             logger.debug(f"Following redirect to: {redirect_url[:80]}...")
-            resp = requests.get(redirect_url, timeout=30)
+            resp = requests.get(redirect_url, timeout=30, headers=headers)
 
         resp.raise_for_status()
         torrent_data = resp.content

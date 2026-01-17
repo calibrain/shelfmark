@@ -6,7 +6,10 @@ Searches IRC ebook channels for book releases.
 import tempfile
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from shelfmark.release_sources.search_plan import ReleaseSearchPlan
 
 from shelfmark.api.websocket import ws_manager
 from shelfmark.core.config import config
@@ -74,8 +77,7 @@ class IRCReleaseSource(ReleaseSource):
         # Track online servers from most recent search
         self._online_servers: Optional[set[str]] = None
 
-    @classmethod
-    def is_available(cls) -> bool:
+    def is_available(self) -> bool:
         """Check if IRC is configured (server, channel, and nick are set)."""
         server = config.get("IRC_SERVER", "")
         channel = config.get("IRC_CHANNEL", "")
@@ -122,8 +124,8 @@ class IRCReleaseSource(ReleaseSource):
     def search(
         self,
         book: BookMetadata,
+        plan: "ReleaseSearchPlan",
         expand_search: bool = False,
-        languages: Optional[List[str]] = None,
         content_type: str = "ebook"
     ) -> List[Release]:
         """Search IRC for books matching metadata.
@@ -146,7 +148,7 @@ class IRCReleaseSource(ReleaseSource):
                 return cached["releases"]
 
         # Build search query
-        query = self._build_query(book)
+        query = plan.primary_query or self._build_query(book)
         if not query:
             logger.warning("No search query could be built")
             return []
@@ -248,8 +250,8 @@ class IRCReleaseSource(ReleaseSource):
         """Build search query from book metadata."""
         parts = []
 
-        if book.title:
-            parts.append(book.title)
+        if book.search_title or book.title:
+            parts.append(book.search_title or book.title)
 
         if book.search_author:
             parts.append(book.search_author)

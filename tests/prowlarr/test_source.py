@@ -225,6 +225,82 @@ class TestExtractLanguage:
 
 
 class TestProwlarrLocalizedQueries:
+    def test_manual_query_still_applies_content_type_categories(self, monkeypatch):
+        class FakeClient:
+            def __init__(self):
+                self.calls: list[tuple[str, object]] = []
+
+            def search(self, query: str, indexer_ids=None, categories=None):
+                self.calls.append((query, categories))
+                return []
+
+        import shelfmark.release_sources.prowlarr.source as prowlarr_source
+
+        def fake_get(key: str, default=None):
+            values = {
+                "PROWLARR_INDEXERS": "",
+                "PROWLARR_AUTO_EXPAND": False,
+            }
+            return values.get(key, default)
+
+        monkeypatch.setattr(prowlarr_source.config, "get", fake_get)
+
+        fake_client = FakeClient()
+        source = ProwlarrSource()
+        monkeypatch.setattr(source, "_get_client", lambda: fake_client)
+
+        book = BookMetadata(
+            provider="hardcover",
+            provider_id="123",
+            title="Anything",
+            authors=["Someone"],
+        )
+
+        from shelfmark.release_sources.search_plan import build_release_search_plan
+
+        plan = build_release_search_plan(book, languages=["en"], manual_query="my custom")
+        source.search(book, plan, content_type="audiobook")
+
+        assert fake_client.calls == [("my custom", [3030])]
+
+    def test_manual_query_expand_removes_categories(self, monkeypatch):
+        class FakeClient:
+            def __init__(self):
+                self.calls: list[tuple[str, object]] = []
+
+            def search(self, query: str, indexer_ids=None, categories=None):
+                self.calls.append((query, categories))
+                return []
+
+        import shelfmark.release_sources.prowlarr.source as prowlarr_source
+
+        def fake_get(key: str, default=None):
+            values = {
+                "PROWLARR_INDEXERS": "",
+                "PROWLARR_AUTO_EXPAND": False,
+            }
+            return values.get(key, default)
+
+        monkeypatch.setattr(prowlarr_source.config, "get", fake_get)
+
+        fake_client = FakeClient()
+        source = ProwlarrSource()
+        monkeypatch.setattr(source, "_get_client", lambda: fake_client)
+
+        book = BookMetadata(
+            provider="hardcover",
+            provider_id="123",
+            title="Anything",
+            authors=["Someone"],
+        )
+
+        from shelfmark.release_sources.search_plan import build_release_search_plan
+
+        plan = build_release_search_plan(book, languages=["en"], manual_query="my custom")
+        source.search(book, plan, expand_search=True, content_type="audiobook")
+
+        assert fake_client.calls == [("my custom", None)]
+
     def test_search_uses_localized_titles_when_available(self, monkeypatch):
         class FakeClient:
             def __init__(self):
@@ -257,7 +333,10 @@ class TestProwlarrLocalizedQueries:
             titles_by_language={"hu": "A villámtolvaj"},
         )
 
-        source.search(book, languages=["en", "hu"], content_type="ebook")
+        from shelfmark.release_sources.search_plan import build_release_search_plan
+
+        plan = build_release_search_plan(book, languages=["en", "hu"])
+        source.search(book, plan, content_type="ebook")
 
         assert "The Lightning Thief Rick Riordan" in fake_client.queries
         assert "A villámtolvaj Rick Riordan" in fake_client.queries
@@ -300,7 +379,10 @@ class TestProwlarrLocalizedQueries:
             },
         )
 
-        source.search(book, languages=["en", "hu"], content_type="ebook")
+        from shelfmark.release_sources.search_plan import build_release_search_plan
+
+        plan = build_release_search_plan(book, languages=["en", "hu"])
+        source.search(book, plan, content_type="ebook")
 
         assert "The Final Empire Brandon Sanderson" in fake_client.queries
         assert "A végső birodalom Brandon Sanderson" in fake_client.queries

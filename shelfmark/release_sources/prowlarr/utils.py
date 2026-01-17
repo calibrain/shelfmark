@@ -9,31 +9,49 @@ from typing import Optional
 
 
 def get_protocol(result: dict) -> str:
+    """Get the download protocol from a Prowlarr result.
+
+    Uses the protocol field directly if available, otherwise infers from URLs.
     """
-    Get the download protocol from a Prowlarr result.
-
-    Uses the protocol field directly if available, otherwise infers from URL.
-
-    Args:
-        result: Prowlarr search result dictionary
-
-    Returns:
-        Protocol string: "torrent", "usenet", or "unknown"
-    """
-    # Prowlarr provides protocol directly - use it
-    protocol = result.get("protocol", "").lower()
+    protocol = str(result.get("protocol", "")).lower()
     if protocol in ("torrent", "usenet"):
         return protocol
 
-    # Fallback: infer from download URL
-    download_url = result.get("downloadUrl") or result.get("magnetUrl") or ""
-    url_lower = download_url.lower()
-    if url_lower.startswith("magnet:") or ".torrent" in url_lower:
+    magnet_url = str(result.get("magnetUrl") or "").lower()
+    download_url = str(result.get("downloadUrl") or "").lower()
+
+    # Prefer magnetUrl for inference if present.
+    if magnet_url.startswith("magnet:"):
         return "torrent"
-    if ".nzb" in url_lower:
+
+    if download_url.startswith("magnet:") or ".torrent" in download_url:
+        return "torrent"
+    if ".nzb" in download_url:
         return "usenet"
 
     return "unknown"
+
+
+def get_preferred_download_url(result: dict) -> str:
+    """Pick the best URL to hand to a download client.
+
+    For torrent results, prefer magnetUrl when available (downloadUrl may be a
+    Prowlarr proxy URL that needs auth/headers).
+    """
+    protocol = str(result.get("protocol", "")).lower()
+    magnet_url = str(result.get("magnetUrl") or "").strip()
+    download_url = str(result.get("downloadUrl") or "").strip()
+
+    if protocol == "torrent":
+        return magnet_url or download_url
+    if protocol == "usenet":
+        return download_url or magnet_url
+
+    # Unknown protocol: if it looks like a magnet, still prefer it.
+    if magnet_url.lower().startswith("magnet:"):
+        return magnet_url
+
+    return download_url or magnet_url
 
 
 def get_protocol_display(result: dict) -> str:

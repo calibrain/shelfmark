@@ -1090,8 +1090,7 @@ class DirectDownloadSource(ReleaseSource):
         """Returns the search type used in the last search() call."""
         return self._last_search_type
 
-    @classmethod
-    def get_column_config(cls) -> ReleaseColumnConfig:
+    def get_column_config(self) -> ReleaseColumnConfig:
         """Column configuration for Direct Download source.
 
         Shows language, format, and size badges for each release.
@@ -1135,8 +1134,8 @@ class DirectDownloadSource(ReleaseSource):
     def search(
         self,
         book: BookMetadata,
+        plan: "ReleaseSearchPlan",  # noqa: F821
         expand_search: bool = False,
-        languages: Optional[List[str]] = None,
         content_type: str = "ebook"
     ) -> List[Release]:
         """
@@ -1151,15 +1150,17 @@ class DirectDownloadSource(ReleaseSource):
             languages: Language codes to filter by (overrides book.language/config)
             content_type: Ignored - Direct download uses format filtering instead
         """
-        # Language filter: explicit param > book.language > config default
-        lang_filter = languages or ([book.language] if book.language else config.BOOK_LANGUAGE)
+        lang_filter = plan.languages
 
         # Reset search type tracking
         self._last_search_type = "title_author"
 
         # ISBN search first (unless expand_search requested)
+        if plan.manual_query:
+            expand_search = True
+
         if not expand_search:
-            isbn = book.isbn_13 or book.isbn_10
+            isbn = plan.isbn_candidates[0] if plan.isbn_candidates else None
             if isbn:
                 logger.debug(f"Searching by ISBN: {isbn}")
                 filters = SearchFilters(isbn=[isbn])
@@ -1178,14 +1179,8 @@ class DirectDownloadSource(ReleaseSource):
                     logger.warning(f"ISBN search failed: {e}")
 
         # Title + author fallback
-        author = book.search_author or (book.authors[0] if book.authors else "")
-
-        # Group languages by localized title to avoid duplicate searches
-        searches = group_languages_by_localized_title(
-            base_title=book.title,
-            languages=lang_filter,
-            titles_by_language=book.titles_by_language,
-        )
+        author = plan.author
+        searches = [(v.title, v.languages) for v in plan.grouped_title_variants]
 
         # Execute searches with deduplication
         seen_ids: set = set()
