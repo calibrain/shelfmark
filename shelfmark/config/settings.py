@@ -1169,17 +1169,11 @@ def advanced_settings():
         HeadingField(
             key="remote_path_mappings_heading",
             title="Remote Path Mappings",
-            description=(
-                "If your download client reports paths that don't exist inside the Shelfmark container, "
-                "add a mapping from the client's path to the path inside Shelfmark. "
-                "This is commonly needed when the download client is running on another machine, "
-                "or when Docker volume mounts differ between containers."
-            ),
+            description="Map download client paths to paths inside Shelfmark. Needed when volume mounts differ between containers.",
         ),
         TableField(
             key="PROWLARR_REMOTE_PATH_MAPPINGS",
-            label="Prowlarr: Remote Path Mappings",
-            description="Map remote paths (as reported by the download client) to local paths (inside the Shelfmark container).",
+            label="Path Mappings",
             columns=[
                 {
                     "key": "host",
