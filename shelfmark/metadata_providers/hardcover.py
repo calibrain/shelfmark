@@ -1,5 +1,6 @@
 """Hardcover.app metadata provider. Requires API key."""
 
+import re
 import requests
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -95,27 +96,139 @@ def _build_source_url(slug: str) -> Optional[str]:
     return f"https://hardcover.app/books/{slug}" if slug else None
 
 
-def _compute_search_title(title: str, subtitle: Optional[str]) -> Optional[str]:
-    """Compute a cleaner search title from title and subtitle.
+def _is_probably_series_position(subtitle: str) -> bool:
+    normalized = subtitle.strip().lower()
 
-    When Hardcover uses the "Series: Book Title" format, the subtitle contains
-    the actual book title which is better for searching. For example:
-    - title: "Mistborn: The Final Empire"
-    - subtitle: "The Final Empire"
-    - search_title: "The Final Empire" (better for Prowlarr/indexer searches)
+    # Common patterns: "Book One", "Book 1", "Part 2", "Volume III", etc.
+    if re.match(r"^(book|part|volume|vol\.?|episode)\s+([0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b", normalized):
+        return True
 
-    Skips subtitles that start with series position indicators like "Book One",
-    "Part 1", "Volume 2" as these are descriptors, not the actual title.
+    # e.g. "A Novel", "An Epic Fantasy", etc. These add noise to indexer queries.
+    if normalized in {"a novel", "a novella", "a story", "a memoir"}:
+        return True
+
+    return False
+
+
+def _strip_parenthetical_suffix(title: str) -> str:
+    # Drop trailing qualifiers like "(Unabridged)", "(Illustrated Edition)", etc.
+    return re.sub(r"\s*\([^)]*\)\s*$", "", title).strip()
+
+
+def _simplify_author_for_search(author: str) -> Optional[str]:
+    """Return a looser author string for indexer searches.
+
+    Primary goal: reduce mismatch between metadata providers and indexers.
+
+    Heuristics (intentionally conservative):
+    - Remove middle initials (e.g. "Robert R. McCammon" -> "Robert McCammon")
+    - Remove standalone middle names that are just an initial or initial+dot
+    - Preserve suffixes like "Jr."/"Sr."/"III" as they sometimes matter
     """
-    if not subtitle or subtitle not in title:
+    if not author:
         return None
 
-    # Skip if subtitle starts with series position indicators
-    skip_prefixes = ('book ', 'part ', 'volume ')
-    if subtitle.lower().startswith(skip_prefixes):
+    normalized = " ".join(author.split()).strip()
+    if not normalized:
         return None
 
-    return subtitle
+    # Handle "Last, First ..." -> "First ... Last"
+    if "," in normalized:
+        parts = [p.strip() for p in normalized.split(",") if p.strip()]
+        if len(parts) >= 2:
+            normalized = " ".join(parts[1:] + [parts[0]]).strip()
+
+    tokens = normalized.split(" ")
+    if len(tokens) < 2:
+        return None
+
+    keep_suffixes = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v"}
+
+    simplified: list[str] = []
+    for idx, token in enumerate(tokens):
+        t = token.strip()
+        if not t:
+            continue
+
+        t_lower = t.lower()
+        is_suffix = (idx == len(tokens) - 1) and (t_lower in keep_suffixes)
+        if is_suffix:
+            simplified.append(t)
+            continue
+
+        # Drop middle initials like "R." or "R"
+        is_initial = re.match(r"^[A-Za-z]\.?$", t) is not None
+        is_middle_token = 0 < idx < (len(tokens) - 1)
+        if is_middle_token and is_initial:
+            continue
+
+        simplified.append(t)
+
+    if len(simplified) < 2:
+        return None
+
+    candidate = " ".join(simplified).strip()
+    if candidate.lower() == normalized.lower():
+        return None
+
+    return candidate
+
+
+def _compute_search_title(
+    title: str,
+    subtitle: Optional[str],
+    *,
+    series_name: Optional[str] = None,
+) -> Optional[str]:
+    """Compute a provider-specific, *looser* title for indexer searching.
+
+    Goal: produce a string that maximizes recall in downstream sources (Prowlarr,
+    IRC bots, etc.). Being too detailed is counterproductive.
+
+    Hardcover often stores titles in a "Series: Book Title" format and places the
+    standalone book title in `subtitle`. When this appears to be the case, prefer
+    the subtitle (unless it looks like a series position or other noise).
+
+    Additional heuristics:
+    - If Hardcover prefixes the series in the title, remove it.
+    - Drop trailing parenthetical qualifiers.
+    """
+    if not title:
+        return None
+
+    original_title = " ".join(title.split()).strip()
+
+    normalized_title = _strip_parenthetical_suffix(original_title)
+
+    normalized_subtitle = " ".join(subtitle.split()).strip() if subtitle else ""
+    normalized_subtitle = _strip_parenthetical_suffix(normalized_subtitle) if normalized_subtitle else ""
+
+    if normalized_subtitle and normalized_subtitle.lower() == normalized_title.lower():
+        normalized_subtitle = ""
+
+    # Prefer subtitle when it looks like the real title.
+    if normalized_subtitle and not _is_probably_series_position(normalized_subtitle):
+        # If title contains the subtitle, this is likely "Series: Subtitle".
+        if normalized_subtitle.lower() in normalized_title.lower():
+            return normalized_subtitle
+
+    # If we know the series name (from full book fetch), strip it.
+    if series_name:
+        series_normalized = " ".join(series_name.split()).strip()
+        if series_normalized:
+            # Common Hardcover format: "Series: Book Title".
+            prefix = f"{series_normalized}:"
+            if normalized_title.lower().startswith(prefix.lower()):
+                candidate = normalized_title[len(prefix):].strip()
+                candidate = _strip_parenthetical_suffix(candidate)
+                if candidate and candidate.lower() != normalized_title.lower():
+                    return candidate
+
+    # Last resort: return a cleaned version of the title if we removed noise.
+    if normalized_title and normalized_title.lower() != original_title.lower():
+        return normalized_title
+
+    return None
 
 
 @register_provider_kwargs("hardcover")
@@ -557,6 +670,8 @@ class HardcoverProvider(MetadataProvider):
             # Normalize whitespace in author names (some API data has multiple spaces)
             authors = [" ".join(name.split()) for name in authors]
 
+            search_author = _simplify_author_for_search(authors[0]) if authors else None
+
             cover_url = _extract_cover_url(item, "image")
             publish_year = _extract_publish_year(item)
             source_url = _build_source_url(item.get("slug", ""))
@@ -592,6 +707,7 @@ class HardcoverProvider(MetadataProvider):
                 title=title,
                 subtitle=subtitle,
                 search_title=_compute_search_title(title, subtitle),
+                search_author=search_author,
                 provider_display_name="Hardcover",
                 authors=authors,
                 cover_url=cover_url,
@@ -601,12 +717,16 @@ class HardcoverProvider(MetadataProvider):
                 display_fields=display_fields,
             )
 
+
         except Exception as e:
             logger.debug(f"Failed to parse Hardcover search result: {e}")
             return None
 
     def _parse_book(self, book: Dict) -> BookMetadata:
         """Parse a book object into BookMetadata."""
+        title = str(book.get("title") or "")
+        subtitle = book.get("subtitle")
+
         # Extract authors - try contributions first (filtered), fall back to cached_contributors
         authors = []
         contributions = book.get("contributions") or []
@@ -633,6 +753,8 @@ class HardcoverProvider(MetadataProvider):
 
         # Normalize whitespace in author names (some API data has multiple spaces)
         authors = [" ".join(name.split()) for name in authors]
+
+        search_author = _simplify_author_for_search(authors[0]) if authors else None
 
         cover_url = _extract_cover_url(book, "cached_image", "image")
         publish_year = _extract_publish_year(book)
@@ -709,29 +831,28 @@ class HardcoverProvider(MetadataProvider):
                 if code3 and code3 not in titles_by_language:
                     titles_by_language[code3] = edition_title
 
-        title = book["title"]
-        subtitle = book.get("subtitle")
-
         return BookMetadata(
-            provider="hardcover",
-            provider_id=str(book["id"]),
-            title=title,
-            subtitle=subtitle,
-            search_title=_compute_search_title(title, subtitle),
-            provider_display_name="Hardcover",
-            authors=authors,
-            isbn_10=isbn_10,
-            isbn_13=isbn_13,
-            cover_url=cover_url,
-            description=full_description,
-            publish_year=publish_year,
-            genres=genres,
-            source_url=source_url,
-            series_name=series_name,
-            series_position=series_position,
-            series_count=series_count,
-            titles_by_language=titles_by_language,
-        )
+             provider="hardcover",
+             provider_id=str(book["id"]),
+             title=title,
+             subtitle=subtitle,
+             search_title=_compute_search_title(title, subtitle, series_name=series_name),
+             search_author=search_author,
+             provider_display_name="Hardcover",
+             authors=authors,
+             isbn_10=isbn_10,
+             isbn_13=isbn_13,
+             cover_url=cover_url,
+             description=full_description,
+             publish_year=publish_year,
+             genres=genres,
+             source_url=source_url,
+             series_name=series_name,
+             series_position=series_position,
+             series_count=series_count,
+             titles_by_language=titles_by_language,
+         )
+
 
 
 def _test_hardcover_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

@@ -306,7 +306,9 @@ class ProwlarrSource(ReleaseSource):
 
         # Build search queries (optionally include localized titles)
         query_author = ""
-        if book.authors:
+        if book.search_author:
+            query_author = book.search_author
+        elif book.authors:
             # Use first author only - authors may be a list or a single string
             # that contains multiple comma-separated names (from frontend)
             first_author = book.authors[0]

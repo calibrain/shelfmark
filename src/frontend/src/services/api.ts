@@ -200,6 +200,7 @@ export const downloadRelease = async (release: {
   series_name?: string;
   series_position?: number;
   subtitle?: string;
+  search_author?: string;
 }): Promise<void> => {
   await fetchJSON(`${API_BASE}/releases/download`, {
     method: 'POST',

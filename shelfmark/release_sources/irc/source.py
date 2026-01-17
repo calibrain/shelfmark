@@ -251,7 +251,9 @@ class IRCReleaseSource(ReleaseSource):
         if book.title:
             parts.append(book.title)
 
-        if book.authors:
+        if book.search_author:
+            parts.append(book.search_author)
+        elif book.authors:
             # Use first author
             author = book.authors[0] if isinstance(book.authors, list) else book.authors
             parts.append(author)

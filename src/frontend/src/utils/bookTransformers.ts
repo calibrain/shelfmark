@@ -29,6 +29,7 @@ export interface MetadataBookData {
   series_position?: number;
   series_count?: number;
   subtitle?: string;
+  search_author?: string;
 }
 
 /**
@@ -57,6 +58,7 @@ export function transformMetadataToBook(data: MetadataBookData): Book {
     series_position: data.series_position,
     series_count: data.series_count,
     subtitle: data.subtitle,
+    search_author: data.search_author,
     info: {
       ...(data.isbn_13 && { ISBN: data.isbn_13 }),
       ...(data.isbn_10 && !data.isbn_13 && { ISBN: data.isbn_10 }),

@@ -646,12 +646,12 @@ def download_settings():
                 },
                 {
                     "value": "rename",
-                    "label": "Rename",
+                    "label": "Rename only",
                     "description": "Rename files using a template"
                 },
                 {
                     "value": "organize",
-                    "label": "Organize",
+                    "label": "Rename and Organize",
                     "description": "Create folders and rename files using a template. Do not use with ingest folders."
                 },
             ],
@@ -771,8 +771,8 @@ def download_settings():
             description="Choose how downloaded audiobook files are named and organized.",
             options=[
                 {"value": "none", "label": "None", "description": "Keep original filename from source"},
-                {"value": "rename", "label": "Rename", "description": "Rename files using a template"},
-                {"value": "organize", "label": "Organize", "description": "Create folders and rename files using a template. Recommended for Audiobookshelf. Do not use with ingest folders."},
+                {"value": "rename", "label": "Rename only", "description": "Rename files using a template"},
+                {"value": "organize", "label": "Rename and Organize", "description": "Create folders and rename files using a template. Recommended for Audiobookshelf. Do not use with ingest folders."},
             ],
             default="rename",
             universal_only=True,

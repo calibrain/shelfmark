@@ -292,6 +292,7 @@ class TestProwlarrLocalizedQueries:
             provider_id="123",
             title="Mistborn: The Final Empire",
             search_title="The Final Empire",
+            search_author="Brandon Sanderson",
             authors=["Brandon Sanderson"],
             titles_by_language={
                 "en": "Mistborn: The Final Empire",

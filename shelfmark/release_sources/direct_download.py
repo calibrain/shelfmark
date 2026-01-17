@@ -1178,7 +1178,7 @@ class DirectDownloadSource(ReleaseSource):
                     logger.warning(f"ISBN search failed: {e}")
 
         # Title + author fallback
-        author = book.authors[0] if book.authors else ""
+        author = book.search_author or (book.authors[0] if book.authors else "")
 
         # Group languages by localized title to avoid duplicate searches
         searches = group_languages_by_localized_title(
