@@ -208,7 +208,27 @@ def _compute_search_title(
 
     # Prefer subtitle when it looks like the real title.
     if normalized_subtitle and not _is_probably_series_position(normalized_subtitle):
-        # If title contains the subtitle, this is likely "Series: Subtitle".
+        match = re.match(r"^(.+?)\s*:\s*(.+)$", normalized_title)
+        if match:
+            prefix = match.group(1).strip()
+            suffix = _strip_parenthetical_suffix(match.group(2).strip())
+
+            prefix_words = len(prefix.split()) if prefix else 0
+            subtitle_words = len(normalized_subtitle.split())
+
+            series_normalized = " ".join(series_name.split()).strip() if series_name else ""
+            if series_normalized and prefix.lower() == series_normalized.lower():
+                return normalized_subtitle
+
+            # If the subtitle is much longer than the prefix, treat it as a descriptive subtitle.
+            if prefix and subtitle_words >= (prefix_words + 4):
+                return prefix
+
+            # Otherwise assume "Series: Book Title" and prefer the subtitle.
+            if normalized_subtitle.lower() == suffix.lower() or normalized_subtitle.lower() in suffix.lower():
+                return normalized_subtitle
+
+        # Fallback: if title contains the subtitle, this is likely "Series: Subtitle".
         if normalized_subtitle.lower() in normalized_title.lower():
             return normalized_subtitle
 

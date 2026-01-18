@@ -196,7 +196,7 @@ class ProwlarrHandler(DownloadHandler):
 
                 # If already complete, skip straight to file handling
                 if existing_status.complete:
-                    logger.info(f"Existing download is complete, copying file directly")
+                    logger.info("Existing download is complete, copying file directly")
                     status_callback("resolving", "Found existing download, copying to library")
 
                     source_path = client.get_download_path(download_id)
@@ -213,8 +213,74 @@ class ProwlarrHandler(DownloadHandler):
                         )
                         return None
 
+                    from shelfmark.core.path_mappings import (
+                        get_client_host_identifier,
+                        parse_remote_path_mappings,
+                        remap_remote_to_local_with_match,
+                    )
+
+                    source_path_obj = Path(source_path)
+                    host = get_client_host_identifier(client) or ""
+                    mapping_value = config.get("PROWLARR_REMOTE_PATH_MAPPINGS", [])
+                    mappings = parse_remote_path_mappings(mapping_value)
+                    remapped, matched_mapping = remap_remote_to_local_with_match(
+                        mappings=mappings,
+                        host=host,
+                        remote_path=source_path_obj,
+                    )
+
+                    if matched_mapping:
+                        if remapped.exists():
+                            logger.info(
+                                "Remapped existing download path for %s (%s): %s -> %s",
+                                client.name,
+                                download_id,
+                                source_path_obj,
+                                remapped,
+                            )
+                            source_path_obj = remapped
+                        else:
+                            logger.error(
+                                f"Download path does not exist after remapping: {source_path} -> {remapped}. "
+                                f"Client: {client.name}, ID: {download_id}. "
+                                f"Check that the local path in your mapping is mounted correctly."
+                            )
+                            status_callback(
+                                "error",
+                                f"Remapped path '{remapped}' does not exist. "
+                                f"Check your Docker volume mounts match the Local Path in Settings > Advanced > Remote Path Mappings.",
+                            )
+                            return None
+                    elif mappings:
+                        if source_path_obj.exists():
+                            logger.info(
+                                "No remote path mapping matched for %s (%s); using client path: %s",
+                                client.name,
+                                download_id,
+                                source_path_obj,
+                            )
+                        else:
+                            hint = _diagnose_path_issue(source_path)
+                            logger.error(
+                                f"Download path does not exist and no remote path mapping matched for {client.name} "
+                                f"({download_id}): {source_path}. {hint}"
+                            )
+                            status_callback(
+                                "error",
+                                f"{hint} No remote path mapping matched for client '{client.name}'.",
+                            )
+                            return None
+                    elif not source_path_obj.exists():
+                        hint = _diagnose_path_issue(source_path)
+                        logger.error(
+                            f"Download path does not exist: {source_path}. "
+                            f"Client: {client.name}, ID: {download_id}. {hint}"
+                        )
+                        status_callback("error", hint)
+                        return None
+
                     result = self._handle_completed_file(
-                        source_path=Path(source_path),
+                        source_path=source_path_obj,
                         protocol=protocol,
                         task=task,
                         status_callback=status_callback,
@@ -395,21 +461,39 @@ class ProwlarrHandler(DownloadHandler):
             from shelfmark.core.path_mappings import (
                 get_client_host_identifier,
                 parse_remote_path_mappings,
-                remap_remote_to_local,
+                remap_remote_to_local_with_match,
             )
 
             source_path_obj = Path(source_path)
-            if not source_path_obj.exists():
-                host = get_client_host_identifier(client) or ""
-                mapping_value = config.get("PROWLARR_REMOTE_PATH_MAPPINGS", [])
-                mappings = parse_remote_path_mappings(mapping_value)
-                remapped = remap_remote_to_local(
-                    mappings=mappings,
-                    host=host,
-                    remote_path=source_path_obj,
-                )
+            host = get_client_host_identifier(client) or ""
+            mapping_value = config.get("PROWLARR_REMOTE_PATH_MAPPINGS", [])
+            mappings = parse_remote_path_mappings(mapping_value)
 
-                if remapped != source_path_obj and remapped.exists():
+            logger.debug(
+                "Attempting path remap: client=%s, host=%s, path=%s, mappings=%s",
+                client.name,
+                host,
+                source_path_obj,
+                [(m.host, m.remote_path, m.local_path) for m in mappings],
+            )
+
+            remapped, matched_mapping = remap_remote_to_local_with_match(
+                mappings=mappings,
+                host=host,
+                remote_path=source_path_obj,
+            )
+
+            logger.debug(
+                "Remap result: %s -> %s (exists=%s, changed=%s, matched=%s)",
+                source_path_obj,
+                remapped,
+                remapped.exists(),
+                remapped != source_path_obj,
+                matched_mapping,
+            )
+
+            if matched_mapping:
+                if remapped.exists():
                     logger.info(
                         "Remapped download path for %s (%s): %s -> %s",
                         client.name,
@@ -419,13 +503,44 @@ class ProwlarrHandler(DownloadHandler):
                     )
                     source_path_obj = remapped
                 else:
+                    logger.error(
+                        f"Download path does not exist after remapping: {source_path} -> {remapped}. "
+                        f"Client: {client.name}, ID: {download_id}. "
+                        f"Check that the local path in your mapping is mounted correctly."
+                    )
+                    status_callback(
+                        "error",
+                        f"Remapped path '{remapped}' does not exist. "
+                        f"Check your Docker volume mounts match the Local Path in Settings > Advanced > Remote Path Mappings.",
+                    )
+                    return None
+            elif mappings:
+                if source_path_obj.exists():
+                    logger.info(
+                        "No remote path mapping matched for %s (%s); using client path: %s",
+                        client.name,
+                        download_id,
+                        source_path_obj,
+                    )
+                else:
                     hint = _diagnose_path_issue(source_path)
                     logger.error(
-                        f"Download path does not exist: {source_path}. "
-                        f"Client: {client.name}, ID: {download_id}. {hint}"
+                        f"Download path does not exist and no remote path mapping matched for {client.name} "
+                        f"({download_id}): {source_path}. {hint}"
                     )
-                    status_callback("error", hint)
+                    status_callback(
+                        "error",
+                        f"{hint} No remote path mapping matched for client '{client.name}'.",
+                    )
                     return None
+            elif not source_path_obj.exists():
+                hint = _diagnose_path_issue(source_path)
+                logger.error(
+                    f"Download path does not exist: {source_path}. "
+                    f"Client: {client.name}, ID: {download_id}. {hint}"
+                )
+                status_callback("error", hint)
+                return None
 
             result = self._handle_completed_file(
                 source_path=source_path_obj,

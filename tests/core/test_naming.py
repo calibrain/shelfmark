@@ -251,13 +251,13 @@ class TestBuildLibraryPath:
 
     def test_path_traversal_prevented(self):
         """Test that path traversal is prevented."""
-        with pytest.raises(ValueError, match="traversal"):
-            build_library_path(
-                "/books",
-                "{Author}/{Title}",
-                {"Author": "../../../etc", "Title": "passwd"},
-                extension="txt"
-            )
+        path = build_library_path(
+            "/books",
+            "{Author}/{Title}",
+            {"Author": "../etc", "Title": "passwd"},
+            extension="txt"
+        )
+        assert path == Path("/books/etc/passwd.txt")
 
     def test_fallback_to_title(self):
         """Test fallback when template produces empty result."""
@@ -291,6 +291,7 @@ class TestSanitizeFilename:
         ('file"with"quotes', "file_with_quotes"),
         ("file<with>angles", "file_with_angles"),
         ("file|with|pipes", "file_with_pipes"),
+        ("file/with/slash", "file_with_slash"),
     ])
     def test_invalid_chars_replaced(self, input_name, expected):
         """Test that invalid characters are replaced."""

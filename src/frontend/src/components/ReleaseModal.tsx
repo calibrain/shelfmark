@@ -673,6 +673,8 @@ export const ReleaseModal = ({
     setExpandedBySource({});
     setFormatFilter('');
     setLanguageFilter([LANGUAGE_OPTION_DEFAULT]);
+    setManualQuery('');
+    setShowManualQuery(false);
     setSearchStatus(null);
     lastStatusTimeRef.current = 0;
     pendingStatusRef.current = null;
@@ -1409,7 +1411,18 @@ export const ReleaseModal = ({
                     {/* Manual query button */}
                     <button
                       type="button"
-                      onClick={() => setShowManualQuery((prev) => !prev)}
+                      onClick={() => {
+                        setShowManualQuery((prev) => {
+                          const next = !prev;
+                          if (next && !manualQuery.trim()) {
+                            const baseTitle = book?.search_title || book?.title || '';
+                            const baseAuthor = book?.search_author || book?.author || '';
+                            const defaultQuery = `${baseTitle} ${baseAuthor}`.trim();
+                            setManualQuery(defaultQuery);
+                          }
+                          return next;
+                        });
+                      }}
                       className={`p-2.5 rounded-full transition-colors hover-surface text-gray-500 dark:text-gray-400 ${
                         manualQuery.trim() ? 'text-emerald-600 dark:text-emerald-400' : ''
                       }`}

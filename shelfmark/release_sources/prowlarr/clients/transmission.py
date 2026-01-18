@@ -9,6 +9,7 @@ from typing import Optional, Tuple
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import normalize_http_url
 from shelfmark.release_sources.prowlarr.clients import (
     DownloadClient,
     DownloadStatus,
@@ -33,9 +34,13 @@ class TransmissionClient(DownloadClient):
         """Initialize Transmission client with settings from config."""
         from transmission_rpc import Client
 
-        url = config.get("TRANSMISSION_URL", "")
-        if not url:
+        raw_url = config.get("TRANSMISSION_URL", "")
+        if not raw_url:
             raise ValueError("TRANSMISSION_URL is required")
+
+        url = normalize_http_url(raw_url)
+        if not url:
+            raise ValueError("TRANSMISSION_URL is invalid")
 
         username = config.get("TRANSMISSION_USERNAME", "")
         password = config.get("TRANSMISSION_PASSWORD", "")
@@ -56,7 +61,7 @@ class TransmissionClient(DownloadClient):
     def is_configured() -> bool:
         """Check if Transmission is configured and selected as the torrent client."""
         client = config.get("PROWLARR_TORRENT_CLIENT", "")
-        url = config.get("TRANSMISSION_URL", "")
+        url = normalize_http_url(config.get("TRANSMISSION_URL", ""))
         return client == "transmission" and bool(url)
 
     def test_connection(self) -> Tuple[bool, str]:

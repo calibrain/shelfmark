@@ -2,6 +2,8 @@
 
 from typing import List
 
+from shelfmark.core.utils import normalize_http_url
+
 # Lazy import to avoid circular imports
 _config_module = None
 
@@ -44,6 +46,10 @@ DEFAULT_WELIB_MIRRORS = [
 ]
 
 
+def _normalize_mirror_url(url: str) -> str:
+    return normalize_http_url(url, default_scheme="https")
+
+
 def get_aa_mirrors() -> List[str]:
     """
     Get Anna's Archive mirrors from config + defaults.
@@ -51,15 +57,16 @@ def get_aa_mirrors() -> List[str]:
     Returns:
         List of AA mirror URLs, starting with defaults then custom additions.
     """
-    mirrors = list(DEFAULT_AA_MIRRORS)
+    mirrors = [_normalize_mirror_url(url) for url in DEFAULT_AA_MIRRORS]
+    mirrors = [url for url in mirrors if url]
     config = _get_config()
 
     additional = config.get("AA_ADDITIONAL_URLS", "")
     if additional:
         for url in additional.split(","):
-            url = url.strip()
-            if url and url not in mirrors:
-                mirrors.append(url)
+            normalized = _normalize_mirror_url(url)
+            if normalized and normalized not in mirrors:
+                mirrors.append(normalized)
 
     return mirrors
 
@@ -71,15 +78,16 @@ def get_libgen_mirrors() -> List[str]:
     Returns:
         List of LibGen mirror URLs (defaults first, then custom additions).
     """
-    mirrors = list(DEFAULT_LIBGEN_MIRRORS)
+    mirrors = [_normalize_mirror_url(url) for url in DEFAULT_LIBGEN_MIRRORS]
+    mirrors = [url for url in mirrors if url]
     config = _get_config()
 
     additional = config.get("LIBGEN_ADDITIONAL_URLS", "")
     if additional:
         for url in additional.split(","):
-            url = url.strip()
-            if url and url not in mirrors:
-                mirrors.append(url)
+            normalized = _normalize_mirror_url(url)
+            if normalized and normalized not in mirrors:
+                mirrors.append(normalized)
 
     return mirrors
 
@@ -93,21 +101,24 @@ def get_zlib_mirrors() -> List[str]:
     """
     config = _get_config()
 
-    primary = config.get("ZLIB_PRIMARY_URL", DEFAULT_ZLIB_MIRRORS[0])
+    primary = _normalize_mirror_url(config.get("ZLIB_PRIMARY_URL", DEFAULT_ZLIB_MIRRORS[0]))
+    if not primary:
+        primary = _normalize_mirror_url(DEFAULT_ZLIB_MIRRORS[0])
     mirrors = [primary]
 
     # Add other defaults (excluding primary)
     for url in DEFAULT_ZLIB_MIRRORS:
-        if url != primary:
-            mirrors.append(url)
+        normalized = _normalize_mirror_url(url)
+        if normalized and normalized != primary:
+            mirrors.append(normalized)
 
     # Add custom mirrors
     additional = config.get("ZLIB_ADDITIONAL_URLS", "")
     if additional:
         for url in additional.split(","):
-            url = url.strip()
-            if url and url not in mirrors:
-                mirrors.append(url)
+            normalized = _normalize_mirror_url(url)
+            if normalized and normalized not in mirrors:
+                mirrors.append(normalized)
 
     return mirrors
 
@@ -120,7 +131,8 @@ def get_zlib_primary_url() -> str:
         Primary Z-Library mirror URL.
     """
     config = _get_config()
-    return config.get("ZLIB_PRIMARY_URL", DEFAULT_ZLIB_MIRRORS[0])
+    primary = _normalize_mirror_url(config.get("ZLIB_PRIMARY_URL", DEFAULT_ZLIB_MIRRORS[0]))
+    return primary or _normalize_mirror_url(DEFAULT_ZLIB_MIRRORS[0])
 
 
 def get_zlib_url_template() -> str:
@@ -143,21 +155,24 @@ def get_welib_mirrors() -> List[str]:
     """
     config = _get_config()
 
-    primary = config.get("WELIB_PRIMARY_URL", DEFAULT_WELIB_MIRRORS[0])
+    primary = _normalize_mirror_url(config.get("WELIB_PRIMARY_URL", DEFAULT_WELIB_MIRRORS[0]))
+    if not primary:
+        primary = _normalize_mirror_url(DEFAULT_WELIB_MIRRORS[0])
     mirrors = [primary]
 
     # Add other defaults (excluding primary)
     for url in DEFAULT_WELIB_MIRRORS:
-        if url != primary:
-            mirrors.append(url)
+        normalized = _normalize_mirror_url(url)
+        if normalized and normalized != primary:
+            mirrors.append(normalized)
 
     # Add custom mirrors
     additional = config.get("WELIB_ADDITIONAL_URLS", "")
     if additional:
         for url in additional.split(","):
-            url = url.strip()
-            if url and url not in mirrors:
-                mirrors.append(url)
+            normalized = _normalize_mirror_url(url)
+            if normalized and normalized not in mirrors:
+                mirrors.append(normalized)
 
     return mirrors
 
@@ -170,7 +185,8 @@ def get_welib_primary_url() -> str:
         Primary Welib mirror URL.
     """
     config = _get_config()
-    return config.get("WELIB_PRIMARY_URL", DEFAULT_WELIB_MIRRORS[0])
+    primary = _normalize_mirror_url(config.get("WELIB_PRIMARY_URL", DEFAULT_WELIB_MIRRORS[0]))
+    return primary or _normalize_mirror_url(DEFAULT_WELIB_MIRRORS[0])
 
 
 def get_welib_url_template() -> str:
@@ -197,17 +213,19 @@ def get_zlib_cookie_domains() -> set:
 
     # Add all default domains
     for url in DEFAULT_ZLIB_MIRRORS:
-        domain = url.replace("https://", "").replace("http://", "").split("/")[0]
-        domains.add(domain)
+        normalized = _normalize_mirror_url(url)
+        if normalized:
+            domain = normalized.replace("https://", "").replace("http://", "").split("/")[0]
+            domains.add(domain)
 
     # Add custom domains
     config = _get_config()
     additional = config.get("ZLIB_ADDITIONAL_URLS", "")
     if additional:
         for url in additional.split(","):
-            url = url.strip()
-            if url:
-                domain = url.replace("https://", "").replace("http://", "").split("/")[0]
+            normalized = _normalize_mirror_url(url)
+            if normalized:
+                domain = normalized.replace("https://", "").replace("http://", "").split("/")[0]
                 domains.add(domain)
 
     return domains

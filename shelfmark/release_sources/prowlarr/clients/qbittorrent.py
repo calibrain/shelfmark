@@ -6,6 +6,7 @@ from typing import Optional, Tuple
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import normalize_http_url
 from shelfmark.release_sources.prowlarr.clients import (
     DownloadClient,
     DownloadStatus,
@@ -91,13 +92,19 @@ class QBittorrentClient(DownloadClient):
         # Lazy import to avoid dependency issues if not using torrents
         from qbittorrentapi import Client
 
-        url = config.get("QBITTORRENT_URL", "")
-        if not url:
+        raw_url = config.get("QBITTORRENT_URL", "")
+        if not raw_url:
             raise ValueError("QBITTORRENT_URL is required")
 
-        self._base_url = url.rstrip("/")
+        # We use `_base_url` for direct HTTP calls, so it must be a fully-qualified URL.
+        self._base_url = normalize_http_url(raw_url)
+        if not self._base_url:
+            raise ValueError("QBITTORRENT_URL is invalid")
+
+        # qbittorrent-api accepts either a full URL or host:port; prefer the normalized URL
+        # for consistency.
         self._client = Client(
-            host=url,
+            host=self._base_url,
             username=config.get("QBITTORRENT_USERNAME", ""),
             password=config.get("QBITTORRENT_PASSWORD", ""),
         )
@@ -197,13 +204,20 @@ class QBittorrentClient(DownloadClient):
             return [], f"qBittorrent request timed out at {self._base_url}"
         except Exception as e:
             logger.debug(f"Failed to get torrents info: {e}")
+            # requests raises InvalidSchema when the base URL doesn't include http(s)
+            if type(e).__name__ == "InvalidSchema":
+                return (
+                    [],
+                    "qBittorrent URL is invalid (missing http:// or https://). "
+                    f"Configured: {self._base_url}",
+                )
             return [], f"qBittorrent API error: {type(e).__name__}: {e}"
 
     @staticmethod
     def is_configured() -> bool:
         """Check if qBittorrent is configured and selected as the torrent client."""
         client = config.get("PROWLARR_TORRENT_CLIENT", "")
-        url = config.get("QBITTORRENT_URL", "")
+        url = normalize_http_url(config.get("QBITTORRENT_URL", ""))
         return client == "qbittorrent" and bool(url)
 
     def test_connection(self) -> Tuple[bool, str]:

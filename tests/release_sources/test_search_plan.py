@@ -32,6 +32,12 @@ class TestReleaseSearchPlan:
             "A végső birodalom Brandon Sanderson",
         ]
 
+        # Title-only variants are used by some sources (e.g. Prowlarr).
+        assert [v.title for v in plan.title_variants] == [
+            "The Final Empire",
+            "A végső birodalom",
+        ]
+
         assert [(v.title, v.languages) for v in plan.grouped_title_variants] == [
             ("The Final Empire", ["en"]),
             ("A végső birodalom", ["hu"]),
@@ -55,6 +61,9 @@ class TestReleaseSearchPlan:
         assert plan.languages is None
         assert [v.query for v in plan.title_variants] == [
             "The Lightning Thief Rick Riordan",
+        ]
+        assert [v.title for v in plan.title_variants] == [
+            "The Lightning Thief",
         ]
         assert [(v.title, v.languages) for v in plan.grouped_title_variants] == [
             ("The Lightning Thief", None),

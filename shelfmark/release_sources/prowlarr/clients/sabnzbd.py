@@ -10,6 +10,7 @@ import requests
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import normalize_http_url
 from shelfmark.release_sources.prowlarr.clients import (
     DownloadClient,
     DownloadStatus,
@@ -99,15 +100,17 @@ class SABnzbdClient(DownloadClient):
 
     def __init__(self):
         """Initialize SABnzbd client with settings from config."""
-        url = config.get("SABNZBD_URL", "")
-        if not url:
+        raw_url = config.get("SABNZBD_URL", "")
+        if not raw_url:
             raise ValueError("SABNZBD_URL is required")
 
         api_key = config.get("SABNZBD_API_KEY", "")
         if not api_key:
             raise ValueError("SABNZBD_API_KEY is required")
 
-        self.url = url.rstrip("/")
+        self.url = normalize_http_url(raw_url)
+        if not self.url:
+            raise ValueError("SABNZBD_URL is invalid")
         self.api_key = api_key
         self._category = config.get("SABNZBD_CATEGORY", "books")
 
@@ -115,7 +118,7 @@ class SABnzbdClient(DownloadClient):
     def is_configured() -> bool:
         """Check if SABnzbd is configured and selected as the usenet client."""
         client = config.get("PROWLARR_USENET_CLIENT", "")
-        url = config.get("SABNZBD_URL", "")
+        url = normalize_http_url(config.get("SABNZBD_URL", ""))
         api_key = config.get("SABNZBD_API_KEY", "")
         return client == "sabnzbd" and bool(url) and bool(api_key)
 

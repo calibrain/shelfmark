@@ -1430,10 +1430,26 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
             try:
                 source = get_source(source_name)
                 source_instances[source_name] = source
-                logger.debug(f"Searching {source_name} for '{book.title}' by {book.authors} (expand={expand_search}, content_type={content_type})")
+
                 from shelfmark.release_sources.search_plan import build_release_search_plan
 
                 plan = build_release_search_plan(book, languages=languages, manual_query=manual_query)
+
+                if plan.manual_query:
+                    planned_query = plan.manual_query
+                    planned_query_type = "manual"
+                elif not expand_search and plan.isbn_candidates:
+                    planned_query = plan.isbn_candidates[0]
+                    planned_query_type = "isbn"
+                else:
+                    planned_query = plan.primary_query
+                    planned_query_type = "title_author"
+
+                logger.debug(
+                    f"Searching {source_name}: {planned_query_type}='{planned_query}' "
+                    f"(title='{book.title}', authors={book.authors}, expand={expand_search}, content_type={content_type})"
+                )
+
                 releases = source.search(book, plan, expand_search=expand_search, content_type=content_type)
                 all_releases.extend(releases)
             except ValueError:

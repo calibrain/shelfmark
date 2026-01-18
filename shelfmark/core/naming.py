@@ -3,7 +3,7 @@
 import os
 import re
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Union, Mapping
 
 from shelfmark.core.logger import setup_logger
 
@@ -17,10 +17,10 @@ TOKEN_PATTERN = re.compile(
 )
 
 # Characters that are invalid in filenames on various filesystems
-INVALID_CHARS = re.compile(r'[\\:*?"<>|]')
+INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 
-def _sanitize(name: str, max_length: int = 245) -> str:
+def _sanitize(name: Optional[str], max_length: int = 245) -> str:
     """Sanitize a string for filesystem use."""
     if not name:
         return ""
@@ -31,7 +31,7 @@ def _sanitize(name: str, max_length: int = 245) -> str:
     return sanitized[:max_length]
 
 
-def sanitize_filename(name: str, max_length: int = 245) -> str:
+def sanitize_filename(name: Optional[str], max_length: int = 245) -> str:
     """Sanitize a string for use as a filename or path component."""
     return _sanitize(name, max_length)
 
@@ -40,7 +40,7 @@ def sanitize_filename(name: str, max_length: int = 245) -> str:
 sanitize_path_component = sanitize_filename
 
 
-def format_series_position(position: Optional[Union[int, float]]) -> str:
+def format_series_position(position: Optional[Union[str, int, float]]) -> str:
     if position is None:
         return ""
 
@@ -78,7 +78,9 @@ def assign_part_numbers(
 
 def parse_naming_template(
     template: str,
-    metadata: Dict[str, Optional[Union[str, int, float]]],
+    metadata: Mapping[str, Optional[Union[str, int, float]]],
+    *,
+    allow_path_separators: bool = True,
 ) -> str:
     if not template:
         return ""
@@ -108,6 +110,8 @@ def parse_naming_template(
         if not value:
             return ""
 
+        if not allow_path_separators:
+            value = value.replace("/", "_")
         # Sanitize the value
         value = sanitize_filename(value)
 
@@ -140,10 +144,10 @@ def parse_naming_template(
 def build_library_path(
     base_path: str,
     template: str,
-    metadata: Dict[str, Optional[Union[str, int, float]]],
+    metadata: Mapping[str, Optional[Union[str, int, float]]],
     extension: Optional[str] = None,
 ) -> Path:
-    relative = parse_naming_template(template, metadata)
+    relative = parse_naming_template(template, metadata, allow_path_separators=True)
 
     if not relative:
         # Fallback to title if template produces empty result

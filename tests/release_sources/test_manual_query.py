@@ -25,4 +25,5 @@ class TestReleaseSearchPlanManualQuery:
         assert plan.isbn_candidates == []
         assert plan.languages == ["en", "hu"]
         assert [v.query for v in plan.title_variants] == ["some custom query"]
+        assert [v.title for v in plan.title_variants] == ["some custom query"]
         assert [(v.title, v.languages) for v in plan.grouped_title_variants] == [("some custom query", None)]

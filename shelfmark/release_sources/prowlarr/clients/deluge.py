@@ -19,6 +19,7 @@ import requests
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import normalize_http_url
 from shelfmark.release_sources.prowlarr.clients import (
     DownloadClient,
     DownloadStatus,
@@ -65,6 +66,10 @@ class DelugeClient(DownloadClient):
 
         # Allow DELUGE_HOST to be either a hostname OR a full URL
         # (useful when Deluge is behind a reverse proxy path).
+        raw_host = normalize_http_url(raw_host, strip_trailing_slash=False) if raw_host else ""
+        if not raw_host:
+            raise ValueError("DELUGE_HOST is invalid")
+
         host = raw_host
         port = int(raw_port)
 

@@ -8,6 +8,9 @@ from typing import Any, Dict
 
 def _on_save_advanced(values: Dict[str, Any]) -> Dict[str, Any]:
     """Validate advanced settings before persisting."""
+    from shelfmark.core.logger import setup_logger
+
+    logger = setup_logger(__name__)
 
     mappings = values.get("PROWLARR_REMOTE_PATH_MAPPINGS")
     if mappings is None:
@@ -20,9 +23,12 @@ def _on_save_advanced(values: Dict[str, Any]) -> Dict[str, Any]:
             "values": values,
         }
 
+    logger.debug("Processing %d remote path mapping entries", len(mappings))
+
     cleaned = []
-    for entry in mappings:
+    for i, entry in enumerate(mappings):
         if not isinstance(entry, dict):
+            logger.debug("Skipping entry %d: not a dict", i)
             continue
 
         host = str(entry.get("host", "") or "").strip().lower()
@@ -30,16 +36,28 @@ def _on_save_advanced(values: Dict[str, Any]) -> Dict[str, Any]:
         local_path = str(entry.get("localPath", "") or "").strip()
 
         if not host or not remote_path or not local_path:
+            logger.debug(
+                "Skipping entry %d: missing field(s) - host=%r, remotePath=%r, localPath=%r",
+                i,
+                host,
+                remote_path,
+                local_path,
+            )
             continue
 
         if not local_path.startswith("/"):
             return {
                 "error": True,
-                "message": "Local Path must be an absolute path",
+                "message": f"Local Path must be an absolute path (got: {local_path})",
                 "values": values,
             }
 
         cleaned.append({"host": host, "remotePath": remote_path, "localPath": local_path})
+
+    logger.info("Saved %d remote path mapping(s)", len(cleaned))
+    if cleaned:
+        for m in cleaned:
+            logger.debug("  Mapping: %s -> %s (client: %s)", m["remotePath"], m["localPath"], m["host"])
 
     values["PROWLARR_REMOTE_PATH_MAPPINGS"] = cleaned
     return {"error": False, "values": values}
@@ -646,7 +664,7 @@ def download_settings():
                 },
                 {
                     "value": "rename",
-                    "label": "Rename only",
+                    "label": "Rename Only",
                     "description": "Rename files using a template"
                 },
                 {
@@ -771,7 +789,7 @@ def download_settings():
             description="Choose how downloaded audiobook files are named and organized.",
             options=[
                 {"value": "none", "label": "None", "description": "Keep original filename from source"},
-                {"value": "rename", "label": "Rename only", "description": "Rename files using a template"},
+                {"value": "rename", "label": "Rename Only", "description": "Rename files using a template"},
                 {"value": "organize", "label": "Rename and Organize", "description": "Create folders and rename files using a template. Recommended for Audiobookshelf. Do not use with ingest folders."},
             ],
             default="rename",

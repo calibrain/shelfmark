@@ -189,7 +189,7 @@ export const Dropdown = ({
               panelDirection === 'down'
                 ? renderTrigger ? 'mt-2' : ''
                 : renderTrigger ? 'bottom-full mb-2' : 'bottom-full'
-            } border shadow-lg z-20 ${panelClassName || widthClassName}`}
+            } border z-20 ${panelDirection === 'down' ? 'shadow-lg' : ''} ${panelClassName || widthClassName}`}
             style={{
               background: 'var(--bg)',
               borderColor: 'var(--border-muted)',

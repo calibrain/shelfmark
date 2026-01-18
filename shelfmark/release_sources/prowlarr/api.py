@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import normalize_http_url
 
 logger = setup_logger(__name__)
 
@@ -13,7 +14,7 @@ class ProwlarrClient:
     """Client for interacting with the Prowlarr API."""
 
     def __init__(self, url: str, api_key: str, timeout: int = 30):
-        self.base_url = url.rstrip("/")
+        self.base_url = normalize_http_url(url)
         self.api_key = api_key
         self.timeout = timeout
         self._session = requests.Session()

@@ -41,17 +41,15 @@ Shelfmark is a unified web interface for searching and aggregating books and aud
 
 ### Installation
 
-1. Download the docker-compose file:
+1. Download the [docker-compose file](compose/docker-compose.yml):
    ```bash
-   curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/stable/docker-compose.yml
+   curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/docker-compose.yml
    ```
 
 2. Start the service:
    ```bash
    docker compose up -d
    ```
-
-> **Edge users**: If you're tracking the main branch (`:dev` tag), use compose files from `compose/edge/` instead.
 
 3. Open `http://localhost:8084`
 
@@ -120,7 +118,7 @@ The full-featured image with built-in Cloudflare bypass.
 #### Enable Tor Routing
 Routes all traffic through Tor for enhanced privacy:
 ```bash
-curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/stable/docker-compose.tor.yml
+curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/docker-compose.tor.yml
 docker compose -f docker-compose.tor.yml up -d
 ```
 
@@ -138,7 +136,7 @@ A smaller image without the built-in Cloudflare bypasser. Ideal for:
 - **Audiobooks** - Using Shelfmark exclusively for audiobooks
 
 ```bash
-curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/stable/docker-compose.lite.yml
+curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/docker-compose.lite.yml
 docker compose -f docker-compose.lite.yml up -d
 ```
 
