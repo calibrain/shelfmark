@@ -34,6 +34,11 @@ def _normalize_prefix(path: str) -> str:
     return normalized
 
 
+def _is_windows_path(path: str) -> bool:
+    """Check if a path looks like a Windows path (has a drive letter like C:/)."""
+    return len(path) >= 2 and path[1] == ":" and path[0].isalpha()
+
+
 def _normalize_host(host: str) -> str:
     return str(host or "").strip().lower()
 
@@ -61,12 +66,21 @@ def parse_remote_path_mappings(value: Any) -> list[RemotePathMapping]:
     return mappings
 
 
-def remap_remote_to_local(*, mappings: Iterable[RemotePathMapping], host: str, remote_path: str | Path) -> Path:
+def remap_remote_to_local_with_match(
+    *,
+    mappings: Iterable[RemotePathMapping],
+    host: str,
+    remote_path: str | Path,
+) -> tuple[Path, bool]:
     host_normalized = _normalize_host(host)
     remote_normalized = _normalize_prefix(str(remote_path))
 
     if not remote_normalized:
-        return Path(str(remote_path))
+        return Path(str(remote_path)), False
+
+    # Windows paths are case-insensitive, so we need case-insensitive matching
+    # for paths that look like Windows paths (e.g., D:/Torrents)
+    is_windows = _is_windows_path(remote_normalized)
 
     for mapping in mappings:
         if _normalize_host(mapping.host) != host_normalized:
@@ -76,16 +90,36 @@ def remap_remote_to_local(*, mappings: Iterable[RemotePathMapping], host: str, r
         if not remote_prefix:
             continue
 
-        if remote_normalized == remote_prefix or remote_normalized.startswith(remote_prefix + "/"):
-            remainder = remote_normalized[len(remote_prefix) :]
+        # For Windows paths, do case-insensitive prefix matching
+        if is_windows:
+            remote_lower = remote_normalized.lower()
+            prefix_lower = remote_prefix.lower()
+            matches = remote_lower == prefix_lower or remote_lower.startswith(prefix_lower + "/")
+        else:
+            matches = remote_normalized == remote_prefix or remote_normalized.startswith(remote_prefix + "/")
+
+        if matches:
+            # Use the length of the original prefix to extract remainder
+            # This preserves the original case in folder names
+            remainder = remote_normalized[len(remote_prefix):]
             local_prefix = _normalize_prefix(mapping.local_path)
 
             if remainder.startswith("/"):
                 remainder = remainder[1:]
 
-            return Path(local_prefix) / remainder if remainder else Path(local_prefix)
+            remapped = Path(local_prefix) / remainder if remainder else Path(local_prefix)
+            return remapped, True
 
-    return Path(remote_normalized)
+    return Path(remote_normalized), False
+
+
+def remap_remote_to_local(*, mappings: Iterable[RemotePathMapping], host: str, remote_path: str | Path) -> Path:
+    remapped, _ = remap_remote_to_local_with_match(
+        mappings=mappings,
+        host=host,
+        remote_path=remote_path,
+    )
+    return remapped
 
 
 def get_client_host_identifier(client: Any) -> Optional[str]:

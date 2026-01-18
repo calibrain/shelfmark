@@ -194,7 +194,7 @@ def transfer_book_files(
             metadata = build_metadata_dict(task)
             extension = book_file.suffix.lstrip(".") or task.format or ""
 
-            filename = parse_naming_template(template, metadata)
+            filename = parse_naming_template(template, metadata, allow_path_separators=False)
             filename = Path(filename).name if filename else ""
             if filename and extension:
                 filename = f"{sanitize_filename(filename)}.{extension}"

@@ -23,6 +23,7 @@ from shelfmark.release_sources import (
     LeadingCellType,
 )
 from shelfmark.release_sources.prowlarr.api import ProwlarrClient
+from shelfmark.core.utils import normalize_http_url
 from shelfmark.release_sources.prowlarr.cache import cache_release
 from shelfmark.release_sources.prowlarr.utils import get_preferred_download_url, get_protocol
 
@@ -268,10 +269,14 @@ class ProwlarrSource(ReleaseSource):
 
     def _get_client(self) -> Optional[ProwlarrClient]:
         """Get a configured Prowlarr client or None if not configured."""
-        url = config.get("PROWLARR_URL", "")
+        raw_url = config.get("PROWLARR_URL", "")
         api_key = config.get("PROWLARR_API_KEY", "")
 
-        if not url or not api_key:
+        if not raw_url or not api_key:
+            return None
+
+        url = normalize_http_url(raw_url)
+        if not url:
             return None
 
         return ProwlarrClient(url, api_key)
@@ -313,7 +318,7 @@ class ProwlarrSource(ReleaseSource):
             logger.warning("Prowlarr not configured - skipping search")
             return []
 
-        queries = [v.query for v in plan.title_variants if v.query]
+        queries = [v.title for v in plan.title_variants if v.title]
         queries = [q for q in queries if q]
 
         if not queries and plan.isbn_candidates:
@@ -340,11 +345,22 @@ class ProwlarrSource(ReleaseSource):
             categories = None if expand_search else search_categories
             self.last_search_type = "expanded" if expand_search else "categories"
 
+        if plan.manual_query:
+            query_type = "manual"
+        elif not plan.title_variants and plan.isbn_candidates:
+            query_type = "isbn"
+        else:
+            query_type = "title"
+
         indexer_desc = f"indexers={indexer_ids}" if indexer_ids else "all enabled indexers"
         if len(queries) == 1:
-            logger.debug(f"Searching Prowlarr: query='{queries[0]}', {indexer_desc}, categories={categories}")
+            logger.debug(
+                f"Searching Prowlarr: {query_type}='{queries[0]}', {indexer_desc}, categories={categories}"
+            )
         else:
-            logger.debug(f"Searching Prowlarr: {len(queries)} queries, {indexer_desc}, categories={categories}")
+            logger.debug(
+                f"Searching Prowlarr: {query_type} ({len(queries)} variants), {indexer_desc}, categories={categories}"
+            )
 
         def search_indexers(query: str, cats: Optional[List[int]]) -> List[dict]:
             """Search indexers with given categories, collecting results."""
@@ -420,6 +436,6 @@ class ProwlarrSource(ReleaseSource):
         """Check if Prowlarr is enabled and configured."""
         if not config.get("PROWLARR_ENABLED", False):
             return False
-        url = config.get("PROWLARR_URL", "")
+        url = normalize_http_url(config.get("PROWLARR_URL", ""))
         api_key = config.get("PROWLARR_API_KEY", "")
         return bool(url and api_key)

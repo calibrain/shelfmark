@@ -1162,7 +1162,7 @@ class DirectDownloadSource(ReleaseSource):
         if not expand_search:
             isbn = plan.isbn_candidates[0] if plan.isbn_candidates else None
             if isbn:
-                logger.debug(f"Searching by ISBN: {isbn}")
+                logger.debug(f"Searching direct_download: isbn='{isbn}', langs={lang_filter}")
                 filters = SearchFilters(isbn=[isbn])
                 if lang_filter:
                     filters.lang = lang_filter
@@ -1191,7 +1191,7 @@ class DirectDownloadSource(ReleaseSource):
             if not query:
                 continue
 
-            logger.debug(f"Searching: query='{query}', langs={langs}")
+            logger.debug(f"Searching direct_download: title_author='{query}', langs={langs}")
             filters = SearchFilters(lang=langs) if langs else SearchFilters()
             try:
                 for bi in search_books(query, filters):

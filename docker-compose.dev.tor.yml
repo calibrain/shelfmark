@@ -2,7 +2,7 @@
 services:
   shelfmark-tor-dev:
     extends:
-      file: ./compose/edge/docker-compose.tor.yml
+      file: ./compose/docker-compose.tor.yml
       service: shelfmark-tor
     build:
       context: .
@@ -16,5 +16,5 @@ services:
       - ./.local/books:/books
       - ./.local/log:/var/log/shelfmark
       - ./.local/tmp:/tmp/shelfmark
-      # Download client mount - path must match your torrent/usenet client's volume exactly
+      # Required for torrent / usenet - path must match your download client's volume exactly
       # - /path/to/downloads:/path/to/downloads

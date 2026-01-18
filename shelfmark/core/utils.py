@@ -5,6 +5,52 @@ from pathlib import Path
 from typing import Optional
 
 
+def normalize_http_url(
+    url: Optional[str],
+    *,
+    default_scheme: str = "http",
+    strip_trailing_slash: bool = True,
+    allow_special: tuple[str, ...] = (),
+) -> str:
+    """Normalize a configured HTTP URL for requests and links."""
+    if not isinstance(url, str):
+        return ""
+
+    normalized = url.strip()
+    if not normalized:
+        return ""
+
+    if (normalized.startswith("\"") and normalized.endswith("\"")) or (
+        normalized.startswith("'") and normalized.endswith("'")
+    ):
+        normalized = normalized[1:-1].strip()
+        if not normalized:
+            return ""
+
+    if allow_special:
+        special_map = {
+            value.lower(): value
+            for value in allow_special
+            if isinstance(value, str)
+        }
+        special_match = special_map.get(normalized.lower())
+        if special_match is not None:
+            return special_match
+
+    if normalized.startswith(("/", "./", "../")):
+        return normalized
+
+    if "://" not in normalized:
+        scheme = default_scheme.strip().rstrip(":/")
+        if scheme:
+            normalized = f"{scheme}://{normalized}"
+
+    if strip_trailing_slash:
+        normalized = normalized.rstrip("/")
+
+    return normalized
+
+
 def is_audiobook(content_type: Optional[str]) -> bool:
     """Check if content type indicates an audiobook."""
     return bool(content_type and "audiobook" in content_type.lower())

@@ -10,6 +10,15 @@ class TestHardcoverComputeSearchTitle:
             == "The Final Empire"
         )
 
+    def test_prefers_main_title_when_subtitle_is_descriptive(self):
+        assert (
+            _compute_search_title(
+                "The Cuckoo's Egg: Tracking a Spy Through the Maze of Computer Espionage",
+                "Tracking a Spy Through the Maze of Computer Espionage",
+            )
+            == "The Cuckoo's Egg"
+        )
+
     def test_does_not_use_subtitle_when_it_looks_like_series_position(self):
         assert _compute_search_title("The Stormlight Archive: Book 1", "Book 1") is None
         assert _compute_search_title("Some Series: Volume II", "Volume II") is None

@@ -10,6 +10,7 @@ import requests
 from shelfmark.bypass import BypassCancelledException
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import normalize_http_url
 
 if TYPE_CHECKING:
     from shelfmark.download import network
@@ -29,10 +30,11 @@ BACKOFF_CAP = 10.0
 
 def _fetch_via_bypasser(target_url: str) -> Optional[str]:
     """Make a single request to the external bypasser service. Returns HTML or None."""
-    bypasser_url = config.get("EXT_BYPASSER_URL", "http://flaresolverr:8191")
+    raw_bypasser_url = config.get("EXT_BYPASSER_URL", "http://flaresolverr:8191")
     bypasser_path = config.get("EXT_BYPASSER_PATH", "/v1")
     bypasser_timeout = config.get("EXT_BYPASSER_TIMEOUT", 60000)
 
+    bypasser_url = normalize_http_url(raw_bypasser_url)
     if not bypasser_url or not bypasser_path:
         logger.error("External bypasser not configured. Check EXT_BYPASSER_URL and EXT_BYPASSER_PATH.")
         return None

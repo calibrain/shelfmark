@@ -6,7 +6,7 @@ Registers Prowlarr settings as a group with multiple tabs:
 - Download Clients: Torrent and usenet client settings
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from shelfmark.core.settings_registry import (
     register_group,
@@ -19,6 +19,7 @@ from shelfmark.core.settings_registry import (
     SelectField,
     MultiSelectField,
 )
+from shelfmark.core.utils import normalize_http_url
 
 
 # ==================== Dynamic Options Loaders ====================
@@ -34,10 +35,14 @@ def _get_indexer_options() -> List[Dict[str, str]]:
 
     logger = setup_logger(__name__)
 
-    url = config.get("PROWLARR_URL", "")
+    raw_url = config.get("PROWLARR_URL", "")
     api_key = config.get("PROWLARR_API_KEY", "")
 
-    if not url or not api_key:
+    if not raw_url or not api_key:
+        return []
+
+    url = normalize_http_url(raw_url)
+    if not url:
         return []
 
     try:
@@ -72,7 +77,7 @@ def _get_indexer_options() -> List[Dict[str, str]]:
 
 # ==================== Test Connection Callbacks ====================
 
-def _test_prowlarr_connection(current_values: Dict[str, Any] = None) -> Dict[str, Any]:
+def _test_prowlarr_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Test the Prowlarr connection using current form values."""
     from shelfmark.core.config import config
     from shelfmark.core.logger import setup_logger
@@ -81,11 +86,15 @@ def _test_prowlarr_connection(current_values: Dict[str, Any] = None) -> Dict[str
     logger = setup_logger(__name__)
     current_values = current_values or {}
 
-    url = current_values.get("PROWLARR_URL") or config.get("PROWLARR_URL", "")
+    raw_url = current_values.get("PROWLARR_URL") or config.get("PROWLARR_URL", "")
     api_key = current_values.get("PROWLARR_API_KEY") or config.get("PROWLARR_API_KEY", "")
 
-    if not url:
+    if not raw_url:
         return {"success": False, "message": "Prowlarr URL is required"}
+
+    url = normalize_http_url(raw_url)
+    if not url:
+        return {"success": False, "message": "Prowlarr URL is invalid"}
     if not api_key:
         return {"success": False, "message": "API key is required"}
 
@@ -97,21 +106,25 @@ def _test_prowlarr_connection(current_values: Dict[str, Any] = None) -> Dict[str
         return {"success": False, "message": f"Connection failed: {str(e)}"}
 
 
-def _test_qbittorrent_connection(current_values: Dict[str, Any] = None) -> Dict[str, Any]:
+def _test_qbittorrent_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Test the qBittorrent connection using current form values."""
     from shelfmark.core.config import config
 
     current_values = current_values or {}
 
-    url = current_values.get("QBITTORRENT_URL") or config.get("QBITTORRENT_URL", "")
+    raw_url = current_values.get("QBITTORRENT_URL") or config.get("QBITTORRENT_URL", "")
     username = current_values.get("QBITTORRENT_USERNAME") or config.get("QBITTORRENT_USERNAME", "")
     password = current_values.get("QBITTORRENT_PASSWORD") or config.get("QBITTORRENT_PASSWORD", "")
 
-    if not url:
+    if not raw_url:
         return {"success": False, "message": "qBittorrent URL is required"}
 
     try:
         from qbittorrentapi import Client
+
+        url = normalize_http_url(raw_url)
+        if not url:
+            return {"success": False, "message": "qBittorrent URL is invalid"}
 
         client = Client(host=url, username=username, password=password)
         client.auth_log_in()
@@ -123,7 +136,7 @@ def _test_qbittorrent_connection(current_values: Dict[str, Any] = None) -> Dict[
         return {"success": False, "message": f"Connection failed: {str(e)}"}
 
 
-def _test_transmission_connection(current_values: Dict[str, Any] = None) -> Dict[str, Any]:
+def _test_transmission_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Test the Transmission connection using current form values."""
     from shelfmark.core.config import config
     from shelfmark.release_sources.prowlarr.clients.torrent_utils import (
@@ -132,12 +145,16 @@ def _test_transmission_connection(current_values: Dict[str, Any] = None) -> Dict
 
     current_values = current_values or {}
 
-    url = current_values.get("TRANSMISSION_URL") or config.get("TRANSMISSION_URL", "")
+    raw_url = current_values.get("TRANSMISSION_URL") or config.get("TRANSMISSION_URL", "")
     username = current_values.get("TRANSMISSION_USERNAME") or config.get("TRANSMISSION_USERNAME", "")
     password = current_values.get("TRANSMISSION_PASSWORD") or config.get("TRANSMISSION_PASSWORD", "")
 
-    if not url:
+    if not raw_url:
         return {"success": False, "message": "Transmission URL is required"}
+
+    url = normalize_http_url(raw_url)
+    if not url:
+        return {"success": False, "message": "Transmission URL is invalid"}
 
     try:
         from transmission_rpc import Client
@@ -161,7 +178,7 @@ def _test_transmission_connection(current_values: Dict[str, Any] = None) -> Dict
         return {"success": False, "message": f"Connection failed: {str(e)}"}
 
 
-def _test_deluge_connection(current_values: Dict[str, Any] = None) -> Dict[str, Any]:
+def _test_deluge_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Test Deluge Web UI JSON-RPC connection using current form values."""
     from urllib.parse import urlparse
 
@@ -180,6 +197,10 @@ def _test_deluge_connection(current_values: Dict[str, Any] = None) -> Dict[str, 
         return {"success": False, "message": "Deluge password is required"}
 
     raw_host = str(raw_host)
+    raw_host = normalize_http_url(raw_host, strip_trailing_slash=False) if raw_host else ""
+    if not raw_host:
+        return {"success": False, "message": "Deluge host is invalid"}
+
     raw_port = str(raw_port or "8112")
 
     scheme = "http"
@@ -256,7 +277,7 @@ def _test_deluge_connection(current_values: Dict[str, Any] = None) -> Dict[str, 
         return {"success": False, "message": f"Connection failed: {str(e)}"}
 
 
-def _test_rtorrent_connection(current_values: Dict[str, Any] = None) -> Dict[str, Any]:
+def _test_rtorrent_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Test the rTorrent connection using current form values."""
     from shelfmark.core.config import config
     from urllib.parse import urlparse
@@ -264,12 +285,16 @@ def _test_rtorrent_connection(current_values: Dict[str, Any] = None) -> Dict[str
 
     current_values = current_values or {}
 
-    url = current_values.get("RTORRENT_URL") or config.get("RTORRENT_URL", "")
+    raw_url = current_values.get("RTORRENT_URL") or config.get("RTORRENT_URL", "")
     username = current_values.get("RTORRENT_USERNAME") or config.get("RTORRENT_USERNAME", "")
     password = current_values.get("RTORRENT_PASSWORD") or config.get("RTORRENT_PASSWORD", "")
 
-    if not url:
+    if not raw_url:
         return {"success": False, "message": "rTorrent URL is required"}
+
+    url = normalize_http_url(raw_url)
+    if not url:
+        return {"success": False, "message": "rTorrent URL is invalid"}
 
     try:
         # Add HTTP auth to URL if credentials provided
@@ -284,19 +309,23 @@ def _test_rtorrent_connection(current_values: Dict[str, Any] = None) -> Dict[str
         return {"success": False, "message": f"Connection failed: {str(e)}"}
 
 
-def _test_nzbget_connection(current_values: Dict[str, Any] = None) -> Dict[str, Any]:
+def _test_nzbget_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Test the NZBGet connection using current form values."""
     import requests
     from shelfmark.core.config import config
 
     current_values = current_values or {}
 
-    url = current_values.get("NZBGET_URL") or config.get("NZBGET_URL", "")
+    raw_url = current_values.get("NZBGET_URL") or config.get("NZBGET_URL", "")
     username = current_values.get("NZBGET_USERNAME") or config.get("NZBGET_USERNAME", "nzbget")
     password = current_values.get("NZBGET_PASSWORD") or config.get("NZBGET_PASSWORD", "")
 
-    if not url:
+    if not raw_url:
         return {"success": False, "message": "NZBGet URL is required"}
+
+    url = normalize_http_url(raw_url)
+    if not url:
+        return {"success": False, "message": "NZBGet URL is invalid"}
 
     try:
         rpc_url = f"{url.rstrip('/')}/jsonrpc"
@@ -316,18 +345,22 @@ def _test_nzbget_connection(current_values: Dict[str, Any] = None) -> Dict[str, 
         return {"success": False, "message": f"Connection failed: {str(e)}"}
 
 
-def _test_sabnzbd_connection(current_values: Dict[str, Any] = None) -> Dict[str, Any]:
+def _test_sabnzbd_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Test the SABnzbd connection using current form values."""
     import requests
     from shelfmark.core.config import config
 
     current_values = current_values or {}
 
-    url = current_values.get("SABNZBD_URL") or config.get("SABNZBD_URL", "")
+    raw_url = current_values.get("SABNZBD_URL") or config.get("SABNZBD_URL", "")
     api_key = current_values.get("SABNZBD_API_KEY") or config.get("SABNZBD_API_KEY", "")
 
-    if not url:
+    if not raw_url:
         return {"success": False, "message": "SABnzbd URL is required"}
+
+    url = normalize_http_url(raw_url)
+    if not url:
+        return {"success": False, "message": "SABnzbd URL is invalid"}
     if not api_key:
         return {"success": False, "message": "API key is required"}
 
@@ -745,10 +778,10 @@ def prowlarr_clients_settings():
         SelectField(
             key="PROWLARR_USENET_ACTION",
             label="NZB Completion Action",
-            description="Copy files into your ingest folder, optionally cleaning up the usenet client",
+            description="Move deletes the job from your usenet client after import; Copy keeps it in the client",
             options=[
-                {"value": "move", "label": "Copy and remove from client"},
-                {"value": "copy", "label": "Copy (keep in client)"},
+                {"value": "move", "label": "Move"},
+                {"value": "copy", "label": "Copy"},
             ],
             default="move",
             show_when={"field": "PROWLARR_USENET_CLIENT", "notEmpty": True},

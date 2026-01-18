@@ -338,8 +338,8 @@ class TestProwlarrLocalizedQueries:
         plan = build_release_search_plan(book, languages=["en", "hu"])
         source.search(book, plan, content_type="ebook")
 
-        assert "The Lightning Thief Rick Riordan" in fake_client.queries
-        assert "A villámtolvaj Rick Riordan" in fake_client.queries
+        assert "The Lightning Thief" in fake_client.queries
+        assert "A villámtolvaj" in fake_client.queries
         assert len(fake_client.queries) == 2
 
     def test_search_does_not_override_search_title_for_english(self, monkeypatch):
@@ -384,6 +384,6 @@ class TestProwlarrLocalizedQueries:
         plan = build_release_search_plan(book, languages=["en", "hu"])
         source.search(book, plan, content_type="ebook")
 
-        assert "The Final Empire Brandon Sanderson" in fake_client.queries
-        assert "A végső birodalom Brandon Sanderson" in fake_client.queries
-        assert "Mistborn: The Final Empire Brandon Sanderson" not in fake_client.queries
+        assert "The Final Empire" in fake_client.queries
+        assert "A végső birodalom" in fake_client.queries
+        assert "Mistborn: The Final Empire" not in fake_client.queries

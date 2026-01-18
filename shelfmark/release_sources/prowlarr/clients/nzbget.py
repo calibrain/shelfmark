@@ -11,6 +11,7 @@ import requests
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import normalize_http_url
 from shelfmark.release_sources.prowlarr.clients import (
     DownloadClient,
     DownloadStatus,
@@ -30,11 +31,13 @@ class NZBGetClient(DownloadClient):
 
     def __init__(self):
         """Initialize NZBGet client with settings from config."""
-        url = config.get("NZBGET_URL", "")
-        if not url:
+        raw_url = config.get("NZBGET_URL", "")
+        if not raw_url:
             raise ValueError("NZBGET_URL is required")
 
-        self.url = url.rstrip("/")
+        self.url = normalize_http_url(raw_url)
+        if not self.url:
+            raise ValueError("NZBGET_URL is invalid")
         self.username = config.get("NZBGET_USERNAME", "nzbget")
         self.password = config.get("NZBGET_PASSWORD", "")
         self._category = config.get("NZBGET_CATEGORY", "Books")
@@ -43,7 +46,7 @@ class NZBGetClient(DownloadClient):
     def is_configured() -> bool:
         """Check if NZBGet is configured and selected as the usenet client."""
         client = config.get("PROWLARR_USENET_CLIENT", "")
-        url = config.get("NZBGET_URL", "")
+        url = normalize_http_url(config.get("NZBGET_URL", ""))
         return client == "nzbget" and bool(url)
 
     @with_retry()

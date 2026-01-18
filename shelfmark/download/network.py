@@ -12,6 +12,7 @@ import ipaddress
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.config import config as app_config
+from shelfmark.core.utils import normalize_http_url
 from datetime import datetime, timedelta
 
 
@@ -729,7 +730,14 @@ def rotate_dns_and_reset_aa() -> bool:
         return False
     # Reset AA URL to first available auto option if using auto AA
     global _aa_base_url, _current_aa_url_index
-    configured_url = app_config.get("AA_BASE_URL", "auto")
+    configured_url = normalize_http_url(
+        app_config.get("AA_BASE_URL", "auto"),
+        default_scheme="https",
+        allow_special=("auto",),
+    )
+    if not configured_url:
+        configured_url = "auto"
+
     if configured_url == "auto" or _aa_base_url in _aa_urls:
         _current_aa_url_index = 0
         _aa_base_url = _aa_urls[0] if _aa_urls else "https://annas-archive.se"
@@ -900,7 +908,13 @@ def _initialize_aa_state() -> None:
     _aa_urls = _build_aa_urls()
 
     # Get configured base URL from config
-    configured_url = app_config.get("AA_BASE_URL", "auto")
+    configured_url = normalize_http_url(
+        app_config.get("AA_BASE_URL", "auto"),
+        default_scheme="https",
+        allow_special=("auto",),
+    )
+    if not configured_url:
+        configured_url = "auto"
 
     if configured_url == "auto":
         if state.get('aa_base_url') and state['aa_base_url'] in _aa_urls:

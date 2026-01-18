@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import normalize_http_url
 from shelfmark.release_sources.prowlarr.clients import (
     DownloadClient,
     DownloadStatus,
@@ -32,11 +33,13 @@ class RTorrentClient(DownloadClient):
         """Initialize rTorrent client with settings from config."""
         from xmlrpc.client import ServerProxy
 
-        url = config.get("RTORRENT_URL", "")
-        if not url:
+        raw_url = config.get("RTORRENT_URL", "")
+        if not raw_url:
             raise ValueError("RTORRENT_URL is required")
 
-        self._base_url = url.rstrip("/")
+        self._base_url = normalize_http_url(raw_url)
+        if not self._base_url:
+            raise ValueError("RTORRENT_URL is invalid")
 
         username = config.get("RTORRENT_USERNAME", "")
         password = config.get("RTORRENT_PASSWORD", "")
@@ -55,7 +58,7 @@ class RTorrentClient(DownloadClient):
     def is_configured() -> bool:
         """Check if rTorrent is configured and selected as the torrent client."""
         client = config.get("PROWLARR_TORRENT_CLIENT", "")
-        url = config.get("RTORRENT_URL", "")
+        url = normalize_http_url(config.get("RTORRENT_URL", ""))
         return client == "rtorrent" and bool(url)
 
     def test_connection(self) -> Tuple[bool, str]:

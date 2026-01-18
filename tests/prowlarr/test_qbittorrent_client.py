@@ -146,7 +146,7 @@ class TestQBittorrentClientTestConnection:
     def test_test_connection_failure(self, monkeypatch):
         """Test failed connection."""
         config_values = {
-            "QBITTORRENT_URL": "http://localhost:8080",
+            "QBITTORRENT_URL": "localhost:8080",
             "QBITTORRENT_USERNAME": "admin",
             "QBITTORRENT_PASSWORD": "wrong",
             "QBITTORRENT_CATEGORY": "test",
