@@ -142,7 +142,6 @@ class RTorrentClient(DownloadClient):
                 "d.up.rate=",
                 "d.custom1=",
                 "d.complete=",
-                "d.up.total=",
             )
             logger.debug(f"Fetched torrent status from rTorrent for: {download_id} - {torrent_list}")
             if not torrent_list:
