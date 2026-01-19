@@ -73,7 +73,14 @@ class TransmissionClient(DownloadClient):
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
 
-    def add_download(self, url: str, name: str, category: Optional[str] = None) -> str:
+    def add_download(
+        self,
+        url: str,
+        name: str,
+        category: Optional[str] = None,
+        expected_hash: Optional[str] = None,
+        **kwargs,
+    ) -> str:
         """
         Add torrent by URL (magnet or .torrent).
 
@@ -81,6 +88,7 @@ class TransmissionClient(DownloadClient):
             url: Magnet link or .torrent URL
             name: Display name for the torrent
             category: Category for organization (uses configured default if not specified)
+            expected_hash: Optional info_hash hint (from Prowlarr)
 
         Returns:
             Torrent hash (info_hash).
@@ -91,7 +99,7 @@ class TransmissionClient(DownloadClient):
         try:
             resolved_category = category or self._category or ""
 
-            torrent_info = extract_torrent_info(url)
+            torrent_info = extract_torrent_info(url, expected_hash=expected_hash)
 
             if torrent_info.torrent_data:
                 torrent = self._client.add_torrent(

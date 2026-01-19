@@ -300,10 +300,12 @@ class ProwlarrHandler(DownloadHandler):
                 try:
                     release_name = prowlarr_result.get("title") or task.title or "Unknown"
                     category = self._get_category_for_task(client, task)
+                    expected_hash = str(prowlarr_result.get("infoHash") or "").strip() or None
                     download_id = client.add_download(
                         url=download_url,
                         name=release_name,
                         category=category,
+                        expected_hash=expected_hash,
                     )
                 except Exception as e:
                     logger.error(f"Failed to add to {client.name}: {e}")

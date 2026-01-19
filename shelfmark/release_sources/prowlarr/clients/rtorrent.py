@@ -69,7 +69,14 @@ class RTorrentClient(DownloadClient):
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
 
-    def add_download(self, url: str, name: str, category: Optional[str] = None) -> str:
+    def add_download(
+        self,
+        url: str,
+        name: str,
+        category: Optional[str] = None,
+        expected_hash: Optional[str] = None,
+        **kwargs,
+    ) -> str:
         """
         Add torrent by URL (magnet or .torrent).
 
@@ -77,6 +84,7 @@ class RTorrentClient(DownloadClient):
             url: Magnet link or .torrent URL
             name: Display name for the torrent
             category: Category for organization (uses configured label if not specified)
+            expected_hash: Optional info_hash hint (from Prowlarr)
 
         Returns:
             Torrent hash (info_hash).
@@ -85,7 +93,7 @@ class RTorrentClient(DownloadClient):
             Exception: If adding fails.
         """
         try:
-            torrent_info = extract_torrent_info(url)
+            torrent_info = extract_torrent_info(url, expected_hash=expected_hash)
 
             commands = []
 
@@ -109,7 +117,7 @@ class RTorrentClient(DownloadClient):
                 add_url = torrent_info.magnet_url or url
                 self._rpc.load.start("", add_url, ";".join(commands))
 
-            torrent_hash = torrent_info.info_hash
+            torrent_hash = torrent_info.info_hash or expected_hash
             if not torrent_hash:
                 raise Exception("Could not determine torrent hash from URL")
 

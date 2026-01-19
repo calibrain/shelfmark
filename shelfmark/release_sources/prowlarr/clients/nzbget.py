@@ -101,7 +101,14 @@ class NZBGetClient(DownloadClient):
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
 
-    def add_download(self, url: str, name: str, category: Optional[str] = None) -> str:
+    def add_download(
+        self,
+        url: str,
+        name: str,
+        category: Optional[str] = None,
+        expected_hash: Optional[str] = None,
+        **kwargs,
+    ) -> str:
         """
         Add NZB by URL.
 
@@ -112,6 +119,7 @@ class NZBGetClient(DownloadClient):
             url: NZB URL (can be Prowlarr proxy URL)
             name: Display name for the download
             category: Category for organization (uses configured default if not specified)
+            expected_hash: Optional info_hash hint (unused)
 
         Returns:
             NZBGet download ID (NZBID).

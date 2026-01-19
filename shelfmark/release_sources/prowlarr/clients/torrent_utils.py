@@ -31,8 +31,23 @@ class TorrentInfo:
     magnet_url: Optional[str] = None
     """The actual magnet URL, if available."""
 
+    def with_info_hash(self, info_hash: Optional[str]) -> "TorrentInfo":
+        """Return a copy with the info_hash replaced when provided."""
+        if info_hash:
+            return TorrentInfo(
+                info_hash=info_hash,
+                torrent_data=self.torrent_data,
+                is_magnet=self.is_magnet,
+                magnet_url=self.magnet_url,
+            )
+        return self
 
-def extract_torrent_info(url: str, fetch_torrent: bool = True) -> TorrentInfo:
+
+def extract_torrent_info(
+    url: str,
+    fetch_torrent: bool = True,
+    expected_hash: Optional[str] = None,
+) -> TorrentInfo:
     """Extract info_hash from magnet link or .torrent URL.
 
     Notes:
@@ -48,11 +63,79 @@ def extract_torrent_info(url: str, fetch_torrent: bool = True) -> TorrentInfo:
     # Try to extract hash from magnet URL
     if is_magnet:
         info_hash = extract_hash_from_magnet(url)
+        if not info_hash and expected_hash:
+            info_hash = expected_hash
         return TorrentInfo(info_hash=info_hash, torrent_data=None, is_magnet=True, magnet_url=url)
 
     # Not a magnet - try to fetch and parse the .torrent file
+    if expected_hash:
+        return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
+
     if not fetch_torrent:
         return TorrentInfo(info_hash=None, torrent_data=None, is_magnet=False)
+
+    headers: dict[str, str] = {}
+    api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()
+    if api_key:
+        headers["X-Api-Key"] = api_key
+
+    def resolve_url(current: str, location: str) -> str:
+        if not location:
+            return current
+        # Support relative redirect locations
+        return urljoin(current, location)
+
+    try:
+        logger.debug(f"Fetching torrent file from: {url[:80]}...")
+
+        # Use allow_redirects=False to handle magnet link redirects manually
+        # Some indexers redirect download URLs to magnet links
+        resp = requests.get(url, timeout=30, allow_redirects=False, headers=headers)
+
+        # Check if this is a redirect to a magnet link
+        if resp.status_code in (301, 302, 303, 307, 308):
+            redirect_url = resolve_url(url, resp.headers.get("Location", ""))
+            if redirect_url.startswith("magnet:"):
+                logger.debug("Download URL redirected to magnet link")
+                info_hash = extract_hash_from_magnet(redirect_url)
+                if not info_hash and expected_hash:
+                    info_hash = expected_hash
+                return TorrentInfo(
+                    info_hash=info_hash, torrent_data=None, is_magnet=True, magnet_url=redirect_url
+                )
+            # Not a magnet redirect, follow it manually
+            logger.debug(f"Following redirect to: {redirect_url[:80]}...")
+            resp = requests.get(redirect_url, timeout=30, headers=headers)
+
+        resp.raise_for_status()
+        torrent_data = resp.content
+
+        # Check if response is actually a magnet link (text response)
+        # Some indexers return magnet links as plain text instead of redirecting
+        if len(torrent_data) < 2000:  # Magnet links are typically short
+            try:
+                text_content = torrent_data.decode("utf-8", errors="ignore").strip()
+                if text_content.startswith("magnet:"):
+                    logger.debug("Download URL returned magnet link as response body")
+                    info_hash = extract_hash_from_magnet(text_content)
+                    if not info_hash and expected_hash:
+                        info_hash = expected_hash
+                    return TorrentInfo(
+                        info_hash=info_hash, torrent_data=None, is_magnet=True, magnet_url=text_content
+                    )
+            except Exception:
+                pass  # Not text, continue with torrent parsing
+
+        info_hash = extract_info_hash_from_torrent(torrent_data)
+        if info_hash:
+            logger.debug(f"Extracted hash from torrent file: {info_hash}")
+        else:
+            logger.warning("Could not extract hash from torrent file")
+        return TorrentInfo(info_hash=info_hash, torrent_data=torrent_data, is_magnet=False)
+    except Exception as e:
+        logger.debug(f"Could not fetch torrent file: {e}")
+        return TorrentInfo(info_hash=None, torrent_data=None, is_magnet=False)
+
 
     headers: dict[str, str] = {}
     api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()

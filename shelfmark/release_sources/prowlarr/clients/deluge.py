@@ -202,13 +202,20 @@ class DelugeClient(DownloadClient):
             self._connected = False
             return False, f"Connection failed: {str(e)}"
 
-    def add_download(self, url: str, name: str, category: Optional[str] = None) -> str:
+    def add_download(
+        self,
+        url: str,
+        name: str,
+        category: Optional[str] = None,
+        expected_hash: Optional[str] = None,
+        **kwargs,
+    ) -> str:
         try:
             self._ensure_connected()
 
             category_value = str(category or self._category)
 
-            torrent_info = extract_torrent_info(url)
+            torrent_info = extract_torrent_info(url, expected_hash=expected_hash)
             if not torrent_info.is_magnet and not torrent_info.torrent_data:
                 raise Exception("Failed to fetch torrent file")
 

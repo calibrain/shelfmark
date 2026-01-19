@@ -395,8 +395,9 @@ class TestQBittorrentIntegration:
 
             assert 0 <= status.progress <= 100
 
-            valid_states = {"downloading", "complete", "error", "seeding", "paused", "queued", "fetching_metadata", "stalled"}
-            assert status.state.value in valid_states
+            valid_states = {"downloading", "complete", "error", "seeding", "paused", "queued", "fetching_metadata", "stalled", "checking"}
+            state_value = status.state.value if hasattr(status.state, "value") else status.state
+            assert state_value in valid_states
 
             assert isinstance(status.complete, bool)
         finally:

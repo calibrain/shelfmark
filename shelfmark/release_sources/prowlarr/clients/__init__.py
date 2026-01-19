@@ -18,7 +18,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union, cast, Any
 
 import requests
 
@@ -87,7 +87,9 @@ def with_retry(
                     time.sleep(delay)
 
             # All retries exhausted
-            raise last_exception
+            if last_exception is None:
+                raise RuntimeError("Retry failed without exception")
+            raise cast(Exception, last_exception)
 
         return wrapper
     return decorator
@@ -256,13 +258,22 @@ class DownloadClient(ABC):
         pass
 
     @abstractmethod
-    def add_download(self, url: str, name: str, category: Optional[str] = None) -> str:
+    def add_download(
+        self,
+        url: str,
+        name: str,
+        category: Optional[str] = None,
+        expected_hash: Optional[str] = None,
+        **kwargs: Any,
+    ) -> str:
+
         """Add a download to the client.
 
         Args:
             url: Download URL (magnet link, .torrent URL, or NZB URL)
             name: Display name for the download
             category: Category/label for organization (None = client default)
+            expected_hash: Optional info_hash hint (torrents only)
 
         Returns:
             Client-specific download ID (hash for torrents, ID for NZBGet).

@@ -229,7 +229,14 @@ class QBittorrentClient(DownloadClient):
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
 
-    def add_download(self, url: str, name: str, category: str | None = None) -> str:
+    def add_download(
+        self,
+        url: str,
+        name: str,
+        category: str | None = None,
+        expected_hash: str | None = None,
+        **kwargs,
+    ) -> str:
         """
         Add torrent by URL (magnet or .torrent).
 
@@ -237,6 +244,7 @@ class QBittorrentClient(DownloadClient):
             url: Magnet link or .torrent URL
             name: Display name for the torrent
             category: Category for organization (uses configured default if not specified)
+            expected_hash: Optional info_hash hint (from Prowlarr)
 
         Returns:
             Torrent hash (info_hash).
@@ -257,7 +265,7 @@ class QBittorrentClient(DownloadClient):
                 if "Conflict" not in type(e).__name__ and "409" not in str(e):
                     logger.debug(f"Could not create category '{category}': {type(e).__name__}: {e}")
 
-            torrent_info = extract_torrent_info(url)
+            torrent_info = extract_torrent_info(url, expected_hash=expected_hash)
             expected_hash = torrent_info.info_hash
             torrent_data = torrent_info.torrent_data
 

@@ -82,7 +82,14 @@ class MockClient(DownloadClient):
     def test_connection(self) -> Tuple[bool, str]:
         return True, "Mock client connected"
 
-    def add_download(self, url: str, name: str, category: str = "cwabd") -> str:
+    def add_download(
+        self,
+        url: str,
+        name: str,
+        category: Optional[str] = None,
+        expected_hash: Optional[str] = None,
+        **kwargs,
+    ) -> str:
         if self.add_download_error:
             raise self.add_download_error
         download_id = f"mock-{len(self.downloads)}"

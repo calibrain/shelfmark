@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from shelfmark.release_sources.prowlarr.clients import DownloadStatus
+from shelfmark.release_sources.prowlarr.clients.torrent_utils import TorrentInfo
 
 
 class MockTorrent:
@@ -464,6 +465,56 @@ class TestQBittorrentClientAddDownload:
 
             assert result == "3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0"
             assert mock_client_instance._session.get.call_count >= 1
+
+    def test_add_download_uses_expected_hash_without_fetch(self, monkeypatch):
+        """Skip proxy fetch when expected hash is provided for URL torrents."""
+        config_values = {
+            "QBITTORRENT_URL": "http://localhost:8080",
+            "QBITTORRENT_USERNAME": "admin",
+            "QBITTORRENT_PASSWORD": "password",
+            "QBITTORRENT_CATEGORY": "test",
+        }
+        monkeypatch.setattr(
+            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        expected_hash = "3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0"
+        mock_torrent = MockTorrent(hash_val=expected_hash)
+        mock_client_instance = MagicMock()
+        mock_client_instance.torrents_add.return_value = "Ok."
+        mock_client_instance.torrents_info.return_value = [mock_torrent]
+        mock_client_instance._session.get.return_value = create_mock_session_response({}, status_code=200)
+        mock_client_class = MagicMock(return_value=mock_client_instance)
+
+        with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
+            import importlib
+            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            importlib.reload(qb_module)
+
+            with patch(
+                "shelfmark.release_sources.prowlarr.clients.qbittorrent.extract_torrent_info",
+                autospec=True,
+            ) as mock_extract:
+                mock_extract.return_value = TorrentInfo(
+                    info_hash=expected_hash,
+                    torrent_data=None,
+                    is_magnet=False,
+                    magnet_url=None,
+                )
+
+                client = qb_module.QBittorrentClient()
+                result = client.add_download(
+                    "http://example.com/test.torrent",
+                    "Test Download",
+                    expected_hash=expected_hash,
+                )
+
+                assert result == expected_hash
+                mock_extract.assert_called_once_with(
+                    "http://example.com/test.torrent",
+                    expected_hash=expected_hash,
+                )
 
     def test_add_download_creates_category(self, monkeypatch):
         """Test that add_download creates category if needed."""

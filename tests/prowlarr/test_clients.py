@@ -151,7 +151,7 @@ class TestDownloadStatus:
             file_path=None,
         )
         with pytest.raises(AttributeError):
-            status.progress = 75.0
+            setattr(status, "progress", 75.0)
 
     def test_download_status_state_value_with_unknown_string(self):
         """Test state_value with an unknown state string."""
@@ -212,7 +212,7 @@ class TestClientRegistry:
             def test_connection(self):
                 return True, "OK"
 
-            def add_download(self, url, name, category="test"):
+            def add_download(self, url, name, category=None, expected_hash=None, **kwargs):
                 return "id"
 
             def get_status(self, download_id):
@@ -245,7 +245,7 @@ class TestClientRegistry:
             def test_connection(self):
                 return True, "OK"
 
-            def add_download(self, url, name, category="test"):
+            def add_download(self, url, name, category=None, expected_hash=None, **kwargs):
                 return "id"
 
             def get_status(self, download_id):
@@ -269,7 +269,7 @@ class TestClientRegistry:
             def test_connection(self):
                 return True, "OK"
 
-            def add_download(self, url, name, category="test"):
+            def add_download(self, url, name, category=None, expected_hash=None, **kwargs):
                 return "id"
 
             def get_status(self, download_id):
@@ -301,7 +301,7 @@ class TestClientRegistry:
             def test_connection(self):
                 return True, "OK"
 
-            def add_download(self, url, name, category="test"):
+            def add_download(self, url, name, category=None, expected_hash=None, **kwargs):
                 return "id"
 
             def get_status(self, download_id):
@@ -325,7 +325,7 @@ class TestClientRegistry:
             def test_connection(self):
                 return True, "OK"
 
-            def add_download(self, url, name, category="test"):
+            def add_download(self, url, name, category=None, expected_hash=None, **kwargs):
                 return "id"
 
             def get_status(self, download_id):
@@ -377,7 +377,7 @@ class TestDownloadClientInterface:
             def test_connection(self):
                 return True, "OK"
 
-            def add_download(self, url, name, category="test"):
+            def add_download(self, url, name, category=None, expected_hash=None, **kwargs):
                 return "id"
 
             def get_status(self, download_id):
