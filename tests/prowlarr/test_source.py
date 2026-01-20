@@ -13,7 +13,7 @@ from shelfmark.release_sources.prowlarr.source import (
     _extract_format,
     _extract_language,
 )
-from shelfmark.release_sources.prowlarr.utils import get_protocol_display
+from shelfmark.release_sources.prowlarr.utils import get_protocol_display, sanitize_download_url
 from shelfmark.metadata_providers import BookMetadata
 
 
@@ -164,6 +164,29 @@ class TestGetProtocolDisplay:
         result = {"protocol": "Usenet"}
         assert get_protocol_display(result) == "nzb"
 
+
+class TestSanitizeDownloadUrl:
+    """Tests for the sanitize_download_url helper."""
+
+    def test_sanitizes_apikey_whitespace(self):
+        """Strip whitespace around apikey separators."""
+        url = "http://prowlarr:9696/5/download?apikey = 12345"
+        assert sanitize_download_url(url) == "http://prowlarr:9696/5/download?apikey=12345"
+
+    def test_sanitizes_multiple_query_params(self):
+        """Sanitize all query pairs while keeping params."""
+        url = "http://prowlarr:9696/5/download?apikey = 12345&indexer = 7"
+        assert sanitize_download_url(url) == "http://prowlarr:9696/5/download?apikey=12345&indexer=7"
+
+    def test_leaves_non_http_urls_untouched(self):
+        """Do not modify magnet or other non-http URLs."""
+        url = "magnet:?xt=urn:btih:abc123"
+        assert sanitize_download_url(url) == url
+
+    def test_leaves_clean_urls_untouched(self):
+        """Return clean URLs as-is."""
+        url = "https://prowlarr:9696/5/download?apikey=12345"
+        assert sanitize_download_url(url) == url
 
 class TestExtractLanguage:
     """Tests for the _extract_language function."""

@@ -5,6 +5,7 @@ Uses SABnzbd's REST API directly via requests (no external dependency).
 """
 
 from typing import Any, Optional, Tuple
+from urllib.parse import urlparse
 
 import requests
 
@@ -159,6 +160,100 @@ class SABnzbdClient(DownloadClient):
 
         return result
 
+    def _api_post_file(self, nzb_content: bytes, filename: str, nzb_name: str, category: str) -> Any:
+        """
+        Upload an NZB file to SABnzbd using addfile.
+
+        Returns:
+            JSON response from SABnzbd.
+        """
+        api_url = f"{self.url}/api"
+        request_params = {
+            "apikey": self.api_key,
+            "mode": "addfile",
+            "output": "json",
+            "nzbname": nzb_name,
+            "cat": category,
+        }
+        files = {"name": (filename, nzb_content, "application/x-nzb")}
+
+        response = requests.post(api_url, params=request_params, files=files, timeout=30)
+        response.raise_for_status()
+        result = response.json()
+
+        if isinstance(result, dict) and result.get("status") is False:
+            error = result.get("error", "Unknown error")
+            raise Exception(f"SABnzbd error: {error}")
+
+        return result
+
+    def _fetch_nzb_content(self, url: str) -> bytes:
+        """Fetch NZB content, including Prowlarr auth headers when appropriate."""
+        headers = self._get_prowlarr_headers(url)
+        response = requests.get(url, timeout=30, headers=headers)
+        response.raise_for_status()
+        return response.content
+
+    def _get_prowlarr_headers(self, url: str) -> dict:
+        api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()
+        if not api_key:
+            return {}
+
+        prowlarr_url = normalize_http_url(config.get("PROWLARR_URL", ""))
+        if not prowlarr_url:
+            return {}
+
+        try:
+            target = urlparse(url)
+            base = urlparse(prowlarr_url)
+        except ValueError:
+            return {}
+
+        if target.hostname and base.hostname and target.hostname.lower() == base.hostname.lower():
+            return {"X-Api-Key": api_key}
+
+        return {}
+
+    @staticmethod
+    def _build_nzb_filename(name: str, url: str) -> str:
+        base_name = (name or "download").strip() or "download"
+        parsed = urlparse(url)
+        path = parsed.path or ""
+        lower_path = path.lower()
+
+        if lower_path.endswith(".nzb.gz"):
+            suffix = ".nzb.gz"
+        elif lower_path.endswith(".nzb"):
+            suffix = ".nzb"
+        else:
+            suffix = ""
+
+        lower_base = base_name.lower()
+        if suffix and lower_base.endswith(suffix):
+            return base_name
+        if suffix == ".nzb.gz" and lower_base.endswith(".nzb"):
+            return f"{base_name}.gz"
+        if suffix:
+            return f"{base_name}{suffix}"
+        if lower_base.endswith((".nzb", ".nzb.gz")):
+            return base_name
+        return f"{base_name}.nzb"
+
+    @staticmethod
+    def _extract_nzo_id(result: Any) -> str:
+        if not isinstance(result, dict):
+            raise Exception("SABnzbd returned invalid response")
+
+        nzo_ids = result.get("nzo_ids") or result.get("nzo_id")
+        if isinstance(nzo_ids, list) and nzo_ids:
+            return str(nzo_ids[0])
+        if isinstance(nzo_ids, str) and nzo_ids:
+            return nzo_ids
+        if isinstance(nzo_ids, int):
+            return str(nzo_ids)
+
+        raise Exception("SABnzbd returned no nzo_id")
+
     def test_connection(self) -> Tuple[bool, str]:
         """Test connection to SABnzbd."""
         try:
@@ -200,7 +295,16 @@ class SABnzbdClient(DownloadClient):
 
         try:
             logger.debug(f"Adding NZB to SABnzbd: {name}")
+            nzb_filename = self._build_nzb_filename(name, url)
+            nzb_content = self._fetch_nzb_content(url)
+            result = self._api_post_file(nzb_content, nzb_filename, name, category)
+            nzo_id = self._extract_nzo_id(result)
+            logger.info(f"Added NZB to SABnzbd: {nzo_id}")
+            return nzo_id
+        except Exception as e:
+            logger.warning(f"SABnzbd addfile failed, falling back to addurl: {e}")
 
+        try:
             result = self._api_call(
                 "addurl",
                 {
@@ -209,15 +313,9 @@ class SABnzbdClient(DownloadClient):
                     "cat": category,
                 },
             )
-
-            # SABnzbd returns {"status": True, "nzo_ids": ["SABnzbd_nzo_xxx"]}
-            nzo_ids = result.get("nzo_ids", [])
-            if nzo_ids:
-                nzo_id = nzo_ids[0]
-                logger.info(f"Added NZB to SABnzbd: {nzo_id}")
-                return nzo_id
-
-            raise Exception("SABnzbd returned no nzo_id")
+            nzo_id = self._extract_nzo_id(result)
+            logger.info(f"Added NZB to SABnzbd via addurl: {nzo_id}")
+            return nzo_id
         except Exception as e:
             logger.error(f"SABnzbd add failed: {e}")
             raise

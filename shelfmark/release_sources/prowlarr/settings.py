@@ -238,6 +238,17 @@ def _test_deluge_connection(current_values: Optional[Dict[str, Any]] = None) -> 
             raise Exception(str(error))
         return data.get("result")
 
+    def get_daemon_version(session: requests.Session, rpc_id: int) -> Any:
+        try:
+            methods = rpc_call(session, rpc_id, "system.listMethods")
+            if isinstance(methods, list) and "daemon.get_version" in methods:
+                return rpc_call(session, rpc_id + 1, "daemon.get_version")
+        except Exception:
+            # Fall back to daemon.info to preserve existing behavior.
+            pass
+
+        return rpc_call(session, rpc_id + 1, "daemon.info")
+
     try:
         session = requests.Session()
 
@@ -266,7 +277,7 @@ def _test_deluge_connection(current_values: Optional[Dict[str, Any]] = None) -> 
                     "message": "Deluge Web UI couldn't connect to Deluge core. Check Deluge Web UI → Connection Manager.",
                 }
 
-        version = rpc_call(session, 6, "daemon.info")
+        version = get_daemon_version(session, 6)
         return {"success": True, "message": f"Connected to Deluge {version}"}
 
     except requests.exceptions.ConnectionError:

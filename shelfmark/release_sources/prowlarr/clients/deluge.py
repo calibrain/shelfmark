@@ -169,6 +169,18 @@ class DelugeClient(DownloadClient):
 
         self._connected = True
 
+    def _get_daemon_version(self) -> Any:
+        """Fetch daemon version, preferring daemon.get_version when available."""
+        try:
+            methods = self._rpc_call("system.listMethods")
+            if isinstance(methods, list) and "daemon.get_version" in methods:
+                return self._rpc_call("daemon.get_version")
+        except Exception:
+            # Fall back to daemon.info to preserve existing behavior.
+            pass
+
+        return self._rpc_call("daemon.info")
+
     def _try_set_label(self, torrent_id: str, label: str) -> None:
         """Best-effort label assignment (requires Deluge Label plugin)."""
         if not label:
@@ -195,7 +207,7 @@ class DelugeClient(DownloadClient):
     def test_connection(self) -> Tuple[bool, str]:
         try:
             self._ensure_connected()
-            version = self._rpc_call("daemon.info")
+            version = self._get_daemon_version()
             return True, f"Connected to Deluge {version}"
         except Exception as e:
             self._authenticated = False

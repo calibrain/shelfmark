@@ -152,7 +152,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Grant read/execute permissions to others
 RUN chmod -R o+rx /usr/bin/chromium && \
     chmod -R o+rx /usr/bin/chromedriver && \
-    chmod -R o+w /usr/local/lib/python3.10/site-packages/seleniumbase/drivers/
+    chmod -R o+rwx /usr/local/lib/python3.10/site-packages/seleniumbase/drivers/
 
 # Default command to run the application entrypoint script
 CMD ["/app/entrypoint.sh"]

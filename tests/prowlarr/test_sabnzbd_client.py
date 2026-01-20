@@ -483,27 +483,23 @@ class TestSABnzbdClientAddDownload:
             lambda key, default="": config_values.get(key, default),
         )
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "status": True,
-            "nzo_ids": ["SABnzbd_nzo_xyz789"],
-        }
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
+            SABnzbdClient,
+        )
 
-        with patch(
-            "shelfmark.release_sources.prowlarr.clients.sabnzbd.requests.get",
-            return_value=mock_response,
-        ):
-            from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
+        with patch.object(SABnzbdClient, "_fetch_nzb_content", return_value=b"nzbdata"):
+            with patch.object(
                 SABnzbdClient,
-            )
+                "_api_post_file",
+                return_value={"status": True, "nzo_ids": ["SABnzbd_nzo_xyz789"]},
+            ):
+                client = SABnzbdClient()
+                result = client.add_download(
+                    "https://example.com/download.nzb",
+                    "Test Book",
+                )
 
-            client = SABnzbdClient()
-            result = client.add_download(
-                "https://example.com/download.nzb",
-                "Test Book",
-            )
-
-            assert result == "SABnzbd_nzo_xyz789"
+                assert result == "SABnzbd_nzo_xyz789"
 
     def test_add_download_no_nzo_id(self, monkeypatch):
         """Test add_download when SABnzbd returns no nzo_id."""
@@ -517,25 +513,60 @@ class TestSABnzbdClientAddDownload:
             lambda key, default="": config_values.get(key, default),
         )
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "status": True,
-            "nzo_ids": [],
-        }
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
+            SABnzbdClient,
+        )
 
-        with patch(
-            "shelfmark.release_sources.prowlarr.clients.sabnzbd.requests.get",
-            return_value=mock_response,
-        ):
-            from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
+        with patch.object(SABnzbdClient, "_fetch_nzb_content", return_value=b"nzbdata"):
+            with patch.object(
                 SABnzbdClient,
-            )
+                "_api_post_file",
+                return_value={"status": True, "nzo_ids": []},
+            ):
+                with patch.object(
+                    SABnzbdClient,
+                    "_api_call",
+                    return_value={"status": True, "nzo_ids": []},
+                ):
+                    client = SABnzbdClient()
+                    with pytest.raises(Exception) as exc_info:
+                        client.add_download("https://example.com/download.nzb", "Test")
 
-            client = SABnzbdClient()
-            with pytest.raises(Exception) as exc_info:
-                client.add_download("https://example.com/download.nzb", "Test")
+                    assert "nzo_id" in str(exc_info.value).lower()
 
-            assert "nzo_id" in str(exc_info.value).lower()
+    def test_add_download_fallback_to_addurl(self, monkeypatch):
+        """Test fallback to addurl when NZB fetch fails."""
+        import requests
+
+        config_values = {
+            "SABNZBD_URL": "http://localhost:8080",
+            "SABNZBD_API_KEY": "abc123",
+            "SABNZBD_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
+            SABnzbdClient,
+        )
+
+        with patch.object(
+            SABnzbdClient,
+            "_fetch_nzb_content",
+            side_effect=requests.RequestException("Fetch failed"),
+        ):
+            with patch.object(
+                SABnzbdClient,
+                "_api_call",
+                return_value={"status": True, "nzo_ids": ["SABnzbd_nzo_fallback"]},
+            ) as mock_api_call:
+                client = SABnzbdClient()
+                result = client.add_download("https://example.com/download.nzb", "Test Book")
+
+                assert result == "SABnzbd_nzo_fallback"
+                assert mock_api_call.call_args[0][0] == "addurl"
 
 
 class TestSABnzbdClientRemove:

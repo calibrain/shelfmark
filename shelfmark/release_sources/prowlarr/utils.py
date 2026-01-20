@@ -6,6 +6,7 @@ Provides common helper functions used across the Prowlarr plugin.
 
 from pathlib import Path
 from typing import Optional
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 
 def get_protocol(result: dict) -> str:
@@ -40,7 +41,7 @@ def get_preferred_download_url(result: dict) -> str:
     """
     protocol = str(result.get("protocol", "")).lower()
     magnet_url = str(result.get("magnetUrl") or "").strip()
-    download_url = str(result.get("downloadUrl") or "").strip()
+    download_url = sanitize_download_url(str(result.get("downloadUrl") or "").strip())
 
     if protocol == "torrent":
         return magnet_url or download_url
@@ -52,6 +53,42 @@ def get_preferred_download_url(result: dict) -> str:
         return magnet_url
 
     return download_url or magnet_url
+
+
+def sanitize_download_url(download_url: str) -> str:
+    """Normalize Prowlarr download URLs to avoid malformed query strings."""
+    if not download_url:
+        return download_url
+
+    normalized = download_url.strip()
+    if not normalized:
+        return normalized
+
+    lower = normalized.lower()
+    if not (lower.startswith("http://") or lower.startswith("https://")):
+        return normalized
+
+    if " " not in normalized:
+        return normalized
+
+    parsed = urlparse(normalized)
+    if not parsed.query:
+        return normalized
+
+    cleaned_pairs = []
+    changed = False
+    for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+        cleaned_key = key.strip()
+        cleaned_value = value.strip()
+        if cleaned_key != key or cleaned_value != value:
+            changed = True
+        cleaned_pairs.append((cleaned_key, cleaned_value))
+
+    if not changed:
+        return normalized
+
+    cleaned_query = urlencode(cleaned_pairs, doseq=True)
+    return urlunparse(parsed._replace(query=cleaned_query))
 
 
 def get_protocol_display(result: dict) -> str:

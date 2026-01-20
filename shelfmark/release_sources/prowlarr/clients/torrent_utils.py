@@ -14,6 +14,50 @@ from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
 
+_PROWLARR_DOWNLOAD_PATH = re.compile(r"(?:/api/v1/indexer)?/\d+/download$")
+
+
+def _decode_prowlarr_link(link_value: str) -> Optional[str]:
+    """Decode Prowlarr's link param into a usable URL, if possible."""
+    if not link_value:
+        return None
+
+    value = link_value.strip()
+    if not value:
+        return None
+
+    if value.startswith(("http://", "https://", "magnet:")):
+        return value
+
+    # Try urlsafe + standard base64 decoding with padding.
+    padded = value + "=" * (-len(value) % 4)
+    for decoder in (base64.urlsafe_b64decode, base64.b64decode):
+        try:
+            decoded = decoder(padded).decode("utf-8", errors="ignore").strip()
+        except Exception:
+            continue
+        if decoded.startswith(("http://", "https://", "magnet:")):
+            return decoded
+
+    return None
+
+
+def _get_prowlarr_fallback_url(url: str) -> Optional[str]:
+    """Try to extract the original download URL from a Prowlarr download proxy URL."""
+    try:
+        parsed = urlparse(url)
+        if not _PROWLARR_DOWNLOAD_PATH.search(parsed.path):
+            return None
+
+        params = parse_qs(parsed.query)
+        link_value = (params.get("link") or [None])[0]
+        if not link_value:
+            return None
+
+        return _decode_prowlarr_link(link_value)
+    except Exception:
+        return None
+
 
 @dataclass
 class TorrentInfo:
@@ -47,6 +91,7 @@ def extract_torrent_info(
     url: str,
     fetch_torrent: bool = True,
     expected_hash: Optional[str] = None,
+    allow_prowlarr_fallback: bool = True,
 ) -> TorrentInfo:
     """Extract info_hash from magnet link or .torrent URL.
 
@@ -58,6 +103,14 @@ def extract_torrent_info(
         This mirrors how Sonarr builds an authenticated download request via the
         indexer when grabbing torrent files.
     """
+    fallback_url: Optional[str] = None
+    if allow_prowlarr_fallback:
+        decoded_url = _get_prowlarr_fallback_url(url)
+        if decoded_url and decoded_url != url:
+            logger.debug(f"Decoded Prowlarr link, using direct URL: {decoded_url[:80]}...")
+            fallback_url = url
+            url = decoded_url
+
     is_magnet = url.startswith("magnet:")
 
     # Try to extract hash from magnet URL
@@ -134,6 +187,14 @@ def extract_torrent_info(
         return TorrentInfo(info_hash=info_hash, torrent_data=torrent_data, is_magnet=False)
     except Exception as e:
         logger.debug(f"Could not fetch torrent file: {e}")
+        if allow_prowlarr_fallback and fallback_url:
+            logger.debug(f"Retrying torrent fetch via Prowlarr proxy: {fallback_url[:80]}...")
+            return extract_torrent_info(
+                fallback_url,
+                fetch_torrent=fetch_torrent,
+                expected_hash=expected_hash,
+                allow_prowlarr_fallback=False,
+            )
         return TorrentInfo(info_hash=None, torrent_data=None, is_magnet=False)
 
 
