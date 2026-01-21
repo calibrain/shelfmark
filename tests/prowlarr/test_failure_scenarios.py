@@ -125,7 +125,9 @@ class MockClient(DownloadClient):
     def get_download_path(self, download_id: str) -> Optional[str]:
         return "/downloads/test-file.epub"
 
-    def find_existing(self, url: str) -> Optional[Tuple[str, DownloadStatus]]:
+    def find_existing(
+        self, url: str, category: Optional[str] = None
+    ) -> Optional[Tuple[str, DownloadStatus]]:
         return None
 
 

@@ -160,15 +160,15 @@ class TestExtractInfoHash:
     """Tests for extracting info hash from torrent files."""
 
     def test_extract_hash_from_simple_torrent(self):
-        """Test extracting hash from a simple torrent structure."""
-        # Create a minimal valid torrent structure
-        info_dict = {b"name": b"test.txt", b"length": 100}
+        """Test extracting hash from a simple v1 torrent structure."""
+        # Create a minimal valid v1 torrent structure (has 'pieces' key)
+        info_dict = {b"name": b"test.txt", b"length": 100, b"pieces": b"\x00" * 20}
         torrent = {b"info": info_dict}
         torrent_bytes = _bencode_encode(torrent)
 
         result = _extract_info_hash_from_torrent(torrent_bytes)
 
-        # Should return a 40-character hex string
+        # V1 torrents return SHA-1 hash (40-character hex string)
         assert result is not None
         assert len(result) == 40
         assert all(c in "0123456789abcdef" for c in result)

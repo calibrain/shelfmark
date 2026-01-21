@@ -540,7 +540,9 @@ class QBittorrentClient(DownloadClient):
             logger.debug(f"qBittorrent could not derive path from files: {type(e).__name__}: {e}")
             return None
 
-    def find_existing(self, url: str) -> Optional[Tuple[str, DownloadStatus]]:
+    def find_existing(
+        self, url: str, category: Optional[str] = None
+    ) -> Optional[Tuple[str, DownloadStatus]]:
         """Check if a torrent for this URL already exists in qBittorrent."""
         try:
             torrent_info = extract_torrent_info(url)

@@ -275,6 +275,29 @@ class TestAtomicMove:
         assert dest.read_text() == "existing"
         assert result.read_text() == "new"
 
+    def test_false_positive_exists_probe(self, tmp_path, monkeypatch):
+        """Moves file even if exists() falsely reports a collision."""
+        from shelfmark.download.fs import atomic_move as _atomic_move
+
+        source = tmp_path / "source.txt"
+        source.write_text("content")
+        dest = tmp_path / "dest.txt"
+
+        original_exists = Path.exists
+
+        def _fake_exists(self):
+            if self == dest:
+                return True
+            return original_exists(self)
+
+        monkeypatch.setattr(Path, "exists", _fake_exists)
+
+        result = _atomic_move(source, dest)
+
+        assert result == dest
+        assert not source.exists()
+        assert result.read_text() == "content"
+
     def test_cross_filesystem_fallback(self):
         """Falls back to copy when cross-filesystem."""
         from shelfmark.download.fs import atomic_move as _atomic_move
@@ -865,8 +888,8 @@ class TestTorrentSourceCleanupProtection:
             "HARDLINK_TORRENTS": hardlink,
             "HARDLINK_TORRENTS_AUDIOBOOK": hardlink,
             # Supported formats
-            "SUPPORTED_FORMATS": ["epub", "mobi"],
-            "SUPPORTED_AUDIOBOOK_FORMATS": ["mp3"],
+            "SUPPORTED_FORMATS": ["epub", "mobi", "cbz", "cbr", "azw3", "fb2", "djvu", "pdf"],
+            "SUPPORTED_AUDIOBOOK_FORMATS": ["mp3", "m4a", "m4b", "flac"],
         }.get(key, default))
 
     # ==================== EPUB EBOOK TESTS ====================

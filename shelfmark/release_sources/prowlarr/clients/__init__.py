@@ -323,7 +323,9 @@ class DownloadClient(ABC):
         """
         pass
 
-    def find_existing(self, url: str) -> Optional[Tuple[str, DownloadStatus]]:
+    def find_existing(
+        self, url: str, category: Optional[str] = None
+    ) -> Optional[Tuple[str, DownloadStatus]]:
         """
         Check if a download for this URL already exists in the client.
 
@@ -332,6 +334,7 @@ class DownloadClient(ABC):
 
         Args:
             url: Download URL (magnet link, .torrent URL, or NZB URL)
+            category: Category to filter by (usenet clients only)
 
         Returns:
             Tuple of (download_id, status) if found, None if not found.

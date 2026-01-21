@@ -141,6 +141,20 @@ def _perform_nfs_fallback(source: Path, dest: Path, is_move: bool) -> None:
             raise
 
 
+def _claim_destination(path: Path) -> bool:
+    """Atomically claim a destination path by creating a placeholder file.
+
+    Returns True if the placeholder was created. Caller must replace or unlink it.
+    """
+    try:
+        fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
+    except FileExistsError:
+        return False
+    else:
+        os.close(fd)
+        return True
+
+
 def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> Path:
     """Move a file with collision detection.
 
@@ -170,29 +184,42 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
         try_path = dest_path if attempt == 0 else parent / f"{base}_{attempt}{ext}"
 
         # Check for existing file (os.rename would overwrite on Unix)
+        claimed = False
         if try_path.exists():
-            continue
+            # Some filesystems can report false positives for exists() with
+            # special characters. Probe with O_EXCL to confirm.
+            claimed = _claim_destination(try_path)
+            if not claimed:
+                continue
 
         try:
             # os.rename is atomic on same filesystem and triggers inotify events
-            os.rename(str(source_path), str(try_path))
+            if claimed:
+                os.replace(str(source_path), str(try_path))
+            else:
+                os.rename(str(source_path), str(try_path))
             if attempt > 0:
                 logger.info(f"File collision resolved: {try_path.name}")
             return try_path
         except FileExistsError:
             # Race condition: file created between exists() check and rename()
+            if claimed:
+                try_path.unlink(missing_ok=True)
             continue
         except OSError as e:
             # Cross-filesystem - fall back to exclusive create + verified copy + delete.
             if e.errno != errno.EXDEV:
+                if claimed:
+                    try_path.unlink(missing_ok=True)
                 raise
 
             expected_size = source_path.stat().st_size
 
             try:
-                # Claim destination path atomically.
-                fd = os.open(str(try_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
-                os.close(fd)
+                if not claimed:
+                    # Claim destination path atomically.
+                    fd = os.open(str(try_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
+                    os.close(fd)
 
                 # Copy to a temp file first, then replace to avoid partial files.
                 temp_path = try_path.parent / f".{try_path.name}.tmp"

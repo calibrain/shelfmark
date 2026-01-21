@@ -482,7 +482,9 @@ class SABnzbdClient(DownloadClient):
         status = self.get_status(download_id)
         return status.file_path
 
-    def find_existing(self, url: str) -> Optional[Tuple[str, DownloadStatus]]:
+    def find_existing(
+        self, url: str, category: Optional[str] = None
+    ) -> Optional[Tuple[str, DownloadStatus]]:
         """
         Check if an NZB for this URL already exists in SABnzbd.
 
@@ -493,6 +495,7 @@ class SABnzbdClient(DownloadClient):
 
         Args:
             url: NZB URL
+            category: Category to filter by (defaults to configured category)
 
         Returns:
             Tuple of (nzo_id, status) if found, None if not found.
@@ -518,10 +521,15 @@ class SABnzbdClient(DownloadClient):
             if not filename:
                 return None
 
-            # Search queue
+            # Use provided category or fall back to configured default
+            search_category = category or self._category
+
+            # Search queue (SABnzbd uses "cat" field for category in queue)
             queue_result = self._api_call("queue")
             queue = queue_result.get("queue", {})
             for slot in queue.get("slots", []):
+                if slot.get("cat", "") != search_category:
+                    continue
                 slot_name = slot.get("filename", "")
                 if filename.lower() in slot_name.lower():
                     nzo_id = slot.get("nzo_id")
@@ -530,10 +538,12 @@ class SABnzbdClient(DownloadClient):
                         logger.debug(f"Found existing NZB in SABnzbd queue: {nzo_id}")
                         return (nzo_id, status)
 
-            # Search history
+            # Search history (SABnzbd uses "category" field in history)
             history_result = self._api_call("history", {"limit": 100})
             history = history_result.get("history", {})
             for slot in history.get("slots", []):
+                if slot.get("category", "") != search_category:
+                    continue
                 slot_name = slot.get("name", "")
                 if filename.lower() in slot_name.lower():
                     nzo_id = slot.get("nzo_id")
