@@ -188,7 +188,8 @@ class ProwlarrHandler(DownloadHandler):
 
             # Check if this download already exists in the client
             status_callback("resolving", f"Checking {client.name}")
-            existing = client.find_existing(download_url)
+            category = self._get_category_for_task(client, task)
+            existing = client.find_existing(download_url, category=category)
 
             if existing:
                 download_id, existing_status = existing

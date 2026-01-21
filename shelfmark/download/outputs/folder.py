@@ -20,6 +20,19 @@ logger = setup_logger(__name__)
 FOLDER_OUTPUT_MODE = "folder"
 
 
+def _resolve_custom_script_target(target_path: Path, destination: Path, path_mode: str) -> Path:
+    mode = (path_mode or "absolute").strip().lower()
+    if mode != "relative":
+        return target_path
+
+    try:
+        return target_path.relative_to(destination)
+    except ValueError:
+        if target_path.is_absolute():
+            return Path(target_path.name)
+        return target_path
+
+
 @dataclass(frozen=True)
 class _ProcessingPlan:
     destination: Path
@@ -129,22 +142,41 @@ def process_folder_output(
         record_step(steps, step_name, source=str(temp_file), dest=str(prepared.output_plan.staging_dir))
 
     def run_custom_script(script_path: str, target_path: Path, phase: str) -> bool:
-        record_step(steps, "custom_script", script=str(script_path), target=str(target_path), phase=phase)
+        path_mode = core_config.config.get("CUSTOM_SCRIPT_PATH_MODE", "absolute")
+        script_target = _resolve_custom_script_target(target_path, plan.destination, path_mode)
+        env = {
+            **os.environ,
+            "SHELFMARK_CUSTOM_SCRIPT_TARGET": str(target_path),
+            "SHELFMARK_CUSTOM_SCRIPT_RELATIVE": str(_resolve_custom_script_target(target_path, plan.destination, "relative")),
+            "SHELFMARK_CUSTOM_SCRIPT_DESTINATION": str(plan.destination),
+            "SHELFMARK_CUSTOM_SCRIPT_MODE": str(path_mode),
+            "SHELFMARK_CUSTOM_SCRIPT_PHASE": phase,
+        }
+        record_step(
+            steps,
+            "custom_script",
+            script=str(script_path),
+            target=str(script_target),
+            target_abs=str(target_path),
+            mode=str(path_mode),
+            phase=phase,
+        )
         log_plan_steps(task.task_id, steps)
         logger.info(
             "Task %s: running custom script %s on %s (%s)",
             task.task_id,
             script_path,
-            target_path,
+            script_target,
             phase,
         )
         try:
             result = subprocess.run(
-                [script_path, str(target_path)],
+                [script_path, str(script_target)],
                 check=True,
                 timeout=300,  # 5 minute timeout
                 capture_output=True,
                 text=True,
+                env=env,
             )
             if result.stdout:
                 logger.debug("Task %s: custom script stdout: %s", task.task_id, result.stdout.strip())

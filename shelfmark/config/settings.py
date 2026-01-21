@@ -1231,6 +1231,16 @@ def advanced_settings():
             description="Path to a script to run after each successful download. Must be executable.",
             placeholder="/path/to/script.sh",
         ),
+        SelectField(
+            key="CUSTOM_SCRIPT_PATH_MODE",
+            label="Custom Script Path Mode",
+            description="Pass the path to the custom script as an absolute path or relative to the destination folder.",
+            options=[
+                {"value": "absolute", "label": "Absolute", "description": "Pass the full destination path (default)."},
+                {"value": "relative", "label": "Relative", "description": "Pass the path relative to the destination folder."},
+            ],
+            default="absolute",
+        ),
         CheckboxField(
             key="DEBUG",
             label="Debug Mode",

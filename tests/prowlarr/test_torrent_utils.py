@@ -8,6 +8,9 @@ Tests:
 - extract_hash_from_magnet
 """
 
+import base64
+import hashlib
+
 import pytest
 
 from shelfmark.release_sources.prowlarr.clients.torrent_utils import (
@@ -218,6 +221,8 @@ class TestBencodeEncode:
         result = bencode_encode(data)
         assert result == b"d4:listli1ei2ei3ee3:numi42ee"
 
+
+
     def test_encode_invalid_type_raises(self):
         """Test that invalid types raise ValueError."""
         with pytest.raises(ValueError):
@@ -276,7 +281,12 @@ class TestExtractInfoHash:
 
     def test_extract_hash_from_simple_torrent(self):
         """Test extracting hash from a simple torrent structure."""
-        info_dict = {b"name": b"test.txt", b"length": 100}
+        info_dict = {
+            b"name": b"test.txt",
+            b"length": 100,
+            b"piece length": 16384,
+            b"pieces": b"\x00" * 20,
+        }
         torrent = {b"info": info_dict}
         torrent_bytes = bencode_encode(torrent)
 
@@ -320,6 +330,19 @@ class TestExtractInfoHash:
         hash2 = extract_info_hash_from_torrent(bencode_encode(torrent2))
 
         assert hash1 != hash2
+
+    def test_extract_hash_v2_without_pieces(self):
+        """Use SHA-256 when torrent lacks v1 pieces."""
+        info_dict = {
+            b"meta version": 2,
+            b"file tree": {b"test.txt": {b"": {b"length": 123}}},
+            b"piece length": 16384,
+        }
+        torrent = {b"info": info_dict}
+        torrent_bytes = bencode_encode(torrent)
+
+        expected = hashlib.sha256(bencode_encode(info_dict)).hexdigest().lower()
+        assert extract_info_hash_from_torrent(torrent_bytes) == expected
 
 
 class TestExtractHashFromMagnet:
@@ -380,3 +403,20 @@ class TestExtractHashFromMagnet:
         )
         result = extract_hash_from_magnet(magnet)
         assert result == "3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0"
+
+    def test_extract_hash_from_btmh_hex(self):
+        """Test extracting v2 hash from btmh (hex multihash)."""
+        digest = bytes(range(1, 33))
+        multihash = b"\x12\x20" + digest
+        magnet = f"magnet:?xt=urn:btmh:{multihash.hex()}&dn=test"
+        result = extract_hash_from_magnet(magnet)
+        assert result == digest.hex()
+
+    def test_extract_hash_from_btmh_base32(self):
+        """Test extracting v2 hash from btmh (base32 multihash)."""
+        digest = bytes(range(1, 33))
+        multihash = b"\x12\x20" + digest
+        b32 = base64.b32encode(multihash).decode("ascii").rstrip("=")
+        magnet = f"magnet:?xt=urn:btmh:{b32}&dn=test"
+        result = extract_hash_from_magnet(magnet)
+        assert result == digest.hex()

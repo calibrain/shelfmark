@@ -712,6 +712,47 @@ class TestCustomScriptExecution:
         result_path = Path(result)
         assert call_args[0][0] == ["/path/to/script.sh", str(result_path)]
 
+    def test_runs_custom_script_with_relative_path_mode(self, temp_dirs, sample_direct_task):
+        """Runs custom script with a destination-relative path when configured."""
+        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        import subprocess
+
+        temp_file = temp_dirs["staging"] / "book.epub"
+        temp_file.write_bytes(b"content")
+
+        status_cb = MagicMock()
+        cancel_flag = Event()
+
+        with patch('shelfmark.core.config.config') as mock_config, \
+             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]), \
+             patch('subprocess.run') as mock_run:
+
+            mock_config.USE_BOOK_TITLE = False
+            mock_config.CUSTOM_SCRIPT = "/path/to/script.sh"
+            _sync_core_config(mock_config, mock_config)
+            mock_config.get = _mock_destination_config(
+                temp_dirs["ingest"],
+                {"CUSTOM_SCRIPT_PATH_MODE": "relative"},
+            )
+            _sync_core_config(mock_config, mock_config)
+
+            mock_run.return_value = MagicMock(stdout="", returncode=0)
+
+            result = _post_process_download(
+                temp_file=temp_file,
+                task=sample_direct_task,
+                cancel_flag=cancel_flag,
+                status_callback=status_cb,
+            )
+
+        assert result is not None
+        result_path = Path(result)
+        expected_relative = result_path.relative_to(temp_dirs["ingest"])
+        script_args = mock_run.call_args[0][0]
+        assert script_args[0] == "/path/to/script.sh"
+        assert script_args[1] == str(expected_relative)
+        assert not Path(script_args[1]).is_absolute()
+
     def test_runs_custom_script_for_directory_download_once(self, temp_dirs):
         """Runs custom script once after transferring a directory download."""
         from shelfmark.download.postprocess.router import post_process_download as _post_process_download

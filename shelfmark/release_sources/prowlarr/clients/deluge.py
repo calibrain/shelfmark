@@ -369,7 +369,9 @@ class DelugeClient(DownloadClient):
             self._log_error("get_download_path", e, level="debug")
             return None
 
-    def find_existing(self, url: str) -> Optional[Tuple[str, DownloadStatus]]:
+    def find_existing(
+        self, url: str, category: Optional[str] = None
+    ) -> Optional[Tuple[str, DownloadStatus]]:
         try:
             self._ensure_connected()
 

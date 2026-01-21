@@ -105,15 +105,22 @@ def is_torrent_source(source_path: Path, task: DownloadTask) -> bool:
             return False
 
 
+def _max_attempts_for_batch(file_count: int, default: int = 100) -> int:
+    if file_count <= 1:
+        return default
+    return max(default, file_count + default)
+
+
 def _transfer_single_file(
     source_path: Path,
     dest_path: Path,
     use_hardlink: bool,
     is_torrent: bool,
     preserve_source: bool = False,
+    max_attempts: int = 100,
 ) -> Tuple[Path, str]:
     if use_hardlink:
-        final_path = atomic_hardlink(source_path, dest_path)
+        final_path = atomic_hardlink(source_path, dest_path, max_attempts=max_attempts)
         try:
             if os.stat(source_path).st_ino == os.stat(final_path).st_ino:
                 return final_path, "hardlink"
@@ -122,9 +129,9 @@ def _transfer_single_file(
         return final_path, "copy"
 
     if is_torrent or preserve_source:
-        return atomic_copy(source_path, dest_path), "copy"
+        return atomic_copy(source_path, dest_path, max_attempts=max_attempts), "copy"
 
-    return atomic_move(source_path, dest_path), "move"
+    return atomic_move(source_path, dest_path, max_attempts=max_attempts), "move"
 
 
 def transfer_book_files(
@@ -141,6 +148,7 @@ def transfer_book_files(
 
     is_audiobook = check_audiobook(task.content_type)
     organization_mode = organization_mode or get_file_organization(is_audiobook)
+    max_attempts = _max_attempts_for_batch(len(book_files))
 
     final_paths: List[Path] = []
 
@@ -160,6 +168,7 @@ def transfer_book_files(
                 use_hardlink,
                 is_torrent,
                 preserve_source=preserve_source,
+                max_attempts=max_attempts,
             )
             final_paths.append(final_path)
             logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
@@ -179,6 +188,7 @@ def transfer_book_files(
                     use_hardlink,
                     is_torrent,
                     preserve_source=preserve_source,
+                    max_attempts=max_attempts,
                 )
                 final_paths.append(final_path)
                 logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
@@ -210,6 +220,7 @@ def transfer_book_files(
             use_hardlink,
             is_torrent,
             preserve_source=preserve_source,
+            max_attempts=max_attempts,
         )
         final_paths.append(final_path)
         logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
@@ -286,7 +297,13 @@ def transfer_file_to_library(
     dest_path.parent.mkdir(parents=True, exist_ok=True)
 
     is_torrent = is_torrent_source(source_path, task)
-    final_path, op = _transfer_single_file(source_path, dest_path, use_hardlink, is_torrent)
+    final_path, op = _transfer_single_file(
+        source_path,
+        dest_path,
+        use_hardlink,
+        is_torrent,
+        max_attempts=_max_attempts_for_batch(1),
+    )
     logger.info(f"Library {op}: {final_path}")
 
     if use_hardlink and temp_file and not is_torrent_source(temp_file, task):
@@ -327,12 +344,19 @@ def transfer_directory_to_library(
 
     is_torrent = is_torrent_source(source_dir, task)
     transferred_paths: List[Path] = []
+    max_attempts = _max_attempts_for_batch(len(source_files))
 
     if len(source_files) == 1:
         source_file = source_files[0]
         ext = source_file.suffix.lstrip(".")
         dest_path = base_library_path.with_suffix(f".{ext}")
-        final_path, op = _transfer_single_file(source_file, dest_path, use_hardlink, is_torrent)
+        final_path, op = _transfer_single_file(
+            source_file,
+            dest_path,
+            use_hardlink,
+            is_torrent,
+            max_attempts=max_attempts,
+        )
         logger.debug(f"Library {op}: {source_file.name} -> {final_path}")
         transferred_paths.append(final_path)
     else:
@@ -345,7 +369,13 @@ def transfer_directory_to_library(
             file_path = build_library_path(library_base, template, file_metadata, extension=ext)
             file_path.parent.mkdir(parents=True, exist_ok=True)
 
-            final_path, op = _transfer_single_file(source_file, file_path, use_hardlink, is_torrent)
+            final_path, op = _transfer_single_file(
+                source_file,
+                file_path,
+                use_hardlink,
+                is_torrent,
+                max_attempts=max_attempts,
+            )
             logger.debug(f"Library {op}: {source_file.name} -> {final_path}")
             transferred_paths.append(final_path)
 

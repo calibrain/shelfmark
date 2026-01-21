@@ -14,50 +14,6 @@ from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-_PROWLARR_DOWNLOAD_PATH = re.compile(r"(?:/api/v1/indexer)?/\d+/download$")
-
-
-def _decode_prowlarr_link(link_value: str) -> Optional[str]:
-    """Decode Prowlarr's link param into a usable URL, if possible."""
-    if not link_value:
-        return None
-
-    value = link_value.strip()
-    if not value:
-        return None
-
-    if value.startswith(("http://", "https://", "magnet:")):
-        return value
-
-    # Try urlsafe + standard base64 decoding with padding.
-    padded = value + "=" * (-len(value) % 4)
-    for decoder in (base64.urlsafe_b64decode, base64.b64decode):
-        try:
-            decoded = decoder(padded).decode("utf-8", errors="ignore").strip()
-        except Exception:
-            continue
-        if decoded.startswith(("http://", "https://", "magnet:")):
-            return decoded
-
-    return None
-
-
-def _get_prowlarr_fallback_url(url: str) -> Optional[str]:
-    """Try to extract the original download URL from a Prowlarr download proxy URL."""
-    try:
-        parsed = urlparse(url)
-        if not _PROWLARR_DOWNLOAD_PATH.search(parsed.path):
-            return None
-
-        params = parse_qs(parsed.query)
-        link_value = (params.get("link") or [None])[0]
-        if not link_value:
-            return None
-
-        return _decode_prowlarr_link(link_value)
-    except Exception:
-        return None
-
 
 @dataclass
 class TorrentInfo:
@@ -91,7 +47,6 @@ def extract_torrent_info(
     url: str,
     fetch_torrent: bool = True,
     expected_hash: Optional[str] = None,
-    allow_prowlarr_fallback: bool = True,
 ) -> TorrentInfo:
     """Extract info_hash from magnet link or .torrent URL.
 
@@ -100,17 +55,9 @@ def extract_torrent_info(
         requires the `X-Api-Key` header. If `PROWLARR_API_KEY` is configured,
         include it for the torrent fetch request.
 
-        This mirrors how Sonarr builds an authenticated download request via the
-        indexer when grabbing torrent files.
+        Redirects to magnet links are handled explicitly so we can extract a
+        hash from the magnet when available.
     """
-    fallback_url: Optional[str] = None
-    if allow_prowlarr_fallback:
-        decoded_url = _get_prowlarr_fallback_url(url)
-        if decoded_url and decoded_url != url:
-            logger.debug(f"Decoded Prowlarr link, using direct URL: {decoded_url[:80]}...")
-            fallback_url = url
-            url = decoded_url
-
     is_magnet = url.startswith("magnet:")
 
     # Try to extract hash from magnet URL
@@ -121,13 +68,10 @@ def extract_torrent_info(
         return TorrentInfo(info_hash=info_hash, torrent_data=None, is_magnet=True, magnet_url=url)
 
     # Not a magnet - try to fetch and parse the .torrent file
-    if expected_hash:
+    if not fetch_torrent:
         return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
 
-    if not fetch_torrent:
-        return TorrentInfo(info_hash=None, torrent_data=None, is_magnet=False)
-
-    headers: dict[str, str] = {}
+    headers: dict[str, str] = {"Accept": "application/x-bittorrent"}
     api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()
     if api_key:
         headers["X-Api-Key"] = api_key
@@ -179,7 +123,7 @@ def extract_torrent_info(
             except Exception:
                 pass  # Not text, continue with torrent parsing
 
-        info_hash = extract_info_hash_from_torrent(torrent_data)
+        info_hash = extract_info_hash_from_torrent(torrent_data) or expected_hash
         if info_hash:
             logger.debug(f"Extracted hash from torrent file: {info_hash}")
         else:
@@ -187,74 +131,7 @@ def extract_torrent_info(
         return TorrentInfo(info_hash=info_hash, torrent_data=torrent_data, is_magnet=False)
     except Exception as e:
         logger.debug(f"Could not fetch torrent file: {e}")
-        if allow_prowlarr_fallback and fallback_url:
-            logger.debug(f"Retrying torrent fetch via Prowlarr proxy: {fallback_url[:80]}...")
-            return extract_torrent_info(
-                fallback_url,
-                fetch_torrent=fetch_torrent,
-                expected_hash=expected_hash,
-                allow_prowlarr_fallback=False,
-            )
-        return TorrentInfo(info_hash=None, torrent_data=None, is_magnet=False)
-
-
-    headers: dict[str, str] = {}
-    api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()
-    if api_key:
-        headers["X-Api-Key"] = api_key
-
-    def resolve_url(current: str, location: str) -> str:
-        if not location:
-            return current
-        # Support relative redirect locations
-        return urljoin(current, location)
-
-    try:
-        logger.debug(f"Fetching torrent file from: {url[:80]}...")
-
-        # Use allow_redirects=False to handle magnet link redirects manually
-        # Some indexers redirect download URLs to magnet links
-        resp = requests.get(url, timeout=30, allow_redirects=False, headers=headers)
-
-        # Check if this is a redirect to a magnet link
-        if resp.status_code in (301, 302, 303, 307, 308):
-            redirect_url = resolve_url(url, resp.headers.get("Location", ""))
-            if redirect_url.startswith("magnet:"):
-                logger.debug("Download URL redirected to magnet link")
-                info_hash = extract_hash_from_magnet(redirect_url)
-                return TorrentInfo(
-                    info_hash=info_hash, torrent_data=None, is_magnet=True, magnet_url=redirect_url
-                )
-            # Not a magnet redirect, follow it manually
-            logger.debug(f"Following redirect to: {redirect_url[:80]}...")
-            resp = requests.get(redirect_url, timeout=30, headers=headers)
-
-        resp.raise_for_status()
-        torrent_data = resp.content
-
-        # Check if response is actually a magnet link (text response)
-        # Some indexers return magnet links as plain text instead of redirecting
-        if len(torrent_data) < 2000:  # Magnet links are typically short
-            try:
-                text_content = torrent_data.decode("utf-8", errors="ignore").strip()
-                if text_content.startswith("magnet:"):
-                    logger.debug("Download URL returned magnet link as response body")
-                    info_hash = extract_hash_from_magnet(text_content)
-                    return TorrentInfo(
-                        info_hash=info_hash, torrent_data=None, is_magnet=True, magnet_url=text_content
-                    )
-            except Exception:
-                pass  # Not text, continue with torrent parsing
-
-        info_hash = extract_info_hash_from_torrent(torrent_data)
-        if info_hash:
-            logger.debug(f"Extracted hash from torrent file: {info_hash}")
-        else:
-            logger.warning("Could not extract hash from torrent file")
-        return TorrentInfo(info_hash=info_hash, torrent_data=torrent_data, is_magnet=False)
-    except Exception as e:
-        logger.debug(f"Could not fetch torrent file: {e}")
-        return TorrentInfo(info_hash=None, torrent_data=None, is_magnet=False)
+        return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
 
 
 def parse_transmission_url(url: str) -> Tuple[str, int, str]:
@@ -346,7 +223,10 @@ def extract_info_hash_from_torrent(torrent_data: bytes) -> Optional[str]:
             return None
 
         info_bencoded = bencode_encode(decoded[b'info'])
-        return hashlib.sha1(info_bencoded).hexdigest().lower()
+        info_dict = decoded[b'info']
+        if isinstance(info_dict, dict) and b'pieces' in info_dict:
+            return hashlib.sha1(info_bencoded).hexdigest().lower()
+        return hashlib.sha256(info_bencoded).hexdigest().lower()
     except Exception as e:
         logger.debug(f"Failed to parse torrent file: {e}")
         return None
@@ -360,7 +240,42 @@ def extract_hash_from_magnet(magnet_url: str) -> Optional[str]:
     parsed = urlparse(magnet_url)
     params = parse_qs(parsed.query)
 
-    for xt in params.get("xt", []):
+    def extract_btmh(value: str) -> Optional[str]:
+        raw_value = value.strip()
+        if not raw_value:
+            return None
+
+        data: Optional[bytes] = None
+        if re.fullmatch(r"[a-fA-F0-9]+", raw_value):
+            if len(raw_value) % 2 != 0:
+                return None
+            try:
+                data = bytes.fromhex(raw_value)
+            except ValueError:
+                return None
+        else:
+            padded = raw_value.upper() + "=" * (-len(raw_value) % 8)
+            try:
+                data = base64.b32decode(padded, casefold=True)
+            except Exception:
+                return None
+
+        if not data:
+            return None
+
+        if len(data) >= 34 and data[0] == 0x12 and data[1] == 0x20:
+            digest = data[2:34]
+            if len(digest) == 32:
+                return digest.hex().lower()
+
+        if len(data) == 32:
+            return data.hex().lower()
+
+        return None
+
+    xt_values = params.get("xt", [])
+
+    for xt in xt_values:
         # Format: urn:btih:<hash> (32 or 40 chars)
         match = re.match(r"urn:btih:([a-fA-F0-9]{40}|[a-zA-Z0-9]{32})", xt)
         if match:
@@ -379,5 +294,12 @@ def extract_hash_from_magnet(magnet_url: str) -> Optional[str]:
 
             # Fallback: return as-is
             return hash_value.lower()
+
+    for xt in xt_values:
+        if xt.startswith("urn:btmh:"):
+            btmh_value = xt[len("urn:btmh:"):]
+            btmh_hash = extract_btmh(btmh_value)
+            if btmh_hash:
+                return btmh_hash
 
     return None

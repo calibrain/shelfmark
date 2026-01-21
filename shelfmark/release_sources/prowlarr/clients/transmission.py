@@ -249,7 +249,9 @@ class TransmissionClient(DownloadClient):
             self._log_error("get_download_path", e, level="debug")
             return None
 
-    def find_existing(self, url: str) -> Optional[Tuple[str, DownloadStatus]]:
+    def find_existing(
+        self, url: str, category: Optional[str] = None
+    ) -> Optional[Tuple[str, DownloadStatus]]:
         """Check if a torrent for this URL already exists in Transmission."""
         try:
             torrent_info = extract_torrent_info(url)

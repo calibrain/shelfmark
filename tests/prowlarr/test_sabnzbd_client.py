@@ -667,6 +667,7 @@ class TestSABnzbdClientFindExisting:
                             {
                                 "nzo_id": "SABnzbd_nzo_found",
                                 "filename": "Test_Book.nzb",
+                                "cat": "cwabd",
                                 "status": "Downloading",
                                 "percentage": "50",
                                 "timeleft": "",
@@ -716,6 +717,7 @@ class TestSABnzbdClientFindExisting:
                             {
                                 "nzo_id": "SABnzbd_nzo_history",
                                 "name": "Test Book",
+                                "category": "cwabd",
                                 "status": "Completed",
                                 "storage": "/downloads/Test Book",
                             }
@@ -772,5 +774,71 @@ class TestSABnzbdClientFindExisting:
             client._api_call = mock_api_call
 
             result = client.find_existing("https://example.com/unknown.nzb")
+
+            assert result is None
+
+    def test_find_existing_ignores_different_category(self, monkeypatch):
+        """Test that find_existing ignores downloads in different categories.
+
+        This tests the fix for issue #508 where SABnzbd's test download
+        in the 'default' category was incorrectly matched.
+        """
+        config_values = {
+            "SABNZBD_URL": "http://localhost:8080",
+            "SABNZBD_API_KEY": "abc123",
+            "SABNZBD_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.release_sources.prowlarr.clients.sabnzbd.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        def mock_api_call(mode, params=None):
+            if mode == "queue":
+                return {
+                    "queue": {
+                        "slots": [
+                            {
+                                "nzo_id": "SABnzbd_nzo_test",
+                                "filename": "test_download_1000MB",
+                                "cat": "default",  # Different category
+                                "status": "Downloading",
+                                "percentage": "50",
+                                "timeleft": "",
+                                "kbpersec": "",
+                            }
+                        ]
+                    }
+                }
+            if mode == "history":
+                return {
+                    "history": {
+                        "slots": [
+                            {
+                                "nzo_id": "SABnzbd_nzo_old_test",
+                                "name": "test_download_1000MB",
+                                "category": "default",  # Different category
+                                "status": "Completed",
+                                "storage": "/downloads/default/test_download_1000MB",
+                            }
+                        ]
+                    }
+                }
+            return {}
+
+        from shelfmark.release_sources.prowlarr.clients.sabnzbd import (
+            SABnzbdClient,
+        )
+
+        with patch.object(SABnzbdClient, "__init__", lambda x: None):
+            client = SABnzbdClient()
+            client.url = "http://localhost:8080"
+            client.api_key = "abc123"
+            client._category = "books"
+            client._api_call = mock_api_call
+
+            # Even though "download" might match "test_download_1000MB",
+            # it should be ignored because it's in the "default" category
+            result = client.find_existing("https://example.com/download/Book.nzb")
 
             assert result is None
