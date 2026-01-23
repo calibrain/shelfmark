@@ -1,10 +1,11 @@
 """Prowlarr release source - searches indexers for book releases (torrents/usenet)."""
 
 import re
+import time
 from typing import List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from shelfmark.release_sources.search_plan import ReleaseSearchPlan
+    from shelfmark.core.search_plan import ReleaseSearchPlan
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -366,7 +367,18 @@ class ProwlarrSource(ReleaseSource):
             """Search indexers with given categories, collecting results."""
             results = []
             if indexer_ids:
-                # Search specific indexers one at a time
+                # Prefer a single request for all selected indexers to reduce latency.
+                try:
+                    raw = client.search(query=query, indexer_ids=indexer_ids, categories=cats)
+                    if raw:
+                        results.extend(raw)
+                    return results
+                except Exception as e:
+                    logger.warning(
+                        f"Search failed for selected indexers {indexer_ids}: {e}. Falling back to per-indexer search."
+                    )
+
+                # Fallback: search specific indexers one at a time
                 for indexer_id in indexer_ids:
                     try:
                         raw = client.search(query=query, indexer_ids=[indexer_id], categories=cats)
@@ -386,11 +398,25 @@ class ProwlarrSource(ReleaseSource):
 
         try:
             auto_expand_enabled = config.get("PROWLARR_AUTO_EXPAND", False)
+            raw_timeout = config.get("PROWLARR_SEARCH_TIMEOUT", 120)
+            try:
+                timeout_seconds = float(raw_timeout)
+            except (TypeError, ValueError):
+                timeout_seconds = 120.0
+
+            deadline = None
+            if timeout_seconds > 0:
+                deadline = time.monotonic() + timeout_seconds
+
+            def _check_timeout() -> None:
+                if deadline is not None and time.monotonic() > deadline:
+                    raise TimeoutError(f"Prowlarr search timed out after {int(timeout_seconds)}s")
 
             seen_keys: set[str] = set()
             all_results: List[dict] = []
 
             for idx, query in enumerate(queries, start=1):
+                _check_timeout()
                 if len(queries) > 1:
                     logger.debug(f"Prowlarr query {idx}/{len(queries)}: '{query}'")
 
@@ -398,6 +424,7 @@ class ProwlarrSource(ReleaseSource):
 
                 # Auto-expand: if no results with categories and auto-expand enabled, retry without
                 if not raw_results and categories and auto_expand_enabled:
+                    _check_timeout()
                     logger.info(f"Prowlarr: no results for query '{query}' with category filter, auto-expanding search")
                     raw_results = search_indexers(query=query, cats=None)
                     self.last_search_type = "expanded"
@@ -428,6 +455,9 @@ class ProwlarrSource(ReleaseSource):
 
             return results
 
+        except TimeoutError as e:
+            logger.warning(f"Prowlarr search timed out: {e}")
+            raise
         except Exception as e:
             logger.error(f"Prowlarr search failed: {e}")
             return []

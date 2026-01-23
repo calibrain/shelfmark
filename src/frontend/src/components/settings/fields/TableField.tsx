@@ -75,13 +75,14 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
   }
 
   // Use minmax(0, ...) so the grid can shrink inside the settings modal.
-  const gridTemplate = 'sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)_minmax(0,1fr)_auto]';
+  // Use fixed width for delete button column to ensure header/data alignment.
+  const gridTemplate = 'sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)_minmax(0,1fr)_2rem]';
 
   return (
     <div className="space-y-3 min-w-0">
-      <div className={`hidden sm:grid ${gridTemplate} gap-2 px-1 text-xs font-medium opacity-70`}>
+      <div className={`hidden sm:grid ${gridTemplate} gap-3 items-start min-w-0 text-xs font-medium opacity-70`}>
         {columns.map((col) => (
-          <div key={col.key} className="truncate">
+          <div key={col.key} className="min-w-0 truncate">
             {col.label}
           </div>
         ))}
@@ -165,12 +166,12 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
               );
             })}
 
-            <div className="flex items-center justify-center">
+            <div className="flex items-start pt-1.5">
               <button
                 type="button"
                 onClick={() => removeRow(rowIndex)}
                 disabled={isDisabled}
-                className="p-2 rounded hover:bg-[var(--hover-surface)]
+                className="p-1.5 rounded-full hover:bg-[var(--hover-surface)]
                            disabled:opacity-60 disabled:cursor-not-allowed"
                 aria-label="Remove row"
               >

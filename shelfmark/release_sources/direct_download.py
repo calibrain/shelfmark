@@ -88,18 +88,25 @@ _LIBGEN_GET_PATTERNS = [
 def _get_source_priority() -> List[Dict]:
     """Get the full source priority list.
 
-    Fast sources (AA Fast, LibGen) are hardcoded first.
+    Fast sources come from user config (FAST_SOURCES_DISPLAY).
     Slow sources come from user config.
     """
-    # Fast sources - always first, hardcoded
-    fast_sources = []
+    # Fast sources - always first, configurable via settings/env
+    fast_sources: List[Dict] = []
+    configured_fast = config.get("FAST_SOURCES_DISPLAY") or []
+    has_donator_key = bool(config.get("AA_DONATOR_KEY"))
 
-    # AA Fast only if donator key is set
-    if config.get("AA_DONATOR_KEY"):
-        fast_sources.append({"id": "aa-fast", "enabled": True})
-
-    # LibGen always available
-    fast_sources.append({"id": "libgen", "enabled": True})
+    if isinstance(configured_fast, list):
+        for item in configured_fast:
+            if not isinstance(item, dict):
+                continue
+            source_id = item.get("id")
+            if source_id not in ("aa-fast", "libgen"):
+                continue
+            enabled = bool(item.get("enabled", True))
+            if source_id == "aa-fast" and not has_donator_key:
+                enabled = False
+            fast_sources.append({"id": source_id, "enabled": enabled})
 
     # User's configured slow sources (config won't contain fast sources)
     slow_sources = config.get("SOURCE_PRIORITY") or []

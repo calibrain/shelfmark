@@ -66,8 +66,9 @@ export const FieldWrapper = ({
   disabledOverride,
   disabledReasonOverride,
 }: FieldWrapperProps) => {
-  // Action buttons and headings handle their own layout
-  if (field.type === 'ActionButton' || field.type === 'HeadingField') {
+  // Action buttons, headings, and table fields handle their own layout
+  // Table fields have column headers, so they don't need a separate label
+  if (field.type === 'ActionButton' || field.type === 'HeadingField' || field.type === 'TableField') {
     return <>{children}</>;
   }
 

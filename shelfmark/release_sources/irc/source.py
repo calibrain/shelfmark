@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from shelfmark.release_sources.search_plan import ReleaseSearchPlan
+    from shelfmark.core.search_plan import ReleaseSearchPlan
 
 from shelfmark.api.websocket import ws_manager
 from shelfmark.core.config import config

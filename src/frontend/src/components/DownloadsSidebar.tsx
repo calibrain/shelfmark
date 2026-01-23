@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { StatusData, Book } from '../types';
+import { withBasePath } from '../utils/basePath';
 
 interface DownloadsSidebarProps {
   isOpen: boolean;
@@ -211,7 +212,7 @@ export const DownloadsSidebar = ({
               <h3 className="font-semibold text-sm truncate" title={book.title}>
                 {isCompleted && book.download_path ? (
                   <a
-                    href={`/api/localdownload?id=${encodeURIComponent(book.id)}`}
+                    href={withBasePath(`/api/localdownload?id=${encodeURIComponent(book.id)}`)}
                     className="text-sky-600 hover:underline"
                   >
                     {book.title || 'Unknown Title'}

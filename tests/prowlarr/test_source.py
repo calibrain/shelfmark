@@ -279,7 +279,7 @@ class TestProwlarrLocalizedQueries:
             authors=["Someone"],
         )
 
-        from shelfmark.release_sources.search_plan import build_release_search_plan
+        from shelfmark.core.search_plan import build_release_search_plan
 
         plan = build_release_search_plan(book, languages=["en"], manual_query="my custom")
         source.search(book, plan, content_type="audiobook")
@@ -317,7 +317,7 @@ class TestProwlarrLocalizedQueries:
             authors=["Someone"],
         )
 
-        from shelfmark.release_sources.search_plan import build_release_search_plan
+        from shelfmark.core.search_plan import build_release_search_plan
 
         plan = build_release_search_plan(book, languages=["en"], manual_query="my custom")
         source.search(book, plan, expand_search=True, content_type="audiobook")
@@ -356,7 +356,7 @@ class TestProwlarrLocalizedQueries:
             titles_by_language={"hu": "A villámtolvaj"},
         )
 
-        from shelfmark.release_sources.search_plan import build_release_search_plan
+        from shelfmark.core.search_plan import build_release_search_plan
 
         plan = build_release_search_plan(book, languages=["en", "hu"])
         source.search(book, plan, content_type="ebook")
@@ -402,7 +402,7 @@ class TestProwlarrLocalizedQueries:
             },
         )
 
-        from shelfmark.release_sources.search_plan import build_release_search_plan
+        from shelfmark.core.search_plan import build_release_search_plan
 
         plan = build_release_search_plan(book, languages=["en", "hu"])
         source.search(book, plan, content_type="ebook")

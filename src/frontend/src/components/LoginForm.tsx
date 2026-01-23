@@ -1,5 +1,6 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { LoginCredentials } from '../types';
+import { withBasePath } from '../utils/basePath';
 
 interface LoginFormProps {
   onSubmit: (credentials: LoginCredentials) => void;
@@ -97,7 +98,7 @@ export const LoginForm = ({
       )}
       <form
         method="post"
-        action="/api/login"
+        action={withBasePath('/api/login')}
         autoComplete="on"
         id="login-form"
         name="login"
@@ -227,5 +228,3 @@ export const LoginForm = ({
     </div>
   );
 };
-
-

@@ -1,6 +1,6 @@
 from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources.direct_download import DirectDownloadSource
-from shelfmark.release_sources.search_plan import build_release_search_plan
+from shelfmark.core.search_plan import build_release_search_plan
 
 
 class TestDirectDownloadSearchQueries:

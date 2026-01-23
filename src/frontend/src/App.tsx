@@ -29,6 +29,7 @@ import { ConfigSetupBanner } from './components/ConfigSetupBanner';
 import { OnboardingModal } from './components/OnboardingModal';
 import { DEFAULT_LANGUAGES, DEFAULT_SUPPORTED_FORMATS } from './data/languages';
 import { buildSearchQuery } from './utils/buildSearchQuery';
+import { withBasePath } from './utils/basePath';
 import { SearchModeProvider } from './contexts/SearchModeContext';
 import './styles.css';
 
@@ -128,15 +129,6 @@ function App() {
     };
   }, []);
 
-  const [featureNoticeDismissed, setFeatureNoticeDismissed] = useState(() => {
-    return localStorage.getItem('cwa-bd-prowlarr-irc-notice-dismissed') === 'true';
-  });
-
-  const handleDismissFeatureNotice = useCallback(() => {
-    localStorage.setItem('cwa-bd-prowlarr-irc-notice-dismissed', 'true');
-    setFeatureNoticeDismissed(true);
-  }, []);
-
   // URL-based search: parse URL params for automatic search on page load
   const urlSearchEnabled = isAuthenticated && config !== null;
   const { parsedParams, wasProcessed } = useUrlSearch({ enabled: urlSearchEnabled });
@@ -210,7 +202,7 @@ function App() {
         // Auto-download to browser if enabled
         if (config?.download_to_browser && book.download_path) {
           const link = document.createElement('a');
-          link.href = `/api/localdownload?id=${encodeURIComponent(bookId)}`;
+          link.href = withBasePath(`/api/localdownload?id=${encodeURIComponent(bookId)}`);
           link.download = '';
           document.body.appendChild(link);
           link.click();
@@ -625,18 +617,6 @@ function App() {
           contentType={contentType}
           onContentTypeChange={setContentType}
         />
-
-        {isInitialState && !featureNoticeDismissed && (
-          <div className="absolute bottom-4 left-0 right-0 px-4 text-center text-sm opacity-40">
-            <span>We've renamed to Shelfmark. New: Torrent, Usenet, IRC and Audiobook support.</span>
-            <button
-              onClick={handleDismissFeatureNotice}
-              className="ml-2 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 underline"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
 
         <ResultsSection
           books={books}
