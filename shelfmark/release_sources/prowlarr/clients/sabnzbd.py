@@ -396,12 +396,14 @@ class SABnzbdClient(DownloadClient):
                         )
                     elif status_text == "FAILED":
                         fail_message = slot.get("fail_message", "Download failed")
+                        title = slot.get("name") or slot.get("nzb_name") or ""
+                        resolved_storage = self._resolve_completed_storage_path(storage, title)
                         return DownloadStatus(
                             progress=100,
                             state="error",
                             message=fail_message,
                             complete=True,
-                            file_path=None,
+                            file_path=resolved_storage,
                         )
                     else:
                         # Post-processing states: Queued, QuickCheck, Verifying,
@@ -433,8 +435,9 @@ class SABnzbdClient(DownloadClient):
         Returns:
             True if successful.
         """
+        # First try to remove from queue. If it isn't there (common for completed jobs),
+        # fall back to history removal instead of failing fast on a SABnzbd error response.
         try:
-            # First try to remove from queue
             result = self._api_call(
                 "queue",
                 {
@@ -447,8 +450,11 @@ class SABnzbdClient(DownloadClient):
             if result.get("status"):
                 logger.info(f"Removed NZB from SABnzbd queue: {download_id}")
                 return True
+        except Exception as e:
+            logger.debug(f"SABnzbd queue delete skipped for {download_id}: {e}")
 
-            # If not in queue, try to remove from history
+        # If not in queue (or queue delete failed), try to remove from history.
+        try:
             result = self._api_call(
                 "history",
                 {
@@ -463,11 +469,11 @@ class SABnzbdClient(DownloadClient):
                 action = "archived" if archive else "removed"
                 logger.info(f"NZB {action} from SABnzbd history: {download_id}")
                 return True
-
-            return False
         except Exception as e:
             self._log_error("remove", e)
             return False
+
+        return False
 
     def get_download_path(self, download_id: str) -> Optional[str]:
         """

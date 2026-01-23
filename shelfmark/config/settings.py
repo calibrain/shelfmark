@@ -865,7 +865,7 @@ register_on_save("downloads", _on_save_downloads)
 
 
 def _get_fast_source_options():
-    """Fast download sources - display only, not configurable."""
+    """Fast download sources - configurable list shown in settings."""
     from shelfmark.core.config import config
 
     has_donator_key = bool(config.get("AA_DONATOR_KEY", ""))
@@ -1184,6 +1184,54 @@ def mirror_settings():
 def advanced_settings():
     """Advanced settings for power users."""
     return [
+        TextField(
+            key="URL_BASE",
+            label="Base Path",
+            description="Optional URL path prefix. Use a path like /shelfmark (no hostname). Leave blank for root.",
+            placeholder="/shelfmark",
+            requires_restart=True,
+        ),
+        CheckboxField(
+            key="DEBUG",
+            label="Debug Mode",
+            description="Enable verbose logging to console and file. Not recommended for normal use.",
+            default=False,
+            requires_restart=True,
+        ),
+        NumberField(
+            key="MAIN_LOOP_SLEEP_TIME",
+            label="Queue Check Interval (seconds)",
+            description="How often the download queue is checked for new items.",
+            default=5,
+            min_value=1,
+            max_value=60,
+            requires_restart=True,
+        ),
+        NumberField(
+            key="DOWNLOAD_PROGRESS_UPDATE_INTERVAL",
+            label="Progress Update Interval (seconds)",
+            description="How often download progress is broadcast to the UI.",
+            default=1,
+            min_value=1,
+            max_value=10,
+            requires_restart=True,
+        ),
+        TextField(
+            key="CUSTOM_SCRIPT",
+            label="Custom Script Path",
+            description="Path to a script to run after each successful download. Must be executable.",
+            placeholder="/path/to/script.sh",
+        ),
+        SelectField(
+            key="CUSTOM_SCRIPT_PATH_MODE",
+            label="Custom Script Path Mode",
+            description="Pass the path to the custom script as an absolute path or relative to the destination folder.",
+            options=[
+                {"value": "absolute", "label": "Absolute", "description": "Pass the full destination path (default)."},
+                {"value": "relative", "label": "Relative", "description": "Pass the path relative to the destination folder."},
+            ],
+            default="absolute",
+        ),
         HeadingField(
             key="remote_path_mappings_heading",
             title="Remote Path Mappings",
@@ -1211,60 +1259,17 @@ def advanced_settings():
                     "key": "remotePath",
                     "label": "Remote Path",
                     "type": "path",
-                    "placeholder": "/downloads",
                 },
                 {
                     "key": "localPath",
                     "label": "Local Path",
                     "type": "path",
-                    "placeholder": "/data/downloads",
                 },
             ],
             default=[],
             add_label="Add Mapping",
             empty_message="No mappings configured.",
             env_supported=False,
-        ),
-        TextField(
-            key="CUSTOM_SCRIPT",
-            label="Custom Script Path",
-            description="Path to a script to run after each successful download. Must be executable.",
-            placeholder="/path/to/script.sh",
-        ),
-        SelectField(
-            key="CUSTOM_SCRIPT_PATH_MODE",
-            label="Custom Script Path Mode",
-            description="Pass the path to the custom script as an absolute path or relative to the destination folder.",
-            options=[
-                {"value": "absolute", "label": "Absolute", "description": "Pass the full destination path (default)."},
-                {"value": "relative", "label": "Relative", "description": "Pass the path relative to the destination folder."},
-            ],
-            default="absolute",
-        ),
-        CheckboxField(
-            key="DEBUG",
-            label="Debug Mode",
-            description="Enable verbose logging to console and file. Not recommended for normal use.",
-            default=False,
-            requires_restart=True,
-        ),
-        NumberField(
-            key="MAIN_LOOP_SLEEP_TIME",
-            label="Queue Check Interval (seconds)",
-            description="How often the download queue is checked for new items.",
-            default=5,
-            min_value=1,
-            max_value=60,
-            requires_restart=True,
-        ),
-        NumberField(
-            key="DOWNLOAD_PROGRESS_UPDATE_INTERVAL",
-            label="Progress Update Interval (seconds)",
-            description="How often download progress is broadcast to the UI.",
-            default=1,
-            min_value=1,
-            max_value=10,
-            requires_restart=True,
         ),
         HeadingField(
             key="covers_cache_heading",

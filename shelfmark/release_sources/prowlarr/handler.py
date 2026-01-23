@@ -1,5 +1,6 @@
 """Prowlarr download handler - executes downloads via torrent/usenet clients."""
 
+import shutil
 from pathlib import Path
 from threading import Event
 from typing import Callable, Optional
@@ -101,9 +102,71 @@ class ProwlarrHandler(DownloadHandler):
             return
 
         try:
-            client.remove(download_id, delete_files=True)
+            self._delete_local_download_data(client, download_id)
+            self._remove_usenet_download(client, download_id, delete_files=True, archive=True)
         except Exception as e:
             logger.warning(f"Failed to cleanup usenet download {download_id} in {getattr(client, 'name', 'client')}: {e}")
+
+    def _remove_usenet_download(
+        self,
+        client: DownloadClient,
+        download_id: str,
+        *,
+        delete_files: bool,
+        archive: bool = True,
+    ) -> None:
+        """Remove a usenet download with SABnzbd-specific archive handling."""
+        if getattr(client, "name", "") == "sabnzbd":
+            client.remove(download_id, delete_files=delete_files, archive=archive)
+        else:
+            client.remove(download_id, delete_files=delete_files)
+
+    def _delete_local_download_data(self, client: DownloadClient, download_id: str) -> None:
+        """Best-effort local deletion of client download data."""
+        try:
+            raw_path = client.get_download_path(download_id)
+        except Exception as e:
+            logger.debug(f"Failed to resolve download path for {client.name} {download_id}: {e}")
+            return
+
+        if not raw_path:
+            logger.debug(f"No download path available for {client.name} {download_id}")
+            return
+
+        from shelfmark.core.path_mappings import (
+            get_client_host_identifier,
+            parse_remote_path_mappings,
+            remap_remote_to_local_with_match,
+        )
+
+        source_path_obj = Path(raw_path)
+        host = get_client_host_identifier(client) or ""
+        mapping_value = config.get("PROWLARR_REMOTE_PATH_MAPPINGS", [])
+        mappings = parse_remote_path_mappings(mapping_value)
+        remapped, matched_mapping = remap_remote_to_local_with_match(
+            mappings=mappings,
+            host=host,
+            remote_path=source_path_obj,
+        )
+
+        delete_path = remapped if matched_mapping else source_path_obj
+
+        if str(delete_path) in ("", "/"):
+            logger.warning(f"Refusing to delete unsafe path for {client.name} {download_id}: {delete_path}")
+            return
+
+        if not delete_path.exists():
+            logger.debug(f"Local download path does not exist for cleanup: {delete_path}")
+            return
+
+        try:
+            if delete_path.is_dir():
+                shutil.rmtree(delete_path)
+            else:
+                delete_path.unlink()
+            logger.info(f"Deleted local download data for {client.name} {download_id}: {delete_path}")
+        except Exception as e:
+            logger.warning(f"Failed to delete local download data for {client.name} {download_id}: {e}")
 
     def _safe_remove_download(self, client, download_id: str, protocol: str, reason: str) -> None:
         """Best-effort removal of a failed/cancelled download from the client.
@@ -124,7 +187,9 @@ class ProwlarrHandler(DownloadHandler):
             return
 
         try:
-            client.remove(download_id, delete_files=True)
+            # Permanent delete for failed usenet downloads (SABnzbd archive=0).
+            self._delete_local_download_data(client, download_id)
+            self._remove_usenet_download(client, download_id, delete_files=True, archive=False)
         except Exception as e:
             logger.warning(
                 f"Failed to remove download {download_id} from {client.name} after {reason}: {e}"
@@ -433,7 +498,8 @@ class ProwlarrHandler(DownloadHandler):
                 if protocol == "usenet":
                     logger.info(f"Download cancelled, removing from {client.name}: {download_id}")
                     try:
-                        client.remove(download_id, delete_files=True)
+                        self._delete_local_download_data(client, download_id)
+                        self._remove_usenet_download(client, download_id, delete_files=True, archive=True)
                     except Exception as e:
                         logger.warning(
                             f"Failed to remove download {download_id} from {client.name} after cancellation: {e}"

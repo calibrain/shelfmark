@@ -1,11 +1,11 @@
 from shelfmark.metadata_providers import BookMetadata
-from shelfmark.release_sources.search_plan import build_release_search_plan
+from shelfmark.core.search_plan import build_release_search_plan
 
 
 class TestReleaseSearchPlan:
     def test_uses_default_languages_when_none(self, monkeypatch):
         # config.BOOK_LANGUAGE is a Config attribute; patch the instance.
-        import shelfmark.release_sources.search_plan as sp
+        import shelfmark.core.search_plan as sp
 
         monkeypatch.setattr(sp.config, "BOOK_LANGUAGE", ["en", "hu"], raising=False)
 
@@ -44,7 +44,7 @@ class TestReleaseSearchPlan:
         ]
 
     def test_all_language_disables_grouping(self, monkeypatch):
-        import shelfmark.release_sources.search_plan as sp
+        import shelfmark.core.search_plan as sp
 
         monkeypatch.setattr(sp.config, "BOOK_LANGUAGE", ["en"], raising=False)
 

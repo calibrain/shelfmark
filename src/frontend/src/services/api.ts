@@ -1,8 +1,9 @@
 import { Book, StatusData, AppConfig, LoginCredentials, AuthResponse, ReleaseSource, ReleasesResponse } from '../types';
 import { SettingsResponse, ActionResult, UpdateResult } from '../types/settings';
 import { MetadataBookData, transformMetadataToBook } from '../utils/bookTransformers';
+import { getApiBase } from '../utils/basePath';
 
-const API_BASE = '/api';
+const API_BASE = getApiBase();
 
 // API endpoints
 const API = {
@@ -39,12 +40,17 @@ export class TimeoutError extends Error {
 
 // Default request timeout in milliseconds (30 seconds)
 const DEFAULT_TIMEOUT_MS = 30000;
-const EXPANDED_RELEASES_TIMEOUT_MS = 60000;
 
 // Utility function for JSON fetch with credentials and timeout
-async function fetchJSON<T>(url: string, opts: RequestInit = {}, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<T> {
+async function fetchJSON<T>(
+  url: string,
+  opts: RequestInit = {},
+  timeoutMs: number | null = DEFAULT_TIMEOUT_MS
+): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutId = timeoutMs && timeoutMs > 0
+    ? setTimeout(() => controller.abort(), timeoutMs)
+    : null;
 
   try {
     const res = await fetch(url, {
@@ -60,13 +66,16 @@ async function fetchJSON<T>(url: string, opts: RequestInit = {}, timeoutMs: numb
     if (!res.ok) {
       // Try to parse error message from response body
       let errorMessage = `${res.status} ${res.statusText}`;
+      let hasServerMessage = false;
       try {
         const errorData = await res.json();
         // Prefer user-friendly 'message' field, fall back to 'error'
         if (errorData.message) {
           errorMessage = errorData.message;
+          hasServerMessage = true;
         } else if (errorData.error) {
           errorMessage = errorData.error;
+          hasServerMessage = true;
         }
       } catch (e) {
         // Log parse failure for debugging - server may have returned non-JSON (e.g., HTML error page)
@@ -75,7 +84,9 @@ async function fetchJSON<T>(url: string, opts: RequestInit = {}, timeoutMs: numb
 
       // Provide helpful message for gateway/proxy errors
       if (res.status === 502 || res.status === 503 || res.status === 504) {
-        errorMessage = `Server unavailable (${res.status}). If using a reverse proxy, check its configuration.`;
+        if (!hasServerMessage) {
+          errorMessage = `Server unavailable (${res.status}). If using a reverse proxy, check its configuration.`;
+        }
       }
 
       // Throw appropriate error based on status code
@@ -94,7 +105,9 @@ async function fetchJSON<T>(url: string, opts: RequestInit = {}, timeoutMs: numb
     }
     throw error;
   } finally {
-    clearTimeout(timeoutId);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -353,6 +366,6 @@ export const getReleases = async (
   if (manualQuery) {
     params.set('manual_query', manualQuery);
   }
-  const timeoutMs = expandSearch ? EXPANDED_RELEASES_TIMEOUT_MS : DEFAULT_TIMEOUT_MS;
-  return fetchJSON<ReleasesResponse>(`${API_BASE}/releases?${params.toString()}`, {}, timeoutMs);
+  // Let the backend control timeouts for release searches (can be long-running).
+  return fetchJSON<ReleasesResponse>(`${API_BASE}/releases?${params.toString()}`, {}, null);
 };

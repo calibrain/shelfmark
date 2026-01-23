@@ -83,7 +83,11 @@ def format_default_value(field) -> str:
 
 
 def get_select_options(field) -> Optional[List[str]]:
-    """Get the available options for a SelectField."""
+    """Get the available options for a SelectField.
+
+    Returns options formatted as 'value (label)' or just 'value' if they match,
+    so users know the actual values to use in environment variables.
+    """
     from shelfmark.core.settings_registry import SelectField
 
     if not isinstance(field, SelectField):
@@ -99,7 +103,20 @@ def get_select_options(field) -> Optional[List[str]]:
     if not options:
         return None
 
-    return [opt.get("label", opt.get("value", "")) for opt in options]
+    result = []
+    for opt in options:
+        value = opt.get("value", "")
+        label = opt.get("label", "")
+
+        # Format as "value (label)" unless they're the same or value is empty
+        if value == "":
+            result.append(f'`""` ({label})')
+        elif value == label or not label:
+            result.append(f"`{value}`")
+        else:
+            result.append(f"`{value}` ({label})")
+
+    return result
 
 
 def _generate_bootstrap_env_docs() -> List[str]:

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { withBasePath } from '../utils/basePath';
 
 interface SocketContextValue {
   socket: Socket | null;
@@ -23,11 +24,12 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
     const wsUrl = window.location.port === '5173'
       ? 'http://localhost:8084'
       : window.location.origin;
+    const socketPath = withBasePath('/socket.io');
 
     console.log('SocketProvider: Connecting to', wsUrl);
 
     const socket = io(wsUrl, {
-      path: '/socket.io',
+      path: socketPath,
       transports: ['polling', 'websocket'],
       withCredentials: false,
     });

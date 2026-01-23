@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { SearchBar, SearchBarHandle } from './SearchBar';
 import { ContentType } from '../types';
+import { withBasePath } from '../utils/basePath';
 
 export interface HeaderHandle {
   submitSearch: () => void;
@@ -345,7 +346,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
                       // Show persistent toast while gathering logs
                       const loadingToastId = onShowToast?.('Gathering debug logs... This may take a minute.', 'info', true);
                       try {
-                        const response = await fetch('/api/debug', {
+                        const response = await fetch(withBasePath('/api/debug'), {
                           method: 'GET',
                           credentials: 'include',
                         });
@@ -394,7 +395,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
                     </svg>
                     <span>Debug</span>
                   </button>
-                  <form action="/api/restart" method="get" className="w-full">
+                  <form action={withBasePath('/api/restart')} method="get" className="w-full">
                     <button
                       className="w-full text-left px-4 py-2 hover-surface transition-colors flex items-center gap-3 text-orange-600 dark:text-orange-400"
                       type="submit"

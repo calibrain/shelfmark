@@ -267,7 +267,7 @@ class NZBGetClient(DownloadClient):
                             state="error",
                             message=f"Download failed: {status}",
                             complete=True,
-                            file_path=None,
+                            file_path=file_path,
                         )
 
             # Not found in queue or history

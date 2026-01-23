@@ -26,6 +26,8 @@ from shelfmark.config.env import (
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import SearchFilters
+from shelfmark.core.prefix_middleware import PrefixMiddleware
+from shelfmark.core.utils import normalize_base_path
 from shelfmark.api.websocket import ws_manager
 
 logger = setup_logger(__name__)
@@ -34,10 +36,14 @@ logger = setup_logger(__name__)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_DIST = os.path.join(PROJECT_ROOT, 'frontend-dist')
 
+BASE_PATH = normalize_base_path(app_config.get("URL_BASE", ""))
+
 app = Flask(__name__)
-app.wsgi_app = ProxyFix(app.wsgi_app)  # type: ignore
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable caching
-app.config['APPLICATION_ROOT'] = '/'
+app.config['APPLICATION_ROOT'] = BASE_PATH or '/'
+app.wsgi_app = ProxyFix(app.wsgi_app)  # type: ignore
+if BASE_PATH:
+    app.wsgi_app = PrefixMiddleware(app.wsgi_app, BASE_PATH, bypass_paths={"/api/health"})
 
 # Socket.IO async mode.
 # We run this app under Gunicorn with a gevent websocket worker (even when DEBUG=true),
@@ -343,6 +349,30 @@ def login_required(f):
     return decorated_function
 
 
+_BASE_TAG = '<base href="/" data-shelfmark-base />'
+
+
+def _base_href() -> str:
+    if not BASE_PATH:
+        return "/"
+    return f"{BASE_PATH}/"
+
+
+def _serve_index_html() -> Response:
+    """Serve index.html with an adjusted base tag for subpath deployments."""
+    index_path = os.path.join(FRONTEND_DIST, 'index.html')
+    try:
+        with open(index_path, 'r', encoding='utf-8') as handle:
+            html = handle.read()
+    except OSError:
+        return send_from_directory(FRONTEND_DIST, 'index.html')
+
+    if BASE_PATH and _BASE_TAG in html:
+        html = html.replace(_BASE_TAG, f'<base href="{_base_href()}" data-shelfmark-base />', 1)
+
+    return Response(html, mimetype='text/html')
+
+
 # Serve frontend static files
 @app.route('/assets/<path:filename>')
 def serve_frontend_assets(filename: str) -> Response:
@@ -357,7 +387,7 @@ def index() -> Response:
     Serve the React frontend application.
     Authentication is handled by the React app itself.
     """
-    return send_from_directory(FRONTEND_DIST, 'index.html')
+    return _serve_index_html()
 
 @app.route('/logo.png')
 def logo() -> Response:
@@ -1431,7 +1461,7 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
                 source = get_source(source_name)
                 source_instances[source_name] = source
 
-                from shelfmark.release_sources.search_plan import build_release_search_plan
+                from shelfmark.core.search_plan import build_release_search_plan
 
                 plan = build_release_search_plan(book, languages=languages, manual_query=manual_query)
 
@@ -1763,7 +1793,7 @@ def catch_all(path: str) -> Response:
     if path.startswith('api/') or path.startswith('assets/'):
         return jsonify({"error": "Resource not found"}), 404
     # Otherwise serve the React app
-    return send_from_directory(FRONTEND_DIST, 'index.html')
+    return _serve_index_html()
 
 # WebSocket event handlers
 @socketio.on('connect')

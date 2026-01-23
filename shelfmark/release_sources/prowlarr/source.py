@@ -1,10 +1,11 @@
 """Prowlarr release source - searches indexers for book releases (torrents/usenet)."""
 
 import re
+import time
 from typing import List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from shelfmark.release_sources.search_plan import ReleaseSearchPlan
+    from shelfmark.core.search_plan import ReleaseSearchPlan
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -58,6 +59,9 @@ AUDIOBOOK_FORMATS = ["m4b", "mp3", "m4a", "flac", "ogg", "wma", "aac", "wav", "o
 # Combined list for format detection (audiobook formats first for priority)
 ALL_BOOK_FORMATS = AUDIOBOOK_FORMATS + EBOOK_FORMATS
 
+# Backend safeguard: cap total Prowlarr search time per request.
+PROWLARR_SEARCH_TIMEOUT_SECONDS = 120.0
+
 
 def _extract_format(title: str) -> Optional[str]:
     """Extract ebook/audiobook format from release title (extension, bracketed, or standalone)."""
@@ -109,11 +113,11 @@ def _extract_language(title: str) -> Optional[str]:
 # Prowlarr category IDs for content type detection
 # See: https://wiki.servarr.com/prowlarr/cardigann-yml-definition#categories
 AUDIOBOOK_CATEGORY_IDS = {3000, 3030}  # 3000 = Audio, 3030 = Audio/Audiobook
-EBOOK_CATEGORY_IDS = {7000, 7020}  # 7000 = Books, 7020 = Books/Ebook
+BOOK_CATEGORY_RANGE = range(7000, 8000)  # 7000-7999 = Books (all subcategories)
 
 
 def _detect_content_type_from_categories(categories: list, fallback: str = "book") -> str:
-    """Detect content type from Prowlarr category IDs. Returns 'audiobook' or 'book'."""
+    """Detect content type from Prowlarr category IDs. Returns 'audiobook', 'book', or 'other'."""
     # Normalize fallback - convert "ebook" to "book" for display consistency
     normalized_fallback = "book" if fallback == "ebook" else fallback
 
@@ -127,13 +131,17 @@ def _detect_content_type_from_categories(categories: list, fallback: str = "book
         if (isinstance(cat, dict) and cat.get("id") is not None) or isinstance(cat, int)
     }
 
-    # Check for audiobook categories first (more specific), then ebook
+    if not cat_ids:
+        return normalized_fallback
+
+    # Check for audiobook categories first (more specific), then any book range
     if cat_ids & AUDIOBOOK_CATEGORY_IDS:
         return "audiobook"
-    if cat_ids & EBOOK_CATEGORY_IDS:
+    if any(cat_id in BOOK_CATEGORY_RANGE for cat_id in cat_ids):
         return "book"
 
-    return normalized_fallback
+    # Categories are present but not book/audiobook
+    return "other"
 
 
 def _prowlarr_result_to_release(result: dict, search_content_type: str = "ebook") -> Release:
@@ -366,7 +374,18 @@ class ProwlarrSource(ReleaseSource):
             """Search indexers with given categories, collecting results."""
             results = []
             if indexer_ids:
-                # Search specific indexers one at a time
+                # Prefer a single request for all selected indexers to reduce latency.
+                try:
+                    raw = client.search(query=query, indexer_ids=indexer_ids, categories=cats)
+                    if raw:
+                        results.extend(raw)
+                    return results
+                except Exception as e:
+                    logger.warning(
+                        f"Search failed for selected indexers {indexer_ids}: {e}. Falling back to per-indexer search."
+                    )
+
+                # Fallback: search specific indexers one at a time
                 for indexer_id in indexer_ids:
                     try:
                         raw = client.search(query=query, indexer_ids=[indexer_id], categories=cats)
@@ -386,11 +405,18 @@ class ProwlarrSource(ReleaseSource):
 
         try:
             auto_expand_enabled = config.get("PROWLARR_AUTO_EXPAND", False)
+            deadline = time.monotonic() + PROWLARR_SEARCH_TIMEOUT_SECONDS
 
+            def _check_timeout() -> None:
+                if time.monotonic() > deadline:
+                    raise TimeoutError(
+                        f"Prowlarr search timed out after {int(PROWLARR_SEARCH_TIMEOUT_SECONDS)}s"
+                    )
             seen_keys: set[str] = set()
             all_results: List[dict] = []
 
             for idx, query in enumerate(queries, start=1):
+                _check_timeout()
                 if len(queries) > 1:
                     logger.debug(f"Prowlarr query {idx}/{len(queries)}: '{query}'")
 
@@ -398,6 +424,7 @@ class ProwlarrSource(ReleaseSource):
 
                 # Auto-expand: if no results with categories and auto-expand enabled, retry without
                 if not raw_results and categories and auto_expand_enabled:
+                    _check_timeout()
                     logger.info(f"Prowlarr: no results for query '{query}' with category filter, auto-expanding search")
                     raw_results = search_indexers(query=query, cats=None)
                     self.last_search_type = "expanded"
@@ -428,6 +455,9 @@ class ProwlarrSource(ReleaseSource):
 
             return results
 
+        except TimeoutError as e:
+            logger.warning(f"Prowlarr search timed out: {e}")
+            raise
         except Exception as e:
             logger.error(f"Prowlarr search failed: {e}")
             return []

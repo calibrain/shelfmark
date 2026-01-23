@@ -3,6 +3,7 @@
 import base64
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 
 def normalize_http_url(
@@ -49,6 +50,28 @@ def normalize_http_url(
         normalized = normalized.rstrip("/")
 
     return normalized
+
+
+def normalize_base_path(value: Optional[str]) -> str:
+    """Normalize a URL base path for reverse proxy subpath deployments."""
+    if not isinstance(value, str):
+        return ""
+
+    path = value.strip()
+    if not path:
+        return ""
+
+    if "://" in path:
+        parsed = urlparse(path)
+        path = parsed.path or ""
+
+    if not path or path == "/":
+        return ""
+
+    if not path.startswith("/"):
+        path = "/" + path
+
+    return path.rstrip("/")
 
 
 def is_audiobook(content_type: Optional[str]) -> bool:
