@@ -144,7 +144,7 @@ def _generate_bootstrap_env_docs() -> List[str]:
         },
         {
             "name": "ENABLE_LOGGING",
-            "description": "Enable file logging to LOG_ROOT/shelfmark/shelfmark.log.",
+            "description": "Enable file logging under LOG_ROOT/shelfmark/ (including shelfmark.log and startup logs).",
             "type": "boolean",
             "default": "true",
         },

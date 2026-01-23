@@ -1,10 +1,54 @@
 #!/bin/bash
-LOG_DIR=${LOG_ROOT:-/var/log/}/shelfmark
-mkdir -p $LOG_DIR
-LOG_FILE=${LOG_DIR}/shelfmark_entrypoint.log
 
-# Cleanup any existing files or folders in the log directory
-rm -rf $LOG_DIR/*
+is_truthy() {
+    case "${1,,}" in
+        true|yes|1|y) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+ENABLE_LOGGING_VALUE="${ENABLE_LOGGING:-true}"
+LOG_PIPE_DIR=""
+LOG_PIPE=""
+TEE_PID=""
+
+start_file_logging() {
+    local logfile="$1"
+
+    LOG_PIPE_DIR="$(mktemp -d)"
+    LOG_PIPE="${LOG_PIPE_DIR}/shelfmark-log.pipe"
+    mkfifo "$LOG_PIPE"
+
+    tee -a "$logfile" < "$LOG_PIPE" &
+    TEE_PID=$!
+
+    exec 3>&1 4>&2
+    exec > "$LOG_PIPE" 2>&1
+}
+
+stop_file_logging() {
+    if [ -z "${TEE_PID:-}" ]; then
+        return 0
+    fi
+
+    exec 1>&3 2>&4
+    exec 3>&- 4>&-
+
+    rm -f "$LOG_PIPE"
+    rmdir "$LOG_PIPE_DIR" 2>/dev/null || true
+
+    wait "$TEE_PID" 2>/dev/null || true
+    TEE_PID=""
+}
+
+if is_truthy "$ENABLE_LOGGING_VALUE"; then
+    LOG_DIR=${LOG_ROOT:-/var/log/}/shelfmark
+    mkdir -p "$LOG_DIR"
+    LOG_FILE="${LOG_DIR}/shelfmark_entrypoint.log"
+
+    # Cleanup any existing files or folders in the log directory
+    rm -rf "$LOG_DIR"/*
+fi
 
 (
     if [ "$USING_TOR" = "true" ]; then
@@ -12,10 +56,16 @@ rm -rf $LOG_DIR/*
     fi
 )
 
-exec 3>&1 4>&2
-exec > >(tee -a $LOG_FILE) 2>&1
+if is_truthy "$ENABLE_LOGGING_VALUE"; then
+    start_file_logging "$LOG_FILE"
+fi
+
 echo "Starting entrypoint script"
-echo "Log file: $LOG_FILE"
+if is_truthy "$ENABLE_LOGGING_VALUE"; then
+    echo "Log file: $LOG_FILE"
+else
+    echo "File logging disabled (ENABLE_LOGGING=$ENABLE_LOGGING_VALUE)"
+fi
 set -e
 
 # Print build version
@@ -133,6 +183,24 @@ change_ownership() {
 change_ownership /app
 change_ownership /var/log/shelfmark
 change_ownership /tmp/shelfmark
+
+# SeleniumBase (internal bypasser) writes a patched chromedriver binary (uc_driver)
+# into its own drivers directory. Some NAS/docker setups can apply restrictive ACLs
+# to extracted image layers that block non-root writes; ensure the runtime UID owns it.
+if [ "${USING_EXTERNAL_BYPASSER}" != "true" ]; then
+    set +e
+    SELENIUMBASE_DRIVERS_DIR=$(python3 -c "import pathlib, seleniumbase; print(pathlib.Path(seleniumbase.__file__).resolve().parent / 'drivers')" 2>/dev/null)
+    set -e
+
+    if [ -n "$SELENIUMBASE_DRIVERS_DIR" ] && [ -d "$SELENIUMBASE_DRIVERS_DIR" ]; then
+        change_ownership "$SELENIUMBASE_DRIVERS_DIR"
+
+        # If the driver already exists, ensure it's executable for the runtime user.
+        if [ -f "${SELENIUMBASE_DRIVERS_DIR}/uc_driver" ]; then
+            chmod +x "${SELENIUMBASE_DRIVERS_DIR}/uc_driver" || echo "Failed to chmod uc_driver, continuing..."
+        fi
+    fi
+fi
 
 # Test write to all folders
 make_writable ${CONFIG_DIR:-/config}
@@ -263,8 +331,5 @@ UMASK_VALUE=${UMASK:-0022}
 echo "Setting umask to $UMASK_VALUE"
 umask $UMASK_VALUE
 
-# Stop logging
-exec 1>&3 2>&4
-exec 3>&- 4>&-
-
+stop_file_logging
 exec sudo -E -u "$USERNAME" HOME=/app $command

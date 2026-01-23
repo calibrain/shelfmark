@@ -176,8 +176,14 @@ def html_get_page(
     selector: Optional[network.AAMirrorSelector] = None,
     cancel_flag: Optional[Event] = None,
     status_callback: Optional[Callable[[str, Optional[str]], None]] = None,
+    allow_bypasser_fallback: bool = True,
 ) -> str:
-    """Fetch HTML content from a URL with retry mechanism."""
+    """Fetch HTML content from a URL with retry mechanism.
+
+    Args:
+        allow_bypasser_fallback: If False, 403 errors will trigger mirror rotation
+            instead of switching to the bypasser. Use for search operations.
+    """
     retry = retry if retry is not None else app_config.MAX_RETRY
     selector = selector or network.AAMirrorSelector()
     original_url = url
@@ -216,6 +222,15 @@ def html_get_page(
 
             # 403 = Cloudflare/DDoS-Guard protection
             if status == 403:
+                # If bypasser fallback is disabled, try mirrors instead
+                if not allow_bypasser_fallback:
+                    new_url = _try_rotation(original_url, current_url, selector)
+                    if new_url:
+                        current_url = new_url
+                        continue
+                    logger.warning(f"403 error, mirrors exhausted: {current_url}")
+                    return ""
+
                 if _is_cf_bypass_enabled() and not use_bypasser_now:
                     # Before switching to bypasser, check if cookies have become available
                     # (another concurrent download may have completed bypass and extracted cookies)

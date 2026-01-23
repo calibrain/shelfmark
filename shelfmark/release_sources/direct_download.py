@@ -195,7 +195,7 @@ def search_books(query: str, filters: SearchFilters) -> List[BookInfo]:
         f"{filters_query}"
     )
 
-    html = downloader.html_get_page(url, selector=selector)
+    html = downloader.html_get_page(url, selector=selector, allow_bypasser_fallback=False)
     if not html:
         # Network/mirror exhaustion path bubbles up so API can notify clients
         raise SearchUnavailable("Unable to reach download source. Network restricted or mirrors are blocked.")
@@ -245,7 +245,7 @@ def get_book_info(book_id: str, fetch_download_count: bool = True) -> BookInfo:
     """
     url = f"{network.get_aa_base_url()}/md5/{book_id}"
     selector = network.AAMirrorSelector()
-    html = downloader.html_get_page(url, selector=selector)
+    html = downloader.html_get_page(url, selector=selector, allow_bypasser_fallback=False)
 
     if not html:
         raise Exception(f"Failed to fetch book info for ID: {book_id}")
@@ -398,7 +398,7 @@ def _parse_book_info_page(soup: BeautifulSoup, book_id: str, fetch_download_coun
     if fetch_download_count:
         try:
             summary_url = f"{network.get_aa_base_url()}/dyn/md5/summary/{book_id}"
-            summary_response = downloader.html_get_page(summary_url, selector=network.AAMirrorSelector())
+            summary_response = downloader.html_get_page(summary_url, selector=network.AAMirrorSelector(), allow_bypasser_fallback=False)
             if summary_response:
                 summary_data = json.loads(summary_response)
                 if "downloads_total" in summary_data:

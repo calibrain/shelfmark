@@ -1,12 +1,29 @@
 #!/bin/bash
-LOG_DIR=${LOG_ROOT:-/var/log/}/shelfmark
-mkdir -p $LOG_DIR
-LOG_FILE=${LOG_DIR}/shelfmark_tor.log
 
-exec 3>&1 4>&2
-exec > >(tee -a $LOG_FILE) 2>&1
+is_truthy() {
+    case "${1,,}" in
+        true|yes|1|y) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+ENABLE_LOGGING_VALUE="${ENABLE_LOGGING:-true}"
+
+LOG_DIR=${LOG_ROOT:-/var/log/}/shelfmark
+LOG_FILE="${LOG_DIR}/shelfmark_tor.log"
+
+if is_truthy "$ENABLE_LOGGING_VALUE"; then
+    mkdir -p "$LOG_DIR"
+
+    exec 3>&1 4>&2
+    exec > >(tee -a "$LOG_FILE") 2>&1
+fi
 echo "Starting tor script"
-echo "Log file: $LOG_FILE"
+if is_truthy "$ENABLE_LOGGING_VALUE"; then
+    echo "Log file: $LOG_FILE"
+else
+    echo "File logging disabled (ENABLE_LOGGING=$ENABLE_LOGGING_VALUE)"
+fi
 
 set +x
 set -e
@@ -264,7 +281,7 @@ fi
 
 # Start a background circuit rotation process
 echo "[*] Starting Tor circuit rotation monitor..."
-(
+rotation_monitor() {
     rotation_count=0
 
     # Wait for initial stability
@@ -295,7 +312,13 @@ echo "[*] Starting Tor circuit rotation monitor..."
 
         sleep 300
     done
-) >> $LOG_FILE 2>&1 &
+}
+
+if is_truthy "$ENABLE_LOGGING_VALUE"; then
+    rotation_monitor >> "$LOG_FILE" 2>&1 &
+else
+    rotation_monitor &
+fi
 
 ROTATION_PID=$!
 echo "[✓] Tor circuit rotation monitor started in background (PID: $ROTATION_PID)"
