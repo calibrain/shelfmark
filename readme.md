@@ -96,6 +96,8 @@ Environment variables work for initial setup and Docker deployments. They serve 
 | `SEARCH_MODE` | `direct` or `universal` | `direct` |
 | `USING_TOR` | Enable Tor routing (requires `NET_ADMIN` capability) | `false` |
 
+See the full [Environment Variables Reference](docs/environment-variables.md) for all available options.
+
 Some of the additional options available in Settings:
 - **Fast Download Key** - Use your paid account to skip Cloudflare challenges entirely and use faster, direct downloads
 - **Prowlarr** - Configure indexers and download clients to download books and audiobooks

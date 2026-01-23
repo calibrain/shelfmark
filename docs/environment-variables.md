@@ -192,7 +192,7 @@ How you want to search for and download books.
 
 - **Type:** string (choice)
 - **Default:** `direct`
-- **Options:** Direct, Universal
+- **Options:** `direct` (Direct), `universal` (Universal)
 
 #### `AA_DEFAULT_SORT`
 
@@ -202,7 +202,7 @@ Default sort order for search results.
 
 - **Type:** string (choice)
 - **Default:** `relevance`
-- **Options:** Most relevant, Newest (publication year), Oldest (publication year), Largest (filesize), Smallest (filesize), Newest (open sourced), Oldest (open sourced)
+- **Options:** `relevance` (Most relevant), `newest` (Newest (publication year)), `oldest` (Oldest (publication year)), `largest` (Largest (filesize)), `smallest` (Smallest (filesize)), `newest_added` (Newest (open sourced)), `oldest_added` (Oldest (open sourced))
 
 #### `METADATA_PROVIDER`
 
@@ -212,7 +212,7 @@ Choose which metadata provider to use for book searches.
 
 - **Type:** string (choice)
 - **Default:** `openlibrary`
-- **Options:** No providers enabled
+- **Options:** `""` (No providers enabled)
 
 #### `METADATA_PROVIDER_AUDIOBOOK`
 
@@ -222,7 +222,7 @@ Metadata provider for audiobook searches. Uses the book provider if not set.
 
 - **Type:** string (choice)
 - **Default:** _empty string_
-- **Options:** Use book provider, No providers enabled
+- **Options:** `""` (Use book provider), `""` (No providers enabled)
 
 #### `DEFAULT_RELEASE_SOURCE`
 
@@ -232,7 +232,7 @@ The release source tab to open by default in the release modal.
 
 - **Type:** string (choice)
 - **Default:** `direct_download`
-- **Options:** Direct Download, Prowlarr
+- **Options:** `direct_download` (Direct Download), `prowlarr` (Prowlarr)
 
 </details>
 
@@ -272,7 +272,7 @@ Choose where completed book files are sent.
 
 - **Type:** string (choice)
 - **Default:** `folder`
-- **Options:** Folder, Booklore (API)
+- **Options:** `folder` (Folder), `booklore` (Booklore (API))
 
 #### `INGEST_DIR`
 
@@ -292,7 +292,7 @@ Choose how downloaded book files are named and organized.
 
 - **Type:** string (choice)
 - **Default:** `rename`
-- **Options:** None, Rename, Organize
+- **Options:** `none` (None), `rename` (Rename Only), `organize` (Rename and Organize)
 
 #### `TEMPLATE_RENAME`
 
@@ -388,7 +388,7 @@ Choose how downloaded audiobook files are named and organized.
 
 - **Type:** string (choice)
 - **Default:** `rename`
-- **Options:** None, Rename, Organize
+- **Options:** `none` (None), `rename` (Rename Only), `organize` (Rename and Organize)
 
 #### `TEMPLATE_AUDIOBOOK_RENAME`
 
@@ -483,7 +483,7 @@ DNS provider for domain resolution. 'Auto' rotates through providers on failure.
 
 - **Type:** string (choice)
 - **Default:** `auto`
-- **Options:** Auto (Recommended), System, Google, Cloudflare, Quad9, OpenDNS, Manual
+- **Options:** `auto` (Auto (Recommended)), `system` (System), `google` (Google), `cloudflare` (Cloudflare), `quad9` (Quad9), `opendns` (OpenDNS), `manual` (Manual)
 
 #### `CUSTOM_DNS_MANUAL`
 
@@ -520,7 +520,7 @@ Choose proxy type. SOCKS5 handles all traffic through a single proxy.
 
 - **Type:** string (choice)
 - **Default:** `none`
-- **Options:** None (Direct Connection), HTTP/HTTPS Proxy, SOCKS5 Proxy
+- **Options:** `none` (None (Direct Connection)), `http` (HTTP/HTTPS Proxy), `socks5` (SOCKS5 Proxy)
 
 #### `HTTP_PROXY`
 
@@ -564,10 +564,12 @@ Comma-separated hosts to bypass proxy (e.g., localhost,127.0.0.1,10.*,*.local)
 
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
-| `CUSTOM_SCRIPT` | Path to a script to run after each successful download. Must be executable. | string | _none_ |
+| `URL_BASE` | Optional URL path prefix. Use a path like /shelfmark (no hostname). Leave blank for root. | string | _none_ |
 | `DEBUG` | Enable verbose logging to console and file. Not recommended for normal use. | boolean | `false` |
 | `MAIN_LOOP_SLEEP_TIME` | How often the download queue is checked for new items. | number | `5` |
 | `DOWNLOAD_PROGRESS_UPDATE_INTERVAL` | How often download progress is broadcast to the UI. | number | `1` |
+| `CUSTOM_SCRIPT` | Path to a script to run after each successful download. Must be executable. | string | _none_ |
+| `CUSTOM_SCRIPT_PATH_MODE` | Pass the path to the custom script as an absolute path or relative to the destination folder. | string (choice) | `absolute` |
 | `COVERS_CACHE_ENABLED` | Cache book covers on the server for faster loading. | boolean | `true` |
 | `COVERS_CACHE_TTL` | How long to keep cached covers. Set to 0 to keep forever (recommended for static artwork). | number | `0` |
 | `COVERS_CACHE_MAX_SIZE_MB` | Maximum disk space for cached covers. Oldest images are removed when limit is reached. | number | `500` |
@@ -578,14 +580,15 @@ Comma-separated hosts to bypass proxy (e.g., localhost,127.0.0.1,10.*,*.local)
 <details>
 <summary>Detailed descriptions</summary>
 
-#### `CUSTOM_SCRIPT`
+#### `URL_BASE`
 
-**Custom Script Path**
+**Base Path**
 
-Path to a script to run after each successful download. Must be executable.
+Optional URL path prefix. Use a path like /shelfmark (no hostname). Leave blank for root.
 
 - **Type:** string
 - **Default:** _none_
+- **Requires restart:** Yes
 
 #### `DEBUG`
 
@@ -618,6 +621,25 @@ How often download progress is broadcast to the UI.
 - **Default:** `1`
 - **Requires restart:** Yes
 - **Constraints:** min: 1, max: 10
+
+#### `CUSTOM_SCRIPT`
+
+**Custom Script Path**
+
+Path to a script to run after each successful download. Must be executable.
+
+- **Type:** string
+- **Default:** _none_
+
+#### `CUSTOM_SCRIPT_PATH_MODE`
+
+**Custom Script Path Mode**
+
+Pass the path to the custom script as an absolute path or relative to the destination folder.
+
+- **Type:** string (choice)
+- **Default:** `absolute`
+- **Options:** `absolute` (Absolute), `relative` (Relative)
 
 #### `COVERS_CACHE_ENABLED`
 
@@ -759,7 +781,7 @@ How long to keep cached search results before they expire.
 
 - **Type:** string (choice)
 - **Default:** `2592000`
-- **Options:** 30 days, Forever (until manually cleared)
+- **Options:** `2592000` (30 days), `0` (Forever (until manually cleared))
 
 </details>
 
@@ -805,7 +827,7 @@ Default sort order for Hardcover search results.
 
 - **Type:** string (choice)
 - **Default:** `relevance`
-- **Options:** Most relevant, Most popular, Highest rated, Newest, Oldest
+- **Options:** `relevance` (Most relevant), `popularity` (Most popular), `rating` (Highest rated), `newest` (Newest), `oldest` (Oldest)
 
 #### `HARDCOVER_EXCLUDE_COMPILATIONS`
 
@@ -854,7 +876,7 @@ Default sort order for Open Library search results.
 
 - **Type:** string (choice)
 - **Default:** `relevance`
-- **Options:** Most relevant, Newest, Oldest
+- **Options:** `relevance` (Most relevant), `newest` (Newest), `oldest` (Oldest)
 
 </details>
 
@@ -896,7 +918,7 @@ Default sort order for Google Books search results.
 
 - **Type:** string (choice)
 - **Default:** `relevance`
-- **Options:** Most relevant, Newest
+- **Options:** `relevance` (Most relevant), `newest` (Newest)
 
 </details>
 
@@ -1127,7 +1149,7 @@ Select 'Auto' to probe mirrors on startup, or choose a specific mirror.
 
 - **Type:** string (choice)
 - **Default:** `auto`
-- **Options:** Auto (Recommended), annas-archive.se, annas-archive.li, annas-archive.pm, annas-archive.in
+- **Options:** `auto` (Auto (Recommended)), `https://annas-archive.se` (annas-archive.se), `https://annas-archive.li` (annas-archive.li), `https://annas-archive.pm` (annas-archive.pm), `https://annas-archive.in` (annas-archive.in)
 
 #### `AA_ADDITIONAL_URLS`
 
@@ -1155,7 +1177,7 @@ Z-Library mirror to use for downloads.
 
 - **Type:** string (choice)
 - **Default:** `https://z-lib.fm`
-- **Options:** z-lib.fm, z-lib.gs, z-lib.id, z-library.sk, zlibrary-global.se
+- **Options:** `https://z-lib.fm` (z-lib.fm), `https://z-lib.gs` (z-lib.gs), `https://z-lib.id` (z-lib.id), `https://z-library.sk` (z-library.sk), `https://zlibrary-global.se` (zlibrary-global.se)
 
 #### `ZLIB_ADDITIONAL_URLS`
 
@@ -1174,7 +1196,7 @@ Welib mirror to use for downloads.
 
 - **Type:** string (choice)
 - **Default:** `https://welib.org`
-- **Options:** welib.org
+- **Options:** `https://welib.org` (welib.org)
 
 #### `WELIB_ADDITIONAL_URLS`
 
@@ -1271,6 +1293,11 @@ Automatically retry search without category filtering if no results are found
 | `DELUGE_PASSWORD` | Deluge Web UI password (default: deluge) | string (secret) | _none_ |
 | `DELUGE_CATEGORY` | Label to assign to book downloads in Deluge | string | `books` |
 | `DELUGE_CATEGORY_AUDIOBOOK` | Label for audiobook downloads. Leave empty to use the book label. | string | _empty string_ |
+| `RTORRENT_URL` | XML-RPC URL of your rTorrent instance | string | _none_ |
+| `RTORRENT_USERNAME` | HTTP Basic auth username (if authentication enabled) | string | _none_ |
+| `RTORRENT_PASSWORD` | HTTP Basic auth password | string (secret) | _none_ |
+| `RTORRENT_LABEL` | Label to assign to book downloads in rTorrent | string | `cwabd` |
+| `RTORRENT_DOWNLOAD_DIR` | Server-side directory where torrents are downloaded (optional, uses rTorrent default if not specified) | string | _none_ |
 | `PROWLARR_USENET_CLIENT` | Choose which usenet client to use | string (choice) | _empty string_ |
 | `NZBGET_URL` | URL of your NZBGet instance | string | _none_ |
 | `NZBGET_USERNAME` | NZBGet control username | string | `nzbget` |
@@ -1281,7 +1308,7 @@ Automatically retry search without category filtering if no results are found
 | `SABNZBD_API_KEY` | Found in SABnzbd: Config > General > API Key | string (secret) | _none_ |
 | `SABNZBD_CATEGORY` | Category to assign to book downloads in SABnzbd | string | `books` |
 | `SABNZBD_CATEGORY_AUDIOBOOK` | Category for audiobook downloads. Leave empty to use the book category. | string | _empty string_ |
-| `PROWLARR_USENET_ACTION` | Copy files into your ingest folder, optionally cleaning up the usenet client | string (choice) | `move` |
+| `PROWLARR_USENET_ACTION` | Move deletes the job from your usenet client after import; Copy keeps it in the client | string (choice) | `move` |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -1294,7 +1321,7 @@ Choose which torrent client to use
 
 - **Type:** string (choice)
 - **Default:** _empty string_
-- **Options:** None, qBittorrent, Transmission, Deluge
+- **Options:** `""` (None), `qbittorrent` (qBittorrent), `transmission` (Transmission), `deluge` (Deluge), `rtorrent` (rTorrent)
 
 #### `QBITTORRENT_URL`
 
@@ -1431,6 +1458,51 @@ Label for audiobook downloads. Leave empty to use the book label.
 - **Type:** string
 - **Default:** _empty string_
 
+#### `RTORRENT_URL`
+
+**rTorrent URL**
+
+XML-RPC URL of your rTorrent instance
+
+- **Type:** string
+- **Default:** _none_
+
+#### `RTORRENT_USERNAME`
+
+**Username**
+
+HTTP Basic auth username (if authentication enabled)
+
+- **Type:** string
+- **Default:** _none_
+
+#### `RTORRENT_PASSWORD`
+
+**Password**
+
+HTTP Basic auth password
+
+- **Type:** string (secret)
+- **Default:** _none_
+
+#### `RTORRENT_LABEL`
+
+**Book Label**
+
+Label to assign to book downloads in rTorrent
+
+- **Type:** string
+- **Default:** `cwabd`
+
+#### `RTORRENT_DOWNLOAD_DIR`
+
+**Download Directory**
+
+Server-side directory where torrents are downloaded (optional, uses rTorrent default if not specified)
+
+- **Type:** string
+- **Default:** _none_
+
 #### `PROWLARR_USENET_CLIENT`
 
 **Usenet Client**
@@ -1439,7 +1511,7 @@ Choose which usenet client to use
 
 - **Type:** string (choice)
 - **Default:** _empty string_
-- **Options:** None, NZBGet, SABnzbd
+- **Options:** `""` (None), `nzbget` (NZBGet), `sabnzbd` (SABnzbd)
 
 #### `NZBGET_URL`
 
@@ -1526,10 +1598,10 @@ Category for audiobook downloads. Leave empty to use the book category.
 
 **NZB Completion Action**
 
-Copy files into your ingest folder, optionally cleaning up the usenet client
+Move deletes the job from your usenet client after import; Copy keeps it in the client
 
 - **Type:** string (choice)
 - **Default:** `move`
-- **Options:** Copy and remove from client, Copy (keep in client)
+- **Options:** `move` (Move), `copy` (Copy)
 
 </details>

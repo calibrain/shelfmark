@@ -12,6 +12,7 @@ from shelfmark.release_sources.prowlarr.source import (
     _parse_size,
     _extract_format,
     _extract_language,
+    _detect_content_type_from_categories,
 )
 from shelfmark.release_sources.prowlarr.utils import get_protocol_display, sanitize_download_url
 from shelfmark.metadata_providers import BookMetadata
@@ -245,6 +246,26 @@ class TestExtractLanguage:
         assert _extract_language("Book [GERMAN]") == "de"
         assert _extract_language("Book [german]") == "de"
         assert _extract_language("Book [German]") == "de"
+
+
+class TestDetectContentType:
+    """Tests for the _detect_content_type_from_categories function."""
+
+    def test_fallback_without_categories(self):
+        assert _detect_content_type_from_categories([], "ebook") == "book"
+        assert _detect_content_type_from_categories([], "audiobook") == "audiobook"
+
+    def test_audiobook_categories(self):
+        assert _detect_content_type_from_categories([{"id": 3030}], "ebook") == "audiobook"
+        assert _detect_content_type_from_categories([3000], "ebook") == "audiobook"
+
+    def test_book_category_range(self):
+        assert _detect_content_type_from_categories([{"id": 7000}], "ebook") == "book"
+        assert _detect_content_type_from_categories([7020], "audiobook") == "book"
+        assert _detect_content_type_from_categories([7030], "ebook") == "book"
+
+    def test_non_book_categories_return_other(self):
+        assert _detect_content_type_from_categories([{"id": 2000}], "ebook") == "other"
 
 
 class TestProwlarrLocalizedQueries:

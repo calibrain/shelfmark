@@ -59,6 +59,9 @@ AUDIOBOOK_FORMATS = ["m4b", "mp3", "m4a", "flac", "ogg", "wma", "aac", "wav", "o
 # Combined list for format detection (audiobook formats first for priority)
 ALL_BOOK_FORMATS = AUDIOBOOK_FORMATS + EBOOK_FORMATS
 
+# Backend safeguard: cap total Prowlarr search time per request.
+PROWLARR_SEARCH_TIMEOUT_SECONDS = 120.0
+
 
 def _extract_format(title: str) -> Optional[str]:
     """Extract ebook/audiobook format from release title (extension, bracketed, or standalone)."""
@@ -110,11 +113,11 @@ def _extract_language(title: str) -> Optional[str]:
 # Prowlarr category IDs for content type detection
 # See: https://wiki.servarr.com/prowlarr/cardigann-yml-definition#categories
 AUDIOBOOK_CATEGORY_IDS = {3000, 3030}  # 3000 = Audio, 3030 = Audio/Audiobook
-EBOOK_CATEGORY_IDS = {7000, 7020}  # 7000 = Books, 7020 = Books/Ebook
+BOOK_CATEGORY_RANGE = range(7000, 8000)  # 7000-7999 = Books (all subcategories)
 
 
 def _detect_content_type_from_categories(categories: list, fallback: str = "book") -> str:
-    """Detect content type from Prowlarr category IDs. Returns 'audiobook' or 'book'."""
+    """Detect content type from Prowlarr category IDs. Returns 'audiobook', 'book', or 'other'."""
     # Normalize fallback - convert "ebook" to "book" for display consistency
     normalized_fallback = "book" if fallback == "ebook" else fallback
 
@@ -128,13 +131,17 @@ def _detect_content_type_from_categories(categories: list, fallback: str = "book
         if (isinstance(cat, dict) and cat.get("id") is not None) or isinstance(cat, int)
     }
 
-    # Check for audiobook categories first (more specific), then ebook
+    if not cat_ids:
+        return normalized_fallback
+
+    # Check for audiobook categories first (more specific), then any book range
     if cat_ids & AUDIOBOOK_CATEGORY_IDS:
         return "audiobook"
-    if cat_ids & EBOOK_CATEGORY_IDS:
+    if any(cat_id in BOOK_CATEGORY_RANGE for cat_id in cat_ids):
         return "book"
 
-    return normalized_fallback
+    # Categories are present but not book/audiobook
+    return "other"
 
 
 def _prowlarr_result_to_release(result: dict, search_content_type: str = "ebook") -> Release:
@@ -398,20 +405,13 @@ class ProwlarrSource(ReleaseSource):
 
         try:
             auto_expand_enabled = config.get("PROWLARR_AUTO_EXPAND", False)
-            raw_timeout = config.get("PROWLARR_SEARCH_TIMEOUT", 120)
-            try:
-                timeout_seconds = float(raw_timeout)
-            except (TypeError, ValueError):
-                timeout_seconds = 120.0
-
-            deadline = None
-            if timeout_seconds > 0:
-                deadline = time.monotonic() + timeout_seconds
+            deadline = time.monotonic() + PROWLARR_SEARCH_TIMEOUT_SECONDS
 
             def _check_timeout() -> None:
-                if deadline is not None and time.monotonic() > deadline:
-                    raise TimeoutError(f"Prowlarr search timed out after {int(timeout_seconds)}s")
-
+                if time.monotonic() > deadline:
+                    raise TimeoutError(
+                        f"Prowlarr search timed out after {int(PROWLARR_SEARCH_TIMEOUT_SECONDS)}s"
+                    )
             seen_keys: set[str] = set()
             all_results: List[dict] = []
 
