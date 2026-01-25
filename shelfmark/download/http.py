@@ -3,7 +3,7 @@
 import random
 import time
 from io import BytesIO
-from threading import Event
+from threading import Event, Thread
 from typing import Callable, Optional
 from urllib.parse import urlparse
 
@@ -200,13 +200,32 @@ def html_get_page(
             if use_bypasser_now and _is_cf_bypass_enabled():
                 logger.debug(f"GET (bypasser): {current_url}")
                 if status_callback:
-                    status_callback("resolving", "Bypassing protection")
+                    status_callback("resolving", "Bypassing protection...")
+                heartbeat_stop = Event()
+                heartbeat_thread: Optional[Thread] = None
+                if status_callback:
+                    def _heartbeat() -> None:
+                        # Keep the download "alive" during long bypass operations so the orchestrator
+                        # doesn't flag it as stalled.
+                        while not heartbeat_stop.wait(timeout=30):
+                            if cancel_flag and cancel_flag.is_set():
+                                return
+                            try:
+                                status_callback("resolving", "Bypassing protection...")
+                            except Exception:
+                                return
+                    heartbeat_thread = Thread(target=_heartbeat, daemon=True, name="BypassHeartbeat")
+                    heartbeat_thread.start()
                 try:
                     result = get_bypassed_page(current_url, selector, cancel_flag)
                     return result or ""
                 except Exception as e:
                     logger.warning(f"Bypasser error: {type(e).__name__}: {e}")
                     return ""
+                finally:
+                    heartbeat_stop.set()
+                    if heartbeat_thread:
+                        heartbeat_thread.join(timeout=1)
 
             logger.debug(f"GET: {current_url}")
             # Try with CF cookies/UA if available (from previous bypass)

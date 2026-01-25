@@ -592,6 +592,8 @@ def _bypass(sb, max_retries: Optional[int] = None, cancel_flag: Optional[Event] 
 
     last_challenge_type = None
     consecutive_same_challenge = 0
+    # Allow at least one full pass through all bypass methods before aborting due to a "stuck" challenge.
+    min_same_challenge_before_abort = max(MAX_CONSECUTIVE_SAME_CHALLENGE, len(BYPASS_METHODS) + 1)
 
     for try_count in range(max_retries):
         _check_cancellation(cancel_flag, "Bypass cancelled by user")
@@ -623,7 +625,7 @@ def _bypass(sb, max_retries: Optional[int] = None, cancel_flag: Optional[Event] 
 
         if challenge_type == last_challenge_type:
             consecutive_same_challenge += 1
-            if consecutive_same_challenge >= MAX_CONSECUTIVE_SAME_CHALLENGE:
+            if consecutive_same_challenge >= min_same_challenge_before_abort:
                 logger.warning(
                     f"Same challenge ({challenge_type}) detected {consecutive_same_challenge} times - aborting"
                 )
