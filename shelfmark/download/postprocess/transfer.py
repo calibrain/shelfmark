@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
@@ -142,15 +142,16 @@ def transfer_book_files(
     is_torrent: bool,
     preserve_source: bool = False,
     organization_mode: Optional[str] = None,
-) -> Tuple[List[Path], Optional[str]]:
+) -> Tuple[List[Path], Optional[str], Dict[str, int]]:
     if not book_files:
-        return [], "No book files found"
+        return [], "No book files found", {"hardlink": 0, "copy": 0, "move": 0}
 
     is_audiobook = check_audiobook(task.content_type)
     organization_mode = organization_mode or get_file_organization(is_audiobook)
     max_attempts = _max_attempts_for_batch(len(book_files))
 
     final_paths: List[Path] = []
+    op_counts: Dict[str, int] = {"hardlink": 0, "copy": 0, "move": 0}
 
     if organization_mode == "organize":
         template = get_template(is_audiobook, "organize")
@@ -171,6 +172,7 @@ def transfer_book_files(
                 max_attempts=max_attempts,
             )
             final_paths.append(final_path)
+            op_counts[op] = op_counts.get(op, 0) + 1
             logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
         else:
             zero_pad_width = max(len(str(len(book_files))), 2)
@@ -191,9 +193,10 @@ def transfer_book_files(
                     max_attempts=max_attempts,
                 )
                 final_paths.append(final_path)
+                op_counts[op] = op_counts.get(op, 0) + 1
                 logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
 
-        return final_paths, None
+        return final_paths, None, op_counts
 
     for book_file in book_files:
         if len(book_files) == 1 and organization_mode != "none":
@@ -223,9 +226,10 @@ def transfer_book_files(
             max_attempts=max_attempts,
         )
         final_paths.append(final_path)
+        op_counts[op] = op_counts.get(op, 0) + 1
         logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
 
-    return final_paths, None
+    return final_paths, None, op_counts
 
 
 def process_directory(
@@ -257,7 +261,7 @@ def process_directory(
         if use_hardlink is None:
             use_hardlink = should_hardlink(task)
 
-        final_paths, error = transfer_book_files(
+        final_paths, error, _op_counts = transfer_book_files(
             book_files,
             destination=ingest_dir,
             task=task,
@@ -305,6 +309,12 @@ def transfer_file_to_library(
         max_attempts=_max_attempts_for_batch(1),
     )
     logger.info(f"Library {op}: {final_path}")
+    if use_hardlink and op != "hardlink":
+        logger.warning(
+            "Library hardlink requested but %s used instead for %s",
+            op,
+            final_path,
+        )
 
     if use_hardlink and temp_file and not is_torrent_source(temp_file, task):
         safe_cleanup_path(temp_file, task)
@@ -344,6 +354,7 @@ def transfer_directory_to_library(
 
     is_torrent = is_torrent_source(source_dir, task)
     transferred_paths: List[Path] = []
+    op_counts: Dict[str, int] = {"hardlink": 0, "copy": 0, "move": 0}
     max_attempts = _max_attempts_for_batch(len(source_files))
 
     if len(source_files) == 1:
@@ -359,6 +370,7 @@ def transfer_directory_to_library(
         )
         logger.debug(f"Library {op}: {source_file.name} -> {final_path}")
         transferred_paths.append(final_path)
+        op_counts[op] = op_counts.get(op, 0) + 1
     else:
         zero_pad_width = max(len(str(len(source_files))), 2)
         files_with_parts = assign_part_numbers(source_files, zero_pad_width)
@@ -378,14 +390,23 @@ def transfer_directory_to_library(
             )
             logger.debug(f"Library {op}: {source_file.name} -> {final_path}")
             transferred_paths.append(final_path)
+            op_counts[op] = op_counts.get(op, 0) + 1
 
-    if use_hardlink:
-        operation = "hardlinks"
-    elif is_torrent:
-        operation = "copies"
-    else:
-        operation = "files"
-    logger.info(f"Created {len(transferred_paths)} library {operation} in {base_library_path.parent}")
+    op_summary = ", ".join(
+        f"{op}={count}" for op, count in op_counts.items() if count
+    ) or "none"
+    logger.info(
+        "Created %d library file(s) in %s (ops: %s)",
+        len(transferred_paths),
+        base_library_path.parent,
+        op_summary,
+    )
+    if use_hardlink and op_counts.get("copy", 0):
+        logger.warning(
+            "Library hardlink requested but %d of %d file(s) copied (fallback)",
+            op_counts.get("copy", 0),
+            len(transferred_paths),
+        )
 
     if use_hardlink and temp_file and not is_torrent_source(temp_file, task):
         safe_cleanup_path(temp_file, task)

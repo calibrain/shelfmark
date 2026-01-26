@@ -7,6 +7,7 @@ from typing import Literal
 
 from shelfmark.config import env as env_config
 from shelfmark.core.logger import setup_logger
+from shelfmark.download.fs import run_blocking_io
 
 logger = setup_logger(__name__)
 
@@ -67,17 +68,17 @@ def stage_path(source: Path, staging_dir: Path, action: StageAction) -> Path:
             staged_path = staging_dir / f"{source.name}_{counter}"
             counter += 1
         if action == STAGE_COPY:
-            shutil.copytree(str(source), str(staged_path))
+            run_blocking_io(shutil.copytree, str(source), str(staged_path))
         else:
-            shutil.move(str(source), str(staged_path))
+            run_blocking_io(shutil.move, str(source), str(staged_path))
     else:
         while staged_path.exists():
             staged_path = staging_dir / f"{source.stem}_{counter}{source.suffix}"
             counter += 1
         if action == STAGE_COPY:
-            shutil.copy2(str(source), str(staged_path))
+            run_blocking_io(shutil.copy2, str(source), str(staged_path))
         else:
-            shutil.move(str(source), str(staged_path))
+            run_blocking_io(shutil.move, str(source), str(staged_path))
 
     staged_kind = "directory" if source.is_dir() else "file"
     logger.debug("Staged %s via %s: %s -> %s", staged_kind, action, source, staged_path)

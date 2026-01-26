@@ -7,6 +7,7 @@ from typing import List, Optional
 from shelfmark.config import env as env_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
+from shelfmark.download.fs import run_blocking_io
 from shelfmark.download.staging import STAGE_NONE
 
 from .types import OutputPlan
@@ -59,7 +60,7 @@ def safe_cleanup_path(path: Optional[Path], task: DownloadTask) -> None:
 
     try:
         if path.is_dir():
-            shutil.rmtree(path, ignore_errors=True)
+            run_blocking_io(shutil.rmtree, path, ignore_errors=True)
         elif path.exists():
             path.unlink(missing_ok=True)
     except (OSError, PermissionError) as exc:
