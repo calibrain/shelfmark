@@ -30,7 +30,12 @@ def _resolve_custom_script_target(target_path: Path, destination: Path, path_mod
     except ValueError:
         if target_path.is_absolute():
             return Path(target_path.name)
-        return target_path
+    return target_path
+
+
+def _format_op_counts(op_counts: dict[str, int]) -> str:
+    parts = [f"{op}={count}" for op, count in op_counts.items() if count]
+    return ", ".join(parts) if parts else "none"
 
 
 @dataclass(frozen=True)
@@ -255,7 +260,7 @@ def process_folder_output(
         record_step(steps, "cleanup_staging", path=str(prepared.working_path))
     log_plan_steps(task.task_id, steps)
 
-    final_paths, error = transfer_book_files(
+    final_paths, error, op_counts = transfer_book_files(
         prepared.files,
         destination=plan.destination,
         task=task,
@@ -271,12 +276,19 @@ def process_folder_output(
         return None
 
     logger.info(
-        "Task %s: transferred %d file(s) to %s (%s)",
+        "Task %s: transferred %d file(s) to %s (ops: %s)",
         task.task_id,
         len(final_paths),
         plan.destination,
-        op_label.lower(),
+        _format_op_counts(op_counts),
     )
+    if use_hardlink and op_counts.get("copy", 0):
+        logger.warning(
+            "Task %s: hardlink requested but %d of %d file(s) copied (fallback)",
+            task.task_id,
+            op_counts.get("copy", 0),
+            len(final_paths),
+        )
 
     # Run custom script once per successful task, after transfer.
     if core_config.config.CUSTOM_SCRIPT:

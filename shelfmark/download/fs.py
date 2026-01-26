@@ -10,11 +10,45 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
+from typing import Any, Callable, Optional, TypeVar
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.download.permissions_debug import log_transfer_permission_context
 
 logger = setup_logger(__name__)
+
+try:
+    from gevent import monkey as _gevent_monkey
+    from gevent.threadpool import ThreadPool as _GeventThreadPool
+except Exception:
+    _gevent_monkey = None
+    _GeventThreadPool = None
+
+T = TypeVar("T")
+_IO_THREADPOOL: Optional["_GeventThreadPool"] = None
+
+
+def _use_gevent_threadpool() -> bool:
+    return bool(
+        _gevent_monkey
+        and _GeventThreadPool
+        and _gevent_monkey.is_module_patched("threading")
+    )
+
+
+def _get_io_threadpool() -> "_GeventThreadPool":
+    global _IO_THREADPOOL
+    if _IO_THREADPOOL is None:
+        pool_size = max(2, min(8, os.cpu_count() or 2))
+        _IO_THREADPOOL = _GeventThreadPool(pool_size)
+    return _IO_THREADPOOL
+
+
+def run_blocking_io(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+    """Run blocking I/O in a native thread when under gevent."""
+    if _use_gevent_threadpool():
+        return _get_io_threadpool().apply(func, args, kwds=kwargs)
+    return func(*args, **kwargs)
 
 
 
@@ -96,11 +130,12 @@ def _is_permission_error(e: Exception) -> bool:
 def _system_op(op: str, source: Path, dest: Path) -> None:
     """Execute system command (mv or cp) as final fallback."""
     logger.warning("Attempting system %s as final fallback: %s -> %s", op, source, dest)
-    subprocess.run(
+    run_blocking_io(
+        subprocess.run,
         [op, "-f", str(source), str(dest)],
         check=True,
         capture_output=True,
-        text=True
+        text=True,
     )
 
 
@@ -110,7 +145,7 @@ def _perform_nfs_fallback(source: Path, dest: Path, is_move: bool) -> None:
 
     try:
         # Fallback 1: copy content only
-        shutil.copyfile(str(source), str(dest))
+        run_blocking_io(shutil.copyfile, str(source), str(dest))
         _verify_transfer_size(dest, expected_size, "copy")
 
         if is_move:
@@ -225,7 +260,7 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                 temp_path = try_path.parent / f".{try_path.name}.tmp"
                 try:
                     try:
-                        shutil.copy2(str(source_path), str(temp_path))
+                        run_blocking_io(shutil.copy2, str(source_path), str(temp_path))
                     except (PermissionError, OSError) as copy_error:
                         if _is_permission_error(copy_error):
                             logger.debug(
@@ -365,7 +400,7 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
             temp_path = try_path.parent / f".{try_path.name}.tmp"
             try:
                 try:
-                    shutil.copy2(str(source_path), str(temp_path))
+                    run_blocking_io(shutil.copy2, str(source_path), str(temp_path))
                 except (PermissionError, OSError) as e:
                     # Handle NFS permission errors immediately here
                     if _is_permission_error(e):

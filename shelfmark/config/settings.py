@@ -177,6 +177,7 @@ _FORMAT_OPTIONS = [
 
 _AUDIOBOOK_FORMAT_OPTIONS = [
     {"value": "m4b", "label": "M4B"},
+    {"value": "m4a", "label": "M4A"},
     {"value": "mp3", "label": "MP3"},
     {"value": "zip", "label": "ZIP"},
     {"value": "rar", "label": "RAR"},
