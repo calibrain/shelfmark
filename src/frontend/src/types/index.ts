@@ -204,7 +204,7 @@ export interface ReleaseSource {
 }
 
 // Column schema types for plugin-driven release list UI
-export type ColumnRenderType = 'text' | 'badge' | 'size' | 'number' | 'peers';
+export type ColumnRenderType = 'text' | 'badge' | 'tags' | 'size' | 'number' | 'peers';
 export type ColumnAlign = 'left' | 'center' | 'right';
 
 export interface ColumnColorHint {

@@ -51,10 +51,18 @@ const CONTENT_TYPE_COLORS: Record<string, ColorStyle> = {
   audiobook: { bg: 'bg-violet-500/20', text: 'text-violet-700 dark:text-violet-300' },
 };
 
+const FLAG_COLORS: Record<string, ColorStyle> = {
+  freeleech: { bg: 'bg-green-500/20', text: 'text-green-700 dark:text-green-300' },
+  'double upload': { bg: 'bg-blue-500/20', text: 'text-blue-700 dark:text-blue-300' },
+  vip: { bg: 'bg-amber-500/20', text: 'text-amber-700 dark:text-amber-300' },
+  sticky: { bg: 'bg-yellow-500/20', text: 'text-yellow-700 dark:text-yellow-300' },
+};
+
 const DEFAULT_FORMAT_COLOR: ColorStyle = { bg: 'bg-cyan-500/20', text: 'text-cyan-700 dark:text-cyan-300' };
 const DEFAULT_LANGUAGE_COLOR: ColorStyle = { bg: 'bg-indigo-500/20', text: 'text-indigo-700 dark:text-indigo-300' };
 const DEFAULT_DOWNLOAD_TYPE_COLOR: ColorStyle = { bg: 'bg-violet-500/20', text: 'text-violet-700 dark:text-violet-300' };
 const DEFAULT_CONTENT_TYPE_COLOR: ColorStyle = { bg: 'bg-gray-500/20', text: 'text-gray-700 dark:text-gray-300' };
+const DEFAULT_FLAG_COLOR: ColorStyle = { bg: 'bg-gray-500/20', text: 'text-gray-700 dark:text-gray-300' };
 const FALLBACK_COLOR: ColorStyle = { bg: 'bg-gray-500/20', text: 'text-gray-700 dark:text-gray-300' };
 
 export function getFormatColor(format?: string): ColorStyle {
@@ -75,6 +83,11 @@ export function getDownloadTypeColor(downloadType?: string): ColorStyle {
 export function getContentTypeColor(contentType?: string): ColorStyle {
   if (!contentType || contentType === '-') return FALLBACK_COLOR;
   return CONTENT_TYPE_COLORS[contentType.toLowerCase()] || DEFAULT_CONTENT_TYPE_COLOR;
+}
+
+export function getFlagColor(flag?: string): ColorStyle {
+  if (!flag || flag === '-') return FALLBACK_COLOR;
+  return FLAG_COLORS[flag.toLowerCase()] || DEFAULT_FLAG_COLOR;
 }
 
 /**
@@ -106,6 +119,8 @@ export function getColorStyleFromHint(value: string, colorHint?: ColumnColorHint
         return getDownloadTypeColor(value);
       case 'content_type':
         return getContentTypeColor(value);
+      case 'flags':
+        return getFlagColor(value);
       default:
         return FALLBACK_COLOR;
     }

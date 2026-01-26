@@ -50,6 +50,46 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
       );
     }
 
+    case 'tags': {
+      // Tags display: render list of strings as distinct badges
+      // Treat non-array values as single-item array
+      const tags = (Array.isArray(rawValue) ? rawValue : (value ? [value] : [])) as any[];
+
+      // Compact mode: render as comma-separated text
+      if (compact) {
+        if (tags.length === 0) return <span>{column.fallback}</span>;
+        const displayTags = column.uppercase ? tags.map(t => String(t).toUpperCase()) : tags;
+        return <span>{displayTags.join(', ')}</span>;
+      }
+
+      if (!tags.length) {
+        return (
+          <div className={`flex items-center ${alignClass}`}>
+            <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">{column.fallback}</span>
+          </div>
+        );
+      }
+
+      return (
+        <div className={`flex flex-wrap items-center gap-1.5 ${alignClass}`}>
+          {tags.map((tag, idx) => {
+            const tagStr = String(tag);
+            const displayTag = column.uppercase ? tagStr.toUpperCase() : tagStr;
+            const colorStyle = getColorStyleFromHint(tagStr, column.color_hint);
+
+            return (
+              <span
+                key={idx}
+                className={`${colorStyle.bg} ${colorStyle.text} text-[10px] sm:text-[11px] font-semibold px-1.5 sm:px-2 py-0.5 rounded-lg tracking-wide whitespace-nowrap`}
+              >
+                {displayTag}
+              </span>
+            );
+          })}
+        </div>
+      );
+    }
+
     case 'size':
       if (compact) {
         return <span>{displayValue}</span>;

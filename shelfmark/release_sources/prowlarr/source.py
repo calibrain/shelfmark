@@ -199,6 +199,7 @@ def _prowlarr_result_to_release(result: dict, search_content_type: str = "ebook"
             "indexer_id": result.get("indexerId"),
             "files": result.get("files"),
             "grabs": result.get("grabs"),
+            "indexer_flags": result.get("indexerFlags", []),
         },
     )
 
@@ -249,6 +250,17 @@ class ProwlarrSource(ReleaseSource):
                     sort_key="seeders",
                 ),
                 ColumnSchema(
+                    key="extra.indexer_flags",
+                    label="Flags",
+                    render_type=ColumnRenderType.TAGS,
+                    align=ColumnAlign.CENTER,
+                    width="minmax(80px, 1.5fr)",
+                    hide_mobile=False,
+                    color_hint=ColumnColorHint(type="map", value="flags"),
+                    fallback="-",
+                    uppercase=True,
+                ),
+                ColumnSchema(
                     key="content_type",
                     label="Type",
                     render_type=ColumnRenderType.BADGE,
@@ -270,7 +282,7 @@ class ProwlarrSource(ReleaseSource):
                     sort_key="size_bytes",
                 ),
             ],
-            grid_template="minmax(0,2fr) minmax(80px,1fr) 60px 70px 90px 80px",
+            grid_template="minmax(0,2fr) minmax(80px,1fr) 60px 70px 80px 90px 80px",
             leading_cell=LeadingCellConfig(type=LeadingCellType.NONE),  # No leading cell for Prowlarr
             supported_filters=["language"],  # Enables multi-language query expansion; Prowlarr language metadata is unreliable
         )
