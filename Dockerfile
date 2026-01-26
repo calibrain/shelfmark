@@ -131,9 +131,10 @@ RUN apt-get update && \
     # For screen recording
     ffmpeg \
     # --- Chromium ---
-    chromium \
+    chromium=143.0.7499.169-1~deb13u1 \
+    chromium-common=143.0.7499.169-1~deb13u1 \
     # --- ChromeDriver ---
-    chromium-driver \
+    chromium-driver=143.0.7499.169-1~deb13u1 \
     # For tkinter (pyautogui)
     python3-tk \
     # For RAR extraction
