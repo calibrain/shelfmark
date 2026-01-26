@@ -58,6 +58,7 @@ class ColumnRenderType(str, Enum):
     """How the frontend should render the column value."""
     TEXT = "text"           # Plain text
     BADGE = "badge"         # Colored badge (format, language)
+    TAGS = "tags"           # List of colored badges
     SIZE = "size"           # File size formatting
     NUMBER = "number"       # Numeric value
     PEERS = "peers"         # Peers display: "S/L" with color based on seeder count
