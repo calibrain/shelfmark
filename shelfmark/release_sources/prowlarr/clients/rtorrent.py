@@ -310,7 +310,14 @@ class RTorrentClient(DownloadClient):
         this corresponds to `d.get_base_path()`.
         """
         try:
-            base_path = self._rpc.d.get_base_path(download_id)
-            return base_path if base_path else None
+            details = self._rpc.d.multicall.filtered(
+                "",
+                "default",
+                f"equal=d.hash=,cat={download_id}",
+                "d.base_path=",
+            )
+            if not details:
+                return None
+            return details[0][0] if details else None
         except Exception:
             return None
