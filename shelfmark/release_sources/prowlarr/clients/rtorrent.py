@@ -310,14 +310,16 @@ class RTorrentClient(DownloadClient):
         this corresponds to `d.get_base_path()`.
         """
         try:
+            # rTorrent is case sensitive for hashes; use uppercase as in get_status()
+            download_hash = download_id.upper()
             details = self._rpc.d.multicall.filtered(
                 "",
                 "default",
-                f"equal=d.hash=,cat={download_id}",
+                f"equal={{d.hash=,cat={download_hash}}}",
                 "d.base_path=",
             )
             if not details:
                 return None
-            return details[0][0] if details else None
+            return details[0][0]
         except Exception:
             return None
