@@ -434,6 +434,10 @@ def test_rtorrent():
         version = client.system.library_version()
         print(f"  Connected to rTorrent {version}")
 
+        # default download directory test
+        default_dir = client.directory.default()
+        print(f"  Default download directory: {default_dir}")
+
         # Get torrent list
         torrents = client.download_list()
         print(f"  Active torrents: {len(torrents)}")
@@ -458,10 +462,13 @@ def test_rtorrent():
         torrent_id = "3B245504CF5F11BBDBE1201CEA6A6BF45AEE1BC0" # rtorrent uses uppercase hashes
         print(f"  Added test torrent: {torrent_id}")
 
+        torrents = client.download_list()
+        print(f"  Active torrents: {len(torrents)}")        
+
         torrent_list = client.d.multicall.filtered(
             "",
             "default",
-            f"equal=d.hash=,cat={torrent_id}",
+            f"equal={{d.hash=,cat={torrent_id}}}"
             "d.hash=",
             "d.state=",
             "d.completed_bytes=",
@@ -472,11 +479,22 @@ def test_rtorrent():
             "d.complete=",
         )
         torrent = torrent_list[0]
+
         if not torrent:
             print("  ERROR: Could not find added torrent in list")
             return False
         
-        
+        # let's test the base path call
+        details = client.d.multicall.filtered(
+            "",
+            "default",
+            f"equal=d.hash=,cat={torrent_id}",
+            "d.base_path=",
+        )
+
+        base_path = details[0][0] if details else None
+
+        print(f"  Base path: {base_path}")
         client.d.erase(torrent_id)
         print("  Removed test torrent")
 
