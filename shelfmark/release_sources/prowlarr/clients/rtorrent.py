@@ -320,6 +320,7 @@ class RTorrentClient(DownloadClient):
             )
             if not details:
                 return None
-            return details[0][0]
+            path = details[0][0]
+            return path if path else None
         except Exception:
             return None
