@@ -6,7 +6,12 @@ Formerly *Calibre Web Automated Book Downloader (CWABD)*
 
 Shelfmark is a unified web interface for searching and aggregating books and audiobook downloads from multiple sources - all in one place. Works out of the box with popular web sources, no configuration required. Add metadata providers, additional release sources, and download clients to create a single hub for building your digital library.
 
-**Fully standalone** - no external dependencies required. Works great alongside library tools like [Calibre-Web-Automated](https://github.com/crocodilestick/Calibre-Web-Automated), [Booklore](https://github.com/booklore-app/booklore) or [Audiobookshelf](https://github.com/advplyr/audiobookshelf) for automatic import.
+**Fully standalone** - no external dependencies required. Works great alongside with these library tools with support to automatic import:
+- [Calibre](https://calibre-ebook.com/)
+- [Calibre-Web](https://github.com/janeczku/calibre-web)
+- [Calibre-Web-Automated](https://github.com/crocodilestick/Calibre-Web-Automated)
+- [Booklore](https://github.com/booklore-app/booklore)
+- [Audiobookshelf](https://github.com/advplyr/audiobookshelf)
 
 ## ✨ Features
 
