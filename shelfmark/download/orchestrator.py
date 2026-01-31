@@ -392,6 +392,7 @@ def update_download_status(book_id: str, status: str, message: Optional[str] = N
     status_map = {
         'queued': QueueStatus.QUEUED,
         'resolving': QueueStatus.RESOLVING,
+        'locating': QueueStatus.LOCATING,
         'downloading': QueueStatus.DOWNLOADING,
         'complete': QueueStatus.COMPLETE,
         'available': QueueStatus.AVAILABLE,

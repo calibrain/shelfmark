@@ -14,6 +14,7 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; label: string; w
   queued: { bg: 'bg-amber-500/20', text: 'text-amber-700 dark:text-amber-300', label: 'Queued', waveColor: 'rgba(217, 119, 6, 0.3)' },
   resolving: { bg: 'bg-indigo-500/20', text: 'text-indigo-700 dark:text-indigo-300', label: 'Resolving', waveColor: 'rgba(79, 70, 229, 0.3)' },
   downloading: { bg: 'bg-sky-500/20', text: 'text-sky-700 dark:text-sky-300', label: 'Downloading', waveColor: 'rgba(2, 132, 199, 0.3)' },
+  locating: { bg: 'bg-teal-500/20', text: 'text-teal-700 dark:text-teal-300', label: 'Locating files', waveColor: 'rgba(13, 148, 136, 0.3)' },
   complete: { bg: 'bg-green-500/20', text: 'text-green-700 dark:text-green-300', label: 'Complete', waveColor: '' },
   error: { bg: 'bg-red-500/20', text: 'text-red-700 dark:text-red-300', label: 'Error', waveColor: '' },
   cancelled: { bg: 'bg-gray-500/20', text: 'text-gray-700 dark:text-gray-300', label: 'Cancelled', waveColor: '' },
@@ -77,6 +78,8 @@ const getStatusProgress = (statusName: string, bookProgress?: number): number =>
         return 20 + (bookProgress * 0.8);
       }
       return 20;
+    case 'locating':
+      return 90;
     case 'complete':
     case 'error':
       return 100;
@@ -92,6 +95,7 @@ const getProgressBarColor = (statusName: string): string => {
   if (statusName === 'queued') return 'bg-amber-600';
   if (statusName === 'resolving') return 'bg-indigo-600';
   if (statusName === 'downloading') return 'bg-sky-600';
+  if (statusName === 'locating') return 'bg-teal-600';
   return 'bg-sky-600';
 };
 
@@ -120,7 +124,7 @@ export const DownloadsSidebar = ({
   // Collect all download items from different status sections
   const allDownloadItems: Array<{ book: Book; status: string }> = [];
 
-  const statusTypes = ['downloading', 'resolving', 'queued', 'error', 'complete', 'cancelled'];
+  const statusTypes = ['downloading', 'locating', 'resolving', 'queued', 'error', 'complete', 'cancelled'];
 
   statusTypes.forEach((statusName) => {
     const items = (status as any)[statusName];
@@ -142,9 +146,9 @@ export const DownloadsSidebar = ({
       label: statusName.charAt(0).toUpperCase() + statusName.slice(1),
     };
 
-    const isInProgress = ['queued', 'resolving', 'downloading'].includes(statusName);
+    const isInProgress = ['queued', 'resolving', 'locating', 'downloading'].includes(statusName);
     const isQueued = statusName === 'queued';
-    const isActive = statusName === 'resolving' || statusName === 'downloading';
+    const isActive = statusName === 'resolving' || statusName === 'locating' || statusName === 'downloading';
     const isCompleted = statusName === 'complete';
     const hasError = statusName === 'error';
     

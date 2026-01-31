@@ -339,7 +339,8 @@ export const getReleases = async (
   expandSearch?: boolean,
   languages?: string[],
   contentType?: string,
-  manualQuery?: string
+  manualQuery?: string,
+  indexers?: string[]
 ): Promise<ReleasesResponse> => {
   const params = new URLSearchParams({
     provider,
@@ -365,6 +366,9 @@ export const getReleases = async (
   }
   if (manualQuery) {
     params.set('manual_query', manualQuery);
+  }
+  if (indexers && indexers.length > 0) {
+    params.set('indexers', indexers.join(','));
   }
   // Let the backend control timeouts for release searches (can be long-running).
   return fetchJSON<ReleasesResponse>(`${API_BASE}/releases?${params.toString()}`, {}, null);

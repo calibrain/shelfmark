@@ -191,6 +191,11 @@ def transform_cover_url(cover_url: Optional[str], cache_id: str) -> Optional[str
     if not is_covers_cache_enabled():
         return cover_url
 
+    from shelfmark.core.config import config as app_config
+
     # Encode the original URL and create a proxy URL
     encoded_url = base64.urlsafe_b64encode(cover_url.encode()).decode()
+    base_path = normalize_base_path(app_config.get("URL_BASE", ""))
+    if base_path:
+        return f"{base_path}/api/covers/{cache_id}?url={encoded_url}"
     return f"/api/covers/{cache_id}?url={encoded_url}"

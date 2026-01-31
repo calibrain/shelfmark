@@ -63,7 +63,7 @@ export const BookDownloadButton = ({
 
   const isCompleted = buttonState.state === 'complete';
   const hasError = buttonState.state === 'error';
-  const isInProgress = ['queued', 'resolving', 'downloading'].includes(buttonState.state);
+  const isInProgress = ['queued', 'resolving', 'locating', 'downloading'].includes(buttonState.state);
   const isDisabled = buttonState.state !== 'download' || isQueuing || isCompleted;
   const displayText = isQueuing ? 'Queuing...' : buttonState.text;
   const showCircularProgress = buttonState.state === 'downloading' && buttonState.progress !== undefined;
@@ -205,4 +205,3 @@ export const BookDownloadButton = ({
     </button>
   );
 };
-

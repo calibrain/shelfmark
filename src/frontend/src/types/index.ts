@@ -54,6 +54,7 @@ export interface Book {
 export interface StatusData {
   queued?: Record<string, Book>;
   resolving?: Record<string, Book>;
+  locating?: Record<string, Book>;
   downloading?: Record<string, Book>;
   complete?: Record<string, Book>;
   error?: Record<string, Book>;
@@ -65,7 +66,7 @@ export interface ActiveDownloadsResponse {
 }
 
 // Button states
-export type ButtonState = 'download' | 'queued' | 'resolving' | 'downloading' | 'complete' | 'error';
+export type ButtonState = 'download' | 'queued' | 'resolving' | 'locating' | 'downloading' | 'complete' | 'error';
 
 export interface ButtonStateInfo {
   text: string;
@@ -204,7 +205,7 @@ export interface ReleaseSource {
 }
 
 // Column schema types for plugin-driven release list UI
-export type ColumnRenderType = 'text' | 'badge' | 'tags' | 'size' | 'number' | 'peers';
+export type ColumnRenderType = 'text' | 'badge' | 'tags' | 'size' | 'number' | 'peers' | 'indexer_protocol' | 'flag_icon' | 'format_content_type';
 export type ColumnAlign = 'left' | 'center' | 'right';
 
 export interface ColumnColorHint {
@@ -246,8 +247,10 @@ export interface ReleaseColumnConfig {
   grid_template: string;             // CSS grid-template-columns for dynamic section
   leading_cell?: LeadingCellConfig;  // Defaults to thumbnail from extra.preview
   online_servers?: string[];         // For IRC: list of currently online server nicks
+  available_indexers?: string[];     // For Prowlarr: list of all enabled indexer names
+  default_indexers?: string[];       // For Prowlarr: indexers selected in settings (pre-selected in filter)
   cache_ttl_seconds?: number;        // How long to cache results (default: 300 = 5 min)
-  supported_filters?: string[];      // Which filters this source supports: ["format", "language"]
+  supported_filters?: string[];      // Which filters this source supports: ["format", "language", "indexer"]
   action_button?: SourceActionButton; // Custom action button (replaces default expand search)
 }
 
@@ -266,6 +269,7 @@ export interface Release {
   indexer?: string;            // Display name for the source/indexer
   seeders?: number;            // For torrents
   peers?: string;              // For torrents: "seeders/leechers" display string
+  content_type?: string;       // "ebook", "audiobook", or "book"
   extra?: Record<string, unknown>; // Source-specific metadata
 }
 

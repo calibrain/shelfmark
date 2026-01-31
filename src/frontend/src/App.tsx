@@ -33,6 +33,20 @@ import { withBasePath } from './utils/basePath';
 import { SearchModeProvider } from './contexts/SearchModeContext';
 import './styles.css';
 
+const CONTENT_TYPE_STORAGE_KEY = 'preferred-content-type';
+
+const getInitialContentType = (): ContentType => {
+  try {
+    const saved = localStorage.getItem(CONTENT_TYPE_STORAGE_KEY);
+    if (saved === 'ebook' || saved === 'audiobook') {
+      return saved;
+    }
+  } catch {
+    // localStorage may be unavailable in private browsing
+  }
+  return 'ebook';
+};
+
 function App() {
   const { toasts, showToast, removeToast } = useToast();
 
@@ -73,7 +87,15 @@ function App() {
   });
 
   // Content type state (ebook vs audiobook) - defined before useSearch since it's passed to it
-  const [contentType, setContentType] = useState<ContentType>('ebook');
+  const [contentType, setContentType] = useState<ContentType>(() => getInitialContentType());
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CONTENT_TYPE_STORAGE_KEY, contentType);
+    } catch {
+      // localStorage may be unavailable in private browsing
+    }
+  }, [contentType]);
 
   // Search state and handlers
   const {
@@ -143,6 +165,7 @@ function App() {
     const ongoing = [
       currentStatus.queued,
       currentStatus.resolving,
+      currentStatus.locating,
       currentStatus.downloading,
     ].reduce((sum, status) => sum + (status ? Object.keys(status).length : 0), 0);
 
@@ -506,6 +529,7 @@ function App() {
       : [bookLanguages[0]?.code || 'en'];
 
   const searchMode = config?.search_mode || 'direct';
+  const logoUrl = withBasePath('/logo.png');
 
   // Handle "View Series" - trigger search with series field and series order sort
   const handleSearchSeries = useCallback((seriesName: string) => {
@@ -537,7 +561,7 @@ function App() {
         calibreWebUrl={config?.calibre_web_url || ''}
         audiobookLibraryUrl={config?.audiobook_library_url || ''}
         debug={config?.debug || false}
-        logoUrl="/logo.png"
+        logoUrl={logoUrl}
         showSearch={!isInitialState}
         searchInput={searchInput}
         onSearchChange={setSearchInput}
@@ -604,7 +628,7 @@ function App() {
           bookLanguages={bookLanguages}
           defaultLanguage={defaultLanguageCodes}
           supportedFormats={config?.supported_formats || DEFAULT_SUPPORTED_FORMATS}
-          logoUrl="/logo.png"
+          logoUrl={logoUrl}
           searchInput={searchInput}
           onSearchInputChange={setSearchInput}
           showAdvanced={showAdvanced}

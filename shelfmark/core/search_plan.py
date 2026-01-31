@@ -36,6 +36,7 @@ class ReleaseSearchPlan:
     title_variants: List[ReleaseSearchVariant]
     grouped_title_variants: List[ReleaseSearchVariant]
     manual_query: Optional[str] = None
+    indexers: Optional[List[str]] = None  # Indexer names for Prowlarr (overrides settings)
 
     @property
     def primary_query(self) -> str:
@@ -86,6 +87,7 @@ def build_release_search_plan(
     book: BookMetadata,
     languages: Optional[List[str]] = None,
     manual_query: Optional[str] = None,
+    indexers: Optional[List[str]] = None,
 ) -> ReleaseSearchPlan:
     resolved_languages = _normalize_languages(languages)
 
@@ -106,6 +108,7 @@ def build_release_search_plan(
             title_variants=[variant],
             grouped_title_variants=[variant],
             manual_query=resolved_manual_query,
+            indexers=indexers,
         )
 
     isbn_candidates: List[str] = []
@@ -161,4 +164,5 @@ def build_release_search_plan(
         title_variants=title_variants,
         grouped_title_variants=grouped_variants,
         manual_query=None,
+        indexers=indexers,
     )

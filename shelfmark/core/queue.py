@@ -154,7 +154,7 @@ class BookQueue:
             current_status = self._status.get(task_id)
 
             # Allow cancellation during any active state
-            if current_status in [QueueStatus.RESOLVING, QueueStatus.DOWNLOADING]:
+            if current_status in [QueueStatus.RESOLVING, QueueStatus.LOCATING, QueueStatus.DOWNLOADING]:
                 # Signal active download to stop
                 if task_id in self._cancel_flags:
                     self._cancel_flags[task_id].set()

@@ -35,6 +35,7 @@ class QueueStatus(str, Enum):
     """Enum for possible book queue statuses."""
     QUEUED = "queued"
     RESOLVING = "resolving"
+    LOCATING = "locating"
     DOWNLOADING = "downloading"
     COMPLETE = "complete"
     AVAILABLE = "available"

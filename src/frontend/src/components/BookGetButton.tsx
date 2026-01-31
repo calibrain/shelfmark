@@ -56,7 +56,7 @@ export const BookGetButton = ({
   // Determine states based on buttonState
   const isCompleted = buttonState?.state === 'complete';
   const hasError = buttonState?.state === 'error';
-  const isInProgress = buttonState && ['queued', 'resolving', 'downloading'].includes(buttonState.state);
+  const isInProgress = buttonState && ['queued', 'resolving', 'locating', 'downloading'].includes(buttonState.state);
   const showCircularProgress = buttonState?.state === 'downloading' && buttonState.progress !== undefined;
   const showSpinner = (isInProgress && !showCircularProgress) || isLoading;
 
@@ -104,6 +104,7 @@ export const BookGetButton = ({
     if (hasError) return 'Failed';
     if (isLoading) return 'Loading';
     if (buttonState?.state === 'downloading') return 'Downloading';
+    if (buttonState?.state === 'locating') return 'Locating files';
     if (buttonState?.state === 'resolving') return 'Resolving';
     if (buttonState?.state === 'queued') return 'Queued';
     return 'Get';

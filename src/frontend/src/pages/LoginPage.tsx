@@ -1,5 +1,6 @@
 import { LoginForm } from '../components/LoginForm';
 import { LoginCredentials } from '../types';
+import { withBasePath } from '../utils/basePath';
 
 interface LoginPageProps {
   onLogin: (credentials: LoginCredentials) => void;
@@ -8,6 +9,8 @@ interface LoginPageProps {
 }
 
 export const LoginPage = ({ onLogin, error, isLoading }: LoginPageProps) => {
+  const logoUrl = withBasePath('/logo.png');
+
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4 py-8"
@@ -15,7 +18,7 @@ export const LoginPage = ({ onLogin, error, isLoading }: LoginPageProps) => {
     >
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <img src="/logo.png" alt="Logo" className="mx-auto mb-6 w-20 h-20" />
+          <img src={logoUrl} alt="Logo" className="mx-auto mb-6 w-20 h-20" />
           <h1 className="text-2xl font-semibold">Sign in to continue</h1>
         </div>
         <div
@@ -32,5 +35,4 @@ export const LoginPage = ({ onLogin, error, isLoading }: LoginPageProps) => {
     </div>
   );
 };
-
 

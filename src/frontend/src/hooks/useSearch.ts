@@ -201,7 +201,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
     } finally {
       setIsSearching(false);
     }
-  }, [showToast, setIsAuthenticated, authRequired, navigate, searchFieldValues, handleSearchError]);
+  }, [showToast, setIsAuthenticated, authRequired, navigate, searchFieldValues, handleSearchError, contentType]);
 
   const handleResetSearch = useCallback((config: AppConfig | null) => {
     setBooks([]);
@@ -257,7 +257,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [currentPage, hasMore, isLoadingMore, handleSearchError]);
+  }, [currentPage, hasMore, isLoadingMore, handleSearchError, contentType]);
 
   const handleSortChange = useCallback((value: string, config: AppConfig | null) => {
     updateAdvancedFilters({ sort: value });

@@ -5,6 +5,7 @@ interface ColorStyle {
 }
 
 const FORMAT_COLORS: Record<string, ColorStyle> = {
+  // Ebook formats
   pdf: { bg: 'bg-red-500/20', text: 'text-red-700 dark:text-red-300' },
   epub: { bg: 'bg-green-500/20', text: 'text-green-700 dark:text-green-300' },
   mobi: { bg: 'bg-blue-500/20', text: 'text-blue-700 dark:text-blue-300' },
@@ -14,6 +15,10 @@ const FORMAT_COLORS: Record<string, ColorStyle> = {
   fb2: { bg: 'bg-teal-500/20', text: 'text-teal-700 dark:text-teal-300' },
   cbr: { bg: 'bg-yellow-500/20', text: 'text-yellow-700 dark:text-yellow-300' },
   cbz: { bg: 'bg-amber-500/20', text: 'text-amber-700 dark:text-amber-300' },
+  // Audiobook formats
+  m4b: { bg: 'bg-violet-500/20', text: 'text-violet-700 dark:text-violet-300' },
+  mp3: { bg: 'bg-rose-500/20', text: 'text-rose-700 dark:text-rose-300' },
+  flac: { bg: 'bg-indigo-500/20', text: 'text-indigo-700 dark:text-indigo-300' },
 };
 
 const LANGUAGE_COLORS: Record<string, ColorStyle> = {
@@ -52,9 +57,12 @@ const CONTENT_TYPE_COLORS: Record<string, ColorStyle> = {
 };
 
 const FLAG_COLORS: Record<string, ColorStyle> = {
+  fl: { bg: 'bg-green-500/20', text: 'text-green-700 dark:text-green-300' },
   freeleech: { bg: 'bg-green-500/20', text: 'text-green-700 dark:text-green-300' },
   'double upload': { bg: 'bg-blue-500/20', text: 'text-blue-700 dark:text-blue-300' },
   vip: { bg: 'bg-amber-500/20', text: 'text-amber-700 dark:text-amber-300' },
+  'vip fl': { bg: 'bg-amber-500/20', text: 'text-amber-700 dark:text-amber-300' },
+  'fl vip': { bg: 'bg-amber-500/20', text: 'text-amber-700 dark:text-amber-300' },
   sticky: { bg: 'bg-yellow-500/20', text: 'text-yellow-700 dark:text-yellow-300' },
 };
 
@@ -67,7 +75,11 @@ const FALLBACK_COLOR: ColorStyle = { bg: 'bg-gray-500/20', text: 'text-gray-700 
 
 export function getFormatColor(format?: string): ColorStyle {
   if (!format || format === '-') return FALLBACK_COLOR;
-  return FORMAT_COLORS[format.toLowerCase()] || DEFAULT_FORMAT_COLOR;
+  const normalized = format.toLowerCase();
+  // Support display strings like "EPUB, MOBI +1" by using the first token for color mapping.
+  const match = normalized.match(/[a-z0-9]+/);
+  const key = match ? match[0] : normalized;
+  return FORMAT_COLORS[key] || DEFAULT_FORMAT_COLOR;
 }
 
 export function getLanguageColor(language?: string): ColorStyle {
@@ -80,6 +92,15 @@ export function getDownloadTypeColor(downloadType?: string): ColorStyle {
   return DOWNLOAD_TYPE_COLORS[downloadType.toLowerCase()] || DEFAULT_DOWNLOAD_TYPE_COLOR;
 }
 
+// Returns just the dot color class for protocol indicators
+export function getProtocolDotColor(protocol?: string): string {
+  if (!protocol) return 'bg-gray-400';
+  const p = protocol.toLowerCase();
+  if (p === 'torrent') return 'bg-orange-500';
+  if (p === 'nzb' || p === 'usenet') return 'bg-sky-500';
+  return 'bg-gray-400';
+}
+
 export function getContentTypeColor(contentType?: string): ColorStyle {
   if (!contentType || contentType === '-') return FALLBACK_COLOR;
   return CONTENT_TYPE_COLORS[contentType.toLowerCase()] || DEFAULT_CONTENT_TYPE_COLOR;
@@ -87,7 +108,9 @@ export function getContentTypeColor(contentType?: string): ColorStyle {
 
 export function getFlagColor(flag?: string): ColorStyle {
   if (!flag || flag === '-') return FALLBACK_COLOR;
-  return FLAG_COLORS[flag.toLowerCase()] || DEFAULT_FLAG_COLOR;
+  const normalized = flag.trim().toLowerCase();
+  if (!normalized) return FALLBACK_COLOR;
+  return FLAG_COLORS[normalized] || DEFAULT_FLAG_COLOR;
 }
 
 /**

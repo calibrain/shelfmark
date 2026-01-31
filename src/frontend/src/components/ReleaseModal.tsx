@@ -426,12 +426,38 @@ const ReleaseRow = ({
           {/* Plugin-provided info line (format, size, indexer, seeders, etc.) */}
           {mobileColumns.length > 0 && (
             <div className="flex items-center gap-1.5 mt-1 text-[10px] text-gray-500 dark:text-gray-400">
-              {mobileColumns.map((col, idx) => (
-                <span key={col.key} className="flex items-center gap-1.5">
-                  {idx > 0 && <span className="text-gray-300 dark:text-gray-600">·</span>}
-                  <ReleaseCell column={col} release={release} compact onlineServers={onlineServers} />
-                </span>
-              ))}
+              {(() => {
+                // Pre-filter columns that will render content to avoid orphan dots
+                const columnsWithContent = mobileColumns.filter((col) => {
+                  const rawValue = getNestedValue(release as unknown as Record<string, unknown>, col.key);
+                  const value = rawValue !== undefined && rawValue !== null ? String(rawValue) : col.fallback;
+
+                  if (col.render_type === 'flag_icon') {
+                    // flag_icon returns null in compact mode when empty
+                    if (!value || value === col.fallback) {
+                      return false;
+                    }
+                  }
+
+                  if (col.render_type === 'tags') {
+                    // tags render null in compact mode when empty and no fallback
+                    if (Array.isArray(rawValue)) {
+                      return rawValue.some((tag) => String(tag).trim()) || Boolean(col.fallback);
+                    }
+                    if (!value || value === col.fallback) {
+                      return Boolean(col.fallback);
+                    }
+                  }
+
+                  return true;
+                });
+                return columnsWithContent.map((col, idx) => (
+                  <span key={col.key} className="flex items-center gap-1.5">
+                    {idx > 0 && <span className="text-gray-300 dark:text-gray-600">·</span>}
+                    <ReleaseCell column={col} release={release} compact onlineServers={onlineServers} />
+                  </span>
+                ));
+              })()}
             </div>
           )}
         </div>
@@ -622,6 +648,10 @@ export const ReleaseModal = ({
   // A specific value means "show only that format"
   const [formatFilter, setFormatFilter] = useState<string>('');
   const [languageFilter, setLanguageFilter] = useState<string[]>([LANGUAGE_OPTION_DEFAULT]);
+  // Indexer filter - empty array means "show all", otherwise show only selected indexers
+  const [indexerFilter, setIndexerFilter] = useState<string[]>([]);
+  // Track which tabs have had indexer filter initialized (to avoid overriding user changes)
+  const indexerFilterInitializedRef = useRef<Set<string>>(new Set());
   const [manualQuery, setManualQuery] = useState<string>('');
   const [showManualQuery, setShowManualQuery] = useState<boolean>(false);
 
@@ -673,6 +703,8 @@ export const ReleaseModal = ({
     setExpandedBySource({});
     setFormatFilter('');
     setLanguageFilter([LANGUAGE_OPTION_DEFAULT]);
+    setIndexerFilter([]);
+    indexerFilterInitializedRef.current = new Set();
     setManualQuery('');
     setShowManualQuery(false);
     setSearchStatus(null);
@@ -738,6 +770,22 @@ export const ReleaseModal = ({
       setSearchStatus(null);
     }
   }, [loadingBySource, activeTab]);
+
+  // Initialize indexer filter from default_indexers when results first load for a tab
+  useEffect(() => {
+    const response = releasesBySource[activeTab];
+    if (!response?.column_config) return;
+
+    // Only initialize once per tab per book
+    if (indexerFilterInitializedRef.current.has(activeTab)) return;
+
+    const defaultIndexers = response.column_config.default_indexers;
+    if (defaultIndexers && defaultIndexers.length > 0) {
+      setIndexerFilter(defaultIndexers);
+    }
+    // Mark as initialized even if no default_indexers (to avoid re-checking)
+    indexerFilterInitializedRef.current.add(activeTab);
+  }, [releasesBySource, activeTab]);
 
   // Check if description text overflows (needs "more" button)
   useEffect(() => {
@@ -881,9 +929,13 @@ export const ReleaseModal = ({
         ? undefined
         : langCodes;
 
+      // Pass indexer filter only if the source supports it (empty array = search all)
+      const supportsIndexerFilter = releasesBySource[activeTab]?.column_config?.supported_filters?.includes('indexer');
+      const indexersParam = supportsIndexerFilter && indexerFilter.length > 0 ? indexerFilter : undefined;
+
       // Fetch with expand_search=true (title+author search)
       const expandedResponse = await getReleases(
-        provider, bookId, activeTab, book.title, book.author, true, languagesParam, contentType, manualQuery.trim() || undefined
+        provider, bookId, activeTab, book.title, book.author, true, languagesParam, contentType, manualQuery.trim() || undefined, indexersParam
       );
 
       // Merge with existing results, deduplicating by source_id
@@ -910,7 +962,7 @@ export const ReleaseModal = ({
     } finally {
       setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
     }
-  }, [activeTab, book, languageFilter, bookLanguages, defaultLanguages, contentType, manualQuery]);
+  }, [activeTab, book, languageFilter, bookLanguages, defaultLanguages, contentType, manualQuery, indexerFilter, releasesBySource]);
 
   // Build list of tabs to show
   // Only show enabled sources that support the current content type
@@ -991,6 +1043,26 @@ export const ReleaseModal = ({
     });
     return options;
   }, [availableFormats]);
+
+  // Get available indexers for filter dropdown
+  // Prefer available_indexers from column config (all enabled Prowlarr indexers),
+  // fall back to unique indexers from results if not provided
+  const availableIndexers = useMemo(() => {
+    // Use column config's available_indexers if provided (e.g., from Prowlarr)
+    const configIndexers = releasesBySource[activeTab]?.column_config?.available_indexers;
+    if (configIndexers && configIndexers.length > 0) {
+      return configIndexers;
+    }
+    // Fall back to indexers found in results
+    const releases = releasesBySource[activeTab]?.releases || [];
+    const indexers = new Set<string>();
+    releases.forEach((r) => {
+      if (r.indexer) {
+        indexers.add(r.indexer);
+      }
+    });
+    return Array.from(indexers).sort();
+  }, [releasesBySource, activeTab]);
 
   // Resolve language filter to actual language codes for filtering
   const resolvedLanguageCodes = useMemo(() => {
@@ -1073,6 +1145,7 @@ export const ReleaseModal = ({
   const filteredReleases = useMemo(() => {
     const releases = releasesBySource[activeTab]?.releases || [];
     const effectiveLower = effectiveFormats.map((f) => f.toLowerCase());
+    const supportsIndexerFilter = columnConfig.supported_filters?.includes('indexer');
 
     // First, filter
     let filtered = releases.filter((r) => {
@@ -1088,10 +1161,18 @@ export const ReleaseModal = ({
       }
       // Releases with no format pass through when no filter is set (show all)
 
-      // Language filtering
-      const releaseLang = r.extra?.language as string | undefined;
+      // Language filtering - use r.language when provided by enriched indexers
+      // Releases with no language (null/undefined) always pass
+      const releaseLang = r.language as string | undefined;
       if (!releaseLanguageMatchesFilter(releaseLang, resolvedLanguageCodes ?? defaultLanguages)) {
         return false;
+      }
+
+      // Indexer filtering - empty array means show all
+      if (supportsIndexerFilter && indexerFilter.length > 0 && r.indexer) {
+        if (!indexerFilter.includes(r.indexer)) {
+          return false;
+        }
       }
 
       return true;
@@ -1103,7 +1184,7 @@ export const ReleaseModal = ({
     }
 
     return filtered;
-  }, [releasesBySource, activeTab, formatFilter, resolvedLanguageCodes, effectiveFormats, defaultLanguages, currentSort, sortableColumns]);
+  }, [releasesBySource, activeTab, formatFilter, resolvedLanguageCodes, effectiveFormats, defaultLanguages, indexerFilter, currentSort, sortableColumns, columnConfig]);
 
   // Pre-compute display field lookups to avoid repeated .find() calls in JSX
   const displayFields = useMemo(() => {
@@ -1136,6 +1217,9 @@ export const ReleaseModal = ({
           state: 'downloading',
           progress: book.progress,
         };
+      }
+      if (currentStatus.locating && currentStatus.locating[releaseId]) {
+        return { text: 'Locating files', state: 'locating' };
       }
       if (currentStatus.resolving && currentStatus.resolving[releaseId]) {
         return { text: 'Resolving', state: 'resolving' };
@@ -1515,111 +1599,138 @@ export const ReleaseModal = ({
                     {/* Filter funnel button - stays fixed */}
                     {/* Only show filter button if source supports at least one filter type */}
                     {((columnConfig.supported_filters?.includes('format') && availableFormats.length > 0) ||
-                      (columnConfig.supported_filters?.includes('language') && bookLanguages.length > 0)) && (
-                        <Dropdown
-                          align="right"
-                          widthClassName="w-auto flex-shrink-0"
-                          panelClassName="w-56"
-                          noScrollLimit
-                          renderTrigger={({ isOpen, toggle }) => {
-                            // Active filter: format is set, or language is not just default
-                            const hasLanguageFilter = !(languageFilter.length === 1 && languageFilter[0] === LANGUAGE_OPTION_DEFAULT);
-                            const hasActiveFilter = formatFilter !== '' || hasLanguageFilter;
-                            return (
+                      (columnConfig.supported_filters?.includes('language') && bookLanguages.length > 0) ||
+                      (columnConfig.supported_filters?.includes('indexer') && availableIndexers.length > 1)) && (
+                      <Dropdown
+                        align="right"
+                        widthClassName="w-auto flex-shrink-0"
+                        panelClassName="w-56"
+                        noScrollLimit
+                        renderTrigger={({ isOpen, toggle }) => {
+                          // Active filter: format is set, language is not default, or indexers differ from defaults
+                          const hasLanguageFilter = !(languageFilter.length === 1 && languageFilter[0] === LANGUAGE_OPTION_DEFAULT);
+                          const supportsIndexerFilter = columnConfig.supported_filters?.includes('indexer');
+                          // Check if indexer filter differs from defaults (only after initialization)
+                          // Don't show dot while loading or before filter is initialized from defaults
+                          const hasResults = releasesBySource[activeTab]?.releases !== undefined;
+                          const isInitialized = indexerFilterInitializedRef.current.has(activeTab);
+                          const defaultIndexers = columnConfig.default_indexers ?? [];
+                          const indexersMatchDefault = (
+                            indexerFilter.length === defaultIndexers.length &&
+                            indexerFilter.every((idx) => defaultIndexers.includes(idx))
+                          );
+                          const hasIndexerFilter = supportsIndexerFilter && hasResults && isInitialized && !indexersMatchDefault;
+                          const hasActiveFilter = formatFilter !== '' || hasLanguageFilter || hasIndexerFilter;
+                          return (
+                            <button
+                              type="button"
+                              onClick={toggle}
+                              className={`relative p-2.5 rounded-full transition-colors hover-surface text-gray-500 dark:text-gray-400 ${
+                                isOpen ? 'bg-[var(--hover-surface)]' : ''
+                              }`}
+                              aria-label="Filter releases"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+                              </svg>
+                              {hasActiveFilter && (
+                                <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full" />
+                              )}
+                            </button>
+                          );
+                        }}
+                      >
+                        {({ close }) => (
+                          <div className="p-4 space-y-4">
+                            {columnConfig.supported_filters?.includes('format') && availableFormats.length > 0 && (
+                              <DropdownList
+                                label="Format"
+                                options={formatOptions}
+                                value={formatFilter}
+                                onChange={(val) => setFormatFilter(typeof val === 'string' ? val : val[0] ?? '')}
+                                placeholder="All Formats"
+                              />
+                            )}
+                            {columnConfig.supported_filters?.includes('language') && (
+                              <LanguageMultiSelect
+                                label="Language"
+                                options={bookLanguages}
+                                value={languageFilter}
+                                onChange={setLanguageFilter}
+                                defaultLanguageCodes={defaultLanguages}
+                              />
+                            )}
+                            {columnConfig.supported_filters?.includes('indexer') && availableIndexers.length > 1 && (
+                              <DropdownList
+                                label="Indexers"
+                                options={availableIndexers.map((idx) => ({ value: idx, label: idx }))}
+                                multiple
+                                value={indexerFilter}
+                                onChange={(val) => setIndexerFilter(Array.isArray(val) ? val : val ? [val] : [])}
+                                placeholder="All Indexers"
+                              />
+                            )}
+                            {/* Apply button - re-fetch with server-side filters/expansion (e.g. language-aware searches) */}
+                            {(activeTab === 'direct_download' || activeTab === 'prowlarr') && (
                               <button
                                 type="button"
-                                onClick={toggle}
-                                className={`relative p-2.5 rounded-full transition-colors hover-surface text-gray-500 dark:text-gray-400 ${isOpen ? 'bg-[var(--hover-surface)]' : ''
-                                  }`}
-                                aria-label="Filter releases"
+                                onClick={async () => {
+                                  close();
+                                  if (!book?.provider || !book?.provider_id) return;
+
+                                  const provider = book.provider;
+                                  const bookId = book.provider_id;
+
+                                  // Clear cache and state
+                                  const key = getCacheKey(provider, bookId, activeTab, contentType);
+                                  releaseCache.delete(key);
+                                  cacheTimestamps.delete(key);
+                                  setExpandedBySource((prev) => {
+                                    const next = { ...prev };
+                                    delete next[activeTab];
+                                    return next;
+                                  });
+                                  setErrorBySource((prev) => {
+                                    const next = { ...prev };
+                                    delete next[activeTab];
+                                    return next;
+                                  });
+
+                                  // Fetch with language filter
+                                  setLoadingBySource((prev) => ({ ...prev, [activeTab]: true }));
+                                  try {
+                                    // Resolve language codes for the API call
+                                    const langCodes = getLanguageFilterValues(languageFilter, bookLanguages, defaultLanguages);
+                                    // Don't pass languages if "All" is selected or null
+                                    const languagesParam = (langCodes === null || langCodes?.includes(LANGUAGE_OPTION_ALL))
+                                      ? undefined
+                                      : langCodes;
+
+                                    // Pass indexer filter only if the source supports it (empty array = search all)
+                                    const supportsIndexerFilter = columnConfig.supported_filters?.includes('indexer');
+                                    const indexersParam = supportsIndexerFilter && indexerFilter.length > 0 ? indexerFilter : undefined;
+
+                                    const response = await getReleases(
+                                      provider, bookId, activeTab, book.title, book.author, false, languagesParam, contentType, manualQuery.trim() || undefined, indexersParam
+                                    );
+                                    setCachedReleases(provider, bookId, activeTab, contentType, response);
+                                    setReleasesBySource((prev) => ({ ...prev, [activeTab]: response }));
+                                  } catch (err) {
+                                    const message = err instanceof Error ? err.message : 'Failed to fetch releases';
+                                    setErrorBySource((prev) => ({ ...prev, [activeTab]: message }));
+                                  } finally {
+                                    setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
+                                  }
+                                }}
+                                className="w-full px-3 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors"
                               >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
-                                </svg>
-                                {hasActiveFilter && (
-                                  <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full" />
-                                )}
+                                Apply
                               </button>
-                            );
-                          }}
-                        >
-                          {({ close }) => (
-                            <div className="p-4 space-y-4">
-                              {columnConfig.supported_filters?.includes('format') && availableFormats.length > 0 && (
-                                <DropdownList
-                                  label="Format"
-                                  options={formatOptions}
-                                  value={formatFilter}
-                                  onChange={(val) => setFormatFilter(typeof val === 'string' ? val : val[0] ?? '')}
-                                  placeholder="All Formats"
-                                />
-                              )}
-                              {columnConfig.supported_filters?.includes('language') && (
-                                <LanguageMultiSelect
-                                  label="Language"
-                                  options={bookLanguages}
-                                  value={languageFilter}
-                                  onChange={setLanguageFilter}
-                                  defaultLanguageCodes={defaultLanguages}
-                                />
-                              )}
-                              {/* Apply button - re-fetch with server-side filters/expansion (e.g. language-aware searches) */}
-                              {(activeTab === 'direct_download' || activeTab === 'prowlarr') && (
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    close();
-                                    if (!book?.provider || !book?.provider_id) return;
-
-                                    const provider = book.provider;
-                                    const bookId = book.provider_id;
-
-                                    // Clear cache and state
-                                    const key = getCacheKey(provider, bookId, activeTab, contentType);
-                                    releaseCache.delete(key);
-                                    cacheTimestamps.delete(key);
-                                    setExpandedBySource((prev) => {
-                                      const next = { ...prev };
-                                      delete next[activeTab];
-                                      return next;
-                                    });
-                                    setErrorBySource((prev) => {
-                                      const next = { ...prev };
-                                      delete next[activeTab];
-                                      return next;
-                                    });
-
-                                    // Fetch with language filter
-                                    setLoadingBySource((prev) => ({ ...prev, [activeTab]: true }));
-                                    try {
-                                      // Resolve language codes for the API call
-                                      const langCodes = getLanguageFilterValues(languageFilter, bookLanguages, defaultLanguages);
-                                      // Don't pass languages if "All" is selected or null
-                                      const languagesParam = (langCodes === null || langCodes?.includes(LANGUAGE_OPTION_ALL))
-                                        ? undefined
-                                        : langCodes;
-
-                                      const response = await getReleases(
-                                        provider, bookId, activeTab, book.title, book.author, false, languagesParam, contentType, manualQuery.trim() || undefined
-                                      );
-                                      setCachedReleases(provider, bookId, activeTab, contentType, response);
-                                      setReleasesBySource((prev) => ({ ...prev, [activeTab]: response }));
-                                    } catch (err) {
-                                      const message = err instanceof Error ? err.message : 'Failed to fetch releases';
-                                      setErrorBySource((prev) => ({ ...prev, [activeTab]: message }));
-                                    } finally {
-                                      setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
-                                    }
-                                  }}
-                                  className="w-full px-3 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors"
-                                >
-                                  Apply
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </Dropdown>
-                      )}
+                            )}
+                          </div>
+                        )}
+                      </Dropdown>
+                    )}
                   </div>
                 </div>
               )}

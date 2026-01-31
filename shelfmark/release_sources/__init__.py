@@ -62,6 +62,9 @@ class ColumnRenderType(str, Enum):
     SIZE = "size"           # File size formatting
     NUMBER = "number"       # Numeric value
     PEERS = "peers"         # Peers display: "S/L" with color based on seeder count
+    INDEXER_PROTOCOL = "indexer_protocol"  # Text + colored dot for torrent/usenet
+    FLAG_ICON = "flag_icon"                # Icon with tooltip (VIP, freeleech, etc.)
+    FORMAT_CONTENT_TYPE = "format_content_type"  # Content type icon + format badge
 
 
 class ColumnAlign(str, Enum):
@@ -124,8 +127,10 @@ class ReleaseColumnConfig:
     grid_template: str = "minmax(0,2fr) 60px 80px 80px"  # CSS grid-template-columns
     leading_cell: Optional[LeadingCellConfig] = None     # Defaults to thumbnail mode if None
     online_servers: Optional[List[str]] = None           # For IRC: list of currently online server nicks
+    available_indexers: Optional[List[str]] = None       # For Prowlarr: list of all enabled indexer names
+    default_indexers: Optional[List[str]] = None         # For Prowlarr: indexers selected in settings (pre-selected in filter)
     cache_ttl_seconds: Optional[int] = None              # How long to cache results (default: 5 min)
-    supported_filters: Optional[List[str]] = None        # Which filters this source supports: ["format", "language"]
+    supported_filters: Optional[List[str]] = None        # Which filters this source supports: ["format", "language", "indexer"]
     action_button: Optional[SourceActionButton] = None   # Custom action button (replaces default expand search)
 
 
@@ -169,6 +174,14 @@ def serialize_column_config(config: ReleaseColumnConfig) -> Dict[str, Any]:
     # Include online_servers if provided (e.g., for IRC source)
     if config.online_servers is not None:
         result["online_servers"] = config.online_servers
+
+    # Include available_indexers if provided (e.g., for Prowlarr source)
+    if config.available_indexers is not None:
+        result["available_indexers"] = config.available_indexers
+
+    # Include default_indexers if provided (indexers selected in settings, for pre-selection)
+    if config.default_indexers is not None:
+        result["default_indexers"] = config.default_indexers
 
     # Include cache TTL if specified (sources can request longer caching)
     if config.cache_ttl_seconds is not None:

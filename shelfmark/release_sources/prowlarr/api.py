@@ -6,6 +6,7 @@ import requests
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
+from shelfmark.release_sources.prowlarr.torznab import parse_torznab_xml
 
 logger = setup_logger(__name__)
 
@@ -90,6 +91,44 @@ class ProwlarrClient:
             logger.error(f"Failed to get indexers: {e}")
             return []
 
+    def get_enabled_indexers_detailed(self) -> List[Dict[str, Any]]:
+        """
+        Get enabled indexers, including implementation metadata.
+
+        Note: Prowlarr indexer "name" is user-configurable; prefer
+        "implementation"/"implementationName" for stable identification.
+        """
+        indexers = self.get_indexers()
+        return [idx for idx in indexers if idx.get("enable", False)]
+
+    def get_enriched_indexer_ids(self, *, restrict_to: Optional[List[int]] = None) -> List[int]:
+        """
+        Return enabled indexer IDs that should use Torznab for richer metadata.
+
+        Args:
+            restrict_to: Optional list of candidate indexer IDs to consider.
+        """
+        enriched_ids: List[int] = []
+
+        for idx in self.get_enabled_indexers_detailed():
+            idx_id = idx.get("id")
+            if idx_id is None:
+                continue
+            try:
+                idx_id_int = int(idx_id)
+            except (TypeError, ValueError):
+                continue
+
+            if restrict_to is not None and idx_id_int not in restrict_to:
+                continue
+
+            impl = str(idx.get("implementation") or idx.get("implementationName") or idx.get("definitionName") or "")
+            # Currently only MyAnonamouse provides consistently rich Torznab metadata.
+            if impl.strip().lower() == "myanonamouse":
+                enriched_ids.append(idx_id_int)
+
+        return enriched_ids
+
     def get_enabled_indexers(self) -> List[Dict[str, Any]]:
         """Get enabled indexers with book capability info."""
         indexers = self.get_indexers()
@@ -111,6 +150,67 @@ class ProwlarrClient:
             })
 
         return result
+
+    def torznab_search(
+        self,
+        *,
+        indexer_id: int,
+        query: str,
+        categories: Optional[List[int]] = None,
+        search_type: str = "book",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """
+        Search a specific indexer via Prowlarr's Torznab/Newznab endpoint.
+
+        This returns richer fields (e.g., author/booktitle, torznab tags like
+        FreeLeech) than the JSON /api/v1/search endpoint.
+        """
+        if not query:
+            return []
+
+        endpoint = f"/api/v1/indexer/{int(indexer_id)}/newznab"
+        url = self.base_url + endpoint
+
+        params: Dict[str, Any] = {
+            "t": search_type,
+            "q": query,
+            "limit": limit,
+            "offset": offset,
+        }
+        if categories:
+            params["cat"] = ",".join(str(c) for c in categories)
+
+        logger.debug(f"Prowlarr API: GET {url} (torznab)")
+
+        try:
+            response = self._session.get(
+                url=url,
+                params=params,
+                timeout=self.timeout,
+                headers={
+                    # Override the session default JSON accept header.
+                    "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8"
+                },
+            )
+            if not response.ok:
+                try:
+                    error_body = response.text[:500]
+                    logger.error(f"Prowlarr Torznab error response: {error_body}")
+                except Exception:
+                    pass
+            response.raise_for_status()
+
+            results = parse_torznab_xml(response.text)
+            # Ensure indexerId is always set (Prowlarr includes it, but be defensive).
+            for r in results:
+                if r.get("indexerId") is None:
+                    r["indexerId"] = int(indexer_id)
+            return results
+        except Exception as e:
+            logger.error(f"Prowlarr Torznab search failed for indexer {indexer_id}: {e}")
+            return []
 
     def _has_book_categories(self, categories: List[Dict[str, Any]]) -> bool:
         """Check if any category or subcategory is in the book range (7000-7999)."""

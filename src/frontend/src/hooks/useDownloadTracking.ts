@@ -49,6 +49,9 @@ export function useDownloadTracking(currentStatus: StatusData): UseDownloadTrack
         progress: book.progress,
       };
     }
+    if (currentStatus.locating && currentStatus.locating[bookId]) {
+      return { text: 'Locating files', state: 'locating' };
+    }
     if (currentStatus.resolving && currentStatus.resolving[bookId]) {
       return { text: 'Resolving', state: 'resolving' };
     }
@@ -82,6 +85,10 @@ export function useDownloadTracking(currentStatus: StatusData): UseDownloadTrack
           state: 'downloading',
           progress: downloadingBook.progress,
         };
+      }
+
+      if (currentStatus.locating && currentStatus.locating[releaseId]) {
+        return { text: 'Locating files', state: 'locating' };
       }
 
       if (currentStatus.resolving && currentStatus.resolving[releaseId]) {
