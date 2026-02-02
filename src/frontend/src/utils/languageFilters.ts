@@ -88,11 +88,32 @@ export const formatDefaultLanguageLabel = (
 };
 
 /**
+ * Build a mapping from language names to codes for normalization.
+ * Handles both directions: "english" -> "en" and "en" -> "en"
+ */
+export const buildLanguageNormalizer = (languages: Language[]): Map<string, string> => {
+  const map = new Map<string, string>();
+  for (const lang of languages) {
+    const code = lang.code.toLowerCase();
+    map.set(code, code); // code -> code
+    map.set(lang.language.toLowerCase(), code); // name -> code
+  }
+  return map;
+};
+
+/**
  * Check if ALL languages in a multi-language release match the selected filter.
+ * Multi-language releases use separators like comma, slash, plus, or ampersand
+ * (e.g., "English, Spanish", "English/Spanish", "English + Spanish", "English & Spanish").
+ *
+ * @param releaseLang - Language string from the release (can be code or full name)
+ * @param selectedCodes - Array of selected ISO language codes
+ * @param languageNormalizer - Optional map to normalize language names to codes
  */
 export const releaseLanguageMatchesFilter = (
   releaseLang: string | undefined,
   selectedCodes: string[] | null,
+  languageNormalizer?: Map<string, string>,
 ): boolean => {
   if (!releaseLang || !selectedCodes) {
     return true;
@@ -100,7 +121,18 @@ export const releaseLanguageMatchesFilter = (
   if (selectedCodes.includes(LANGUAGE_OPTION_ALL)) {
     return true;
   }
-  const releaseCodes = releaseLang.split(/[,/]/).map(l => l.trim().toLowerCase()).filter(Boolean);
+
+  // Split by common multi-language separators: comma, slash, plus, ampersand
+  const releaseParts = releaseLang.split(/[,/+&]/).map(l => l.trim().toLowerCase()).filter(Boolean);
+
+  // Normalize release language parts to codes (handles both "en" and "english")
+  const releaseCodes = releaseParts.map(part => {
+    if (languageNormalizer) {
+      return languageNormalizer.get(part) ?? part;
+    }
+    return part;
+  });
+
   const selectedSet = new Set(selectedCodes.map(c => c.toLowerCase()));
   return releaseCodes.every(code => selectedSet.has(code));
 };

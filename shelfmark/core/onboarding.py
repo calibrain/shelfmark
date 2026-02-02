@@ -34,6 +34,12 @@ def _get_config_dir() -> Path:
 
 def is_onboarding_complete() -> bool:
     """Check if onboarding has been completed."""
+    from shelfmark.config.env import ONBOARDING
+
+    # If onboarding is disabled via env var, treat as complete
+    if not ONBOARDING:
+        return True
+
     config_file = _get_config_dir() / "settings.json"
     if not config_file.exists():
         return False

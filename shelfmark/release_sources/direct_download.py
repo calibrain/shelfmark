@@ -1056,6 +1056,7 @@ def _book_info_to_release(book_info: BookInfo) -> Release:
         source_id=book_info.id,
         title=book_info.title,
         format=book_info.format,
+        language=book_info.language,  # Top-level language for filtering
         size=book_info.size,
         download_url=book_info.download_urls[0] if book_info.download_urls else None,
         info_url=f"{network.get_aa_base_url()}/md5/{book_info.id}",

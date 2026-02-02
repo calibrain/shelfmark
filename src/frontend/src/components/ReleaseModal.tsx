@@ -9,7 +9,7 @@ import { ReleaseCell } from './ReleaseCell';
 import { getColorStyleFromHint } from '../utils/colorMaps';
 import { getNestedValue } from '../utils/objectHelpers';
 import { LanguageMultiSelect } from './LanguageMultiSelect';
-import { LANGUAGE_OPTION_ALL, LANGUAGE_OPTION_DEFAULT, getLanguageFilterValues, releaseLanguageMatchesFilter } from '../utils/languageFilters';
+import { LANGUAGE_OPTION_ALL, LANGUAGE_OPTION_DEFAULT, getLanguageFilterValues, releaseLanguageMatchesFilter, buildLanguageNormalizer } from '../utils/languageFilters';
 
 // Module-level cache for release search results
 // Key format: `${provider}:${provider_id}:${source}:${contentType}`
@@ -1069,6 +1069,11 @@ export const ReleaseModal = ({
     return getLanguageFilterValues(languageFilter, bookLanguages, defaultLanguages);
   }, [languageFilter, bookLanguages, defaultLanguages]);
 
+  // Build language normalizer for release filtering (handles both codes like "en" and names like "English")
+  const languageNormalizer = useMemo(() => {
+    return buildLanguageNormalizer(bookLanguages);
+  }, [bookLanguages]);
+
   // Get column config from response or use default (moved before filteredReleases for sorting)
   const columnConfig = useMemo((): ReleaseColumnConfig => {
     const response = releasesBySource[activeTab];
@@ -1164,7 +1169,7 @@ export const ReleaseModal = ({
       // Language filtering - use r.language when provided by enriched indexers
       // Releases with no language (null/undefined) always pass
       const releaseLang = r.language as string | undefined;
-      if (!releaseLanguageMatchesFilter(releaseLang, resolvedLanguageCodes ?? defaultLanguages)) {
+      if (!releaseLanguageMatchesFilter(releaseLang, resolvedLanguageCodes ?? defaultLanguages, languageNormalizer)) {
         return false;
       }
 
@@ -1184,7 +1189,7 @@ export const ReleaseModal = ({
     }
 
     return filtered;
-  }, [releasesBySource, activeTab, formatFilter, resolvedLanguageCodes, effectiveFormats, defaultLanguages, indexerFilter, currentSort, sortableColumns, columnConfig]);
+  }, [releasesBySource, activeTab, formatFilter, resolvedLanguageCodes, effectiveFormats, defaultLanguages, languageNormalizer, indexerFilter, currentSort, sortableColumns, columnConfig]);
 
   // Pre-compute display field lookups to avoid repeated .find() calls in JSX
   const displayFields = useMemo(() => {

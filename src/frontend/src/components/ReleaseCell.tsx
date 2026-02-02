@@ -165,7 +165,7 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
       const torznabAttrs = extra?.torznab_attrs as Record<string, string> | undefined;
       const publishDate = extra?.publish_date as string | undefined;
 
-      // Helper to format relative time
+      // Helper to format age in days
       const formatRelativeTime = (dateStr: string): string | null => {
         try {
           const date = new Date(dateStr);
@@ -174,14 +174,8 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
           const diffMs = now.getTime() - date.getTime();
           const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
           if (diffDays === 0) return 'Today';
-          if (diffDays === 1) return '1 day ago';
-          if (diffDays < 30) return `${diffDays} days ago`;
-          const diffMonths = Math.floor(diffDays / 30);
-          if (diffMonths === 1) return '1 month ago';
-          if (diffMonths < 12) return `${diffMonths} months ago`;
-          const diffYears = Math.floor(diffDays / 365);
-          if (diffYears === 1) return '1 year ago';
-          return `${diffYears} years ago`;
+          if (diffDays === 1) return '1 day';
+          return `${diffDays} days`;
         } catch {
           return null;
         }

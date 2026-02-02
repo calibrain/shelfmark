@@ -178,6 +178,12 @@ def _generate_bootstrap_env_docs() -> List[str]:
             "type": "boolean",
             "default": "false",
         },
+        {
+            "name": "ONBOARDING",
+            "description": "Show the onboarding wizard on first run. Set to false to skip (useful for ephemeral storage).",
+            "type": "boolean",
+            "default": "true",
+        },
     ]
 
     lines = [

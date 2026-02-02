@@ -36,12 +36,13 @@ These environment variables are used at startup before the settings system loads
 | `CONFIG_DIR` | Directory for storing configuration files and plugin settings. | string (path) | `/config` |
 | `LOG_ROOT` | Root directory for log files. | string (path) | `/var/log/` |
 | `TMP_DIR` | Staging directory for downloads before moving to destination. | string (path) | `/tmp/shelfmark` |
-| `ENABLE_LOGGING` | Enable file logging to LOG_ROOT/shelfmark/shelfmark.log. | boolean | `true` |
+| `ENABLE_LOGGING` | Enable file logging under LOG_ROOT/shelfmark/ (including shelfmark.log and startup logs). | boolean | `true` |
 | `FLASK_HOST` | Host address for the Flask web server. | string | `0.0.0.0` |
 | `FLASK_PORT` | Port number for the Flask web server. | number | `8084` |
 | `SESSION_COOKIE_SECURE` | Enable secure cookies (requires HTTPS). | boolean | `false` |
 | `CWA_DB_PATH` | Path to the Calibre-Web database for authentication integration. | string (path) | `/auth/app.db` |
 | `DOCKERMODE` | Indicates the application is running inside a Docker container. | boolean | `false` |
+| `ONBOARDING` | Show the onboarding wizard on first run. Set to false to skip (useful for ephemeral storage). | boolean | `true` |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -69,7 +70,7 @@ Staging directory for downloads before moving to destination.
 
 #### `ENABLE_LOGGING`
 
-Enable file logging to LOG_ROOT/shelfmark/shelfmark.log.
+Enable file logging under LOG_ROOT/shelfmark/ (including shelfmark.log and startup logs).
 
 - **Type:** boolean
 - **Default:** `true`
@@ -108,6 +109,13 @@ Indicates the application is running inside a Docker container.
 
 - **Type:** boolean
 - **Default:** `false`
+
+#### `ONBOARDING`
+
+Show the onboarding wizard on first run. Set to false to skip (useful for ephemeral storage).
+
+- **Type:** boolean
+- **Default:** `true`
 
 </details>
 
@@ -243,8 +251,8 @@ The release source tab to open by default in the release modal.
 | `BOOKS_OUTPUT_MODE` | Choose where completed book files are sent. | string (choice) | `folder` |
 | `INGEST_DIR` | Directory where downloaded files are saved. | string | `/books` |
 | `FILE_ORGANIZATION` | Choose how downloaded book files are named and organized. | string (choice) | `rename` |
-| `TEMPLATE_RENAME` | Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Rename templates are filename-only (no '/' or '\'); use Organize for folders. | string | `{Author} - {Title} ({Year})` |
-| `TEMPLATE_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle} | string | `{Author}/{Title} ({Year})` |
+| `TEMPLATE_RENAME` | Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. | string | `{Author} - {Title} ({Year})` |
+| `TEMPLATE_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title} ({Year})` |
 | `HARDLINK_TORRENTS` | Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder. | boolean | `false` |
 | `BOOKLORE_HOST` | Base URL of your Booklore instance | string | _none_ |
 | `BOOKLORE_USERNAME` | Booklore account username | string | _none_ |
@@ -253,8 +261,8 @@ The release source tab to open by default in the release modal.
 | `BOOKLORE_PATH_ID` | Booklore library path for uploads. | string (choice) | _none_ |
 | `DESTINATION_AUDIOBOOK` | Leave empty to use Books destination. | string | _none_ |
 | `FILE_ORGANIZATION_AUDIOBOOK` | Choose how downloaded audiobook files are named and organized. | string (choice) | `rename` |
-| `TEMPLATE_AUDIOBOOK_RENAME` | Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Rename templates are filename-only (no '/' or '\'); use Organize for folders. | string | `{Author} - {Title}` |
-| `TEMPLATE_AUDIOBOOK_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber} | string | `{Author}/{Title}` |
+| `TEMPLATE_AUDIOBOOK_RENAME` | Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. | string | `{Author} - {Title}` |
+| `TEMPLATE_AUDIOBOOK_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title}` |
 | `HARDLINK_TORRENTS_AUDIOBOOK` | Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder. | boolean | `true` |
 | `AUTO_OPEN_DOWNLOADS_SIDEBAR` | Automatically open the downloads sidebar when a new download is queued. | boolean | `false` |
 | `DOWNLOAD_TO_BROWSER` | Automatically download completed files to your browser. | boolean | `false` |
@@ -298,7 +306,7 @@ Choose how downloaded book files are named and organized.
 
 **Naming Template**
 
-Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Rename templates are filename-only (no '/' or '\'); use Organize for folders.
+Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders.
 
 - **Type:** string
 - **Default:** `{Author} - {Title} ({Year})`
@@ -307,7 +315,7 @@ Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}
 
 **Path Template**
 
-Use / to create folders. Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}
+Use / to create folders. Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty.
 
 - **Type:** string
 - **Default:** `{Author}/{Title} ({Year})`
@@ -394,7 +402,7 @@ Choose how downloaded audiobook files are named and organized.
 
 **Naming Template**
 
-Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Rename templates are filename-only (no '/' or '\'); use Organize for folders.
+Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders.
 
 - **Type:** string
 - **Default:** `{Author} - {Title}`
@@ -403,7 +411,7 @@ Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {P
 
 **Path Template**
 
-Use / to create folders. Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}
+Use / to create folders. Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty.
 
 - **Type:** string
 - **Default:** `{Author}/{Title}`
