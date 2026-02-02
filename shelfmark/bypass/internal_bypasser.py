@@ -11,7 +11,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import requests
-from seleniumbase import Driver
+from seleniumbase import sb_cdp
 
 from shelfmark.bypass import BypassCancelledException
 from shelfmark.bypass.fingerprint import get_screen_size
@@ -42,7 +42,6 @@ DDOS_GUARD_INDICATORS = [
 ]
 
 DISPLAY = {
-    "xvfb": None,
     "ffmpeg": None,
 }
 LOCKED = threading.Lock()
@@ -77,8 +76,8 @@ def _should_extract_cookie(name: str, extract_all: bool) -> bool:
     return is_cf or is_ddg
 
 
-def _extract_cookies_from_driver(driver, url: str) -> None:
-    """Extract cookies from Chrome after successful bypass."""
+def _extract_cookies_from_cdp(sb, url: str) -> None:
+    """Extract cookies from a Pure CDP browser after successful bypass."""
     try:
         parsed = urlparse(url)
         domain = parsed.hostname or ""
@@ -88,24 +87,34 @@ def _extract_cookies_from_driver(driver, url: str) -> None:
         base_domain = _get_base_domain(domain)
         extract_all = base_domain in FULL_COOKIE_DOMAINS
 
+        try:
+            all_cookies = sb.get_all_cookies(requests_cookie_format=True)
+        except Exception as e:
+            logger.debug(f"Failed to get cookies via CDP: {e}")
+            return
+
         cookies_found = {}
-        for cookie in driver.get_cookies():
-            name = cookie.get('name', '')
-            if _should_extract_cookie(name, extract_all):
-                cookies_found[name] = {
-                    'value': cookie.get('value', ''),
-                    'domain': cookie.get('domain', domain),
-                    'path': cookie.get('path', '/'),
-                    'expiry': cookie.get('expiry'),
-                    'secure': cookie.get('secure', True),
-                    'httpOnly': cookie.get('httpOnly', True),
-                }
+        for cookie in all_cookies:
+            name = getattr(cookie, "name", "") or ""
+            if not _should_extract_cookie(name, extract_all):
+                continue
+            expires = getattr(cookie, "expires", None)
+            if expires is not None and expires <= 0:
+                expires = None
+            cookies_found[name] = {
+                "value": getattr(cookie, "value", ""),
+                "domain": getattr(cookie, "domain", None) or domain,
+                "path": getattr(cookie, "path", None) or "/",
+                "expiry": expires,
+                "secure": bool(getattr(cookie, "secure", True)),
+                "httpOnly": True,
+            }
 
         if not cookies_found:
             return
 
         try:
-            user_agent = driver.execute_script("return navigator.userAgent")
+            user_agent = sb.get_user_agent()
         except Exception:
             user_agent = None
 
@@ -139,7 +148,9 @@ def get_cf_cookies_for_domain(domain: str) -> dict[str, str]:
         cf_clearance = cookies.get('cf_clearance', {})
         if cf_clearance:
             expiry = cf_clearance.get('expiry')
-            if expiry and time.time() > expiry:
+            if expiry is None:
+                expiry = cf_clearance.get('expires')
+            if expiry and expiry > 0 and time.time() > expiry:
                 logger.debug(f"CF cookies expired for {base_domain}")
                 _cf_cookies.pop(base_domain, None)
                 return {}
@@ -172,21 +183,14 @@ def clear_cf_cookies(domain: str = None) -> None:
             _cf_user_agents.clear()
 
 
-def _reset_pyautogui_display_state():
-    try:
-        import pyautogui
-        import Xlib.display
-        pyautogui._pyautogui_x11._display = Xlib.display.Display(os.environ['DISPLAY'])
-    except Exception as e:
-        logger.warning(f"Error resetting pyautogui display state: {e}")
-
-
 def _cleanup_orphan_processes() -> int:
     """Kill orphan Chrome/Xvfb/ffmpeg processes. Only runs in Docker mode."""
     if not env.DOCKERMODE:
         return 0
 
-    processes_to_kill = ["chrome", "chromedriver", "Xvfb", "ffmpeg"]
+    _stop_ffmpeg_recording()
+
+    processes_to_kill = ["chrome", "chromium", "Xvfb", "ffmpeg"]
     total_killed = 0
 
     logger.debug("Checking for orphan processes...")
@@ -322,66 +326,6 @@ def _is_bypassed(sb, escape_emojis: bool = True) -> bool:
         logger.warning(f"Error checking bypass status: {e}")
         return False
 
-def _simulate_human_behavior(sb) -> None:
-    """Simulate human-like behavior before bypass attempt."""
-    try:
-        time.sleep(random.uniform(0.5, 1.5))
-
-        if random.random() < 0.3:
-            sb.scroll_down(random.randint(20, 50))
-            time.sleep(random.uniform(0.2, 0.5))
-            sb.scroll_up(random.randint(10, 30))
-            time.sleep(random.uniform(0.2, 0.4))
-
-        try:
-            import pyautogui
-            x, y = pyautogui.position()
-            pyautogui.moveTo(
-                x + random.randint(-10, 10),
-                y + random.randint(-10, 10),
-                duration=random.uniform(0.05, 0.15)
-            )
-        except Exception as e:
-            logger.debug(f"Mouse jiggle failed: {e}")
-    except Exception as e:
-        logger.debug(f"Human simulation failed: {e}")
-
-
-def _bypass_method_handle_captcha(sb) -> bool:
-    """Method 2: Use uc_gui_handle_captcha() - TAB+SPACEBAR approach, stealthier than click."""
-    try:
-        logger.debug("Attempting bypass: uc_gui_handle_captcha (TAB+SPACEBAR)")
-        _simulate_human_behavior(sb)
-        sb.uc_gui_handle_captcha()
-        time.sleep(random.uniform(3, 5))
-        return _is_bypassed(sb)
-    except Exception as e:
-        logger.debug(f"uc_gui_handle_captcha failed: {e}")
-        return False
-
-
-def _bypass_method_click_captcha(sb) -> bool:
-    """Method 3: Use uc_gui_click_captcha() - direct click via PyAutoGUI."""
-    try:
-        logger.debug("Attempting bypass: uc_gui_click_captcha (direct click)")
-        _simulate_human_behavior(sb)
-        sb.uc_gui_click_captcha()
-        time.sleep(random.uniform(3, 5))
-
-        if _is_bypassed(sb):
-            return True
-
-        # Retry once with longer wait
-        logger.debug("First click attempt failed, retrying...")
-        time.sleep(random.uniform(4, 6))
-        sb.uc_gui_click_captcha()
-        time.sleep(random.uniform(3, 5))
-        return _is_bypassed(sb)
-    except Exception as e:
-        logger.debug(f"uc_gui_click_captcha failed: {e}")
-        return False
-
-
 def _bypass_method_humanlike(sb) -> bool:
     """Human-like behavior with scroll, wait, and reload."""
     try:
@@ -407,7 +351,7 @@ def _bypass_method_humanlike(sb) -> bool:
             return True
 
         try:
-            sb.uc_gui_click_captcha()
+            sb.gui_click_captcha()
             time.sleep(random.uniform(3, 5))
         except Exception as e:
             logger.debug(f"Final captcha click failed: {e}")
@@ -418,41 +362,15 @@ def _bypass_method_humanlike(sb) -> bool:
         return False
 
 
-def _safe_reconnect(sb) -> None:
-    """Safely attempt to reconnect WebDriver after CDP mode."""
-    try:
-        sb.reconnect()
-    except Exception as e:
-        logger.debug(f"Reconnect failed: {e}")
-
-
 def _bypass_method_cdp_solve(sb) -> bool:
-    """CDP Mode with solve_captcha() - WebDriver disconnected, no PyAutoGUI.
-
-    CDP Mode disconnects WebDriver during interaction, making detection harder.
-    The solve_captcha() method auto-detects challenge type.
-    """
+    """CDP Mode with solve_captcha() - auto-detects challenge type."""
     try:
-        logger.debug("Attempting bypass: CDP Mode solve_captcha")
-        sb.activate_cdp_mode(sb.get_current_url())
-        time.sleep(random.uniform(1, 2))
-
-        try:
-            sb.cdp.solve_captcha()
-            time.sleep(random.uniform(3, 5))
-            sb.reconnect()
-            time.sleep(random.uniform(1, 2))
-
-            if _is_bypassed(sb):
-                return True
-        except Exception as e:
-            logger.debug(f"CDP solve_captcha failed: {e}")
-            _safe_reconnect(sb)
-
-        return False
+        logger.debug("Attempting bypass: CDP solve_captcha")
+        sb.solve_captcha()
+        time.sleep(random.uniform(3, 5))
+        return _is_bypassed(sb)
     except Exception as e:
-        logger.debug(f"CDP Mode solve failed: {e}")
-        _safe_reconnect(sb)
+        logger.debug(f"CDP solve_captcha failed: {e}")
         return False
 
 
@@ -467,40 +385,27 @@ CDP_CLICK_SELECTORS = [
 
 
 def _bypass_method_cdp_click(sb) -> bool:
-    """CDP Mode with native clicking - no PyAutoGUI dependency.
-
-    Uses sb.cdp.click() which is native CDP clicking (SeleniumBase 4.45.6+).
-    """
+    """CDP Mode with native clicking - no PyAutoGUI dependency."""
     try:
-        logger.debug("Attempting bypass: CDP Mode native click")
-        sb.activate_cdp_mode(sb.get_current_url())
-        time.sleep(random.uniform(1, 2))
+        logger.debug("Attempting bypass: CDP native click")
 
         for selector in CDP_CLICK_SELECTORS:
             try:
-                if not sb.cdp.is_element_visible(selector):
+                if not sb.is_element_visible(selector):
                     continue
 
                 logger.debug(f"CDP clicking: {selector}")
-                sb.cdp.click(selector)
+                sb.click(selector)
                 time.sleep(random.uniform(2, 4))
-
-                sb.reconnect()
-                time.sleep(random.uniform(1, 2))
 
                 if _is_bypassed(sb):
                     return True
-
-                sb.activate_cdp_mode(sb.get_current_url())
-                time.sleep(random.uniform(0.5, 1))
             except Exception as e:
                 logger.debug(f"CDP click on '{selector}' failed: {e}")
 
-        _safe_reconnect(sb)
         return _is_bypassed(sb)
     except Exception as e:
         logger.debug(f"CDP Mode click failed: {e}")
-        _safe_reconnect(sb)
         return False
 
 
@@ -514,65 +419,44 @@ CDP_GUI_CLICK_SELECTORS = [
 
 
 def _bypass_method_cdp_gui_click(sb) -> bool:
-    """CDP Mode with PyAutoGUI-based clicking - uses actual mouse movement.
-
-    Most human-like approach for advanced protections (Kasada, DataDome, Akamai).
-    """
+    """CDP Mode with PyAutoGUI-based clicking - uses actual mouse movement."""
     try:
-        logger.debug("Attempting bypass: CDP Mode gui_click (mouse-based)")
-        sb.activate_cdp_mode(sb.get_current_url())
-        time.sleep(random.uniform(1, 2))
+        logger.debug("Attempting bypass: CDP gui_click (mouse-based)")
 
         try:
-            logger.debug("Trying cdp.gui_click_captcha()")
-            sb.cdp.gui_click_captcha()
+            logger.debug("Trying gui_click_captcha()")
+            sb.gui_click_captcha()
             time.sleep(random.uniform(3, 5))
-
-            sb.reconnect()
-            time.sleep(random.uniform(1, 2))
 
             if _is_bypassed(sb):
                 return True
-
-            sb.activate_cdp_mode(sb.get_current_url())
-            time.sleep(random.uniform(0.5, 1))
         except Exception as e:
-            logger.debug(f"cdp.gui_click_captcha() failed: {e}")
+            logger.debug(f"gui_click_captcha() failed: {e}")
 
         for selector in CDP_GUI_CLICK_SELECTORS:
             try:
-                if not sb.cdp.is_element_visible(selector):
+                if not sb.is_element_visible(selector):
                     continue
 
                 logger.debug(f"CDP gui_click_element: {selector}")
-                sb.cdp.gui_click_element(selector)
+                sb.gui_click_element(selector)
                 time.sleep(random.uniform(3, 5))
-
-                sb.reconnect()
-                time.sleep(random.uniform(1, 2))
 
                 if _is_bypassed(sb):
                     return True
-
-                sb.activate_cdp_mode(sb.get_current_url())
-                time.sleep(random.uniform(0.5, 1))
             except Exception as e:
                 logger.debug(f"CDP gui_click on '{selector}' failed: {e}")
 
-        _safe_reconnect(sb)
         return _is_bypassed(sb)
     except Exception as e:
         logger.debug(f"CDP Mode gui_click failed: {e}")
-        _safe_reconnect(sb)
         return False
 
 
 BYPASS_METHODS = [
     _bypass_method_cdp_solve,
-    _bypass_method_cdp_click,
     _bypass_method_cdp_gui_click,
-    _bypass_method_handle_captcha,
-    _bypass_method_click_captcha,
+    _bypass_method_cdp_click,
     _bypass_method_humanlike,
 ]
 
@@ -612,15 +496,15 @@ def _bypass(sb, max_retries: Optional[int] = None, cancel_flag: Optional[Event] 
             time.sleep(random.uniform(2, 3))
             if _is_bypassed(sb):
                 return True
-            # Try a simple reconnect instead of captcha methods
+            # Try a simple refresh instead of captcha methods
             try:
-                sb.reconnect()
+                sb.refresh()
                 time.sleep(random.uniform(1, 2))
                 if _is_bypassed(sb):
-                    logger.info("Bypass successful after reconnect")
+                    logger.info("Bypass successful after refresh")
                     return True
             except Exception as e:
-                logger.debug(f"Reconnect during no-challenge wait failed: {e}")
+                logger.debug(f"Refresh during no-challenge wait failed: {e}")
             continue
 
         if challenge_type == last_challenge_type:
@@ -659,8 +543,8 @@ def _bypass(sb, max_retries: Optional[int] = None, cancel_flag: Optional[Event] 
     logger.warning("Exceeded maximum retries. Bypass failed.")
     return False
 
-def _get_chromium_args() -> list[str]:
-    """Build Chrome arguments, pre-resolving hostnames via Python's patched DNS.
+def _get_browser_args() -> list[str]:
+    """Build extra Chrome arguments, pre-resolving hostnames via patched DNS.
 
     Pre-resolves AA hostnames and passes IPs to Chrome via --host-resolver-rules,
     bypassing Chrome's DNS entirely for those hosts.
@@ -670,7 +554,11 @@ def _get_chromium_args() -> list[str]:
         "--ignore-ssl-errors",
         "--allow-running-insecure-content",
         "--ignore-certificate-errors-spki-list",
-        "--ignore-certificate-errors-skip-list"
+        "--ignore-certificate-errors-skip-list",
+        # Chrome 144+ disabled automatic SwiftShader fallback for WebGL (security reasons).
+        # Without this flag, WebGL is broken in headless/Docker which triggers bot detection.
+        # See: https://issues.chromium.org/issues/40277080
+        "--enable-unsafe-swiftshader",
     ]
 
     if app_config.get("DEBUG", False):
@@ -679,12 +567,6 @@ def _get_chromium_args() -> list[str]:
             "--v=1",
             "--log-file=" + str(LOG_DIR / "chrome_browser.log")
         ])
-
-    proxies = get_proxies()
-    if proxies:
-        proxy_url = proxies.get('https') or proxies.get('http')
-        if proxy_url:
-            arguments.append(f'--proxy-server={proxy_url}')
 
     host_rules = _build_host_resolver_rules()
     if host_rules:
@@ -721,41 +603,33 @@ def _build_host_resolver_rules() -> list[str]:
 
     return host_rules
 
-DRIVER_RESET_ERRORS = {"WebDriverException", "SessionNotCreatedException", "TimeoutException", "MaxRetryError"}
+DRIVER_RESET_ERRORS = {"ProtocolException", "RuntimeError", "TimeoutError"}
 
 
-def _get(url: str, driver: Driver, cancel_flag: Optional[Event] = None) -> str:
-    """Fetch URL with Cloudflare bypass using provided driver."""
+def _get(url: str, sb, cancel_flag: Optional[Event] = None) -> str:
+    """Fetch URL with Cloudflare bypass using a Pure CDP browser."""
     _check_cancellation(cancel_flag, "Bypass cancelled before starting")
 
-    logger.debug(f"SB_GET: {url}")
+    logger.debug(f"CDP_GET: {url}")
 
-    hostname = urlparse(url).hostname or ""
-    if has_valid_cf_cookies(hostname):
-        reconnect_time = 1.0
-        logger.debug(f"Using fast reconnect ({reconnect_time}s) - valid cookies exist")
-    else:
-        reconnect_time = app_config.DEFAULT_SLEEP
-        logger.debug(f"Using standard reconnect ({reconnect_time}s) - no cached cookies")
-
-    logger.debug("Opening URL with SeleniumBase...")
-    driver.uc_open_with_reconnect(url, reconnect_time)
+    logger.debug("Opening URL with SeleniumBase CDP...")
+    sb.open(url)
 
     _check_cancellation(cancel_flag, "Bypass cancelled after page load")
 
     try:
-        logger.debug(f"Page loaded - URL: {driver.get_current_url()}, Title: {driver.get_title()}")
+        logger.debug(f"Page loaded - URL: {sb.get_current_url()}, Title: {sb.get_title()}")
     except Exception as e:
         logger.debug(f"Could not get page info: {e}")
 
     logger.debug("Starting bypass process...")
-    if _bypass(driver, cancel_flag=cancel_flag):
-        _extract_cookies_from_driver(driver, url)
-        return driver.page_source
+    if _bypass(sb, cancel_flag=cancel_flag):
+        _extract_cookies_from_cdp(sb, url)
+        return sb.get_page_source()
 
     logger.warning("Bypass completed but page still shows protection")
     try:
-        body = driver.get_text("body")
+        body = sb.get_text("body")
         logger.debug(f"Page content: {body[:500]}..." if len(body) > 500 else body)
     except Exception:
         pass
@@ -769,27 +643,20 @@ def get(url: str, retry: Optional[int] = None, cancel_flag: Optional[Event] = No
 
     with LOCKED:
         # Try cookies first - another request may have completed bypass while waiting
-        cookies = get_cf_cookies_for_domain(urlparse(url).hostname or "")
-        if cookies:
-            try:
-                response = requests.get(url, cookies=cookies, proxies=get_proxies(url), timeout=(5, 10))
-                if response.status_code == 200:
-                    logger.debug("Cookies available after lock wait - skipped Chrome")
-                    return response.text
-            except Exception:
-                pass
+        cached_result = _try_with_cached_cookies(url, urlparse(url).hostname or "")
+        if cached_result:
+            return cached_result
 
         # Fresh Chrome for each bypass attempt
-        driver = None
+        sb = None
         try:
-            _ensure_display_initialized()
-            driver = _create_driver()
+            sb = _create_cdp_browser(url)
 
             for attempt in range(retry):
                 _check_cancellation(cancel_flag, "Bypass cancelled before attempt")
 
                 try:
-                    result = _get(url, driver, cancel_flag)
+                    result = _get(url, sb, cancel_flag)
                     if result:
                         return result
                 except BypassCancelledException:
@@ -799,52 +666,72 @@ def get(url: str, retry: Optional[int] = None, cancel_flag: Optional[Event] = No
                     logger.warning(f"Bypass failed (attempt {attempt + 1}/{retry}): {error_details}")
                     logger.debug(f"Stack trace: {traceback.format_exc()}")
 
-                    # On driver errors, quit and create fresh driver
+                    # On CDP errors, quit and create a fresh browser
                     if type(e).__name__ in DRIVER_RESET_ERRORS:
                         logger.info("Restarting Chrome due to browser error...")
-                        _quit_driver(driver)
-                        driver = _create_driver()
+                        _quit_cdp_browser(sb)
+                        sb = _create_cdp_browser(url)
 
             logger.error(f"Bypass failed after {retry} attempts")
             return ""
         finally:
             # Always quit Chrome when done
-            if driver:
-                _quit_driver(driver)
+            if sb:
+                _quit_cdp_browser(sb)
 
-def _create_driver() -> Driver:
-    """Create a fresh Chrome driver instance."""
-    chromium_args = _get_chromium_args()
+def _get_proxy_string(url: str) -> Optional[str]:
+    """Return a single proxy string for CDP, honoring NO_PROXY."""
+    proxies = get_proxies(url)
+    if not proxies:
+        return None
+    proxy_url = proxies.get("https") or proxies.get("http")
+    return proxy_url or None
+
+
+def _create_cdp_browser(url: str) -> sb_cdp.Chrome:
+    """Create a fresh Pure CDP browser instance."""
+    browser_args = _get_browser_args()
     screen_width, screen_height = get_screen_size()
+    display_width = screen_width + 100
+    display_height = screen_height + 150
+    proxy = _get_proxy_string(url)
 
-    logger.debug(f"Creating Chrome driver with args: {chromium_args}")
+    logger.debug(f"Creating Pure CDP browser with args: {browser_args}")
     logger.debug(f"Browser screen size: {screen_width}x{screen_height}")
 
-    # Start FFmpeg recording if debug mode (record each bypass session)
-    if app_config.get("DEBUG", False) and DISPLAY["xvfb"] and not DISPLAY["ffmpeg"]:
-        _start_ffmpeg_recording()
-
-    driver = Driver(
-        uc=True,
+    sb = sb_cdp.Chrome(
+        url="about:blank",
         headless=False,
+        headed=False,
+        xvfb=True,
+        xvfb_metrics=f"{display_width},{display_height}",
+        sandbox=False,
+        lang="en",
         incognito=True,
-        locale="en",
         ad_block=True,
-        size=f"{screen_width},{screen_height}",
-        chromium_arg=chromium_args,
+        proxy=proxy,
+        browser_args=browser_args,
     )
-    driver.set_page_load_timeout(60)
+
+    try:
+        sb.set_window_rect(0, 0, screen_width, screen_height)
+    except Exception as e:
+        logger.debug(f"Failed to set window size: {e}")
+
+    # Start FFmpeg recording if debug mode (record each bypass session)
+    if app_config.get("DEBUG", False) and not DISPLAY.get("ffmpeg"):
+        _start_ffmpeg_recording(display=os.environ.get("DISPLAY", ":0"))
+
     time.sleep(app_config.DEFAULT_SLEEP)
-    logger.info("Chrome browser ready")
+    logger.info("Chrome browser ready (Pure CDP)")
     logger.log_resource_usage()
-    return driver
+    return sb
 
 
-def _start_ffmpeg_recording() -> None:
+def _start_ffmpeg_recording(display: str) -> None:
     """Start FFmpeg screen recording for debug mode."""
     global DISPLAY
     RECORDING_DIR.mkdir(parents=True, exist_ok=True)
-    display = DISPLAY["xvfb"]
     timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
     output_file = RECORDING_DIR / f"screen_recording_{timestamp}.mp4"
 
@@ -855,7 +742,7 @@ def _start_ffmpeg_recording() -> None:
     ffmpeg_cmd = [
         "ffmpeg", "-y", "-f", "x11grab",
         "-video_size", f"{display_width}x{display_height}",
-        "-i", f":{display.display}",
+        "-i", display,
         "-c:v", "libx264", "-preset", "ultrafast",
         "-maxrate", "700k", "-bufsize", "1400k", "-crf", "36",
         "-pix_fmt", "yuv420p", "-tune", "animation",
@@ -869,114 +756,56 @@ def _start_ffmpeg_recording() -> None:
     DISPLAY["ffmpeg"] = subprocess.Popen(ffmpeg_cmd)
 
 
-def _close_cdp_sockets() -> int:
-    """Find and close any sockets connected to CDP port 9222.
-
-    This is a workaround for SeleniumBase not properly closing websocket
-    connections when using activate_cdp_mode(). Returns count of closed sockets.
-    """
-    import os
-    closed = 0
-    pid = os.getpid()
-
+def _stop_ffmpeg_recording() -> None:
+    """Stop FFmpeg screen recording if running."""
+    import signal
+    global DISPLAY
+    proc = DISPLAY.get("ffmpeg")
+    if not proc:
+        return
+    if proc.poll() is not None:
+        DISPLAY["ffmpeg"] = None
+        return
     try:
-        fd_path = f'/proc/{pid}/fd'
-        for fd_name in os.listdir(fd_path):
-            try:
-                fd = int(fd_name)
-                link = os.readlink(f'{fd_path}/{fd_name}')
-                if 'socket:' not in link:
-                    continue
-
-                # Check if this socket is connected to port 9222 (CDP)
-                # by reading /proc/net/tcp and matching inode
-                inode = link.split('[')[1].rstrip(']')
-
-                with open('/proc/net/tcp', 'r') as f:
-                    for line in f:
-                        parts = line.split()
-                        if len(parts) < 10:
-                            continue
-                        # Check if this is our socket and connects to port 9222 (0x2406)
-                        if parts[9] == inode:
-                            remote = parts[2]
-                            remote_port = int(remote.split(':')[1], 16)
-                            if remote_port == 9222:
-                                logger.debug(f"Closing CDP socket fd={fd} inode={inode}")
-                                os.close(fd)
-                                closed += 1
-                                break
-            except (ValueError, OSError, IndexError):
-                continue
+        proc.send_signal(signal.SIGINT)
+        proc.wait(timeout=5)
+        logger.debug("Stopped ffmpeg recording")
     except Exception as e:
-        logger.debug(f"Error scanning for CDP sockets: {e}")
+        logger.debug(f"ffmpeg stop: {e}")
+        try:
+            proc.terminate()
+            proc.wait(timeout=2)
+        except Exception:
+            pass
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    DISPLAY["ffmpeg"] = None
 
-    return closed
 
-
-def _quit_driver(driver: Driver) -> None:
-    """Quit Chrome driver and clean up resources.
-
-    Proper cleanup sequence for SeleniumBase CDP mode:
-    1. Stop CDP browser (closes websocket connections)
-    2. Reconnect WebDriver
-    3. Close window
-    4. Quit driver
-    5. Force-kill any lingering processes
-
-    The CDP websocket connection must be explicitly closed before Chrome is killed,
-    otherwise the sockets end up in CLOSE_WAIT state causing gevent to busy-loop.
-
-    References:
-    - https://github.com/seleniumbase/SeleniumBase/discussions/3768
-    - https://www.selenium.dev/selenium/docs/api/py/selenium_webdriver_common_bidi/selenium.webdriver.common.bidi.cdp.html
-    """
-    if driver is None:
+def _quit_cdp_browser(sb) -> None:
+    """Quit Pure CDP browser and clean up resources."""
+    if sb is None:
         return
 
-    logger.debug("Quitting Chrome driver...")
+    logger.debug("Quitting Chrome browser (Pure CDP)...")
 
-    # Strategy 1: Stop CDP browser if in CDP mode (closes websocket connections)
-    # This is the proper SeleniumBase way to close CDP connections
+    # Stop ffmpeg recording if running
+    _stop_ffmpeg_recording()
+
+    # Stop the CDP browser
     try:
-        if hasattr(driver, 'cdp') and driver.cdp and hasattr(driver.cdp, 'driver'):
-            driver.cdp.driver.stop()
-            logger.debug("Stopped CDP browser (closed websocket)")
-            time.sleep(0.3)
+        sb.driver.stop()
+        logger.debug("Stopped CDP browser")
     except Exception as e:
         logger.debug(f"CDP stop: {e}")
 
-    # Strategy 2: Reconnect to re-establish WebDriver control before quitting
-    try:
-        driver.reconnect()
-        time.sleep(0.2)
-    except Exception as e:
-        logger.debug(f"Reconnect: {e}")
-
-    # Strategy 3: Close the current window/tab
-    try:
-        driver.close()
-        time.sleep(0.2)
-    except Exception as e:
-        logger.debug(f"Close window: {e}")
-
-    # Strategy 4: Fallback - explicitly close any remaining CDP sockets
-    # This catches any sockets that weren't closed by cdp.driver.stop()
-    closed = _close_cdp_sockets()
-    if closed:
-        logger.debug(f"Closed {closed} remaining CDP socket(s)")
-
-    # Strategy 5: Standard quit
-    try:
-        driver.quit()
-    except Exception as e:
-        logger.debug(f"Quit: {e}")
-
-    # Strategy 6: Force garbage collection
+    # Force garbage collection
     import gc
     gc.collect()
 
-    # Strategy 7: Force-kill any lingering Chrome/chromedriver processes
+    # Force-kill any lingering Chrome processes
     if env.DOCKERMODE:
         time.sleep(0.3)
         try:
@@ -984,44 +813,7 @@ def _quit_driver(driver: Driver) -> None:
         except Exception as e:
             logger.debug(f"pkill chrome: {e}")
 
-    # Strategy 8: Stop ffmpeg recording if running
-    global DISPLAY
-    if DISPLAY.get("ffmpeg"):
-        try:
-            DISPLAY["ffmpeg"].terminate()
-            DISPLAY["ffmpeg"].wait(timeout=2)
-            logger.debug("Stopped ffmpeg recording")
-        except Exception as e:
-            logger.debug(f"ffmpeg terminate: {e}")
-            try:
-                DISPLAY["ffmpeg"].kill()
-            except Exception:
-                pass
-        DISPLAY["ffmpeg"] = None
-
     logger.log_resource_usage()
-
-
-def _ensure_display_initialized():
-    """Initialize virtual display if needed. Must be called with LOCKED held."""
-    global DISPLAY
-    if DISPLAY["xvfb"] is not None:
-        return
-    if not (env.DOCKERMODE and app_config.get("USE_CF_BYPASS", True)):
-        return
-
-    from pyvirtualdisplay import Display
-    # Get the screen size (generates a random one if not already set)
-    screen_width, screen_height = get_screen_size()
-    # Add padding for browser chrome (title bar, borders, taskbar space)
-    display_width = screen_width + 100
-    display_height = screen_height + 150
-    display = Display(visible=False, size=(display_width, display_height))
-    display.start()
-    DISPLAY["xvfb"] = display
-    logger.info(f"Virtual display started: {display_width}x{display_height}")
-    time.sleep(app_config.DEFAULT_SLEEP)
-    _reset_pyautogui_display_state()
 
 
 def _try_with_cached_cookies(url: str, hostname: str) -> Optional[str]:

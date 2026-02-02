@@ -130,11 +130,11 @@ RUN apt-get update && \
     xvfb \
     # For screen recording
     ffmpeg \
-    # --- Chromium ---
-    chromium=143.0.7499.169-1~deb13u1 \
-    chromium-common=143.0.7499.169-1~deb13u1 \
-    # --- ChromeDriver ---
-    chromium-driver=143.0.7499.169-1~deb13u1 \
+    # --- Chromium (unpinned - uses latest from Debian repos) ---
+    # Chrome 144+ requires --enable-unsafe-swiftshader for WebGL in Docker.
+    # This flag is set in internal_bypasser.py _get_browser_args()
+    chromium \
+    chromium-common \
     # For tkinter (pyautogui)
     python3-tk \
     # For RAR extraction
@@ -152,7 +152,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # Grant read/execute permissions to others
 RUN chmod -R o+rx /usr/bin/chromium && \
-    chmod -R o+rx /usr/bin/chromedriver && \
     chmod -R o+rwx /usr/local/lib/python3.10/site-packages/seleniumbase/drivers/
 
 # Default command to run the application entrypoint script
