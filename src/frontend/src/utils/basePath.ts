@@ -30,16 +30,23 @@ const resolveBasePath = (): string => {
   }
 };
 
-const BASE_PATH = normalizeBasePath(resolveBasePath());
+// Lazy initialization to ensure DOM is ready when base path is resolved
+let _basePath: string | null = null;
 
-export const getBasePath = (): string => BASE_PATH;
+export const getBasePath = (): string => {
+  if (_basePath === null) {
+    _basePath = normalizeBasePath(resolveBasePath());
+  }
+  return _basePath;
+};
 
 export const withBasePath = (path: string): string => {
+  const basePath = getBasePath();
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  if (BASE_PATH === '/') {
+  if (basePath === '/') {
     return normalizedPath;
   }
-  return `${BASE_PATH}${normalizedPath}`;
+  return `${basePath}${normalizedPath}`;
 };
 
 export const getApiBase = (): string => withBasePath('/api');
