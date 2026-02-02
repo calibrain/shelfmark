@@ -134,6 +134,14 @@ USING_TOR = string_to_bool(os.getenv("USING_TOR", "false"))
 
 
 # =============================================================================
+# Onboarding
+# =============================================================================
+
+# Set to false to skip the onboarding wizard entirely (useful for ephemeral storage)
+ONBOARDING = string_to_bool(os.getenv("ONBOARDING", "true"))
+
+
+# =============================================================================
 # Debug/development settings
 # =============================================================================
 

@@ -17,6 +17,7 @@ const FORMAT_COLORS: Record<string, ColorStyle> = {
   cbz: { bg: 'bg-amber-500/20', text: 'text-amber-700 dark:text-amber-300' },
   // Audiobook formats
   m4b: { bg: 'bg-violet-500/20', text: 'text-violet-700 dark:text-violet-300' },
+  m4a: { bg: 'bg-violet-500/20', text: 'text-violet-700 dark:text-violet-300' },
   mp3: { bg: 'bg-rose-500/20', text: 'text-rose-700 dark:text-rose-300' },
   flac: { bg: 'bg-indigo-500/20', text: 'text-indigo-700 dark:text-indigo-300' },
 };

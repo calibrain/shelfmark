@@ -148,6 +148,7 @@ test_write() {
 
 make_writable() {
     folder=$1
+    did_full_chown=0
     set +e
     test_write $folder
     is_writable=$?
@@ -158,17 +159,23 @@ make_writable() {
         echo "Folder $folder is not writable, changing ownership"
         change_ownership $folder
         chmod -R g+r,g+w $folder || echo "Failed to change group permissions for ${folder}, continuing..."
+        did_full_chown=1
     fi
     # Fix any misowned subdirectories/files (e.g., from previous runs as root)
-    if [ -d "$folder" ]; then
-        misowned_count=$(find "$folder" -mindepth 1 \( ! -user "$RUN_UID" -o ! -group "$RUN_GID" \) 2>/dev/null | wc -l)
-        if [ "$misowned_count" -gt 0 ]; then
-            echo "Fixing ownership of $misowned_count files/directories in $folder"
-            find "$folder" -mindepth 1 \( ! -user "$RUN_UID" -o ! -group "$RUN_GID" \) \
-                -exec chown "$RUN_UID:$RUN_GID" {} \; 2>/dev/null || true
-        fi
+    if [ "$did_full_chown" -eq 0 ] && [ -d "$folder" ]; then
+        echo "Checking for misowned files/directories in $folder"
+        find "$folder" -mindepth 1 \( ! -user "$RUN_UID" -o ! -group "$RUN_GID" \) \
+            -exec chown "$RUN_UID:$RUN_GID" {} + 2>/dev/null || true
     fi
     test_write $folder || echo "Failed to test write to ${folder}, continuing..."
+}
+
+fix_misowned() {
+    folder=$1
+    mkdir -p $folder
+    echo "Checking for misowned files/directories in $folder"
+    find "$folder" \( ! -user "$RUN_UID" -o ! -group "$RUN_GID" \) \
+        -exec chown "$RUN_UID:$RUN_GID" {} + 2>/dev/null || true
 }
 
 # Ensure proper ownership of application directories
@@ -176,13 +183,12 @@ change_ownership() {
   folder=$1
   mkdir -p $folder
   echo "Changing ownership of $folder to $USERNAME:$RUN_GID"
-  chown -R "${RUN_UID}" "${folder}" || echo "Failed to change user ownership for ${folder}, continuing..."
-  chown -R ":${RUN_GID}" "${folder}" || echo "Failed to change group ownership for ${folder}, continuing..."
+  chown -R "${RUN_UID}:${RUN_GID}" "${folder}" || echo "Failed to change ownership for ${folder}, continuing..."
 }
 
-change_ownership /app
-change_ownership /var/log/shelfmark
-change_ownership /tmp/shelfmark
+fix_misowned /app
+fix_misowned /var/log/shelfmark
+fix_misowned /tmp/shelfmark
 
 # SeleniumBase (internal bypasser) writes a patched chromedriver binary (uc_driver)
 # into its own drivers directory. Some NAS/docker setups can apply restrictive ACLs
