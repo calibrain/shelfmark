@@ -120,5 +120,6 @@ Configure templates in Settings -> Downloads. Template syntax details are docume
 ## Related Documentation
 
 - Environment Variables Reference: `docs/environment-variables.md`
+- Custom Scripts: `docs/custom-scripts.md`
 - Installation: `docs/installation.md`
 - Troubleshooting: `docs/troubleshooting.md`

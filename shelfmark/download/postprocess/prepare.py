@@ -3,10 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
-from shelfmark.download.archive import is_archive
 from shelfmark.download.staging import STAGE_COPY, STAGE_NONE, get_staging_dir, stage_path
 
 from .scan import collect_staged_files
@@ -27,14 +25,11 @@ def build_output_plan(
     """Build an output plan that describes staging behavior for file-based outputs."""
 
     transfer_plan = resolve_hardlink_source(temp_file, task, destination, status_callback)
-    runs_custom_script = bool(core_config.config.CUSTOM_SCRIPT) and temp_file.is_file() and not is_archive(temp_file)
-
-    stage_action = STAGE_COPY if runs_custom_script and not is_managed_workspace_path(temp_file) else STAGE_NONE
     staging_dir = get_staging_dir()
 
     return OutputPlan(
         mode=output_mode,
-        stage_action=stage_action,
+        stage_action=STAGE_NONE,
         staging_dir=staging_dir,
         allow_archive_extraction=transfer_plan.allow_archive_extraction,
         transfer_plan=transfer_plan,

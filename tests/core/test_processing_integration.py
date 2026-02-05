@@ -492,7 +492,7 @@ def test_booklore_mode_rejects_unsupported_files(tmp_path):
     staging = tmp_path / "staging"
     staging.mkdir()
 
-    temp_file = staging / "book.mobi"
+    temp_file = staging / "book.djvu"
     temp_file.write_text("content")
 
     task = DownloadTask(
@@ -500,7 +500,7 @@ def test_booklore_mode_rejects_unsupported_files(tmp_path):
         source="direct_download",
         title="Unsupported Book",
         author="Tester",
-        format="mobi",
+        format="djvu",
         search_mode=SearchMode.DIRECT,
     )
 
@@ -761,7 +761,7 @@ def test_postprocess_torrent_blackbox_matrix(
 
 
 def test_custom_script_external_source_stages_copy_and_preserves_source(tmp_path):
-    """External (usenet-like) files should be staged into TMP before a custom script runs."""
+    """Custom script should run against the final imported file; external source must be preserved."""
 
     from shelfmark.download.postprocess.router import post_process_download as _post_process_download
 

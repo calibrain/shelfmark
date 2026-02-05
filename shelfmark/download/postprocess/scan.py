@@ -213,12 +213,15 @@ def collect_directory_files(
 
     if archive_files:
         if not allow_archive_extraction:
-            logger.warning(
-                "Task %s: archive extraction disabled (torrent hardlinking enabled) for %s",
+            # When extraction is disabled (typically due to torrent hardlinking),
+            # treat archives as the final importable "files" rather than failing.
+            logger.info(
+                "Task %s: archive extraction disabled; importing %d archive(s) as-is from %s",
                 task.task_id,
+                len(archive_files),
                 directory,
             )
-            return [], rejected_files, [], "Archive extraction is disabled when torrent hardlinking is enabled"
+            return archive_files, rejected_files, [], None
 
         if status_callback:
             status_callback("resolving", "Extracting archives")
@@ -311,6 +314,11 @@ def collect_staged_files(
             )
 
         return extracted_files, rejected_files, cleanup_paths, error
+
+    if is_archive(working_path) and not allow_archive_extraction:
+        # When extraction is disabled (typically due to torrent hardlinking),
+        # import the archive as-is rather than treating it as an unsupported file.
+        return [working_path], [], [], None
 
     # Single-file download result (non-archive).
     # Ensure we respect the user's supported format settings.
