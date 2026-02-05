@@ -12,6 +12,7 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download.archive import is_archive
+from shelfmark.download.fs import run_blocking_io
 from shelfmark.download.outputs import register_output
 from shelfmark.download.staging import StageAction, STAGE_NONE
 
@@ -175,7 +176,8 @@ def process_folder_output(
             phase,
         )
         try:
-            result = subprocess.run(
+            result = run_blocking_io(
+                subprocess.run,
                 [script_path, str(script_target)],
                 check=True,
                 timeout=300,  # 5 minute timeout
