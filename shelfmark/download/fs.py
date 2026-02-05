@@ -8,6 +8,7 @@ import errno
 import os
 import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable, Optional, TypeVar
@@ -190,11 +191,72 @@ def _claim_destination(path: Path) -> bool:
         return True
 
 
+def _hardlink_not_supported(error: OSError) -> bool:
+    err = error.errno
+    return err in {
+        errno.EXDEV,
+        errno.EMLINK,
+        errno.EPERM,
+        errno.EACCES,
+        getattr(errno, "ENOTSUP", errno.EPERM),
+        getattr(errno, "EOPNOTSUPP", errno.EPERM),
+        errno.EINVAL,
+    }
+
+
+def _create_temp_path(dest_path: Path) -> Path:
+    fd, temp_path = tempfile.mkstemp(
+        prefix=f".{dest_path.name}.",
+        suffix=".tmp",
+        dir=str(dest_path.parent),
+    )
+    os.close(fd)
+    return Path(temp_path)
+
+
+def _publish_temp_file(temp_path: Path, dest_path: Path) -> bool:
+    """Publish a temp file to its final path without overwriting existing files.
+
+    Returns True on success, False if the destination already exists.
+    """
+    try:
+        os.link(str(temp_path), str(dest_path))
+        temp_path.unlink(missing_ok=True)
+        return True
+    except FileExistsError:
+        return False
+    except OSError as e:
+        if _is_permission_error(e):
+            log_transfer_permission_context(
+                "publish_hardlink",
+                source=temp_path,
+                dest=dest_path,
+                error=e,
+            )
+        if _hardlink_not_supported(e):
+            logger.debug(
+                "Hardlink publish unsupported; falling back to claim+replace: %s -> %s (%s)",
+                temp_path,
+                dest_path,
+                e,
+            )
+            claimed = _claim_destination(dest_path)
+            if not claimed:
+                return False
+            try:
+                os.replace(str(temp_path), str(dest_path))
+            except Exception:
+                dest_path.unlink(missing_ok=True)
+                raise
+            return True
+        raise
+
+
 def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> Path:
     """Move a file with collision detection.
 
     Uses os.rename() for same-filesystem moves (atomic, triggers inotify events),
-    falls back to exclusive create + shutil.move for cross-filesystem moves.
+    falls back to copy-then-publish for cross-filesystem moves.
 
     Note: We use os.rename() instead of hardlink+unlink because os.rename()
     triggers proper inotify IN_MOVED_TO events that file watchers (like Calibre's
@@ -242,23 +304,21 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                 try_path.unlink(missing_ok=True)
             continue
         except OSError as e:
-            # Cross-filesystem - fall back to exclusive create + verified copy + delete.
+            # Cross-filesystem - copy to temp and publish atomically.
             if e.errno != errno.EXDEV:
                 if claimed:
                     try_path.unlink(missing_ok=True)
                 raise
 
             expected_size = source_path.stat().st_size
+            if claimed:
+                try_path.unlink(missing_ok=True)
+                claimed = False
 
+            temp_path: Optional[Path] = None
             try:
-                if not claimed:
-                    # Claim destination path atomically.
-                    fd = os.open(str(try_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
-                    os.close(fd)
-
-                # Copy to a temp file first, then replace to avoid partial files.
-                temp_path = try_path.parent / f".{try_path.name}.tmp"
                 try:
+                    temp_path = _create_temp_path(try_path)
                     try:
                         run_blocking_io(shutil.copy2, str(source_path), str(temp_path))
                     except (PermissionError, OSError) as copy_error:
@@ -273,21 +333,33 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                         else:
                             raise
 
-                    temp_path.replace(try_path)
-                    _verify_transfer_size(try_path, expected_size, "move")
+                    _verify_transfer_size(temp_path, expected_size, "move")
+                    published = _publish_temp_file(temp_path, try_path)
+                    if not published:
+                        temp_path.unlink(missing_ok=True)
+                        continue
+
+                    try:
+                        _verify_transfer_size(try_path, expected_size, "move")
+                    except Exception:
+                        try_path.unlink(missing_ok=True)
+                        raise
+
                     source_path.unlink()
 
                     if attempt > 0:
                         logger.info(f"File collision resolved: {try_path.name}")
                     return try_path
 
+                except FileExistsError:
+                    if temp_path:
+                        temp_path.unlink(missing_ok=True)
+                    continue
                 except Exception:
-                    try_path.unlink(missing_ok=True)
-                    temp_path.unlink(missing_ok=True)
+                    if temp_path:
+                        temp_path.unlink(missing_ok=True)
                     raise
 
-            except FileExistsError:
-                continue
             except (PermissionError, OSError) as e:
                 if _is_permission_error(e):
                     log_transfer_permission_context(
@@ -371,8 +443,8 @@ def atomic_hardlink(source_path: Path, dest_path: Path, max_attempts: int = 100)
 def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> Path:
     """Copy a file with atomic collision detection.
 
-    Uses exclusive create to claim destination, then copies via temp file
-    to avoid partial files on failure.
+    Uses a temp file in the destination directory and publishes it atomically,
+    avoiding partial files on failure.
 
     Args:
         source_path: Source file to copy
@@ -388,57 +460,63 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
     base = dest_path.stem
     ext = dest_path.suffix
     parent = dest_path.parent
+    expected_size = source_path.stat().st_size
 
     for attempt in range(max_attempts):
         try_path = dest_path if attempt == 0 else parent / f"{base}_{attempt}{ext}"
+        if try_path.exists():
+            continue
+        temp_path: Optional[Path] = None
         try:
-            # Atomically claim the destination by creating an exclusive file
-            fd = os.open(str(try_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
-            os.close(fd)
-            
-            # Copy to temp file first, then replace to avoid partial files
-            temp_path = try_path.parent / f".{try_path.name}.tmp"
+            temp_path = _create_temp_path(try_path)
             try:
-                try:
-                    run_blocking_io(shutil.copy2, str(source_path), str(temp_path))
-                except (PermissionError, OSError) as e:
-                    # Handle NFS permission errors immediately here
-                    if _is_permission_error(e):
-                        log_transfer_permission_context(
-                            "atomic_copy",
-                            source=source_path,
-                            dest=temp_path,
-                            error=e,
-                        )
-                        logger.debug(
-                            "Permission error during copy, falling back to copyfile (%s -> %s): %s",
+                run_blocking_io(shutil.copy2, str(source_path), str(temp_path))
+            except (PermissionError, OSError) as e:
+                # Handle NFS permission errors immediately here
+                if _is_permission_error(e):
+                    log_transfer_permission_context(
+                        "atomic_copy",
+                        source=source_path,
+                        dest=temp_path,
+                        error=e,
+                    )
+                    logger.debug(
+                        "Permission error during copy, falling back to copyfile (%s -> %s): %s",
+                        source_path,
+                        temp_path,
+                        e,
+                    )
+                    try:
+                        _perform_nfs_fallback(source_path, temp_path, is_move=False)
+                    except Exception as fallback_error:
+                        logger.error(
+                            "NFS fallback also failed (%s -> %s): %s",
                             source_path,
                             temp_path,
-                            e,
+                            fallback_error,
                         )
-                        try:
-                            _perform_nfs_fallback(source_path, temp_path, is_move=False)
-                        except Exception as fallback_error:
-                            logger.error(
-                                "NFS fallback also failed (%s -> %s): %s",
-                                source_path,
-                                temp_path,
-                                fallback_error,
-                            )
-                            raise e from fallback_error
-                    else:
-                        raise
-                
-                temp_path.replace(try_path)
-                _verify_transfer_size(try_path, source_path.stat().st_size, "copy")
-                if attempt > 0:
-                    logger.info(f"File collision resolved: {try_path.name}")
-                return try_path
+                        raise e from fallback_error
+                else:
+                    raise
+
+            _verify_transfer_size(temp_path, expected_size, "copy")
+            published = _publish_temp_file(temp_path, try_path)
+            if not published:
+                temp_path.unlink(missing_ok=True)
+                continue
+
+            try:
+                _verify_transfer_size(try_path, expected_size, "copy")
             except Exception:
                 try_path.unlink(missing_ok=True)
-                temp_path.unlink(missing_ok=True)
                 raise
-        except FileExistsError:
-            continue
+
+            if attempt > 0:
+                logger.info(f"File collision resolved: {try_path.name}")
+            return try_path
+        except Exception:
+            if temp_path:
+                temp_path.unlink(missing_ok=True)
+            raise
 
     raise RuntimeError(f"Could not copy file after {max_attempts} attempts: {dest_path}")

@@ -113,6 +113,7 @@ FLASK_PORT = int(os.getenv("FLASK_PORT", "8084"))
 # =============================================================================
 
 SESSION_COOKIE_SECURE_ENV = os.getenv("SESSION_COOKIE_SECURE", "false")
+SESSION_COOKIE_NAME = "shelfmark_session"
 CWA_DB_PATH = _resolve_cwa_db_path()
 
 

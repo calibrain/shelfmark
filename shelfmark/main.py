@@ -235,7 +235,7 @@ werkzeug_logger.addFilter(LogNoiseFilter())
 # Set up authentication defaults
 # The secret key will reset every time we restart, which will
 # require users to authenticate again
-from shelfmark.config.env import SESSION_COOKIE_SECURE_ENV, string_to_bool
+from shelfmark.config.env import SESSION_COOKIE_NAME, SESSION_COOKIE_SECURE_ENV, string_to_bool
 
 SESSION_COOKIE_SECURE = string_to_bool(SESSION_COOKIE_SECURE_ENV)
 
@@ -244,10 +244,12 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY = True,
     SESSION_COOKIE_SAMESITE = 'Lax',
     SESSION_COOKIE_SECURE = SESSION_COOKIE_SECURE,
+    SESSION_COOKIE_NAME = SESSION_COOKIE_NAME,
     PERMANENT_SESSION_LIFETIME = 604800  # 7 days in seconds
 )
 
 logger.info(f"Session cookie secure setting: {SESSION_COOKIE_SECURE} (from env: {SESSION_COOKIE_SECURE_ENV})")
+logger.info(f"Session cookie name: {SESSION_COOKIE_NAME}")
 
 @app.before_request
 def proxy_auth_middleware():

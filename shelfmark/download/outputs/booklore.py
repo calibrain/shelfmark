@@ -17,7 +17,7 @@ from shelfmark.download.staging import STAGE_MOVE, STAGE_NONE, build_staging_dir
 logger = setup_logger(__name__)
 
 BOOKLORE_OUTPUT_MODE = "booklore"
-BOOKLORE_SUPPORTED_EXTENSIONS = {".cb7", ".cbr", ".cbz", ".epub", ".fb2", ".pdf"}
+BOOKLORE_SUPPORTED_EXTENSIONS = {".azw", ".azw3", ".cb7", ".cbr", ".cbz", ".epub", ".fb2", ".mobi", ".pdf"}
 BOOKLORE_SUPPORTED_FORMATS_LABEL = ", ".join(
     ext.lstrip(".").upper() for ext in sorted(BOOKLORE_SUPPORTED_EXTENSIONS)
 )
