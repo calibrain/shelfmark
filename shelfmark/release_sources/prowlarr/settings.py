@@ -160,15 +160,28 @@ def _test_transmission_connection(current_values: Optional[Dict[str, Any]] = Non
         from transmission_rpc import Client
 
         # Parse URL to extract host, port, and path
-        host, port, path = parse_transmission_url(url)
+        protocol, host, port, path = parse_transmission_url(url)
 
-        client = Client(
-            host=host,
-            port=port,
-            path=path,
-            username=username if username else None,
-            password=password if password else None,
-        )
+        client_kwargs = {
+            "host": host,
+            "port": port,
+            "path": path,
+            "username": username if username else None,
+            "password": password if password else None,
+            "protocol": protocol,
+        }
+        try:
+            client = Client(**client_kwargs)
+        except TypeError as e:
+            if "protocol" not in str(e):
+                raise
+            client_kwargs.pop("protocol", None)
+            client = Client(**client_kwargs)
+            if protocol == "https" and hasattr(client, "protocol"):
+                try:
+                    setattr(client, "protocol", protocol)
+                except Exception:
+                    pass
         session = client.get_session()
         version = session.version
         return {"success": True, "message": f"Connected to Transmission {version}"}
@@ -547,7 +560,7 @@ def prowlarr_clients_settings():
         TextField(
             key="TRANSMISSION_URL",
             label="Transmission URL",
-            description="URL of your Transmission instance",
+            description="URL of your Transmission instance (use https:// for TLS)",
             placeholder="http://transmission:9091",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "transmission"},
         ),

@@ -27,63 +27,72 @@ class TestParseTransmissionUrl:
 
     def test_parse_simple_url(self):
         """Test parsing a simple URL with host and port."""
-        host, port, path = parse_transmission_url("http://localhost:9091")
+        protocol, host, port, path = parse_transmission_url("http://localhost:9091")
+        assert protocol == "http"
         assert host == "localhost"
         assert port == 9091
         assert path == "/transmission/rpc"
 
     def test_parse_url_with_custom_port(self):
         """Test parsing URL with custom port."""
-        host, port, path = parse_transmission_url("http://myserver:8080")
+        protocol, host, port, path = parse_transmission_url("http://myserver:8080")
+        assert protocol == "http"
         assert host == "myserver"
         assert port == 8080
         assert path == "/transmission/rpc"
 
     def test_parse_url_with_path(self):
         """Test parsing URL with existing path."""
-        host, port, path = parse_transmission_url("http://localhost:9091/transmission/rpc")
+        protocol, host, port, path = parse_transmission_url("http://localhost:9091/transmission/rpc")
+        assert protocol == "http"
         assert host == "localhost"
         assert port == 9091
         assert path == "/transmission/rpc"
 
     def test_parse_url_with_partial_path(self):
         """Test parsing URL with partial path appends /rpc."""
-        host, port, path = parse_transmission_url("http://localhost:9091/custom")
+        protocol, host, port, path = parse_transmission_url("http://localhost:9091/custom")
+        assert protocol == "http"
         assert host == "localhost"
         assert port == 9091
         assert path == "/custom/transmission/rpc"
 
     def test_parse_url_with_trailing_slash(self):
         """Test parsing URL with trailing slash."""
-        host, port, path = parse_transmission_url("http://localhost:9091/")
+        protocol, host, port, path = parse_transmission_url("http://localhost:9091/")
+        assert protocol == "http"
         assert host == "localhost"
         assert port == 9091
         assert path == "/transmission/rpc"
 
     def test_parse_url_without_port(self):
         """Test parsing URL without port uses default 9091."""
-        host, port, path = parse_transmission_url("http://transmission")
+        protocol, host, port, path = parse_transmission_url("http://transmission")
+        assert protocol == "http"
         assert host == "transmission"
         assert port == 9091
         assert path == "/transmission/rpc"
 
     def test_parse_https_url(self):
         """Test parsing HTTPS URL."""
-        host, port, path = parse_transmission_url("https://secure.transmission.local:9091")
+        protocol, host, port, path = parse_transmission_url("https://secure.transmission.local:9091")
+        assert protocol == "https"
         assert host == "secure.transmission.local"
         assert port == 9091
         assert path == "/transmission/rpc"
 
     def test_parse_url_with_ip_address(self):
         """Test parsing URL with IP address."""
-        host, port, path = parse_transmission_url("http://192.168.1.100:9091")
+        protocol, host, port, path = parse_transmission_url("http://192.168.1.100:9091")
+        assert protocol == "http"
         assert host == "192.168.1.100"
         assert port == 9091
         assert path == "/transmission/rpc"
 
     def test_parse_empty_url_uses_defaults(self):
         """Test parsing empty URL uses localhost defaults."""
-        host, port, path = parse_transmission_url("")
+        protocol, host, port, path = parse_transmission_url("")
+        assert protocol == "http"
         assert host == "localhost"
         assert port == 9091
         assert path == "/transmission/rpc"

@@ -124,6 +124,36 @@ class TestTransmissionClientIsConfigured:
 class TestTransmissionClientTestConnection:
     """Tests for TransmissionClient.test_connection()."""
 
+    def test_init_passes_https_protocol(self, monkeypatch):
+        """Test HTTPS URL causes protocol=https to be passed to transmission-rpc Client."""
+        config_values = {
+            "TRANSMISSION_URL": "https://localhost:9091",
+            "TRANSMISSION_USERNAME": "admin",
+            "TRANSMISSION_PASSWORD": "password",
+            "TRANSMISSION_CATEGORY": "test",
+        }
+        monkeypatch.setattr(
+            "shelfmark.release_sources.prowlarr.clients.transmission.config.get",
+            make_config_getter(config_values),
+        )
+
+        mock_client_instance = MagicMock()
+        mock_client_instance.get_session.return_value = MockSession(version="4.0.5")
+
+        mock_transmission_rpc = create_mock_transmission_rpc_module()
+        mock_transmission_rpc.Client.return_value = mock_client_instance
+
+        with patch.dict("sys.modules", {"transmission_rpc": mock_transmission_rpc}):
+            if "shelfmark.release_sources.prowlarr.clients.transmission" in sys.modules:
+                del sys.modules["shelfmark.release_sources.prowlarr.clients.transmission"]
+
+            from shelfmark.release_sources.prowlarr.clients.transmission import (
+                TransmissionClient,
+            )
+
+            TransmissionClient()
+            assert mock_transmission_rpc.Client.call_args.kwargs.get("protocol") == "https"
+
     def test_test_connection_success(self, monkeypatch):
         """Test successful connection."""
         config_values = {

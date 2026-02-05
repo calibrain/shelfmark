@@ -134,9 +134,12 @@ def extract_torrent_info(
         return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
 
 
-def parse_transmission_url(url: str) -> Tuple[str, int, str]:
-    """Parse Transmission URL into (host, port, path)."""
+def parse_transmission_url(url: str) -> Tuple[str, str, int, str]:
+    """Parse Transmission URL into (protocol, host, port, path)."""
     parsed = urlparse(url)
+    protocol = (parsed.scheme or "http").lower()
+    if protocol not in ("http", "https"):
+        protocol = "http"
     host = parsed.hostname or "localhost"
     port = parsed.port or 9091
     path = parsed.path or "/transmission/rpc"
@@ -145,7 +148,7 @@ def parse_transmission_url(url: str) -> Tuple[str, int, str]:
     if not path.endswith("/rpc"):
         path = path.rstrip("/") + "/transmission/rpc"
 
-    return host, port, path
+    return protocol, host, port, path
 
 
 def bencode_decode(data: bytes) -> tuple:
