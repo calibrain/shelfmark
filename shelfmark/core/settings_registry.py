@@ -84,6 +84,13 @@ class MultiSelectField(FieldBase):
 
 
 @dataclass
+class TagListField(FieldBase):
+    """Editable list of free-form string values (tag/chip input)."""
+    placeholder: str = ""
+    default: List[str] = field(default_factory=list)
+
+
+@dataclass
 class OrderableListField(FieldBase):
     # Options can be a list or a callable that returns a list (for lazy evaluation)
     # Each option: {id, label, description?, disabledReason?, isLocked?, section?, isPinned?}
@@ -145,7 +152,19 @@ class HeadingField:
 
 
 # Type alias for all field types
-SettingsField = Union[TextField, PasswordField, NumberField, CheckboxField, SelectField, MultiSelectField, OrderableListField, ActionButton, HeadingField]
+SettingsField = Union[
+    TextField,
+    PasswordField,
+    NumberField,
+    CheckboxField,
+    SelectField,
+    MultiSelectField,
+    TagListField,
+    OrderableListField,
+    TableField,
+    ActionButton,
+    HeadingField,
+]
 
 
 @dataclass
@@ -398,6 +417,61 @@ def sync_env_to_config() -> None:
             logger.debug(f"Synced {len(values_to_sync)} ENV values to {tab.name} config: {list(values_to_sync.keys())}")
 
     migrate_legacy_settings()
+    migrate_mirror_settings()
+
+
+def migrate_mirror_settings() -> None:
+    """
+    Migrate legacy AA mirror config into the new editable mirror list setting.
+
+    Legacy:
+    - AA_ADDITIONAL_URLS: comma-separated extra URLs appended to defaults
+
+    New:
+    - AA_MIRROR_URLS: full ordered list of available mirrors (used for Auto mode and for Settings options)
+    """
+    mirrors_config = load_config_file("mirrors")
+
+    from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS
+    from shelfmark.core.utils import normalize_http_url
+
+    raw_list = mirrors_config.get("AA_MIRROR_URLS")
+    raw_additional = mirrors_config.get("AA_ADDITIONAL_URLS", "")
+
+    def _normalize_list(values: list[str]) -> list[str]:
+        out: list[str] = []
+        for item in values:
+            if str(item).strip().lower() == "auto":
+                continue
+            norm = normalize_http_url(str(item), default_scheme="https")
+            if norm and norm not in out:
+                out.append(norm)
+        return out
+
+    # If already a proper list, just ensure it's non-empty.
+    if isinstance(raw_list, list):
+        normalized = _normalize_list([str(v) for v in raw_list])
+        if normalized:
+            return
+        save_config_file("mirrors", {"AA_MIRROR_URLS": _normalize_list(DEFAULT_AA_MIRRORS)})
+        return
+
+    # If saved as a string, convert to list.
+    if isinstance(raw_list, str) and raw_list.strip():
+        parts = [p.strip() for p in raw_list.split(",") if p.strip()]
+        normalized = _normalize_list(parts)
+        if normalized:
+            save_config_file("mirrors", {"AA_MIRROR_URLS": normalized})
+            return
+        save_config_file("mirrors", {"AA_MIRROR_URLS": _normalize_list(DEFAULT_AA_MIRRORS)})
+        return
+
+    # If there's legacy additional mirrors, seed the full list so the UI reflects reality.
+    if isinstance(raw_additional, str) and raw_additional.strip():
+        additional_parts = [p.strip() for p in raw_additional.split(",") if p.strip()]
+        combined = _normalize_list(DEFAULT_AA_MIRRORS + additional_parts)
+        if combined:
+            save_config_file("mirrors", {"AA_MIRROR_URLS": combined})
 
 
 def migrate_legacy_settings() -> None:
@@ -542,6 +616,8 @@ def _parse_env_value(value: str, field: SettingsField) -> Any:
             return field.default
     elif isinstance(field, MultiSelectField):
         return [v.strip() for v in value.split(',') if v.strip()]
+    elif isinstance(field, TagListField):
+        return [v.strip() for v in value.split(',') if v.strip()]
     elif isinstance(field, OrderableListField):
         # Parse JSON array: [{"id": "...", "enabled": true}, ...]
         try:
@@ -643,6 +719,8 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
         options = field.options() if callable(field.options) else field.options
         result["options"] = options
         result["variant"] = field.variant
+    elif isinstance(field, TagListField):
+        result["placeholder"] = field.placeholder
     elif isinstance(field, OrderableListField):
         # Support callable options for lazy evaluation (avoids circular imports)
         options = field.options() if callable(field.options) else field.options
@@ -671,6 +749,16 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
             elif isinstance(value, str):
                 # Support legacy/manual configs where MultiSelect values were saved
                 # as comma-separated strings.
+                value = [v.strip() for v in value.split(",") if v.strip()]
+            else:
+                value = []
+        elif isinstance(field, TagListField):
+            if value is None:
+                value = []
+            elif isinstance(value, list):
+                value = [str(v) for v in value]
+            elif isinstance(value, str):
+                # Support legacy/manual configs where lists were saved as comma-separated strings.
                 value = [v.strip() for v in value.split(",") if v.strip()]
             else:
                 value = []
@@ -801,6 +889,23 @@ def _apply_dns_settings(config) -> None:
     except Exception as e:
         logger.warning(f"Failed to apply DNS settings: {e}")
 
+def _apply_aa_mirror_settings(config) -> None:
+    """
+    Apply AA mirror settings changes to the network module.
+
+    This ensures AA_BASE_URL / AA_ADDITIONAL_URLS changes take effect immediately
+    without requiring a container restart.
+    """
+    try:
+        from shelfmark.download import network
+
+        # Reload AA mirror list and configured base URL from refreshed config.
+        network.init_aa(force=True)
+    except ImportError:
+        pass  # Network module not available
+    except Exception as e:
+        logger.warning(f"Failed to apply AA mirror settings: {e}")
+
 
 def update_settings(tab_name: str, values: Dict[str, Any]) -> Dict[str, Any]:
     tab = get_settings_tab(tab_name)
@@ -884,6 +989,15 @@ def update_settings(tab_name: str, values: Dict[str, Any]) -> Dict[str, Any]:
             and dns_keys.intersection(values_to_save.keys())
         ):
             _apply_dns_settings(config_obj)
+
+        # Apply AA mirror settings changes live (mirrors tab)
+        aa_keys = {"AA_BASE_URL", "AA_MIRROR_URLS", "AA_ADDITIONAL_URLS"}
+        if (
+            config_obj is not None
+            and tab_name == "mirrors"
+            and aa_keys.intersection(values_to_save.keys())
+        ):
+            _apply_aa_mirror_settings(config_obj)
 
         # Sync metadata provider selection when a provider's enabled state changes
         tab = get_settings_tab(tab_name)

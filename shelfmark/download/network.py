@@ -738,10 +738,21 @@ def rotate_dns_and_reset_aa() -> bool:
     if not configured_url:
         configured_url = "auto"
 
-    if configured_url == "auto" or _aa_base_url in _aa_urls:
+    if configured_url == "auto":
+        # Auto mode always resets to the first mirror to restart the cascade
         _current_aa_url_index = 0
-        _aa_base_url = _aa_urls[0] if _aa_urls else "https://annas-archive.se"
+        _aa_base_url = _aa_urls[0] if _aa_urls else "https://annas-archive.gl"
         logger.info(f"After DNS switch, resetting AA URL to: {_aa_base_url}")
+        _save_state(aa_url=_aa_base_url)
+    else:
+        # Keep the user's configured primary mirror (if it exists in the list),
+        # otherwise keep the configured URL as-is (custom/env).
+        if configured_url in _aa_urls:
+            _current_aa_url_index = _aa_urls.index(configured_url)
+        else:
+            _current_aa_url_index = 0
+        _aa_base_url = configured_url
+        logger.info(f"After DNS switch, keeping configured AA URL: {_aa_base_url}")
         _save_state(aa_url=_aa_base_url)
     return True
 
@@ -916,6 +927,11 @@ def _initialize_aa_state() -> None:
     if not configured_url:
         configured_url = "auto"
 
+    # If AA_BASE_URL is pinned to a custom URL that's not in the mirror list, we still
+    # want to treat it as the active base (and rewrite known mirror links to it).
+    if configured_url != "auto" and configured_url not in _aa_urls:
+        _aa_urls = [configured_url] + _aa_urls
+
     if configured_url == "auto":
         if state.get('aa_base_url') and state['aa_base_url'] in _aa_urls:
             _current_aa_url_index = _aa_urls.index(state['aa_base_url'])
@@ -1031,6 +1047,17 @@ def get_aa_base_url():
     _ensure_initialized()
     return _aa_base_url
 
+def is_aa_auto_mode() -> bool:
+    """Return True when AA_BASE_URL is set to 'auto' (mirror failover enabled)."""
+    configured_url = normalize_http_url(
+        app_config.get("AA_BASE_URL", "auto"),
+        default_scheme="https",
+        allow_special=("auto",),
+    )
+    if not configured_url:
+        configured_url = "auto"
+    return configured_url == "auto"
+
 def get_available_aa_urls():
     """Get list of configured AA URLs (copy)."""
     _ensure_initialized()
@@ -1082,10 +1109,15 @@ class AAMirrorSelector:
         Returns (new_base, action) where action is 'mirror', 'dns', or 'exhausted'.
         """
         self.attempts_this_dns += 1
-        if self.attempts_this_dns >= len(self.aa_urls):
+        max_attempts = len(self.aa_urls) if is_aa_auto_mode() else 1
+        if self.attempts_this_dns >= max_attempts:
             if allow_dns and rotate_dns_and_reset_aa():
                 self._ensure_fresh_state(reset_attempts=True)
                 return self.current_base, "dns"
+            return None, "exhausted"
+
+        if not is_aa_auto_mode():
+            # Mirror is explicitly configured; do not fail over to other mirrors.
             return None, "exhausted"
 
         next_index = (self._index + 1) % len(self.aa_urls)

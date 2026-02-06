@@ -125,6 +125,7 @@ from shelfmark.core.settings_registry import (
     CheckboxField,
     SelectField,
     MultiSelectField,
+    TagListField,
     OrderableListField,
     TableField,
     HeadingField,
@@ -225,16 +226,30 @@ _LANGUAGE_OPTIONS = [{"value": lang["code"], "label": lang["language"]} for lang
 def _get_aa_base_url_options():
     """Build AA URL options dynamically, including additional mirrors from config."""
     from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS, get_aa_mirrors
+    from shelfmark.core.config import config
+    from shelfmark.core.utils import normalize_http_url
 
     options = [{"value": "auto", "label": "Auto (Recommended)"}]
 
     # Get all mirrors (defaults + custom)
     all_mirrors = get_aa_mirrors()
 
+    # If AA_BASE_URL is configured to a custom mirror that isn't present in the
+    # defaults/additional list, include it so the UI can display the active value.
+    configured_url = normalize_http_url(
+        config.get("AA_BASE_URL", "auto"),
+        default_scheme="https",
+        allow_special=("auto",),
+    )
+    if configured_url and configured_url != "auto" and configured_url not in all_mirrors:
+        all_mirrors = [configured_url] + all_mirrors
+
     for url in all_mirrors:
         domain = url.replace("https://", "").replace("http://", "")
         is_custom = url not in DEFAULT_AA_MIRRORS
         label = f"{domain} (custom)" if is_custom else domain
+        if configured_url and url == configured_url and is_custom:
+            label = f"{domain} (configured)"
         options.append({"value": url, "label": label})
 
     return options
@@ -1103,30 +1118,76 @@ def cloudflare_bypass_settings():
         ),
     ]
 
+def _on_save_mirrors(values: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize mirror list settings before persisting."""
+    from shelfmark.core.logger import setup_logger
+    from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS
+    from shelfmark.core.utils import normalize_http_url
+
+    logger = setup_logger(__name__)
+
+    raw_urls = values.get("AA_MIRROR_URLS")
+    if raw_urls is None:
+        return {"error": False, "values": values}
+
+    if isinstance(raw_urls, str):
+        parts = [p.strip() for p in raw_urls.split(",") if p.strip()]
+    elif isinstance(raw_urls, list):
+        parts = [str(p).strip() for p in raw_urls if str(p).strip()]
+    else:
+        parts = []
+
+    normalized: list[str] = []
+    for url in parts:
+        if url.lower() == "auto":
+            continue
+        norm = normalize_http_url(url, default_scheme="https")
+        if norm and norm not in normalized:
+            normalized.append(norm)
+
+    if not normalized:
+        logger.warning("AA_MIRROR_URLS saved empty/invalid; falling back to defaults")
+        normalized = [normalize_http_url(url, default_scheme="https") for url in DEFAULT_AA_MIRRORS]
+        normalized = [url for url in normalized if url]
+
+    values["AA_MIRROR_URLS"] = normalized
+    return {"error": False, "values": values}
+
+# Register the on_save handler for this tab
+register_on_save("mirrors", _on_save_mirrors)
+
 
 @register_settings("mirrors", "Mirrors", icon="globe", order=23, group="direct_download")
 def mirror_settings():
     """Configure download source mirrors."""
-    from shelfmark.core.mirrors import DEFAULT_ZLIB_MIRRORS, DEFAULT_WELIB_MIRRORS
+    from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS, DEFAULT_ZLIB_MIRRORS, DEFAULT_WELIB_MIRRORS
 
     return [
         # === PRIMARY SOURCE ===
         HeadingField(
             key="aa_mirrors_heading",
-            title="Primary Source",
-            description="Primary mirror with auto-probe on startup. Additional mirrors used as fallback.",
+            title="Anna's Archive",
+            description="Choose a primary mirror, or use Auto to try mirrors from your list below. The mirror list controls which options appear in the dropdown and the order used in Auto mode.",
         ),
         SelectField(
             key="AA_BASE_URL",
             label="Primary Mirror",
-            description="Select 'Auto' to probe mirrors on startup, or choose a specific mirror.",
+            description="Select 'Auto' to try mirrors from your list on startup and fall back on failures. Choosing a specific mirror locks Shelfmark to that mirror (no fallback).",
             options=_get_aa_base_url_options,
             default="auto",
         ),
+        TagListField(
+            key="AA_MIRROR_URLS",
+            label="Mirrors",
+            description="Editable list of AA mirrors. Used to populate the Primary Mirror dropdown and the order used when Auto is selected. Type a URL and press Enter to add. Order matters for auto-rotation",
+            placeholder="https://annas-archive.gl",
+            default=DEFAULT_AA_MIRRORS,
+        ),
         TextField(
             key="AA_ADDITIONAL_URLS",
-            label="Additional Mirrors",
-            description="Comma-separated list of custom mirror URLs.",
+            label="Additional Mirrors (Legacy)",
+            description="Deprecated. Use Mirrors instead. This is kept for backwards compatibility with existing installs and environment variables.",
+            show_when={"field": "AA_ADDITIONAL_URLS", "notEmpty": True},
         ),
 
         # === LIBGEN ===
