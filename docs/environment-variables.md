@@ -578,6 +578,7 @@ Comma-separated hosts to bypass proxy (e.g., localhost,127.0.0.1,10.*,*.local)
 | `DOWNLOAD_PROGRESS_UPDATE_INTERVAL` | How often download progress is broadcast to the UI. | number | `1` |
 | `CUSTOM_SCRIPT` | Path to a script to run after each successful download. Must be executable. | string | _none_ |
 | `CUSTOM_SCRIPT_PATH_MODE` | Pass the path to the custom script as an absolute path or relative to the destination folder. | string (choice) | `absolute` |
+| `CUSTOM_SCRIPT_JSON_PAYLOAD` | Send a JSON payload to the custom script via stdin. | boolean | `false` |
 | `COVERS_CACHE_ENABLED` | Cache book covers on the server for faster loading. | boolean | `true` |
 | `COVERS_CACHE_TTL` | How long to keep cached covers. Set to 0 to keep forever (recommended for static artwork). | number | `0` |
 | `COVERS_CACHE_MAX_SIZE_MB` | Maximum disk space for cached covers. Oldest images are removed when limit is reached. | number | `500` |
@@ -636,6 +637,8 @@ How often download progress is broadcast to the UI.
 
 Path to a script to run after each successful download. Must be executable.
 
+See `docs/custom-scripts.md` for the user guide, including how the target path argument (`$1`) and optional JSON payload work.
+
 - **Type:** string
 - **Default:** _none_
 
@@ -648,6 +651,17 @@ Pass the path to the custom script as an absolute path or relative to the destin
 - **Type:** string (choice)
 - **Default:** `absolute`
 - **Options:** `absolute` (Absolute), `relative` (Relative)
+
+#### `CUSTOM_SCRIPT_JSON_PAYLOAD`
+
+**Custom Script JSON Payload**
+
+Send a JSON payload to the custom script via stdin (in addition to the target path argument).
+
+See `docs/custom-scripts.md` for an example payload and usage patterns.
+
+- **Type:** boolean
+- **Default:** `false`
 
 #### `COVERS_CACHE_ENABLED`
 

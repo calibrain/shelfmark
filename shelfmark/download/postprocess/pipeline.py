@@ -19,6 +19,9 @@ from __future__ import annotations
 
 from .custom_script import (
     CustomScriptExecution,
+    CustomScriptContext,
+    CustomScriptTransferSummary,
+    maybe_run_custom_script,
     prepare_custom_script_execution,
     resolve_custom_script_target,
     run_custom_script,
@@ -57,6 +60,8 @@ __all__ = [
     "PreparedFiles",
     "TransferPlan",
     "CustomScriptExecution",
+    "CustomScriptContext",
+    "CustomScriptTransferSummary",
     "build_metadata_dict",
     "build_output_plan",
     "cleanup_output_staging",
@@ -69,6 +74,7 @@ __all__ = [
     "is_torrent_source",
     "is_within_tmp_dir",
     "log_plan_steps",
+    "maybe_run_custom_script",
     "prepare_output_files",
     "prepare_custom_script_execution",
     "process_directory",

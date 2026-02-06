@@ -93,13 +93,14 @@ def process_folder_output(
 ) -> Optional[str]:
     """Post-process download to the configured folder destination."""
     from shelfmark.download.postprocess.pipeline import (
+        CustomScriptContext,
+        CustomScriptTransferSummary,
         cleanup_output_staging,
         is_torrent_source,
         log_plan_steps,
-        prepare_custom_script_execution,
         prepare_output_files,
+        maybe_run_custom_script,
         record_step,
-        run_custom_script,
         transfer_book_files,
     )
 
@@ -212,42 +213,29 @@ def process_folder_output(
             len(final_paths),
         )
 
-    # Run custom script once per successful task, after transfer.
-    if core_config.config.CUSTOM_SCRIPT:
-        if len(final_paths) == 1:
-            target_path = final_paths[0]
-        else:
-            try:
-                target_path = Path(os.path.commonpath([str(p.parent) for p in final_paths]))
-            except ValueError:
-                target_path = plan.destination
+    script_context = CustomScriptContext(
+        task=task,
+        phase="post_transfer",
+        output_mode=plan.output_mode,
+        organization_mode=plan.organization_mode,
+        destination=plan.destination,
+        final_paths=final_paths,
+        transfer=CustomScriptTransferSummary(
+            op_counts=op_counts,
+            use_hardlink=use_hardlink,
+            is_torrent=is_torrent,
+            preserve_source=preserve_source,
+        ),
+    )
 
-        path_mode = core_config.config.get("CUSTOM_SCRIPT_PATH_MODE", "absolute")
-        execution = prepare_custom_script_execution(
-            core_config.config.CUSTOM_SCRIPT,
-            target_path=target_path,
-            destination=plan.destination,
-            path_mode=path_mode,
-            phase="post_transfer",
+    if not maybe_run_custom_script(script_context, status_callback=status_callback, steps=steps):
+        cleanup_output_staging(
+            prepared.output_plan,
+            prepared.working_path,
+            task,
+            prepared.cleanup_paths,
         )
-        record_step(
-            steps,
-            "custom_script",
-            script=str(execution.script_path),
-            target=str(execution.target_arg),
-            target_abs=str(execution.target_abs),
-            mode=str(execution.mode),
-            phase=str(execution.phase),
-        )
-        log_plan_steps(task.task_id, steps)
-        if not run_custom_script(execution, task_id=task.task_id, status_callback=status_callback):
-            cleanup_output_staging(
-                prepared.output_plan,
-                prepared.working_path,
-                task,
-                prepared.cleanup_paths,
-            )
-            return None
+        return None
 
     cleanup_output_staging(
         prepared.output_plan,

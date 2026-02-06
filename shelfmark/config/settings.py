@@ -1294,6 +1294,12 @@ def advanced_settings():
             ],
             default="absolute",
         ),
+        CheckboxField(
+            key="CUSTOM_SCRIPT_JSON_PAYLOAD",
+            label="Custom Script JSON Payload",
+            description="Send a JSON payload to the script via stdin. Useful for multi-file imports (audiobooks) or richer metadata without relying on path parsing.",
+            default=False,
+        ),
         HeadingField(
             key="remote_path_mappings_heading",
             title="Remote Path Mappings",
