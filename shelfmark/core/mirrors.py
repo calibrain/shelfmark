@@ -19,10 +19,8 @@ def _get_config():
 
 # Default mirror lists (hardcoded fallbacks)
 DEFAULT_AA_MIRRORS = [
-    "https://annas-archive.se",
+    "https://annas-archive.gl",
     "https://annas-archive.li",
-    "https://annas-archive.pm",
-    "https://annas-archive.in",
 ]
 
 DEFAULT_LIBGEN_MIRRORS = [
@@ -52,21 +50,46 @@ def _normalize_mirror_url(url: str) -> str:
 
 def get_aa_mirrors() -> List[str]:
     """
-    Get Anna's Archive mirrors from config + defaults.
+    Get Anna's Archive mirrors.
 
     Returns:
-        List of AA mirror URLs, starting with defaults then custom additions.
+        Ordered list of AA mirror URLs.
+
+        If AA_MIRROR_URLS is configured, it is treated as the full list.
+        Otherwise, defaults are used and AA_ADDITIONAL_URLS (legacy) is appended.
+
+        Notes:
+        - The list is used to populate the AA mirror dropdown in Settings.
+        - When AA_BASE_URL is set to 'auto', mirrors are tried in the order listed.
     """
-    mirrors = [_normalize_mirror_url(url) for url in DEFAULT_AA_MIRRORS]
-    mirrors = [url for url in mirrors if url]
     config = _get_config()
 
-    additional = config.get("AA_ADDITIONAL_URLS", "")
-    if additional:
-        for url in additional.split(","):
+    mirrors: list[str] = []
+
+    configured_list = config.get("AA_MIRROR_URLS", None)
+    if isinstance(configured_list, list):
+        for url in configured_list:
+            normalized = _normalize_mirror_url(str(url))
+            if normalized and normalized not in mirrors:
+                mirrors.append(normalized)
+    elif isinstance(configured_list, str) and configured_list.strip():
+        # Allow comma-separated env/manual configs.
+        for url in configured_list.split(","):
             normalized = _normalize_mirror_url(url)
             if normalized and normalized not in mirrors:
                 mirrors.append(normalized)
+
+    if not mirrors:
+        mirrors = [_normalize_mirror_url(url) for url in DEFAULT_AA_MIRRORS]
+        mirrors = [url for url in mirrors if url]
+
+        # Backwards-compatible append-only behavior for legacy configs/env.
+        additional = config.get("AA_ADDITIONAL_URLS", "")
+        if additional:
+            for url in additional.split(","):
+                normalized = _normalize_mirror_url(url)
+                if normalized and normalized not in mirrors:
+                    mirrors.append(normalized)
 
     return mirrors
 

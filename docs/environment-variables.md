@@ -1138,8 +1138,9 @@ Timeout for external bypasser requests in milliseconds.
 
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
-| `AA_BASE_URL` | Select 'Auto' to probe mirrors on startup, or choose a specific mirror. | string (choice) | `auto` |
-| `AA_ADDITIONAL_URLS` | Comma-separated list of custom mirror URLs. | string | _none_ |
+| `AA_BASE_URL` | Select 'Auto' to try mirrors from your list on startup and fall back on failures. Choosing a specific mirror locks Shelfmark to that mirror (no fallback). | string (choice) | `auto` |
+| `AA_MIRROR_URLS` | Editable list of AA mirrors. Used to populate the Primary Mirror dropdown and the order used when Auto is selected. Type a URL and press Enter to add. Order matters for auto-rotation | string | `https://annas-archive.gl,https://annas-archive.li` |
+| `AA_ADDITIONAL_URLS` | Deprecated. Use Mirrors instead. This is kept for backwards compatibility with existing installs and environment variables. | string | _none_ |
 | `LIBGEN_ADDITIONAL_URLS` | Comma-separated list of custom LibGen mirrors to add to the defaults. | string | _none_ |
 | `ZLIB_PRIMARY_URL` | Z-Library mirror to use for downloads. | string (choice) | `https://z-lib.fm` |
 | `ZLIB_ADDITIONAL_URLS` | Comma-separated list of custom Z-Library mirror URLs. | string | _none_ |
@@ -1153,17 +1154,26 @@ Timeout for external bypasser requests in milliseconds.
 
 **Primary Mirror**
 
-Select 'Auto' to probe mirrors on startup, or choose a specific mirror.
+Select 'Auto' to try mirrors from your list on startup and fall back on failures. Choosing a specific mirror locks Shelfmark to that mirror (no fallback).
 
 - **Type:** string (choice)
 - **Default:** `auto`
-- **Options:** `auto` (Auto (Recommended)), `https://annas-archive.se` (annas-archive.se), `https://annas-archive.li` (annas-archive.li), `https://annas-archive.pm` (annas-archive.pm), `https://annas-archive.in` (annas-archive.in)
+- **Options:** `auto` (Auto (Recommended)), `https://annas-archive.gl` (annas-archive.gl), `https://annas-archive.li` (annas-archive.li)
+
+#### `AA_MIRROR_URLS`
+
+**Mirrors**
+
+Editable list of AA mirrors. Used to populate the Primary Mirror dropdown and the order used when Auto is selected. Type a URL and press Enter to add. Order matters for auto-rotation
+
+- **Type:** string
+- **Default:** `https://annas-archive.gl,https://annas-archive.li`
 
 #### `AA_ADDITIONAL_URLS`
 
-**Additional Mirrors**
+**Additional Mirrors (Legacy)**
 
-Comma-separated list of custom mirror URLs.
+Deprecated. Use Mirrors instead. This is kept for backwards compatibility with existing installs and environment variables.
 
 - **Type:** string
 - **Default:** _none_

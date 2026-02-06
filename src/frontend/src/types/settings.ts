@@ -7,6 +7,7 @@ export type FieldType =
   | 'CheckboxField'
   | 'SelectField'
   | 'MultiSelectField'
+  | 'TagListField'
   | 'OrderableListField'
   | 'TableField'
   | 'ActionButton'
@@ -93,6 +94,12 @@ export interface MultiSelectFieldConfig extends BaseField {
   variant?: 'pills' | 'dropdown';  // 'pills' (default) or 'dropdown' for checkbox dropdown style
 }
 
+export interface TagListFieldConfig extends BaseField {
+  type: 'TagListField';
+  value: string[];
+  placeholder?: string;
+}
+
 // OrderableListField types - generic drag-and-drop reorderable list
 export interface OrderableListItem {
   id: string;
@@ -163,6 +170,7 @@ export type SettingsField =
   | CheckboxFieldConfig
   | SelectFieldConfig
   | MultiSelectFieldConfig
+  | TagListFieldConfig
   | OrderableListFieldConfig
   | TableFieldConfig
   | ActionButtonConfig

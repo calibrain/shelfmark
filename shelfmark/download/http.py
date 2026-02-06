@@ -5,7 +5,7 @@ import time
 from io import BytesIO
 from threading import Event, Thread
 from typing import Callable, Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 import requests
 from tqdm import tqdm
@@ -228,13 +228,78 @@ def html_get_page(
                         heartbeat_thread.join(timeout=1)
 
             logger.debug(f"GET: {current_url}")
-            # Try with CF cookies/UA if available (from previous bypass)
-            headers = {}
-            cookies = _apply_cf_bypass(current_url, headers)
-            response = requests.get(current_url, proxies=get_proxies(current_url), timeout=REQUEST_TIMEOUT, cookies=cookies, headers=headers)
-            response.raise_for_status()
-            time.sleep(1)
-            return response.text
+
+            # Use a browser-like UA by default (AA can behave differently for python-requests UA).
+            headers = {"User-Agent": DOWNLOAD_HEADERS["User-Agent"]}
+
+            # AA mirrors sometimes redirect to other (seized/dead) mirror domains. If we let
+            # requests follow those redirects, the request fails on DNS and we rotate away
+            # from an otherwise working mirror. Handle AA redirects manually instead.
+            is_aa_url = network.should_rotate_dns_for_url(current_url)
+            allow_redirects = not is_aa_url
+
+            redirects_followed = 0
+            while True:
+                # Try with CF cookies/UA if available (from previous bypass)
+                cookies = _apply_cf_bypass(current_url, headers)
+                response = requests.get(
+                    current_url,
+                    proxies=get_proxies(current_url),
+                    timeout=REQUEST_TIMEOUT,
+                    cookies=cookies,
+                    headers=headers,
+                    allow_redirects=allow_redirects,
+                )
+
+                if is_aa_url and response.is_redirect:
+                    location = response.headers.get("Location", "")
+                    if not location:
+                        raise requests.exceptions.TooManyRedirects(f"Redirect with no Location header: {current_url}")
+
+                    redirect_url = urljoin(current_url, location)
+                    current_host = urlparse(current_url).hostname or ""
+                    redirect_host = urlparse(redirect_url).hostname or ""
+
+                    # If an AA mirror redirects to a different hostname, treat that as a mirror
+                    # failure and rotate rather than following the redirect (auto mode only).
+                    if current_host and redirect_host and current_host != redirect_host:
+                        if not network.is_aa_auto_mode():
+                            logger.warning(
+                                "AA mirror locked to %s but redirected to %s: %s",
+                                current_host,
+                                redirect_host,
+                                current_url,
+                            )
+                            return ""
+
+                        new_url = _try_rotation(original_url, current_url, selector)
+                        if new_url:
+                            current_url = new_url
+                            # Reset per-request state for the new host.
+                            headers = {"User-Agent": DOWNLOAD_HEADERS["User-Agent"]}
+                            is_aa_url = network.should_rotate_dns_for_url(current_url)
+                            allow_redirects = not is_aa_url
+                            redirects_followed = 0
+                            continue
+
+                        logger.warning(
+                            "AA redirect from %s to %s but mirrors exhausted: %s",
+                            current_host,
+                            redirect_host,
+                            current_url,
+                        )
+                        return ""
+
+                    # Same-host redirect (relative or absolute) - follow manually.
+                    redirects_followed += 1
+                    if redirects_followed > 5:
+                        raise requests.exceptions.TooManyRedirects(f"Too many redirects for {current_url}")
+                    current_url = redirect_url
+                    continue
+
+                response.raise_for_status()
+                time.sleep(1)
+                return response.text
 
         except Exception as e:
             status = _get_status_code(e)

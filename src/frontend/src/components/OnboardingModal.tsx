@@ -13,6 +13,7 @@ import {
   CheckboxFieldConfig,
   SelectFieldConfig,
   MultiSelectFieldConfig,
+  TagListFieldConfig,
   HeadingFieldConfig,
   ActionButtonConfig,
   ActionResult,
@@ -25,6 +26,7 @@ import {
   CheckboxField,
   SelectField,
   MultiSelectField,
+  TagListField,
   HeadingField,
   ActionButton,
 } from './settings/fields';
@@ -134,6 +136,15 @@ const renderField = (
           field={field as MultiSelectFieldConfig}
           value={(value as string[]) ?? []}
           onChange={onChange}
+          disabled={isDisabled}
+        />
+      );
+    case 'TagListField':
+      return (
+        <TagListField
+          field={field as TagListFieldConfig}
+          value={(value as string[]) ?? []}
+          onChange={(v) => onChange(v)}
           disabled={isDisabled}
         />
       );
