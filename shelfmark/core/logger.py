@@ -39,22 +39,38 @@ class CustomLogger(logging.Logger):
         self.debug(msg, *args, exc_info=has_exception, **kwargs)
 
     def log_resource_usage(self):
-        import psutil
+        # Best-effort only; this should never raise during exception logging.
+        try:
+            import psutil
 
-        # Sum RSS of all processes for actual app memory
-        app_memory_mb = 0
-        for proc in psutil.process_iter(['memory_info']):
+            # Sum RSS of all processes for actual app memory (container-friendly),
+            # but fall back gracefully on platforms that restrict process enumeration.
+            app_memory_mb = 0.0
             try:
-                if proc.info['memory_info']:
-                    app_memory_mb += proc.info['memory_info'].rss / (1024 * 1024)
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
+                for proc in psutil.process_iter(['memory_info']):
+                    try:
+                        mem = proc.info.get('memory_info')
+                        if mem:
+                            app_memory_mb += mem.rss / (1024 * 1024)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, KeyError, AttributeError):
+                        continue
+            except (PermissionError, psutil.AccessDenied, OSError):
+                try:
+                    app_memory_mb = psutil.Process().memory_info().rss / (1024 * 1024)
+                except Exception:
+                    app_memory_mb = 0.0
 
-        memory = psutil.virtual_memory()
-        system_used_mb = memory.used / (1024 * 1024)
-        available_mb = memory.available / (1024 * 1024)
-        cpu_percent = psutil.cpu_percent()
-        self.debug(f"Container Memory: App={app_memory_mb:.2f} MB, System={system_used_mb:.2f} MB, Available={available_mb:.2f} MB, CPU: {cpu_percent:.2f}%")
+            memory = psutil.virtual_memory()
+            system_used_mb = memory.used / (1024 * 1024)
+            available_mb = memory.available / (1024 * 1024)
+            cpu_percent = psutil.cpu_percent()
+            self.debug(
+                f"Container Memory: App={app_memory_mb:.2f} MB, System={system_used_mb:.2f} MB, "
+                f"Available={available_mb:.2f} MB, CPU: {cpu_percent:.2f}%"
+            )
+        except Exception:
+            # Avoid breaking the original log call if psutil is missing or restricted.
+            return
 
 
 def setup_logger(name: str, log_file: Path = LOG_FILE) -> CustomLogger:

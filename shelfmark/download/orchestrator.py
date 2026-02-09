@@ -18,6 +18,7 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import BookInfo, DownloadTask, QueueStatus, SearchFilters, SearchMode
 from shelfmark.core.queue import book_queue
 from shelfmark.core.utils import transform_cover_url
+from shelfmark.download.fs import run_blocking_io
 from shelfmark.download.postprocess.pipeline import is_torrent_source, safe_cleanup_path
 from shelfmark.download.postprocess.router import post_process_download
 from shelfmark.release_sources import direct_download, get_handler, get_source_display_name
@@ -184,7 +185,7 @@ def queue_status() -> Dict[str, Dict[str, Any]]:
     status = book_queue.get_status()
     for _, tasks in status.items():
         for _, task in tasks.items():
-            if task.download_path and not os.path.exists(task.download_path):
+            if task.download_path and not run_blocking_io(os.path.exists, task.download_path):
                 task.download_path = None
 
     # Convert Enum keys to strings and DownloadTask objects to dicts for JSON serialization
@@ -295,7 +296,7 @@ def _download_task(task_id: str, cancel_flag: Event) -> Optional[str]:
             return None
 
         temp_file = Path(temp_path)
-        if not temp_file.exists():
+        if not run_blocking_io(temp_file.exists):
             logger.error(f"Handler returned non-existent path: {temp_path}")
             return None
 

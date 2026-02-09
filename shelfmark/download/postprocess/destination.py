@@ -10,6 +10,7 @@ from shelfmark.core.utils import (
     get_destination,
     is_audiobook as check_audiobook,
 )
+from shelfmark.download.fs import run_blocking_io
 from shelfmark.download.permissions_debug import log_path_permission_context
 
 logger = setup_logger("shelfmark.download.postprocess.pipeline")
@@ -23,14 +24,15 @@ def validate_destination(destination: Path, status_callback) -> bool:
         status_callback("error", f"Destination must be absolute: {destination}")
         return False
 
-    if destination.exists() and not destination.is_dir():
+    destination_exists = run_blocking_io(destination.exists)
+    if destination_exists and not run_blocking_io(destination.is_dir):
         logger.warning(f"Destination is not a directory: {destination}")
         status_callback("error", f"Destination is not a directory: {destination}")
         return False
 
-    if not destination.exists():
+    if not destination_exists:
         try:
-            destination.mkdir(parents=True, exist_ok=True)
+            run_blocking_io(destination.mkdir, parents=True, exist_ok=True)
         except (OSError, PermissionError) as exc:
             log_path_permission_context("destination_create", destination)
             logger.warning(f"Cannot create destination: {destination} ({exc})")
@@ -44,8 +46,8 @@ def validate_destination(destination: Path, status_callback) -> bool:
             f"This file was created to verify if '{destination}' is writable. "
             "It should've been automatically deleted. Feel free to delete it.\n"
         )
-        test_path.write_text(test_content)
-        test_path.unlink(missing_ok=True)
+        run_blocking_io(test_path.write_text, test_content)
+        run_blocking_io(test_path.unlink, missing_ok=True)
     except Exception as exc:
         logger.debug("Destination write probe path: %s", test_path)
         log_path_permission_context("destination_write_probe", destination)

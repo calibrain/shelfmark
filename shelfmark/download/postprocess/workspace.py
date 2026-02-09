@@ -22,8 +22,20 @@ def _tmp_dir() -> Path:
 def is_within_tmp_dir(path: Path) -> bool:
     """Legacy helper: True if path is inside TMP_DIR."""
 
+    # Fast path: avoid `resolve()` (can block on NFS) for obviously-non-TMP paths.
+    # This is a *negative* check only; for potential TMP paths we still resolve to
+    # prevent symlink escapes from being treated as managed.
+    tmp_dir = _tmp_dir()
     try:
-        path.resolve().relative_to(_tmp_dir().resolve())
+        if path.is_absolute() and tmp_dir.is_absolute():
+            if path != tmp_dir and tmp_dir not in path.parents:
+                return False
+    except Exception:
+        # Fall back to the slower resolve-based check below.
+        pass
+
+    try:
+        run_blocking_io(path.resolve).relative_to(run_blocking_io(tmp_dir.resolve))
         return True
     except (OSError, ValueError):
         return False
@@ -43,7 +55,8 @@ def _is_original_download(path: Optional[Path], task: DownloadTask) -> bool:
     if not path or not task.original_download_path:
         return False
     try:
-        return path.resolve() == Path(task.original_download_path).resolve()
+        original = Path(task.original_download_path)
+        return run_blocking_io(path.resolve) == run_blocking_io(original.resolve)
     except (OSError, ValueError):
         return False
 

@@ -80,7 +80,7 @@ def extract_archive_files(
         )
 
     if cleanup_archive:
-        archive_path.unlink(missing_ok=True)
+        run_blocking_io(archive_path.unlink, missing_ok=True)
 
     cleanup_paths = [output_dir]
 
@@ -107,8 +107,12 @@ def scan_directory_tree(
     """Scan a directory tree for book files, trackable-but-unsupported files, and archives."""
 
     try:
-        with os.scandir(directory) as it:
-            next(it, None)
+        def _probe_dir() -> None:
+            # Force a fast error if the dir is missing/inaccessible.
+            with os.scandir(directory) as it:
+                next(it, None)
+
+        run_blocking_io(_probe_dir)
     except PermissionError as exc:
         log_path_permission_context("scan_directory", directory)
         logger.warning(f"Permission denied scanning directory: {directory} ({exc})")
@@ -280,7 +284,7 @@ def collect_staged_files(
     status_callback,
     cleanup_archives: bool,
 ) -> Tuple[List[Path], List[Path], List[Path], Optional[str]]:
-    if working_path.is_dir():
+    if run_blocking_io(working_path.is_dir):
         if status_callback:
             status_callback("resolving", "Processing download folder")
         return collect_directory_files(

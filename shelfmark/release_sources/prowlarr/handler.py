@@ -10,6 +10,7 @@ from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook
+from shelfmark.download.fs import run_blocking_io
 from shelfmark.release_sources import DownloadHandler, register_handler
 from shelfmark.release_sources.prowlarr.cache import get_release, remove_release
 from shelfmark.release_sources.prowlarr.clients import (
@@ -159,15 +160,15 @@ class ProwlarrHandler(DownloadHandler):
             logger.warning(f"Refusing to delete unsafe path for {client.name} {download_id}: {delete_path}")
             return
 
-        if not delete_path.exists():
+        if not run_blocking_io(delete_path.exists):
             logger.debug(f"Local download path does not exist for cleanup: {delete_path}")
             return
 
         try:
-            if delete_path.is_dir():
-                shutil.rmtree(delete_path)
+            if run_blocking_io(delete_path.is_dir):
+                run_blocking_io(shutil.rmtree, delete_path)
             else:
-                delete_path.unlink()
+                run_blocking_io(delete_path.unlink)
             logger.info(f"Deleted local download data for {client.name} {download_id}: {delete_path}")
         except Exception as e:
             logger.warning(f"Failed to delete local download data for {client.name} {download_id}: {e}")
@@ -284,17 +285,18 @@ class ProwlarrHandler(DownloadHandler):
         )
 
         if log_details:
+            remapped_exists = run_blocking_io(remapped.exists)
             logger.debug(
                 "Remap result: %s -> %s (exists=%s, changed=%s, matched=%s)",
                 source_path_obj,
                 remapped,
-                remapped.exists(),
+                remapped_exists,
                 remapped != source_path_obj,
                 matched_mapping,
             )
 
         if matched_mapping:
-            if remapped.exists():
+            if run_blocking_io(remapped.exists):
                 logger.info(
                     "Remapped download path for %s (%s): %s -> %s",
                     client.name,
@@ -321,7 +323,7 @@ class ProwlarrHandler(DownloadHandler):
             return None, message
 
         if mappings:
-            if source_path_obj.exists():
+            if run_blocking_io(source_path_obj.exists):
                 logger.info(
                     "No remote path mapping matched for %s (%s); using client path: %s",
                     client.name,
@@ -344,7 +346,7 @@ class ProwlarrHandler(DownloadHandler):
                 )
             return None, message
 
-        if not source_path_obj.exists():
+        if not run_blocking_io(source_path_obj.exists):
             hint = _diagnose_path_issue(raw_path)
             message = hint
             if log_details:

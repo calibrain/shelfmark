@@ -15,7 +15,7 @@ from shelfmark.core.naming import (
     sanitize_filename,
 )
 from shelfmark.core.utils import is_audiobook as check_audiobook
-from shelfmark.download.fs import atomic_copy, atomic_hardlink, atomic_move
+from shelfmark.download.fs import atomic_copy, atomic_hardlink, atomic_move, run_blocking_io
 from shelfmark.download.postprocess.policy import get_file_organization, get_template
 
 from .scan import collect_directory_files, scan_directory_tree
@@ -70,10 +70,11 @@ def resolve_hardlink_source(
 
     if hardlink_enabled and task.original_download_path:
         hardlink_source = Path(task.original_download_path)
-        if destination and hardlink_source.exists() and same_filesystem(hardlink_source, destination):
+        hardlink_source_exists = run_blocking_io(hardlink_source.exists)
+        if destination and hardlink_source_exists and run_blocking_io(same_filesystem, hardlink_source, destination):
             use_hardlink = True
             source_path = hardlink_source
-        elif hardlink_source.exists():
+        elif hardlink_source_exists:
             logger.warning(
                 f"Cannot hardlink: {hardlink_source} and {destination} are on different filesystems. "
                 "Falling back to copy. To fix: ensure torrent client downloads to same filesystem as destination."
@@ -97,7 +98,7 @@ def is_torrent_source(source_path: Path, task: DownloadTask) -> bool:
 
     original_path = Path(task.original_download_path)
     try:
-        return source_path.resolve() == original_path.resolve()
+        return run_blocking_io(source_path.resolve) == run_blocking_io(original_path.resolve)
     except (OSError, ValueError):
         try:
             return os.path.normpath(str(source_path)) == os.path.normpath(str(original_path))
@@ -122,7 +123,7 @@ def _transfer_single_file(
     if use_hardlink:
         final_path = atomic_hardlink(source_path, dest_path, max_attempts=max_attempts)
         try:
-            if os.stat(source_path).st_ino == os.stat(final_path).st_ino:
+            if run_blocking_io(source_path.stat).st_ino == run_blocking_io(final_path.stat).st_ino:
                 return final_path, "hardlink"
         except OSError:
             return final_path, "hardlink"
@@ -160,8 +161,14 @@ def transfer_book_files(
         if len(book_files) == 1:
             source_file = book_files[0]
             ext = source_file.suffix.lstrip(".") or task.format or ""
-            dest_path = build_library_path(str(destination), template, metadata, extension=ext or None)
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            dest_path = run_blocking_io(
+                build_library_path,
+                str(destination),
+                template,
+                metadata,
+                extension=ext or None,
+            )
+            run_blocking_io(dest_path.parent.mkdir, parents=True, exist_ok=True)
 
             final_path, op = _transfer_single_file(
                 source_file,
@@ -181,8 +188,14 @@ def transfer_book_files(
             for source_file, part_number in files_with_parts:
                 ext = source_file.suffix.lstrip(".") or task.format or ""
                 file_metadata = {**metadata, "PartNumber": part_number}
-                dest_path = build_library_path(str(destination), template, file_metadata, extension=ext or None)
-                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                dest_path = run_blocking_io(
+                    build_library_path,
+                    str(destination),
+                    template,
+                    file_metadata,
+                    extension=ext or None,
+                )
+                run_blocking_io(dest_path.parent.mkdir, parents=True, exist_ok=True)
 
                 final_path, op = _transfer_single_file(
                     source_file,
@@ -297,8 +310,8 @@ def transfer_file_to_library(
     use_hardlink: bool,
 ) -> Optional[str]:
     extension = source_path.suffix.lstrip(".") or task.format
-    dest_path = build_library_path(library_base, template, metadata, extension)
-    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    dest_path = run_blocking_io(build_library_path, library_base, template, metadata, extension)
+    run_blocking_io(dest_path.parent.mkdir, parents=True, exist_ok=True)
 
     is_torrent = is_torrent_source(source_path, task)
     final_path, op = _transfer_single_file(
@@ -349,8 +362,14 @@ def transfer_directory_to_library(
             safe_cleanup_path(temp_file, task)
         return None
 
-    base_library_path = build_library_path(library_base, template, metadata, extension=None)
-    base_library_path.parent.mkdir(parents=True, exist_ok=True)
+    base_library_path = run_blocking_io(
+        build_library_path,
+        library_base,
+        template,
+        metadata,
+        extension=None,
+    )
+    run_blocking_io(base_library_path.parent.mkdir, parents=True, exist_ok=True)
 
     is_torrent = is_torrent_source(source_dir, task)
     transferred_paths: List[Path] = []
@@ -378,8 +397,8 @@ def transfer_directory_to_library(
         for source_file, part_number in files_with_parts:
             ext = source_file.suffix.lstrip(".")
             file_metadata = {**metadata, "PartNumber": part_number}
-            file_path = build_library_path(library_base, template, file_metadata, extension=ext)
-            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path = run_blocking_io(build_library_path, library_base, template, file_metadata, extension=ext)
+            run_blocking_io(file_path.parent.mkdir, parents=True, exist_ok=True)
 
             final_path, op = _transfer_single_file(
                 source_file,
