@@ -69,7 +69,7 @@ export const EmailRecipientModal = ({ isOpen, recipients, onSelect, onCancel }: 
       }}
     >
       <div
-        className={`w-full sm:max-w-md h-full sm:h-auto pointer-events-auto ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`details-container w-full sm:max-w-md h-full sm:h-auto pointer-events-auto ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
