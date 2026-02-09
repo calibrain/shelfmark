@@ -189,8 +189,13 @@ export const getMetadataBookInfo = async (provider: string, bookId: string): Pro
   return transformMetadataToBook(response);
 };
 
-export const downloadBook = async (id: string): Promise<void> => {
-  await fetchJSON(`${API.download}?id=${encodeURIComponent(id)}`);
+export const downloadBook = async (id: string, emailRecipient?: string): Promise<void> => {
+  const params = new URLSearchParams();
+  params.set('id', id);
+  if (emailRecipient) {
+    params.set('email_recipient', emailRecipient);
+  }
+  await fetchJSON(`${API.download}?${params.toString()}`);
 };
 
 // Download a specific release (from ReleaseModal)
@@ -214,6 +219,7 @@ export const downloadRelease = async (release: {
   series_position?: number;
   subtitle?: string;
   search_author?: string;
+  email_recipient?: string;
 }): Promise<void> => {
   await fetchJSON(`${API_BASE}/releases/download`, {
     method: 'POST',

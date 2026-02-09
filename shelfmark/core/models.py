@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from enum import Enum
 import re
 import time
@@ -88,6 +88,11 @@ class DownloadTask:
     # Search mode - determines post-download processing behavior
     # See SearchMode enum for behavioral differences
     search_mode: Optional[SearchMode] = None
+
+    # Output selection for post-processing.
+    # This is captured at queue time so in-flight tasks are not affected if the user changes settings later.
+    output_mode: Optional[str] = None  # e.g. "folder", "booklore", "email"
+    output_args: Dict[str, Any] = field(default_factory=dict)  # Per-output parameters (e.g. email recipient)
 
     # Runtime state
     priority: int = 0
