@@ -20,7 +20,7 @@ STAGE_MOVE: StageAction = "move"
 def get_staging_dir() -> Path:
     """Get the staging directory for downloads."""
     tmp_dir = env_config.TMP_DIR
-    tmp_dir.mkdir(parents=True, exist_ok=True)
+    run_blocking_io(tmp_dir.mkdir, parents=True, exist_ok=True)
     return tmp_dir
 
 
@@ -41,11 +41,11 @@ def build_staging_dir(prefix: str | None, task_id: str) -> Path:
     staging_dir = base_dir / f"{prefix}_{safe_id}"
     counter = 1
 
-    while staging_dir.exists():
+    while run_blocking_io(staging_dir.exists):
         staging_dir = base_dir / f"{prefix}_{safe_id}_{counter}"
         counter += 1
 
-    staging_dir.mkdir(parents=True, exist_ok=True)
+    run_blocking_io(staging_dir.mkdir, parents=True, exist_ok=True)
     return staging_dir
 
 
@@ -63,8 +63,9 @@ def stage_path(source: Path, staging_dir: Path, action: StageAction) -> Path:
     staged_path = staging_dir / source.name
     counter = 1
 
-    if source.is_dir():
-        while staged_path.exists():
+    source_is_dir = run_blocking_io(source.is_dir)
+    if source_is_dir:
+        while run_blocking_io(staged_path.exists):
             staged_path = staging_dir / f"{source.name}_{counter}"
             counter += 1
         if action == STAGE_COPY:
@@ -72,7 +73,7 @@ def stage_path(source: Path, staging_dir: Path, action: StageAction) -> Path:
         else:
             run_blocking_io(shutil.move, str(source), str(staged_path))
     else:
-        while staged_path.exists():
+        while run_blocking_io(staged_path.exists):
             staged_path = staging_dir / f"{source.stem}_{counter}{source.suffix}"
             counter += 1
         if action == STAGE_COPY:
@@ -80,6 +81,6 @@ def stage_path(source: Path, staging_dir: Path, action: StageAction) -> Path:
         else:
             run_blocking_io(shutil.move, str(source), str(staged_path))
 
-    staged_kind = "directory" if source.is_dir() else "file"
+    staged_kind = "directory" if source_is_dir else "file"
     logger.debug("Staged %s via %s: %s -> %s", staged_kind, action, source, staged_path)
     return staged_path

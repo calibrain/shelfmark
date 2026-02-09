@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, Callable, Optional, TypeVar, cast
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.download.permissions_debug import log_transfer_permission_context
@@ -45,10 +45,27 @@ def _get_io_threadpool() -> "_GeventThreadPool":
     return _IO_THREADPOOL
 
 
+def _call_and_capture(func: Callable[..., T], args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[bool, T | Exception]:
+    try:
+        return True, func(*args, **kwargs)
+    except Exception as exc:
+        return False, exc
+
+
 def run_blocking_io(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
-    """Run blocking I/O in a native thread when under gevent."""
+    """Run blocking I/O in a native thread when under gevent.
+
+    gevent's threadpool will eagerly log exceptions raised inside worker threads,
+    even when the caller expects and handles those errors (e.g. FileExistsError for
+    collision retries, EXDEV for cross-device moves). Capture and re-raise in the
+    caller to avoid noisy, misleading tracebacks.
+    """
     if _use_gevent_threadpool():
-        return _get_io_threadpool().apply(func, args, kwds=kwargs)
+        ok, result = _get_io_threadpool().apply(_call_and_capture, (func, args, kwargs))
+        if ok:
+            return cast(T, result)
+        exc = cast(Exception, result)
+        raise exc
     return func(*args, **kwargs)
 
 
@@ -66,7 +83,8 @@ def _verify_transfer_size(
     Some filesystems (especially remote NAS/CIFS/NFS) can report stale sizes briefly
     after large writes. Do a second stat after a short delay before declaring failure.
     """
-    actual_size = dest.stat().st_size
+    # On network filesystems, `stat()` can block long enough to starve the gevent hub.
+    actual_size = run_blocking_io(dest.stat).st_size
     if actual_size == expected_size:
         return
 
@@ -76,7 +94,7 @@ def _verify_transfer_size(
     )
     time.sleep(_VERIFY_IO_WAIT_SECONDS)
 
-    actual_size = dest.stat().st_size
+    actual_size = run_blocking_io(dest.stat).st_size
     if actual_size != expected_size:
         raise IOError(
             f"File {action} incomplete, data loss may have occurred. "
@@ -109,11 +127,16 @@ def atomic_write(dest_path: Path, data: bytes, max_attempts: int = 100) -> Path:
         try_path = dest_path if attempt == 0 else parent / f"{base}_{attempt}{ext}"
         try:
             # O_CREAT | O_EXCL fails atomically if file exists
-            fd = os.open(str(try_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
+            fd = run_blocking_io(
+                os.open,
+                str(try_path),
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                0o666,
+            )
             try:
-                os.write(fd, data)
+                run_blocking_io(os.write, fd, data)
             finally:
-                os.close(fd)
+                run_blocking_io(os.close, fd)
             if attempt > 0:
                 logger.info(f"File collision resolved: {try_path.name}")
             return try_path
@@ -142,7 +165,7 @@ def _system_op(op: str, source: Path, dest: Path) -> None:
 
 def _perform_nfs_fallback(source: Path, dest: Path, is_move: bool) -> None:
     """Handle NFS/SMB permission errors by falling back to copyfile -> system op."""
-    expected_size = source.stat().st_size
+    expected_size = run_blocking_io(source.stat).st_size
 
     try:
         # Fallback 1: copy content only
@@ -150,12 +173,12 @@ def _perform_nfs_fallback(source: Path, dest: Path, is_move: bool) -> None:
         _verify_transfer_size(dest, expected_size, "copy")
 
         if is_move:
-            source.unlink()
+            run_blocking_io(source.unlink)
         return
 
     except Exception as copy_error:
         # Clean up failed copy attempt if it exists
-        dest.unlink(missing_ok=True)
+        run_blocking_io(dest.unlink, missing_ok=True)
 
         if _is_permission_error(copy_error):
             log_transfer_permission_context("nfs_fallback_copyfile", source=source, dest=dest, error=copy_error)
@@ -166,14 +189,14 @@ def _perform_nfs_fallback(source: Path, dest: Path, is_move: bool) -> None:
         try:
             _system_op(op, source, dest)
             # Best-effort verify after external command.
-            if dest.exists():
+            if run_blocking_io(dest.exists):
                 _verify_transfer_size(dest, expected_size, op)
             if is_move:
-                source.unlink(missing_ok=True)
+                run_blocking_io(source.unlink, missing_ok=True)
         except subprocess.CalledProcessError as sys_error:
             log_transfer_permission_context("nfs_fallback_system", source=source, dest=dest, error=sys_error)
             logger.error("System %s failed (%s -> %s): %s", op, source, dest, sys_error.stderr)
-            dest.unlink(missing_ok=True)
+            run_blocking_io(dest.unlink, missing_ok=True)
             raise
 
 
@@ -183,11 +206,16 @@ def _claim_destination(path: Path) -> bool:
     Returns True if the placeholder was created. Caller must replace or unlink it.
     """
     try:
-        fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
+        fd = run_blocking_io(
+            os.open,
+            str(path),
+            os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+            0o666,
+        )
     except FileExistsError:
         return False
     else:
-        os.close(fd)
+        run_blocking_io(os.close, fd)
         return True
 
 
@@ -205,12 +233,13 @@ def _hardlink_not_supported(error: OSError) -> bool:
 
 
 def _create_temp_path(dest_path: Path) -> Path:
-    fd, temp_path = tempfile.mkstemp(
+    fd, temp_path = run_blocking_io(
+        tempfile.mkstemp,
         prefix=f".{dest_path.name}.",
         suffix=".tmp",
         dir=str(dest_path.parent),
     )
-    os.close(fd)
+    run_blocking_io(os.close, fd)
     return Path(temp_path)
 
 
@@ -220,8 +249,8 @@ def _publish_temp_file(temp_path: Path, dest_path: Path) -> bool:
     Returns True on success, False if the destination already exists.
     """
     try:
-        os.link(str(temp_path), str(dest_path))
-        temp_path.unlink(missing_ok=True)
+        run_blocking_io(os.link, str(temp_path), str(dest_path))
+        run_blocking_io(temp_path.unlink, missing_ok=True)
         return True
     except FileExistsError:
         return False
@@ -244,9 +273,9 @@ def _publish_temp_file(temp_path: Path, dest_path: Path) -> bool:
             if not claimed:
                 return False
             try:
-                os.replace(str(temp_path), str(dest_path))
+                run_blocking_io(os.replace, str(temp_path), str(dest_path))
             except Exception:
-                dest_path.unlink(missing_ok=True)
+                run_blocking_io(dest_path.unlink, missing_ok=True)
                 raise
             return True
         raise
@@ -282,7 +311,7 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
 
         # Check for existing file (os.rename would overwrite on Unix)
         claimed = False
-        if try_path.exists():
+        if run_blocking_io(try_path.exists):
             # Some filesystems can report false positives for exists() with
             # special characters. Probe with O_EXCL to confirm.
             claimed = _claim_destination(try_path)
@@ -292,27 +321,27 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
         try:
             # os.rename is atomic on same filesystem and triggers inotify events
             if claimed:
-                os.replace(str(source_path), str(try_path))
+                run_blocking_io(os.replace, str(source_path), str(try_path))
             else:
-                os.rename(str(source_path), str(try_path))
+                run_blocking_io(os.rename, str(source_path), str(try_path))
             if attempt > 0:
                 logger.info(f"File collision resolved: {try_path.name}")
             return try_path
         except FileExistsError:
             # Race condition: file created between exists() check and rename()
             if claimed:
-                try_path.unlink(missing_ok=True)
+                run_blocking_io(try_path.unlink, missing_ok=True)
             continue
         except OSError as e:
             # Cross-filesystem - copy to temp and publish atomically.
             if e.errno != errno.EXDEV:
                 if claimed:
-                    try_path.unlink(missing_ok=True)
+                    run_blocking_io(try_path.unlink, missing_ok=True)
                 raise
 
-            expected_size = source_path.stat().st_size
+            expected_size = run_blocking_io(source_path.stat).st_size
             if claimed:
-                try_path.unlink(missing_ok=True)
+                run_blocking_io(try_path.unlink, missing_ok=True)
                 claimed = False
 
             temp_path: Optional[Path] = None
@@ -336,16 +365,16 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                     _verify_transfer_size(temp_path, expected_size, "move")
                     published = _publish_temp_file(temp_path, try_path)
                     if not published:
-                        temp_path.unlink(missing_ok=True)
+                        run_blocking_io(temp_path.unlink, missing_ok=True)
                         continue
 
                     try:
                         _verify_transfer_size(try_path, expected_size, "move")
                     except Exception:
-                        try_path.unlink(missing_ok=True)
+                        run_blocking_io(try_path.unlink, missing_ok=True)
                         raise
 
-                    source_path.unlink()
+                    run_blocking_io(source_path.unlink)
 
                     if attempt > 0:
                         logger.info(f"File collision resolved: {try_path.name}")
@@ -353,11 +382,11 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
 
                 except FileExistsError:
                     if temp_path:
-                        temp_path.unlink(missing_ok=True)
+                        run_blocking_io(temp_path.unlink, missing_ok=True)
                     continue
                 except Exception:
                     if temp_path:
-                        temp_path.unlink(missing_ok=True)
+                        run_blocking_io(temp_path.unlink, missing_ok=True)
                     raise
 
             except (PermissionError, OSError) as e:
@@ -413,7 +442,7 @@ def atomic_hardlink(source_path: Path, dest_path: Path, max_attempts: int = 100)
     for attempt in range(max_attempts):
         try_path = dest_path if attempt == 0 else parent / f"{base}_{attempt}{ext}"
         try:
-            os.link(str(source_path), str(try_path))
+            run_blocking_io(os.link, str(source_path), str(try_path))
             if attempt > 0:
                 logger.info(f"File collision resolved: {try_path.name}")
             return try_path
@@ -460,11 +489,11 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
     base = dest_path.stem
     ext = dest_path.suffix
     parent = dest_path.parent
-    expected_size = source_path.stat().st_size
+    expected_size = run_blocking_io(source_path.stat).st_size
 
     for attempt in range(max_attempts):
         try_path = dest_path if attempt == 0 else parent / f"{base}_{attempt}{ext}"
-        if try_path.exists():
+        if run_blocking_io(try_path.exists):
             continue
         temp_path: Optional[Path] = None
         try:
@@ -502,13 +531,13 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
             _verify_transfer_size(temp_path, expected_size, "copy")
             published = _publish_temp_file(temp_path, try_path)
             if not published:
-                temp_path.unlink(missing_ok=True)
+                run_blocking_io(temp_path.unlink, missing_ok=True)
                 continue
 
             try:
                 _verify_transfer_size(try_path, expected_size, "copy")
             except Exception:
-                try_path.unlink(missing_ok=True)
+                run_blocking_io(try_path.unlink, missing_ok=True)
                 raise
 
             if attempt > 0:
@@ -516,7 +545,7 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
             return try_path
         except Exception:
             if temp_path:
-                temp_path.unlink(missing_ok=True)
+                run_blocking_io(temp_path.unlink, missing_ok=True)
             raise
 
     raise RuntimeError(f"Could not copy file after {max_attempts} attempts: {dest_path}")

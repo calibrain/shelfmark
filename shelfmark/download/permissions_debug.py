@@ -16,6 +16,23 @@ from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
 
+def _run_io(func, *args, **kwargs):
+    """Best-effort offload for potentially blocking filesystem calls.
+
+    Keep this module import-cycle safe: `shelfmark.download.fs` imports this module,
+    so we only import `run_blocking_io` lazily at call-time.
+    """
+    try:
+        from shelfmark.download.fs import run_blocking_io as _run_blocking_io
+    except Exception:
+        return func(*args, **kwargs)
+
+    try:
+        return _run_blocking_io(func, *args, **kwargs)
+    except Exception:
+        # Fall back to direct call if threadpool offload is unavailable.
+        return func(*args, **kwargs)
+
 
 def _format_uid(uid: int) -> str:
     try:
@@ -59,12 +76,12 @@ def log_path_permission_context(label: str, path: Path) -> None:
 
         for probe in [path, path.parent]:
             try:
-                resolved = probe.resolve()
+                resolved = _run_io(probe.resolve)
             except Exception:
                 resolved = probe
 
             try:
-                st = probe.stat()
+                st = _run_io(probe.stat)
                 logger.debug(
                     "Path permissions (%s): path=%s resolved=%s mode=%s owner=%s(%d) group=%s(%d) dir=%s symlink=%s",
                     label,
@@ -75,8 +92,8 @@ def log_path_permission_context(label: str, path: Path) -> None:
                     st.st_uid,
                     _format_gid(st.st_gid),
                     st.st_gid,
-                    probe.is_dir(),
-                    probe.is_symlink(),
+                    _run_io(probe.is_dir),
+                    _run_io(probe.is_symlink),
                 )
             except Exception as stat_error:
                 logger.debug("Path permissions (%s): stat failed for %s: %s", label, probe, stat_error)
@@ -106,7 +123,7 @@ def log_transfer_permission_context(label: str, source: Path, dest: Path, error:
 
         for probe in [source, dest, dest.parent]:
             try:
-                st = probe.stat()
+                st = _run_io(probe.stat)
                 logger.debug(
                     "Path permissions (%s): path=%s mode=%s owner=%s(%d) group=%s(%d) exists=%s dir=%s",
                     label,
@@ -116,8 +133,8 @@ def log_transfer_permission_context(label: str, source: Path, dest: Path, error:
                     st.st_uid,
                     _format_gid(st.st_gid),
                     st.st_gid,
-                    probe.exists(),
-                    probe.is_dir(),
+                    _run_io(probe.exists),
+                    _run_io(probe.is_dir),
                 )
             except Exception as stat_error:
                 logger.debug("Path permissions (%s): stat failed for %s: %s", label, probe, stat_error)
