@@ -69,6 +69,7 @@ from shelfmark.config.booklore_settings import (
     get_booklore_path_options,
     test_booklore_connection,
 )
+from shelfmark.config.email_settings import test_email_connection
 from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -624,6 +625,140 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
                 "values": values,
             }
 
+    # Email output (SMTP) validation.
+    if books_output_mode == "email":
+        from email.utils import parseaddr
+
+        def _is_plain_email_address(addr: str) -> bool:
+            parsed = parseaddr(addr or "")[1]
+            return bool(parsed) and "@" in parsed and parsed == addr
+
+        raw_recipients = effective.get("EMAIL_RECIPIENTS", [])
+        if not isinstance(raw_recipients, list):
+            return {"error": True, "message": "Email recipients must be a list", "values": values}
+
+        cleaned_recipients: list[dict[str, str]] = []
+        seen_nicknames: set[str] = set()
+
+        for entry in raw_recipients:
+            if not isinstance(entry, dict):
+                continue
+
+            nickname = str(entry.get("nickname", "") or "").strip()
+            email = str(entry.get("email", "") or "").strip()
+
+            # Allow incomplete rows in the UI by skipping them.
+            if not nickname or not email:
+                continue
+
+            nickname_key = nickname.lower()
+            if nickname_key in seen_nicknames:
+                return {
+                    "error": True,
+                    "message": f"Duplicate email recipient nickname: {nickname}",
+                    "values": values,
+                }
+            seen_nicknames.add(nickname_key)
+
+            if not _is_plain_email_address(email):
+                return {
+                    "error": True,
+                    "message": f"Invalid email address for '{nickname}': {email}",
+                    "values": values,
+                }
+
+            cleaned_recipients.append({"nickname": nickname, "email": email})
+
+        if not cleaned_recipients:
+            return {
+                "error": True,
+                "message": "At least one email recipient is required (Downloads -> Books -> Email).",
+                "values": values,
+            }
+
+        smtp_host = str(effective.get("EMAIL_SMTP_HOST", "") or "").strip()
+        if not smtp_host:
+            return {"error": True, "message": "SMTP host is required", "values": values}
+
+        security = str(effective.get("EMAIL_SMTP_SECURITY", "starttls") or "").strip().lower()
+        if security not in {"none", "starttls", "ssl"}:
+            return {
+                "error": True,
+                "message": "SMTP security must be one of: none, starttls, ssl",
+                "values": values,
+            }
+
+        try:
+            port = int(effective.get("EMAIL_SMTP_PORT", 587))
+        except (TypeError, ValueError):
+            return {"error": True, "message": "SMTP port must be a number", "values": values}
+
+        if port < 1 or port > 65535:
+            return {"error": True, "message": "SMTP port must be between 1 and 65535", "values": values}
+
+        try:
+            timeout_seconds = int(effective.get("EMAIL_SMTP_TIMEOUT_SECONDS", 60))
+        except (TypeError, ValueError):
+            return {"error": True, "message": "SMTP timeout (seconds) must be a number", "values": values}
+
+        if timeout_seconds < 1:
+            return {"error": True, "message": "SMTP timeout (seconds) must be >= 1", "values": values}
+
+        username = str(effective.get("EMAIL_SMTP_USERNAME", "") or "").strip()
+        password = effective.get("EMAIL_SMTP_PASSWORD", "") or ""
+        if username and not password:
+            return {"error": True, "message": "SMTP password is required when username is set", "values": values}
+
+        try:
+            attachment_limit_mb = int(effective.get("EMAIL_ATTACHMENT_SIZE_LIMIT_MB", 25))
+        except (TypeError, ValueError):
+            return {
+                "error": True,
+                "message": "Attachment size limit (MB) must be a number",
+                "values": values,
+            }
+
+        if attachment_limit_mb < 1 or attachment_limit_mb > 600:
+            return {
+                "error": True,
+                "message": "Attachment size limit (MB) must be between 1 and 600",
+                "values": values,
+            }
+
+        from_addr = str(effective.get("EMAIL_FROM", "") or "").strip()
+        if not from_addr:
+            # If From is empty, default to the SMTP username when it looks like an email address.
+            username_email = parseaddr(username)[1]
+            if username_email and "@" in username_email:
+                from_addr = f"Shelfmark <{username_email}>"
+                values["EMAIL_FROM"] = from_addr
+            else:
+                return {
+                    "error": True,
+                    "message": "From address is required (or set SMTP username to an email address).",
+                    "values": values,
+                }
+        else:
+            from_email = parseaddr(from_addr)[1]
+            if not from_email or "@" not in from_email:
+                return {
+                    "error": True,
+                    "message": "From address must be a valid email address",
+                    "values": values,
+                }
+
+        # Persist any normalization/coercion for fields that may have been edited this save.
+        if "EMAIL_RECIPIENTS" in values:
+            values["EMAIL_RECIPIENTS"] = cleaned_recipients
+        if "EMAIL_SMTP_SECURITY" in values:
+            values["EMAIL_SMTP_SECURITY"] = security
+        if "EMAIL_SMTP_PORT" in values:
+            values["EMAIL_SMTP_PORT"] = port
+        if "EMAIL_SMTP_TIMEOUT_SECONDS" in values:
+            values["EMAIL_SMTP_TIMEOUT_SECONDS"] = timeout_seconds
+        if "EMAIL_ATTACHMENT_SIZE_LIMIT_MB" in values:
+            values["EMAIL_ATTACHMENT_SIZE_LIMIT_MB"] = attachment_limit_mb
+
     return {"error": False, "values": values}
 
 
@@ -647,6 +782,11 @@ def download_settings():
                     "value": "folder",
                     "label": "Folder",
                     "description": "Save files to the destination folder",
+                },
+                {
+                    "value": "email",
+                    "label": "Email (SMTP)",
+                    "description": "Send files as an email attachment",
                 },
                 {
                     "value": "booklore",
@@ -782,6 +922,125 @@ def download_settings():
             style="primary",
             callback=test_booklore_connection,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
+        ),
+        HeadingField(
+            key="email_heading",
+            title="Email",
+            description="Send books as email attachments via SMTP. Audiobooks always use folder mode.",
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
+        ),
+        TableField(
+            key="EMAIL_RECIPIENTS",
+            label="Recipients",
+            columns=[
+                {
+                    "key": "nickname",
+                    "label": "Nickname",
+                    "type": "text",
+                    "placeholder": "eReader",
+                },
+                {
+                    "key": "email",
+                    "label": "Email",
+                    "type": "text",
+                    "placeholder": "device@example.com",
+                },
+            ],
+            default=[],
+            add_label="Add Recipient",
+            empty_message="No recipients configured.",
+            env_supported=False,
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
+        ),
+        NumberField(
+            key="EMAIL_ATTACHMENT_SIZE_LIMIT_MB",
+            label="Attachment Size Limit (MB)",
+            description="Maximum total attachment size per email. Email encoding adds overhead; keep this below your provider's limit.",
+            default=25,
+            min_value=1,
+            max_value=600,
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
+        ),
+        TextField(
+            key="EMAIL_SMTP_HOST",
+            label="SMTP Host",
+            description="SMTP server hostname or IP (e.g., smtp.gmail.com).",
+            placeholder="smtp.example.com",
+            required=True,
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
+        ),
+        NumberField(
+            key="EMAIL_SMTP_PORT",
+            label="SMTP Port",
+            description="SMTP server port (587 is typical for STARTTLS, 465 for SSL).",
+            default=587,
+            min_value=1,
+            max_value=65535,
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
+        ),
+        SelectField(
+            key="EMAIL_SMTP_SECURITY",
+            label="SMTP Security",
+            description="Transport security mode for SMTP.",
+            options=[
+                {"value": "none", "label": "None", "description": "No TLS (not recommended)."},
+                {"value": "starttls", "label": "STARTTLS", "description": "Upgrade to TLS after connecting (recommended)."},
+                {"value": "ssl", "label": "SSL/TLS", "description": "Connect using TLS (SMTPS)."},
+            ],
+            default="starttls",
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
+        ),
+        TextField(
+            key="EMAIL_SMTP_USERNAME",
+            label="Username",
+            description="SMTP username (leave empty for no authentication).",
+            placeholder="user@example.com",
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
+        ),
+        PasswordField(
+            key="EMAIL_SMTP_PASSWORD",
+            label="Password",
+            description="SMTP password (required if Username is set).",
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
+        ),
+        TextField(
+            key="EMAIL_FROM",
+            label="From Address",
+            description="From address used for the email. You can include a display name (e.g., Shelfmark <mail@example.com>). Leave blank to default to the SMTP username (when it is an email address).",
+            placeholder="Shelfmark <mail@example.com>",
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
+        ),
+        TextField(
+            key="EMAIL_SUBJECT_TEMPLATE",
+            label="Subject Template",
+            description="Email subject. Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {Format}.",
+            default="{Title}",
+            placeholder="{Title}",
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
+        ),
+        NumberField(
+            key="EMAIL_SMTP_TIMEOUT_SECONDS",
+            label="SMTP Timeout (seconds)",
+            description="How long to wait for SMTP operations before failing.",
+            default=60,
+            min_value=1,
+            max_value=600,
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
+        ),
+        CheckboxField(
+            key="EMAIL_ALLOW_UNVERIFIED_TLS",
+            label="Allow Unverified TLS",
+            description="Disable TLS certificate verification (not recommended).",
+            default=False,
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
+        ),
+        ActionButton(
+            key="test_email",
+            label="Test SMTP Connection",
+            description="Verify your SMTP configuration (connect + optional login).",
+            style="primary",
+            callback=test_email_connection,
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
         ),
 
         # === AUDIOBOOKS SECTION ===

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, CSSProperties } from 'react';
 import { TableFieldConfig, TableFieldColumn } from '../../../types/settings';
 import { DropdownList } from '../../DropdownList';
 
@@ -37,6 +37,19 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
   const columns = useMemo(() => field.columns ?? [], [field.columns]);
   const rows = useMemo(() => normalizeRows(value ?? [], columns), [value, columns]);
 
+  // Use minmax(0, ...) so the grid can shrink inside the settings modal.
+  // Use fixed width for delete button column to ensure header/data alignment.
+  const gridTemplate = 'sm:[grid-template-columns:var(--table-cols)]';
+
+  const tableCols = useMemo(() => {
+    if (columns.length === 0) {
+      return 'minmax(0,1fr) 2rem';
+    }
+
+    const colDefs = columns.map((_, idx) => (idx === 0 ? 'minmax(0,180px)' : 'minmax(0,1fr)'));
+    return `${colDefs.join(' ')} 2rem`;
+  }, [columns]);
+
   const updateCell = (rowIndex: number, key: string, cellValue: unknown) => {
     const next = rows.map((row, idx) => (idx === rowIndex ? { ...row, [key]: cellValue } : row));
     onChange(next);
@@ -74,12 +87,8 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
     );
   }
 
-  // Use minmax(0, ...) so the grid can shrink inside the settings modal.
-  // Use fixed width for delete button column to ensure header/data alignment.
-  const gridTemplate = 'sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)_minmax(0,1fr)_2rem]';
-
   return (
-    <div className="space-y-3 min-w-0">
+    <div className="space-y-3 min-w-0" style={{ '--table-cols': tableCols } as CSSProperties}>
       <div className={`hidden sm:grid ${gridTemplate} gap-3 items-start min-w-0 text-xs font-medium opacity-70`}>
         {columns.map((col) => (
           <div key={col.key} className="min-w-0 truncate">

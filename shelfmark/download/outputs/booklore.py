@@ -13,7 +13,7 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download.outputs import register_output
-from shelfmark.download.staging import STAGE_MOVE, STAGE_NONE, build_staging_dir
+from shelfmark.download.staging import STAGE_MOVE, STAGE_NONE, build_staging_dir, get_staging_dir
 
 logger = setup_logger(__name__)
 
@@ -167,9 +167,7 @@ def booklore_refresh_library(booklore_config: BookloreConfig, token: str) -> Non
 
 
 def _supports_booklore(task: DownloadTask) -> bool:
-    if check_audiobook(task.content_type):
-        return False
-    return core_config.config.get("BOOKS_OUTPUT_MODE", "folder") == BOOKLORE_OUTPUT_MODE
+    return not check_audiobook(task.content_type)
 
 
 def _get_booklore_settings() -> Dict[str, Any]:
@@ -219,10 +217,13 @@ def _post_process_booklore(
 
     status_callback("resolving", "Preparing Booklore upload")
 
+    stage_action = STAGE_MOVE if is_managed_workspace_path(temp_file) else STAGE_NONE
+    staging_dir = build_staging_dir("booklore", task.task_id) if stage_action != STAGE_NONE else get_staging_dir()
+
     output_plan = OutputPlan(
         mode=BOOKLORE_OUTPUT_MODE,
-        stage_action=STAGE_MOVE if is_managed_workspace_path(temp_file) else STAGE_NONE,
-        staging_dir=build_staging_dir("booklore", task.task_id),
+        stage_action=stage_action,
+        staging_dir=staging_dir,
         allow_archive_extraction=True,
     )
 

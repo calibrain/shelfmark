@@ -17,7 +17,7 @@ from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import BookInfo, DownloadTask, QueueStatus, SearchFilters, SearchMode
 from shelfmark.core.queue import book_queue
-from shelfmark.core.utils import transform_cover_url
+from shelfmark.core.utils import transform_cover_url, is_audiobook as check_audiobook
 from shelfmark.download.postprocess.pipeline import is_torrent_source, safe_cleanup_path
 from shelfmark.download.postprocess.router import post_process_download
 from shelfmark.release_sources import direct_download, get_handler, get_source_display_name
@@ -74,7 +74,49 @@ def get_book_info(book_id: str) -> Optional[Dict[str, Any]]:
         logger.error_trace(f"Error getting book info: {e}")
         raise
 
-def queue_book(book_id: str, priority: int = 0, source: str = "direct_download") -> Tuple[bool, Optional[str]]:
+def _normalize_email_recipients(value: Any) -> List[Dict[str, str]]:
+    """Normalize EMAIL_RECIPIENTS config into a list of {nickname,email} dicts."""
+
+    if not isinstance(value, list):
+        return []
+
+    recipients: List[Dict[str, str]] = []
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        nickname = str(entry.get("nickname", "") or "").strip()
+        email = str(entry.get("email", "") or "").strip()
+        if not nickname or not email:
+            continue
+        recipients.append({"nickname": nickname, "email": email})
+    return recipients
+
+
+def _resolve_email_recipient(nickname: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """Resolve a configured email recipient nickname to an email address.
+
+    Returns:
+      (email_to, label, error_message)
+    """
+
+    label = (nickname or "").strip()
+    if not label:
+        return None, None, None
+
+    recipients = _normalize_email_recipients(config.get("EMAIL_RECIPIENTS", []))
+    for entry in recipients:
+        if entry["nickname"].strip().lower() == label.lower():
+            return entry["email"], entry["nickname"], None
+
+    return None, label, f"Unknown email recipient: {label}"
+
+
+def queue_book(
+    book_id: str,
+    priority: int = 0,
+    source: str = "direct_download",
+    email_recipient: Optional[str] = None,
+) -> Tuple[bool, Optional[str]]:
     """Add a book to the download queue. Returns (success, error_message)."""
     try:
         book_info = direct_download.get_book_info(book_id, fetch_download_count=False)
@@ -82,6 +124,25 @@ def queue_book(book_id: str, priority: int = 0, source: str = "direct_download")
             error_msg = f"Could not fetch book info for {book_id}"
             logger.warning(error_msg)
             return False, error_msg
+
+        books_output_mode = str(config.get("BOOKS_OUTPUT_MODE", "folder") or "folder").strip().lower()
+        is_audiobook = check_audiobook(book_info.content)
+
+        # Capture output mode at queue time so tasks aren't affected if settings change later.
+        output_mode = "folder" if is_audiobook else books_output_mode
+        output_args: Dict[str, Any] = {}
+
+        if output_mode == "email" and not is_audiobook:
+            if not _normalize_email_recipients(config.get("EMAIL_RECIPIENTS", [])):
+                return False, "No email recipients configured"
+
+            email_to, email_label, email_error = _resolve_email_recipient(email_recipient)
+            if email_error:
+                return False, email_error
+            if not email_to:
+                return False, "Email recipient is required"
+
+            output_args = {"to": email_to, "label": email_label}
 
         # Create a source-agnostic download task
         task = DownloadTask(
@@ -94,6 +155,8 @@ def queue_book(book_id: str, priority: int = 0, source: str = "direct_download")
             preview=book_info.preview,
             content_type=book_info.content,
             search_mode=SearchMode.DIRECT,
+            output_mode=output_mode,
+            output_args=output_args,
             priority=priority,
         )
 
@@ -118,7 +181,11 @@ def queue_book(book_id: str, priority: int = 0, source: str = "direct_download")
         return False, error_msg
 
 
-def queue_release(release_data: dict, priority: int = 0) -> Tuple[bool, Optional[str]]:
+def queue_release(
+    release_data: dict,
+    priority: int = 0,
+    email_recipient: Optional[str] = None,
+) -> Tuple[bool, Optional[str]]:
     """Add a release to the download queue. Returns (success, error_message)."""
     try:
         source = release_data.get('source', 'direct_download')
@@ -135,6 +202,24 @@ def queue_release(release_data: dict, priority: int = 0) -> Tuple[bool, Optional
         series_position = release_data.get('series_position') or extra.get('series_position')
         subtitle = release_data.get('subtitle') or extra.get('subtitle')
 
+        books_output_mode = str(config.get("BOOKS_OUTPUT_MODE", "folder") or "folder").strip().lower()
+        is_audiobook = check_audiobook(content_type)
+
+        output_mode = "folder" if is_audiobook else books_output_mode
+        output_args: Dict[str, Any] = {}
+
+        if output_mode == "email" and not is_audiobook:
+            if not _normalize_email_recipients(config.get("EMAIL_RECIPIENTS", [])):
+                return False, "No email recipients configured"
+
+            email_to, email_label, email_error = _resolve_email_recipient(email_recipient)
+            if email_error:
+                return False, email_error
+            if not email_to:
+                return False, "Email recipient is required"
+
+            output_args = {"to": email_to, "label": email_label}
+
         # Create a source-agnostic download task from release data
         task = DownloadTask(
             task_id=release_data['source_id'],
@@ -150,6 +235,8 @@ def queue_release(release_data: dict, priority: int = 0) -> Tuple[bool, Optional
             series_position=series_position,
             subtitle=subtitle,
             search_mode=SearchMode.UNIVERSAL,
+            output_mode=output_mode,
+            output_args=output_args,
             priority=priority,
         )
 

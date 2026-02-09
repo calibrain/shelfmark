@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Book, ButtonStateInfo, isMetadataBook } from '../types';
+import { isUserCancelledError } from '../utils/errors';
 
 interface DetailsModalProps {
   book: Book | null;
@@ -66,6 +67,9 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
       // Don't close here - wait for button state to change
     } catch (error) {
       setIsQueuing(false);
+      if (isUserCancelledError(error)) {
+        return;
+      }
       // Close on error
       setTimeout(handleClose, 300);
     }

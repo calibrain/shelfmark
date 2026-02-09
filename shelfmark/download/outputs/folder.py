@@ -36,9 +36,7 @@ class _ProcessingPlan:
 
 
 def _supports_folder_output(task: DownloadTask) -> bool:
-    if check_audiobook(task.content_type):
-        return True
-    return core_config.config.get("BOOKS_OUTPUT_MODE", FOLDER_OUTPUT_MODE) == FOLDER_OUTPUT_MODE
+    return True
 
 
 def _build_processing_plan(

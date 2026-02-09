@@ -562,7 +562,8 @@ def api_download() -> Union[Response, Tuple[Response, int]]:
 
     try:
         priority = int(request.args.get('priority', 0))
-        success, error_msg = backend.queue_book(book_id, priority)
+        email_recipient = request.args.get('email_recipient')
+        success, error_msg = backend.queue_book(book_id, priority, email_recipient=email_recipient)
         if success:
             return jsonify({"status": "queued", "priority": priority})
         return jsonify({"error": error_msg or "Failed to queue book"}), 500
@@ -600,7 +601,8 @@ def api_download_release() -> Union[Response, Tuple[Response, int]]:
             return jsonify({"error": "source_id is required"}), 400
 
         priority = data.get('priority', 0)
-        success, error_msg = backend.queue_release(data, priority)
+        email_recipient = data.get('email_recipient')
+        success, error_msg = backend.queue_release(data, priority, email_recipient=email_recipient)
 
         if success:
             return jsonify({"status": "queued", "priority": priority})
@@ -628,6 +630,22 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
         from shelfmark.config.env import _is_config_dir_writable
         from shelfmark.core.onboarding import is_onboarding_complete as _get_onboarding_complete
 
+        def _normalize_email_recipients(value: Any) -> list[dict[str, str]]:
+            if not isinstance(value, list):
+                return []
+
+            recipients: list[dict[str, str]] = []
+            for entry in value:
+                if not isinstance(entry, dict):
+                    continue
+                nickname = str(entry.get("nickname", "") or "").strip()
+                email = str(entry.get("email", "") or "").strip()
+                if not nickname or not email:
+                    continue
+                recipients.append({"nickname": nickname, "email": email})
+
+            return recipients
+
         config = {
             "calibre_web_url": app_config.get("CALIBRE_WEB_URL", ""),
             "audiobook_library_url": app_config.get("AUDIOBOOK_LIBRARY_URL", ""),
@@ -642,6 +660,10 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
             "metadata_sort_options": get_provider_sort_options(),
             "metadata_search_fields": get_provider_search_fields(),
             "default_release_source": app_config.get("DEFAULT_RELEASE_SOURCE", "direct_download"),
+            "books_output_mode": app_config.get("BOOKS_OUTPUT_MODE", "folder"),
+            # Safe-to-expose subset of email output settings (recipients only).
+            # SMTP credentials are configured via the settings UI but are never returned to the frontend.
+            "email_recipients": _normalize_email_recipients(app_config.get("EMAIL_RECIPIENTS", []) or []),
             "auto_open_downloads_sidebar": app_config.get("AUTO_OPEN_DOWNLOADS_SIDEBAR", True),
             "download_to_browser": app_config.get("DOWNLOAD_TO_BROWSER", False),
             "settings_enabled": _is_config_dir_writable(),

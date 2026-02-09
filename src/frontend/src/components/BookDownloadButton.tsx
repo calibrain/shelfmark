@@ -23,8 +23,8 @@ const sizeClasses: Record<ButtonSize, string> = {
 };
 
 const iconVariantSizeClasses: Record<ButtonSize, string> = {
-  sm: 'p-px m-0.5 sm:p-1 sm:m-0.5 aspect-square',
-  md: 'p-0.5 m-0.5 sm:p-1.5 sm:m-0.5 aspect-square',
+  sm: 'p-2 sm:p-1.5 aspect-square',
+  md: 'p-2.5 sm:p-2 aspect-square',
 };
 
 const primaryIconSizes: Record<ButtonSize, string> = {
