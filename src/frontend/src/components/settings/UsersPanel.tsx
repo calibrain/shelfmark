@@ -247,11 +247,23 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
 
         <div className="space-y-5 max-w-lg">
           {editingUser.oidc_subject && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs bg-sky-500/10 text-sky-400">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
-              </svg>
-              This user authenticates via SSO. Password is managed by the identity provider.
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs bg-sky-500/10 text-sky-400">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+                </svg>
+                This user authenticates via SSO. Password is managed by the identity provider.
+              </div>
+              {downloadDefaults?.OIDC_USE_ADMIN_GROUP === true && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs bg-sky-500/10 text-sky-400">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+                  </svg>
+                  {downloadDefaults?.OIDC_ADMIN_GROUP
+                    ? `Admin role is managed by the ${downloadDefaults.OIDC_ADMIN_GROUP} group in your identity provider.`
+                    : 'Admin group authorization is enabled but no group name is configured.'}
+                </div>
+              )}
             </div>
           )}
 
@@ -277,31 +289,20 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Role</label>
-            <select
-              value={editingUser.role}
-              onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
-              className={inputClasses}
-              disabled={!!editingUser.oidc_subject && downloadDefaults?.OIDC_USE_ADMIN_GROUP === true}
-            >
-              <option value="admin">Admin</option>
-              <option value="user">User</option>
-            </select>
-            {/* Warn if OIDC user role is managed by group */}
-            {!!editingUser.oidc_subject && downloadDefaults?.OIDC_USE_ADMIN_GROUP === true && (
-              <div className="flex items-start gap-2 p-2 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs mt-2">
-                <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>
-                  {downloadDefaults?.OIDC_ADMIN_GROUP
-                    ? `Admin role is managed by your identity provider (${downloadDefaults.OIDC_ADMIN_GROUP} group). Disable "Use Admin Group for Authorization" in security settings to manage roles manually.`
-                    : 'Admin role management via groups is enabled but no group name is configured. Set the Admin Group Name in security settings, or disable "Use Admin Group for Authorization" to manage roles manually.'}
-                </span>
-              </div>
-            )}
-          </div>
+          {/* Hide role dropdown for OIDC users when admin group auth is on (like password) */}
+          {!(!!editingUser.oidc_subject && downloadDefaults?.OIDC_USE_ADMIN_GROUP === true) && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Role</label>
+              <select
+                value={editingUser.role}
+                onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
+                className={inputClasses}
+              >
+                <option value="admin">Admin</option>
+                <option value="user">User</option>
+              </select>
+            </div>
+          )}
 
           {/* Password section */}
           {!editingUser.oidc_subject && (
