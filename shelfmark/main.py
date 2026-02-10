@@ -174,6 +174,8 @@ def get_auth_mode() -> str:
             return "builtin"
         if auth_mode == "proxy" and security_config.get("PROXY_AUTH_USER_HEADER"):
             return "proxy"
+        if auth_mode == "oidc" and security_config.get("OIDC_DISCOVERY_URL") and security_config.get("OIDC_CLIENT_ID"):
+            return "oidc"
     except Exception:
         pass
 
@@ -346,8 +348,8 @@ def login_required(f):
         if 'user_id' not in session:
             return jsonify({"error": "Unauthorized"}), 401
 
-        # Check admin access for settings endpoints (proxy and CWA modes)
-        if auth_mode in ("proxy", "cwa") and (request.path.startswith('/api/settings') or request.path.startswith('/api/onboarding')):
+        # Check admin access for settings endpoints (proxy, CWA, and OIDC modes)
+        if auth_mode in ("proxy", "cwa", "oidc") and (request.path.startswith('/api/settings') or request.path.startswith('/api/onboarding')):
             from shelfmark.core.settings_registry import load_config_file
 
             try:
@@ -355,6 +357,8 @@ def login_required(f):
 
                 if auth_mode == "proxy":
                     restrict_to_admin = security_config.get("PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", False)
+                elif auth_mode == "oidc":
+                    restrict_to_admin = security_config.get("OIDC_RESTRICT_SETTINGS_TO_ADMIN", False)
                 else:
                     restrict_to_admin = security_config.get("CWA_RESTRICT_SETTINGS_TO_ADMIN", False)
 
@@ -1191,6 +1195,12 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
         elif auth_mode == "proxy":
             restrict_to_admin = security_config.get("PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", False)
             is_admin = session.get('is_admin', not restrict_to_admin)
+        elif auth_mode == "oidc":
+            restrict_to_admin = security_config.get("OIDC_RESTRICT_SETTINGS_TO_ADMIN", False)
+            if restrict_to_admin:
+                is_admin = session.get('is_admin', False)
+            else:
+                is_admin = True
         else:
             is_admin = False
 
