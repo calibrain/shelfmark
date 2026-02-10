@@ -108,10 +108,15 @@ class UserDB:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         return dict(row) if row else None
 
+    _ALLOWED_UPDATE_COLUMNS = {"email", "display_name", "password_hash", "oidc_subject", "role"}
+
     def update_user(self, user_id: int, **kwargs) -> None:
-        """Update user fields. Raises ValueError if user not found."""
+        """Update user fields. Raises ValueError if user not found or invalid column."""
         if not kwargs:
             return
+        for k in kwargs:
+            if k not in self._ALLOWED_UPDATE_COLUMNS:
+                raise ValueError(f"Invalid column: {k}")
         with self._lock:
             conn = self._connect()
             try:

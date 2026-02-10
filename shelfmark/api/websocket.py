@@ -2,7 +2,7 @@
 
 import logging
 import threading
-from typing import Optional, Dict, Any, Callable, List, Set
+from typing import Optional, Dict, Any, Callable, List
 
 from flask_socketio import SocketIO, join_room, leave_room
 
@@ -20,7 +20,7 @@ class WebSocketManager:
         self._on_first_connect_callbacks: List[Callable[[], None]] = []
         self._on_all_disconnect_callbacks: List[Callable[[], None]] = []
         self._needs_rewarm = False  # Flag to trigger warmup callbacks on next connect
-        self._user_rooms: Set[str] = set()  # Track active user rooms for filtered broadcasts
+        self._user_rooms: Dict[str, int] = {}  # room_name -> ref count
         self._rooms_lock = threading.Lock()
         self._queue_status_fn: Optional[Callable] = None  # Reference to queue_status()
 
@@ -115,7 +115,7 @@ class WebSocketManager:
             room = f"user_{db_user_id}"
             join_room(room, sid=sid)
             with self._rooms_lock:
-                self._user_rooms.add(room)
+                self._user_rooms[room] = self._user_rooms.get(room, 0) + 1
 
     def leave_user_room(self, sid: str, is_admin: bool, db_user_id: Optional[int] = None):
         """Leave the user's room on disconnect."""
@@ -124,6 +124,12 @@ class WebSocketManager:
         else:
             room = f"user_{db_user_id}"
             leave_room(room, sid=sid)
+            with self._rooms_lock:
+                count = self._user_rooms.get(room, 1) - 1
+                if count <= 0:
+                    self._user_rooms.pop(room, None)
+                else:
+                    self._user_rooms[room] = count
 
     def broadcast_status_update(self, status_data: Dict[str, Any]):
         """Broadcast status update to all connected clients, filtered by user room."""
@@ -136,7 +142,7 @@ class WebSocketManager:
 
             # Each user room gets filtered status
             with self._rooms_lock:
-                active_rooms = list(self._user_rooms)
+                active_rooms = list(self._user_rooms.keys())
 
             if active_rooms and self._queue_status_fn:
                 for room in active_rooms:

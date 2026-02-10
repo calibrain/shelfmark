@@ -1097,14 +1097,7 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
         # OIDC mode also allows password login as a fallback so admins don't get locked out
         if auth_mode in ("builtin", "oidc"):
             try:
-                from shelfmark.core.user_db import UserDB
-                import os
-
-                db_path = os.path.join(os.environ.get("CONFIG_DIR", "/config"), "users.db")
-                _login_db = UserDB(db_path)
-                _login_db.initialize()
-
-                db_user = _login_db.get_user(username=username)
+                db_user = user_db.get_user(username=username)
 
                 # If user not in DB, try legacy config credentials and auto-migrate
                 if not db_user:
@@ -1114,8 +1107,8 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
 
                     if username == stored_username and stored_hash and check_password_hash(stored_hash, password):
                         # Auto-migrate: create admin user in DB from config
-                        if len(_login_db.list_users()) == 0:
-                            db_user = _login_db.create_user(
+                        if len(user_db.list_users()) == 0:
+                            db_user = user_db.create_user(
                                 username=stored_username,
                                 password_hash=stored_hash,
                                 role="admin",

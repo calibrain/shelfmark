@@ -168,9 +168,22 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
     @_require_admin
     def admin_delete_user(user_id):
         """Delete a user."""
+        # Prevent self-deletion
+        if session.get("db_user_id") == user_id:
+            return jsonify({"error": "Cannot delete your own account"}), 400
+
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
+
+        # Prevent deleting the last local admin
+        if user.get("role") == "admin" and user.get("password_hash"):
+            local_admins = [
+                u for u in user_db.list_users()
+                if u["role"] == "admin" and u.get("password_hash") and u["id"] != user_id
+            ]
+            if not local_admins:
+                return jsonify({"error": "Cannot delete the last local admin account"}), 400
 
         user_db.delete_user(user_id)
         logger.info(f"Admin deleted user {user_id}: {user['username']}")

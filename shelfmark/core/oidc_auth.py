@@ -58,26 +58,30 @@ def extract_user_info(id_token: Dict[str, Any]) -> Dict[str, Any]:
 def provision_oidc_user(
     db: UserDB,
     user_info: Dict[str, Any],
-    is_admin: bool,
+    is_admin: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """Create or update a user from OIDC claims.
 
     If a user with the same oidc_subject exists, updates their info.
     If the username is taken by a different user, appends a numeric suffix.
+    is_admin=None means no admin group was configured; preserve existing role.
     """
     oidc_subject = user_info["oidc_subject"]
-    role = "admin" if is_admin else "user"
 
     # Check if user already exists by OIDC subject
     existing = db.get_user(oidc_subject=oidc_subject)
     if existing:
-        db.update_user(
-            existing["id"],
-            email=user_info.get("email"),
-            display_name=user_info.get("display_name"),
-            role=role,
-        )
+        updates: Dict[str, Any] = {
+            "email": user_info.get("email"),
+            "display_name": user_info.get("display_name"),
+        }
+        # Only update role if admin group mapping is configured
+        if is_admin is not None:
+            updates["role"] = "admin" if is_admin else "user"
+        db.update_user(existing["id"], **updates)
         return db.get_user(user_id=existing["id"])
+
+    role = "admin" if is_admin else "user"
 
     # New user — resolve username conflicts
     username = user_info["username"]

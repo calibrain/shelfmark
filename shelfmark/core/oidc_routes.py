@@ -132,7 +132,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
 
         except Exception as e:
             logger.error(f"OIDC login error: {e}")
-            return jsonify({"error": f"OIDC login failed: {str(e)}"}), 500
+            return jsonify({"error": "OIDC login failed"}), 500
 
     @app.route("/api/auth/oidc/callback", methods=["GET"])
     def oidc_callback():
@@ -182,7 +182,8 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             # Extract user info and check groups
             user_info = extract_user_info(claims)
             groups = parse_group_claims(claims, group_claim)
-            is_admin = is_admin_from_groups(groups, admin_group)
+            # Only determine admin from groups if admin_group is configured
+            is_admin = is_admin_from_groups(groups, admin_group) if admin_group else None
 
             # Check if user exists by OIDC subject first
             existing_user = user_db.get_user(oidc_subject=user_info["oidc_subject"])
@@ -206,7 +207,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
 
             # Set session
             session["user_id"] = user["username"]
-            session["is_admin"] = is_admin
+            session["is_admin"] = is_admin if is_admin is not None else (user.get("role") == "admin")
             session["db_user_id"] = user["id"]
             session.permanent = True
 
@@ -221,4 +222,4 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
 
         except Exception as e:
             logger.error(f"OIDC callback error: {e}")
-            return jsonify({"error": f"Authentication failed: {str(e)}"}), 500
+            return jsonify({"error": "Authentication failed"}), 500
