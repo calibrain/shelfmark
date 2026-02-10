@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AdminUser, getAdminUsers, updateAdminUser, deleteAdminUser } from '../../services/api';
+import {
+  AdminUser,
+  DownloadDefaults,
+  getAdminUsers,
+  getAdminUser,
+  getDownloadDefaults,
+  updateAdminUser,
+  deleteAdminUser,
+} from '../../services/api';
 import { getApiBase } from '../../utils/basePath';
 
 interface UsersPanelProps {
@@ -8,6 +16,16 @@ interface UsersPanelProps {
 
 const inputClasses =
   'w-full px-3 py-2 rounded-lg border border-[var(--border-muted)] bg-[var(--bg-soft)] text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500 transition-colors';
+
+const disabledInputClasses =
+  'w-full px-3 py-2 rounded-lg border border-[var(--border-muted)] bg-[var(--bg-soft)] text-sm opacity-50 cursor-not-allowed';
+
+interface PerUserSettings {
+  destination?: string;
+  booklore_library_id?: string;
+  booklore_path_id?: string;
+  email_recipients?: Array<{ nickname: string; email: string }>;
+}
 
 export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -18,6 +36,13 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createForm, setCreateForm] = useState({ username: '', email: '', password: '', display_name: '', role: 'user' });
   const [creating, setCreating] = useState(false);
+
+  // Edit view state
+  const [editPassword, setEditPassword] = useState('');
+  const [editPasswordConfirm, setEditPasswordConfirm] = useState('');
+  const [downloadDefaults, setDownloadDefaults] = useState<DownloadDefaults | null>(null);
+  const [userSettings, setUserSettings] = useState<PerUserSettings>({});
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -38,6 +63,35 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
     fetchUsers();
   }, [fetchUsers]);
 
+  const startEditing = useCallback(async (user: AdminUser) => {
+    setEditingUser({ ...user });
+    setEditPassword('');
+    setEditPasswordConfirm('');
+
+    // Fetch full user data (with settings) and download defaults in parallel
+    try {
+      const [fullUser, defaults] = await Promise.all([
+        getAdminUser(user.id),
+        getDownloadDefaults(),
+      ]);
+      setDownloadDefaults(defaults);
+      const settings = (fullUser.settings || {}) as PerUserSettings;
+      setUserSettings(settings);
+
+      // Set override toggles based on which settings exist
+      setOverrides({
+        destination: !!settings.destination,
+        booklore_library_id: !!settings.booklore_library_id,
+        booklore_path_id: !!settings.booklore_path_id,
+        email_recipients: !!settings.email_recipients?.length,
+      });
+    } catch {
+      setDownloadDefaults(null);
+      setUserSettings({});
+      setOverrides({});
+    }
+  }, []);
+
   const handleDelete = async (userId: number) => {
     try {
       await deleteAdminUser(userId);
@@ -51,11 +105,49 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
 
   const handleSaveEdit = async () => {
     if (!editingUser) return;
+
+    // Validate password if provided
+    if (editPassword) {
+      if (editPassword.length < 4) {
+        onShowToast?.('Password must be at least 4 characters', 'error');
+        return;
+      }
+      if (editPassword !== editPasswordConfirm) {
+        onShowToast?.('Passwords do not match', 'error');
+        return;
+      }
+    }
+
+    // Build settings payload: include overridden values, null out cleared overrides
+    const settingsPayload: Record<string, unknown> = {};
+    if (overrides.destination) {
+      settingsPayload.destination = userSettings.destination || '';
+    } else if (userSettings.destination) {
+      settingsPayload.destination = null;
+    }
+    if (overrides.booklore_library_id) {
+      settingsPayload.booklore_library_id = userSettings.booklore_library_id || '';
+    } else if (userSettings.booklore_library_id) {
+      settingsPayload.booklore_library_id = null;
+    }
+    if (overrides.booklore_path_id) {
+      settingsPayload.booklore_path_id = userSettings.booklore_path_id || '';
+    } else if (userSettings.booklore_path_id) {
+      settingsPayload.booklore_path_id = null;
+    }
+    if (overrides.email_recipients) {
+      settingsPayload.email_recipients = userSettings.email_recipients || [];
+    } else if (userSettings.email_recipients?.length) {
+      settingsPayload.email_recipients = null;
+    }
+
     try {
       await updateAdminUser(editingUser.id, {
         email: editingUser.email,
         display_name: editingUser.display_name,
         role: editingUser.role,
+        ...(editPassword ? { password: editPassword } : {}),
+        ...(Object.keys(settingsPayload).length ? { settings: settingsPayload } : {}),
       });
       setEditingUser(null);
       onShowToast?.('User updated', 'success');
@@ -95,6 +187,17 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
     }
   };
 
+  const toggleOverride = (key: string, enabled: boolean) => {
+    setOverrides((prev) => ({ ...prev, [key]: enabled }));
+    if (!enabled) {
+      setUserSettings((prev) => {
+        const next = { ...prev };
+        delete (next as Record<string, unknown>)[key];
+        return next;
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center text-sm opacity-60 p-8">
@@ -120,6 +223,8 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
 
   // Edit view
   if (editingUser) {
+    const outputMode = downloadDefaults?.BOOKS_OUTPUT_MODE || 'folder';
+
     return (
       <div className="flex-1 overflow-y-auto p-6">
         <div className="flex items-center gap-3 mb-6">
@@ -138,7 +243,7 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0">
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
               </svg>
-              This user authenticates via SSO only. Password cannot be set.
+              This user authenticates via SSO. Password fields below are optional.
             </div>
           )}
 
@@ -175,6 +280,123 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
               <option value="user">User</option>
             </select>
           </div>
+
+          {/* Password section */}
+          {!editingUser.oidc_subject && (
+            <>
+              <div className="border-t border-[var(--border-muted)] pt-4">
+                <p className="text-xs font-medium opacity-60 mb-3">Change Password</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">New Password</label>
+                <input
+                  type="password"
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  className={inputClasses}
+                  placeholder="Leave empty to keep current"
+                />
+              </div>
+              {editPassword && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Confirm Password</label>
+                  <input
+                    type="password"
+                    value={editPasswordConfirm}
+                    onChange={(e) => setEditPasswordConfirm(e.target.value)}
+                    className={inputClasses}
+                    placeholder="Confirm new password"
+                  />
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Per-user download settings overrides */}
+          {downloadDefaults && (
+            <>
+              <div className="border-t border-[var(--border-muted)] pt-4">
+                <p className="text-xs font-medium opacity-60 mb-1">Download Settings Overrides</p>
+                <p className="text-xs opacity-40 mb-3">Override global defaults for this user.</p>
+              </div>
+
+              {/* Destination override (shown for folder mode) */}
+              {(outputMode === 'folder' || outputMode === 'booklore') && (
+                <OverrideField
+                  label="Destination Folder"
+                  enabled={overrides.destination || false}
+                  onToggle={(v) => toggleOverride('destination', v)}
+                  globalValue={downloadDefaults.DESTINATION || '/books'}
+                >
+                  <input
+                    type="text"
+                    value={userSettings.destination || ''}
+                    onChange={(e) => setUserSettings((s) => ({ ...s, destination: e.target.value }))}
+                    className={overrides.destination ? inputClasses : disabledInputClasses}
+                    disabled={!overrides.destination}
+                    placeholder={downloadDefaults.DESTINATION || '/books'}
+                  />
+                </OverrideField>
+              )}
+
+              {/* BookLore overrides */}
+              {outputMode === 'booklore' && (
+                <>
+                  <OverrideField
+                    label="BookLore Library ID"
+                    enabled={overrides.booklore_library_id || false}
+                    onToggle={(v) => toggleOverride('booklore_library_id', v)}
+                    globalValue={downloadDefaults.BOOKLORE_LIBRARY_ID || 'Not set'}
+                  >
+                    <input
+                      type="text"
+                      value={userSettings.booklore_library_id || ''}
+                      onChange={(e) => setUserSettings((s) => ({ ...s, booklore_library_id: e.target.value }))}
+                      className={overrides.booklore_library_id ? inputClasses : disabledInputClasses}
+                      disabled={!overrides.booklore_library_id}
+                      placeholder={downloadDefaults.BOOKLORE_LIBRARY_ID || 'Library ID'}
+                    />
+                  </OverrideField>
+                  <OverrideField
+                    label="BookLore Path ID"
+                    enabled={overrides.booklore_path_id || false}
+                    onToggle={(v) => toggleOverride('booklore_path_id', v)}
+                    globalValue={downloadDefaults.BOOKLORE_PATH_ID || 'Not set'}
+                  >
+                    <input
+                      type="text"
+                      value={userSettings.booklore_path_id || ''}
+                      onChange={(e) => setUserSettings((s) => ({ ...s, booklore_path_id: e.target.value }))}
+                      className={overrides.booklore_path_id ? inputClasses : disabledInputClasses}
+                      disabled={!overrides.booklore_path_id}
+                      placeholder={downloadDefaults.BOOKLORE_PATH_ID || 'Path ID'}
+                    />
+                  </OverrideField>
+                </>
+              )}
+
+              {/* Email recipients override */}
+              {outputMode === 'email' && (
+                <OverrideField
+                  label="Email Recipients"
+                  enabled={overrides.email_recipients || false}
+                  onToggle={(v) => toggleOverride('email_recipients', v)}
+                  globalValue={
+                    downloadDefaults.EMAIL_RECIPIENTS?.length
+                      ? downloadDefaults.EMAIL_RECIPIENTS.map((r) => r.nickname || r.email).join(', ')
+                      : 'None configured'
+                  }
+                >
+                  {overrides.email_recipients && (
+                    <EmailRecipientsEditor
+                      recipients={userSettings.email_recipients || []}
+                      onChange={(r) => setUserSettings((s) => ({ ...s, email_recipients: r }))}
+                    />
+                  )}
+                </OverrideField>
+              )}
+            </>
+          )}
 
           <div className="flex gap-2 pt-2">
             <button
@@ -334,7 +556,7 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
                 </span>
 
                 <button
-                  onClick={() => setEditingUser({ ...user })}
+                  onClick={() => startEditing(user)}
                   className="text-xs px-2 py-1 rounded border border-[var(--border-muted)]
                              hover:bg-[var(--hover-surface)] transition-colors"
                 >
@@ -371,6 +593,99 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
           ))}
         </div>
       )}
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+interface OverrideFieldProps {
+  label: string;
+  enabled: boolean;
+  onToggle: (enabled: boolean) => void;
+  globalValue: string;
+  children: React.ReactNode;
+}
+
+const OverrideField = ({ label, enabled, onToggle, globalValue, children }: OverrideFieldProps) => (
+  <div className="space-y-1.5">
+    <div className="flex items-center justify-between">
+      <label className="text-sm font-medium">{label}</label>
+      <button
+        type="button"
+        onClick={() => onToggle(!enabled)}
+        className={`text-[10px] px-2 py-0.5 rounded font-medium transition-colors
+          ${enabled
+            ? 'bg-sky-500/15 text-sky-400 hover:bg-sky-500/25'
+            : 'bg-zinc-500/10 opacity-60 hover:opacity-80'}`}
+      >
+        {enabled ? 'Custom' : 'Global'}
+      </button>
+    </div>
+    {!enabled && (
+      <p className="text-xs opacity-40">Using global: {globalValue}</p>
+    )}
+    {children}
+  </div>
+);
+
+interface EmailRecipientsEditorProps {
+  recipients: Array<{ nickname: string; email: string }>;
+  onChange: (recipients: Array<{ nickname: string; email: string }>) => void;
+}
+
+const EmailRecipientsEditor = ({ recipients, onChange }: EmailRecipientsEditorProps) => {
+  const addRecipient = () => {
+    onChange([...recipients, { nickname: '', email: '' }]);
+  };
+
+  const removeRecipient = (index: number) => {
+    onChange(recipients.filter((_, i) => i !== index));
+  };
+
+  const updateRecipient = (index: number, field: 'nickname' | 'email', value: string) => {
+    const updated = [...recipients];
+    updated[index] = { ...updated[index], [field]: value };
+    onChange(updated);
+  };
+
+  return (
+    <div className="space-y-2">
+      {recipients.map((r, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <input
+            type="text"
+            value={r.nickname}
+            onChange={(e) => updateRecipient(i, 'nickname', e.target.value)}
+            className={inputClasses}
+            placeholder="Nickname"
+          />
+          <input
+            type="email"
+            value={r.email}
+            onChange={(e) => updateRecipient(i, 'email', e.target.value)}
+            className={inputClasses}
+            placeholder="email@example.com"
+          />
+          <button
+            type="button"
+            onClick={() => removeRecipient(i)}
+            className="text-xs px-2 py-1 rounded text-red-400 hover:bg-red-600 hover:text-white transition-colors shrink-0"
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={addRecipient}
+        className="text-xs px-2 py-1 rounded border border-[var(--border-muted)]
+                   hover:bg-[var(--hover-surface)] transition-colors"
+      >
+        + Add Recipient
+      </button>
     </div>
   );
 };

@@ -403,7 +403,10 @@ export const getAdminUser = async (userId: number): Promise<AdminUser> => {
 
 export const updateAdminUser = async (
   userId: number,
-  data: Partial<Pick<AdminUser, 'role' | 'email' | 'display_name'>> & { settings?: Record<string, unknown> }
+  data: Partial<Pick<AdminUser, 'role' | 'email' | 'display_name'>> & {
+    password?: string;
+    settings?: Record<string, unknown>;
+  }
 ): Promise<AdminUser> => {
   return fetchJSON<AdminUser>(`${API_BASE}/admin/users/${userId}`, {
     method: 'PUT',
@@ -415,4 +418,16 @@ export const deleteAdminUser = async (userId: number): Promise<{ success: boolea
   return fetchJSON<{ success: boolean }>(`${API_BASE}/admin/users/${userId}`, {
     method: 'DELETE',
   });
+};
+
+export interface DownloadDefaults {
+  BOOKS_OUTPUT_MODE: string;
+  DESTINATION: string;
+  BOOKLORE_LIBRARY_ID: string;
+  BOOKLORE_PATH_ID: string;
+  EMAIL_RECIPIENTS: Array<{ nickname: string; email: string }>;
+}
+
+export const getDownloadDefaults = async (): Promise<DownloadDefaults> => {
+  return fetchJSON<DownloadDefaults>(`${API_BASE}/admin/download-defaults`);
 };
