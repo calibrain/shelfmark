@@ -267,9 +267,9 @@ def queue_release(
         logger.error_trace(error_msg)
         return False, error_msg
 
-def queue_status() -> Dict[str, Dict[str, Any]]:
+def queue_status(user_id: Optional[int] = None) -> Dict[str, Dict[str, Any]]:
     """Get current status of the download queue."""
-    status = book_queue.get_status()
+    status = book_queue.get_status(user_id=user_id)
     for _, tasks in status.items():
         for _, task in tasks.items():
             if task.download_path and not run_blocking_io(os.path.exists, task.download_path):

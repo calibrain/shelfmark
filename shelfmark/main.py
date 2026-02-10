@@ -711,7 +711,11 @@ def api_status() -> Union[Response, Tuple[Response, int]]:
         flask.Response: JSON object with queue status.
     """
     try:
-        status = backend.queue_status()
+        # Non-admin users only see their own downloads
+        user_id = None
+        if not session.get('is_admin', True):
+            user_id = session.get('db_user_id')
+        status = backend.queue_status(user_id=user_id)
         return jsonify(status)
     except Exception as e:
         logger.error_trace(f"Status error: {e}")
