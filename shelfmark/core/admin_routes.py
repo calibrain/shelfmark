@@ -151,11 +151,16 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         if "role" in user_fields and user.get("oidc_subject") and user_fields["role"] != user.get("role"):
             security_config = load_config_file("security")
             use_admin_group = security_config.get("OIDC_USE_ADMIN_GROUP", True)
-            admin_group = security_config.get("OIDC_ADMIN_GROUP", "")
-            if admin_group and use_admin_group:
+            if use_admin_group:
+                admin_group = security_config.get("OIDC_ADMIN_GROUP", "")
+                msg = (
+                    f"Admin roles for OIDC users are managed by the '{admin_group}' group in your identity provider"
+                    if admin_group
+                    else "Disable 'Use Admin Group for Authorization' in security settings to manage roles manually"
+                )
                 return jsonify({
                     "error": "Cannot change role for OIDC user when group-based authorization is enabled",
-                    "message": f"Admin roles for OIDC users are managed by the '{admin_group}' group in your identity provider"
+                    "message": msg,
                 }), 400
 
         # Prevent demoting the last admin

@@ -158,7 +158,7 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
     }
 
     // Skip sending role when it's managed by OIDC group auth
-    const roleManaged = !!editingUser.oidc_subject && !!downloadDefaults?.OIDC_ADMIN_GROUP && downloadDefaults?.OIDC_USE_ADMIN_GROUP === true;
+    const roleManaged = !!editingUser.oidc_subject && downloadDefaults?.OIDC_USE_ADMIN_GROUP === true;
 
     try {
       await updateAdminUser(editingUser.id, {
@@ -283,19 +283,21 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
               value={editingUser.role}
               onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
               className={inputClasses}
-              disabled={!!editingUser.oidc_subject && !!downloadDefaults?.OIDC_ADMIN_GROUP && downloadDefaults?.OIDC_USE_ADMIN_GROUP === true}
+              disabled={!!editingUser.oidc_subject && downloadDefaults?.OIDC_USE_ADMIN_GROUP === true}
             >
               <option value="admin">Admin</option>
               <option value="user">User</option>
             </select>
             {/* Warn if OIDC user role is managed by group */}
-            {!!editingUser.oidc_subject && !!downloadDefaults?.OIDC_ADMIN_GROUP && downloadDefaults?.OIDC_USE_ADMIN_GROUP === true && (
+            {!!editingUser.oidc_subject && downloadDefaults?.OIDC_USE_ADMIN_GROUP === true && (
               <div className="flex items-start gap-2 p-2 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs mt-2">
                 <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <span>
-                  Admin role is managed by your identity provider ({downloadDefaults.OIDC_ADMIN_GROUP} group). Disable "Use Admin Group for Authorization" in security settings to manage roles manually.
+                  {downloadDefaults?.OIDC_ADMIN_GROUP
+                    ? `Admin role is managed by your identity provider (${downloadDefaults.OIDC_ADMIN_GROUP} group). Disable "Use Admin Group for Authorization" in security settings to manage roles manually.`
+                    : 'Admin role management via groups is enabled but no group name is configured. Set the Admin Group Name in security settings, or disable "Use Admin Group for Authorization" to manage roles manually.'}
                 </span>
               </div>
             )}
