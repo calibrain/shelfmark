@@ -1077,17 +1077,18 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
             logger.info(f"Login successful for user '{username}' from IP {ip_address} (no auth configured)")
             return jsonify({"success": True})
 
-        # Built-in authentication mode (multi-user via users DB)
-        if auth_mode == "builtin":
+        # Password authentication (builtin and OIDC modes)
+        # OIDC mode also allows password login as a fallback so admins don't get locked out
+        if auth_mode in ("builtin", "oidc"):
             try:
                 from shelfmark.core.user_db import UserDB
                 import os
 
                 db_path = os.path.join(os.environ.get("CONFIG_DIR", "/config"), "users.db")
-                user_db = UserDB(db_path)
-                user_db.initialize()
+                _login_db = UserDB(db_path)
+                _login_db.initialize()
 
-                db_user = user_db.get_user(username=username)
+                db_user = _login_db.get_user(username=username)
 
                 # If user not in DB, try legacy config credentials and auto-migrate
                 if not db_user:
@@ -1097,8 +1098,8 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
 
                     if username == stored_username and stored_hash and check_password_hash(stored_hash, password):
                         # Auto-migrate: create admin user in DB from config
-                        if len(user_db.list_users()) == 0:
-                            db_user = user_db.create_user(
+                        if len(_login_db.list_users()) == 0:
+                            db_user = _login_db.create_user(
                                 username=stored_username,
                                 password_hash=stored_hash,
                                 role="admin",
@@ -1126,7 +1127,7 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
                     session['is_admin'] = is_admin
                     session.permanent = remember_me
                     clear_failed_logins(username)
-                    logger.info(f"Login successful for user '{username}' from IP {ip_address} (builtin auth, is_admin={is_admin}, remember_me={remember_me})")
+                    logger.info(f"Login successful for user '{username}' from IP {ip_address} ({auth_mode} auth, is_admin={is_admin}, remember_me={remember_me})")
                     return jsonify({"success": True})
 
                 return _failed_login_response(username, ip_address)
