@@ -115,6 +115,29 @@ def _on_save_security(values: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Dict with processed values to save and any validation errors.
     """
+    # If switching to OIDC, ensure a local admin exists as fallback
+    if values.get("AUTH_METHOD") == "oidc":
+        import os
+        from shelfmark.core.user_db import UserDB
+
+        db_path = os.path.join(os.environ.get("CONFIG_DIR", "/config"), "users.db")
+        udb = UserDB(db_path)
+        udb.initialize()
+        users = udb.list_users()
+        has_local_admin = any(
+            u.get("password_hash") and u.get("role") == "admin"
+            for u in users
+        )
+        if not has_local_admin:
+            return {
+                "error": True,
+                "message": (
+                    "Create a local admin account first (Users tab) before enabling OIDC. "
+                    "This ensures you can still log in with a password if SSO is unavailable."
+                ),
+                "values": values,
+            }
+
     password = values.get("BUILTIN_PASSWORD", "")
     password_confirm = values.get("BUILTIN_PASSWORD_CONFIRM", "")
 

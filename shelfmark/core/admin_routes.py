@@ -60,6 +60,10 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         if role not in ("admin", "user"):
             return jsonify({"error": "Role must be 'admin' or 'user'"}), 400
 
+        # First user is always admin
+        if not user_db.list_users():
+            role = "admin"
+
         # Check if username already exists
         if user_db.get_user(username=username):
             return jsonify({"error": "Username already exists"}), 409

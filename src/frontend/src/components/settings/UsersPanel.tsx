@@ -205,6 +205,11 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
           className="mb-4 p-4 rounded-lg border space-y-3"
           style={{ backgroundColor: 'var(--card-background)', borderColor: 'var(--border-color)' }}
         >
+          {users.length === 0 && (
+            <p className="text-xs opacity-60 pb-1">
+              This will be the first account and will be created as admin.
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium mb-1 opacity-70">Username *</label>
@@ -273,8 +278,11 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
       )}
 
       {users.length === 0 ? (
-        <div className="text-sm opacity-50 text-center py-8">
-          No users yet. Users will appear here after their first login.
+        <div className="text-center py-8 space-y-2">
+          <p className="text-sm opacity-50">No users yet.</p>
+          <p className="text-xs opacity-40">
+            Create a local admin account before enabling OIDC to avoid getting locked out.
+          </p>
         </div>
       ) : (
         <div className="space-y-2">
