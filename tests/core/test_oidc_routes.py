@@ -5,10 +5,9 @@ Tests the /api/auth/oidc/login and /api/auth/oidc/callback endpoints
 using a minimal Flask test app (not the full shelfmark app).
 """
 
-import json
 import os
 import tempfile
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 import pytest

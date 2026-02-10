@@ -5,16 +5,11 @@ Tests that OIDC fields are registered correctly with proper
 show_when conditions, defaults, and field types.
 """
 
-from unittest.mock import patch
-
-import pytest
-
 from shelfmark.core.settings_registry import (
     TextField,
     PasswordField,
     CheckboxField,
     TagListField,
-    ActionButton,
 )
 
 

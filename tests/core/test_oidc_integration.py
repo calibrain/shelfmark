@@ -6,8 +6,6 @@ restriction logic. Since main.py has heavy dependencies, we test
 the logic directly rather than importing from main.
 """
 
-import pytest
-
 
 class TestGetAuthModeOIDCLogic:
     """Tests that get_auth_mode logic handles OIDC correctly.
