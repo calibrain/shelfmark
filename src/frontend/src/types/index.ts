@@ -191,6 +191,7 @@ export interface AuthResponse {
   success?: boolean;
   authenticated?: boolean;
   auth_required?: boolean;
+  auth_mode?: string;
   is_admin?: boolean;
   error?: string;
   logout_url?: string;
