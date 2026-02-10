@@ -24,7 +24,9 @@ function normalizeTag(raw: string): string {
   if (s.toLowerCase() === 'auto') return '';
 
   // Basic URL normalization to keep UX friendly; backend also normalizes on save.
-  if (!s.includes('://') && !s.startsWith('/')) {
+  // Only add https:// if it looks like a domain (contains a dot) and has no protocol.
+  // This avoids adding prefixes to non-URL values like OIDC scopes (openid, email, etc.)
+  if (!s.includes('://') && !s.startsWith('/') && s.includes('.')) {
     s = `https://${s}`;
   }
   s = s.replace(/\/+$/, '');
