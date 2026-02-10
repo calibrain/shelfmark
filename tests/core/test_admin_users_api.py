@@ -97,9 +97,10 @@ class TestAdminUsersListEndpoint:
         resp = regular_client.get("/api/admin/users")
         assert resp.status_code == 403
 
-    def test_list_users_no_session(self, no_session_client):
+    def test_list_users_no_session_allows_access(self, no_session_client):
+        """No session = no-auth mode, defaults to admin access."""
         resp = no_session_client.get("/api/admin/users")
-        assert resp.status_code == 403
+        assert resp.status_code == 200
 
 
 # ---------------------------------------------------------------------------

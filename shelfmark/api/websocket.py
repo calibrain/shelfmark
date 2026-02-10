@@ -158,7 +158,7 @@ class WebSocketManager:
         except Exception as e:
             logger.error(f"Error broadcasting status update: {e}")
 
-    def broadcast_download_progress(self, book_id: str, progress: float, status: str):
+    def broadcast_download_progress(self, book_id: str, progress: float, status: str, user_id: Optional[int] = None):
         """Broadcast download progress update for a specific book."""
         if not self.is_enabled():
             return
@@ -169,8 +169,14 @@ class WebSocketManager:
                 'progress': progress,
                 'status': status
             }
-            # When calling socketio.emit() outside event handlers, it broadcasts by default
-            self.socketio.emit('download_progress', data)
+            # Admins always see all progress
+            self.socketio.emit('download_progress', data, to="admins")
+            # If task belongs to a specific user, send to their room too
+            if user_id is not None:
+                room = f"user_{user_id}"
+                with self._rooms_lock:
+                    if room in self._user_rooms:
+                        self.socketio.emit('download_progress', data, to=room)
             logger.debug(f"Broadcasted progress for book {book_id}: {progress}%")
         except Exception as e:
             logger.error(f"Error broadcasting download progress: {e}")

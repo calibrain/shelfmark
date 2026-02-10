@@ -519,7 +519,9 @@ def update_download_progress(book_id: str, progress: float) -> None:
                 _progress_last_broadcast[f"{book_id}_progress"] = progress
         
         if should_broadcast:
-            ws_manager.broadcast_download_progress(book_id, progress, 'downloading')
+            task = book_queue.get_task(book_id)
+            task_user_id = task.user_id if task else None
+            ws_manager.broadcast_download_progress(book_id, progress, 'downloading', user_id=task_user_id)
 
 def update_download_status(book_id: str, status: str, message: Optional[str] = None) -> None:
     """Update download status with optional message for UI display."""

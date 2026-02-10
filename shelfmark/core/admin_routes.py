@@ -29,10 +29,14 @@ _DOWNLOAD_DEFAULTS = {
 
 
 def _require_admin(f):
-    """Decorator to require admin session for admin routes."""
+    """Decorator to require admin session for admin routes.
+
+    In no-auth mode (is_admin defaults True when unset), everyone has access.
+    This matches the login_required decorator's behavior.
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not session.get("is_admin", False):
+        if not session.get("is_admin", True):
             return jsonify({"error": "Admin access required"}), 403
         return f(*args, **kwargs)
     return decorated
@@ -126,6 +130,9 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         for field in ("role", "email", "display_name"):
             if field in data:
                 user_fields[field] = data[field]
+
+        if "role" in user_fields and user_fields["role"] not in ("admin", "user"):
+            return jsonify({"error": "Role must be 'admin' or 'user'"}), 400
 
         if user_fields:
             user_db.update_user(user_id, **user_fields)

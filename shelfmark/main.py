@@ -1115,13 +1115,13 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
                             )
                             logger.info(f"Migrated builtin admin '{stored_username}' to users database")
                         else:
-                            # Config user not in DB but DB has users - just authenticate
-                            session['user_id'] = username
-                            session['is_admin'] = True
-                            session.permanent = remember_me
-                            clear_failed_logins(username)
-                            logger.info(f"Login successful for user '{username}' from IP {ip_address} (builtin legacy auth)")
-                            return jsonify({"success": True})
+                            # Config user not in DB but DB has users — auto-migrate now
+                            db_user = user_db.create_user(
+                                username=stored_username,
+                                password_hash=stored_hash,
+                                role="admin",
+                            )
+                            logger.info(f"Migrated builtin admin '{stored_username}' to users database (existing users present)")
                     else:
                         return _failed_login_response(username, ip_address)
 
