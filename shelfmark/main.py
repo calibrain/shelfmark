@@ -348,14 +348,17 @@ def login_required(f):
         if 'user_id' not in session:
             return jsonify({"error": "Unauthorized"}), 401
 
-        # Check admin access for settings endpoints (proxy, CWA, and OIDC modes)
-        if auth_mode in ("proxy", "cwa", "oidc") and (request.path.startswith('/api/settings') or request.path.startswith('/api/onboarding')):
+        # Check admin access for settings endpoints (proxy, CWA, OIDC, and builtin modes)
+        if auth_mode in ("proxy", "cwa", "oidc", "builtin") and (request.path.startswith('/api/settings') or request.path.startswith('/api/onboarding')):
             from shelfmark.core.settings_registry import load_config_file
 
             try:
                 security_config = load_config_file("security")
 
-                if auth_mode == "proxy":
+                if auth_mode == "builtin":
+                    # Builtin multi-user: settings are always admin-only
+                    restrict_to_admin = 'db_user_id' in session
+                elif auth_mode == "proxy":
                     restrict_to_admin = security_config.get("PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", False)
                 elif auth_mode == "oidc":
                     restrict_to_admin = security_config.get("OIDC_RESTRICT_SETTINGS_TO_ADMIN", False)
@@ -1058,22 +1061,59 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
             logger.info(f"Login successful for user '{username}' from IP {ip_address} (no auth configured)")
             return jsonify({"success": True})
 
-        # Built-in authentication mode
+        # Built-in authentication mode (multi-user via users DB)
         if auth_mode == "builtin":
             try:
-                security_config = load_config_file("security")
-                stored_username = security_config.get("BUILTIN_USERNAME", "")
-                stored_hash = security_config.get("BUILTIN_PASSWORD_HASH", "")
+                from shelfmark.core.user_db import UserDB
+                import os
 
-                # Check credentials
-                if username == stored_username and check_password_hash(stored_hash, password):
+                db_path = os.path.join(os.environ.get("CONFIG_DIR", "/config"), "users.db")
+                user_db = UserDB(db_path)
+                user_db.initialize()
+
+                db_user = user_db.get_user(username=username)
+
+                # If user not in DB, try legacy config credentials and auto-migrate
+                if not db_user:
+                    security_config = load_config_file("security")
+                    stored_username = security_config.get("BUILTIN_USERNAME", "")
+                    stored_hash = security_config.get("BUILTIN_PASSWORD_HASH", "")
+
+                    if username == stored_username and stored_hash and check_password_hash(stored_hash, password):
+                        # Auto-migrate: create admin user in DB from config
+                        if len(user_db.list_users()) == 0:
+                            db_user = user_db.create_user(
+                                username=stored_username,
+                                password_hash=stored_hash,
+                                role="admin",
+                            )
+                            logger.info(f"Migrated builtin admin '{stored_username}' to users database")
+                        else:
+                            # Config user not in DB but DB has users - just authenticate
+                            session['user_id'] = username
+                            session['is_admin'] = True
+                            session.permanent = remember_me
+                            clear_failed_logins(username)
+                            logger.info(f"Login successful for user '{username}' from IP {ip_address} (builtin legacy auth)")
+                            return jsonify({"success": True})
+                    else:
+                        return _failed_login_response(username, ip_address)
+
+                # Authenticate against DB user
+                if db_user:
+                    if not db_user.get("password_hash") or not check_password_hash(db_user["password_hash"], password):
+                        return _failed_login_response(username, ip_address)
+
+                    is_admin = db_user["role"] == "admin"
                     session['user_id'] = username
+                    session['db_user_id'] = db_user["id"]
+                    session['is_admin'] = is_admin
                     session.permanent = remember_me
                     clear_failed_logins(username)
-                    logger.info(f"Login successful for user '{username}' from IP {ip_address} (builtin auth, remember_me={remember_me})")
+                    logger.info(f"Login successful for user '{username}' from IP {ip_address} (builtin auth, is_admin={is_admin}, remember_me={remember_me})")
                     return jsonify({"success": True})
-                else:
-                    return _failed_login_response(username, ip_address)
+
+                return _failed_login_response(username, ip_address)
 
             except Exception as e:
                 logger.error_trace(f"Built-in auth error: {e}")
@@ -1180,11 +1220,11 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
         is_authenticated = 'user_id' in session
 
         # Determine admin status for settings access
-        # - Built-in auth: single user is always admin
+        # - Built-in auth: check DB user role (legacy single-user is always admin)
         # - CWA auth: check RESTRICT_SETTINGS_TO_ADMIN setting
         # - Proxy auth: check PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN setting
         if auth_mode == "builtin":
-            is_admin = True
+            is_admin = session.get('is_admin', True)
         elif auth_mode == "cwa":
             restrict_to_admin = security_config.get("CWA_RESTRICT_SETTINGS_TO_ADMIN", False)
             if restrict_to_admin:
