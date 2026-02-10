@@ -48,7 +48,10 @@ def _parse_int(value: Any, label: str) -> int:
         raise BookloreError(f"{label} must be a number") from exc
 
 
-def build_booklore_config(values: Mapping[str, Any]) -> BookloreConfig:
+def build_booklore_config(
+    values: Mapping[str, Any],
+    user_overrides: Optional[Dict[str, Any]] = None,
+) -> BookloreConfig:
     base_url = str(values.get("BOOKLORE_HOST", "")).strip()
     username = str(values.get("BOOKLORE_USERNAME", "")).strip()
     password = values.get("BOOKLORE_PASSWORD", "") or ""
@@ -60,8 +63,13 @@ def build_booklore_config(values: Mapping[str, Any]) -> BookloreConfig:
     if not password:
         raise BookloreError("Booklore password is required")
 
-    library_id = _parse_int(values.get("BOOKLORE_LIBRARY_ID"), "Booklore library ID")
-    path_id = _parse_int(values.get("BOOKLORE_PATH_ID"), "Booklore path ID")
+    # Per-user library/path overrides (auth stays global)
+    overrides = user_overrides or {}
+    library_id_val = overrides.get("booklore_library_id") or values.get("BOOKLORE_LIBRARY_ID")
+    path_id_val = overrides.get("booklore_path_id") or values.get("BOOKLORE_PATH_ID")
+
+    library_id = _parse_int(library_id_val, "Booklore library ID")
+    path_id = _parse_int(path_id_val, "Booklore path ID")
 
     return BookloreConfig(
         base_url=base_url.rstrip("/"),
@@ -209,7 +217,10 @@ def _post_process_booklore(
         return None
 
     try:
-        booklore_config = build_booklore_config(_get_booklore_settings())
+        booklore_config = build_booklore_config(
+            _get_booklore_settings(),
+            user_overrides=task.output_args if task.output_args else None,
+        )
     except BookloreError as e:
         logger.warning("Task %s: Booklore configuration error: %s", task.task_id, e)
         status_callback("error", str(e))
