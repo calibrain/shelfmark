@@ -183,6 +183,12 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             "EMAIL_RECIPIENTS",
         ]
         defaults = {k: config.get(k, _DOWNLOAD_DEFAULTS.get(k)) for k in keys}
+
+        # Include OIDC settings for UI warnings (e.g., when admin tries to set OIDC user role)
+        security_config = load_config_file("security")
+        defaults["OIDC_ADMIN_GROUP"] = security_config.get("OIDC_ADMIN_GROUP", "")
+        defaults["OIDC_AUTO_PROVISION"] = security_config.get("OIDC_AUTO_PROVISION", True)
+
         return jsonify(defaults)
 
     @app.route("/api/admin/booklore-options", methods=["GET"])

@@ -435,6 +435,8 @@ export interface DownloadDefaults {
   BOOKLORE_LIBRARY_ID: string;
   BOOKLORE_PATH_ID: string;
   EMAIL_RECIPIENTS: Array<{ nickname: string; email: string }>;
+  OIDC_ADMIN_GROUP: string;
+  OIDC_AUTO_PROVISION: boolean;
 }
 
 export const getDownloadDefaults = async (): Promise<DownloadDefaults> => {

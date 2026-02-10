@@ -284,6 +284,17 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
               <option value="admin">Admin</option>
               <option value="user">User</option>
             </select>
+            {/* Warn if setting OIDC user to admin while admin_group is configured */}
+            {editingUser.oidc_subject && downloadDefaults?.OIDC_ADMIN_GROUP && (
+              <div className="flex items-start gap-2 p-2 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs mt-2">
+                <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>
+                  Admin role for OIDC accounts is managed by your identity provider ({downloadDefaults.OIDC_ADMIN_GROUP} group). Local users can be set as admin directly.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Password section */}
