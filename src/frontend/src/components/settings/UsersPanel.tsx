@@ -12,6 +12,7 @@ const inputClasses =
 export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -21,10 +22,13 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const data = await getAdminUsers();
       setUsers(data);
-    } catch {
-      onShowToast?.('Failed to load users', 'error');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load users';
+      setLoadError(msg);
+      onShowToast?.(msg, 'error');
     } finally {
       setLoading(false);
     }
@@ -95,6 +99,21 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
     return (
       <div className="flex-1 flex items-center justify-center text-sm opacity-60 p-8">
         Loading users...
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-8 gap-3">
+        <p className="text-sm opacity-60">{loadError}</p>
+        <button
+          onClick={fetchUsers}
+          className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
+                     bg-[var(--bg-soft)] hover:bg-[var(--hover-surface)] transition-colors"
+        >
+          Retry
+        </button>
       </div>
     );
   }
