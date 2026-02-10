@@ -799,7 +799,7 @@ def download_settings():
         TextField(
             key="DESTINATION",
             label="Destination",
-            description="Directory where downloaded files are saved.",
+            description="Directory where downloaded files are saved. Use {User} for per-user folders (e.g. /books/{User}).",
             default="/books",
             required=True,
             env_var="INGEST_DIR",  # Legacy env var name for backwards compatibility

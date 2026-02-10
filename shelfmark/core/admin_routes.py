@@ -7,6 +7,7 @@ All endpoints require admin session.
 from functools import wraps
 
 from flask import Flask, jsonify, request, session
+from werkzeug.security import generate_password_hash
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.user_db import UserDB
@@ -39,6 +40,40 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         """List all users."""
         users = user_db.list_users()
         return jsonify([_sanitize_user(u) for u in users])
+
+    @app.route("/api/admin/users", methods=["POST"])
+    @_require_admin
+    def admin_create_user():
+        """Create a new user with password authentication."""
+        data = request.get_json() or {}
+
+        username = (data.get("username") or "").strip()
+        password = data.get("password", "")
+        email = (data.get("email") or "").strip() or None
+        display_name = (data.get("display_name") or "").strip() or None
+        role = data.get("role", "user")
+
+        if not username:
+            return jsonify({"error": "Username is required"}), 400
+        if not password or len(password) < 4:
+            return jsonify({"error": "Password must be at least 4 characters"}), 400
+        if role not in ("admin", "user"):
+            return jsonify({"error": "Role must be 'admin' or 'user'"}), 400
+
+        # Check if username already exists
+        if user_db.get_user(username=username):
+            return jsonify({"error": "Username already exists"}), 409
+
+        password_hash = generate_password_hash(password)
+        user = user_db.create_user(
+            username=username,
+            password_hash=password_hash,
+            email=email,
+            display_name=display_name,
+            role=role,
+        )
+        logger.info(f"Admin created user: {username} (role={role})")
+        return jsonify(_sanitize_user(user)), 201
 
     @app.route("/api/admin/users/<int:user_id>", methods=["GET"])
     @_require_admin

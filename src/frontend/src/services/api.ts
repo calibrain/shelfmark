@@ -379,3 +379,40 @@ export const getReleases = async (
   // Let the backend control timeouts for release searches (can be long-running).
   return fetchJSON<ReleasesResponse>(`${API_BASE}/releases?${params.toString()}`, {}, null);
 };
+
+// Admin user management API
+
+export interface AdminUser {
+  id: number;
+  username: string;
+  email: string | null;
+  display_name: string | null;
+  role: string;
+  oidc_subject: string | null;
+  created_at: string;
+  settings?: Record<string, unknown>;
+}
+
+export const getAdminUsers = async (): Promise<AdminUser[]> => {
+  return fetchJSON<AdminUser[]>(`${API_BASE}/admin/users`);
+};
+
+export const getAdminUser = async (userId: number): Promise<AdminUser> => {
+  return fetchJSON<AdminUser>(`${API_BASE}/admin/users/${userId}`);
+};
+
+export const updateAdminUser = async (
+  userId: number,
+  data: Partial<Pick<AdminUser, 'role' | 'email' | 'display_name'>> & { settings?: Record<string, unknown> }
+): Promise<AdminUser> => {
+  return fetchJSON<AdminUser>(`${API_BASE}/admin/users/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+};
+
+export const deleteAdminUser = async (userId: number): Promise<{ success: boolean }> => {
+  return fetchJSON<{ success: boolean }>(`${API_BASE}/admin/users/${userId}`, {
+    method: 'DELETE',
+  });
+};
