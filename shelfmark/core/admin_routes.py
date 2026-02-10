@@ -42,7 +42,6 @@ def _require_admin(f):
 
     In no-auth mode, everyone has access (is_admin defaults True).
     In auth-required modes, requires an authenticated session with admin role.
-    For OIDC and CWA, respects the RESTRICT_SETTINGS_TO_ADMIN setting.
     """
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -50,17 +49,6 @@ def _require_admin(f):
         if auth_mode != "none":
             if "user_id" not in session:
                 return jsonify({"error": "Authentication required"}), 401
-
-            # Check if settings are restricted to admins
-            # If not, all authenticated users can access admin routes
-            if auth_mode in ("oidc", "cwa", "proxy"):
-                config = load_config_file("security")
-                restrict_key = f"{auth_mode.upper()}_RESTRICT_SETTINGS_TO_ADMIN"
-                restrict_to_admin = config.get(restrict_key, False)
-                if not restrict_to_admin:
-                    # Settings are not restricted - allow all authenticated users
-                    return f(*args, **kwargs)
-
             if not session.get("is_admin", False):
                 return jsonify({"error": "Admin access required"}), 403
         return f(*args, **kwargs)

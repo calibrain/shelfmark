@@ -70,6 +70,12 @@ def provision_oidc_user(
 
     If a user with the same oidc_subject exists, updates their info.
     If the username is taken by a different user, appends a numeric suffix.
+
+    Admin role determination (any true = admin):
+    - is_admin=True (user in admin group) → admin
+    - Existing user has role='admin' in database → admin
+    - is_admin=False but existing user is admin → keep admin (DB wins)
+
     is_admin=None means no admin group was configured; preserve existing role.
     """
     oidc_subject = user_info["oidc_subject"]
@@ -81,9 +87,15 @@ def provision_oidc_user(
             "email": user_info.get("email"),
             "display_name": user_info.get("display_name"),
         }
-        # Only update role if admin group mapping is configured
-        if is_admin is not None:
-            updates["role"] = "admin" if is_admin else "user"
+        # Determine role: admin if group says yes OR if already admin in DB
+        current_role = existing.get("role", "user")
+        if is_admin is True:
+            # User is in admin group → make them admin
+            updates["role"] = "admin"
+        elif is_admin is False and current_role != "admin":
+            # Not in admin group and not already admin → make user
+            updates["role"] = "user"
+        # else: preserve existing role (is_admin=None or already admin)
         db.update_user(existing["id"], **updates)
         return db.get_user(user_id=existing["id"])
 

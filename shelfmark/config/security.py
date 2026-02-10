@@ -366,16 +366,8 @@ def security_settings():
         TagListField(
             key="OIDC_SCOPES",
             label="Scopes",
-            description="OAuth2 scopes to request from the identity provider.",
-            default=["openid", "email", "profile", "groups"],
-            env_supported=False,
-            show_when={"field": "AUTH_METHOD", "value": "oidc"},
-        ),
-        CheckboxField(
-            key="OIDC_RESTRICT_SETTINGS_TO_ADMIN",
-            label="Restrict Settings to Admins authenticated via OIDC",
-            description="Only users in the admin group can access settings.",
-            default=False,
+            description="OAuth2 scopes to request from the identity provider. 'groups' is automatically added when Admin Group Name is set.",
+            default=["openid", "email", "profile"],
             env_supported=False,
             show_when={"field": "AUTH_METHOD", "value": "oidc"},
         ),
@@ -388,15 +380,19 @@ def security_settings():
             placeholder="groups",
             default="groups",
             env_supported=False,
-            show_when={"field": "OIDC_RESTRICT_SETTINGS_TO_ADMIN", "value": True},
+            show_when={"field": "AUTH_METHOD", "value": "oidc"},
         ),
         TextField(
             key="OIDC_ADMIN_GROUP",
             label="Admin Group Name",
-            description="The group name that grants admin access.",
+            description=(
+                "Users in this group will be given admin access. "
+                "Leave empty to use database roles only."
+            ),
             placeholder="shelfmark-admins",
+            default="",
             env_supported=False,
-            show_when={"field": "OIDC_RESTRICT_SETTINGS_TO_ADMIN", "value": True},
+            show_when={"field": "AUTH_METHOD", "value": "oidc"},
         ),
         CheckboxField(
             key="OIDC_AUTO_PROVISION",

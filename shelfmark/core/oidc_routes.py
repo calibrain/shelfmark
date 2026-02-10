@@ -119,7 +119,13 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             config = load_config_file("security")
             discovery_url = config.get("OIDC_DISCOVERY_URL", "")
             client_id = config.get("OIDC_CLIENT_ID", "")
-            scopes = config.get("OIDC_SCOPES", ["openid", "email", "profile", "groups"])
+            scopes = config.get("OIDC_SCOPES", ["openid", "email", "profile"]).copy()
+            admin_group = config.get("OIDC_ADMIN_GROUP", "")
+            group_claim = config.get("OIDC_GROUP_CLAIM", "groups")
+
+            # Auto-add group claim to scopes if admin group is configured
+            if admin_group and group_claim not in scopes:
+                scopes.append(group_claim)
 
             if not discovery_url or not client_id:
                 return jsonify({"error": "OIDC not configured"}), 500

@@ -383,10 +383,10 @@ def login_required(f):
                     restrict_to_admin = 'db_user_id' in session
                 elif auth_mode == "proxy":
                     restrict_to_admin = security_config.get("PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", False)
-                elif auth_mode == "oidc":
-                    restrict_to_admin = security_config.get("OIDC_RESTRICT_SETTINGS_TO_ADMIN", False)
                 else:
-                    restrict_to_admin = security_config.get("CWA_RESTRICT_SETTINGS_TO_ADMIN", False)
+                    # For OIDC and CWA, settings are always admin-only
+                    # The user's admin status comes from their group or database role
+                    restrict_to_admin = True
 
                 if restrict_to_admin and not session.get('is_admin', False):
                     return jsonify({"error": "Admin access required"}), 403
@@ -1271,11 +1271,9 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
             restrict_to_admin = security_config.get("PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", False)
             is_admin = session.get('is_admin', not restrict_to_admin)
         elif auth_mode == "oidc":
-            restrict_to_admin = security_config.get("OIDC_RESTRICT_SETTINGS_TO_ADMIN", False)
-            if restrict_to_admin:
-                is_admin = session.get('is_admin', False)
-            else:
-                is_admin = True
+            # OIDC admin status is determined by group membership during login
+            # and stored in session['is_admin'] - use it directly
+            is_admin = session.get('is_admin', False)
         else:
             is_admin = False
 
