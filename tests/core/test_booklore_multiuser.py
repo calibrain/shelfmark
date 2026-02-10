@@ -1,8 +1,6 @@
 """Tests for per-user BookLore library/path support."""
 
-import pytest
-
-from shelfmark.download.outputs.booklore import BookloreConfig, BookloreError, build_booklore_config
+from shelfmark.download.outputs.booklore import build_booklore_config
 
 
 class TestBuildBookloreConfigWithOverrides:

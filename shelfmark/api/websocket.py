@@ -151,8 +151,8 @@ class WebSocketManager:
                         uid = int(room.split("_", 1)[1])
                         filtered = self._queue_status_fn(user_id=uid)
                         self.socketio.emit('status_update', filtered, to=room)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.error(f"Failed to send status update for room {room}: {e}")
 
             logger.debug("Broadcasted status update to all rooms")
         except Exception as e:

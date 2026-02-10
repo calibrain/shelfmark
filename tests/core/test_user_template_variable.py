@@ -1,7 +1,5 @@
 """Tests for {User} template variable in folder destination paths."""
 
-import pytest
-
 from shelfmark.core.naming import KNOWN_TOKENS, parse_naming_template
 
 

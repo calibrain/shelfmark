@@ -5,7 +5,7 @@ Tests the OIDCAuth helper: login URL generation, callback handling,
 user provisioning, and group claim parsing.
 """
 
-import json
+
 import os
 import tempfile
 from unittest.mock import MagicMock, patch

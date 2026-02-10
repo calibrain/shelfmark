@@ -5,11 +5,7 @@ Tests that DownloadTask has a user_id field and that the queue
 can be filtered by user.
 """
 
-import time
-
-import pytest
-
-from shelfmark.core.models import DownloadTask, QueueStatus
+from shelfmark.core.models import DownloadTask
 from shelfmark.core.queue import BookQueue
 
 

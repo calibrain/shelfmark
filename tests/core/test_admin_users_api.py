@@ -526,7 +526,6 @@ class TestAdminDownloadDefaults:
 
     def test_returns_defaults_when_no_config(self, admin_client, tmp_path):
         """If no downloads config file exists, return sensible defaults."""
-        import os
 
         config_path = tmp_path / "plugins" / "downloads.json"
         if config_path.exists():
