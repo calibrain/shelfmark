@@ -72,6 +72,7 @@ socketio = SocketIO(
 
 # Initialize WebSocket manager
 ws_manager.init_app(app, socketio)
+ws_manager.set_queue_status_fn(backend.queue_status)
 logger.info(f"Flask-SocketIO initialized with async_mode='{async_mode}'")
 
 # Ensure all plugins are loaded before starting the download coordinator.
@@ -1928,22 +1929,35 @@ def catch_all(path: str) -> Response:
 def handle_connect():
     """Handle client connection."""
     logger.info("WebSocket client connected")
-    
+
     # Track the connection (triggers warmup callbacks on first connect)
     ws_manager.client_connected()
-    
-    # Send initial status to the newly connected client
+
+    # Join appropriate room based on user session
+    is_admin = session.get('is_admin', True)
+    db_user_id = session.get('db_user_id')
+    ws_manager.join_user_room(request.sid, is_admin, db_user_id)
+
+    # Send initial status to the newly connected client (filtered)
     try:
-        status = backend.queue_status()
+        user_id = None
+        if not is_admin:
+            user_id = db_user_id
+        status = backend.queue_status(user_id=user_id)
         emit('status_update', status)
     except Exception as e:
         logger.error(f"Error sending initial status: {e}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    """Handle client disconnection."""  
+    """Handle client disconnection."""
     logger.info("WebSocket client disconnected")
-    
+
+    # Leave room
+    is_admin = session.get('is_admin', True)
+    db_user_id = session.get('db_user_id')
+    ws_manager.leave_user_room(request.sid, is_admin, db_user_id)
+
     # Track the disconnection
     ws_manager.client_disconnected()
 
@@ -1951,7 +1965,10 @@ def handle_disconnect():
 def handle_status_request():
     """Handle manual status request from client."""
     try:
-        status = backend.queue_status()
+        user_id = None
+        if not session.get('is_admin', True):
+            user_id = session.get('db_user_id')
+        status = backend.queue_status(user_id=user_id)
         emit('status_update', status)
     except Exception as e:
         logger.error(f"Error handling status request: {e}")
