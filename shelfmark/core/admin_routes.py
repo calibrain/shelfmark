@@ -154,7 +154,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             if use_admin_group:
                 admin_group = security_config.get("OIDC_ADMIN_GROUP", "")
                 msg = (
-                    f"Admin roles for OIDC users are managed by the '{admin_group}' group in your identity provider"
+                    "Admin roles for OIDC users are managed by the identity provider group claim"
                     if admin_group
                     else "Disable 'Use Admin Group for Authorization' in security settings to manage roles manually"
                 )
