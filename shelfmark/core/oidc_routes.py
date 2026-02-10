@@ -225,8 +225,10 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             # Check if user exists by OIDC subject first
             existing_user = user_db.get_user(oidc_subject=user_info["oidc_subject"])
 
-            # If no match by subject, try email (for pre-created users)
-            if not existing_user and user_info.get("email"):
+            # If no match by subject, try email linking (for pre-created users)
+            # Only link when the IdP has verified the email to prevent privilege escalation
+            email_verified = claims.get("email_verified", False)
+            if not existing_user and user_info.get("email") and email_verified:
                 matching_users = [
                     u for u in user_db.list_users()
                     if u.get("email") and u["email"].lower() == user_info["email"].lower()

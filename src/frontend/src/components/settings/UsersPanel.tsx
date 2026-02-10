@@ -181,6 +181,10 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
       onShowToast?.('Username and password are required', 'error');
       return;
     }
+    if (createForm.password.length < 4) {
+      onShowToast?.('Password must be at least 4 characters', 'error');
+      return;
+    }
     setCreating(true);
     try {
       const data = await createAdminUser(createForm as { username: string; password: string; email?: string; display_name?: string; role?: string });

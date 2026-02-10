@@ -69,20 +69,19 @@ class TestOIDCFieldsPresent:
         assert field is not None
         assert isinstance(field, TagListField)
 
-    def test_scopes_default_includes_groups(self):
+    def test_scopes_default_includes_essentials(self):
         fields = _reload_security_module()
         field = _get_field(fields, "OIDC_SCOPES")
         assert "openid" in field.default
         assert "email" in field.default
         assert "profile" in field.default
-        assert "groups" in field.default
 
-    def test_restrict_to_admin_field_exists(self):
+    def test_use_admin_group_field_exists(self):
         fields = _reload_security_module()
-        field = _get_field(fields, "OIDC_RESTRICT_SETTINGS_TO_ADMIN")
+        field = _get_field(fields, "OIDC_USE_ADMIN_GROUP")
         assert field is not None
         assert isinstance(field, CheckboxField)
-        assert field.default is False
+        assert field.default is True
 
     def test_group_claim_field_exists(self):
         fields = _reload_security_module()
@@ -118,8 +117,10 @@ class TestOIDCFieldShowWhen:
             "OIDC_CLIENT_ID",
             "OIDC_CLIENT_SECRET",
             "OIDC_SCOPES",
-            "OIDC_RESTRICT_SETTINGS_TO_ADMIN",
+            "OIDC_USE_ADMIN_GROUP",
             "OIDC_AUTO_PROVISION",
+            "OIDC_GROUP_CLAIM",
+            "OIDC_ADMIN_GROUP",
         ]
         for key in oidc_keys:
             field = _get_field(fields, key)
@@ -137,34 +138,6 @@ class TestOIDCFieldShowWhen:
             )
             assert has_oidc_condition, f"Field {key} missing AUTH_METHOD=oidc show_when"
 
-    def test_group_claim_shows_when_restrict_enabled(self):
-        fields = _reload_security_module()
-        field = _get_field(fields, "OIDC_GROUP_CLAIM")
-        show_when = field.show_when
-        if isinstance(show_when, list):
-            conditions = show_when
-        else:
-            conditions = [show_when]
-        has_restrict_condition = any(
-            c.get("field") == "OIDC_RESTRICT_SETTINGS_TO_ADMIN" and c.get("value") is True
-            for c in conditions
-        )
-        assert has_restrict_condition
-
-    def test_admin_group_shows_when_restrict_enabled(self):
-        fields = _reload_security_module()
-        field = _get_field(fields, "OIDC_ADMIN_GROUP")
-        show_when = field.show_when
-        if isinstance(show_when, list):
-            conditions = show_when
-        else:
-            conditions = [show_when]
-        has_restrict_condition = any(
-            c.get("field") == "OIDC_RESTRICT_SETTINGS_TO_ADMIN" and c.get("value") is True
-            for c in conditions
-        )
-        assert has_restrict_condition
-
 
 class TestOIDCFieldsEnvSupport:
     """Tests that OIDC fields are UI-only (no env var support)."""
@@ -176,7 +149,7 @@ class TestOIDCFieldsEnvSupport:
             "OIDC_CLIENT_ID",
             "OIDC_CLIENT_SECRET",
             "OIDC_SCOPES",
-            "OIDC_RESTRICT_SETTINGS_TO_ADMIN",
+            "OIDC_USE_ADMIN_GROUP",
             "OIDC_GROUP_CLAIM",
             "OIDC_ADMIN_GROUP",
             "OIDC_AUTO_PROVISION",

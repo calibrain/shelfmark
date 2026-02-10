@@ -596,7 +596,7 @@ def api_download() -> Union[Response, Tuple[Response, int]]:
         # Per-user download overrides
         db_user_id = session.get('db_user_id')
         _username = session.get('user_id')
-        _user_overrides = user_db.get_user_settings(db_user_id) if db_user_id else {}
+        _user_overrides = user_db.get_user_settings(db_user_id) if (user_db and db_user_id) else {}
         success, error_msg = backend.queue_book(
             book_id, priority, email_recipient=email_recipient,
             user_id=db_user_id, username=_username, user_overrides=_user_overrides,
@@ -642,7 +642,7 @@ def api_download_release() -> Union[Response, Tuple[Response, int]]:
         # Per-user download overrides
         db_user_id = session.get('db_user_id')
         _username = session.get('user_id')
-        _user_overrides = user_db.get_user_settings(db_user_id) if db_user_id else {}
+        _user_overrides = user_db.get_user_settings(db_user_id) if (user_db and db_user_id) else {}
         success, error_msg = backend.queue_release(
             data, priority, email_recipient=email_recipient,
             user_id=db_user_id, username=_username, user_overrides=_user_overrides,
@@ -1105,6 +1105,9 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
         # Password authentication (builtin and OIDC modes)
         # OIDC mode also allows password login as a fallback so admins don't get locked out
         if auth_mode in ("builtin", "oidc"):
+            if user_db is None:
+                logger.error(f"User database not available for {auth_mode} auth")
+                return jsonify({"error": "Authentication service unavailable"}), 503
             try:
                 db_user = user_db.get_user(username=username)
 
@@ -1116,21 +1119,12 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
 
                     if username == stored_username and stored_hash and check_password_hash(stored_hash, password):
                         # Auto-migrate: create admin user in DB from config
-                        if len(user_db.list_users()) == 0:
-                            db_user = user_db.create_user(
-                                username=stored_username,
-                                password_hash=stored_hash,
-                                role="admin",
-                            )
-                            logger.info(f"Migrated builtin admin '{stored_username}' to users database")
-                        else:
-                            # Config user not in DB but DB has users — auto-migrate now
-                            db_user = user_db.create_user(
-                                username=stored_username,
-                                password_hash=stored_hash,
-                                role="admin",
-                            )
-                            logger.info(f"Migrated builtin admin '{stored_username}' to users database (existing users present)")
+                        db_user = user_db.create_user(
+                            username=stored_username,
+                            password_hash=stored_hash,
+                            role="admin",
+                        )
+                        logger.info(f"Migrated builtin admin '{stored_username}' to users database")
                     else:
                         return _failed_login_response(username, ip_address)
 

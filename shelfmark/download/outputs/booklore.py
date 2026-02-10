@@ -65,8 +65,10 @@ def build_booklore_config(
 
     # Per-user library/path overrides (auth stays global)
     overrides = user_overrides or {}
-    library_id_val = overrides.get("booklore_library_id") or values.get("BOOKLORE_LIBRARY_ID")
-    path_id_val = overrides.get("booklore_path_id") or values.get("BOOKLORE_PATH_ID")
+    _lib_override = overrides.get("booklore_library_id")
+    library_id_val = _lib_override if _lib_override is not None else values.get("BOOKLORE_LIBRARY_ID")
+    _path_override = overrides.get("booklore_path_id")
+    path_id_val = _path_override if _path_override is not None else values.get("BOOKLORE_PATH_ID")
 
     library_id = _parse_int(library_id_val, "Booklore library ID")
     path_id = _parse_int(path_id_val, "Booklore path ID")

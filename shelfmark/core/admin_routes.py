@@ -99,13 +99,16 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             return jsonify({"error": "Username already exists"}), 409
 
         password_hash = generate_password_hash(password)
-        user = user_db.create_user(
-            username=username,
-            password_hash=password_hash,
-            email=email,
-            display_name=display_name,
-            role=role,
-        )
+        try:
+            user = user_db.create_user(
+                username=username,
+                password_hash=password_hash,
+                email=email,
+                display_name=display_name,
+                role=role,
+            )
+        except ValueError:
+            return jsonify({"error": "Username already exists"}), 409
         logger.info(f"Admin created user: {username} (role={role})")
         return jsonify(_sanitize_user(user)), 201
 

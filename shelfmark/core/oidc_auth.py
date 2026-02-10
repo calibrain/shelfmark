@@ -83,7 +83,7 @@ def provision_oidc_user(
     role = "admin" if is_admin else "user"
 
     # New user — resolve username conflicts
-    username = user_info["username"]
+    username = user_info["username"] or oidc_subject
     if db.get_user(username=username):
         # Username taken, append suffix
         suffix = 1

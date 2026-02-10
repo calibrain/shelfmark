@@ -166,10 +166,11 @@ def queue_book(
 
             output_args = {"to": email_to, "label": email_label}
 
-        # Merge per-user overrides (destination, booklore, etc.) - skip email_recipients (already handled)
+        # Merge per-user overrides into output_args (only known keys)
+        _ALLOWED_OVERRIDE_KEYS = {"destination", "booklore_library_id", "booklore_path_id"}
         if user_overrides:
             for k, v in user_overrides.items():
-                if v and k not in output_args and k != "email_recipients":
+                if k in _ALLOWED_OVERRIDE_KEYS and v is not None and k not in output_args:
                     output_args[k] = v
 
         # Create a source-agnostic download task
@@ -259,10 +260,11 @@ def queue_release(
 
             output_args = {"to": email_to, "label": email_label}
 
-        # Merge per-user overrides (destination, booklore, etc.) - skip email_recipients (already handled)
+        # Merge per-user overrides into output_args (only known keys)
+        _ALLOWED_OVERRIDE_KEYS = {"destination", "booklore_library_id", "booklore_path_id"}
         if user_overrides:
             for k, v in user_overrides.items():
-                if v and k not in output_args and k != "email_recipients":
+                if k in _ALLOWED_OVERRIDE_KEYS and v is not None and k not in output_args:
                     output_args[k] = v
 
         # Create a source-agnostic download task from release data
