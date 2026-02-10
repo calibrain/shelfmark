@@ -150,6 +150,9 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             expected_state = session.get("oidc_state")
             code_verifier = session.get("oidc_code_verifier")
 
+            if not expected_state or not code_verifier:
+                return jsonify({"error": "Session expired. Please try logging in again."}), 400
+
             if not state or state != expected_state:
                 return jsonify({"error": "Invalid state parameter"}), 400
 
@@ -190,13 +193,17 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
 
             # If no match by subject, try email (for pre-created users)
             if not existing_user and user_info.get("email"):
-                for u in user_db.list_users():
-                    if u.get("email") and u["email"].lower() == user_info["email"].lower():
-                        existing_user = u
-                        # Link OIDC subject to existing user
-                        user_db.update_user(u["id"], oidc_subject=user_info["oidc_subject"])
-                        logger.info(f"Linked OIDC subject {user_info['oidc_subject']} to existing user {u['username']}")
-                        break
+                matching_users = [
+                    u for u in user_db.list_users()
+                    if u.get("email") and u["email"].lower() == user_info["email"].lower()
+                ]
+                if len(matching_users) == 1:
+                    existing_user = matching_users[0]
+                    # Link OIDC subject to existing user
+                    user_db.update_user(existing_user["id"], oidc_subject=user_info["oidc_subject"])
+                    logger.info(f"Linked OIDC subject {user_info['oidc_subject']} to existing user {existing_user['username']}")
+                elif len(matching_users) > 1:
+                    logger.warning(f"OIDC email linking skipped: multiple local accounts match email {user_info['email']}")
 
             if not existing_user and not auto_provision:
                 logger.warning(f"OIDC login rejected: auto-provision disabled for {user_info['username']}")

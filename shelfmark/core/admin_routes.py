@@ -28,16 +28,29 @@ _DOWNLOAD_DEFAULTS = {
 }
 
 
+def _get_auth_mode():
+    """Get current auth mode from config."""
+    try:
+        config = load_config_file("security")
+        return config.get("AUTH_METHOD", "none")
+    except Exception:
+        return "none"
+
+
 def _require_admin(f):
     """Decorator to require admin session for admin routes.
 
-    In no-auth mode (is_admin defaults True when unset), everyone has access.
-    This matches the login_required decorator's behavior.
+    In no-auth mode, everyone has access (is_admin defaults True).
+    In auth-required modes, requires an authenticated session with admin role.
     """
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not session.get("is_admin", True):
-            return jsonify({"error": "Admin access required"}), 403
+        auth_mode = _get_auth_mode()
+        if auth_mode != "none":
+            if "user_id" not in session:
+                return jsonify({"error": "Authentication required"}), 401
+            if not session.get("is_admin", False):
+                return jsonify({"error": "Admin access required"}), 403
         return f(*args, **kwargs)
     return decorated
 
@@ -133,6 +146,16 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
         if "role" in user_fields and user_fields["role"] not in ("admin", "user"):
             return jsonify({"error": "Role must be 'admin' or 'user'"}), 400
+
+        # Prevent demoting the last admin
+        if "role" in user_fields and user_fields["role"] != "admin":
+            if user.get("role") == "admin":
+                other_admins = [
+                    u for u in user_db.list_users()
+                    if u["role"] == "admin" and u["id"] != user_id
+                ]
+                if not other_admins:
+                    return jsonify({"error": "Cannot remove admin role from the last admin account"}), 400
 
         if user_fields:
             user_db.update_user(user_id, **user_fields)

@@ -7,6 +7,8 @@ Tests CRUD endpoints for managing users from the admin panel.
 import os
 import tempfile
 
+from unittest.mock import patch
+
 import pytest
 from flask import Flask
 
@@ -49,17 +51,27 @@ def admin_client(app):
 
 @pytest.fixture
 def regular_client(app):
+    """Non-admin client with auth mode set to builtin (auth-required)."""
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = "user"
         sess["is_admin"] = False
-    return client
+    with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="builtin"):
+        yield client
 
 
 @pytest.fixture
 def no_session_client(app):
-    """Client with no session at all (unauthenticated)."""
+    """Client with no session at all (unauthenticated, no-auth mode)."""
     return app.test_client()
+
+
+@pytest.fixture
+def no_session_auth_client(app):
+    """Client with no session but auth mode enabled (should be rejected)."""
+    client = app.test_client()
+    with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="builtin"):
+        yield client
 
 
 # ---------------------------------------------------------------------------
@@ -97,10 +109,15 @@ class TestAdminUsersListEndpoint:
         resp = regular_client.get("/api/admin/users")
         assert resp.status_code == 403
 
-    def test_list_users_no_session_allows_access(self, no_session_client):
-        """No session = no-auth mode, defaults to admin access."""
+    def test_list_users_no_session_allows_access_in_no_auth(self, no_session_client):
+        """No session + no-auth mode = admin access allowed."""
         resp = no_session_client.get("/api/admin/users")
         assert resp.status_code == 200
+
+    def test_list_users_no_session_rejected_when_auth_enabled(self, no_session_auth_client):
+        """No session + auth enabled = 401."""
+        resp = no_session_auth_client.get("/api/admin/users")
+        assert resp.status_code == 401
 
 
 # ---------------------------------------------------------------------------
