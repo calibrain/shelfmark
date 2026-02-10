@@ -9,6 +9,10 @@ from functools import wraps
 from flask import Flask, jsonify, request, session
 from werkzeug.security import generate_password_hash
 
+from shelfmark.config.booklore_settings import (
+    get_booklore_library_options,
+    get_booklore_path_options,
+)
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_db import UserDB
@@ -150,6 +154,15 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         ]
         defaults = {k: config.get(k, _DOWNLOAD_DEFAULTS.get(k)) for k in keys}
         return jsonify(defaults)
+
+    @app.route("/api/admin/booklore-options", methods=["GET"])
+    @_require_admin
+    def admin_booklore_options():
+        """Return available BookLore library and path options."""
+        return jsonify({
+            "libraries": get_booklore_library_options(),
+            "paths": get_booklore_path_options(),
+        })
 
     @app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
     @_require_admin

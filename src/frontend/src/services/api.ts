@@ -431,3 +431,18 @@ export interface DownloadDefaults {
 export const getDownloadDefaults = async (): Promise<DownloadDefaults> => {
   return fetchJSON<DownloadDefaults>(`${API_BASE}/admin/download-defaults`);
 };
+
+export interface BookloreOption {
+  value: string;
+  label: string;
+  childOf?: string;
+}
+
+export interface BookloreOptions {
+  libraries: BookloreOption[];
+  paths: BookloreOption[];
+}
+
+export const getBookloreOptions = async (): Promise<BookloreOptions> => {
+  return fetchJSON<BookloreOptions>(`${API_BASE}/admin/booklore-options`);
+};

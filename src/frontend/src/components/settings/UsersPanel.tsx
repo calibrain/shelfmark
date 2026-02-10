@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   AdminUser,
+  BookloreOption,
   DownloadDefaults,
   getAdminUsers,
   getAdminUser,
+  getBookloreOptions,
   getDownloadDefaults,
   updateAdminUser,
   deleteAdminUser,
@@ -43,6 +45,8 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
   const [downloadDefaults, setDownloadDefaults] = useState<DownloadDefaults | null>(null);
   const [userSettings, setUserSettings] = useState<PerUserSettings>({});
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  const [bookloreLibraries, setBookloreLibraries] = useState<BookloreOption[]>([]);
+  const [booklorePaths, setBooklorePaths] = useState<BookloreOption[]>([]);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -77,6 +81,18 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
       setDownloadDefaults(defaults);
       const settings = (fullUser.settings || {}) as PerUserSettings;
       setUserSettings(settings);
+
+      // Fetch BookLore options if in booklore mode
+      if (defaults.BOOKS_OUTPUT_MODE === 'booklore') {
+        try {
+          const blOptions = await getBookloreOptions();
+          setBookloreLibraries(blOptions.libraries || []);
+          setBooklorePaths(blOptions.paths || []);
+        } catch {
+          setBookloreLibraries([]);
+          setBooklorePaths([]);
+        }
+      }
 
       // Set override toggles based on which settings exist
       setOverrides({
@@ -343,34 +359,59 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
               {outputMode === 'booklore' && (
                 <>
                   <OverrideField
-                    label="BookLore Library ID"
+                    label="BookLore Library"
                     enabled={overrides.booklore_library_id || false}
                     onToggle={(v) => toggleOverride('booklore_library_id', v)}
-                    globalValue={downloadDefaults.BOOKLORE_LIBRARY_ID || 'Not set'}
+                    globalValue={
+                      bookloreLibraries.find((l) => l.value === downloadDefaults.BOOKLORE_LIBRARY_ID)?.label
+                      || downloadDefaults.BOOKLORE_LIBRARY_ID
+                      || 'Not set'
+                    }
                   >
-                    <input
-                      type="text"
+                    <select
                       value={userSettings.booklore_library_id || ''}
-                      onChange={(e) => setUserSettings((s) => ({ ...s, booklore_library_id: e.target.value }))}
+                      onChange={(e) => {
+                        setUserSettings((s) => ({ ...s, booklore_library_id: e.target.value, booklore_path_id: '' }));
+                        // Reset path override when library changes
+                        if (overrides.booklore_path_id) {
+                          setOverrides((o) => ({ ...o, booklore_path_id: true }));
+                        }
+                      }}
                       className={overrides.booklore_library_id ? inputClasses : disabledInputClasses}
                       disabled={!overrides.booklore_library_id}
-                      placeholder={downloadDefaults.BOOKLORE_LIBRARY_ID || 'Library ID'}
-                    />
+                    >
+                      <option value="">Select library...</option>
+                      {bookloreLibraries.map((lib) => (
+                        <option key={lib.value} value={lib.value}>{lib.label}</option>
+                      ))}
+                    </select>
                   </OverrideField>
                   <OverrideField
-                    label="BookLore Path ID"
+                    label="BookLore Path"
                     enabled={overrides.booklore_path_id || false}
                     onToggle={(v) => toggleOverride('booklore_path_id', v)}
-                    globalValue={downloadDefaults.BOOKLORE_PATH_ID || 'Not set'}
+                    globalValue={
+                      booklorePaths.find((p) => p.value === downloadDefaults.BOOKLORE_PATH_ID)?.label
+                      || downloadDefaults.BOOKLORE_PATH_ID
+                      || 'Not set'
+                    }
                   >
-                    <input
-                      type="text"
+                    <select
                       value={userSettings.booklore_path_id || ''}
                       onChange={(e) => setUserSettings((s) => ({ ...s, booklore_path_id: e.target.value }))}
                       className={overrides.booklore_path_id ? inputClasses : disabledInputClasses}
                       disabled={!overrides.booklore_path_id}
-                      placeholder={downloadDefaults.BOOKLORE_PATH_ID || 'Path ID'}
-                    />
+                    >
+                      <option value="">Select path...</option>
+                      {booklorePaths
+                        .filter((p) => {
+                          const selectedLib = userSettings.booklore_library_id || downloadDefaults.BOOKLORE_LIBRARY_ID;
+                          return !p.childOf || p.childOf === selectedLib;
+                        })
+                        .map((path) => (
+                          <option key={path.value} value={path.value}>{path.label}</option>
+                        ))}
+                    </select>
                   </OverrideField>
                 </>
               )}

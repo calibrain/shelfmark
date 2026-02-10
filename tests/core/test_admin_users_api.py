@@ -542,6 +542,46 @@ class TestAdminDownloadDefaults:
         assert resp.status_code == 403
 
 
+class TestAdminBookloreOptions:
+    """Tests for GET /api/admin/booklore-options."""
+
+    def test_returns_library_and_path_options(self, admin_client, monkeypatch):
+        mock_libraries = [{"value": "1", "label": "My Library"}]
+        mock_paths = [{"value": "10", "label": "My Library: /books", "childOf": "1"}]
+        monkeypatch.setattr(
+            "shelfmark.core.admin_routes.get_booklore_library_options",
+            lambda: mock_libraries,
+        )
+        monkeypatch.setattr(
+            "shelfmark.core.admin_routes.get_booklore_path_options",
+            lambda: mock_paths,
+        )
+        resp = admin_client.get("/api/admin/booklore-options")
+        assert resp.status_code == 200
+        data = resp.json
+        assert data["libraries"] == mock_libraries
+        assert data["paths"] == mock_paths
+
+    def test_returns_empty_when_not_configured(self, admin_client, monkeypatch):
+        monkeypatch.setattr(
+            "shelfmark.core.admin_routes.get_booklore_library_options",
+            lambda: [],
+        )
+        monkeypatch.setattr(
+            "shelfmark.core.admin_routes.get_booklore_path_options",
+            lambda: [],
+        )
+        resp = admin_client.get("/api/admin/booklore-options")
+        assert resp.status_code == 200
+        data = resp.json
+        assert data["libraries"] == []
+        assert data["paths"] == []
+
+    def test_requires_admin(self, regular_client):
+        resp = regular_client.get("/api/admin/booklore-options")
+        assert resp.status_code == 403
+
+
 # ---------------------------------------------------------------------------
 # DELETE /api/admin/users/<id>
 # ---------------------------------------------------------------------------
