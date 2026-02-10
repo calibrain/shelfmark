@@ -241,6 +241,12 @@ export const DownloadsSidebar = ({
                   <span>{book.source_display_name}</span>
                 </>
               )}
+              {book.username && (
+                <>
+                  <span> • </span>
+                  <span>{book.username}</span>
+                </>
+              )}
             </div>
 
             {/* Status Badge */}

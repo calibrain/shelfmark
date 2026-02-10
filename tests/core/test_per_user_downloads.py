@@ -179,7 +179,7 @@ class TestPerUserDestination:
         result = get_final_destination(task)
         assert result == Path("/global/books")
 
-    def test_per_user_destination_empty_string_falls_back(self, monkeypatch):
+    def test_per_user_destination_empty_string_falls_back_to_global(self, monkeypatch):
         """Empty string destination should fall back to global."""
         from pathlib import Path
 
@@ -203,3 +203,33 @@ class TestPerUserDestination:
 
         result = get_final_destination(task)
         assert result == Path("/global/books")
+
+
+class TestTaskToDictUsername:
+    """Tests that _task_to_dict includes username for frontend display."""
+
+    def test_task_to_dict_includes_username(self):
+        """Username should be included in serialized task dict."""
+        from shelfmark.download.orchestrator import _task_to_dict
+
+        task = DownloadTask(
+            task_id="book1",
+            source="direct_download",
+            title="Test Book",
+            user_id=5,
+            username="alice",
+        )
+        result = _task_to_dict(task)
+        assert result["username"] == "alice"
+
+    def test_task_to_dict_username_none_when_no_auth(self):
+        """Username should be None when no user is set (no-auth mode)."""
+        from shelfmark.download.orchestrator import _task_to_dict
+
+        task = DownloadTask(
+            task_id="book1",
+            source="direct_download",
+            title="Test Book",
+        )
+        result = _task_to_dict(task)
+        assert result["username"] is None
