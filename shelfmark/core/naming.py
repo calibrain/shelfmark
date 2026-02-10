@@ -12,7 +12,7 @@ logger = setup_logger(__name__)
 
 # Known variable tokens, sorted longest-first to avoid partial matches
 # e.g., "SeriesPosition" must match before "Series"
-KNOWN_TOKENS = ['seriesposition', 'partnumber', 'subtitle', 'author', 'series', 'title', 'year']
+KNOWN_TOKENS = ['seriesposition', 'partnumber', 'subtitle', 'author', 'series', 'title', 'year', 'user']
 
 # Match any {...} block for template parsing
 BRACE_PATTERN = re.compile(r'\{([^}]+)\}')

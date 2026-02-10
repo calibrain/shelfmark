@@ -96,6 +96,7 @@ class DownloadTask:
 
     # User association (multi-user support)
     user_id: Optional[int] = None  # DB user ID who queued this download
+    username: Optional[str] = None  # Username for {User} template variable
 
     # Runtime state
     priority: int = 0
