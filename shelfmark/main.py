@@ -88,6 +88,18 @@ except ImportError as e:
 from shelfmark.config.security import _migrate_security_settings
 _migrate_security_settings()
 
+# Initialize user database and register multi-user routes
+import os as _os
+from shelfmark.core.user_db import UserDB
+_user_db_path = _os.path.join(_os.environ.get("CONFIG_DIR", "/config"), "users.db")
+user_db = UserDB(_user_db_path)
+user_db.initialize()
+
+from shelfmark.core.oidc_routes import register_oidc_routes
+from shelfmark.core.admin_routes import register_admin_routes
+register_oidc_routes(app, user_db)
+register_admin_routes(app, user_db)
+
 # Start download coordinator
 backend.start()
 
