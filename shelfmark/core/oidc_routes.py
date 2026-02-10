@@ -79,11 +79,11 @@ def _exchange_code(
     if id_token_raw:
         # Decode JWT payload without verification (already validated by TLS + code exchange)
         payload = id_token_raw.split(".")[1]
-        # Add padding
-        payload += "=" * (4 - len(payload) % 4)
+        # Add required Base64 padding (0-3 '=' characters)
+        payload += "=" * ((-len(payload)) % 4)
         claims = json_mod.loads(base64.urlsafe_b64decode(payload))
     else:
-        # Fallback to userinfo endpoint if no ID token
+        # No ID token in response — use token response data directly
         claims = token_data
 
     return claims

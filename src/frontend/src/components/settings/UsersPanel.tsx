@@ -138,22 +138,22 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
     const settingsPayload: Record<string, unknown> = {};
     if (overrides.destination) {
       settingsPayload.destination = userSettings.destination || '';
-    } else if (userSettings.destination) {
+    } else {
       settingsPayload.destination = null;
     }
     if (overrides.booklore_library_id) {
       settingsPayload.booklore_library_id = userSettings.booklore_library_id || '';
-    } else if (userSettings.booklore_library_id) {
+    } else {
       settingsPayload.booklore_library_id = null;
     }
     if (overrides.booklore_path_id) {
       settingsPayload.booklore_path_id = userSettings.booklore_path_id || '';
-    } else if (userSettings.booklore_path_id) {
+    } else {
       settingsPayload.booklore_path_id = null;
     }
     if (overrides.email_recipients) {
       settingsPayload.email_recipients = userSettings.email_recipients || [];
-    } else if (userSettings.email_recipients?.length) {
+    } else {
       settingsPayload.email_recipients = null;
     }
 
