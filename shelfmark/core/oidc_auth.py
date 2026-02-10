@@ -29,10 +29,16 @@ def parse_group_claims(id_token: Dict[str, Any], group_claim: str) -> List[str]:
     return []
 
 
-def is_admin_from_groups(groups: List[str], admin_group: str) -> bool:
-    """Check if the admin group is present in the user's groups."""
+def is_admin_from_groups(groups: List[str], admin_group: str) -> bool | None:
+    """Check if the admin group is present in the user's groups.
+
+    Returns:
+        True if user is in admin group
+        False if user is NOT in admin group (group is configured)
+        None if admin_group is not configured (fall back to DB role)
+    """
     if not admin_group:
-        return False
+        return None
     return admin_group in groups
 
 
