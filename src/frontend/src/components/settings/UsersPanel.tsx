@@ -157,11 +157,14 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
       settingsPayload.email_recipients = null;
     }
 
+    // Skip sending role when it's managed by OIDC group auth
+    const roleManaged = !!editingUser.oidc_subject && !!downloadDefaults?.OIDC_ADMIN_GROUP && downloadDefaults?.OIDC_USE_ADMIN_GROUP === true;
+
     try {
       await updateAdminUser(editingUser.id, {
         email: editingUser.email,
         display_name: editingUser.display_name,
-        role: editingUser.role,
+        ...(!roleManaged ? { role: editingUser.role } : {}),
         ...(editPassword ? { password: editPassword } : {}),
         ...(Object.keys(settingsPayload).length ? { settings: settingsPayload } : {}),
       });

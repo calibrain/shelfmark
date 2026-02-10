@@ -366,7 +366,7 @@ def security_settings():
         TagListField(
             key="OIDC_SCOPES",
             label="Scopes",
-            description="OAuth2 scopes to request from the identity provider. 'groups' is automatically added when Admin Group Name is set.",
+            description="OAuth2 scopes to request from the identity provider. Managed automatically: includes essential scopes and the group claim when using admin group authorization.",
             default=["openid", "email", "profile"],
             env_supported=False,
             show_when={"field": "AUTH_METHOD", "value": "oidc"},

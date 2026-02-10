@@ -150,11 +150,37 @@ export const SettingsModal = ({ isOpen, onClose, onShowToast, onSettingsSaved }:
   // Memoize the field change handler to prevent creating new functions on every render
   const handleFieldChange = useCallback(
     (key: string, value: unknown) => {
-      if (selectedTab) {
-        updateValue(selectedTab, key, value);
+      if (!selectedTab) return;
+      updateValue(selectedTab, key, value);
+
+      // Auto-manage OIDC scopes when admin group settings change
+      if (selectedTab === 'security') {
+        const tabValues = values[selectedTab] || {};
+        const currentScopes = (tabValues['OIDC_SCOPES'] as string[]) || [];
+
+        if (key === 'OIDC_USE_ADMIN_GROUP') {
+          const groupClaim = (tabValues['OIDC_GROUP_CLAIM'] as string) || 'groups';
+          if (value === true && !currentScopes.includes(groupClaim)) {
+            updateValue(selectedTab, 'OIDC_SCOPES', [...currentScopes, groupClaim]);
+          } else if (value === false && currentScopes.includes(groupClaim)) {
+            updateValue(selectedTab, 'OIDC_SCOPES', currentScopes.filter(s => s !== groupClaim));
+          }
+        }
+
+        if (key === 'OIDC_GROUP_CLAIM' && typeof value === 'string') {
+          const useAdminGroup = tabValues['OIDC_USE_ADMIN_GROUP'] as boolean;
+          if (useAdminGroup) {
+            const oldClaim = (tabValues['OIDC_GROUP_CLAIM'] as string) || 'groups';
+            const newScopes = currentScopes.filter(s => s !== oldClaim);
+            if (value && !newScopes.includes(value)) {
+              newScopes.push(value);
+            }
+            updateValue(selectedTab, 'OIDC_SCOPES', newScopes);
+          }
+        }
       }
     },
-    [selectedTab, updateValue]
+    [selectedTab, updateValue, values]
   );
 
   // Memoize hasChanges to avoid expensive JSON.stringify comparisons on every render

@@ -148,7 +148,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             return jsonify({"error": "Role must be 'admin' or 'user'"}), 400
 
         # Prevent changing OIDC user role when group-based auth is enabled
-        if "role" in user_fields and user.get("oidc_subject"):
+        if "role" in user_fields and user.get("oidc_subject") and user_fields["role"] != user.get("role"):
             security_config = load_config_file("security")
             use_admin_group = security_config.get("OIDC_USE_ADMIN_GROUP", True)
             admin_group = security_config.get("OIDC_ADMIN_GROUP", "")

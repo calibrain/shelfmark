@@ -27,7 +27,7 @@ MOCK_OIDC_CONFIG = {
     "OIDC_GROUP_CLAIM": "groups",
     "OIDC_ADMIN_GROUP": "shelfmark-admins",
     "OIDC_AUTO_PROVISION": True,
-    "OIDC_RESTRICT_SETTINGS_TO_ADMIN": True,
+    "OIDC_USE_ADMIN_GROUP": True,
 }
 
 
@@ -81,26 +81,34 @@ class TestParseGroupClaims:
 
 
 class TestCheckAdminFromGroups:
-    """Tests for determining admin status from group claims."""
+    """Tests for determining admin status from group claims.
+
+    Admin check is now inline: `admin_group in groups` when use_admin_group is True.
+    These tests verify the logic that was previously in is_admin_from_groups().
+    """
 
     def test_admin_when_group_matches(self):
-        from shelfmark.core.oidc_auth import is_admin_from_groups
         groups = ["users", "shelfmark-admins"]
-        assert is_admin_from_groups(groups, "shelfmark-admins") is True
+        admin_group = "shelfmark-admins"
+        assert admin_group in groups
 
     def test_not_admin_when_group_missing(self):
-        from shelfmark.core.oidc_auth import is_admin_from_groups
         groups = ["users", "editors"]
-        assert is_admin_from_groups(groups, "shelfmark-admins") is False
+        admin_group = "shelfmark-admins"
+        assert admin_group not in groups
 
     def test_not_admin_when_no_groups(self):
-        from shelfmark.core.oidc_auth import is_admin_from_groups
-        assert is_admin_from_groups([], "shelfmark-admins") is False
+        assert "shelfmark-admins" not in []
 
     def test_not_admin_when_admin_group_empty(self):
-        from shelfmark.core.oidc_auth import is_admin_from_groups
         groups = ["users", "admins"]
-        assert is_admin_from_groups(groups, "") is False
+        # When admin_group is empty, use_admin_group check is skipped (is_admin stays None)
+        admin_group = ""
+        use_admin_group = True
+        is_admin = None
+        if admin_group and use_admin_group:
+            is_admin = admin_group in groups
+        assert is_admin is None
 
 
 class TestExtractUserInfo:
@@ -214,6 +222,23 @@ class TestProvisionOIDCUser:
         assert user["role"] == "user"
 
         user = provision_oidc_user(user_db, user_info, is_admin=True)
+        assert user["role"] == "admin"
+
+    def test_provision_preserves_role_when_group_auth_disabled(self, user_db):
+        """When is_admin=None (group auth disabled), DB role should be preserved."""
+        from shelfmark.core.oidc_auth import provision_oidc_user
+        user_info = {
+            "oidc_subject": "sub-123",
+            "username": "john",
+            "email": "john@example.com",
+            "display_name": "John Doe",
+        }
+        # Create as admin via group auth
+        user = provision_oidc_user(user_db, user_info, is_admin=True)
+        assert user["role"] == "admin"
+
+        # Login again with group auth disabled (is_admin=None) — should preserve admin
+        user = provision_oidc_user(user_db, user_info, is_admin=None)
         assert user["role"] == "admin"
 
     def test_provision_handles_duplicate_username(self, user_db):

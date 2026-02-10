@@ -108,6 +108,7 @@ export function useSettings(): UseSettingsReturn {
           }
         });
       });
+
       setValues(initialValues);
       setOriginalValues(JSON.parse(JSON.stringify(initialValues)));
 
