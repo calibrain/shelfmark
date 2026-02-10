@@ -93,8 +93,13 @@ def _normalize_email_recipients(value: Any) -> List[Dict[str, str]]:
     return recipients
 
 
-def _resolve_email_recipient(nickname: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+def _resolve_email_recipient(
+    nickname: Optional[str],
+    user_recipients: Optional[List[Dict[str, str]]] = None,
+) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """Resolve a configured email recipient nickname to an email address.
+
+    Checks user-specific recipients first, then global config.
 
     Returns:
       (email_to, label, error_message)
@@ -104,6 +109,13 @@ def _resolve_email_recipient(nickname: Optional[str]) -> Tuple[Optional[str], Op
     if not label:
         return None, None, None
 
+    # Check per-user recipients first
+    if user_recipients:
+        for entry in _normalize_email_recipients(user_recipients):
+            if entry["nickname"].strip().lower() == label.lower():
+                return entry["email"], entry["nickname"], None
+
+    # Fall back to global recipients
     recipients = _normalize_email_recipients(config.get("EMAIL_RECIPIENTS", []))
     for entry in recipients:
         if entry["nickname"].strip().lower() == label.lower():
@@ -117,6 +129,9 @@ def queue_book(
     priority: int = 0,
     source: str = "direct_download",
     email_recipient: Optional[str] = None,
+    user_id: Optional[int] = None,
+    username: Optional[str] = None,
+    user_overrides: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, Optional[str]]:
     """Add a book to the download queue. Returns (success, error_message)."""
     try:
@@ -133,17 +148,29 @@ def queue_book(
         output_mode = "folder" if is_audiobook else books_output_mode
         output_args: Dict[str, Any] = {}
 
+        # Extract per-user email recipients for resolution (if any)
+        _user_email_recipients = (user_overrides or {}).get("email_recipients") if user_overrides else None
+
         if output_mode == "email" and not is_audiobook:
-            if not _normalize_email_recipients(config.get("EMAIL_RECIPIENTS", [])):
+            all_recipients = _user_email_recipients or config.get("EMAIL_RECIPIENTS", [])
+            if not _normalize_email_recipients(all_recipients):
                 return False, "No email recipients configured"
 
-            email_to, email_label, email_error = _resolve_email_recipient(email_recipient)
+            email_to, email_label, email_error = _resolve_email_recipient(
+                email_recipient, user_recipients=_user_email_recipients,
+            )
             if email_error:
                 return False, email_error
             if not email_to:
                 return False, "Email recipient is required"
 
             output_args = {"to": email_to, "label": email_label}
+
+        # Merge per-user overrides (destination, booklore, etc.) - skip email_recipients (already handled)
+        if user_overrides:
+            for k, v in user_overrides.items():
+                if v and k not in output_args and k != "email_recipients":
+                    output_args[k] = v
 
         # Create a source-agnostic download task
         task = DownloadTask(
@@ -159,6 +186,8 @@ def queue_book(
             output_mode=output_mode,
             output_args=output_args,
             priority=priority,
+            user_id=user_id,
+            username=username,
         )
 
         if not book_queue.add(task):
@@ -186,6 +215,9 @@ def queue_release(
     release_data: dict,
     priority: int = 0,
     email_recipient: Optional[str] = None,
+    user_id: Optional[int] = None,
+    username: Optional[str] = None,
+    user_overrides: Optional[Dict[str, Any]] = None,
 ) -> Tuple[bool, Optional[str]]:
     """Add a release to the download queue. Returns (success, error_message)."""
     try:
@@ -209,17 +241,29 @@ def queue_release(
         output_mode = "folder" if is_audiobook else books_output_mode
         output_args: Dict[str, Any] = {}
 
+        # Extract per-user email recipients for resolution (if any)
+        _user_email_recipients = (user_overrides or {}).get("email_recipients") if user_overrides else None
+
         if output_mode == "email" and not is_audiobook:
-            if not _normalize_email_recipients(config.get("EMAIL_RECIPIENTS", [])):
+            all_recipients = _user_email_recipients or config.get("EMAIL_RECIPIENTS", [])
+            if not _normalize_email_recipients(all_recipients):
                 return False, "No email recipients configured"
 
-            email_to, email_label, email_error = _resolve_email_recipient(email_recipient)
+            email_to, email_label, email_error = _resolve_email_recipient(
+                email_recipient, user_recipients=_user_email_recipients,
+            )
             if email_error:
                 return False, email_error
             if not email_to:
                 return False, "Email recipient is required"
 
             output_args = {"to": email_to, "label": email_label}
+
+        # Merge per-user overrides (destination, booklore, etc.) - skip email_recipients (already handled)
+        if user_overrides:
+            for k, v in user_overrides.items():
+                if v and k not in output_args and k != "email_recipients":
+                    output_args[k] = v
 
         # Create a source-agnostic download task from release data
         task = DownloadTask(
@@ -239,6 +283,8 @@ def queue_release(
             output_mode=output_mode,
             output_args=output_args,
             priority=priority,
+            user_id=user_id,
+            username=username,
         )
 
         if not book_queue.add(task):

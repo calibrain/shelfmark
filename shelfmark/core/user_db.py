@@ -170,6 +170,8 @@ class UserDB:
                     existing = json.loads(row["settings_json"])
 
                 existing.update(settings)
+                # Remove keys set to None (meaning "clear this override")
+                existing = {k: v for k, v in existing.items() if v is not None}
                 settings_json = json.dumps(existing)
 
                 conn.execute(

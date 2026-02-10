@@ -583,7 +583,14 @@ def api_download() -> Union[Response, Tuple[Response, int]]:
     try:
         priority = int(request.args.get('priority', 0))
         email_recipient = request.args.get('email_recipient')
-        success, error_msg = backend.queue_book(book_id, priority, email_recipient=email_recipient)
+        # Per-user download overrides
+        db_user_id = session.get('db_user_id')
+        _username = session.get('user_id')
+        _user_overrides = user_db.get_user_settings(db_user_id) if db_user_id else {}
+        success, error_msg = backend.queue_book(
+            book_id, priority, email_recipient=email_recipient,
+            user_id=db_user_id, username=_username, user_overrides=_user_overrides,
+        )
         if success:
             return jsonify({"status": "queued", "priority": priority})
         return jsonify({"error": error_msg or "Failed to queue book"}), 500
@@ -622,7 +629,14 @@ def api_download_release() -> Union[Response, Tuple[Response, int]]:
 
         priority = data.get('priority', 0)
         email_recipient = data.get('email_recipient')
-        success, error_msg = backend.queue_release(data, priority, email_recipient=email_recipient)
+        # Per-user download overrides
+        db_user_id = session.get('db_user_id')
+        _username = session.get('user_id')
+        _user_overrides = user_db.get_user_settings(db_user_id) if db_user_id else {}
+        success, error_msg = backend.queue_release(
+            data, priority, email_recipient=email_recipient,
+            user_id=db_user_id, username=_username, user_overrides=_user_overrides,
+        )
 
         if success:
             return jsonify({"status": "queued", "priority": priority})

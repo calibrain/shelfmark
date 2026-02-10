@@ -10,9 +10,18 @@ from flask import Flask, jsonify, request, session
 from werkzeug.security import generate_password_hash
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
+
+_DOWNLOAD_DEFAULTS = {
+    "BOOKS_OUTPUT_MODE": "folder",
+    "DESTINATION": "/books",
+    "BOOKLORE_LIBRARY_ID": "",
+    "BOOKLORE_PATH_ID": "",
+    "EMAIL_RECIPIENTS": [],
+}
 
 
 def _require_admin(f):
@@ -101,6 +110,13 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
         data = request.get_json() or {}
 
+        # Handle optional password update
+        password = data.get("password", "")
+        if password:
+            if len(password) < 4:
+                return jsonify({"error": "Password must be at least 4 characters"}), 400
+            user_db.update_user(user_id, password_hash=generate_password_hash(password))
+
         # Update user fields
         user_fields = {}
         for field in ("role", "email", "display_name"):
@@ -119,6 +135,21 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         result["settings"] = user_db.get_user_settings(user_id)
         logger.info(f"Admin updated user {user_id}")
         return jsonify(result)
+
+    @app.route("/api/admin/download-defaults", methods=["GET"])
+    @_require_admin
+    def admin_download_defaults():
+        """Return global download settings relevant to per-user overrides."""
+        config = load_config_file("downloads")
+        keys = [
+            "BOOKS_OUTPUT_MODE",
+            "DESTINATION",
+            "BOOKLORE_LIBRARY_ID",
+            "BOOKLORE_PATH_ID",
+            "EMAIL_RECIPIENTS",
+        ]
+        defaults = {k: config.get(k, _DOWNLOAD_DEFAULTS.get(k)) for k in keys}
+        return jsonify(defaults)
 
     @app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
     @_require_admin

@@ -119,3 +119,87 @@ class TestQueueFilterByUser:
             all_tasks.update(tasks_by_status)
         # User 1 sees their own + legacy (no user_id)
         assert len(all_tasks) == 2
+
+
+# ---------------------------------------------------------------------------
+# Per-user destination override in get_final_destination
+# ---------------------------------------------------------------------------
+
+
+class TestPerUserDestination:
+    """get_final_destination should respect per-user destination override in output_args."""
+
+    def test_uses_per_user_destination(self, monkeypatch):
+        """When output_args has a destination, it should be used instead of global."""
+        from pathlib import Path
+
+        task = DownloadTask(
+            task_id="book1",
+            source="direct_download",
+            title="Test Book",
+            output_args={"destination": "/user-books/alice"},
+        )
+
+        monkeypatch.setattr(
+            "shelfmark.download.postprocess.destination.get_destination",
+            lambda is_audiobook=False: Path("/global/books"),
+        )
+        monkeypatch.setattr(
+            "shelfmark.download.postprocess.destination.get_aa_content_type_dir",
+            lambda ct: None,
+        )
+
+        from shelfmark.download.postprocess.destination import get_final_destination
+
+        result = get_final_destination(task)
+        assert result == Path("/user-books/alice")
+
+    def test_falls_back_to_global_without_override(self, monkeypatch):
+        """When no per-user destination, should use global destination."""
+        from pathlib import Path
+
+        task = DownloadTask(
+            task_id="book1",
+            source="direct_download",
+            title="Test Book",
+            output_args={},
+        )
+
+        monkeypatch.setattr(
+            "shelfmark.download.postprocess.destination.get_destination",
+            lambda is_audiobook=False: Path("/global/books"),
+        )
+        monkeypatch.setattr(
+            "shelfmark.download.postprocess.destination.get_aa_content_type_dir",
+            lambda ct: None,
+        )
+
+        from shelfmark.download.postprocess.destination import get_final_destination
+
+        result = get_final_destination(task)
+        assert result == Path("/global/books")
+
+    def test_per_user_destination_empty_string_falls_back(self, monkeypatch):
+        """Empty string destination should fall back to global."""
+        from pathlib import Path
+
+        task = DownloadTask(
+            task_id="book1",
+            source="direct_download",
+            title="Test Book",
+            output_args={"destination": ""},
+        )
+
+        monkeypatch.setattr(
+            "shelfmark.download.postprocess.destination.get_destination",
+            lambda is_audiobook=False: Path("/global/books"),
+        )
+        monkeypatch.setattr(
+            "shelfmark.download.postprocess.destination.get_aa_content_type_dir",
+            lambda ct: None,
+        )
+
+        from shelfmark.download.postprocess.destination import get_final_destination
+
+        result = get_final_destination(task)
+        assert result == Path("/global/books")

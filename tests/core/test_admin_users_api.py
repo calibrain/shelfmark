@@ -413,6 +413,136 @@ class TestAdminUserUpdateEndpoint:
 
 
 # ---------------------------------------------------------------------------
+# PUT /api/admin/users/<id> — password update
+# ---------------------------------------------------------------------------
+
+
+class TestAdminUserPasswordUpdate:
+    """Tests for password update via PUT /api/admin/users/<id>."""
+
+    def test_update_password(self, admin_client, user_db):
+        """Setting a new password should hash and store it."""
+        user = user_db.create_user(username="alice", password_hash="old_hash")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"password": "newpass99"},
+        )
+        assert resp.status_code == 200
+
+        updated = user_db.get_user(user_id=user["id"])
+        assert updated["password_hash"] != "old_hash"
+        assert updated["password_hash"].startswith("scrypt:") or updated["password_hash"].startswith("pbkdf2:")
+
+    def test_update_password_too_short(self, admin_client, user_db):
+        """Password shorter than 4 characters should be rejected."""
+        user = user_db.create_user(username="alice", password_hash="old_hash")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"password": "ab"},
+        )
+        assert resp.status_code == 400
+        assert "4 characters" in resp.json["error"]
+
+    def test_update_password_empty_string_ignored(self, admin_client, user_db):
+        """Empty password string should not change existing hash."""
+        user = user_db.create_user(username="alice", password_hash="original_hash")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"password": ""},
+        )
+        assert resp.status_code == 200
+
+        updated = user_db.get_user(user_id=user["id"])
+        assert updated["password_hash"] == "original_hash"
+
+    def test_update_password_with_other_fields(self, admin_client, user_db):
+        """Password update should work alongside other field updates."""
+        user = user_db.create_user(username="alice", role="user", password_hash="old")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"password": "newpass99", "role": "admin"},
+        )
+        assert resp.status_code == 200
+        assert resp.json["role"] == "admin"
+
+        updated = user_db.get_user(user_id=user["id"])
+        assert updated["password_hash"] != "old"
+
+    def test_update_password_hash_not_in_response(self, admin_client, user_db):
+        """Response should never contain password_hash."""
+        user = user_db.create_user(username="alice", password_hash="old")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"password": "newpass99"},
+        )
+        assert resp.status_code == 200
+        assert "password_hash" not in resp.json
+        assert "password" not in resp.json
+
+
+# ---------------------------------------------------------------------------
+# GET /api/admin/download-defaults
+# ---------------------------------------------------------------------------
+
+
+class TestAdminDownloadDefaults:
+    """Tests for GET /api/admin/download-defaults."""
+
+    @pytest.fixture(autouse=True)
+    def setup_config(self, tmp_path, monkeypatch):
+        """Create a temporary downloads config file."""
+        import json
+        from pathlib import Path
+
+        config_dir = str(tmp_path)
+        monkeypatch.setenv("CONFIG_DIR", config_dir)
+        monkeypatch.setattr("shelfmark.config.env.CONFIG_DIR", Path(config_dir))
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+        config = {
+            "BOOKS_OUTPUT_MODE": "folder",
+            "DESTINATION": "/books",
+            "BOOKLORE_LIBRARY_ID": "2",
+            "BOOKLORE_PATH_ID": "5",
+            "EMAIL_RECIPIENTS": [{"nickname": "kindle", "email": "me@kindle.com"}],
+        }
+        (plugins_dir / "downloads.json").write_text(json.dumps(config))
+
+    def test_returns_download_defaults(self, admin_client):
+        resp = admin_client.get("/api/admin/download-defaults")
+        assert resp.status_code == 200
+        data = resp.json
+        assert data["BOOKS_OUTPUT_MODE"] == "folder"
+        assert data["DESTINATION"] == "/books"
+        assert data["BOOKLORE_LIBRARY_ID"] == "2"
+        assert data["BOOKLORE_PATH_ID"] == "5"
+        assert data["EMAIL_RECIPIENTS"] == [{"nickname": "kindle", "email": "me@kindle.com"}]
+
+    def test_returns_defaults_when_no_config(self, admin_client, tmp_path):
+        """If no downloads config file exists, return sensible defaults."""
+        import os
+
+        config_path = tmp_path / "plugins" / "downloads.json"
+        if config_path.exists():
+            os.remove(config_path)
+
+        resp = admin_client.get("/api/admin/download-defaults")
+        assert resp.status_code == 200
+        data = resp.json
+        assert "BOOKS_OUTPUT_MODE" in data
+        assert "DESTINATION" in data
+
+    def test_requires_admin(self, regular_client):
+        resp = regular_client.get("/api/admin/download-defaults")
+        assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
 # DELETE /api/admin/users/<id>
 # ---------------------------------------------------------------------------
 
