@@ -401,6 +401,15 @@ export const getAdminUser = async (userId: number): Promise<AdminUser> => {
   return fetchJSON<AdminUser>(`${API_BASE}/admin/users/${userId}`);
 };
 
+export const createAdminUser = async (
+  data: { username: string; password: string; email?: string; display_name?: string; role?: string }
+): Promise<AdminUser> => {
+  return fetchJSON<AdminUser>(`${API_BASE}/admin/users`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+};
+
 export const updateAdminUser = async (
   userId: number,
   data: Partial<Pick<AdminUser, 'role' | 'email' | 'display_name'>> & {

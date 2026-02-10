@@ -96,7 +96,7 @@ _user_db_path = _os.path.join(_os.environ.get("CONFIG_DIR", "/config"), "users.d
 user_db = UserDB(_user_db_path)
 user_db.initialize()
 
-import shelfmark.config.users_settings  # noqa: F401 - registers users tab
+import shelfmark.config.users_settings as _  # noqa: F401 - registers users tab
 from shelfmark.core.oidc_routes import register_oidc_routes
 from shelfmark.core.admin_routes import register_admin_routes
 register_oidc_routes(app, user_db)

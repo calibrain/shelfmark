@@ -7,10 +7,10 @@ import {
   getAdminUser,
   getBookloreOptions,
   getDownloadDefaults,
+  createAdminUser,
   updateAdminUser,
   deleteAdminUser,
 } from '../../services/api';
-import { getApiBase } from '../../utils/basePath';
 
 interface UsersPanelProps {
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
@@ -180,24 +180,13 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
     }
     setCreating(true);
     try {
-      const API_BASE = getApiBase();
-      const res = await fetch(`${API_BASE}/admin/users`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(createForm),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        onShowToast?.(data.error || 'Failed to create user', 'error');
-        return;
-      }
+      const data = await createAdminUser(createForm as { username: string; password: string; email?: string; display_name?: string; role?: string });
       setShowCreateForm(false);
       setCreateForm({ username: '', email: '', password: '', display_name: '', role: 'user' });
       onShowToast?.(`User ${data.username} created`, 'success');
       fetchUsers();
-    } catch {
-      onShowToast?.('Failed to create user', 'error');
+    } catch (err) {
+      onShowToast?.((err as Error).message || 'Failed to create user', 'error');
     } finally {
       setCreating(false);
     }
@@ -208,7 +197,7 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
     if (!enabled) {
       setUserSettings((prev) => {
         const next = { ...prev };
-        delete (next as Record<string, unknown>)[key];
+        (next as Record<string, unknown>)[key] = null;
         return next;
       });
     }

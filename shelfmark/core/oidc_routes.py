@@ -144,7 +144,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
 
             if error:
                 logger.warning(f"OIDC callback error from IdP: {error}")
-                return jsonify({"error": f"Authentication failed: {error}"}), 400
+                return jsonify({"error": "Authentication failed"}), 400
 
             # Validate state
             expected_state = session.get("oidc_state")
@@ -217,8 +217,8 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
 
             logger.info(f"OIDC login successful: {user['username']} (admin={is_admin})")
 
-            # Redirect to frontend
-            return redirect("/")
+            # Redirect to frontend (respect subpath deployments)
+            return redirect(request.script_root or "/")
 
         except Exception as e:
             logger.error(f"OIDC callback error: {e}")
