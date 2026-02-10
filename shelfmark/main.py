@@ -90,17 +90,26 @@ from shelfmark.config.security import _migrate_security_settings
 _migrate_security_settings()
 
 # Initialize user database and register multi-user routes
+# If CONFIG_DIR doesn't exist or is read-only, multi-user features will be disabled
 import os as _os
 from shelfmark.core.user_db import UserDB
 _user_db_path = _os.path.join(_os.environ.get("CONFIG_DIR", "/config"), "users.db")
-user_db = UserDB(_user_db_path)
-user_db.initialize()
-
-import shelfmark.config.users_settings as _  # noqa: F401 - registers users tab
-from shelfmark.core.oidc_routes import register_oidc_routes
-from shelfmark.core.admin_routes import register_admin_routes
-register_oidc_routes(app, user_db)
-register_admin_routes(app, user_db)
+user_db: UserDB | None = None
+try:
+    user_db = UserDB(_user_db_path)
+    user_db.initialize()
+    import shelfmark.config.users_settings as _  # noqa: F401 - registers users tab
+    from shelfmark.core.oidc_routes import register_oidc_routes
+    from shelfmark.core.admin_routes import register_admin_routes
+    register_oidc_routes(app, user_db)
+    register_admin_routes(app, user_db)
+except (sqlite3.OperationalError, OSError) as e:
+    logger.warning(
+        f"User database initialization failed: {e}. "
+        f"Multi-user authentication features will be disabled. "
+        f"Ensure CONFIG_DIR ({_os.environ.get('CONFIG_DIR', '/config')}) exists and is writable."
+    )
+    user_db = None
 
 # Start download coordinator
 backend.start()

@@ -55,8 +55,12 @@ def _exchange_code(
     client_id: str,
     client_secret: str,
     redirect_uri: str,
+    userinfo_endpoint: str | None = None,
 ) -> dict:
-    """Exchange authorization code for tokens and return ID token claims."""
+    """Exchange authorization code for tokens and return ID token claims.
+
+    If id_token is missing from the response, falls back to calling the userinfo endpoint.
+    """
     resp = http_requests.post(
         token_endpoint,
         data={
@@ -83,8 +87,24 @@ def _exchange_code(
         payload += "=" * ((-len(payload)) % 4)
         claims = json_mod.loads(base64.urlsafe_b64decode(payload))
     else:
-        # No ID token in response — use token response data directly
-        claims = token_data
+        # No ID token in response — try userinfo endpoint
+        access_token = token_data.get("access_token")
+        if userinfo_endpoint and access_token:
+            try:
+                logger.info("ID token not found in token response, fetching from userinfo endpoint")
+                userinfo_resp = http_requests.get(
+                    userinfo_endpoint,
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    timeout=10,
+                )
+                userinfo_resp.raise_for_status()
+                claims = userinfo_resp.json()
+            except http_requests.RequestException as e:
+                logger.error(f"Failed to fetch userinfo: {e}")
+                raise ValueError("OIDC authentication failed: missing id_token and userinfo endpoint unavailable")
+        else:
+            logger.error("OIDC token response missing both id_token and access_token")
+            raise ValueError("OIDC authentication failed: invalid token response")
 
     return claims
 
@@ -170,6 +190,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
 
             discovery = _fetch_discovery(discovery_url)
             token_endpoint = discovery["token_endpoint"]
+            userinfo_endpoint = discovery.get("userinfo_endpoint")
             redirect_uri = request.url_root.rstrip("/") + "/api/auth/oidc/callback"
 
             # Exchange code for tokens
@@ -180,6 +201,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
                 client_id=client_id,
                 client_secret=client_secret,
                 redirect_uri=redirect_uri,
+                userinfo_endpoint=userinfo_endpoint,
             )
 
             # Extract user info and check groups
@@ -227,6 +249,10 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             # Redirect to frontend (respect subpath deployments)
             return redirect(request.script_root or "/")
 
+        except ValueError as e:
+            # Specific errors from _exchange_code (e.g., missing id_token and userinfo unavailable)
+            logger.error(f"OIDC callback error: {e}")
+            return jsonify({"error": str(e)}), 400
         except Exception as e:
             logger.error(f"OIDC callback error: {e}")
             return jsonify({"error": "Authentication failed"}), 500
