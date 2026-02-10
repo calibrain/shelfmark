@@ -15,7 +15,6 @@ from flask import Flask, redirect, request, session, jsonify
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.oidc_auth import (
     extract_user_info,
-    is_admin_from_groups,
     parse_group_claims,
     provision_oidc_user,
 )
@@ -192,6 +191,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             client_secret = config.get("OIDC_CLIENT_SECRET", "")
             group_claim = config.get("OIDC_GROUP_CLAIM", "groups")
             admin_group = config.get("OIDC_ADMIN_GROUP", "")
+            use_admin_group = config.get("OIDC_USE_ADMIN_GROUP", True)
             auto_provision = config.get("OIDC_AUTO_PROVISION", True)
 
             discovery = _fetch_discovery(discovery_url)
@@ -213,8 +213,10 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             # Extract user info and check groups
             user_info = extract_user_info(claims)
             groups = parse_group_claims(claims, group_claim)
-            # Only determine admin from groups if admin_group is configured
-            is_admin = is_admin_from_groups(groups, admin_group) if admin_group else None
+            # Determine admin status from group membership (if enabled)
+            is_admin = None
+            if admin_group and use_admin_group:
+                is_admin = admin_group in groups
 
             # Check if user exists by OIDC subject first
             existing_user = user_db.get_user(oidc_subject=user_info["oidc_subject"])
@@ -237,12 +239,12 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
                 logger.warning(f"OIDC login rejected: auto-provision disabled for {user_info['username']}")
                 return jsonify({"error": "Account not found. Contact your administrator."}), 403
 
-            # Provision or update user
+            # Provision or update user (database role is synced from group if enabled)
             user = provision_oidc_user(user_db, user_info, is_admin=is_admin)
 
-            # Set session
+            # Set session - database role is the single source of truth
             session["user_id"] = user["username"]
-            session["is_admin"] = is_admin if is_admin is not None else (user.get("role") == "admin")
+            session["is_admin"] = user.get("role") == "admin"
             session["db_user_id"] = user["id"]
             session.permanent = True
 

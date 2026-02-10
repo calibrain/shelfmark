@@ -436,6 +436,7 @@ export interface DownloadDefaults {
   BOOKLORE_PATH_ID: string;
   EMAIL_RECIPIENTS: Array<{ nickname: string; email: string }>;
   OIDC_ADMIN_GROUP: string;
+  OIDC_USE_ADMIN_GROUP: boolean;
   OIDC_AUTO_PROVISION: boolean;
 }
 

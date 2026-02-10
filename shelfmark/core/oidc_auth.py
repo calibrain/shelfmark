@@ -29,19 +29,6 @@ def parse_group_claims(id_token: Dict[str, Any], group_claim: str) -> List[str]:
     return []
 
 
-def is_admin_from_groups(groups: List[str], admin_group: str) -> bool | None:
-    """Check if the admin group is present in the user's groups.
-
-    Returns:
-        True if user is in admin group
-        False if user is NOT in admin group (group is configured)
-        None if admin_group is not configured (fall back to DB role)
-    """
-    if not admin_group:
-        return None
-    return admin_group in groups
-
-
 def extract_user_info(id_token: Dict[str, Any]) -> Dict[str, Any]:
     """Extract user info from OIDC ID token claims.
 
@@ -71,12 +58,12 @@ def provision_oidc_user(
     If a user with the same oidc_subject exists, updates their info.
     If the username is taken by a different user, appends a numeric suffix.
 
-    Admin role determination (any true = admin):
-    - is_admin=True (user in admin group) → admin
-    - Existing user has role='admin' in database → admin
-    - is_admin=False but existing user is admin → keep admin (DB wins)
+    Admin role is synced from IdP when group-based auth is enabled (is_admin is not None):
+    - is_admin=True → DB role = admin
+    - is_admin=False → DB role = user (downgrade if needed)
 
-    is_admin=None means no admin group was configured; preserve existing role.
+    When group-based auth is disabled (is_admin=None), preserve existing DB role.
+    The database is always the single source of truth for auth checks.
     """
     oidc_subject = user_info["oidc_subject"]
 
@@ -87,15 +74,9 @@ def provision_oidc_user(
             "email": user_info.get("email"),
             "display_name": user_info.get("display_name"),
         }
-        # Determine role: admin if group says yes OR if already admin in DB
-        current_role = existing.get("role", "user")
-        if is_admin is True:
-            # User is in admin group → make them admin
-            updates["role"] = "admin"
-        elif is_admin is False and current_role != "admin":
-            # Not in admin group and not already admin → make user
-            updates["role"] = "user"
-        # else: preserve existing role (is_admin=None or already admin)
+        # Sync role from IdP when group-based auth is enabled
+        if is_admin is not None:
+            updates["role"] = "admin" if is_admin else "user"
         db.update_user(existing["id"], **updates)
         return db.get_user(user_id=existing["id"])
 

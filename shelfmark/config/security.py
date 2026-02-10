@@ -386,11 +386,22 @@ def security_settings():
             key="OIDC_ADMIN_GROUP",
             label="Admin Group Name",
             description=(
-                "Users in this group will be given admin access. "
+                "Users in this group will be given admin access (if enabled below). "
                 "Leave empty to use database roles only."
             ),
             placeholder="shelfmark-admins",
             default="",
+            env_supported=False,
+            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+        ),
+        CheckboxField(
+            key="OIDC_USE_ADMIN_GROUP",
+            label="Use Admin Group for Authorization",
+            description=(
+                "When enabled, users in the Admin Group are granted admin access. "
+                "When disabled, admin access is determined solely by database roles."
+            ),
+            default=True,
             env_supported=False,
             show_when={"field": "AUTH_METHOD", "value": "oidc"},
         ),
