@@ -184,8 +184,19 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             groups = parse_group_claims(claims, group_claim)
             is_admin = is_admin_from_groups(groups, admin_group)
 
-            # Check if user exists (for auto-provision check)
+            # Check if user exists by OIDC subject first
             existing_user = user_db.get_user(oidc_subject=user_info["oidc_subject"])
+
+            # If no match by subject, try email (for pre-created users)
+            if not existing_user and user_info.get("email"):
+                for u in user_db.list_users():
+                    if u.get("email") and u["email"].lower() == user_info["email"].lower():
+                        existing_user = u
+                        # Link OIDC subject to existing user
+                        user_db.update_user(u["id"], oidc_subject=user_info["oidc_subject"])
+                        logger.info(f"Linked OIDC subject {user_info['oidc_subject']} to existing user {u['username']}")
+                        break
+
             if not existing_user and not auto_provision:
                 logger.warning(f"OIDC login rejected: auto-provision disabled for {user_info['username']}")
                 return jsonify({"error": "Account not found. Contact your administrator."}), 403

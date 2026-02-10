@@ -225,3 +225,90 @@ class TestOIDCCallbackEndpoint:
 
         resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
         assert resp.status_code == 403
+
+    @patch("shelfmark.core.oidc_routes.load_config_file")
+    @patch("shelfmark.core.oidc_routes._fetch_discovery", return_value=MOCK_DISCOVERY)
+    @patch("shelfmark.core.oidc_routes._exchange_code")
+    def test_callback_allows_pre_created_user_by_email_when_no_provision(
+        self, mock_exchange, mock_discovery, mock_config, client, user_db
+    ):
+        """Pre-created user (by email) should log in even when auto-provision is off."""
+        config = {**MOCK_OIDC_CONFIG, "OIDC_AUTO_PROVISION": False}
+        mock_config.return_value = config
+
+        # Admin pre-creates a user with this email (no oidc_subject yet)
+        user_db.create_user(username="alice", email="alice@example.com", password_hash="hash")
+
+        mock_exchange.return_value = {
+            "sub": "oidc-alice-sub",
+            "email": "alice@example.com",
+            "preferred_username": "alice_oidc",
+            "groups": [],
+        }
+
+        with client.session_transaction() as sess:
+            sess["oidc_state"] = "test-state"
+            sess["oidc_code_verifier"] = "test-verifier"
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        assert resp.status_code == 302  # Success, redirects to frontend
+
+        with client.session_transaction() as sess:
+            assert sess["user_id"] == "alice"
+            assert sess.get("db_user_id") is not None
+
+    @patch("shelfmark.core.oidc_routes.load_config_file")
+    @patch("shelfmark.core.oidc_routes._fetch_discovery", return_value=MOCK_DISCOVERY)
+    @patch("shelfmark.core.oidc_routes._exchange_code")
+    def test_callback_links_oidc_subject_to_pre_created_user(
+        self, mock_exchange, mock_discovery, mock_config, client, user_db
+    ):
+        """When a pre-created user logs in via OIDC, their oidc_subject should be linked."""
+        config = {**MOCK_OIDC_CONFIG, "OIDC_AUTO_PROVISION": False}
+        mock_config.return_value = config
+
+        user = user_db.create_user(username="bob", email="bob@example.com", password_hash="hash")
+
+        mock_exchange.return_value = {
+            "sub": "oidc-bob-sub",
+            "email": "bob@example.com",
+            "preferred_username": "bob_oidc",
+            "groups": [],
+        }
+
+        with client.session_transaction() as sess:
+            sess["oidc_state"] = "test-state"
+            sess["oidc_code_verifier"] = "test-verifier"
+
+        client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+
+        # The OIDC subject should now be linked to the existing user
+        updated_user = user_db.get_user(user_id=user["id"])
+        assert updated_user["oidc_subject"] == "oidc-bob-sub"
+
+    @patch("shelfmark.core.oidc_routes.load_config_file")
+    @patch("shelfmark.core.oidc_routes._fetch_discovery", return_value=MOCK_DISCOVERY)
+    @patch("shelfmark.core.oidc_routes._exchange_code")
+    def test_callback_rejects_unknown_email_when_no_provision(
+        self, mock_exchange, mock_discovery, mock_config, client, user_db
+    ):
+        """When auto-provision is off and no user matches by email, reject login."""
+        config = {**MOCK_OIDC_CONFIG, "OIDC_AUTO_PROVISION": False}
+        mock_config.return_value = config
+
+        # Pre-create a user with a different email
+        user_db.create_user(username="charlie", email="charlie@example.com", password_hash="hash")
+
+        mock_exchange.return_value = {
+            "sub": "oidc-unknown-sub",
+            "email": "stranger@example.com",
+            "preferred_username": "stranger",
+            "groups": [],
+        }
+
+        with client.session_transaction() as sess:
+            sess["oidc_state"] = "test-state"
+            sess["oidc_code_verifier"] = "test-verifier"
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        assert resp.status_code == 403
