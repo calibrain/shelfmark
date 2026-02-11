@@ -27,6 +27,12 @@ from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import SearchFilters
 from shelfmark.core.prefix_middleware import PrefixMiddleware
+from shelfmark.core.auth_modes import (
+    determine_auth_mode,
+    get_auth_check_admin_status,
+    is_settings_or_onboarding_path,
+    should_restrict_settings_to_admin,
+)
 from shelfmark.core.utils import normalize_base_path
 from shelfmark.api.websocket import ws_manager
 
@@ -190,19 +196,9 @@ def get_auth_mode() -> str:
 
     try:
         security_config = load_config_file("security")
-        auth_mode = security_config.get("AUTH_METHOD", "none")
-        if auth_mode == "cwa" and CWA_DB_PATH:
-            return "cwa"
-        if auth_mode == "builtin" and security_config.get("BUILTIN_USERNAME") and security_config.get("BUILTIN_PASSWORD_HASH"):
-            return "builtin"
-        if auth_mode == "proxy" and security_config.get("PROXY_AUTH_USER_HEADER"):
-            return "proxy"
-        if auth_mode == "oidc" and security_config.get("OIDC_DISCOVERY_URL") and security_config.get("OIDC_CLIENT_ID"):
-            return "oidc"
+        return determine_auth_mode(security_config, CWA_DB_PATH)
     except Exception:
-        pass
-
-    return "none"
+        return "none"
 
 
 # Enable CORS in development mode for local frontend development
@@ -372,21 +368,16 @@ def login_required(f):
             return jsonify({"error": "Unauthorized"}), 401
 
         # Check admin access for settings endpoints (proxy, CWA, OIDC, and builtin modes)
-        if auth_mode in ("proxy", "cwa", "oidc", "builtin") and (request.path.startswith('/api/settings') or request.path.startswith('/api/onboarding')):
+        if auth_mode in ("proxy", "cwa", "oidc", "builtin") and is_settings_or_onboarding_path(request.path):
             from shelfmark.core.settings_registry import load_config_file
 
             try:
                 security_config = load_config_file("security")
-
-                if auth_mode == "builtin":
-                    # Builtin multi-user: settings are always admin-only
-                    restrict_to_admin = 'db_user_id' in session
-                elif auth_mode == "proxy":
-                    restrict_to_admin = security_config.get("PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", False)
-                else:
-                    # For OIDC and CWA, settings are always admin-only
-                    # The user's admin status comes from their group or database role
-                    restrict_to_admin = True
+                restrict_to_admin = should_restrict_settings_to_admin(
+                    auth_mode,
+                    security_config,
+                    session,
+                )
 
                 if restrict_to_admin and not session.get('is_admin', False):
                     return jsonify({"error": "Admin access required"}), 403
@@ -1246,28 +1237,7 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
         # Check if user has a valid session
         is_authenticated = 'user_id' in session
 
-        # Determine admin status for settings access
-        # - Built-in auth: check DB user role (legacy single-user is always admin)
-        # - CWA auth: check RESTRICT_SETTINGS_TO_ADMIN setting
-        # - Proxy auth: check PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN setting
-        if auth_mode == "builtin":
-            is_admin = session.get('is_admin', True)
-        elif auth_mode == "cwa":
-            restrict_to_admin = security_config.get("CWA_RESTRICT_SETTINGS_TO_ADMIN", False)
-            if restrict_to_admin:
-                is_admin = session.get('is_admin', False)
-            else:
-                # All authenticated CWA users can access settings
-                is_admin = True
-        elif auth_mode == "proxy":
-            restrict_to_admin = security_config.get("PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", False)
-            is_admin = session.get('is_admin', not restrict_to_admin)
-        elif auth_mode == "oidc":
-            # OIDC admin status is determined by group membership during login
-            # and stored in session['is_admin'] - use it directly
-            is_admin = session.get('is_admin', False)
-        else:
-            is_admin = False
+        is_admin = get_auth_check_admin_status(auth_mode, security_config, session)
 
         response_data = {
             "authenticated": is_authenticated,

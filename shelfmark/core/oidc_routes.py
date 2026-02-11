@@ -1,16 +1,13 @@
-"""OIDC Flask route handlers.
+"""OIDC Flask route handlers using Authlib.
 
 Registers /api/auth/oidc/login and /api/auth/oidc/callback endpoints.
-Separated from main.py to keep the OIDC logic self-contained.
+Business logic remains in oidc_auth.py.
 """
 
-import hashlib
-import secrets
-import base64
-from urllib.parse import urlencode
+from typing import Any
 
-import requests as http_requests
-from flask import Flask, redirect, request, session, jsonify
+from authlib.integrations.flask_client import OAuth
+from flask import Flask, jsonify, redirect, request, session
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.oidc_auth import (
@@ -22,249 +19,170 @@ from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
-
-# Cache discovery document in memory (refreshed on restart)
-_discovery_cache = {}
+oauth = OAuth()
 
 
-def _fetch_discovery(discovery_url: str) -> dict:
-    """Fetch and cache the OIDC discovery document."""
-    if discovery_url in _discovery_cache:
-        return _discovery_cache[discovery_url]
-
-    resp = http_requests.get(discovery_url, timeout=10)
-    resp.raise_for_status()
-    doc = resp.json()
-    _discovery_cache[discovery_url] = doc
-    return doc
-
-
-def _generate_pkce():
-    """Generate PKCE code_verifier and code_challenge."""
-    code_verifier = secrets.token_urlsafe(64)
-    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
-    code_challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
-    return code_verifier, code_challenge
+def _normalize_claims(raw_claims: Any) -> dict[str, Any]:
+    """Return a plain dict for claims from Authlib token/userinfo payloads."""
+    if raw_claims is None:
+        return {}
+    if isinstance(raw_claims, dict):
+        return raw_claims
+    if hasattr(raw_claims, "to_dict"):
+        return raw_claims.to_dict()  # type: ignore[no-any-return]
+    try:
+        return dict(raw_claims)
+    except Exception:
+        return {}
 
 
-def _exchange_code(
-    token_endpoint: str,
-    code: str,
-    code_verifier: str,
-    client_id: str,
-    client_secret: str,
-    redirect_uri: str,
-    userinfo_endpoint: str | None = None,
-) -> dict:
-    """Exchange authorization code for tokens and return ID token claims.
+def _is_email_verified(claims: dict[str, Any]) -> bool:
+    """Normalize provider-specific email_verified values into a strict boolean."""
+    value = claims.get("email_verified", False)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() == "true"
+    return False
 
-    If id_token is missing from the response, falls back to calling the userinfo endpoint.
-    """
-    resp = http_requests.post(
-        token_endpoint,
-        data={
-            "grant_type": "authorization_code",
-            "code": code,
-            "code_verifier": code_verifier,
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "redirect_uri": redirect_uri,
-        },
-        timeout=10,
-    )
-    resp.raise_for_status()
-    token_data = resp.json()
 
-    # Decode ID token (we trust the IdP since we just exchanged the code over TLS)
-    import json as json_mod
+def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
+    """Register and return an OIDC client from the current security config."""
+    config = load_config_file("security")
+    discovery_url = config.get("OIDC_DISCOVERY_URL", "")
+    client_id = config.get("OIDC_CLIENT_ID", "")
 
-    id_token_raw = token_data.get("id_token", "")
-    if id_token_raw:
-        # Decode JWT payload without verification (already validated by TLS + code exchange)
-        payload = id_token_raw.split(".")[1]
-        # Add required Base64 padding (0-3 '=' characters)
-        payload += "=" * ((-len(payload)) % 4)
-        claims = json_mod.loads(base64.urlsafe_b64decode(payload))
+    if not discovery_url or not client_id:
+        raise ValueError("OIDC not configured")
+
+    configured_scopes = config.get("OIDC_SCOPES", ["openid", "email", "profile"])
+    if isinstance(configured_scopes, list):
+        scope_values = [str(scope).strip() for scope in configured_scopes if str(scope).strip()]
+    elif isinstance(configured_scopes, str):
+        delimiter = "," if "," in configured_scopes else " "
+        scope_values = [scope.strip() for scope in configured_scopes.split(delimiter) if scope.strip()]
     else:
-        # No ID token in response — try userinfo endpoint
-        access_token = token_data.get("access_token")
-        if userinfo_endpoint and access_token:
-            try:
-                logger.info("ID token not found in token response, fetching from userinfo endpoint")
-                userinfo_resp = http_requests.get(
-                    userinfo_endpoint,
-                    headers={"Authorization": f"Bearer {access_token}"},
-                    timeout=10,
-                )
-                userinfo_resp.raise_for_status()
-                claims = userinfo_resp.json()
-            except http_requests.RequestException as e:
-                logger.error(f"Failed to fetch userinfo: {e}")
-                raise ValueError("OIDC authentication failed: missing id_token and userinfo endpoint unavailable")
-        else:
-            logger.error("OIDC token response missing both id_token and access_token")
-            raise ValueError("OIDC authentication failed: invalid token response")
+        scope_values = []
 
-    return claims
+    scopes = list(dict.fromkeys(["openid"] + scope_values))
+
+    admin_group = config.get("OIDC_ADMIN_GROUP", "")
+    group_claim = config.get("OIDC_GROUP_CLAIM", "groups")
+    use_admin_group = config.get("OIDC_USE_ADMIN_GROUP", True)
+    if admin_group and use_admin_group and group_claim and group_claim not in scopes:
+        scopes.append(group_claim)
+
+    oauth.register(
+        name="shelfmark_idp",
+        client_id=client_id,
+        client_secret=config.get("OIDC_CLIENT_SECRET", ""),
+        server_metadata_url=discovery_url,
+        client_kwargs={
+            "scope": " ".join(scopes),
+            "code_challenge_method": "S256",
+        },
+        overwrite=True,
+    )
+
+    client = oauth.create_client("shelfmark_idp")
+    if client is None:
+        raise RuntimeError("OIDC client initialization failed")
+
+    return client, config
 
 
 def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
     """Register OIDC authentication routes on the Flask app."""
+    oauth.init_app(app)
 
     @app.route("/api/auth/oidc/login", methods=["GET"])
     def oidc_login():
-        """Initiate OIDC login flow. Redirects to IdP."""
+        """Initiate OIDC login flow and redirect to the provider."""
         try:
-            config = load_config_file("security")
-            discovery_url = config.get("OIDC_DISCOVERY_URL", "")
-            client_id = config.get("OIDC_CLIENT_ID", "")
-
-            # Build scopes from config (user-editable) with openid guaranteed
-            configured_scopes = config.get("OIDC_SCOPES", ["openid", "email", "profile"])
-            scopes = list(dict.fromkeys(["openid"] + configured_scopes))  # dedupe, openid first
-            admin_group = config.get("OIDC_ADMIN_GROUP", "")
-            group_claim = config.get("OIDC_GROUP_CLAIM", "groups")
-            use_admin_group = config.get("OIDC_USE_ADMIN_GROUP", True)
-
-            # Add group claim to scopes when using admin group authorization
-            if admin_group and use_admin_group and group_claim and group_claim not in scopes:
-                scopes.append(group_claim)
-
-            if not discovery_url or not client_id:
-                return jsonify({"error": "OIDC not configured"}), 500
-
-            discovery = _fetch_discovery(discovery_url)
-            auth_endpoint = discovery["authorization_endpoint"]
-
-            # Generate PKCE and state
-            code_verifier, code_challenge = _generate_pkce()
-            state = secrets.token_urlsafe(32)
-
-            # Store in session for callback validation
-            session["oidc_state"] = state
-            session["oidc_code_verifier"] = code_verifier
-
-            # Build callback URL
+            client, _ = _get_oidc_client()
             redirect_uri = request.url_root.rstrip("/") + "/api/auth/oidc/callback"
-
-            params = {
-                "client_id": client_id,
-                "response_type": "code",
-                "scope": " ".join(scopes),
-                "redirect_uri": redirect_uri,
-                "state": state,
-                "code_challenge": code_challenge,
-                "code_challenge_method": "S256",
-            }
-
-            return redirect(f"{auth_endpoint}?{urlencode(params)}")
-
+            return client.authorize_redirect(redirect_uri)
+        except ValueError:
+            return jsonify({"error": "OIDC not configured"}), 500
         except Exception as e:
             logger.error(f"OIDC login error: {e}")
             return jsonify({"error": "OIDC login failed"}), 500
 
     @app.route("/api/auth/oidc/callback", methods=["GET"])
     def oidc_callback():
-        """Handle OIDC callback from IdP."""
+        """Handle OIDC callback from identity provider."""
         try:
-            code = request.args.get("code")
-            state = request.args.get("state")
             error = request.args.get("error")
-
             if error:
                 logger.warning(f"OIDC callback error from IdP: {error}")
                 return jsonify({"error": "Authentication failed"}), 400
 
-            # Validate state
-            expected_state = session.get("oidc_state")
-            code_verifier = session.get("oidc_code_verifier")
+            client, config = _get_oidc_client()
+            token = client.authorize_access_token()
+            claims = _normalize_claims(token.get("userinfo"))
 
-            if not expected_state or not code_verifier:
-                return jsonify({"error": "Session expired. Please try logging in again."}), 400
+            # If userinfo isn't present in token payload, request it explicitly.
+            if not claims:
+                try:
+                    claims = _normalize_claims(client.userinfo(token=token))
+                except TypeError:
+                    claims = _normalize_claims(client.userinfo())
+                except Exception as e:
+                    logger.error(f"Failed to fetch OIDC userinfo: {e}")
 
-            if not state or state != expected_state:
-                return jsonify({"error": "Invalid state parameter"}), 400
+            if not claims:
+                raise ValueError("OIDC authentication failed: missing user claims")
 
-            if not code:
-                return jsonify({"error": "Missing authorization code"}), 400
-
-            # Load config
-            config = load_config_file("security")
-            discovery_url = config.get("OIDC_DISCOVERY_URL", "")
-            client_id = config.get("OIDC_CLIENT_ID", "")
-            client_secret = config.get("OIDC_CLIENT_SECRET", "")
             group_claim = config.get("OIDC_GROUP_CLAIM", "groups")
             admin_group = config.get("OIDC_ADMIN_GROUP", "")
             use_admin_group = config.get("OIDC_USE_ADMIN_GROUP", True)
             auto_provision = config.get("OIDC_AUTO_PROVISION", True)
 
-            discovery = _fetch_discovery(discovery_url)
-            token_endpoint = discovery["token_endpoint"]
-            userinfo_endpoint = discovery.get("userinfo_endpoint")
-            redirect_uri = request.url_root.rstrip("/") + "/api/auth/oidc/callback"
-
-            # Exchange code for tokens
-            claims = _exchange_code(
-                token_endpoint=token_endpoint,
-                code=code,
-                code_verifier=code_verifier,
-                client_id=client_id,
-                client_secret=client_secret,
-                redirect_uri=redirect_uri,
-                userinfo_endpoint=userinfo_endpoint,
-            )
-
-            # Extract user info and check groups
             user_info = extract_user_info(claims)
             groups = parse_group_claims(claims, group_claim)
-            # Determine admin status from group membership (if enabled)
+
             is_admin = None
             if admin_group and use_admin_group:
                 is_admin = admin_group in groups
 
-            # Check if user exists by OIDC subject first
+            # Account linking: OIDC subject first, then verified email.
             existing_user = user_db.get_user(oidc_subject=user_info["oidc_subject"])
 
-            # If no match by subject, try email linking (for pre-created users)
-            # Only link when the IdP has verified the email to prevent privilege escalation
-            email_verified = claims.get("email_verified", False)
-            if not existing_user and user_info.get("email") and email_verified:
+            if not existing_user and user_info.get("email") and _is_email_verified(claims):
                 matching_users = [
                     u for u in user_db.list_users()
                     if u.get("email") and u["email"].lower() == user_info["email"].lower()
                 ]
                 if len(matching_users) == 1:
                     existing_user = matching_users[0]
-                    # Link OIDC subject to existing user
                     user_db.update_user(existing_user["id"], oidc_subject=user_info["oidc_subject"])
-                    logger.info(f"Linked OIDC subject {user_info['oidc_subject']} to existing user {existing_user['username']}")
+                    logger.info(
+                        f"Linked OIDC subject {user_info['oidc_subject']} to existing user "
+                        f"{existing_user['username']}"
+                    )
                 elif len(matching_users) > 1:
-                    logger.warning(f"OIDC email linking skipped: multiple local accounts match email {user_info['email']}")
+                    logger.warning(
+                        "OIDC email linking skipped: multiple local accounts match email "
+                        f"{user_info['email']}"
+                    )
 
             if not existing_user and not auto_provision:
-                logger.warning(f"OIDC login rejected: auto-provision disabled for {user_info['username']}")
+                logger.warning(
+                    f"OIDC login rejected: auto-provision disabled for {user_info['username']}"
+                )
                 return jsonify({"error": "Account not found. Contact your administrator."}), 403
 
-            # Provision or update user (database role is synced from group if enabled)
             user = provision_oidc_user(user_db, user_info, is_admin=is_admin)
 
-            # Set session - database role is the single source of truth
             session["user_id"] = user["username"]
             session["is_admin"] = user.get("role") == "admin"
             session["db_user_id"] = user["id"]
             session.permanent = True
 
-            # Clean up OIDC session data
-            session.pop("oidc_state", None)
-            session.pop("oidc_code_verifier", None)
-
             logger.info(f"OIDC login successful: {user['username']} (admin={is_admin})")
-
-            # Redirect to frontend (respect subpath deployments)
             return redirect(request.script_root or "/")
 
         except ValueError as e:
-            # Specific errors from _exchange_code (e.g., missing id_token and userinfo unavailable)
             logger.error(f"OIDC callback error: {e}")
             return jsonify({"error": str(e)}), 400
         except Exception as e:

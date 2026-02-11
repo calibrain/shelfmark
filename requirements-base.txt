@@ -14,3 +14,4 @@ emoji
 rarfile
 qbittorrent-api
 transmission-rpc
+authlib>=1.6.6,<1.7
