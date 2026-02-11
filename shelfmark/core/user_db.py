@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
     display_name  TEXT,
     password_hash TEXT,
     oidc_subject  TEXT UNIQUE,
+    auth_source   TEXT NOT NULL DEFAULT 'builtin',
     role          TEXT NOT NULL DEFAULT 'user',
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -30,6 +31,8 @@ CREATE TABLE IF NOT EXISTS user_settings (
 
 class UserDB:
     """Thread-safe SQLite user database."""
+
+    _VALID_AUTH_SOURCES = {"builtin", "oidc", "proxy", "cwa"}
 
     def __init__(self, db_path: str):
         self._db_path = db_path
@@ -47,11 +50,32 @@ class UserDB:
             conn = self._connect()
             try:
                 conn.executescript(_CREATE_TABLES_SQL)
-                conn.execute("PRAGMA journal_mode=WAL")
+                self._migrate_auth_source_column(conn)
                 conn.commit()
+                # WAL mode must be changed outside an open transaction.
+                conn.execute("PRAGMA journal_mode=WAL")
             finally:
                 conn.close()
         logger.info(f"User database initialized at {self._db_path}")
+
+    def _migrate_auth_source_column(self, conn: sqlite3.Connection) -> None:
+        """Ensure users.auth_source exists and backfill historical rows."""
+        columns = conn.execute("PRAGMA table_info(users)").fetchall()
+        column_names = {str(col["name"]) for col in columns}
+
+        if "auth_source" not in column_names:
+            conn.execute(
+                "ALTER TABLE users ADD COLUMN auth_source TEXT NOT NULL DEFAULT 'builtin'"
+            )
+
+        # Backfill OIDC-origin users created before auth_source existed.
+        conn.execute(
+            "UPDATE users SET auth_source = 'oidc' WHERE oidc_subject IS NOT NULL"
+        )
+        # Defensive cleanup for any legacy null/blank values.
+        conn.execute(
+            "UPDATE users SET auth_source = 'builtin' WHERE auth_source IS NULL OR auth_source = ''"
+        )
 
     def create_user(
         self,
@@ -60,16 +84,29 @@ class UserDB:
         display_name: Optional[str] = None,
         password_hash: Optional[str] = None,
         oidc_subject: Optional[str] = None,
+        auth_source: str = "builtin",
         role: str = "user",
     ) -> Dict[str, Any]:
         """Create a new user. Raises ValueError if username or oidc_subject already exists."""
+        if auth_source not in self._VALID_AUTH_SOURCES:
+            raise ValueError(f"Invalid auth_source: {auth_source}")
         with self._lock:
             conn = self._connect()
             try:
                 cursor = conn.execute(
-                    """INSERT INTO users (username, email, display_name, password_hash, oidc_subject, role)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (username, email, display_name, password_hash, oidc_subject, role),
+                    """INSERT INTO users (
+                           username, email, display_name, password_hash, oidc_subject, auth_source, role
+                       )
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        username,
+                        email,
+                        display_name,
+                        password_hash,
+                        oidc_subject,
+                        auth_source,
+                        role,
+                    ),
                 )
                 conn.commit()
                 user_id = cursor.lastrowid
@@ -108,7 +145,14 @@ class UserDB:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         return dict(row) if row else None
 
-    _ALLOWED_UPDATE_COLUMNS = {"email", "display_name", "password_hash", "oidc_subject", "role"}
+    _ALLOWED_UPDATE_COLUMNS = {
+        "email",
+        "display_name",
+        "password_hash",
+        "oidc_subject",
+        "auth_source",
+        "role",
+    }
 
     def update_user(self, user_id: int, **kwargs) -> None:
         """Update user fields. Raises ValueError if user not found or invalid column."""
@@ -117,6 +161,8 @@ class UserDB:
         for k in kwargs:
             if k not in self._ALLOWED_UPDATE_COLUMNS:
                 raise ValueError(f"Invalid column: {k}")
+        if "auth_source" in kwargs and kwargs["auth_source"] not in self._VALID_AUTH_SOURCES:
+            raise ValueError(f"Invalid auth_source: {kwargs['auth_source']}")
         with self._lock:
             conn = self._connect()
             try:

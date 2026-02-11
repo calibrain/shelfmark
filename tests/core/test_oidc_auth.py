@@ -169,6 +169,7 @@ class TestProvisionOIDCUser:
         user = provision_oidc_user(user_db, user_info, is_admin=False)
         assert user["username"] == "john"
         assert user["oidc_subject"] == "sub-123"
+        assert user["auth_source"] == "oidc"
         assert user["role"] == "user"
 
     def test_provision_creates_admin_user(self, user_db):
@@ -209,6 +210,7 @@ class TestProvisionOIDCUser:
         user = provision_oidc_user(user_db, user_info, is_admin=False)
         assert user["email"] == "newemail@example.com"
         assert user["display_name"] == "John D."
+        assert user["auth_source"] == "oidc"
 
     def test_provision_updates_admin_role(self, user_db):
         from shelfmark.core.oidc_auth import provision_oidc_user
@@ -256,3 +258,4 @@ class TestProvisionOIDCUser:
         user = provision_oidc_user(user_db, user_info, is_admin=False)
         assert user["username"] != "john"  # Should have a suffix
         assert user["oidc_subject"] == "sub-456"
+        assert user["auth_source"] == "oidc"

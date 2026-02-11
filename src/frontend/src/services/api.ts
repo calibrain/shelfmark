@@ -392,6 +392,8 @@ export interface AdminUser {
   email: string | null;
   display_name: string | null;
   role: string;
+  auth_source: 'builtin' | 'oidc' | 'proxy' | 'cwa';
+  is_active: boolean;
   oidc_subject: string | null;
   created_at: string;
   settings?: Record<string, unknown>;

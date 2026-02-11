@@ -35,6 +35,7 @@ export const SettingsModal = ({ isOpen, onClose, onShowToast, onSettingsSaved }:
   const [isMobile, setIsMobile] = useState(false);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [usersSubpageState, setUsersSubpageState] = useState<{ title: string; onBack: () => void } | null>(null);
 
   // Track previous isOpen state to detect modal open transition
   const prevIsOpenRef = useRef(false);
@@ -91,8 +92,15 @@ export const SettingsModal = ({ isOpen, onClose, onShowToast, onSettingsSaved }:
     if (isOpen) {
       setShowMobileDetail(false);
       setIsClosing(false);
+      setUsersSubpageState(null);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (selectedTab !== 'users') {
+      setUsersSubpageState(null);
+    }
+  }, [selectedTab]);
 
   // Reset to first tab when modal transitions from closed to open
   useEffect(() => {
@@ -194,6 +202,7 @@ export const SettingsModal = ({ isOpen, onClose, onShowToast, onSettingsSaved }:
 
   const currentTab = tabs.find((t) => t.name === selectedTab);
   const currentTabDisplayName = currentTab?.displayName || 'Settings';
+  const usersHeaderTitle = usersSubpageState ? `Settings / ${usersSubpageState.title}` : null;
 
   // Loading state
   if (isLoading) {
@@ -301,14 +310,14 @@ export const SettingsModal = ({ isOpen, onClose, onShowToast, onSettingsSaved }:
           // Detail view
           <>
             <SettingsHeader
-              title={currentTabDisplayName}
+              title={selectedTab === 'users' && usersHeaderTitle ? usersHeaderTitle : currentTabDisplayName}
               showBack
-              onBack={handleBack}
+              onBack={selectedTab === 'users' && usersSubpageState ? usersSubpageState.onBack : handleBack}
               onClose={handleClose}
             />
             {currentTab && (
               selectedTab === 'users' ? (
-                <UsersPanel onShowToast={onShowToast} />
+                <UsersPanel onShowToast={onShowToast} onSubpageStateChange={setUsersSubpageState} />
               ) : (
                 <SettingsContent
                   tab={currentTab}
@@ -350,7 +359,12 @@ export const SettingsModal = ({ isOpen, onClose, onShowToast, onSettingsSaved }:
         aria-modal="true"
         aria-label="Settings"
       >
-        <SettingsHeader title="Settings" onClose={handleClose} />
+        <SettingsHeader
+          title={selectedTab === 'users' && usersHeaderTitle ? usersHeaderTitle : 'Settings'}
+          showBack={selectedTab === 'users' && !!usersSubpageState}
+          onBack={selectedTab === 'users' && usersSubpageState ? usersSubpageState.onBack : undefined}
+          onClose={handleClose}
+        />
 
         <div className="flex flex-1 min-h-0">
           <SettingsSidebar
@@ -363,7 +377,7 @@ export const SettingsModal = ({ isOpen, onClose, onShowToast, onSettingsSaved }:
 
           {currentTab ? (
             selectedTab === 'users' ? (
-              <UsersPanel onShowToast={onShowToast} />
+              <UsersPanel onShowToast={onShowToast} onSubpageStateChange={setUsersSubpageState} />
             ) : (
               <SettingsContent
                 tab={currentTab}

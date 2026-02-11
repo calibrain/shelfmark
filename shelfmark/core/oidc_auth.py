@@ -73,6 +73,7 @@ def provision_oidc_user(
         updates: Dict[str, Any] = {
             "email": user_info.get("email"),
             "display_name": user_info.get("display_name"),
+            "auth_source": "oidc",
         }
         # Sync role from IdP when group-based auth is enabled
         if is_admin is not None:
@@ -96,6 +97,7 @@ def provision_oidc_user(
         email=user_info.get("email"),
         display_name=user_info.get("display_name"),
         oidc_subject=oidc_subject,
+        auth_source="oidc",
         role=role,
     )
     logger.info(f"Provisioned OIDC user: {username} (sub={oidc_subject})")

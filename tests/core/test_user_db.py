@@ -69,6 +69,56 @@ class TestUserDBInitialization:
         db.initialize()  # Should not raise
         assert os.path.exists(db_path)
 
+    def test_initialize_migrates_auth_source_column_and_backfills(self, db_path):
+        """Existing DBs without auth_source should be migrated in place."""
+        conn = sqlite3.connect(db_path)
+        conn.executescript(
+            """
+            CREATE TABLE users (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                username      TEXT UNIQUE NOT NULL,
+                email         TEXT,
+                display_name  TEXT,
+                password_hash TEXT,
+                oidc_subject  TEXT UNIQUE,
+                role          TEXT NOT NULL DEFAULT 'user',
+                created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE user_settings (
+                user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                settings_json TEXT NOT NULL DEFAULT '{}'
+            );
+            """
+        )
+        conn.execute(
+            "INSERT INTO users (username, password_hash, oidc_subject, role) VALUES (?, ?, ?, ?)",
+            ("local_admin", "hash", None, "admin"),
+        )
+        conn.execute(
+            "INSERT INTO users (username, oidc_subject, role) VALUES (?, ?, ?)",
+            ("oidc_user", "sub-123", "user"),
+        )
+        conn.commit()
+        conn.close()
+
+        from shelfmark.core.user_db import UserDB
+
+        db = UserDB(db_path)
+        db.initialize()
+
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        columns = conn.execute("PRAGMA table_info(users)").fetchall()
+        assert "auth_source" in {str(c["name"]) for c in columns}
+
+        rows = conn.execute(
+            "SELECT username, auth_source FROM users ORDER BY username"
+        ).fetchall()
+        by_username = {r["username"]: r["auth_source"] for r in rows}
+        assert by_username["local_admin"] == "builtin"
+        assert by_username["oidc_user"] == "oidc"
+        conn.close()
+
 
 class TestUserCRUD:
     """Tests for user create, read, update, delete operations."""
@@ -83,6 +133,7 @@ class TestUserCRUD:
         assert user["username"] == "john"
         assert user["email"] == "john@example.com"
         assert user["display_name"] == "John Doe"
+        assert user["auth_source"] == "builtin"
         assert user["role"] == "user"
 
     def test_create_user_with_password(self, user_db):
@@ -99,8 +150,14 @@ class TestUserCRUD:
             username="oidcuser",
             oidc_subject="sub-12345",
             email="oidc@example.com",
+            auth_source="oidc",
         )
         assert user["oidc_subject"] == "sub-12345"
+        assert user["auth_source"] == "oidc"
+
+    def test_create_user_with_invalid_auth_source_fails(self, user_db):
+        with pytest.raises(ValueError, match="Invalid auth_source"):
+            user_db.create_user(username="john", auth_source="not-real")
 
     def test_create_duplicate_username_fails(self, user_db):
         user_db.create_user(username="john")
@@ -132,10 +189,21 @@ class TestUserCRUD:
 
     def test_update_user(self, user_db):
         user = user_db.create_user(username="john", role="user")
-        user_db.update_user(user["id"], role="admin", email="new@example.com")
+        user_db.update_user(
+            user["id"],
+            role="admin",
+            email="new@example.com",
+            auth_source="proxy",
+        )
         updated = user_db.get_user(user_id=user["id"])
         assert updated["role"] == "admin"
         assert updated["email"] == "new@example.com"
+        assert updated["auth_source"] == "proxy"
+
+    def test_update_user_rejects_invalid_auth_source(self, user_db):
+        user = user_db.create_user(username="john")
+        with pytest.raises(ValueError, match="Invalid auth_source"):
+            user_db.update_user(user["id"], auth_source="bad")
 
     def test_update_nonexistent_user_raises(self, user_db):
         with pytest.raises(ValueError, match="not found"):

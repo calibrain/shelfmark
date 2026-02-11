@@ -68,7 +68,36 @@ class TestProxyAuthMiddleware:
                     assert result is None
                     assert main_module.session.get("user_id") == "proxyuser"
                     assert main_module.session.get("is_admin") is True
+                    db_user_id = main_module.session.get("db_user_id")
+                    assert db_user_id is not None
+                    db_user = main_module.user_db.get_user(user_id=db_user_id)
+                    assert db_user is not None
+                    assert db_user["username"] == "proxyuser"
+                    assert db_user["auth_source"] == "proxy"
                     assert main_module.session.permanent is False
+
+    def test_reprovisions_when_proxy_identity_changes(self, main_module):
+        with patch.object(main_module, "get_auth_mode", return_value="proxy"):
+            with patch(
+                "shelfmark.core.settings_registry.load_config_file",
+                return_value={
+                    "PROXY_AUTH_USER_HEADER": "X-Auth-User",
+                    "PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN": False,
+                },
+            ):
+                with main_module.app.test_request_context(
+                    "/api/search",
+                    headers={"X-Auth-User": "proxyuser2"},
+                ):
+                    main_module.session["user_id"] = "old-user"
+                    main_module.session["db_user_id"] = 999999
+
+                    result = main_module.proxy_auth_middleware()
+                    assert result is None
+                    assert main_module.session.get("user_id") == "proxyuser2"
+                    db_user_id = main_module.session.get("db_user_id")
+                    db_user = main_module.user_db.get_user(user_id=db_user_id)
+                    assert db_user["username"] == "proxyuser2"
 
     def test_returns_401_when_header_missing_on_protected_path(self, main_module):
         with patch.object(main_module, "get_auth_mode", return_value="proxy"):

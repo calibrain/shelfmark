@@ -105,6 +105,30 @@ class TestAdminUsersListEndpoint:
         users = resp.json
         assert "password_hash" not in users[0]
 
+    def test_list_users_includes_auth_source_and_is_active(self, admin_client, user_db):
+        user_db.create_user(username="local_user", auth_source="builtin")
+        user_db.create_user(
+            username="oidc_user",
+            oidc_subject="oidc-sub-123",
+            auth_source="oidc",
+        )
+        user_db.create_user(username="proxy_user", auth_source="proxy")
+
+        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="builtin"):
+            resp = admin_client.get("/api/admin/users")
+
+        assert resp.status_code == 200
+        by_username = {u["username"]: u for u in resp.json}
+
+        assert by_username["local_user"]["auth_source"] == "builtin"
+        assert by_username["local_user"]["is_active"] is True
+
+        assert by_username["oidc_user"]["auth_source"] == "oidc"
+        assert by_username["oidc_user"]["is_active"] is False
+
+        assert by_username["proxy_user"]["auth_source"] == "proxy"
+        assert by_username["proxy_user"]["is_active"] is False
+
     def test_list_users_requires_admin(self, regular_client):
         resp = regular_client.get("/api/admin/users")
         assert resp.status_code == 403
@@ -462,6 +486,59 @@ class TestAdminUserUpdateEndpoint:
         )
         assert resp.status_code == 403
 
+    def test_update_proxy_role_rejected(self, admin_client, user_db):
+        user = user_db.create_user(username="proxyuser", role="user", auth_source="proxy")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"role": "admin"},
+        )
+
+        assert resp.status_code == 400
+        assert "Cannot change role for PROXY users" in resp.json["error"]
+
+    def test_update_proxy_role_noop_allowed(self, admin_client, user_db):
+        user = user_db.create_user(username="proxyuser", role="user", auth_source="proxy")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"role": "user", "display_name": "Proxy User"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json["display_name"] == "Proxy User"
+
+    def test_update_cwa_email_rejected(self, admin_client, user_db):
+        user = user_db.create_user(
+            username="cwauser",
+            email="old@example.com",
+            auth_source="cwa",
+        )
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"email": "new@example.com"},
+        )
+
+        assert resp.status_code == 400
+        assert "Cannot change email for CWA users" in resp.json["error"]
+
+    def test_update_oidc_email_rejected(self, admin_client, user_db):
+        user = user_db.create_user(
+            username="oidcuser",
+            email="old@example.com",
+            oidc_subject="sub-oidc-1",
+            auth_source="oidc",
+        )
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"email": "new@example.com"},
+        )
+
+        assert resp.status_code == 400
+        assert "Cannot change email for OIDC users" in resp.json["error"]
+
 
 # ---------------------------------------------------------------------------
 # PUT /api/admin/users/<id> — password update
@@ -534,6 +611,17 @@ class TestAdminUserPasswordUpdate:
         assert resp.status_code == 200
         assert "password_hash" not in resp.json
         assert "password" not in resp.json
+
+    def test_update_password_rejected_for_proxy_user(self, admin_client, user_db):
+        user = user_db.create_user(username="proxyuser", auth_source="proxy")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"password": "newpass99"},
+        )
+
+        assert resp.status_code == 400
+        assert "Cannot set password for PROXY users" in resp.json["error"]
 
 
 # ---------------------------------------------------------------------------
@@ -730,6 +818,41 @@ class TestAdminUserDeleteEndpoint:
         resp = admin_client.get("/api/admin/users")
         assert len(resp.json) == 1
         assert resp.json[0]["username"] == "bob"
+
+    def test_delete_active_proxy_user_rejected(self, admin_client, user_db):
+        user = user_db.create_user(username="proxyuser", auth_source="proxy")
+
+        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="proxy"):
+            resp = admin_client.delete(f"/api/admin/users/{user['id']}")
+
+        assert resp.status_code == 400
+        assert "Cannot delete active PROXY users" in resp.json["error"]
+
+    def test_delete_inactive_proxy_user_allowed(self, admin_client, user_db):
+        user = user_db.create_user(username="proxyuser", auth_source="proxy")
+
+        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="builtin"):
+            resp = admin_client.delete(f"/api/admin/users/{user['id']}")
+
+        assert resp.status_code == 200
+        assert resp.json["success"] is True
+
+    def test_delete_active_oidc_user_rejected_when_auto_provision_enabled(self, admin_client, user_db):
+        user = user_db.create_user(
+            username="oidcuser",
+            oidc_subject="sub-123",
+            auth_source="oidc",
+        )
+
+        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="oidc"):
+            with patch(
+                "shelfmark.core.admin_routes.load_config_file",
+                return_value={"OIDC_AUTO_PROVISION": True},
+            ):
+                resp = admin_client.delete(f"/api/admin/users/{user['id']}")
+
+        assert resp.status_code == 400
+        assert "Cannot delete active OIDC users" in resp.json["error"]
 
 
 # ---------------------------------------------------------------------------

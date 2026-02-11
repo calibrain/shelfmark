@@ -339,10 +339,37 @@ def proxy_auth_middleware():
             is_admin = admin_group_name in user_groups
         
         # Create or update session
+        previous_username = session.get('user_id')
+        if previous_username and previous_username != username:
+            # Header identity changed mid-session; force reprovision for the new user.
+            session.pop('db_user_id', None)
+
         session['user_id'] = username
         session['is_admin'] = is_admin
+
+        # Provision proxy-authenticated users into users.db for multi-user features.
+        if user_db is not None and 'db_user_id' not in session:
+            role = "admin" if is_admin else "user"
+            db_user = user_db.get_user(username=username)
+            if not db_user:
+                db_user = user_db.create_user(
+                    username=username,
+                    role=role,
+                    auth_source="proxy",
+                )
+                logger.info(f"Provisioned proxy user '{username}' in users database")
+            else:
+                user_db.update_user(
+                    db_user["id"],
+                    role=role,
+                    auth_source="proxy",
+                )
+                db_user = user_db.get_user(user_id=db_user["id"]) or db_user
+
+            session['db_user_id'] = db_user["id"]
+
         session.permanent = False
-        
+
         return None
         
     except Exception as e:
@@ -1149,7 +1176,7 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
                 db_uri = f"file:{db_path}?mode=ro&immutable=1"
                 conn = sqlite3.connect(db_uri, uri=True)
                 cur = conn.cursor()
-                cur.execute("SELECT password, role FROM user WHERE name = ?", (username,))
+                cur.execute("SELECT password, role, email FROM user WHERE name = ?", (username,))
                 row = cur.fetchone()
                 conn.close()
 
@@ -1160,10 +1187,35 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
                 # Check if user has admin role (ROLE_ADMIN = 1, bit flag)
                 user_role = row[1] if row[1] is not None else 0
                 is_admin = (user_role & 1) == 1
+                cwa_email = row[2] or None
+
+                db_user_id = None
+                if user_db is not None:
+                    role = "admin" if is_admin else "user"
+                    db_user = user_db.get_user(username=username)
+                    if not db_user:
+                        db_user = user_db.create_user(
+                            username=username,
+                            email=cwa_email,
+                            role=role,
+                            auth_source="cwa",
+                        )
+                        logger.info(f"Provisioned CWA user '{username}' in users database")
+                    else:
+                        user_db.update_user(
+                            db_user["id"],
+                            email=cwa_email,
+                            role=role,
+                            auth_source="cwa",
+                        )
+                        db_user = user_db.get_user(user_id=db_user["id"]) or db_user
+                    db_user_id = db_user["id"]
 
                 # Successful authentication - create session and clear failed attempts
                 session['user_id'] = username
                 session['is_admin'] = is_admin
+                if db_user_id is not None:
+                    session['db_user_id'] = db_user_id
                 session.permanent = remember_me
                 clear_failed_logins(username)
                 logger.info(f"Login successful for user '{username}' from IP {ip_address} (CWA auth, is_admin={is_admin}, remember_me={remember_me})")

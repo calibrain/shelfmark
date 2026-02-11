@@ -7,6 +7,7 @@ request contexts. They do not require the full application stack.
 from __future__ import annotations
 
 import importlib
+import sqlite3
 from datetime import datetime, timedelta
 from typing import Any, Tuple
 from unittest.mock import Mock, patch
@@ -187,6 +188,43 @@ class TestLoginEndpoint:
 
         assert resp.status_code == 200
         assert data.get("success") is True
+
+    def test_login_cwa_provisions_db_user(self, main_module, tmp_path):
+        cwa_db_path = tmp_path / "app.db"
+        username = "cwa_test_user"
+
+        conn = sqlite3.connect(cwa_db_path)
+        conn.execute(
+            "CREATE TABLE user (name TEXT PRIMARY KEY, password TEXT, role INTEGER, email TEXT)"
+        )
+        conn.execute(
+            "INSERT INTO user (name, password, role, email) VALUES (?, ?, ?, ?)",
+            (username, "hashed_password", 1, "cwa@example.com"),
+        )
+        conn.commit()
+        conn.close()
+
+        with patch.object(main_module, "get_auth_mode", return_value="cwa"):
+            with patch.object(main_module, "is_account_locked", return_value=False):
+                with patch.object(main_module, "CWA_DB_PATH", cwa_db_path):
+                    with patch.object(main_module, "check_password_hash", return_value=True):
+                        with main_module.app.test_request_context(
+                            "/api/auth/login",
+                            method="POST",
+                            json={"username": username, "password": "correct", "remember_me": False},
+                        ):
+                            resp = _as_response(main_module.api_login())
+                            data = resp.get_json()
+                            assert main_module.session.get("user_id") == username
+                            assert main_module.session.get("is_admin") is True
+                            assert main_module.session.get("db_user_id") is not None
+
+        assert resp.status_code == 200
+        assert data.get("success") is True
+        db_user = main_module.user_db.get_user(username=username)
+        assert db_user["email"] == "cwa@example.com"
+        assert db_user["role"] == "admin"
+        assert db_user["auth_source"] == "cwa"
 
 
 class TestLogoutEndpoint:

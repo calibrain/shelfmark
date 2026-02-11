@@ -98,8 +98,35 @@ def _require_admin(f):
 
 def _sanitize_user(user: dict) -> dict:
     """Remove sensitive fields from user dict before returning to client."""
-    user.pop("password_hash", None)
-    return user
+    sanitized = dict(user)
+    sanitized.pop("password_hash", None)
+    return sanitized
+
+
+def _normalize_auth_source(user: dict[str, Any]) -> str:
+    """Resolve a stable auth source for a user record."""
+    source = user.get("auth_source")
+    if source in {"builtin", "oidc", "proxy", "cwa"}:
+        return source
+    if user.get("oidc_subject"):
+        return "oidc"
+    return "builtin"
+
+
+def _is_user_active(user: dict[str, Any], auth_method: str) -> bool:
+    """Determine whether a user can authenticate in the current auth mode."""
+    source = _normalize_auth_source(user)
+    if source == "builtin":
+        return auth_method in ("builtin", "oidc")
+    return source == auth_method
+
+
+def _serialize_user(user: dict[str, Any], auth_method: str) -> dict[str, Any]:
+    """Sanitize and enrich a user payload for API responses."""
+    payload = _sanitize_user(user)
+    payload["auth_source"] = _normalize_auth_source(payload)
+    payload["is_active"] = _is_user_active(payload, auth_method)
+    return payload
 
 
 def register_admin_routes(app: Flask, user_db: UserDB) -> None:
@@ -110,7 +137,8 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
     def admin_list_users():
         """List all users."""
         users = user_db.list_users()
-        return jsonify([_sanitize_user(u) for u in users])
+        auth_mode = _get_auth_mode()
+        return jsonify([_serialize_user(u, auth_mode) for u in users])
 
     @app.route("/api/admin/users", methods=["POST"])
     @_require_admin
@@ -146,12 +174,13 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
                 password_hash=password_hash,
                 email=email,
                 display_name=display_name,
+                auth_source="builtin",
                 role=role,
             )
         except ValueError:
             return jsonify({"error": "Username already exists"}), 409
         logger.info(f"Admin created user: {username} (role={role})")
-        return jsonify(_sanitize_user(user)), 201
+        return jsonify(_serialize_user(user, _get_auth_mode())), 201
 
     @app.route("/api/admin/users/<int:user_id>", methods=["GET"])
     @_require_admin
@@ -161,7 +190,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         if not user:
             return jsonify({"error": "User not found"}), 404
 
-        result = _sanitize_user(user)
+        result = _serialize_user(user, _get_auth_mode())
         result["settings"] = user_db.get_user_settings(user_id)
         return jsonify(result)
 
@@ -174,10 +203,16 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             return jsonify({"error": "User not found"}), 404
 
         data = request.get_json() or {}
+        auth_source = _normalize_auth_source(user)
 
         # Handle optional password update
         password = data.get("password", "")
         if password:
+            if auth_source != "builtin":
+                return jsonify({
+                    "error": f"Cannot set password for {auth_source.upper()} users",
+                    "message": "Password authentication is only available for local users.",
+                }), 400
             if len(password) < 4:
                 return jsonify({"error": "Password must be at least 4 characters"}), 400
             user_db.update_user(user_id, password_hash=generate_password_hash(password))
@@ -191,24 +226,54 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         if "role" in user_fields and user_fields["role"] not in ("admin", "user"):
             return jsonify({"error": "Role must be 'admin' or 'user'"}), 400
 
-        # Prevent changing OIDC user role when group-based auth is enabled
-        if "role" in user_fields and user.get("oidc_subject") and user_fields["role"] != user.get("role"):
-            security_config = load_config_file("security")
-            use_admin_group = security_config.get("OIDC_USE_ADMIN_GROUP", True)
-            if use_admin_group:
-                admin_group = security_config.get("OIDC_ADMIN_GROUP", "")
-                msg = (
-                    f"Admin roles for OIDC users are managed by the '{admin_group}' group in your identity provider"
-                    if admin_group
-                    else "Disable 'Use Admin Group for Authorization' in security settings to manage roles manually"
-                )
+        role_changed = "role" in user_fields and user_fields["role"] != user.get("role")
+        email_changed = "email" in user_fields and user_fields["email"] != user.get("email")
+        display_name_changed = (
+            "display_name" in user_fields
+            and user_fields["display_name"] != user.get("display_name")
+        )
+
+        if role_changed and auth_source in {"proxy", "cwa"}:
+            return jsonify({
+                "error": f"Cannot change role for {auth_source.upper()} users",
+                "message": "Role is managed by the external authentication source.",
+            }), 400
+
+        if auth_source == "oidc":
+            if email_changed:
                 return jsonify({
-                    "error": "Cannot change role for OIDC user when group-based authorization is enabled",
-                    "message": msg,
+                    "error": "Cannot change email for OIDC users",
+                    "message": "Email is managed by your identity provider.",
                 }), 400
+            if display_name_changed:
+                return jsonify({
+                    "error": "Cannot change display name for OIDC users",
+                    "message": "Display name is managed by your identity provider.",
+                }), 400
+            # Prevent changing OIDC user role when group-based auth is enabled
+            if role_changed:
+                security_config = load_config_file("security")
+                use_admin_group = security_config.get("OIDC_USE_ADMIN_GROUP", True)
+                if use_admin_group:
+                    admin_group = security_config.get("OIDC_ADMIN_GROUP", "")
+                    msg = (
+                        f"Admin roles for OIDC users are managed by the '{admin_group}' group in your identity provider"
+                        if admin_group
+                        else "Disable 'Use Admin Group for Authorization' in security settings to manage roles manually"
+                    )
+                    return jsonify({
+                        "error": "Cannot change role for OIDC user when group-based authorization is enabled",
+                        "message": msg,
+                    }), 400
+
+        if auth_source == "cwa" and email_changed:
+            return jsonify({
+                "error": "Cannot change email for CWA users",
+                "message": "Email is synced from Calibre-Web.",
+            }), 400
 
         # Prevent demoting the last admin
-        if "role" in user_fields and user_fields["role"] != "admin":
+        if role_changed and user_fields["role"] != "admin":
             if user.get("role") == "admin":
                 other_admins = [
                     u for u in user_db.list_users()
@@ -216,6 +281,11 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
                 ]
                 if not other_admins:
                     return jsonify({"error": "Cannot remove admin role from the last admin account"}), 400
+
+        # Avoid unnecessary writes for no-op field updates.
+        for field in ("role", "email", "display_name"):
+            if field in user_fields and user_fields[field] == user.get(field):
+                user_fields.pop(field)
 
         if user_fields:
             user_db.update_user(user_id, **user_fields)
@@ -235,7 +305,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             user_db.set_user_settings(user_id, validated_settings)
 
         updated = user_db.get_user(user_id=user_id)
-        result = _sanitize_user(updated)
+        result = _serialize_user(updated, _get_auth_mode())
         result["settings"] = user_db.get_user_settings(user_id)
         logger.info(f"Admin updated user {user_id}")
         return jsonify(result)
@@ -323,6 +393,21 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
+
+        auth_mode = _get_auth_mode()
+        auth_source = _normalize_auth_source(user)
+        if auth_source in {"proxy", "cwa"} and auth_source == auth_mode:
+            return jsonify({
+                "error": f"Cannot delete active {auth_source.upper()} users",
+                "message": f"{auth_source.upper()} users are automatically re-provisioned on login.",
+            }), 400
+        if auth_source == "oidc" and auth_mode == "oidc":
+            security_config = load_config_file("security")
+            if security_config.get("OIDC_AUTO_PROVISION", True):
+                return jsonify({
+                    "error": "Cannot delete active OIDC users",
+                    "message": "OIDC users are automatically re-provisioned on login while auto-provisioning is enabled.",
+                }), 400
 
         # Prevent deleting the last local admin
         if user.get("role") == "admin" and user.get("password_hash"):
