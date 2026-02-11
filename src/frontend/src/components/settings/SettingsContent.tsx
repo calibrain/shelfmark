@@ -41,6 +41,7 @@ interface SettingsContentProps {
   isSaving: boolean;
   hasChanges: boolean;
   isUniversalMode?: boolean; // Whether app is in Universal search mode
+  overrideSummary?: Record<string, { count: number; users: Array<{ userId: number; username: string; value: unknown }> }>;
 }
 
 function evaluateShowWhenCondition(
@@ -245,6 +246,7 @@ export const SettingsContent = ({
   isSaving,
   hasChanges,
   isUniversalMode = true,
+  overrideSummary,
 }: SettingsContentProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -272,12 +274,15 @@ export const SettingsContent = ({
         <div className="space-y-5">
           {visibleFields.map((field) => {
             const disabledState = getDisabledState(field, values);
+            const fieldOverrideSummary = overrideSummary?.[field.key];
             return (
               <FieldWrapper
                 key={`${tab.name}-${field.key}`}
                 field={field}
                 disabledOverride={disabledState.disabled}
                 disabledReasonOverride={disabledState.reason}
+                userOverrideCount={fieldOverrideSummary?.count}
+                userOverrideDetails={fieldOverrideSummary?.users}
               >
                 {renderField(
                   field,

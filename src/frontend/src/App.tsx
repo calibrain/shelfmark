@@ -19,7 +19,6 @@ import { SearchSection } from './components/SearchSection';
 import { AdvancedFilters } from './components/AdvancedFilters';
 import { ResultsSection } from './components/ResultsSection';
 import { DetailsModal } from './components/DetailsModal';
-import { EmailRecipientModal } from './components/EmailRecipientModal';
 import { ReleaseModal } from './components/ReleaseModal';
 import { DownloadsSidebar } from './components/DownloadsSidebar';
 import { ToastContainer } from './components/ToastContainer';
@@ -30,7 +29,6 @@ import { ConfigSetupBanner } from './components/ConfigSetupBanner';
 import { OnboardingModal } from './components/OnboardingModal';
 import { DEFAULT_LANGUAGES, DEFAULT_SUPPORTED_FORMATS } from './data/languages';
 import { buildSearchQuery } from './utils/buildSearchQuery';
-import { UserCancelledError, isUserCancelledError } from './utils/errors';
 import { withBasePath } from './utils/basePath';
 import { SearchModeProvider } from './contexts/SearchModeContext';
 import './styles.css';
@@ -145,49 +143,6 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [configBannerOpen, setConfigBannerOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
-  const [emailRecipientModalOpen, setEmailRecipientModalOpen] = useState(false);
-  const emailRecipientPromiseRef = useRef<{
-    resolve: (nickname: string) => void;
-    reject: (error: Error) => void;
-  } | null>(null);
-
-  const openEmailRecipientPicker = useCallback(async (): Promise<string> => {
-    const recipients = config?.email_recipients ?? [];
-    if (!config || config.books_output_mode !== 'email') {
-      return '';
-    }
-
-    if (recipients.length === 0) {
-      throw new Error('No email recipients configured');
-    }
-
-    if (recipients.length === 1) {
-      return recipients[0]?.nickname ?? '';
-    }
-
-    if (emailRecipientPromiseRef.current) {
-      throw new Error('Email recipient picker already open');
-    }
-
-    setEmailRecipientModalOpen(true);
-    return new Promise((resolve, reject) => {
-      emailRecipientPromiseRef.current = { resolve, reject };
-    });
-  }, [config]);
-
-  const handleEmailRecipientSelect = useCallback((nickname: string) => {
-    const pending = emailRecipientPromiseRef.current;
-    emailRecipientPromiseRef.current = null;
-    setEmailRecipientModalOpen(false);
-    pending?.resolve(nickname);
-  }, []);
-
-  const handleEmailRecipientCancel = useCallback(() => {
-    const pending = emailRecipientPromiseRef.current;
-    emailRecipientPromiseRef.current = null;
-    setEmailRecipientModalOpen(false);
-    pending?.reject(new UserCancelledError());
-  }, []);
 
   // Expose debug function to trigger onboarding from browser console
   useEffect(() => {
@@ -482,18 +437,9 @@ function App() {
   // Download book
   const handleDownload = async (book: Book): Promise<void> => {
     try {
-      let emailRecipient: string | undefined;
-      if (config?.books_output_mode === 'email' && contentType === 'ebook') {
-        emailRecipient = await openEmailRecipientPicker();
-      }
-
-      await downloadBook(book.id, emailRecipient);
+      await downloadBook(book.id);
       await fetchStatus();
     } catch (error) {
-      if (isUserCancelledError(error)) {
-        // Important: rethrow so buttons can reset their "Queuing..." state.
-        throw error;
-      }
       console.error('Download failed:', error);
       showToast(error instanceof Error ? error.message : 'Failed to queue download', 'error');
       throw error;
@@ -546,11 +492,6 @@ function App() {
   // Handle download from ReleaseModal
   const handleReleaseDownload = async (book: Book, release: Release, releaseContentType: ContentType) => {
     try {
-      let emailRecipient: string | undefined;
-      if (config?.books_output_mode === 'email' && releaseContentType === 'ebook') {
-        emailRecipient = await openEmailRecipientPicker();
-      }
-
       trackRelease(book.id, release.source_id);
 
       await downloadRelease({
@@ -572,13 +513,9 @@ function App() {
         series_name: book.series_name,
         series_position: book.series_position,
         subtitle: book.subtitle,
-        email_recipient: emailRecipient,
       });
       await fetchStatus();
     } catch (error) {
-      if (isUserCancelledError(error)) {
-        throw error;
-      }
       console.error('Release download failed:', error);
       showToast(error instanceof Error ? error.message : 'Failed to queue download', 'error');
       throw error;
@@ -750,13 +687,6 @@ function App() {
           />
         )}
 
-        <EmailRecipientModal
-          isOpen={emailRecipientModalOpen}
-          recipients={config?.email_recipients ?? []}
-          onSelect={handleEmailRecipientSelect}
-          onCancel={handleEmailRecipientCancel}
-        />
-
       </main>
 
       <Footer
@@ -776,6 +706,7 @@ function App() {
 
       <SettingsModal
         isOpen={settingsOpen}
+        authMode={authMode}
         onClose={() => setSettingsOpen(false)}
         onShowToast={showToast}
         onSettingsSaved={handleSettingsSaved}

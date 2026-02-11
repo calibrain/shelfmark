@@ -34,8 +34,6 @@ class TestDetermineAuthMode:
     def test_builtin_still_works(self):
         config = {
             "AUTH_METHOD": "builtin",
-            "BUILTIN_USERNAME": "admin",
-            "BUILTIN_PASSWORD_HASH": "hash",
         }
         assert determine_auth_mode(config, cwa_db_path=None) == "builtin"
 

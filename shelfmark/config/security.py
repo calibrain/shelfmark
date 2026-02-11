@@ -20,6 +20,43 @@ from shelfmark.core.settings_registry import (
 logger = setup_logger(__name__)
 
 
+def _sync_builtin_admin_user(username: str, password_hash: str) -> None:
+    """Ensure a local admin user exists for the configured builtin credentials."""
+    import os
+    from shelfmark.core.user_db import UserDB
+
+    normalized_username = (username or "").strip()
+    normalized_hash = password_hash or ""
+    if not normalized_username or not normalized_hash:
+        return
+
+    db_path = os.path.join(os.environ.get("CONFIG_DIR", "/config"), "users.db")
+    user_db = UserDB(db_path)
+    user_db.initialize()
+
+    existing = user_db.get_user(username=normalized_username)
+    if existing:
+        updates = {}
+        if existing.get("password_hash") != normalized_hash:
+            updates["password_hash"] = normalized_hash
+        if existing.get("role") != "admin":
+            updates["role"] = "admin"
+        if existing.get("auth_source") != "builtin":
+            updates["auth_source"] = "builtin"
+        if updates:
+            user_db.update_user(existing["id"], **updates)
+            logger.info(f"Updated local admin user '{normalized_username}' from builtin settings")
+        return
+
+    user_db.create_user(
+        username=normalized_username,
+        password_hash=normalized_hash,
+        auth_source="builtin",
+        role="admin",
+    )
+    logger.info(f"Created local admin user '{normalized_username}' from builtin settings")
+
+
 def _migrate_security_settings() -> None:
     import json
     from shelfmark.core.settings_registry import _get_config_file_path, _ensure_config_dir
@@ -62,6 +99,15 @@ def _migrate_security_settings() -> None:
             else:
                 logger.info("Removed deprecated RESTRICT_SETTINGS_TO_ADMIN setting (CWA_RESTRICT_SETTINGS_TO_ADMIN already exists)")
                 migrated = True
+
+        # Ensure legacy builtin credentials are represented in users.db.
+        try:
+            _sync_builtin_admin_user(
+                config.get("BUILTIN_USERNAME", ""),
+                config.get("BUILTIN_PASSWORD_HASH", ""),
+            )
+        except Exception as e:
+            logger.error(f"Failed to sync builtin credentials to users database during migration: {e}")
         
         # Save config if any migrations occurred
         if migrated:
@@ -88,6 +134,9 @@ def _clear_builtin_credentials() -> Dict[str, Any]:
         config = load_config_file("security")
         config.pop("BUILTIN_USERNAME", None)
         config.pop("BUILTIN_PASSWORD_HASH", None)
+        # Builtin auth now uses users.db, so switch auth mode to none to keep this
+        # action's historical behavior ("public access").
+        config["AUTH_METHOD"] = "none"
 
         _ensure_config_dir("security")
         config_path = _get_config_file_path("security")
@@ -177,6 +226,21 @@ def _on_save_security(values: Dict[str, Any]) -> Dict[str, Any]:
         existing = load_config_file("security")
         if "BUILTIN_PASSWORD_HASH" in existing:
             values["BUILTIN_PASSWORD_HASH"] = existing["BUILTIN_PASSWORD_HASH"]
+
+    # Keep users.db in sync with app-wide builtin credentials.
+    if values.get("AUTH_METHOD") == "builtin":
+        try:
+            _sync_builtin_admin_user(
+                values.get("BUILTIN_USERNAME", ""),
+                values.get("BUILTIN_PASSWORD_HASH", ""),
+            )
+        except Exception as e:
+            logger.error(f"Failed to sync builtin admin user: {e}")
+            return {
+                "error": True,
+                "message": "Failed to create/update local admin user from builtin credentials",
+                "values": values,
+            }
 
     return {"error": False, "values": values}
 

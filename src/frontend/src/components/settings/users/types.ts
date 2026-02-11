@@ -1,38 +1,13 @@
 import { AdminUser } from '../../../services/api';
 
 export interface PerUserSettings {
+  [key: string]: unknown;
+  BOOKS_OUTPUT_MODE?: string;
   DESTINATION?: string;
   BOOKLORE_LIBRARY_ID?: string;
   BOOKLORE_PATH_ID?: string;
-  EMAIL_RECIPIENTS?: Array<{ nickname: string; email: string }>;
+  EMAIL_RECIPIENT?: string;
 }
-
-export type OverrideKey =
-  | 'destination'
-  | 'booklore_library_id'
-  | 'booklore_path_id'
-  | 'email_recipients';
-
-export const OVERRIDE_KEY_TO_SETTING_KEY: Record<OverrideKey, keyof PerUserSettings> = {
-  destination: 'DESTINATION',
-  booklore_library_id: 'BOOKLORE_LIBRARY_ID',
-  booklore_path_id: 'BOOKLORE_PATH_ID',
-  email_recipients: 'EMAIL_RECIPIENTS',
-};
-
-export const FALLBACK_OVERRIDABLE_SETTINGS = new Set<keyof PerUserSettings>([
-  'DESTINATION',
-  'BOOKLORE_LIBRARY_ID',
-  'BOOKLORE_PATH_ID',
-  'EMAIL_RECIPIENTS',
-]);
-
-export const EMPTY_OVERRIDES: Record<OverrideKey, boolean> = {
-  destination: false,
-  booklore_library_id: false,
-  booklore_path_id: false,
-  email_recipients: false,
-};
 
 export interface CreateUserFormState {
   username: string;
@@ -79,8 +54,6 @@ export const normalizeAuthSource = (user: Pick<AdminUser, 'auth_source' | 'oidc_
   return user.oidc_subject ? 'oidc' : 'builtin';
 };
 
-export const isUserActive = (user: Pick<AdminUser, 'is_active'>): boolean => user.is_active !== false;
-
 export interface UserEditCapabilities {
   authSource: AuthSource;
   canSetPassword: boolean;
@@ -88,6 +61,29 @@ export interface UserEditCapabilities {
   canEditEmail: boolean;
   canEditDisplayName: boolean;
 }
+
+export const canCreateLocalUsersForAuthMode = (authMode?: string): boolean => {
+  const normalized = String(authMode || 'none').toLowerCase();
+  return normalized === 'none' || normalized === 'builtin' || normalized === 'oidc';
+};
+
+export const getUsersHeadingDescriptionForAuthMode = (authMode?: string): string => {
+  const normalized = String(authMode || 'none').toLowerCase();
+
+  if (normalized === 'builtin') {
+    return 'Local users are managed here. Admins can create and manage local users.';
+  }
+  if (normalized === 'oidc') {
+    return 'OIDC users can be auto-provisioned on login. Create local users for fallback admin access or when auto-provision is disabled.';
+  }
+  if (normalized === 'proxy') {
+    return 'Proxy users are auto-created from proxy headers on first login. Local user creation is disabled in proxy mode.';
+  }
+  if (normalized === 'cwa') {
+    return 'Users are managed in Calibre-Web and synced on login. Local user creation is disabled in CWA mode.';
+  }
+  return 'No authentication is enabled. You can create local users now to prepare for enabling authentication later.';
+};
 
 export const getUserEditCapabilities = (
   user: Pick<AdminUser, 'auth_source' | 'oidc_subject'>,

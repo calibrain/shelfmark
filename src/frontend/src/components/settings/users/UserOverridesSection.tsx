@@ -1,240 +1,318 @@
-import { ReactNode } from 'react';
-import { BookloreOption, DownloadDefaults } from '../../../services/api';
-import { OverrideKey, PerUserSettings } from './types';
-
-const inputClasses =
-  'w-full px-3 py-2 rounded-lg border border-[var(--border-muted)] bg-[var(--bg-soft)] text-sm focus:outline-none focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500 transition-colors';
-
-const disabledInputClasses =
-  'w-full px-3 py-2 rounded-lg border border-[var(--border-muted)] bg-[var(--bg-soft)] text-sm opacity-50 cursor-not-allowed transition-colors';
+import { DeliveryPreferencesResponse } from '../../../services/api';
+import {
+  SelectFieldConfig,
+  SettingsField,
+  TextFieldConfig,
+} from '../../../types/settings';
+import { SelectField, TextField } from '../fields';
+import { FieldWrapper } from '../shared';
+import { PerUserSettings } from './types';
 
 interface UserOverridesSectionProps {
   standalone?: boolean;
-  downloadDefaults: DownloadDefaults | null;
+  deliveryPreferences: DeliveryPreferencesResponse | null;
   isUserOverridable: (key: keyof PerUserSettings) => boolean;
   userSettings: PerUserSettings;
   setUserSettings: (updater: (prev: PerUserSettings) => PerUserSettings) => void;
-  overrides: Record<OverrideKey, boolean>;
-  toggleOverride: (key: OverrideKey, enabled: boolean) => void;
-  bookloreLibraries: BookloreOption[];
-  booklorePaths: BookloreOption[];
 }
+
+const modeOptions = [
+  { value: 'folder', label: 'Folder' },
+  { value: 'email', label: 'Email (SMTP)' },
+  { value: 'booklore', label: 'BookLore (API)' },
+];
+
+const fallbackOutputModeField: SelectFieldConfig = {
+  type: 'SelectField',
+  key: 'BOOKS_OUTPUT_MODE',
+  label: 'Output Mode',
+  description: 'Choose where completed book files are sent.',
+  value: 'folder',
+  options: modeOptions,
+};
+
+const fallbackDestinationField: TextFieldConfig = {
+  type: 'TextField',
+  key: 'DESTINATION',
+  label: 'Destination',
+  description: 'Directory where downloaded files are saved.',
+  value: '',
+  placeholder: '/books',
+};
+
+const fallbackBookloreLibraryField: SelectFieldConfig = {
+  type: 'SelectField',
+  key: 'BOOKLORE_LIBRARY_ID',
+  label: 'Library',
+  description: 'BookLore library to upload into.',
+  value: '',
+  options: [],
+};
+
+const fallbackBooklorePathField: SelectFieldConfig = {
+  type: 'SelectField',
+  key: 'BOOKLORE_PATH_ID',
+  label: 'Path',
+  description: 'BookLore library path for uploads.',
+  value: '',
+  options: [],
+  filterByField: 'BOOKLORE_LIBRARY_ID',
+};
+
+const fallbackEmailRecipientField: TextFieldConfig = {
+  type: 'TextField',
+  key: 'EMAIL_RECIPIENT',
+  label: 'Email Recipient',
+  description: 'Email address used for this user in Email output mode.',
+  value: '',
+  placeholder: 'reader@example.com',
+};
+
+type DeliverySettingKey = keyof PerUserSettings;
+
+function normalizeMode(value: unknown): 'folder' | 'booklore' | 'email' {
+  const mode = String(value || '').trim().toLowerCase();
+  if (mode === 'booklore' || mode === 'email') {
+    return mode;
+  }
+  return 'folder';
+}
+
+function toStringValue(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  return String(value);
+}
+
+function getFieldByKey<T extends SettingsField>(
+  fields: SettingsField[] | undefined,
+  key: string,
+  fallback: T
+): T {
+  const found = fields?.find((field) => field.key === key);
+  if (!found) {
+    return fallback;
+  }
+  return found as T;
+}
+
+interface ResetOverrideButtonProps {
+  disabled?: boolean;
+  label?: string;
+  onClick: () => void;
+}
+
+const ResetOverrideButton = ({ disabled = false, label = 'Reset', onClick }: ResetOverrideButtonProps) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={disabled}
+    className="px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--border-muted)]
+               bg-[var(--bg)] hover:bg-[var(--hover-surface)] transition-colors
+               disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+    {label}
+  </button>
+);
 
 export const UserOverridesSection = ({
   standalone = false,
-  downloadDefaults,
+  deliveryPreferences,
   isUserOverridable,
   userSettings,
   setUserSettings,
-  overrides,
-  toggleOverride,
-  bookloreLibraries,
-  booklorePaths,
 }: UserOverridesSectionProps) => {
-  const outputMode = downloadDefaults?.BOOKS_OUTPUT_MODE || 'folder';
-  const canOverrideDestination = isUserOverridable('DESTINATION') && (outputMode === 'folder' || outputMode === 'booklore');
-  const canOverrideBookloreLibrary = isUserOverridable('BOOKLORE_LIBRARY_ID') && outputMode === 'booklore';
-  const canOverrideBooklorePath = isUserOverridable('BOOKLORE_PATH_ID') && outputMode === 'booklore';
-  const canOverrideEmailRecipients = isUserOverridable('EMAIL_RECIPIENTS') && outputMode === 'email';
-  const showDownloadOverrides = canOverrideDestination || canOverrideBookloreLibrary || canOverrideBooklorePath || canOverrideEmailRecipients;
+  const fields = deliveryPreferences?.fields ?? [];
+  const globalValues = deliveryPreferences?.globalValues ?? {};
+  const preferenceKeys = deliveryPreferences?.keys ?? [];
 
-  if (!downloadDefaults || !showDownloadOverrides) {
+  const outputModeField = getFieldByKey<SelectFieldConfig>(fields, 'BOOKS_OUTPUT_MODE', fallbackOutputModeField);
+  const destinationField = getFieldByKey<TextFieldConfig>(fields, 'DESTINATION', fallbackDestinationField);
+  const bookloreLibraryField = getFieldByKey<SelectFieldConfig>(fields, 'BOOKLORE_LIBRARY_ID', fallbackBookloreLibraryField);
+  const booklorePathField = getFieldByKey<SelectFieldConfig>(fields, 'BOOKLORE_PATH_ID', fallbackBooklorePathField);
+  const emailRecipientField = getFieldByKey<TextFieldConfig>(fields, 'EMAIL_RECIPIENT', fallbackEmailRecipientField);
+
+  const isOverridden = (key: DeliverySettingKey): boolean =>
+    Object.prototype.hasOwnProperty.call(userSettings, key) &&
+    userSettings[key] !== null &&
+    userSettings[key] !== undefined;
+
+  const resetKeys = (keys: DeliverySettingKey[]) => {
+    setUserSettings((prev) => {
+      const next = { ...prev };
+      keys.forEach((key) => {
+        delete next[key];
+      });
+      return next;
+    });
+  };
+
+  const readValue = (key: DeliverySettingKey, fallback = ''): string => {
+    if (isOverridden(key)) {
+      return toStringValue(userSettings[key]);
+    }
+    if (key in globalValues) {
+      return toStringValue(globalValues[key]);
+    }
+    return fallback;
+  };
+
+  const outputModeValue = readValue('BOOKS_OUTPUT_MODE', 'folder');
+  const effectiveOutputMode = normalizeMode(outputModeValue);
+
+  const destinationValue = readValue('DESTINATION');
+  const libraryValue = readValue('BOOKLORE_LIBRARY_ID');
+  const pathValue = readValue('BOOKLORE_PATH_ID');
+  const emailRecipientValue = readValue('EMAIL_RECIPIENT');
+
+  const hasAnyDeliveryOverride = preferenceKeys.some((key) => isOverridden(key as DeliverySettingKey));
+
+  const canOverrideOutputMode = isUserOverridable('BOOKS_OUTPUT_MODE');
+  const canOverrideDestination = isUserOverridable('DESTINATION');
+  const canOverrideBookloreLibrary = isUserOverridable('BOOKLORE_LIBRARY_ID');
+  const canOverrideBooklorePath = isUserOverridable('BOOKLORE_PATH_ID');
+  const canOverrideEmailRecipient = isUserOverridable('EMAIL_RECIPIENT');
+
+  if (!deliveryPreferences) {
     return null;
   }
 
   return (
-    <>
+    <div className="space-y-4">
       <div className={standalone ? '' : 'border-t border-[var(--border-muted)] pt-4'}>
-        <p className="text-xs font-medium opacity-60 mb-1">Download Settings Overrides</p>
-        <p className="text-xs opacity-40 mb-3">Override global defaults for this user.</p>
+        <p className="text-xs font-medium opacity-60 mb-1">Delivery Preferences</p>
+        <p className="text-xs opacity-40 mb-3">
+          Editing values here creates per-user settings. Use Reset to inherit the global value.
+        </p>
       </div>
 
-      {canOverrideDestination && (
-        <OverrideField
-          label="Destination Folder"
-          enabled={overrides.destination || false}
-          onToggle={(v) => toggleOverride('destination', v)}
-          globalValue={downloadDefaults.DESTINATION || '/books'}
-        >
-          <input
-            type="text"
-            value={userSettings.DESTINATION || ''}
-            onChange={(e) => setUserSettings((s) => ({ ...s, DESTINATION: e.target.value }))}
-            className={overrides.destination ? inputClasses : disabledInputClasses}
-            disabled={!overrides.destination}
-            placeholder={downloadDefaults.DESTINATION || '/books'}
-          />
-        </OverrideField>
-      )}
-
-      {(canOverrideBookloreLibrary || canOverrideBooklorePath) && (
-        <>
-          {canOverrideBookloreLibrary && (
-            <OverrideField
-              label="BookLore Library"
-              enabled={overrides.booklore_library_id || false}
-              onToggle={(v) => toggleOverride('booklore_library_id', v)}
-              globalValue={
-                bookloreLibraries.find((l) => l.value === downloadDefaults.BOOKLORE_LIBRARY_ID)?.label
-                || downloadDefaults.BOOKLORE_LIBRARY_ID
-                || 'Not set'
-              }
-            >
-              <select
-                value={userSettings.BOOKLORE_LIBRARY_ID || ''}
-                onChange={(e) => {
-                  setUserSettings((s) => ({ ...s, BOOKLORE_LIBRARY_ID: e.target.value, BOOKLORE_PATH_ID: '' }));
-                }}
-                className={overrides.booklore_library_id ? inputClasses : disabledInputClasses}
-                disabled={!overrides.booklore_library_id}
-              >
-                <option value="">Select library...</option>
-                {bookloreLibraries.map((lib) => (
-                  <option key={lib.value} value={lib.value}>{lib.label}</option>
-                ))}
-              </select>
-            </OverrideField>
-          )}
-          {canOverrideBooklorePath && (
-            <OverrideField
-              label="BookLore Path"
-              enabled={overrides.booklore_path_id || false}
-              onToggle={(v) => toggleOverride('booklore_path_id', v)}
-              globalValue={
-                booklorePaths.find((p) => p.value === downloadDefaults.BOOKLORE_PATH_ID)?.label
-                || downloadDefaults.BOOKLORE_PATH_ID
-                || 'Not set'
-              }
-            >
-              <select
-                value={userSettings.BOOKLORE_PATH_ID || ''}
-                onChange={(e) => setUserSettings((s) => ({ ...s, BOOKLORE_PATH_ID: e.target.value }))}
-                className={overrides.booklore_path_id ? inputClasses : disabledInputClasses}
-                disabled={!overrides.booklore_path_id}
-              >
-                <option value="">Select path...</option>
-                {booklorePaths
-                  .filter((p) => {
-                    const selectedLib = userSettings.BOOKLORE_LIBRARY_ID || downloadDefaults.BOOKLORE_LIBRARY_ID;
-                    return !p.childOf || p.childOf === selectedLib;
-                  })
-                  .map((path) => (
-                    <option key={path.value} value={path.value}>{path.label}</option>
-                  ))}
-              </select>
-            </OverrideField>
-          )}
-        </>
-      )}
-
-      {canOverrideEmailRecipients && (
-        <OverrideField
-          label="Email Recipients"
-          enabled={overrides.email_recipients || false}
-          onToggle={(v) => toggleOverride('email_recipients', v)}
-          globalValue={
-            downloadDefaults.EMAIL_RECIPIENTS?.length
-              ? downloadDefaults.EMAIL_RECIPIENTS.map((r) => r.nickname || r.email).join(', ')
-              : 'None configured'
+      {canOverrideOutputMode && (
+        <FieldWrapper
+          field={outputModeField}
+          headerRight={
+            hasAnyDeliveryOverride ? (
+              <ResetOverrideButton
+                label="Reset all"
+                onClick={() => resetKeys(preferenceKeys as DeliverySettingKey[])}
+              />
+            ) : undefined
           }
         >
-          {overrides.email_recipients && (
-            <EmailRecipientsEditor
-              recipients={userSettings.EMAIL_RECIPIENTS || []}
-              onChange={(r) => setUserSettings((s) => ({ ...s, EMAIL_RECIPIENTS: r }))}
-            />
-          )}
-        </OverrideField>
+          <SelectField
+            field={outputModeField}
+            value={outputModeValue}
+            onChange={(value) => {
+              setUserSettings((prev) => {
+                const next: PerUserSettings = { ...prev, BOOKS_OUTPUT_MODE: value };
+                if (value === 'folder') {
+                  delete next.BOOKLORE_LIBRARY_ID;
+                  delete next.BOOKLORE_PATH_ID;
+                  delete next.EMAIL_RECIPIENT;
+                } else if (value === 'booklore') {
+                  delete next.DESTINATION;
+                  delete next.EMAIL_RECIPIENT;
+                } else if (value === 'email') {
+                  delete next.DESTINATION;
+                  delete next.BOOKLORE_LIBRARY_ID;
+                  delete next.BOOKLORE_PATH_ID;
+                }
+                return next;
+              });
+            }}
+            disabled={Boolean(outputModeField.fromEnv)}
+          />
+        </FieldWrapper>
       )}
-    </>
-  );
-};
 
-interface OverrideFieldProps {
-  label: string;
-  enabled: boolean;
-  onToggle: (enabled: boolean) => void;
-  globalValue: string;
-  children: ReactNode;
-}
-
-const OverrideField = ({ label, enabled, onToggle, globalValue, children }: OverrideFieldProps) => (
-  <div className="space-y-1.5">
-    <div className="flex items-center justify-between">
-      <label className="text-sm font-medium">{label}</label>
-      <button
-        type="button"
-        onClick={() => onToggle(!enabled)}
-        className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors
-          ${enabled
-            ? 'bg-sky-500/15 text-sky-400 hover:bg-sky-500/25'
-            : 'bg-zinc-500/10 opacity-60 hover:opacity-80'}`}
-      >
-        {enabled ? 'Custom' : 'Global'}
-      </button>
-    </div>
-    {!enabled && (
-      <p className="text-xs opacity-40">Using global: {globalValue}</p>
-    )}
-    {children}
-  </div>
-);
-
-interface EmailRecipientsEditorProps {
-  recipients: Array<{ nickname: string; email: string }>;
-  onChange: (recipients: Array<{ nickname: string; email: string }>) => void;
-}
-
-const EmailRecipientsEditor = ({ recipients, onChange }: EmailRecipientsEditorProps) => {
-  const addRecipient = () => {
-    onChange([...recipients, { nickname: '', email: '' }]);
-  };
-
-  const removeRecipient = (index: number) => {
-    onChange(recipients.filter((_, i) => i !== index));
-  };
-
-  const updateRecipient = (index: number, field: 'nickname' | 'email', value: string) => {
-    const updated = [...recipients];
-    updated[index] = { ...updated[index], [field]: value };
-    onChange(updated);
-  };
-
-  return (
-    <div className="space-y-2">
-      {recipients.map((r, i) => (
-        <div key={i} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-          <input
-            type="text"
-            value={r.nickname}
-            onChange={(e) => updateRecipient(i, 'nickname', e.target.value)}
-            className={inputClasses}
-            placeholder="Nickname"
+      {effectiveOutputMode === 'folder' && canOverrideDestination && (
+        <FieldWrapper
+          field={destinationField}
+          headerRight={
+            isOverridden('DESTINATION') ? (
+              <ResetOverrideButton
+                disabled={Boolean(destinationField.fromEnv)}
+                onClick={() => resetKeys(['DESTINATION'])}
+              />
+            ) : undefined
+          }
+        >
+          <TextField
+            field={destinationField}
+            value={destinationValue}
+            onChange={(value) => setUserSettings((prev) => ({ ...prev, DESTINATION: value }))}
+            disabled={Boolean(destinationField.fromEnv)}
           />
-          <input
-            type="email"
-            value={r.email}
-            onChange={(e) => updateRecipient(i, 'email', e.target.value)}
-            className={inputClasses}
-            placeholder="email@example.com"
+        </FieldWrapper>
+      )}
+
+      {effectiveOutputMode === 'booklore' && canOverrideBookloreLibrary && (
+        <FieldWrapper
+          field={bookloreLibraryField}
+          headerRight={
+            isOverridden('BOOKLORE_LIBRARY_ID') ? (
+              <ResetOverrideButton
+                disabled={Boolean(bookloreLibraryField.fromEnv)}
+                onClick={() => resetKeys(['BOOKLORE_LIBRARY_ID'])}
+              />
+            ) : undefined
+          }
+        >
+          <SelectField
+            field={bookloreLibraryField}
+            value={libraryValue}
+            onChange={(value) => {
+              setUserSettings((prev) => ({
+                ...prev,
+                BOOKLORE_LIBRARY_ID: value,
+                BOOKLORE_PATH_ID: '',
+              }));
+            }}
+            disabled={Boolean(bookloreLibraryField.fromEnv)}
           />
-          <button
-            type="button"
-            onClick={() => removeRecipient(i)}
-            className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-[var(--border-muted)] text-red-400 hover:bg-red-600 hover:text-white hover:border-red-600 transition-colors shrink-0"
-          >
-            Remove
-          </button>
-        </div>
-      ))}
-      <button
-        type="button"
-        onClick={addRecipient}
-        className="text-xs font-medium px-3 py-2 rounded-lg border border-[var(--border-muted)]
-                   hover:bg-[var(--hover-surface)] transition-colors"
-      >
-        + Add Recipient
-      </button>
+        </FieldWrapper>
+      )}
+
+      {effectiveOutputMode === 'booklore' && canOverrideBooklorePath && (
+        <FieldWrapper
+          field={booklorePathField}
+          headerRight={
+            isOverridden('BOOKLORE_PATH_ID') ? (
+              <ResetOverrideButton
+                disabled={Boolean(booklorePathField.fromEnv)}
+                onClick={() => resetKeys(['BOOKLORE_PATH_ID'])}
+              />
+            ) : undefined
+          }
+        >
+          <SelectField
+            field={booklorePathField}
+            value={pathValue}
+            onChange={(value) => setUserSettings((prev) => ({ ...prev, BOOKLORE_PATH_ID: value }))}
+            disabled={Boolean(booklorePathField.fromEnv)}
+            filterValue={libraryValue || undefined}
+          />
+        </FieldWrapper>
+      )}
+
+      {effectiveOutputMode === 'email' && canOverrideEmailRecipient && (
+        <FieldWrapper
+          field={emailRecipientField}
+          headerRight={
+            isOverridden('EMAIL_RECIPIENT') ? (
+              <ResetOverrideButton
+                disabled={Boolean(emailRecipientField.fromEnv)}
+                onClick={() => resetKeys(['EMAIL_RECIPIENT'])}
+              />
+            ) : undefined
+          }
+        >
+          <TextField
+            field={emailRecipientField}
+            value={emailRecipientValue}
+            onChange={(value) => setUserSettings((prev) => ({ ...prev, EMAIL_RECIPIENT: value }))}
+            disabled={Boolean(emailRecipientField.fromEnv)}
+          />
+        </FieldWrapper>
+      )}
     </div>
   );
 };

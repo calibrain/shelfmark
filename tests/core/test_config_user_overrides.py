@@ -47,16 +47,16 @@ def test_get_uses_user_override_when_not_env(monkeypatch):
 
 def test_get_ignores_user_override_for_non_overridable_field(monkeypatch):
     monkeypatch.setattr(config, "_ensure_loaded", lambda: None)
-    monkeypatch.setattr(config, "_cache", {"BOOKS_OUTPUT_MODE": "folder"})
+    monkeypatch.setattr(config, "_cache", {"FILE_ORGANIZATION": "rename"})
     monkeypatch.setattr(
         config,
         "_field_map",
-        {"BOOKS_OUTPUT_MODE": (_DummyField(env_supported=True, user_overridable=False), "downloads")},
+        {"FILE_ORGANIZATION": (_DummyField(env_supported=True, user_overridable=False), "downloads")},
     )
-    monkeypatch.setattr(config, "_get_user_override", lambda user_id, key: "email")
+    monkeypatch.setattr(config, "_get_user_override", lambda user_id, key: "organize")
     monkeypatch.setattr(
         "shelfmark.core.config._get_registry",
         lambda: SimpleNamespace(is_value_from_env=lambda field: False),
     )
 
-    assert config.get("BOOKS_OUTPUT_MODE", "folder", user_id=10) == "folder"
+    assert config.get("FILE_ORGANIZATION", "rename", user_id=10) == "rename"

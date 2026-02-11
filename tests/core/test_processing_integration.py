@@ -34,7 +34,7 @@ def _build_config(
         "HARDLINK_TORRENTS": hardlink,
         "HARDLINK_TORRENTS_AUDIOBOOK": hardlink,
     }
-    return MagicMock(side_effect=lambda key, default=None: values.get(key, default))
+    return MagicMock(side_effect=lambda key, default=None, **_kwargs: values.get(key, default))
 
 
 def _sync_config(mock_config, mock_core):
@@ -475,7 +475,7 @@ def test_booklore_mode_uploads_and_cleans_staging(tmp_path):
          patch("shelfmark.download.outputs.booklore.booklore_login", return_value="token"), \
          patch("shelfmark.download.outputs.booklore.booklore_upload_file", side_effect=_upload_stub), \
          patch("shelfmark.config.env.TMP_DIR", staging):
-        mock_config.get = MagicMock(side_effect=lambda key, default=None: booklore_values.get(key, default))
+        mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: booklore_values.get(key, default))
 
         result = _post_process_download(temp_file, task, Event(), status_cb)
 
@@ -519,7 +519,7 @@ def test_booklore_mode_rejects_unsupported_files(tmp_path):
          patch("shelfmark.download.outputs.booklore.booklore_login") as mock_login, \
          patch("shelfmark.download.outputs.booklore.booklore_upload_file") as mock_upload, \
          patch("shelfmark.config.env.TMP_DIR", staging):
-        mock_config.get = MagicMock(side_effect=lambda key, default=None: booklore_values.get(key, default))
+        mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: booklore_values.get(key, default))
 
         result = _post_process_download(temp_file, task, Event(), status_cb)
 

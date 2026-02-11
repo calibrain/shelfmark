@@ -5,3 +5,4 @@ export { UserOverridesSection } from './UserOverridesSection';
 export { UserOverridesView } from './UserOverridesView';
 export { useUsersData } from './useUsersData';
 export { useUsersPanelState } from './useUsersPanelState';
+export { canCreateLocalUsersForAuthMode, getUsersHeadingDescriptionForAuthMode } from './types';

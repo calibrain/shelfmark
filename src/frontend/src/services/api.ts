@@ -189,12 +189,9 @@ export const getMetadataBookInfo = async (provider: string, bookId: string): Pro
   return transformMetadataToBook(response);
 };
 
-export const downloadBook = async (id: string, emailRecipient?: string): Promise<void> => {
+export const downloadBook = async (id: string): Promise<void> => {
   const params = new URLSearchParams();
   params.set('id', id);
-  if (emailRecipient) {
-    params.set('email_recipient', emailRecipient);
-  }
   await fetchJSON(`${API.download}?${params.toString()}`);
 };
 
@@ -219,7 +216,6 @@ export const downloadRelease = async (release: {
   series_position?: number;
   subtitle?: string;
   search_author?: string;
-  email_recipient?: string;
 }): Promise<void> => {
   await fetchJSON(`${API_BASE}/releases/download`, {
     method: 'POST',
@@ -440,7 +436,7 @@ export interface DownloadDefaults {
   DESTINATION: string;
   BOOKLORE_LIBRARY_ID: string;
   BOOKLORE_PATH_ID: string;
-  EMAIL_RECIPIENTS: Array<{ nickname: string; email: string }>;
+  EMAIL_RECIPIENT: string;
   OIDC_ADMIN_GROUP: string;
   OIDC_USE_ADMIN_GROUP: boolean;
   OIDC_AUTO_PROVISION: boolean;
@@ -463,4 +459,41 @@ export interface BookloreOptions {
 
 export const getBookloreOptions = async (): Promise<BookloreOptions> => {
   return fetchJSON<BookloreOptions>(`${API_BASE}/admin/booklore-options`);
+};
+
+export interface DeliveryPreferencesResponse {
+  tab: string;
+  keys: string[];
+  fields: import('../types/settings').SettingsField[];
+  globalValues: Record<string, unknown>;
+  userOverrides: Record<string, unknown>;
+  effective: Record<string, { value: unknown; source: string }>;
+}
+
+export const getAdminDeliveryPreferences = async (
+  userId: number
+): Promise<DeliveryPreferencesResponse> => {
+  return fetchJSON<DeliveryPreferencesResponse>(`${API_BASE}/admin/users/${userId}/delivery-preferences`);
+};
+
+export interface SettingsOverrideUserDetail {
+  userId: number;
+  username: string;
+  value: unknown;
+}
+
+export interface SettingsOverrideKeySummary {
+  count: number;
+  users: SettingsOverrideUserDetail[];
+}
+
+export interface SettingsOverridesSummaryResponse {
+  tab: string;
+  keys: Record<string, SettingsOverrideKeySummary>;
+}
+
+export const getAdminSettingsOverridesSummary = async (
+  tabName: string
+): Promise<SettingsOverridesSummaryResponse> => {
+  return fetchJSON<SettingsOverridesSummaryResponse>(`${API_BASE}/admin/settings/overrides-summary?tab=${encodeURIComponent(tabName)}`);
 };

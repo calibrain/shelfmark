@@ -152,11 +152,6 @@ export type ContentType = 'ebook' | 'audiobook';
 
 export type BooksOutputMode = 'folder' | 'booklore' | 'email';
 
-export interface EmailRecipient {
-  nickname: string;
-  email: string;
-}
-
 export interface AppConfig {
   calibre_web_url: string;
   audiobook_library_url: string;
@@ -172,7 +167,6 @@ export interface AppConfig {
   metadata_search_fields: MetadataSearchField[];
   default_release_source?: string;  // Default tab in ReleaseModal (e.g., 'direct_download')
   books_output_mode: BooksOutputMode;
-  email_recipients: EmailRecipient[];
   auto_open_downloads_sidebar: boolean;  // Auto-open sidebar when download is queued
   download_to_browser: boolean;  // Auto-download completed files to browser
   settings_enabled: boolean;  // Whether config directory is mounted and writable

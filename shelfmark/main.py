@@ -187,10 +187,8 @@ def get_client_ip() -> str:
 def get_auth_mode() -> str:
     """Determine which authentication mode is active.
 
-    Priority: 
-    1. CWA (if enabled in settings and DB path exists)
-    2. Built-in credentials (if configured)
-    3. No auth required or error -> "none"
+    Uses configured AUTH_METHOD plus runtime prerequisites.
+    Returns "none" when config is invalid or unavailable.
     """
     from shelfmark.core.settings_registry import load_config_file
 
@@ -610,12 +608,11 @@ def api_download() -> Union[Response, Tuple[Response, int]]:
 
     try:
         priority = int(request.args.get('priority', 0))
-        email_recipient = request.args.get('email_recipient')
         # Per-user download overrides
         db_user_id = session.get('db_user_id')
         _username = session.get('user_id')
         success, error_msg = backend.queue_book(
-            book_id, priority, email_recipient=email_recipient,
+            book_id, priority,
             user_id=db_user_id, username=_username,
         )
         if success:
@@ -655,12 +652,11 @@ def api_download_release() -> Union[Response, Tuple[Response, int]]:
             return jsonify({"error": "source_id is required"}), 400
 
         priority = data.get('priority', 0)
-        email_recipient = data.get('email_recipient')
         # Per-user download overrides
         db_user_id = session.get('db_user_id')
         _username = session.get('user_id')
         success, error_msg = backend.queue_release(
-            data, priority, email_recipient=email_recipient,
+            data, priority,
             user_id=db_user_id, username=_username,
         )
 
@@ -690,22 +686,6 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
         from shelfmark.config.env import _is_config_dir_writable
         from shelfmark.core.onboarding import is_onboarding_complete as _get_onboarding_complete
 
-        def _normalize_email_recipients(value: Any) -> list[dict[str, str]]:
-            if not isinstance(value, list):
-                return []
-
-            recipients: list[dict[str, str]] = []
-            for entry in value:
-                if not isinstance(entry, dict):
-                    continue
-                nickname = str(entry.get("nickname", "") or "").strip()
-                email = str(entry.get("email", "") or "").strip()
-                if not nickname or not email:
-                    continue
-                recipients.append({"nickname": nickname, "email": email})
-
-            return recipients
-
         config = {
             "calibre_web_url": app_config.get("CALIBRE_WEB_URL", ""),
             "audiobook_library_url": app_config.get("AUDIOBOOK_LIBRARY_URL", ""),
@@ -721,9 +701,6 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
             "metadata_search_fields": get_provider_search_fields(),
             "default_release_source": app_config.get("DEFAULT_RELEASE_SOURCE", "direct_download"),
             "books_output_mode": app_config.get("BOOKS_OUTPUT_MODE", "folder"),
-            # Safe-to-expose subset of email output settings (recipients only).
-            # SMTP credentials are configured via the settings UI but are never returned to the frontend.
-            "email_recipients": _normalize_email_recipients(app_config.get("EMAIL_RECIPIENTS", []) or []),
             "auto_open_downloads_sidebar": app_config.get("AUTO_OPEN_DOWNLOADS_SIDEBAR", True),
             "download_to_browser": app_config.get("DOWNLOAD_TO_BROWSER", False),
             "settings_enabled": _is_config_dir_writable(),
@@ -1082,8 +1059,6 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
     Returns:
         flask.Response: JSON with success status or error message.
     """
-    from shelfmark.core.settings_registry import load_config_file
-
     try:
         ip_address = get_client_ip()
         data = request.get_json()
@@ -1127,22 +1102,8 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
             try:
                 db_user = user_db.get_user(username=username)
 
-                # If user not in DB, try legacy config credentials and auto-migrate
                 if not db_user:
-                    security_config = load_config_file("security")
-                    stored_username = security_config.get("BUILTIN_USERNAME", "")
-                    stored_hash = security_config.get("BUILTIN_PASSWORD_HASH", "")
-
-                    if username == stored_username and stored_hash and check_password_hash(stored_hash, password):
-                        # Auto-migrate: create admin user in DB from config
-                        db_user = user_db.create_user(
-                            username=stored_username,
-                            password_hash=stored_hash,
-                            role="admin",
-                        )
-                        logger.info(f"Migrated builtin admin '{stored_username}' to users database")
-                    else:
-                        return _failed_login_response(username, ip_address)
+                    return _failed_login_response(username, ip_address)
 
                 # Authenticate against DB user
                 if db_user:

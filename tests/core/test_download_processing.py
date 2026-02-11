@@ -70,7 +70,7 @@ def _mock_destination_config(ingest_dir: Path, extra=None):
     }
     if extra:
         values.update(extra)
-    return MagicMock(side_effect=lambda key, default=None: values.get(key, default))
+    return MagicMock(side_effect=lambda key, default=None, **_kwargs: values.get(key, default))
 
 
 def _sync_core_config(mock_config, mock_core_config, mock_archive_config=None):
@@ -238,7 +238,7 @@ class TestProcessDirectory:
         with patch('shelfmark.core.config.config') as mock_config, \
              patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
             mock_config.USE_BOOK_TITLE = False
-            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
                 "SUPPORTED_FORMATS": ["epub"],
                 "FILE_ORGANIZATION": "none",
             }.get(key, default))
@@ -269,7 +269,7 @@ class TestProcessDirectory:
         with patch('shelfmark.core.config.config') as mock_config, \
              patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
             mock_config.USE_BOOK_TITLE = False
-            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
                 "SUPPORTED_FORMATS": ["epub"],
                 "FILE_ORGANIZATION": "none",
             }.get(key, default))
@@ -295,7 +295,7 @@ class TestProcessDirectory:
 
         with patch('shelfmark.core.config.config') as mock_config, \
              patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
-            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
                 "SUPPORTED_FORMATS": ["epub"],
                 "FILE_ORGANIZATION": "none",
             }.get(key, default))
@@ -321,7 +321,7 @@ class TestProcessDirectory:
 
         with patch('shelfmark.core.config.config') as mock_config, \
              patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
-            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
                 "SUPPORTED_FORMATS": ["epub"],  # PDF not supported
                 "FILE_ORGANIZATION": "none",
             }.get(key, default))
@@ -349,7 +349,7 @@ class TestProcessDirectory:
         with patch('shelfmark.core.config.config') as mock_config, \
              patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
             mock_config.USE_BOOK_TITLE = True
-            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
                 "SUPPORTED_FORMATS": ["epub"],
                 "FILE_ORGANIZATION": "rename",
             }.get(key, default))
@@ -378,7 +378,7 @@ class TestProcessDirectory:
         with patch('shelfmark.core.config.config') as mock_config, \
              patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
             mock_config.USE_BOOK_TITLE = True  # Ignored for multi-file
-            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
                 "SUPPORTED_FORMATS": ["epub"],
                 "FILE_ORGANIZATION": "none",
             }.get(key, default))
@@ -407,7 +407,7 @@ class TestProcessDirectory:
         with patch('shelfmark.core.config.config') as mock_config, \
              patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
             mock_config.USE_BOOK_TITLE = False
-            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
                 "SUPPORTED_FORMATS": ["epub"],
                 "FILE_ORGANIZATION": "none",
             }.get(key, default))
@@ -435,7 +435,7 @@ class TestProcessDirectory:
              patch('shelfmark.download.postprocess.transfer.atomic_move', side_effect=Exception("Move failed")):
 
             mock_config.USE_BOOK_TITLE = False
-            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
                 "SUPPORTED_FORMATS": ["epub"],
                 "FILE_ORGANIZATION": "none",
             }.get(key, default))
@@ -542,7 +542,7 @@ class TestPostProcessDownload:
             mock_config.USE_BOOK_TITLE = True
             mock_config.CUSTOM_SCRIPT = None
             _sync_core_config(mock_config, mock_config)
-            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
                 "DESTINATION": str(library),
                 "FILE_ORGANIZATION": "organize",
                 "TEMPLATE_ORGANIZE": "{Author}/{Title}",
@@ -579,7 +579,7 @@ class TestPostProcessDownload:
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = None
             _sync_core_config(mock_config, mock_config)
-            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
                 "DESTINATION": str(temp_dirs["ingest"]),
                 "FILE_ORGANIZATION": "none",
             }.get(key, default))
@@ -651,7 +651,7 @@ class TestPostProcessDownload:
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = None
             _sync_core_config(mock_config, mock_config)
-            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
                 "DESTINATION": str(temp_dirs["ingest"]),
                 "INGEST_DIR": str(temp_dirs["ingest"]),
                 "DESTINATION_AUDIOBOOK": str(audiobook_ingest),
@@ -781,7 +781,7 @@ class TestCustomScriptExecution:
             mock_config.CUSTOM_SCRIPT = "/path/to/script.sh"
             _sync_core_config(mock_config, mock_config)
 
-            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
                 "BOOKS_OUTPUT_MODE": "booklore",
                 "BOOKLORE_HOST": "http://booklore:6060",
                 "BOOKLORE_USERNAME": "user",

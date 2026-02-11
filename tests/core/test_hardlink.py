@@ -38,7 +38,7 @@ def _run_organize_post_process(
          patch('shelfmark.download.postprocess.transfer.same_filesystem', return_value=same_fs):
 
         mock_config.CUSTOM_SCRIPT = None
-        mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+        mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
             "DESTINATION": str(library),
             "FILE_ORGANIZATION": "organize",
             "HARDLINK_TORRENTS": hardlink_enabled,
@@ -229,10 +229,15 @@ class TestAtomicHardlink:
         source.write_text("content")
         dest = tmp_path / "dest.txt"
 
-        def _raise_perm(*_args, **_kwargs):
-            raise PermissionError("hardlink not permitted")
+        original_link = os.link
 
-        monkeypatch.setattr(os, "link", _raise_perm)
+        def _raise_only_for_initial_link(src, dst, *_args, **_kwargs):
+            # Force hardlink -> copy fallback while allowing atomic_copy publish step.
+            if Path(src) == source:
+                raise PermissionError("hardlink not permitted")
+            return original_link(src, dst)
+
+        monkeypatch.setattr(os, "link", _raise_only_for_initial_link)
 
         result = _atomic_hardlink(source, dest)
 
@@ -352,7 +357,7 @@ class TestHardlinkWithLibraryMode:
     def mock_config(self):
         """Mock config for library mode."""
         with patch('shelfmark.core.config.config') as mock:
-            mock.get = MagicMock(side_effect=lambda key, default=None: {
+            mock.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
                 "LIBRARY_PATH": None,
                 "LIBRARY_PATH_AUDIOBOOK": None,
                 "LIBRARY_TEMPLATE": "{Author}/{Title}",
@@ -874,7 +879,7 @@ class TestTorrentSourceCleanupProtection:
 
     def _make_config_mock(self, library_path: str, hardlink: bool = True):
         """Create config mock for library/organize mode with hardlinking."""
-        return MagicMock(side_effect=lambda key, default=None: {
+        return MagicMock(side_effect=lambda key, default=None, **_kwargs: {
             # Destination paths (what _get_final_destination uses)
             "DESTINATION": library_path,
             "DESTINATION_AUDIOBOOK": library_path,
@@ -1349,7 +1354,7 @@ class TestEdgeCases:
         status_cb = MagicMock()
 
         with patch('shelfmark.core.config.config') as mock_config:
-            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
                 "DESTINATION": str(library),
                 "TEMPLATE_ORGANIZE": "{Title}",
                 "FILE_ORGANIZATION": "organize",
@@ -1384,7 +1389,7 @@ class TestEdgeCases:
         status_cb = MagicMock()
 
         with patch('shelfmark.core.config.config') as mock_config:
-            mock_config.get = MagicMock(side_effect=lambda key, default=None: {
+            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
                 "DESTINATION": "/nonexistent/protected/path",
                 "TEMPLATE_ORGANIZE": "{Title}",
                 "FILE_ORGANIZATION": "organize",

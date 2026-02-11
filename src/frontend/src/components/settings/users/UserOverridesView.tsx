@@ -1,5 +1,5 @@
-import { AdminUser, BookloreOption, DownloadDefaults } from '../../../services/api';
-import { OverrideKey, PerUserSettings } from './types';
+import { AdminUser, DeliveryPreferencesResponse } from '../../../services/api';
+import { PerUserSettings } from './types';
 import { SettingsSubpage } from '../shared';
 import { UserAuthSourceBadge } from './UserAuthSourceBadge';
 import { UserOverridesSection } from './UserOverridesSection';
@@ -9,14 +9,10 @@ interface UserOverridesViewProps {
   onSave: () => void;
   saving: boolean;
   onBack: () => void;
-  downloadDefaults: DownloadDefaults | null;
+  deliveryPreferences: DeliveryPreferencesResponse | null;
   isUserOverridable: (key: keyof PerUserSettings) => boolean;
   userSettings: PerUserSettings;
   setUserSettings: (updater: (prev: PerUserSettings) => PerUserSettings) => void;
-  overrides: Record<OverrideKey, boolean>;
-  toggleOverride: (key: OverrideKey, enabled: boolean) => void;
-  bookloreLibraries: BookloreOption[];
-  booklorePaths: BookloreOption[];
 }
 
 export const UserOverridesView = ({
@@ -24,14 +20,10 @@ export const UserOverridesView = ({
   onSave,
   saving,
   onBack,
-  downloadDefaults,
+  deliveryPreferences,
   isUserOverridable,
   userSettings,
   setUserSettings,
-  overrides,
-  toggleOverride,
-  bookloreLibraries,
-  booklorePaths,
 }: UserOverridesViewProps) => (
   <SettingsSubpage>
     <div className="space-y-5">
@@ -41,14 +33,10 @@ export const UserOverridesView = ({
 
       <UserOverridesSection
         standalone
-        downloadDefaults={downloadDefaults}
+        deliveryPreferences={deliveryPreferences}
         isUserOverridable={isUserOverridable}
         userSettings={userSettings}
         setUserSettings={setUserSettings}
-        overrides={overrides}
-        toggleOverride={toggleOverride}
-        bookloreLibraries={bookloreLibraries}
-        booklorePaths={booklorePaths}
       />
 
       <div className="flex gap-2 pt-2">

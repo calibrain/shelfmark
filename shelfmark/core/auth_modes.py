@@ -13,11 +13,7 @@ def determine_auth_mode(
     if auth_mode == "cwa" and cwa_db_path:
         return "cwa"
 
-    if (
-        auth_mode == "builtin"
-        and security_config.get("BUILTIN_USERNAME")
-        and security_config.get("BUILTIN_PASSWORD_HASH")
-    ):
+    if auth_mode == "builtin":
         return "builtin"
 
     if auth_mode == "proxy" and security_config.get("PROXY_AUTH_USER_HEADER"):

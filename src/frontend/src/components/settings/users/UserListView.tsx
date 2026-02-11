@@ -1,12 +1,17 @@
 import { useState } from 'react';
 import { AdminUser, DownloadDefaults } from '../../../services/api';
-import { CreateUserFormState, isUserActive } from './types';
+import {
+  canCreateLocalUsersForAuthMode,
+  CreateUserFormState,
+  getUsersHeadingDescriptionForAuthMode,
+} from './types';
 import { UserAuthSourceBadge } from './UserAuthSourceBadge';
 import { UserCreateCard, UserEditFields } from './UserCard';
 import { HeadingField } from '../fields';
 import { HeadingFieldConfig } from '../../../types/settings';
 
 interface UserListViewProps {
+  authMode: string;
   users: AdminUser[];
   onCreate: () => void;
   showCreateForm: boolean;
@@ -35,6 +40,7 @@ interface UserListViewProps {
 }
 
 export const UserListView = ({
+  authMode,
   users,
   onCreate,
   showCreateForm,
@@ -62,11 +68,12 @@ export const UserListView = ({
   deletingUserId,
 }: UserListViewProps) => {
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode);
   const usersHeading: HeadingFieldConfig = {
     key: 'users_heading',
     type: 'HeadingField',
     title: 'Users',
-    description: 'Users can be auto-provisioned by your active auth method (OIDC/Proxy/CWA) or created manually.',
+    description: getUsersHeadingDescriptionForAuthMode(authMode),
   };
 
   const handleDelete = async (userId: number) => {
@@ -92,7 +99,7 @@ export const UserListView = ({
       ) : (
         <div className="space-y-2">
           {users.map((user) => {
-            const active = isUserActive(user);
+            const active = user.is_active !== false;
             const isEditingRow = showEditForm && activeEditUserId === user.id;
             const hasLoadedEditUser = isEditingRow && editingUser?.id === user.id;
             const roleLabel = user.role.charAt(0).toUpperCase() + user.role.slice(1);
@@ -234,25 +241,27 @@ export const UserListView = ({
         </div>
       )}
 
-      <div className="mt-4">
-        {showCreateForm ? (
-          <UserCreateCard
-            form={createForm}
-            onChange={onCreateFormChange}
-            creating={creating}
-            isFirstUser={isFirstUser}
-            onSubmit={onCreateSubmit}
-            onCancel={onCancelCreate}
-          />
-        ) : (
-          <button
-            onClick={onCreate}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors"
-          >
-            Create User
-          </button>
-        )}
+      {canCreateLocalUsers && (
+        <div className="mt-4">
+          {showCreateForm ? (
+            <UserCreateCard
+              form={createForm}
+              onChange={onCreateFormChange}
+              creating={creating}
+              isFirstUser={isFirstUser}
+              onSubmit={onCreateSubmit}
+              onCancel={onCancelCreate}
+            />
+          ) : (
+            <button
+              onClick={onCreate}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors"
+            >
+              Create Local User
+            </button>
+          )}
         </div>
+      )}
     </div>
   );
 };

@@ -9,6 +9,7 @@ import random
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
+from email.utils import parseaddr
 from pathlib import Path
 from threading import Event, Lock
 from typing import Any, Dict, List, Optional, Tuple
@@ -75,55 +76,32 @@ def get_book_info(book_id: str) -> Optional[Dict[str, Any]]:
         logger.error_trace(f"Error getting book info: {e}")
         raise
 
-def _normalize_email_recipients(value: Any) -> List[Dict[str, str]]:
-    """Normalize EMAIL_RECIPIENTS config into a list of {nickname,email} dicts."""
-
-    if not isinstance(value, list):
-        return []
-
-    recipients: List[Dict[str, str]] = []
-    for entry in value:
-        if not isinstance(entry, dict):
-            continue
-        nickname = str(entry.get("nickname", "") or "").strip()
-        email = str(entry.get("email", "") or "").strip()
-        if not nickname or not email:
-            continue
-        recipients.append({"nickname": nickname, "email": email})
-    return recipients
+def _is_plain_email_address(value: str) -> bool:
+    parsed = parseaddr(value or "")[1]
+    return bool(parsed) and "@" in parsed and parsed == value
 
 
-def _resolve_email_recipient(
-    nickname: Optional[str],
+def _resolve_email_destination(
     user_id: Optional[int] = None,
-) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-    """Resolve a configured email recipient nickname to an email address.
-
-    Resolves against effective recipients for the user context.
+) -> Tuple[Optional[str], Optional[str]]:
+    """Resolve the destination email address for email output mode.
 
     Returns:
-      (email_to, label, error_message)
+      (email_to, error_message)
     """
+    configured_recipient = str(config.get("EMAIL_RECIPIENT", "", user_id=user_id) or "").strip()
+    if configured_recipient:
+        if _is_plain_email_address(configured_recipient):
+            return configured_recipient, None
+        return None, "Configured email recipient is invalid"
 
-    label = (nickname or "").strip()
-    if not label:
-        return None, None, None
-
-    recipients = _normalize_email_recipients(
-        config.get("EMAIL_RECIPIENTS", [], user_id=user_id)
-    )
-    for entry in recipients:
-        if entry["nickname"].strip().lower() == label.lower():
-            return entry["email"], entry["nickname"], None
-
-    return None, label, f"Unknown email recipient: {label}"
+    return None, "Email recipient is required"
 
 
 def queue_book(
     book_id: str,
     priority: int = 0,
     source: str = "direct_download",
-    email_recipient: Optional[str] = None,
     user_id: Optional[int] = None,
     username: Optional[str] = None,
 ) -> Tuple[bool, Optional[str]]:
@@ -143,19 +121,13 @@ def queue_book(
         output_args: Dict[str, Any] = {}
 
         if output_mode == "email" and not is_audiobook:
-            all_recipients = config.get("EMAIL_RECIPIENTS", [], user_id=user_id)
-            if not _normalize_email_recipients(all_recipients):
-                return False, "No email recipients configured"
-
-            email_to, email_label, email_error = _resolve_email_recipient(
-                email_recipient, user_id=user_id,
-            )
+            email_to, email_error = _resolve_email_destination(user_id=user_id)
             if email_error:
                 return False, email_error
             if not email_to:
                 return False, "Email recipient is required"
 
-            output_args = {"to": email_to, "label": email_label}
+            output_args = {"to": email_to}
 
         # Create a source-agnostic download task
         task = DownloadTask(
@@ -199,7 +171,6 @@ def queue_book(
 def queue_release(
     release_data: dict,
     priority: int = 0,
-    email_recipient: Optional[str] = None,
     user_id: Optional[int] = None,
     username: Optional[str] = None,
 ) -> Tuple[bool, Optional[str]]:
@@ -226,19 +197,13 @@ def queue_release(
         output_args: Dict[str, Any] = {}
 
         if output_mode == "email" and not is_audiobook:
-            all_recipients = config.get("EMAIL_RECIPIENTS", [], user_id=user_id)
-            if not _normalize_email_recipients(all_recipients):
-                return False, "No email recipients configured"
-
-            email_to, email_label, email_error = _resolve_email_recipient(
-                email_recipient, user_id=user_id,
-            )
+            email_to, email_error = _resolve_email_destination(user_id=user_id)
             if email_error:
                 return False, email_error
             if not email_to:
                 return False, "Email recipient is required"
 
-            output_args = {"to": email_to, "label": email_label}
+            output_args = {"to": email_to}
 
         # Create a source-agnostic download task from release data
         task = DownloadTask(

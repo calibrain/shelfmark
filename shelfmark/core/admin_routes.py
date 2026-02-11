@@ -14,6 +14,8 @@ from shelfmark.config.booklore_settings import (
     get_booklore_library_options,
     get_booklore_path_options,
 )
+from shelfmark.config.env import CWA_DB_PATH
+from shelfmark.core.auth_modes import determine_auth_mode
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_db import UserDB
@@ -25,8 +27,11 @@ _DOWNLOAD_DEFAULTS = {
     "DESTINATION": "/books",
     "BOOKLORE_LIBRARY_ID": "",
     "BOOKLORE_PATH_ID": "",
-    "EMAIL_RECIPIENTS": [],
+    "EMAIL_RECIPIENT": "",
 }
+
+_DOWNLOAD_DEFAULT_KEYS = tuple(_DOWNLOAD_DEFAULTS.keys())
+_DELIVERY_PREFERENCE_KEYS = _DOWNLOAD_DEFAULT_KEYS
 
 
 def _get_settings_field_map() -> dict[str, tuple[Any, str]]:
@@ -73,7 +78,7 @@ def _get_auth_mode():
     """Get current auth mode from config."""
     try:
         config = load_config_file("security")
-        return config.get("AUTH_METHOD", "none")
+        return determine_auth_mode(config, CWA_DB_PATH)
     except Exception:
         return "none"
 
@@ -145,12 +150,22 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
     def admin_create_user():
         """Create a new user with password authentication."""
         data = request.get_json() or {}
+        auth_mode = _get_auth_mode()
 
         username = (data.get("username") or "").strip()
         password = data.get("password", "")
         email = (data.get("email") or "").strip() or None
         display_name = (data.get("display_name") or "").strip() or None
         role = data.get("role", "user")
+
+        if auth_mode in {"proxy", "cwa"}:
+            return jsonify({
+                "error": "Local user creation is disabled in this authentication mode",
+                "message": (
+                    "Users are provisioned by your external authentication source. "
+                    "Switch to builtin or OIDC mode to create local users."
+                ),
+            }), 400
 
         if not username:
             return jsonify({"error": "Username is required"}), 400
@@ -303,6 +318,12 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
                 }), 400
 
             user_db.set_user_settings(user_id, validated_settings)
+            # Ensure runtime reads see updated per-user overrides immediately.
+            try:
+                from shelfmark.core.config import config as app_config
+                app_config.refresh()
+            except Exception:
+                pass
 
         updated = user_db.get_user(user_id=user_id)
         result = _serialize_user(updated, _get_auth_mode())
@@ -315,14 +336,10 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
     def admin_download_defaults():
         """Return global download settings relevant to per-user overrides."""
         config = load_config_file("downloads")
-        keys = [
-            "BOOKS_OUTPUT_MODE",
-            "DESTINATION",
-            "BOOKLORE_LIBRARY_ID",
-            "BOOKLORE_PATH_ID",
-            "EMAIL_RECIPIENTS",
-        ]
-        defaults = {k: config.get(k, _DOWNLOAD_DEFAULTS.get(k)) for k in keys}
+        defaults = {
+            key: config.get(key, _DOWNLOAD_DEFAULTS.get(key))
+            for key in _DOWNLOAD_DEFAULT_KEYS
+        }
 
         # Include OIDC settings for UI warnings (e.g., when admin tries to set OIDC user role)
         security_config = load_config_file("security")
@@ -339,6 +356,134 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         return jsonify({
             "libraries": get_booklore_library_options(),
             "paths": get_booklore_path_options(),
+        })
+
+    @app.route("/api/admin/users/<int:user_id>/delivery-preferences", methods=["GET"])
+    @_require_admin
+    def admin_get_delivery_preferences(user_id):
+        """Return curated per-user delivery preference fields and effective values."""
+        user = user_db.get_user(user_id=user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        from shelfmark.core import settings_registry
+        from shelfmark.core.config import config as app_config
+
+        # Ensure settings modules are registered.
+        import shelfmark.config.settings  # noqa: F401
+        import shelfmark.config.security  # noqa: F401
+
+        downloads_tab = settings_registry.get_settings_tab("downloads")
+        if not downloads_tab:
+            return jsonify({"error": "Downloads settings tab not found"}), 500
+
+        download_config = load_config_file("downloads")
+        user_settings = user_db.get_user_settings(user_id)
+
+        keyed_fields: dict[str, Any] = {}
+        for field in downloads_tab.fields:
+            if isinstance(field, (settings_registry.ActionButton, settings_registry.HeadingField)):
+                continue
+            if field.key in _DELIVERY_PREFERENCE_KEYS and getattr(field, "user_overridable", False):
+                keyed_fields[field.key] = field
+
+        # Keep declared order stable for frontend rendering.
+        ordered_keys = [key for key in _DELIVERY_PREFERENCE_KEYS if key in keyed_fields]
+
+        fields_payload: list[dict[str, Any]] = []
+        global_values: dict[str, Any] = {}
+        effective: dict[str, dict[str, Any]] = {}
+
+        for key in ordered_keys:
+            field = keyed_fields[key]
+            serialized = settings_registry.serialize_field(field, "downloads", include_value=False)
+            serialized["fromEnv"] = bool(field.env_supported and settings_registry.is_value_from_env(field))
+            fields_payload.append(serialized)
+
+            global_values[key] = app_config.get(key, field.default)
+
+            source = "default"
+            value = app_config.get(key, field.default, user_id=user_id)
+            if field.env_supported and settings_registry.is_value_from_env(field):
+                source = "env_var"
+            elif key in user_settings and user_settings[key] is not None:
+                source = "user_override"
+                value = user_settings[key]
+            elif key in download_config:
+                source = "global_config"
+
+            effective[key] = {
+                "value": value,
+                "source": source,
+            }
+
+        user_overrides = {
+            key: user_settings[key]
+            for key in ordered_keys
+            if key in user_settings and user_settings[key] is not None
+        }
+
+        return jsonify({
+            "tab": "downloads",
+            "keys": ordered_keys,
+            "fields": fields_payload,
+            "globalValues": global_values,
+            "userOverrides": user_overrides,
+            "effective": effective,
+        })
+
+    @app.route("/api/admin/settings/overrides-summary", methods=["GET"])
+    @_require_admin
+    def admin_settings_overrides_summary():
+        """Return per-key user override counts/details for a settings tab."""
+        from shelfmark.core import settings_registry
+
+        # Ensure settings modules are registered.
+        import shelfmark.config.settings  # noqa: F401
+        import shelfmark.config.security  # noqa: F401
+
+        tab_name = (request.args.get("tab") or "downloads").strip()
+        tab = settings_registry.get_settings_tab(tab_name)
+        if not tab:
+            return jsonify({"error": f"Unknown settings tab: {tab_name}"}), 404
+
+        overridable_keys: list[str] = []
+        for field in tab.fields:
+            if isinstance(field, (settings_registry.ActionButton, settings_registry.HeadingField)):
+                continue
+            if getattr(field, "user_overridable", False):
+                overridable_keys.append(field.key)
+
+        keys_summary: dict[str, dict[str, Any]] = {}
+        for key in overridable_keys:
+            keys_summary[key] = {"count": 0, "users": []}
+
+        for user_record in user_db.list_users():
+            user_settings = user_db.get_user_settings(user_record["id"])
+            if not isinstance(user_settings, dict):
+                continue
+
+            for key in overridable_keys:
+                if key not in user_settings or user_settings[key] is None:
+                    continue
+                keys_summary[key]["users"].append({
+                    "userId": user_record["id"],
+                    "username": user_record["username"],
+                    "value": user_settings[key],
+                })
+
+        keys_payload: dict[str, dict[str, Any]] = {}
+        for key, summary in keys_summary.items():
+            if not summary["users"]:
+                continue
+            keys_payload[key] = {
+                "count": len(summary["users"]),
+                "users": summary["users"],
+            }
+
+        return jsonify({
+            "tab": tab_name,
+            "keys": keys_payload,
         })
 
     @app.route("/api/admin/users/<int:user_id>/effective-settings", methods=["GET"])

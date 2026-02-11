@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { AdminUser } from '../../services/api';
 import {
+  canCreateLocalUsersForAuthMode,
   UserListView,
   UserOverridesView,
   useUsersData,
@@ -8,11 +9,12 @@ import {
 } from './users';
 
 interface UsersPanelProps {
+  authMode: string;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
   onSubpageStateChange?: (state: { title: string; onBack: () => void } | null) => void;
 }
 
-export const UsersPanel = ({ onShowToast, onSubpageStateChange }: UsersPanelProps) => {
+export const UsersPanel = ({ authMode, onShowToast, onSubpageStateChange }: UsersPanelProps) => {
   const { route, openCreate, openEdit, openEditOverrides, backToList } = useUsersPanelState();
   const {
     users,
@@ -37,14 +39,12 @@ export const UsersPanel = ({ onShowToast, onSubpageStateChange }: UsersPanelProp
     editPasswordConfirm,
     setEditPasswordConfirm,
     downloadDefaults,
+    deliveryPreferences,
     isUserOverridable,
     userSettings,
     setUserSettings,
-    overrides,
-    toggleOverride,
-    bookloreLibraries,
-    booklorePaths,
   } = useUsersData({ onShowToast });
+  const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode);
 
   const handleBackToList = () => {
     clearEditState();
@@ -104,6 +104,12 @@ export const UsersPanel = ({ onShowToast, onSubpageStateChange }: UsersPanelProp
     };
   }, [editingUser, handleBackToEdit, onSubpageStateChange, route]);
 
+  useEffect(() => {
+    if (route.kind === 'create' && !canCreateLocalUsers) {
+      backToList();
+    }
+  }, [backToList, canCreateLocalUsers, route.kind]);
+
   const handleSave = async () => {
     const ok = await saveEditedUser();
     if (ok) {
@@ -149,20 +155,17 @@ export const UsersPanel = ({ onShowToast, onSubpageStateChange }: UsersPanelProp
         onSave={handleSave}
         saving={saving}
         onBack={handleBackToEdit}
-        downloadDefaults={downloadDefaults}
+        deliveryPreferences={deliveryPreferences}
         isUserOverridable={isUserOverridable}
         userSettings={userSettings}
         setUserSettings={(updater) => setUserSettings(updater)}
-        overrides={overrides}
-        toggleOverride={toggleOverride}
-        bookloreLibraries={bookloreLibraries}
-        booklorePaths={booklorePaths}
       />
     );
   }
 
   return (
     <UserListView
+      authMode={authMode}
       users={users}
       onCreate={openCreate}
       showCreateForm={route.kind === 'create'}

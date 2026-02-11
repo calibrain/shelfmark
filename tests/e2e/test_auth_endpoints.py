@@ -43,11 +43,7 @@ class TestGetAuthMode:
     def test_get_auth_mode_builtin(self, main_module):
         with patch(
             "shelfmark.core.settings_registry.load_config_file",
-            return_value={
-                "AUTH_METHOD": "builtin",
-                "BUILTIN_USERNAME": "admin",
-                "BUILTIN_PASSWORD_HASH": "hashed_password",
-            },
+            return_value={"AUTH_METHOD": "builtin"},
         ):
             assert main_module.get_auth_mode() == "builtin"
 
@@ -167,15 +163,16 @@ class TestLoginEndpoint:
         assert data.get("success") is True
 
     def test_login_builtin_success(self, main_module):
+        mock_user_db = Mock()
+        mock_user_db.get_user.return_value = {
+            "id": 1,
+            "username": "admin",
+            "password_hash": "hash",
+            "role": "admin",
+        }
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             with patch.object(main_module, "is_account_locked", return_value=False):
-                with patch(
-                    "shelfmark.core.settings_registry.load_config_file",
-                    return_value={
-                        "BUILTIN_USERNAME": "admin",
-                        "BUILTIN_PASSWORD_HASH": "hash",
-                    },
-                ):
+                with patch.object(main_module, "user_db", mock_user_db):
                     with patch.object(main_module, "check_password_hash", return_value=True):
                         with main_module.app.test_request_context(
                             "/api/auth/login",

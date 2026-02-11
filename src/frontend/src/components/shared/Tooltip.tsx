@@ -87,6 +87,8 @@ export function Tooltip({
         ref={triggerRef}
         onMouseEnter={showTooltip}
         onMouseLeave={hideTooltip}
+        onFocusCapture={showTooltip}
+        onBlurCapture={hideTooltip}
         className="inline-flex"
       >
         {children}

@@ -1,24 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   AdminUser,
-  BookloreOption,
+  DeliveryPreferencesResponse,
   DownloadDefaults,
   createAdminUser,
   deleteAdminUser,
+  getAdminDeliveryPreferences,
   getAdminUser,
   getAdminUsers,
-  getBookloreOptions,
   getDownloadDefaults,
-  getSettingsTab,
   updateAdminUser,
 } from '../../../services/api';
 import {
-  EMPTY_OVERRIDES,
-  FALLBACK_OVERRIDABLE_SETTINGS,
   INITIAL_CREATE_FORM,
-  OVERRIDE_KEY_TO_SETTING_KEY,
   CreateUserFormState,
-  OverrideKey,
   PerUserSettings,
   getUserEditCapabilities,
 } from './types';
@@ -41,16 +36,12 @@ export const useUsersData = ({ onShowToast }: UseUsersDataParams) => {
   const [editPassword, setEditPassword] = useState('');
   const [editPasswordConfirm, setEditPasswordConfirm] = useState('');
   const [downloadDefaults, setDownloadDefaults] = useState<DownloadDefaults | null>(null);
+  const [deliveryPreferences, setDeliveryPreferences] = useState<DeliveryPreferencesResponse | null>(null);
   const [userSettings, setUserSettings] = useState<PerUserSettings>({});
-  const [overrides, setOverrides] = useState<Record<OverrideKey, boolean>>({ ...EMPTY_OVERRIDES });
-  const [userOverridableSettings, setUserOverridableSettings] = useState<Set<keyof PerUserSettings>>(
-    new Set(FALLBACK_OVERRIDABLE_SETTINGS)
-  );
-  const [bookloreLibraries, setBookloreLibraries] = useState<BookloreOption[]>([]);
-  const [booklorePaths, setBooklorePaths] = useState<BookloreOption[]>([]);
+  const [userOverridableSettings, setUserOverridableSettings] = useState<Set<string>>(new Set());
 
   const isUserOverridable = useCallback(
-    (key: keyof PerUserSettings) => userOverridableSettings.has(key),
+    (key: keyof PerUserSettings) => userOverridableSettings.has(String(key)),
     [userOverridableSettings]
   );
 
@@ -78,11 +69,9 @@ export const useUsersData = ({ onShowToast }: UseUsersDataParams) => {
     setEditingUser(null);
     setEditPassword('');
     setEditPasswordConfirm('');
+    setDeliveryPreferences(null);
     setUserSettings({});
-    setOverrides({ ...EMPTY_OVERRIDES });
-    setUserOverridableSettings(new Set(FALLBACK_OVERRIDABLE_SETTINGS));
-    setBookloreLibraries([]);
-    setBooklorePaths([]);
+    setUserOverridableSettings(new Set());
   }, []);
 
   const startEditing = useCallback(async (user: AdminUser) => {
@@ -96,51 +85,22 @@ export const useUsersData = ({ onShowToast }: UseUsersDataParams) => {
         getDownloadDefaults(),
       ]);
       setDownloadDefaults(defaults);
-      const settings = (fullUser.settings || {}) as PerUserSettings;
-      setUserSettings(settings);
+      setUserSettings((fullUser.settings || {}) as PerUserSettings);
 
-      let overridableSettings = new Set<keyof PerUserSettings>(FALLBACK_OVERRIDABLE_SETTINGS);
       try {
-        const downloadsTab = await getSettingsTab('downloads');
-        const fromMetadata = new Set<keyof PerUserSettings>();
-        downloadsTab.fields.forEach((field) => {
-          if ('userOverridable' in field && field.userOverridable === true) {
-            const key = field.key as keyof PerUserSettings;
-            if (FALLBACK_OVERRIDABLE_SETTINGS.has(key)) {
-              fromMetadata.add(key);
-            }
-          }
-        });
-        if (fromMetadata.size > 0) {
-          overridableSettings = fromMetadata;
-        }
+        const preferences = await getAdminDeliveryPreferences(user.id);
+        setDeliveryPreferences(preferences);
+        setUserSettings((preferences.userOverrides || fullUser.settings || {}) as PerUserSettings);
+        setUserOverridableSettings(new Set(preferences.keys || []));
       } catch {
-        // Keep fallback behavior if settings metadata fails to load.
+        setDeliveryPreferences(null);
+        setUserOverridableSettings(new Set());
       }
-      setUserOverridableSettings(overridableSettings);
-
-      if (defaults.BOOKS_OUTPUT_MODE === 'booklore') {
-        try {
-          const blOptions = await getBookloreOptions();
-          setBookloreLibraries(blOptions.libraries || []);
-          setBooklorePaths(blOptions.paths || []);
-        } catch {
-          setBookloreLibraries([]);
-          setBooklorePaths([]);
-        }
-      }
-
-      setOverrides({
-        destination: overridableSettings.has('DESTINATION') && !!settings.DESTINATION,
-        booklore_library_id: overridableSettings.has('BOOKLORE_LIBRARY_ID') && !!settings.BOOKLORE_LIBRARY_ID,
-        booklore_path_id: overridableSettings.has('BOOKLORE_PATH_ID') && !!settings.BOOKLORE_PATH_ID,
-        email_recipients: overridableSettings.has('EMAIL_RECIPIENTS') && !!settings.EMAIL_RECIPIENTS?.length,
-      });
     } catch {
       setDownloadDefaults(null);
+      setDeliveryPreferences(null);
       setUserSettings({});
-      setOverrides({ ...EMPTY_OVERRIDES });
-      setUserOverridableSettings(new Set(FALLBACK_OVERRIDABLE_SETTINGS));
+      setUserOverridableSettings(new Set());
     }
   }, []);
 
@@ -173,19 +133,19 @@ export const useUsersData = ({ onShowToast }: UseUsersDataParams) => {
       }
     }
 
+    const hasOverride = (key: keyof PerUserSettings): boolean =>
+      Object.prototype.hasOwnProperty.call(userSettings, key) &&
+      userSettings[key] !== null &&
+      userSettings[key] !== undefined;
+
     const settingsPayload: Record<string, unknown> = {};
-    if (isUserOverridable('DESTINATION')) {
-      settingsPayload.DESTINATION = overrides.destination ? (userSettings.DESTINATION || '') : null;
-    }
-    if (isUserOverridable('BOOKLORE_LIBRARY_ID')) {
-      settingsPayload.BOOKLORE_LIBRARY_ID = overrides.booklore_library_id ? (userSettings.BOOKLORE_LIBRARY_ID || '') : null;
-    }
-    if (isUserOverridable('BOOKLORE_PATH_ID')) {
-      settingsPayload.BOOKLORE_PATH_ID = overrides.booklore_path_id ? (userSettings.BOOKLORE_PATH_ID || '') : null;
-    }
-    if (isUserOverridable('EMAIL_RECIPIENTS')) {
-      settingsPayload.EMAIL_RECIPIENTS = overrides.email_recipients ? (userSettings.EMAIL_RECIPIENTS || []) : null;
-    }
+    const overrideKeys = deliveryPreferences?.keys || Array.from(userOverridableSettings);
+    overrideKeys.forEach((key) => {
+      const typedKey = key as keyof PerUserSettings;
+      settingsPayload[key] = hasOverride(typedKey)
+        ? (userSettings[typedKey] ?? '')
+        : null;
+    });
 
     const capabilities = getUserEditCapabilities(
       editingUser,
@@ -214,20 +174,14 @@ export const useUsersData = ({ onShowToast }: UseUsersDataParams) => {
   }, [
     clearEditState,
     downloadDefaults?.OIDC_USE_ADMIN_GROUP,
+    deliveryPreferences?.keys,
     editPassword,
     editPasswordConfirm,
     editingUser,
     fetchUsers,
-    isUserOverridable,
     onShowToast,
-    overrides.booklore_library_id,
-    overrides.booklore_path_id,
-    overrides.destination,
-    overrides.email_recipients,
-    userSettings.BOOKLORE_LIBRARY_ID,
-    userSettings.BOOKLORE_PATH_ID,
-    userSettings.DESTINATION,
-    userSettings.EMAIL_RECIPIENTS,
+    userOverridableSettings,
+    userSettings,
   ]);
 
   const createUser = useCallback(async (): Promise<boolean> => {
@@ -249,7 +203,7 @@ export const useUsersData = ({ onShowToast }: UseUsersDataParams) => {
         role: createForm.role || undefined,
       });
       setCreateForm({ ...INITIAL_CREATE_FORM });
-      onShowToast?.(`User ${data.username} created`, 'success');
+      onShowToast?.(`Local user ${data.username} created`, 'success');
       await fetchUsers();
       return true;
     } catch (err) {
@@ -262,18 +216,6 @@ export const useUsersData = ({ onShowToast }: UseUsersDataParams) => {
 
   const resetCreateForm = useCallback(() => {
     setCreateForm({ ...INITIAL_CREATE_FORM });
-  }, []);
-
-  const toggleOverride = useCallback((key: OverrideKey, enabled: boolean) => {
-    setOverrides((prev) => ({ ...prev, [key]: enabled }));
-    if (!enabled) {
-      setUserSettings((prev) => {
-        const next = { ...prev };
-        const settingKey = OVERRIDE_KEY_TO_SETTING_KEY[key];
-        (next as Record<string, unknown>)[settingKey] = null;
-        return next;
-      });
-    }
   }, []);
 
   return {
@@ -299,13 +241,10 @@ export const useUsersData = ({ onShowToast }: UseUsersDataParams) => {
     editPasswordConfirm,
     setEditPasswordConfirm,
     downloadDefaults,
+    deliveryPreferences,
     userSettings,
     setUserSettings,
-    overrides,
-    toggleOverride,
     userOverridableSettings,
     isUserOverridable,
-    bookloreLibraries,
-    booklorePaths,
   };
 };

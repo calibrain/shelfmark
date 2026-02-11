@@ -633,46 +633,20 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
             parsed = parseaddr(addr or "")[1]
             return bool(parsed) and "@" in parsed and parsed == addr
 
-        raw_recipients = effective.get("EMAIL_RECIPIENTS", [])
-        if not isinstance(raw_recipients, list):
-            return {"error": True, "message": "Email recipients must be a list", "values": values}
+        # Preferred model: single recipient for global default and per-user override.
+        raw_recipient = str(effective.get("EMAIL_RECIPIENT", "") or "").strip()
 
-        cleaned_recipients: list[dict[str, str]] = []
-        seen_nicknames: set[str] = set()
-
-        for entry in raw_recipients:
-            if not isinstance(entry, dict):
-                continue
-
-            nickname = str(entry.get("nickname", "") or "").strip()
-            email = str(entry.get("email", "") or "").strip()
-
-            # Allow incomplete rows in the UI by skipping them.
-            if not nickname or not email:
-                continue
-
-            nickname_key = nickname.lower()
-            if nickname_key in seen_nicknames:
-                return {
-                    "error": True,
-                    "message": f"Duplicate email recipient nickname: {nickname}",
-                    "values": values,
-                }
-            seen_nicknames.add(nickname_key)
-
-            if not _is_plain_email_address(email):
-                return {
-                    "error": True,
-                    "message": f"Invalid email address for '{nickname}': {email}",
-                    "values": values,
-                }
-
-            cleaned_recipients.append({"nickname": nickname, "email": email})
-
-        if not cleaned_recipients:
+        if not raw_recipient:
             return {
                 "error": True,
-                "message": "At least one email recipient is required (Downloads -> Books -> Email).",
+                "message": "Email recipient is required (Downloads -> Books -> Email Recipient).",
+                "values": values,
+            }
+
+        if not _is_plain_email_address(raw_recipient):
+            return {
+                "error": True,
+                "message": "Email recipient must be a valid plain email address.",
                 "values": values,
             }
 
@@ -748,8 +722,8 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
                 }
 
         # Persist any normalization/coercion for fields that may have been edited this save.
-        if "EMAIL_RECIPIENTS" in values:
-            values["EMAIL_RECIPIENTS"] = cleaned_recipients
+        if "EMAIL_RECIPIENT" in values:
+            values["EMAIL_RECIPIENT"] = raw_recipient
         if "EMAIL_SMTP_SECURITY" in values:
             values["EMAIL_SMTP_SECURITY"] = security
         if "EMAIL_SMTP_PORT" in values:
@@ -795,6 +769,7 @@ def download_settings():
                 },
             ],
             default="folder",
+            user_overridable=True,
         ),
         TextField(
             key="DESTINATION",
@@ -932,27 +907,11 @@ def download_settings():
             description="Send books as email attachments via SMTP. Audiobooks always use folder mode.",
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
         ),
-        TableField(
-            key="EMAIL_RECIPIENTS",
-            label="Recipients",
-            columns=[
-                {
-                    "key": "nickname",
-                    "label": "Nickname",
-                    "type": "text",
-                    "placeholder": "eReader",
-                },
-                {
-                    "key": "email",
-                    "label": "Email",
-                    "type": "text",
-                    "placeholder": "device@example.com",
-                },
-            ],
-            default=[],
-            add_label="Add Recipient",
-            empty_message="No recipients configured.",
-            env_supported=False,
+        TextField(
+            key="EMAIL_RECIPIENT",
+            label="Email Recipient",
+            description="Email address that should receive downloaded books when Output Mode is Email.",
+            placeholder="reader@example.com",
             user_overridable=True,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
         ),

@@ -297,6 +297,36 @@ class TestAdminUserCreateEndpoint:
         assert resp.status_code == 201
         assert resp.json["role"] == "user"
 
+    def test_create_user_rejected_in_proxy_mode(self, admin_client):
+        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="proxy"):
+            resp = admin_client.post(
+                "/api/admin/users",
+                json={"username": "alice", "password": "pass1234"},
+            )
+
+        assert resp.status_code == 400
+        assert "Local user creation is disabled" in resp.json["error"]
+
+    def test_create_user_rejected_in_cwa_mode(self, admin_client):
+        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="cwa"):
+            resp = admin_client.post(
+                "/api/admin/users",
+                json={"username": "alice", "password": "pass1234"},
+            )
+
+        assert resp.status_code == 400
+        assert "Local user creation is disabled" in resp.json["error"]
+
+    def test_create_user_allowed_in_oidc_mode(self, admin_client):
+        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="oidc"):
+            resp = admin_client.post(
+                "/api/admin/users",
+                json={"username": "alice", "password": "pass1234"},
+            )
+
+        assert resp.status_code == 201
+        assert resp.json["username"] == "alice"
+
 
 # ---------------------------------------------------------------------------
 # GET /api/admin/users/<id>
@@ -445,11 +475,11 @@ class TestAdminUserUpdateEndpoint:
 
         resp = admin_client.put(
             f"/api/admin/users/{user['id']}",
-            json={"settings": {"BOOKS_OUTPUT_MODE": "folder"}},
+            json={"settings": {"FILE_ORGANIZATION": "rename"}},
         )
         assert resp.status_code == 400
         assert resp.json["error"] == "Invalid settings payload"
-        assert any("Setting not user-overridable: BOOKS_OUTPUT_MODE" in msg for msg in resp.json["details"])
+        assert any("Setting not user-overridable: FILE_ORGANIZATION" in msg for msg in resp.json["details"])
 
     def test_update_user_settings_rejects_lowercase_key(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
@@ -648,7 +678,7 @@ class TestAdminDownloadDefaults:
             "DESTINATION": "/books",
             "BOOKLORE_LIBRARY_ID": "2",
             "BOOKLORE_PATH_ID": "5",
-            "EMAIL_RECIPIENTS": [{"nickname": "kindle", "email": "me@kindle.com"}],
+            "EMAIL_RECIPIENT": "reader@example.com",
         }
         (plugins_dir / "downloads.json").write_text(json.dumps(config))
 
@@ -660,7 +690,7 @@ class TestAdminDownloadDefaults:
         assert data["DESTINATION"] == "/books"
         assert data["BOOKLORE_LIBRARY_ID"] == "2"
         assert data["BOOKLORE_PATH_ID"] == "5"
-        assert data["EMAIL_RECIPIENTS"] == [{"nickname": "kindle", "email": "me@kindle.com"}]
+        assert data["EMAIL_RECIPIENT"] == "reader@example.com"
 
     def test_returns_defaults_when_no_config(self, admin_client, tmp_path):
         """If no downloads config file exists, return sensible defaults."""
@@ -721,6 +751,138 @@ class TestAdminBookloreOptions:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/admin/users/<id>/delivery-preferences
+# ---------------------------------------------------------------------------
+
+
+class TestAdminDeliveryPreferences:
+    """Tests for GET /api/admin/users/<id>/delivery-preferences."""
+
+    @pytest.fixture(autouse=True)
+    def setup_config(self, tmp_path, monkeypatch):
+        import json
+        from pathlib import Path
+
+        config_dir = str(tmp_path)
+        monkeypatch.setenv("CONFIG_DIR", config_dir)
+        monkeypatch.setattr("shelfmark.config.env.CONFIG_DIR", Path(config_dir))
+
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+        downloads_config = {
+            "BOOKS_OUTPUT_MODE": "folder",
+            "DESTINATION": "/books",
+            "BOOKLORE_LIBRARY_ID": "7",
+            "BOOKLORE_PATH_ID": "21",
+            "EMAIL_RECIPIENT": "global@example.com",
+        }
+        (plugins_dir / "downloads.json").write_text(json.dumps(downloads_config))
+
+        from shelfmark.core.config import config as app_config
+        app_config.refresh()
+
+    def test_returns_curated_fields_and_effective_values(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+        user_db.set_user_settings(
+            user["id"],
+            {
+                "BOOKS_OUTPUT_MODE": "email",
+                "EMAIL_RECIPIENT": "alice@example.com",
+            },
+        )
+
+        resp = admin_client.get(f"/api/admin/users/{user['id']}/delivery-preferences")
+        assert resp.status_code == 200
+
+        data = resp.json
+        assert data["tab"] == "downloads"
+        assert data["keys"] == [
+            "BOOKS_OUTPUT_MODE",
+            "DESTINATION",
+            "BOOKLORE_LIBRARY_ID",
+            "BOOKLORE_PATH_ID",
+            "EMAIL_RECIPIENT",
+        ]
+
+        field_keys = [field["key"] for field in data["fields"]]
+        assert set(field_keys) == set(data["keys"])
+
+        assert data["userOverrides"]["BOOKS_OUTPUT_MODE"] == "email"
+        assert data["userOverrides"]["EMAIL_RECIPIENT"] == "alice@example.com"
+
+        assert data["effective"]["BOOKS_OUTPUT_MODE"]["source"] == "user_override"
+        assert data["effective"]["BOOKS_OUTPUT_MODE"]["value"] == "email"
+        assert data["effective"]["DESTINATION"]["source"] in {"global_config", "env_var"}
+        assert data["effective"]["BOOKLORE_LIBRARY_ID"]["source"] == "global_config"
+        assert data["effective"]["BOOKLORE_LIBRARY_ID"]["value"] == "7"
+        assert data["effective"]["EMAIL_RECIPIENT"]["source"] == "user_override"
+        assert data["effective"]["EMAIL_RECIPIENT"]["value"] == "alice@example.com"
+
+    def test_returns_404_for_unknown_user(self, admin_client):
+        resp = admin_client.get("/api/admin/users/9999/delivery-preferences")
+        assert resp.status_code == 404
+
+    def test_requires_admin(self, regular_client, user_db):
+        user = user_db.create_user(username="alice")
+        resp = regular_client.get(f"/api/admin/users/{user['id']}/delivery-preferences")
+        assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# GET /api/admin/settings/overrides-summary
+# ---------------------------------------------------------------------------
+
+
+class TestAdminOverridesSummary:
+    """Tests for GET /api/admin/settings/overrides-summary."""
+
+    def test_returns_override_counts_for_downloads_tab(self, admin_client, user_db):
+        alice = user_db.create_user(username="alice")
+        bob = user_db.create_user(username="bob")
+
+        user_db.set_user_settings(
+            alice["id"],
+            {"BOOKS_OUTPUT_MODE": "folder", "DESTINATION": "/books/alice"},
+        )
+        user_db.set_user_settings(
+            bob["id"],
+            {
+                "BOOKS_OUTPUT_MODE": "email",
+                "DESTINATION": "/books/bob",
+                "EMAIL_RECIPIENT": "bob@example.com",
+            },
+        )
+
+        resp = admin_client.get("/api/admin/settings/overrides-summary?tab=downloads")
+        assert resp.status_code == 200
+
+        data = resp.json
+        assert data["tab"] == "downloads"
+        keys = data["keys"]
+
+        assert keys["BOOKS_OUTPUT_MODE"]["count"] == 2
+        assert keys["DESTINATION"]["count"] == 2
+        assert keys["EMAIL_RECIPIENT"]["count"] == 1
+        assert "BOOKLORE_LIBRARY_ID" not in keys
+
+        destination_users = {u["username"] for u in keys["DESTINATION"]["users"]}
+        assert destination_users == {"alice", "bob"}
+
+        email_users = keys["EMAIL_RECIPIENT"]["users"]
+        assert len(email_users) == 1
+        assert email_users[0]["username"] == "bob"
+        assert email_users[0]["value"] == "bob@example.com"
+
+    def test_returns_404_for_unknown_tab(self, admin_client):
+        resp = admin_client.get("/api/admin/settings/overrides-summary?tab=does-not-exist")
+        assert resp.status_code == 404
+
+    def test_requires_admin(self, regular_client):
+        resp = regular_client.get("/api/admin/settings/overrides-summary?tab=downloads")
+        assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
 # GET /api/admin/users/<id>/effective-settings
 # ---------------------------------------------------------------------------
 
@@ -755,7 +917,7 @@ class TestAdminEffectiveSettings:
         user = user_db.create_user(username="alice")
         user_db.set_user_settings(
             user["id"],
-            {"EMAIL_RECIPIENTS": [{"nickname": "kindle", "email": "alice@kindle.com"}]},
+            {"EMAIL_RECIPIENT": "alice@kindle.com"},
         )
 
         resp = admin_client.get(f"/api/admin/users/{user['id']}/effective-settings")
@@ -771,8 +933,8 @@ class TestAdminEffectiveSettings:
         assert data["BOOKLORE_PATH_ID"]["value"] in ("", None)
         assert data["BOOKLORE_PATH_ID"]["source"] == "default"
 
-        assert data["EMAIL_RECIPIENTS"]["value"] == [{"nickname": "kindle", "email": "alice@kindle.com"}]
-        assert data["EMAIL_RECIPIENTS"]["source"] == "user_override"
+        assert data["EMAIL_RECIPIENT"]["value"] == "alice@kindle.com"
+        assert data["EMAIL_RECIPIENT"]["source"] == "user_override"
 
     def test_returns_404_for_unknown_user(self, admin_client):
         resp = admin_client.get("/api/admin/users/9999/effective-settings")

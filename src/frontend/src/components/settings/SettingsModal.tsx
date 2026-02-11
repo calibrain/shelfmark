@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useSettings } from '../../hooks/useSettings';
 import { useSearchMode } from '../../contexts/SearchModeContext';
+import { getAdminSettingsOverridesSummary } from '../../services/api';
 import { SettingsHeader } from './SettingsHeader';
 import { SettingsSidebar } from './SettingsSidebar';
 import { SettingsContent } from './SettingsContent';
@@ -8,12 +9,13 @@ import { UsersPanel } from './UsersPanel';
 
 interface SettingsModalProps {
   isOpen: boolean;
+  authMode: string;
   onClose: () => void;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
   onSettingsSaved?: () => void;
 }
 
-export const SettingsModal = ({ isOpen, onClose, onShowToast, onSettingsSaved }: SettingsModalProps) => {
+export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettingsSaved }: SettingsModalProps) => {
   const {
     tabs,
     groups,
@@ -36,6 +38,9 @@ export const SettingsModal = ({ isOpen, onClose, onShowToast, onSettingsSaved }:
   const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [usersSubpageState, setUsersSubpageState] = useState<{ title: string; onBack: () => void } | null>(null);
+  const [tabOverrideSummaries, setTabOverrideSummaries] = useState<
+    Record<string, Record<string, { count: number; users: Array<{ userId: number; username: string; value: unknown }> }>>
+  >({});
 
   // Track previous isOpen state to detect modal open transition
   const prevIsOpenRef = useRef(false);
@@ -93,6 +98,7 @@ export const SettingsModal = ({ isOpen, onClose, onShowToast, onSettingsSaved }:
       setShowMobileDetail(false);
       setIsClosing(false);
       setUsersSubpageState(null);
+      setTabOverrideSummaries({});
     }
   }, [isOpen]);
 
@@ -101,6 +107,33 @@ export const SettingsModal = ({ isOpen, onClose, onShowToast, onSettingsSaved }:
       setUsersSubpageState(null);
     }
   }, [selectedTab]);
+
+  useEffect(() => {
+    if (!isOpen || !selectedTab || selectedTab === 'users') {
+      return;
+    }
+
+    let cancelled = false;
+    getAdminSettingsOverridesSummary(selectedTab)
+      .then((data) => {
+        if (cancelled) return;
+        setTabOverrideSummaries((prev) => ({
+          ...prev,
+          [selectedTab]: data.keys || {},
+        }));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setTabOverrideSummaries((prev) => ({
+          ...prev,
+          [selectedTab]: {},
+        }));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, selectedTab]);
 
   // Reset to first tab when modal transitions from closed to open
   useEffect(() => {
@@ -203,6 +236,29 @@ export const SettingsModal = ({ isOpen, onClose, onShowToast, onSettingsSaved }:
   const currentTab = tabs.find((t) => t.name === selectedTab);
   const currentTabDisplayName = currentTab?.displayName || 'Settings';
   const usersHeaderTitle = usersSubpageState ? `Settings / ${usersSubpageState.title}` : null;
+  const selectedAuthMethod = values.security?.AUTH_METHOD;
+  const usersAuthMode = typeof selectedAuthMethod === 'string' ? selectedAuthMethod : authMode;
+  const currentTabContent = currentTab
+    ? (selectedTab === 'users' ? (
+      <UsersPanel
+        authMode={usersAuthMode}
+        onShowToast={onShowToast}
+        onSubpageStateChange={setUsersSubpageState}
+      />
+    ) : (
+      <SettingsContent
+        tab={currentTab}
+        values={values[currentTab.name] || {}}
+        onChange={handleFieldChange}
+        onSave={handleSave}
+        onAction={handleAction}
+        isSaving={isSaving}
+        hasChanges={currentTabHasChanges}
+        isUniversalMode={isUniversalMode}
+        overrideSummary={tabOverrideSummaries[currentTab.name]}
+      />
+    ))
+    : null;
 
   // Loading state
   if (isLoading) {
@@ -315,22 +371,7 @@ export const SettingsModal = ({ isOpen, onClose, onShowToast, onSettingsSaved }:
               onBack={selectedTab === 'users' && usersSubpageState ? usersSubpageState.onBack : handleBack}
               onClose={handleClose}
             />
-            {currentTab && (
-              selectedTab === 'users' ? (
-                <UsersPanel onShowToast={onShowToast} onSubpageStateChange={setUsersSubpageState} />
-              ) : (
-                <SettingsContent
-                  tab={currentTab}
-                  values={values[currentTab.name] || {}}
-                  onChange={handleFieldChange}
-                  onSave={handleSave}
-                  onAction={handleAction}
-                  isSaving={isSaving}
-                  hasChanges={currentTabHasChanges}
-                  isUniversalMode={isUniversalMode}
-                />
-              )
-            )}
+            {currentTabContent}
           </>
         )}
       </div>
@@ -375,22 +416,7 @@ export const SettingsModal = ({ isOpen, onClose, onShowToast, onSettingsSaved }:
             mode="sidebar"
           />
 
-          {currentTab ? (
-            selectedTab === 'users' ? (
-              <UsersPanel onShowToast={onShowToast} onSubpageStateChange={setUsersSubpageState} />
-            ) : (
-              <SettingsContent
-                tab={currentTab}
-                values={values[currentTab.name] || {}}
-                onChange={handleFieldChange}
-                onSave={handleSave}
-                onAction={handleAction}
-                isSaving={isSaving}
-                hasChanges={currentTabHasChanges}
-                isUniversalMode={isUniversalMode}
-              />
-            )
-          ) : (
+          {currentTabContent ?? (
             <div className="flex-1 flex items-center justify-center text-sm opacity-60">
               Select a category to configure
             </div>

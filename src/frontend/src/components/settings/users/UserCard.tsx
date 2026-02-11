@@ -1,20 +1,112 @@
 import { ReactNode } from 'react';
 import { AdminUser, DownloadDefaults } from '../../../services/api';
-import { PasswordFieldConfig, SelectFieldConfig, TextFieldConfig } from '../../../types/settings';
+import { PasswordFieldConfig, SelectFieldConfig, SelectOption, TextFieldConfig } from '../../../types/settings';
 import { PasswordField, SelectField, TextField } from '../fields';
 import { FieldWrapper } from '../shared';
 import { CreateUserFormState, getUserEditCapabilities } from './types';
 
-interface UserCardShellProps {
-  title: string;
-  children: ReactNode;
-}
-
-const UserCardShell = ({ title, children }: UserCardShellProps) => (
+const UserCardShell = ({ title, children }: { title: string; children: ReactNode }) => (
   <div className="space-y-5 p-4 rounded-lg border border-[var(--border-muted)] bg-[var(--bg)]">
     <h3 className="text-sm font-medium">{title}</h3>
     {children}
   </div>
+);
+
+const AuthInfoBanner = ({ message }: { message: string }) => (
+  <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs bg-sky-500/10 text-sky-400">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0">
+      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+    </svg>
+    {message}
+  </div>
+);
+
+const CREATE_ROLE_OPTIONS: SelectOption[] = [
+  { value: 'user', label: 'User' },
+  { value: 'admin', label: 'Admin' },
+];
+
+const EDIT_ROLE_OPTIONS: SelectOption[] = [
+  { value: 'admin', label: 'Admin' },
+  { value: 'user', label: 'User' },
+];
+
+const AUTH_SOURCE_MESSAGES: Record<string, string> = {
+  oidc: 'This user authenticates via OIDC. Password, email, and display name are managed by the identity provider.',
+  proxy: 'This user authenticates via proxy headers. Password authentication is unavailable for proxy users.',
+  cwa: 'This user authenticates via Calibre-Web. Password authentication is unavailable in Shelfmark for CWA users.',
+};
+
+const createTextField = (
+  key: string,
+  label: string,
+  value: string,
+  placeholder: string,
+  required = false,
+): TextFieldConfig => ({
+  type: 'TextField',
+  key,
+  label,
+  value,
+  placeholder,
+  required,
+});
+
+const createPasswordField = (
+  key: string,
+  label: string,
+  value: string,
+  placeholder: string,
+  required = false,
+): PasswordFieldConfig => ({
+  type: 'PasswordField',
+  key,
+  label,
+  value,
+  placeholder,
+  required,
+});
+
+const createRoleField = (value: string, options: SelectOption[]): SelectFieldConfig => ({
+  type: 'SelectField',
+  key: 'role',
+  label: 'Role',
+  value,
+  options,
+});
+
+const renderTextField = (
+  field: TextFieldConfig,
+  value: string,
+  onChange: (value: string) => void,
+  disabled = false,
+  disabledReason?: string,
+) => (
+  <FieldWrapper field={field} disabledOverride={disabled} disabledReasonOverride={disabledReason}>
+    <TextField field={field} value={value} onChange={onChange} disabled={disabled} />
+  </FieldWrapper>
+);
+
+const renderSelectField = (
+  field: SelectFieldConfig,
+  value: string,
+  onChange: (value: string) => void,
+  disabled = false,
+  disabledReason?: string,
+) => (
+  <FieldWrapper field={field} disabledOverride={disabled} disabledReasonOverride={disabledReason}>
+    <SelectField field={field} value={value} onChange={onChange} disabled={disabled} />
+  </FieldWrapper>
+);
+
+const renderPasswordField = (
+  field: PasswordFieldConfig,
+  value: string,
+  onChange: (value: string) => void,
+) => (
+  <FieldWrapper field={field}>
+    <PasswordField field={field} value={value} onChange={onChange} />
+  </FieldWrapper>
 );
 
 interface UserCreateCardProps {
@@ -34,53 +126,14 @@ export const UserCreateCard = ({
   onSubmit,
   onCancel,
 }: UserCreateCardProps) => {
-  const usernameField: TextFieldConfig = {
-    type: 'TextField',
-    key: 'username',
-    label: 'Username',
-    value: form.username,
-    placeholder: 'username',
-    required: true,
-  };
-
-  const displayNameField: TextFieldConfig = {
-    type: 'TextField',
-    key: 'display_name',
-    label: 'Display Name',
-    value: form.display_name,
-    placeholder: 'Display name',
-  };
-
-  const emailField: TextFieldConfig = {
-    type: 'TextField',
-    key: 'email',
-    label: 'Email',
-    value: form.email,
-    placeholder: 'user@example.com',
-  };
-
-  const passwordField: PasswordFieldConfig = {
-    type: 'PasswordField',
-    key: 'password',
-    label: 'Password',
-    value: form.password,
-    placeholder: 'Min 4 characters',
-    required: true,
-  };
-
-  const roleField: SelectFieldConfig = {
-    type: 'SelectField',
-    key: 'role',
-    label: 'Role',
-    value: form.role,
-    options: [
-      { value: 'user', label: 'User' },
-      { value: 'admin', label: 'Admin' },
-    ],
-  };
+  const usernameField = createTextField('username', 'Username', form.username, 'username', true);
+  const displayNameField = createTextField('display_name', 'Display Name', form.display_name, 'Display name');
+  const emailField = createTextField('email', 'Email', form.email, 'user@example.com');
+  const passwordField = createPasswordField('password', 'Password', form.password, 'Min 4 characters', true);
+  const roleField = createRoleField(form.role, CREATE_ROLE_OPTIONS);
 
   return (
-    <UserCardShell title="Create User">
+    <UserCardShell title="Create Local User">
       {isFirstUser && (
         <div className="text-xs px-3 py-2 rounded-lg bg-sky-500/10 text-sky-400">
           This will be the first account and will be created as admin.
@@ -88,46 +141,13 @@ export const UserCreateCard = ({
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FieldWrapper field={usernameField}>
-          <TextField
-            field={usernameField}
-            value={form.username}
-            onChange={(value) => onChange({ ...form, username: value })}
-          />
-        </FieldWrapper>
-
-        <FieldWrapper field={displayNameField}>
-          <TextField
-            field={displayNameField}
-            value={form.display_name}
-            onChange={(value) => onChange({ ...form, display_name: value })}
-          />
-        </FieldWrapper>
-
-        <FieldWrapper field={emailField}>
-          <TextField
-            field={emailField}
-            value={form.email}
-            onChange={(value) => onChange({ ...form, email: value })}
-          />
-        </FieldWrapper>
-
-        <FieldWrapper field={passwordField}>
-          <PasswordField
-            field={passwordField}
-            value={form.password}
-            onChange={(value) => onChange({ ...form, password: value })}
-          />
-        </FieldWrapper>
+        {renderTextField(usernameField, form.username, (value) => onChange({ ...form, username: value }))}
+        {renderTextField(displayNameField, form.display_name, (value) => onChange({ ...form, display_name: value }))}
+        {renderTextField(emailField, form.email, (value) => onChange({ ...form, email: value }))}
+        {renderPasswordField(passwordField, form.password, (value) => onChange({ ...form, password: value }))}
       </div>
 
-      <FieldWrapper field={roleField}>
-        <SelectField
-          field={roleField}
-          value={form.role}
-          onChange={(value) => onChange({ ...form, role: value })}
-        />
-      </FieldWrapper>
+      {renderSelectField(roleField, form.role, (value) => onChange({ ...form, role: value }))}
 
       <div className="flex items-center gap-2 pt-1">
         <button
@@ -135,7 +155,7 @@ export const UserCreateCard = ({
           disabled={creating}
           className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {creating ? 'Creating...' : 'Create User'}
+          {creating ? 'Creating...' : 'Create Local User'}
         </button>
         <button
           onClick={onCancel}
@@ -179,49 +199,11 @@ export const UserEditFields = ({
   const capabilities = getUserEditCapabilities(user, downloadDefaults?.OIDC_USE_ADMIN_GROUP);
   const { authSource, canSetPassword, canEditRole, canEditEmail, canEditDisplayName } = capabilities;
 
-  const displayNameField: TextFieldConfig = {
-    type: 'TextField',
-    key: 'display_name',
-    label: 'Display Name',
-    value: user.display_name || '',
-    placeholder: 'Display name',
-  };
-
-  const emailField: TextFieldConfig = {
-    type: 'TextField',
-    key: 'email',
-    label: 'Email',
-    value: user.email || '',
-    placeholder: 'user@example.com',
-  };
-
-  const roleField: SelectFieldConfig = {
-    type: 'SelectField',
-    key: 'role',
-    label: 'Role',
-    value: user.role,
-    options: [
-      { value: 'admin', label: 'Admin' },
-      { value: 'user', label: 'User' },
-    ],
-  };
-
-  const newPasswordField: PasswordFieldConfig = {
-    type: 'PasswordField',
-    key: 'new_password',
-    label: 'New Password',
-    value: editPassword,
-    placeholder: 'Leave empty to keep current',
-  };
-
-  const confirmPasswordField: PasswordFieldConfig = {
-    type: 'PasswordField',
-    key: 'confirm_password',
-    label: 'Confirm Password',
-    value: editPasswordConfirm,
-    placeholder: 'Confirm new password',
-    required: true,
-  };
+  const displayNameField = createTextField('display_name', 'Display Name', user.display_name || '', 'Display name');
+  const emailField = createTextField('email', 'Email', user.email || '', 'user@example.com');
+  const roleField = createRoleField(user.role, EDIT_ROLE_OPTIONS);
+  const newPasswordField = createPasswordField('new_password', 'New Password', editPassword, 'Leave empty to keep current');
+  const confirmPasswordField = createPasswordField('confirm_password', 'Confirm Password', editPasswordConfirm, 'Confirm new password', true);
 
   const displayNameDisabledReason = !canEditDisplayName
     ? 'Display name is managed by the identity provider.'
@@ -241,91 +223,56 @@ export const UserEditFields = ({
       : 'Role is managed by the external authentication source.')
     : undefined;
 
+  const authSourceMessage = AUTH_SOURCE_MESSAGES[authSource] || null;
+
+  const oidcAdminGroupMessage = authSource === 'oidc' && downloadDefaults?.OIDC_USE_ADMIN_GROUP === true
+    ? (downloadDefaults?.OIDC_ADMIN_GROUP
+      ? `Admin role is managed by the ${downloadDefaults.OIDC_ADMIN_GROUP} group in your identity provider.`
+      : 'Admin group authorization is enabled but no group name is configured.')
+    : null;
+
   return (
     <>
-      {authSource !== 'builtin' && (
+      {authSourceMessage && (
         <div className="space-y-2">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs bg-sky-500/10 text-sky-400">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
-            </svg>
-            {authSource === 'oidc' && 'This user authenticates via OIDC. Password, email, and display name are managed by the identity provider.'}
-            {authSource === 'proxy' && 'This user authenticates via proxy headers. Password authentication is unavailable for proxy users.'}
-            {authSource === 'cwa' && 'This user authenticates via Calibre-Web. Password authentication is unavailable in Shelfmark for CWA users.'}
-          </div>
-          {authSource === 'oidc' && downloadDefaults?.OIDC_USE_ADMIN_GROUP === true && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs bg-sky-500/10 text-sky-400">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
-              </svg>
-              {downloadDefaults?.OIDC_ADMIN_GROUP
-                ? `Admin role is managed by the ${downloadDefaults.OIDC_ADMIN_GROUP} group in your identity provider.`
-                : 'Admin group authorization is enabled but no group name is configured.'}
-            </div>
-          )}
+          <AuthInfoBanner message={authSourceMessage} />
+          {oidcAdminGroupMessage && <AuthInfoBanner message={oidcAdminGroupMessage} />}
         </div>
       )}
 
-      <FieldWrapper
-        field={displayNameField}
-        disabledOverride={!canEditDisplayName}
-        disabledReasonOverride={displayNameDisabledReason}
-      >
-        <TextField
-          field={displayNameField}
-          value={user.display_name || ''}
-          onChange={(value) => onUserChange({ ...user, display_name: value || null })}
-          disabled={!canEditDisplayName}
-        />
-      </FieldWrapper>
+      {renderTextField(
+        displayNameField,
+        user.display_name || '',
+        (value) => onUserChange({ ...user, display_name: value || null }),
+        !canEditDisplayName,
+        displayNameDisabledReason,
+      )}
 
-      <FieldWrapper
-        field={emailField}
-        disabledOverride={!canEditEmail}
-        disabledReasonOverride={emailDisabledReason}
-      >
-        <TextField
-          field={emailField}
-          value={user.email || ''}
-          onChange={(value) => onUserChange({ ...user, email: value || null })}
-          disabled={!canEditEmail}
-        />
-      </FieldWrapper>
+      {renderTextField(
+        emailField,
+        user.email || '',
+        (value) => onUserChange({ ...user, email: value || null }),
+        !canEditEmail,
+        emailDisabledReason,
+      )}
 
-      <FieldWrapper
-        field={roleField}
-        disabledOverride={!canEditRole}
-        disabledReasonOverride={roleDisabledReason}
-      >
-        <SelectField
-          field={roleField}
-          value={user.role}
-          onChange={(value) => onUserChange({ ...user, role: value })}
-          disabled={!canEditRole}
-        />
-      </FieldWrapper>
+      {renderSelectField(
+        roleField,
+        user.role,
+        (value) => onUserChange({ ...user, role: value }),
+        !canEditRole,
+        roleDisabledReason,
+      )}
 
       {canSetPassword && (
         <>
           <div className="border-t border-[var(--border-muted)] pt-4">
             <p className="text-xs font-medium opacity-60 mb-3">Change Password</p>
           </div>
-          <FieldWrapper field={newPasswordField}>
-            <PasswordField
-              field={newPasswordField}
-              value={editPassword}
-              onChange={onEditPasswordChange}
-            />
-          </FieldWrapper>
-          {editPassword && (
-            <FieldWrapper field={confirmPasswordField}>
-              <PasswordField
-                field={confirmPasswordField}
-                value={editPasswordConfirm}
-                onChange={onEditPasswordConfirmChange}
-              />
-            </FieldWrapper>
-          )}
+
+          {renderPasswordField(newPasswordField, editPassword, onEditPasswordChange)}
+
+          {editPassword && renderPasswordField(confirmPasswordField, editPasswordConfirm, onEditPasswordConfirmChange)}
         </>
       )}
 
