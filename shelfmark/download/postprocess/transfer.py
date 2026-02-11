@@ -53,6 +53,7 @@ def build_metadata_dict(task: DownloadTask) -> dict:
         "Year": task.year,
         "Series": task.series_name,
         "SeriesPosition": task.series_position,
+        "User": task.username,
     }
 
 

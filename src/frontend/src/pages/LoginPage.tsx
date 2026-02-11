@@ -6,9 +6,10 @@ interface LoginPageProps {
   onLogin: (credentials: LoginCredentials) => void;
   error: string | null;
   isLoading: boolean;
+  authMode?: string;
 }
 
-export const LoginPage = ({ onLogin, error, isLoading }: LoginPageProps) => {
+export const LoginPage = ({ onLogin, error, isLoading, authMode }: LoginPageProps) => {
   const logoUrl = withBasePath('/logo.png');
 
   return (
@@ -29,7 +30,7 @@ export const LoginPage = ({ onLogin, error, isLoading }: LoginPageProps) => {
             color: 'var(--text-color)',
           }}
         >
-          <LoginForm onSubmit={onLogin} error={error} isLoading={isLoading} />
+          <LoginForm onSubmit={onLogin} error={error} isLoading={isLoading} authMode={authMode} />
         </div>
       </div>
     </div>

@@ -6,6 +6,7 @@ interface TagListFieldProps {
   value: string[];
   onChange: (value: string[]) => void;
   disabled?: boolean;
+  requiredTags?: string[];  // Tags that cannot be removed
 }
 
 function normalizeTag(raw: string): string {
@@ -24,15 +25,18 @@ function normalizeTag(raw: string): string {
   if (s.toLowerCase() === 'auto') return '';
 
   // Basic URL normalization to keep UX friendly; backend also normalizes on save.
-  if (!s.includes('://') && !s.startsWith('/')) {
+  // Only add https:// if it looks like a domain (contains a dot) and has no protocol.
+  // This avoids adding prefixes to non-URL values like OIDC scopes (openid, email, etc.)
+  if (!s.includes('://') && !s.startsWith('/') && s.includes('.')) {
     s = `https://${s}`;
   }
   s = s.replace(/\/+$/, '');
   return s.trim();
 }
 
-export const TagListField = ({ field, value, onChange, disabled }: TagListFieldProps) => {
+export const TagListField = ({ field, value, onChange, disabled, requiredTags }: TagListFieldProps) => {
   const isDisabled = disabled ?? false;
+  const required = requiredTags ?? [];
   const inputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState('');
 
@@ -59,8 +63,10 @@ export const TagListField = ({ field, value, onChange, disabled }: TagListFieldP
     }
   };
 
+  const isRequired = (tag: string) => required.includes(tag);
+
   const removeAt = (idx: number) => {
-    if (isDisabled) return;
+    if (isDisabled || isRequired(tags[idx])) return;
     onChange(tags.filter((_, i) => i !== idx));
   };
 
@@ -91,7 +97,7 @@ export const TagListField = ({ field, value, onChange, disabled }: TagListFieldP
             title={tag}
           >
             <span className="truncate max-w-[22rem]">{tag}</span>
-            {!isDisabled && (
+            {!isDisabled && !isRequired(tag) && (
               <button
                 type="button"
                 onClick={(e) => {

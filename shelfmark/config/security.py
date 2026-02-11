@@ -14,6 +14,7 @@ from shelfmark.core.settings_registry import (
     PasswordField,
     CheckboxField,
     ActionButton,
+    TagListField,
 )
 
 logger = setup_logger(__name__)
@@ -114,6 +115,29 @@ def _on_save_security(values: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Dict with processed values to save and any validation errors.
     """
+    # If switching to OIDC, ensure a local admin exists as fallback
+    if values.get("AUTH_METHOD") == "oidc":
+        import os
+        from shelfmark.core.user_db import UserDB
+
+        db_path = os.path.join(os.environ.get("CONFIG_DIR", "/config"), "users.db")
+        udb = UserDB(db_path)
+        udb.initialize()
+        users = udb.list_users()
+        has_local_admin = any(
+            u.get("password_hash") and u.get("role") == "admin"
+            for u in users
+        )
+        if not has_local_admin:
+            return {
+                "error": True,
+                "message": (
+                    "Create a local admin account first (Users tab) before enabling OIDC. "
+                    "This ensures you can still log in with a password if SSO is unavailable."
+                ),
+                "values": values,
+            }
+
     password = values.get("BUILTIN_PASSWORD", "")
     password_confirm = values.get("BUILTIN_PASSWORD_CONFIRM", "")
 
@@ -157,6 +181,33 @@ def _on_save_security(values: Dict[str, Any]) -> Dict[str, Any]:
     return {"error": False, "values": values}
 
 
+def _test_oidc_connection() -> Dict[str, Any]:
+    """Test OIDC connection by fetching the discovery document."""
+    import requests
+
+    try:
+        config = load_config_file("security")
+        discovery_url = config.get("OIDC_DISCOVERY_URL", "")
+        if not discovery_url:
+            return {"success": False, "message": "Discovery URL is not configured."}
+
+        resp = requests.get(discovery_url, timeout=10)
+        resp.raise_for_status()
+        doc = resp.json()
+
+        # Validate required fields
+        required = ["issuer", "authorization_endpoint", "token_endpoint"]
+        missing = [f for f in required if f not in doc]
+        if missing:
+            return {"success": False, "message": f"Discovery document missing fields: {', '.join(missing)}"}
+
+        return {"success": True, "message": f"Connected to {doc['issuer']}"}
+
+    except Exception as e:
+        logger.error(f"OIDC connection test failed: {e}")
+        return {"success": False, "message": f"Connection failed: {str(e)}"}
+
+
 @register_settings("security", "Security", icon="shield", order=5)
 def security_settings():  
     """Security and authentication settings."""
@@ -168,6 +219,7 @@ def security_settings():
         {"label": "No Authentication", "value": "none"},
         {"label": "Username/Password", "value": "builtin"},
         {"label": "Proxy Authentication", "value": "proxy"},
+        {"label": "OIDC (OpenID Connect)", "value": "oidc"},
     ]
     if cwa_db_available:
         auth_method_options.append({"label": "Calibre-Web Database", "value": "cwa"})
@@ -280,6 +332,97 @@ def security_settings():
             default=False,
             env_supported=False,
             show_when={"field": "AUTH_METHOD", "value": "cwa"},
+        ),
+        # === OIDC SETTINGS ===
+        TextField(
+            key="OIDC_DISCOVERY_URL",
+            label="Discovery URL",
+            description=(
+                "OpenID Connect discovery endpoint URL."
+                " Usually ends with /.well-known/openid-configuration."
+            ),
+            placeholder="https://auth.example.com/.well-known/openid-configuration",
+            required=True,
+            env_supported=False,
+            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+        ),
+        TextField(
+            key="OIDC_CLIENT_ID",
+            label="Client ID",
+            description="OAuth2 client ID from your identity provider.",
+            placeholder="shelfmark",
+            required=True,
+            env_supported=False,
+            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+        ),
+        PasswordField(
+            key="OIDC_CLIENT_SECRET",
+            label="Client Secret",
+            description="OAuth2 client secret from your identity provider.",
+            required=True,
+            env_supported=False,
+            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+        ),
+        TagListField(
+            key="OIDC_SCOPES",
+            label="Scopes",
+            description="OAuth2 scopes to request from the identity provider. Managed automatically: includes essential scopes and the group claim when using admin group authorization.",
+            default=["openid", "email", "profile"],
+            env_supported=False,
+            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+        ),
+        TextField(
+            key="OIDC_GROUP_CLAIM",
+            label="Group Claim Name",
+            description=(
+                "The name of the claim in the ID token that contains user groups."
+            ),
+            placeholder="groups",
+            default="groups",
+            env_supported=False,
+            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+        ),
+        TextField(
+            key="OIDC_ADMIN_GROUP",
+            label="Admin Group Name",
+            description=(
+                "Users in this group will be given admin access (if enabled below). "
+                "Leave empty to use database roles only."
+            ),
+            placeholder="shelfmark-admins",
+            default="",
+            env_supported=False,
+            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+        ),
+        CheckboxField(
+            key="OIDC_USE_ADMIN_GROUP",
+            label="Use Admin Group for Authorization",
+            description=(
+                "When enabled, users in the Admin Group are granted admin access. "
+                "When disabled, admin access is determined solely by database roles."
+            ),
+            default=True,
+            env_supported=False,
+            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+        ),
+        CheckboxField(
+            key="OIDC_AUTO_PROVISION",
+            label="Auto-Provision Users",
+            description=(
+                "Automatically create a user account on first OIDC login."
+                " When disabled, users must be pre-created by an admin."
+            ),
+            default=True,
+            env_supported=False,
+            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+        ),
+        ActionButton(
+            key="test_oidc",
+            label="Test Connection",
+            description="Fetch the OIDC discovery document and validate configuration.",
+            style="primary",
+            callback=_test_oidc_connection,
+            show_when={"field": "AUTH_METHOD", "value": "oidc"},
         ),
     ]
 

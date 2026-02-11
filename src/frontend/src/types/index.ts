@@ -48,6 +48,7 @@ export interface Book {
   subtitle?: string;
   search_title?: string;
   search_author?: string;
+  username?: string;
 }
 
 // Status response types
@@ -191,6 +192,7 @@ export interface AuthResponse {
   success?: boolean;
   authenticated?: boolean;
   auth_required?: boolean;
+  auth_mode?: string;
   is_admin?: boolean;
   error?: string;
   logout_url?: string;

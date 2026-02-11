@@ -108,6 +108,7 @@ export function useSettings(): UseSettingsReturn {
           }
         });
       });
+
       setValues(initialValues);
       setOriginalValues(JSON.parse(JSON.stringify(initialValues)));
 
@@ -239,7 +240,15 @@ export function useSettings(): UseSettingsReturn {
       try {
         // Pass current form values so action can use unsaved values
         const currentValues = values[tabName] || {};
-        return await executeSettingsAction(tabName, actionKey, currentValues);
+        const result = await executeSettingsAction(tabName, actionKey, currentValues);
+
+        // Re-fetch settings after successful action to pick up updated options
+        // (e.g., BookLore "Test Connection" refreshes library/path lists)
+        if (result.success) {
+          fetchSettings(true);
+        }
+
+        return result;
       } catch (err) {
         console.error('Action execution failed:', tabName, actionKey, err);
         return {
@@ -248,7 +257,7 @@ export function useSettings(): UseSettingsReturn {
         };
       }
     },
-    [values]
+    [values, fetchSettings]
   );
 
   return {

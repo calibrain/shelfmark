@@ -7,6 +7,7 @@ interface LoginFormProps {
   error?: string | null;
   isLoading?: boolean;
   autoFocus?: boolean;
+  authMode?: string;
 }
 
 const EyeIcon = () => (
@@ -53,6 +54,7 @@ export const LoginForm = ({
   error = null,
   isLoading = false,
   autoFocus = true,
+  authMode,
 }: LoginFormProps) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -225,6 +227,26 @@ export const LoginForm = ({
           )}
         </button>
       </form>
+
+      {authMode === 'oidc' && (
+        <>
+          <div className="flex items-center my-4">
+            <div className="flex-1 border-t" style={{ borderColor: 'var(--border-color)' }} />
+            <span className="px-3 text-sm opacity-60">or</span>
+            <div className="flex-1 border-t" style={{ borderColor: 'var(--border-color)' }} />
+          </div>
+          <a
+            href={withBasePath('/api/auth/oidc/login')}
+            className="w-full py-2.5 px-4 rounded-lg font-medium text-center transition-colors border block"
+            style={{
+              borderColor: 'var(--border-color)',
+              color: 'var(--text-color)',
+            }}
+          >
+            Sign in with OIDC
+          </a>
+        </>
+      )}
     </div>
   );
 };

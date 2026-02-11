@@ -33,7 +33,7 @@ class TestAuthenticationFlow:
         data = resp.json()
         assert "auth_mode" in data
         # Should be one of the valid auth modes
-        assert data["auth_mode"] in ["none", "builtin", "cwa", "proxy"]
+        assert data["auth_mode"] in ["none", "builtin", "cwa", "proxy", "oidc"]
 
     def test_auth_check_includes_admin_status(self, api_client: APIClient):
         """Test that auth check includes admin status."""

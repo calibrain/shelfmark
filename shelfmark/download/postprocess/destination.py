@@ -59,7 +59,12 @@ def validate_destination(destination: Path, status_callback) -> bool:
 
 
 def get_final_destination(task: DownloadTask) -> Path:
-    """Get final destination directory, with content-type routing support."""
+    """Get final destination directory, with content-type routing and per-user override support."""
+
+    # Per-user destination override (set by admin in user settings)
+    user_dest = task.output_args.get("destination", "")
+    if user_dest:
+        return Path(user_dest)
 
     is_audiobook = check_audiobook(task.content_type)
 

@@ -19,6 +19,35 @@ docker exec test-cwabd python3 -m pytest tests/ -v -m "not integration"
 
 ```
 tests/
+├── config/                 # Settings & configuration tests
+│   ├── test_docker_volumes.py          # Docker volume mapping
+│   ├── test_environment.py             # Environment variable handling
+│   ├── test_mirror_settings_live_apply.py  # Mirror settings live reload
+│   ├── test_mirror_settings_options.py # Mirror settings options
+│   ├── test_security.py               # Security settings
+│   └── test_oidc_settings.py          # OIDC settings fields & show_when conditions
+│
+├── core/                   # Core application logic tests
+│   ├── test_admin_users_api.py         # Admin user CRUD API endpoints
+│   ├── test_booklore_multiuser.py      # BookLore per-user override merging
+│   ├── test_builtin_multiuser.py       # Builtin auth multi-user migration
+│   ├── test_download_processing.py     # Download file processing
+│   ├── test_hardlink.py               # Hardlink/copy operations
+│   ├── test_library_processing.py      # Library file processing
+│   ├── test_manual_query.py           # Manual search query handling
+│   ├── test_mirrors_config.py         # Mirror configuration
+│   ├── test_naming.py                 # File naming templates
+│   ├── test_oidc_auth.py             # OIDC auth helpers (group claims, user provisioning)
+│   ├── test_oidc_integration.py       # OIDC integration into auth system (logic mirror)
+│   ├── test_oidc_routes.py           # OIDC Flask route handlers
+│   ├── test_part_number_extraction.py  # Part number extraction
+│   ├── test_per_user_downloads.py     # Per-user download queue filtering
+│   ├── test_permission_handling.py    # File permission handling
+│   ├── test_processing_integration.py  # Processing integration
+│   ├── test_search_plan.py           # Search plan logic
+│   ├── test_user_db.py               # UserDB CRUD operations
+│   └── test_user_template_variable.py  # {User} template variable in naming
+│
 ├── e2e/                    # End-to-end API tests
 │   ├── conftest.py         # Fixtures (APIClient, DownloadTracker)
 │   ├── test_api.py         # Core API endpoint tests
@@ -59,6 +88,11 @@ docker exec test-cwabd python3 -m pytest tests/prowlarr/ -v -m "not integration"
 - Protocol detection (torrent vs usenet)
 - Release cache operations
 - Handler download flow logic
+- User database (CRUD, settings, OIDC subject linking)
+- OIDC authentication (group claims, user provisioning, route handlers)
+- Admin user management API (create, update, delete, password, per-user settings)
+- Multi-user download queue filtering and per-user overrides
+- Settings configuration (OIDC fields, show_when conditions)
 
 ### E2E Tests
 Test the full application through its HTTP API. Require the app to be running.

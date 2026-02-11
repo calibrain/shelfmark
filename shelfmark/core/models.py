@@ -94,6 +94,10 @@ class DownloadTask:
     output_mode: Optional[str] = None  # e.g. "folder", "booklore", "email"
     output_args: Dict[str, Any] = field(default_factory=dict)  # Per-output parameters (e.g. email recipient)
 
+    # User association (multi-user support)
+    user_id: Optional[int] = None  # DB user ID who queued this download
+    username: Optional[str] = None  # Username for {User} template variable
+
     # Runtime state
     priority: int = 0
     added_time: float = field(default_factory=time.time)
