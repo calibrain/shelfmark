@@ -803,6 +803,7 @@ def download_settings():
             default="/books",
             required=True,
             env_var="INGEST_DIR",  # Legacy env var name for backwards compatibility
+            user_overridable=True,
             show_when={
                 "field": "BOOKS_OUTPUT_MODE",
                 "value": "folder",
@@ -904,6 +905,7 @@ def download_settings():
             description="Booklore library to upload into.",
             options=get_booklore_library_options,
             required=True,
+            user_overridable=True,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
         ),
         SelectField(
@@ -913,6 +915,7 @@ def download_settings():
             options=get_booklore_path_options,
             required=True,
             filter_by_field="BOOKLORE_LIBRARY_ID",
+            user_overridable=True,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
         ),
         ActionButton(
@@ -950,6 +953,7 @@ def download_settings():
             add_label="Add Recipient",
             empty_message="No recipients configured.",
             env_supported=False,
+            user_overridable=True,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
         ),
         NumberField(

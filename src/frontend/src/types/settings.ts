@@ -49,6 +49,7 @@ export interface BaseField {
   showWhen?: ShowWhen; // Conditional visibility based on another field's value
   disabledWhen?: DisabledWhenCondition; // Conditional disable based on another field's value
   requiresRestart?: boolean; // True if changing this setting requires a container restart
+  userOverridable?: boolean; // True when this field supports per-user overrides
   universalOnly?: boolean; // Only show in Universal search mode (hide in Direct mode)
 }
 

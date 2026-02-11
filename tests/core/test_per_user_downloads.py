@@ -123,22 +123,28 @@ class TestQueueFilterByUser:
 
 
 class TestPerUserDestination:
-    """get_final_destination should respect per-user destination override in output_args."""
+    """get_final_destination should resolve destination via config user context."""
 
-    def test_uses_per_user_destination(self, monkeypatch):
-        """When output_args has a destination, it should be used instead of global."""
+    def test_passes_user_id_to_get_destination(self, monkeypatch):
+        """When task has a user_id, destination resolution should receive it."""
         from pathlib import Path
+
+        captured: dict[str, int | None] = {"user_id": None}
 
         task = DownloadTask(
             task_id="book1",
             source="direct_download",
             title="Test Book",
-            output_args={"destination": "/user-books/alice"},
+            user_id=42,
         )
+
+        def fake_get_destination(is_audiobook: bool = False, user_id=None):
+            captured["user_id"] = user_id
+            return Path("/user-books/alice")
 
         monkeypatch.setattr(
             "shelfmark.download.postprocess.destination.get_destination",
-            lambda is_audiobook=False: Path("/global/books"),
+            fake_get_destination,
         )
         monkeypatch.setattr(
             "shelfmark.download.postprocess.destination.get_aa_content_type_dir",
@@ -149,21 +155,27 @@ class TestPerUserDestination:
 
         result = get_final_destination(task)
         assert result == Path("/user-books/alice")
+        assert captured["user_id"] == 42
 
-    def test_falls_back_to_global_without_override(self, monkeypatch):
-        """When no per-user destination, should use global destination."""
+    def test_without_user_id_uses_global_context(self, monkeypatch):
+        """When task has no user_id, destination resolution should use global context."""
         from pathlib import Path
+
+        captured: dict[str, int | None] = {"user_id": 99}
 
         task = DownloadTask(
             task_id="book1",
             source="direct_download",
             title="Test Book",
-            output_args={},
         )
+
+        def fake_get_destination(is_audiobook: bool = False, user_id=None):
+            captured["user_id"] = user_id
+            return Path("/global/books")
 
         monkeypatch.setattr(
             "shelfmark.download.postprocess.destination.get_destination",
-            lambda is_audiobook=False: Path("/global/books"),
+            fake_get_destination,
         )
         monkeypatch.setattr(
             "shelfmark.download.postprocess.destination.get_aa_content_type_dir",
@@ -174,31 +186,33 @@ class TestPerUserDestination:
 
         result = get_final_destination(task)
         assert result == Path("/global/books")
+        assert captured["user_id"] is None
 
-    def test_per_user_destination_empty_string_falls_back_to_global(self, monkeypatch):
-        """Empty string destination should fall back to global."""
+    def test_content_type_routing_still_wins(self, monkeypatch):
+        """Direct mode content-type routing should take priority over destination lookup."""
         from pathlib import Path
 
         task = DownloadTask(
             task_id="book1",
             source="direct_download",
             title="Test Book",
-            output_args={"destination": ""},
+            content_type="book (fiction)",
+            user_id=42,
         )
 
         monkeypatch.setattr(
             "shelfmark.download.postprocess.destination.get_destination",
-            lambda is_audiobook=False: Path("/global/books"),
+            lambda is_audiobook=False, user_id=None: Path("/global/books"),
         )
         monkeypatch.setattr(
             "shelfmark.download.postprocess.destination.get_aa_content_type_dir",
-            lambda ct: None,
+            lambda ct: Path("/routed/books"),
         )
 
         from shelfmark.download.postprocess.destination import get_final_destination
 
         result = get_final_destination(task)
-        assert result == Path("/global/books")
+        assert result == Path("/routed/books")
 
 
 class TestTaskToDictUsername:

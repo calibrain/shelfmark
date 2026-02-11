@@ -22,6 +22,7 @@ class FieldBase:
     required: bool = False                # Whether field must have a value
     env_var: Optional[str] = None         # Override env var name (defaults to key)
     env_supported: bool = True            # Whether this setting can be set via ENV var (False = UI-only)
+    user_overridable: bool = False        # Whether admins can set per-user overrides for this field
     disabled: bool = False                # Whether field is disabled/greyed out
     disabled_reason: str = ""             # Explanation shown when disabled
     show_when: Optional[Dict[str, Any] | List[Dict[str, Any]]] = None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
@@ -685,6 +686,7 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
         "disabled": getattr(field, 'disabled', False),
         "disabledReason": getattr(field, 'disabled_reason', ''),
         "requiresRestart": getattr(field, 'requires_restart', False),
+        "userOverridable": getattr(field, 'user_overridable', False),
     }
 
     # Add optional properties if set

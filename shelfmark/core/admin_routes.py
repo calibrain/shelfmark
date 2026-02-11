@@ -5,6 +5,7 @@ All endpoints require admin session.
 """
 
 from functools import wraps
+from typing import Any
 
 from flask import Flask, jsonify, request, session
 from werkzeug.security import generate_password_hash
@@ -26,6 +27,46 @@ _DOWNLOAD_DEFAULTS = {
     "BOOKLORE_PATH_ID": "",
     "EMAIL_RECIPIENTS": [],
 }
+
+
+def _get_settings_field_map() -> dict[str, tuple[Any, str]]:
+    """Return map of setting key -> (field, tab_name) for value-bearing fields."""
+    from shelfmark.core import settings_registry
+
+    # Ensure settings modules are loaded before reading registry metadata.
+    import shelfmark.config.settings  # noqa: F401
+    import shelfmark.config.security  # noqa: F401
+
+    field_map: dict[str, tuple[Any, str]] = {}
+
+    for tab in settings_registry.get_all_settings_tabs():
+        for field in tab.fields:
+            if isinstance(field, (settings_registry.ActionButton, settings_registry.HeadingField)):
+                continue
+
+            field_map[field.key] = (field, tab.name)
+
+    return field_map
+
+
+def _validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Validate per-user settings against declared overridable settings fields."""
+    field_map = _get_settings_field_map()
+
+    valid: dict[str, Any] = {}
+    errors: list[str] = []
+
+    for key, value in settings.items():
+        if key not in field_map:
+            errors.append(f"Unknown setting: {key}")
+            continue
+        field, _ = field_map[key]
+        if not getattr(field, "user_overridable", False):
+            errors.append(f"Setting not user-overridable: {key}")
+            continue
+        valid[key] = value
+
+    return valid, errors
 
 
 def _get_auth_mode():
@@ -180,8 +221,18 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             user_db.update_user(user_id, **user_fields)
 
         # Update per-user settings
-        if "settings" in data and isinstance(data["settings"], dict):
-            user_db.set_user_settings(user_id, data["settings"])
+        if "settings" in data:
+            if not isinstance(data["settings"], dict):
+                return jsonify({"error": "Settings must be an object"}), 400
+
+            validated_settings, validation_errors = _validate_user_settings(data["settings"])
+            if validation_errors:
+                return jsonify({
+                    "error": "Invalid settings payload",
+                    "details": validation_errors,
+                }), 400
+
+            user_db.set_user_settings(user_id, validated_settings)
 
         updated = user_db.get_user(user_id=user_id)
         result = _sanitize_user(updated)
@@ -219,6 +270,47 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             "libraries": get_booklore_library_options(),
             "paths": get_booklore_path_options(),
         })
+
+    @app.route("/api/admin/users/<int:user_id>/effective-settings", methods=["GET"])
+    @_require_admin
+    def admin_get_effective_settings(user_id):
+        """Return effective per-user overridable settings with source attribution."""
+        user = user_db.get_user(user_id=user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        from shelfmark.core.config import config as app_config
+        from shelfmark.core.settings_registry import is_value_from_env
+
+        field_map = _get_settings_field_map()
+        user_settings = user_db.get_user_settings(user_id)
+        tab_config_cache: dict[str, dict[str, Any]] = {}
+        effective: dict[str, dict[str, Any]] = {}
+
+        for key in sorted(field_map.keys()):
+            field, tab_name = field_map[key]
+            if not getattr(field, "user_overridable", False):
+                continue
+
+            source = "default"
+            value = app_config.get(key, field.default, user_id=user_id)
+            if field.env_supported and is_value_from_env(field):
+                source = "env_var"
+            elif key in user_settings and user_settings[key] is not None:
+                source = "user_override"
+                value = user_settings[key]
+            else:
+                if tab_name not in tab_config_cache:
+                    tab_config_cache[tab_name] = load_config_file(tab_name)
+                if key in tab_config_cache[tab_name]:
+                    source = "global_config"
+
+            effective[key] = {
+                "value": value,
+                "source": source,
+            }
+
+        return jsonify(effective)
 
     @app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
     @_require_admin

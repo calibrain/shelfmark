@@ -7,6 +7,7 @@ import {
   getAdminUser,
   getBookloreOptions,
   getDownloadDefaults,
+  getSettingsTab,
   createAdminUser,
   updateAdminUser,
   deleteAdminUser,
@@ -23,11 +24,34 @@ const disabledInputClasses =
   'w-full px-3 py-2 rounded-lg border border-[var(--border-muted)] bg-[var(--bg-soft)] text-sm opacity-50 cursor-not-allowed';
 
 interface PerUserSettings {
-  destination?: string;
-  booklore_library_id?: string;
-  booklore_path_id?: string;
-  email_recipients?: Array<{ nickname: string; email: string }>;
+  DESTINATION?: string;
+  BOOKLORE_LIBRARY_ID?: string;
+  BOOKLORE_PATH_ID?: string;
+  EMAIL_RECIPIENTS?: Array<{ nickname: string; email: string }>;
 }
+
+type OverrideKey = 'destination' | 'booklore_library_id' | 'booklore_path_id' | 'email_recipients';
+
+const OVERRIDE_KEY_TO_SETTING_KEY: Record<OverrideKey, keyof PerUserSettings> = {
+  destination: 'DESTINATION',
+  booklore_library_id: 'BOOKLORE_LIBRARY_ID',
+  booklore_path_id: 'BOOKLORE_PATH_ID',
+  email_recipients: 'EMAIL_RECIPIENTS',
+};
+
+const FALLBACK_OVERRIDABLE_SETTINGS = new Set<keyof PerUserSettings>([
+  'DESTINATION',
+  'BOOKLORE_LIBRARY_ID',
+  'BOOKLORE_PATH_ID',
+  'EMAIL_RECIPIENTS',
+]);
+
+const EMPTY_OVERRIDES: Record<OverrideKey, boolean> = {
+  destination: false,
+  booklore_library_id: false,
+  booklore_path_id: false,
+  email_recipients: false,
+};
 
 export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -44,9 +68,15 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
   const [editPasswordConfirm, setEditPasswordConfirm] = useState('');
   const [downloadDefaults, setDownloadDefaults] = useState<DownloadDefaults | null>(null);
   const [userSettings, setUserSettings] = useState<PerUserSettings>({});
-  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  const [overrides, setOverrides] = useState<Record<OverrideKey, boolean>>({ ...EMPTY_OVERRIDES });
+  const [userOverridableSettings, setUserOverridableSettings] = useState<Set<keyof PerUserSettings>>(new Set(FALLBACK_OVERRIDABLE_SETTINGS));
   const [bookloreLibraries, setBookloreLibraries] = useState<BookloreOption[]>([]);
   const [booklorePaths, setBooklorePaths] = useState<BookloreOption[]>([]);
+
+  const isUserOverridable = useCallback(
+    (key: keyof PerUserSettings) => userOverridableSettings.has(key),
+    [userOverridableSettings]
+  );
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -82,6 +112,26 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
       const settings = (fullUser.settings || {}) as PerUserSettings;
       setUserSettings(settings);
 
+      let overridableSettings = new Set<keyof PerUserSettings>(FALLBACK_OVERRIDABLE_SETTINGS);
+      try {
+        const downloadsTab = await getSettingsTab('downloads');
+        const fromMetadata = new Set<keyof PerUserSettings>();
+        downloadsTab.fields.forEach((field) => {
+          if ('userOverridable' in field && field.userOverridable === true) {
+            const key = field.key as keyof PerUserSettings;
+            if (FALLBACK_OVERRIDABLE_SETTINGS.has(key)) {
+              fromMetadata.add(key);
+            }
+          }
+        });
+        if (fromMetadata.size > 0) {
+          overridableSettings = fromMetadata;
+        }
+      } catch {
+        // Keep fallback behavior if settings metadata fails to load.
+      }
+      setUserOverridableSettings(overridableSettings);
+
       // Fetch BookLore options if in booklore mode
       if (defaults.BOOKS_OUTPUT_MODE === 'booklore') {
         try {
@@ -96,15 +146,16 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
 
       // Set override toggles based on which settings exist
       setOverrides({
-        destination: !!settings.destination,
-        booklore_library_id: !!settings.booklore_library_id,
-        booklore_path_id: !!settings.booklore_path_id,
-        email_recipients: !!settings.email_recipients?.length,
+        destination: overridableSettings.has('DESTINATION') && !!settings.DESTINATION,
+        booklore_library_id: overridableSettings.has('BOOKLORE_LIBRARY_ID') && !!settings.BOOKLORE_LIBRARY_ID,
+        booklore_path_id: overridableSettings.has('BOOKLORE_PATH_ID') && !!settings.BOOKLORE_PATH_ID,
+        email_recipients: overridableSettings.has('EMAIL_RECIPIENTS') && !!settings.EMAIL_RECIPIENTS?.length,
       });
     } catch {
       setDownloadDefaults(null);
       setUserSettings({});
-      setOverrides({});
+      setOverrides({ ...EMPTY_OVERRIDES });
+      setUserOverridableSettings(new Set(FALLBACK_OVERRIDABLE_SETTINGS));
     }
   }, []);
 
@@ -136,25 +187,33 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
 
     // Build settings payload: include overridden values, null out cleared overrides
     const settingsPayload: Record<string, unknown> = {};
-    if (overrides.destination) {
-      settingsPayload.destination = userSettings.destination || '';
-    } else {
-      settingsPayload.destination = null;
+    if (isUserOverridable('DESTINATION')) {
+      if (overrides.destination) {
+        settingsPayload.DESTINATION = userSettings.DESTINATION || '';
+      } else {
+        settingsPayload.DESTINATION = null;
+      }
     }
-    if (overrides.booklore_library_id) {
-      settingsPayload.booklore_library_id = userSettings.booklore_library_id || '';
-    } else {
-      settingsPayload.booklore_library_id = null;
+    if (isUserOverridable('BOOKLORE_LIBRARY_ID')) {
+      if (overrides.booklore_library_id) {
+        settingsPayload.BOOKLORE_LIBRARY_ID = userSettings.BOOKLORE_LIBRARY_ID || '';
+      } else {
+        settingsPayload.BOOKLORE_LIBRARY_ID = null;
+      }
     }
-    if (overrides.booklore_path_id) {
-      settingsPayload.booklore_path_id = userSettings.booklore_path_id || '';
-    } else {
-      settingsPayload.booklore_path_id = null;
+    if (isUserOverridable('BOOKLORE_PATH_ID')) {
+      if (overrides.booklore_path_id) {
+        settingsPayload.BOOKLORE_PATH_ID = userSettings.BOOKLORE_PATH_ID || '';
+      } else {
+        settingsPayload.BOOKLORE_PATH_ID = null;
+      }
     }
-    if (overrides.email_recipients) {
-      settingsPayload.email_recipients = userSettings.email_recipients || [];
-    } else {
-      settingsPayload.email_recipients = null;
+    if (isUserOverridable('EMAIL_RECIPIENTS')) {
+      if (overrides.email_recipients) {
+        settingsPayload.EMAIL_RECIPIENTS = userSettings.EMAIL_RECIPIENTS || [];
+      } else {
+        settingsPayload.EMAIL_RECIPIENTS = null;
+      }
     }
 
     // Skip sending role when it's managed by OIDC group auth
@@ -199,12 +258,13 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
     }
   };
 
-  const toggleOverride = (key: string, enabled: boolean) => {
+  const toggleOverride = (key: OverrideKey, enabled: boolean) => {
     setOverrides((prev) => ({ ...prev, [key]: enabled }));
     if (!enabled) {
       setUserSettings((prev) => {
         const next = { ...prev };
-        (next as Record<string, unknown>)[key] = null;
+        const settingKey = OVERRIDE_KEY_TO_SETTING_KEY[key];
+        (next as Record<string, unknown>)[settingKey] = null;
         return next;
       });
     }
@@ -236,6 +296,11 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
   // Edit view
   if (editingUser) {
     const outputMode = downloadDefaults?.BOOKS_OUTPUT_MODE || 'folder';
+    const canOverrideDestination = isUserOverridable('DESTINATION') && (outputMode === 'folder' || outputMode === 'booklore');
+    const canOverrideBookloreLibrary = isUserOverridable('BOOKLORE_LIBRARY_ID') && outputMode === 'booklore';
+    const canOverrideBooklorePath = isUserOverridable('BOOKLORE_PATH_ID') && outputMode === 'booklore';
+    const canOverrideEmailRecipients = isUserOverridable('EMAIL_RECIPIENTS') && outputMode === 'email';
+    const showDownloadOverrides = canOverrideDestination || canOverrideBookloreLibrary || canOverrideBooklorePath || canOverrideEmailRecipients;
 
     return (
       <div className="flex-1 overflow-y-auto p-6">
@@ -340,7 +405,7 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
           )}
 
           {/* Per-user download settings overrides */}
-          {downloadDefaults && (
+          {downloadDefaults && showDownloadOverrides && (
             <>
               <div className="border-t border-[var(--border-muted)] pt-4">
                 <p className="text-xs font-medium opacity-60 mb-1">Download Settings Overrides</p>
@@ -348,7 +413,7 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
               </div>
 
               {/* Destination override (shown for folder mode) */}
-              {(outputMode === 'folder' || outputMode === 'booklore') && (
+              {canOverrideDestination && (
                 <OverrideField
                   label="Destination Folder"
                   enabled={overrides.destination || false}
@@ -357,8 +422,8 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
                 >
                   <input
                     type="text"
-                    value={userSettings.destination || ''}
-                    onChange={(e) => setUserSettings((s) => ({ ...s, destination: e.target.value }))}
+                    value={userSettings.DESTINATION || ''}
+                    onChange={(e) => setUserSettings((s) => ({ ...s, DESTINATION: e.target.value }))}
                     className={overrides.destination ? inputClasses : disabledInputClasses}
                     disabled={!overrides.destination}
                     placeholder={downloadDefaults.DESTINATION || '/books'}
@@ -367,68 +432,72 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
               )}
 
               {/* BookLore overrides */}
-              {outputMode === 'booklore' && (
+              {(canOverrideBookloreLibrary || canOverrideBooklorePath) && (
                 <>
-                  <OverrideField
-                    label="BookLore Library"
-                    enabled={overrides.booklore_library_id || false}
-                    onToggle={(v) => toggleOverride('booklore_library_id', v)}
-                    globalValue={
-                      bookloreLibraries.find((l) => l.value === downloadDefaults.BOOKLORE_LIBRARY_ID)?.label
-                      || downloadDefaults.BOOKLORE_LIBRARY_ID
-                      || 'Not set'
-                    }
-                  >
-                    <select
-                      value={userSettings.booklore_library_id || ''}
-                      onChange={(e) => {
-                        setUserSettings((s) => ({ ...s, booklore_library_id: e.target.value, booklore_path_id: '' }));
-                        // Reset path override when library changes
-                        if (overrides.booklore_path_id) {
-                          setOverrides((o) => ({ ...o, booklore_path_id: true }));
-                        }
-                      }}
-                      className={overrides.booklore_library_id ? inputClasses : disabledInputClasses}
-                      disabled={!overrides.booklore_library_id}
+                  {canOverrideBookloreLibrary && (
+                    <OverrideField
+                      label="BookLore Library"
+                      enabled={overrides.booklore_library_id || false}
+                      onToggle={(v) => toggleOverride('booklore_library_id', v)}
+                      globalValue={
+                        bookloreLibraries.find((l) => l.value === downloadDefaults.BOOKLORE_LIBRARY_ID)?.label
+                        || downloadDefaults.BOOKLORE_LIBRARY_ID
+                        || 'Not set'
+                      }
                     >
-                      <option value="">Select library...</option>
-                      {bookloreLibraries.map((lib) => (
-                        <option key={lib.value} value={lib.value}>{lib.label}</option>
-                      ))}
-                    </select>
-                  </OverrideField>
-                  <OverrideField
-                    label="BookLore Path"
-                    enabled={overrides.booklore_path_id || false}
-                    onToggle={(v) => toggleOverride('booklore_path_id', v)}
-                    globalValue={
-                      booklorePaths.find((p) => p.value === downloadDefaults.BOOKLORE_PATH_ID)?.label
-                      || downloadDefaults.BOOKLORE_PATH_ID
-                      || 'Not set'
-                    }
-                  >
-                    <select
-                      value={userSettings.booklore_path_id || ''}
-                      onChange={(e) => setUserSettings((s) => ({ ...s, booklore_path_id: e.target.value }))}
-                      className={overrides.booklore_path_id ? inputClasses : disabledInputClasses}
-                      disabled={!overrides.booklore_path_id}
-                    >
-                      <option value="">Select path...</option>
-                      {booklorePaths
-                        .filter((p) => {
-                          const selectedLib = userSettings.booklore_library_id || downloadDefaults.BOOKLORE_LIBRARY_ID;
-                          return !p.childOf || p.childOf === selectedLib;
-                        })
-                        .map((path) => (
-                          <option key={path.value} value={path.value}>{path.label}</option>
+                      <select
+                        value={userSettings.BOOKLORE_LIBRARY_ID || ''}
+                        onChange={(e) => {
+                          setUserSettings((s) => ({ ...s, BOOKLORE_LIBRARY_ID: e.target.value, BOOKLORE_PATH_ID: '' }));
+                          // Reset path override when library changes
+                          if (overrides.booklore_path_id) {
+                            setOverrides((o) => ({ ...o, booklore_path_id: true }));
+                          }
+                        }}
+                        className={overrides.booklore_library_id ? inputClasses : disabledInputClasses}
+                        disabled={!overrides.booklore_library_id}
+                      >
+                        <option value="">Select library...</option>
+                        {bookloreLibraries.map((lib) => (
+                          <option key={lib.value} value={lib.value}>{lib.label}</option>
                         ))}
-                    </select>
-                  </OverrideField>
+                      </select>
+                    </OverrideField>
+                  )}
+                  {canOverrideBooklorePath && (
+                    <OverrideField
+                      label="BookLore Path"
+                      enabled={overrides.booklore_path_id || false}
+                      onToggle={(v) => toggleOverride('booklore_path_id', v)}
+                      globalValue={
+                        booklorePaths.find((p) => p.value === downloadDefaults.BOOKLORE_PATH_ID)?.label
+                        || downloadDefaults.BOOKLORE_PATH_ID
+                        || 'Not set'
+                      }
+                    >
+                      <select
+                        value={userSettings.BOOKLORE_PATH_ID || ''}
+                        onChange={(e) => setUserSettings((s) => ({ ...s, BOOKLORE_PATH_ID: e.target.value }))}
+                        className={overrides.booklore_path_id ? inputClasses : disabledInputClasses}
+                        disabled={!overrides.booklore_path_id}
+                      >
+                        <option value="">Select path...</option>
+                        {booklorePaths
+                          .filter((p) => {
+                            const selectedLib = userSettings.BOOKLORE_LIBRARY_ID || downloadDefaults.BOOKLORE_LIBRARY_ID;
+                            return !p.childOf || p.childOf === selectedLib;
+                          })
+                          .map((path) => (
+                            <option key={path.value} value={path.value}>{path.label}</option>
+                          ))}
+                      </select>
+                    </OverrideField>
+                  )}
                 </>
               )}
 
               {/* Email recipients override */}
-              {outputMode === 'email' && (
+              {canOverrideEmailRecipients && (
                 <OverrideField
                   label="Email Recipients"
                   enabled={overrides.email_recipients || false}
@@ -441,8 +510,8 @@ export const UsersPanel = ({ onShowToast }: UsersPanelProps) => {
                 >
                   {overrides.email_recipients && (
                     <EmailRecipientsEditor
-                      recipients={userSettings.email_recipients || []}
-                      onChange={(r) => setUserSettings((s) => ({ ...s, email_recipients: r }))}
+                      recipients={userSettings.EMAIL_RECIPIENTS || []}
+                      onChange={(r) => setUserSettings((s) => ({ ...s, EMAIL_RECIPIENTS: r }))}
                     />
                   )}
                 </OverrideField>

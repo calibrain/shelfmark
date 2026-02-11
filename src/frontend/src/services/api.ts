@@ -1,5 +1,5 @@
 import { Book, StatusData, AppConfig, LoginCredentials, AuthResponse, ReleaseSource, ReleasesResponse } from '../types';
-import { SettingsResponse, ActionResult, UpdateResult } from '../types/settings';
+import { SettingsResponse, ActionResult, UpdateResult, SettingsTab } from '../types/settings';
 import { MetadataBookData, transformMetadataToBook } from '../utils/bookTransformers';
 import { getApiBase } from '../utils/basePath';
 
@@ -264,6 +264,10 @@ export const checkAuth = async (): Promise<AuthResponse> => {
 // Settings API functions
 export const getSettings = async (): Promise<SettingsResponse> => {
   return fetchJSON<SettingsResponse>(API.settings);
+};
+
+export const getSettingsTab = async (tabName: string): Promise<SettingsTab> => {
+  return fetchJSON<SettingsTab>(`${API.settings}/${tabName}`);
 };
 
 export const updateSettings = async (

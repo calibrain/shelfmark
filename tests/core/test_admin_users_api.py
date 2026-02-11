@@ -292,10 +292,10 @@ class TestAdminUserGetEndpoint:
 
     def test_get_user_includes_settings(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
-        user_db.set_user_settings(user["id"], {"booklore_library_id": 5})
+        user_db.set_user_settings(user["id"], {"BOOKLORE_LIBRARY_ID": 5})
 
         resp = admin_client.get(f"/api/admin/users/{user['id']}")
-        assert resp.json["settings"]["booklore_library_id"] == 5
+        assert resp.json["settings"]["BOOKLORE_LIBRARY_ID"] == 5
 
     def test_get_user_empty_settings(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
@@ -375,27 +375,27 @@ class TestAdminUserUpdateEndpoint:
 
         resp = admin_client.put(
             f"/api/admin/users/{user['id']}",
-            json={"settings": {"booklore_library_id": 3}},
+            json={"settings": {"BOOKLORE_LIBRARY_ID": 3}},
         )
         assert resp.status_code == 200
         settings = user_db.get_user_settings(user["id"])
-        assert settings["booklore_library_id"] == 3
+        assert settings["BOOKLORE_LIBRARY_ID"] == 3
 
     def test_update_settings_merges(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
-        user_db.set_user_settings(user["id"], {"existing_key": "keep"})
+        user_db.set_user_settings(user["id"], {"DESTINATION": "/books/alice"})
 
         resp = admin_client.put(
             f"/api/admin/users/{user['id']}",
-            json={"settings": {"new_key": "added"}},
+            json={"settings": {"BOOKLORE_LIBRARY_ID": "2"}},
         )
         assert resp.status_code == 200
-        assert resp.json["settings"]["existing_key"] == "keep"
-        assert resp.json["settings"]["new_key"] == "added"
+        assert resp.json["settings"]["DESTINATION"] == "/books/alice"
+        assert resp.json["settings"]["BOOKLORE_LIBRARY_ID"] == "2"
 
     def test_update_response_includes_settings(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
-        user_db.set_user_settings(user["id"], {"theme": "dark"})
+        user_db.set_user_settings(user["id"], {"DESTINATION": "/books/alice"})
 
         resp = admin_client.put(
             f"/api/admin/users/{user['id']}",
@@ -403,7 +403,40 @@ class TestAdminUserUpdateEndpoint:
         )
         assert resp.status_code == 200
         assert "settings" in resp.json
-        assert resp.json["settings"]["theme"] == "dark"
+        assert resp.json["settings"]["DESTINATION"] == "/books/alice"
+
+    def test_update_user_settings_rejects_unknown_key(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"settings": {"UNKNOWN_SETTING": "value"}},
+        )
+        assert resp.status_code == 400
+        assert resp.json["error"] == "Invalid settings payload"
+        assert any("Unknown setting: UNKNOWN_SETTING" in msg for msg in resp.json["details"])
+
+    def test_update_user_settings_rejects_non_overridable_key(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"settings": {"BOOKS_OUTPUT_MODE": "folder"}},
+        )
+        assert resp.status_code == 400
+        assert resp.json["error"] == "Invalid settings payload"
+        assert any("Setting not user-overridable: BOOKS_OUTPUT_MODE" in msg for msg in resp.json["details"])
+
+    def test_update_user_settings_rejects_lowercase_key(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"settings": {"destination": "/books/alice"}},
+        )
+        assert resp.status_code == 400
+        assert resp.json["error"] == "Invalid settings payload"
+        assert any("Unknown setting: destination" in msg for msg in resp.json["details"])
 
     def test_update_response_excludes_password_hash(self, admin_client, user_db):
         user = user_db.create_user(username="alice", password_hash="secret")
@@ -596,6 +629,70 @@ class TestAdminBookloreOptions:
 
     def test_requires_admin(self, regular_client):
         resp = regular_client.get("/api/admin/booklore-options")
+        assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# GET /api/admin/users/<id>/effective-settings
+# ---------------------------------------------------------------------------
+
+
+class TestAdminEffectiveSettings:
+    """Tests for GET /api/admin/users/<id>/effective-settings."""
+
+    @pytest.fixture(autouse=True)
+    def setup_config(self, tmp_path, monkeypatch):
+        import json
+        from pathlib import Path
+
+        config_dir = str(tmp_path)
+        monkeypatch.setenv("CONFIG_DIR", config_dir)
+        monkeypatch.setattr("shelfmark.config.env.CONFIG_DIR", Path(config_dir))
+
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+        downloads_config = {
+            "BOOKS_OUTPUT_MODE": "booklore",
+            "BOOKLORE_LIBRARY_ID": "7",
+        }
+        (plugins_dir / "downloads.json").write_text(json.dumps(downloads_config))
+
+        monkeypatch.setenv("INGEST_DIR", "/env/books")
+
+        # Ensure config singleton sees the current test env/config dir.
+        from shelfmark.core.config import config as app_config
+        app_config.refresh()
+
+    def test_returns_effective_values_with_sources(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+        user_db.set_user_settings(
+            user["id"],
+            {"EMAIL_RECIPIENTS": [{"nickname": "kindle", "email": "alice@kindle.com"}]},
+        )
+
+        resp = admin_client.get(f"/api/admin/users/{user['id']}/effective-settings")
+        assert resp.status_code == 200
+
+        data = resp.json
+        assert data["DESTINATION"]["value"] == "/env/books"
+        assert data["DESTINATION"]["source"] == "env_var"
+
+        assert data["BOOKLORE_LIBRARY_ID"]["value"] == "7"
+        assert data["BOOKLORE_LIBRARY_ID"]["source"] == "global_config"
+
+        assert data["BOOKLORE_PATH_ID"]["value"] in ("", None)
+        assert data["BOOKLORE_PATH_ID"]["source"] == "default"
+
+        assert data["EMAIL_RECIPIENTS"]["value"] == [{"nickname": "kindle", "email": "alice@kindle.com"}]
+        assert data["EMAIL_RECIPIENTS"]["source"] == "user_override"
+
+    def test_returns_404_for_unknown_user(self, admin_client):
+        resp = admin_client.get("/api/admin/users/9999/effective-settings")
+        assert resp.status_code == 404
+
+    def test_requires_admin(self, regular_client, user_db):
+        user = user_db.create_user(username="alice")
+        resp = regular_client.get(f"/api/admin/users/{user['id']}/effective-settings")
         assert resp.status_code == 403
 
 

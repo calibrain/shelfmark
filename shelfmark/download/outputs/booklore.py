@@ -50,7 +50,7 @@ def _parse_int(value: Any, label: str) -> int:
 
 def build_booklore_config(
     values: Mapping[str, Any],
-    user_overrides: Optional[Dict[str, Any]] = None,
+    user_id: Optional[int] = None,
 ) -> BookloreConfig:
     base_url = str(values.get("BOOKLORE_HOST", "")).strip()
     username = str(values.get("BOOKLORE_USERNAME", "")).strip()
@@ -63,12 +63,21 @@ def build_booklore_config(
     if not password:
         raise BookloreError("Booklore password is required")
 
-    # Per-user library/path overrides (auth stays global)
-    overrides = user_overrides or {}
-    _lib_override = overrides.get("booklore_library_id")
-    library_id_val = _lib_override if _lib_override is not None else values.get("BOOKLORE_LIBRARY_ID")
-    _path_override = overrides.get("booklore_path_id")
-    path_id_val = _path_override if _path_override is not None else values.get("BOOKLORE_PATH_ID")
+    # Resolve library/path through config so user override precedence is centralized.
+    if user_id is not None:
+        library_id_val = core_config.config.get(
+            "BOOKLORE_LIBRARY_ID",
+            values.get("BOOKLORE_LIBRARY_ID"),
+            user_id=user_id,
+        )
+        path_id_val = core_config.config.get(
+            "BOOKLORE_PATH_ID",
+            values.get("BOOKLORE_PATH_ID"),
+            user_id=user_id,
+        )
+    else:
+        library_id_val = values.get("BOOKLORE_LIBRARY_ID")
+        path_id_val = values.get("BOOKLORE_PATH_ID")
 
     library_id = _parse_int(library_id_val, "Booklore library ID")
     path_id = _parse_int(path_id_val, "Booklore path ID")
@@ -221,7 +230,7 @@ def _post_process_booklore(
     try:
         booklore_config = build_booklore_config(
             _get_booklore_settings(),
-            user_overrides=task.output_args if task.output_args else None,
+            user_id=task.user_id,
         )
     except BookloreError as e:
         logger.warning("Task %s: Booklore configuration error: %s", task.task_id, e)

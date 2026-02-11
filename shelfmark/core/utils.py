@@ -119,19 +119,19 @@ _LEGACY_CONTENT_TYPE_TO_CONFIG_KEY = {
 }
 
 
-def get_destination(is_audiobook: bool = False) -> Path:
+def get_destination(is_audiobook: bool = False, user_id: Optional[int] = None) -> Path:
     """Get base destination directory. Audiobooks fall back to main destination."""
     from shelfmark.core.config import config
 
     if is_audiobook:
         # Audiobook destination with fallback to main destination
-        audiobook_dest = config.get("DESTINATION_AUDIOBOOK", "")
+        audiobook_dest = config.get("DESTINATION_AUDIOBOOK", "", user_id=user_id)
         if audiobook_dest:
             return Path(audiobook_dest)
 
     # Main destination (also fallback for audiobooks)
     # Check new setting first, then legacy INGEST_DIR
-    destination = config.get("DESTINATION", "") or config.get("INGEST_DIR", "/books")
+    destination = config.get("DESTINATION", "", user_id=user_id) or config.get("INGEST_DIR", "/books")
     return Path(destination)
 
 
