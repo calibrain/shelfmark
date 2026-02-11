@@ -8,7 +8,7 @@ interface TagListFieldProps {
   disabled?: boolean;
 }
 
-function normalizeTag(raw: string): string {
+function normalizeTag(raw: string, normalizeUrls: boolean): string {
   let s = raw.trim();
   if (!s) return '';
 
@@ -20,14 +20,16 @@ function normalizeTag(raw: string): string {
     s = s.slice(1, -1).trim();
   }
 
-  // Avoid special sentinel values.
-  if (s.toLowerCase() === 'auto') return '';
+  if (normalizeUrls) {
+    // Avoid special sentinel values.
+    if (s.toLowerCase() === 'auto') return '';
 
-  // Basic URL normalization to keep UX friendly; backend also normalizes on save.
-  if (!s.includes('://') && !s.startsWith('/')) {
-    s = `https://${s}`;
+    // Basic URL normalization to keep UX friendly; backend also normalizes on save.
+    if (!s.includes('://') && !s.startsWith('/')) {
+      s = `https://${s}`;
+    }
+    s = s.replace(/\/+$/, '');
   }
-  s = s.replace(/\/+$/, '');
   return s.trim();
 }
 
@@ -35,6 +37,7 @@ export const TagListField = ({ field, value, onChange, disabled }: TagListFieldP
   const isDisabled = disabled ?? false;
   const inputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState('');
+  const normalizeUrls = field.normalizeUrls ?? true;
 
   const tags = useMemo(() => (value ?? []).map(String).filter((t) => t.trim() !== ''), [value]);
 
@@ -48,7 +51,7 @@ export const TagListField = ({ field, value, onChange, disabled }: TagListFieldP
 
     const next = [...tags];
     for (const part of parts) {
-      const normalized = normalizeTag(part);
+      const normalized = normalizeTag(part, normalizeUrls);
       if (!normalized) continue;
       if (next.includes(normalized)) continue;
       next.push(normalized);
@@ -146,4 +149,3 @@ export const TagListField = ({ field, value, onChange, disabled }: TagListFieldP
     </div>
   );
 };
-

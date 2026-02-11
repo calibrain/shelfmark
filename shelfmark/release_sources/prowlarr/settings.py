@@ -18,6 +18,7 @@ from shelfmark.core.settings_registry import (
     ActionButton,
     SelectField,
     MultiSelectField,
+    TagListField,
 )
 from shelfmark.core.utils import normalize_http_url
 
@@ -553,6 +554,15 @@ def prowlarr_clients_settings():
             description="Category for audiobook downloads. Leave empty to use the book category.",
             placeholder="",
             default="",
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "qbittorrent"},
+        ),
+        TagListField(
+            key="QBITTORRENT_TAG",
+            label="Tags",
+            description="Tag(s) to assign to qBittorrent downloads. Leave empty for no tags.",
+            placeholder="",
+            default=[],
+            normalize_urls=False,
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "qbittorrent"},
         ),
 

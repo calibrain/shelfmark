@@ -32,6 +32,35 @@ def _hashes_match(hash1: str, hash2: str) -> bool:
     return False
 
 
+def _normalize_tags(raw_tags: object) -> list[str]:
+    """Normalize tag input to a clean, de-duplicated list of strings."""
+    if raw_tags is None:
+        return []
+
+    if isinstance(raw_tags, str):
+        parts = [part.strip() for part in raw_tags.split(",")]
+    elif isinstance(raw_tags, (list, tuple, set)):
+        parts = []
+        for item in raw_tags:
+            if item is None:
+                continue
+            parts.append(str(item).strip())
+    else:
+        parts = [str(raw_tags).strip()] if raw_tags else []
+
+    tags: list[str] = []
+    seen = set()
+    for part in parts:
+        if not part:
+            continue
+        if part in seen:
+            continue
+        seen.add(part)
+        tags.append(part)
+
+    return tags
+
+
 @register_client("torrent")
 class QBittorrentClient(DownloadClient):
     """qBittorrent download client."""
@@ -110,6 +139,7 @@ class QBittorrentClient(DownloadClient):
             password=config.get("QBITTORRENT_PASSWORD", ""),
         )
         self._category = config.get("QBITTORRENT_CATEGORY", "books")
+        self._tags = _normalize_tags(config.get("QBITTORRENT_TAG", []))
 
 
     def _get_torrents_info(
@@ -256,6 +286,7 @@ class QBittorrentClient(DownloadClient):
         try:
             # Use configured category if not explicitly provided
             category = category or self._category
+            tags = self._tags
 
             # Ensure category exists (may already exist, which is fine)
             try:
@@ -271,19 +302,24 @@ class QBittorrentClient(DownloadClient):
             torrent_data = torrent_info.torrent_data
 
             # Add the torrent - use file content if we have it, otherwise URL
+            add_kwargs = {
+                "category": category,
+                "rename": name,
+            }
+            if tags:
+                add_kwargs["tags"] = ",".join(tags)
+
             if torrent_data:
                 result = self._client.torrents_add(
                     torrent_files=torrent_data,
-                    category=category,
-                    rename=name,
+                    **add_kwargs,
                 )
             else:
                 # Use magnet URL if available, otherwise original URL
                 add_url = torrent_info.magnet_url or url
                 result = self._client.torrents_add(
                     urls=add_url,
-                    category=category,
-                    rename=name,
+                    **add_kwargs,
                 )
 
             logger.debug(f"qBittorrent add result: {result}")

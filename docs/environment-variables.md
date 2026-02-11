@@ -1315,6 +1315,7 @@ Automatically retry search without category filtering if no results are found
 | `QBITTORRENT_PASSWORD` | qBittorrent Web UI password | string (secret) | _none_ |
 | `QBITTORRENT_CATEGORY` | Category to assign to book downloads in qBittorrent | string | `books` |
 | `QBITTORRENT_CATEGORY_AUDIOBOOK` | Category for audiobook downloads. Leave empty to use the book category. | string | _empty string_ |
+| `QBITTORRENT_TAG` | Comma-separated list of tags to assign to qBittorrent downloads. Leave empty for no tags. | string | _empty string_ |
 | `TRANSMISSION_URL` | URL of your Transmission instance | string | _none_ |
 | `TRANSMISSION_USERNAME` | Transmission RPC username (if authentication enabled) | string | _none_ |
 | `TRANSMISSION_PASSWORD` | Transmission RPC password | string (secret) | _none_ |
@@ -1396,6 +1397,15 @@ Category to assign to book downloads in qBittorrent
 **Audiobook Category**
 
 Category for audiobook downloads. Leave empty to use the book category.
+
+- **Type:** string
+- **Default:** _empty string_
+
+#### `QBITTORRENT_TAG`
+
+**Tags**
+
+Comma-separated list of tags to assign to qBittorrent downloads. Leave empty for no tags.
 
 - **Type:** string
 - **Default:** _empty string_

@@ -88,6 +88,7 @@ class TagListField(FieldBase):
     """Editable list of free-form string values (tag/chip input)."""
     placeholder: str = ""
     default: List[str] = field(default_factory=list)
+    normalize_urls: bool = True
 
 
 @dataclass
@@ -721,6 +722,7 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
         result["variant"] = field.variant
     elif isinstance(field, TagListField):
         result["placeholder"] = field.placeholder
+        result["normalizeUrls"] = field.normalize_urls
     elif isinstance(field, OrderableListField):
         # Support callable options for lazy evaluation (avoids circular imports)
         options = field.options() if callable(field.options) else field.options
