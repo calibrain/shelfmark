@@ -30,6 +30,7 @@ from shelfmark.core.prefix_middleware import PrefixMiddleware
 from shelfmark.core.auth_modes import (
     determine_auth_mode,
     get_auth_check_admin_status,
+    has_local_password_admin,
     is_settings_or_onboarding_path,
     should_restrict_settings_to_admin,
 )
@@ -196,7 +197,11 @@ def get_auth_mode() -> str:
 
     try:
         security_config = load_config_file("security")
-        return determine_auth_mode(security_config, CWA_DB_PATH)
+        return determine_auth_mode(
+            security_config,
+            CWA_DB_PATH,
+            has_local_admin=has_local_password_admin(user_db),
+        )
     except Exception:
         return "none"
 

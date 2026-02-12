@@ -83,7 +83,7 @@ def security_settings():
 
     auth_method_options = [
         {"label": "No Authentication", "value": "none"},
-        {"label": "Username/Password", "value": "builtin"},
+        {"label": "Local", "value": "builtin"},
         {"label": "Proxy Authentication", "value": "proxy"},
         {"label": "OIDC (OpenID Connect)", "value": "oidc"},
     ]
@@ -103,28 +103,12 @@ def security_settings():
             default="none",
             env_supported=False,
         ),
-        _auth_ui_field(
-            TextField,
-            "builtin",
-            key="BUILTIN_USERNAME",
-            label="Default User Username",
-            description="Creates a default admin user with these credentials. Manage additional users in the Users tab.",
-            placeholder="Enter username",
-        ),
-        _auth_ui_field(
-            PasswordField,
-            "builtin",
-            key="BUILTIN_PASSWORD",
-            label="Default User Password",
-            description="Set or change the default user's password.",
-            placeholder="Enter new password",
-        ),
-        _auth_ui_field(
-            PasswordField,
-            "builtin",
-            key="BUILTIN_PASSWORD_CONFIRM",
-            label="Confirm Password",
-            placeholder="Confirm new password",
+        ActionButton(
+            key="open_users_tab",
+            label="Go to Users",
+            description="Configure local users and admin access in the Users tab.",
+            style="primary",
+            show_when=_auth_condition("builtin"),
         ),
         _auth_ui_field(
             TextField,

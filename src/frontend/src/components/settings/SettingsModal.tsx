@@ -183,9 +183,17 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
       if (!selectedTab) {
         return { success: false, message: 'No tab selected' };
       }
+
+      if (selectedTab === 'security' && actionKey === 'open_users_tab') {
+        setSelectedTab('users');
+        if (isMobile) {
+          setShowMobileDetail(true);
+        }
+        return { success: true, message: 'Opening Users tab...' };
+      }
       return executeAction(selectedTab, actionKey);
     },
-    [selectedTab, executeAction]
+    [selectedTab, executeAction, isMobile, setSelectedTab]
   );
 
   // Memoize the field change handler to prevent creating new functions on every render

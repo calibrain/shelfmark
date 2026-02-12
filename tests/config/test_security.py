@@ -273,16 +273,44 @@ class TestSecuritySettings:
             option_values = [opt["value"] for opt in auth_method_field.options]
             assert "cwa" in option_values
 
-    def test_builtin_credential_fields_present(self):
-        """Builtin username/password fields should be available."""
+    def test_builtin_credential_fields_hidden(self):
+        """Builtin username/password fields should be removed from settings UI."""
         from shelfmark.config.security import security_settings
 
         fields = security_settings()
         field_keys = [f.key for f in fields]
 
-        assert "BUILTIN_USERNAME" in field_keys
-        assert "BUILTIN_PASSWORD" in field_keys
-        assert "BUILTIN_PASSWORD_CONFIRM" in field_keys
+        assert "BUILTIN_USERNAME" not in field_keys
+        assert "BUILTIN_PASSWORD" not in field_keys
+        assert "BUILTIN_PASSWORD_CONFIRM" not in field_keys
+
+    def test_builtin_notice_field_removed(self):
+        """Builtin guidance should be handled by the action button only."""
+        from shelfmark.config.security import security_settings
+
+        fields = security_settings()
+        notice = next((f for f in fields if f.key == "builtin_auth_notice"), None)
+        assert notice is None
+
+    def test_builtin_option_label_is_local(self):
+        """Builtin auth option should be labeled Local."""
+        from shelfmark.config.security import security_settings
+
+        fields = security_settings()
+        auth_field = next((f for f in fields if f.key == "AUTH_METHOD"), None)
+        builtin_option = next((opt for opt in auth_field.options if opt["value"] == "builtin"), None)
+        assert builtin_option is not None
+        assert builtin_option["label"] == "Local"
+
+    def test_builtin_users_navigation_action_present(self):
+        """Builtin mode should include an action button to open Users tab."""
+        from shelfmark.config.security import security_settings
+
+        fields = security_settings()
+        action = next((f for f in fields if f.key == "open_users_tab"), None)
+        assert action is not None
+        assert action.label == "Go to Users"
+        assert action.show_when == {"field": "AUTH_METHOD", "value": "builtin"}
 
 
 class TestPasswordValidation:

@@ -27,6 +27,7 @@ from shelfmark.core.auth_modes import (
     AUTH_SOURCE_OIDC,
     AUTH_SOURCE_PROXY,
     determine_auth_mode,
+    has_local_password_admin,
     normalize_auth_source,
 )
 from shelfmark.core.cwa_user_sync import sync_cwa_users_from_rows
@@ -68,7 +69,11 @@ def _get_auth_mode():
     """Get current auth mode from config."""
     try:
         config = load_config_file("security")
-        return determine_auth_mode(config, CWA_DB_PATH)
+        return determine_auth_mode(
+            config,
+            CWA_DB_PATH,
+            has_local_admin=has_local_password_admin(),
+        )
     except Exception:
         return "none"
 

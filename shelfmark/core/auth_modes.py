@@ -1,5 +1,6 @@
 """Authentication mode, auth-source normalization, and admin access policy helpers."""
 
+import os
 from typing import Any, Mapping
 
 AUTH_SOURCE_BUILTIN = "builtin"
@@ -13,6 +14,25 @@ AUTH_SOURCES = (
     AUTH_SOURCE_CWA,
 )
 AUTH_SOURCE_SET = frozenset(AUTH_SOURCES)
+
+
+def has_local_password_admin(user_db: Any | None = None) -> bool:
+    """Return True when at least one local admin with a password exists."""
+    try:
+        db = user_db
+        if db is None:
+            from shelfmark.core.user_db import UserDB
+
+            config_root = os.environ.get("CONFIG_DIR", "/config")
+            db = UserDB(os.path.join(config_root, "users.db"))
+            db.initialize()
+
+        return any(
+            user.get("password_hash") and user.get("role") == "admin"
+            for user in db.list_users()
+        )
+    except Exception:
+        return False
 
 
 def normalize_auth_source(
@@ -31,6 +51,8 @@ def normalize_auth_source(
 def determine_auth_mode(
     security_config: Mapping[str, Any],
     cwa_db_path: Any | None,
+    *,
+    has_local_admin: bool = True,
 ) -> str:
     """Determine active auth mode from security config and runtime prerequisites."""
     auth_mode = security_config.get("AUTH_METHOD", "none")
@@ -38,7 +60,7 @@ def determine_auth_mode(
     if auth_mode == AUTH_SOURCE_CWA and cwa_db_path:
         return AUTH_SOURCE_CWA
 
-    if auth_mode == AUTH_SOURCE_BUILTIN:
+    if auth_mode == AUTH_SOURCE_BUILTIN and has_local_admin:
         return AUTH_SOURCE_BUILTIN
 
     if auth_mode == AUTH_SOURCE_PROXY and security_config.get("PROXY_AUTH_USER_HEADER"):
@@ -46,6 +68,7 @@ def determine_auth_mode(
 
     if (
         auth_mode == AUTH_SOURCE_OIDC
+        and has_local_admin
         and security_config.get("OIDC_DISCOVERY_URL")
         and security_config.get("OIDC_CLIENT_ID")
     ):

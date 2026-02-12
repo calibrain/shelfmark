@@ -37,12 +37,26 @@ class TestDetermineAuthMode:
         }
         assert determine_auth_mode(config, cwa_db_path=None) == "builtin"
 
+    def test_builtin_requires_local_admin(self):
+        config = {
+            "AUTH_METHOD": "builtin",
+        }
+        assert determine_auth_mode(config, cwa_db_path=None, has_local_admin=False) == "none"
+
     def test_proxy_still_works(self):
         config = {
             "AUTH_METHOD": "proxy",
             "PROXY_AUTH_USER_HEADER": "X-Auth-User",
         }
         assert determine_auth_mode(config, cwa_db_path=None) == "proxy"
+
+    def test_oidc_requires_local_admin(self):
+        config = {
+            "AUTH_METHOD": "oidc",
+            "OIDC_DISCOVERY_URL": "https://auth.example.com/.well-known/openid-configuration",
+            "OIDC_CLIENT_ID": "shelfmark",
+        }
+        assert determine_auth_mode(config, cwa_db_path=None, has_local_admin=False) == "none"
 
 
 class TestSettingsRestrictionPolicy:

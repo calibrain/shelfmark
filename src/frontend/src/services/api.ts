@@ -459,6 +459,7 @@ export const syncAdminCwaUsers = async (): Promise<CwaUserSyncResult> => {
 export interface DownloadDefaults {
   BOOKS_OUTPUT_MODE: string;
   DESTINATION: string;
+  DESTINATION_AUDIOBOOK: string;
   BOOKLORE_LIBRARY_ID: string;
   BOOKLORE_PATH_ID: string;
   EMAIL_RECIPIENT: string;

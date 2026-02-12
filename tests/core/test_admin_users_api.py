@@ -463,6 +463,17 @@ class TestAdminUserUpdateEndpoint:
         settings = user_db.get_user_settings(user["id"])
         assert settings["BOOKLORE_LIBRARY_ID"] == 3
 
+    def test_update_user_settings_accepts_audiobook_destination(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"settings": {"DESTINATION_AUDIOBOOK": "/audiobooks/alice"}},
+        )
+        assert resp.status_code == 200
+        settings = user_db.get_user_settings(user["id"])
+        assert settings["DESTINATION_AUDIOBOOK"] == "/audiobooks/alice"
+
     def test_update_settings_merges(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
         user_db.set_user_settings(user["id"], {"DESTINATION": "/books/alice"})
@@ -804,6 +815,7 @@ class TestAdminDownloadDefaults:
         config = {
             "BOOKS_OUTPUT_MODE": "folder",
             "DESTINATION": "/books",
+            "DESTINATION_AUDIOBOOK": "/audiobooks",
             "BOOKLORE_LIBRARY_ID": "2",
             "BOOKLORE_PATH_ID": "5",
             "EMAIL_RECIPIENT": "reader@example.com",
@@ -816,6 +828,7 @@ class TestAdminDownloadDefaults:
         data = resp.json
         assert data["BOOKS_OUTPUT_MODE"] == "folder"
         assert data["DESTINATION"] == "/books"
+        assert data["DESTINATION_AUDIOBOOK"] == "/audiobooks"
         assert data["BOOKLORE_LIBRARY_ID"] == "2"
         assert data["BOOKLORE_PATH_ID"] == "5"
         assert data["EMAIL_RECIPIENT"] == "reader@example.com"
@@ -832,6 +845,7 @@ class TestAdminDownloadDefaults:
         data = resp.json
         assert "BOOKS_OUTPUT_MODE" in data
         assert "DESTINATION" in data
+        assert "DESTINATION_AUDIOBOOK" in data
 
     def test_requires_admin(self, regular_client):
         resp = regular_client.get("/api/admin/download-defaults")
@@ -900,6 +914,7 @@ class TestAdminDeliveryPreferences:
         downloads_config = {
             "BOOKS_OUTPUT_MODE": "folder",
             "DESTINATION": "/books",
+            "DESTINATION_AUDIOBOOK": "/audiobooks",
             "BOOKLORE_LIBRARY_ID": "7",
             "BOOKLORE_PATH_ID": "21",
             "EMAIL_RECIPIENT": "global@example.com",
@@ -916,6 +931,7 @@ class TestAdminDeliveryPreferences:
             {
                 "BOOKS_OUTPUT_MODE": "email",
                 "EMAIL_RECIPIENT": "alice@example.com",
+                "DESTINATION_AUDIOBOOK": "/audiobooks/alice",
             },
         )
 
@@ -930,6 +946,7 @@ class TestAdminDeliveryPreferences:
             "BOOKLORE_LIBRARY_ID",
             "BOOKLORE_PATH_ID",
             "EMAIL_RECIPIENT",
+            "DESTINATION_AUDIOBOOK",
         ]
 
         field_keys = [field["key"] for field in data["fields"]]
@@ -937,6 +954,7 @@ class TestAdminDeliveryPreferences:
 
         assert data["userOverrides"]["BOOKS_OUTPUT_MODE"] == "email"
         assert data["userOverrides"]["EMAIL_RECIPIENT"] == "alice@example.com"
+        assert data["userOverrides"]["DESTINATION_AUDIOBOOK"] == "/audiobooks/alice"
 
         assert data["effective"]["BOOKS_OUTPUT_MODE"]["source"] == "user_override"
         assert data["effective"]["BOOKS_OUTPUT_MODE"]["value"] == "email"
@@ -945,6 +963,8 @@ class TestAdminDeliveryPreferences:
         assert data["effective"]["BOOKLORE_LIBRARY_ID"]["value"] == "7"
         assert data["effective"]["EMAIL_RECIPIENT"]["source"] == "user_override"
         assert data["effective"]["EMAIL_RECIPIENT"]["value"] == "alice@example.com"
+        assert data["effective"]["DESTINATION_AUDIOBOOK"]["source"] == "user_override"
+        assert data["effective"]["DESTINATION_AUDIOBOOK"]["value"] == "/audiobooks/alice"
 
     def test_returns_404_for_unknown_user(self, admin_client):
         resp = admin_client.get("/api/admin/users/9999/delivery-preferences")

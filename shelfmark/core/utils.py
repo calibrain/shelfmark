@@ -1,6 +1,8 @@
 """Shared utility functions for the Shelfmark."""
 
 import base64
+import os
+import re
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
@@ -118,8 +120,63 @@ _LEGACY_CONTENT_TYPE_TO_CONFIG_KEY = {
     "other": "INGEST_DIR_OTHER",
 }
 
+_USER_PLACEHOLDER_PATTERN = re.compile(r"\{user\}", re.IGNORECASE)
+_INVALID_USER_PATH_CHARS = re.compile(r'[\\/:*?"<>|]')
 
-def get_destination(is_audiobook: bool = False, user_id: Optional[int] = None) -> Path:
+
+def _sanitize_user_for_path(username: str) -> str:
+    """Sanitize username for path usage in destination placeholders."""
+    sanitized = _INVALID_USER_PATH_CHARS.sub("_", username.strip())
+    return sanitized.strip(" .")
+
+
+def _resolve_destination_username(
+    user_id: Optional[int] = None,
+    username: Optional[str] = None,
+) -> str:
+    explicit = str(username or "").strip()
+    if explicit:
+        return explicit
+
+    if user_id is None:
+        return ""
+
+    try:
+        from shelfmark.core.user_db import UserDB
+
+        user_db = UserDB(os.path.join(os.environ.get("CONFIG_DIR", "/config"), "users.db"))
+        user_db.initialize()
+        user = user_db.get_user(user_id=user_id)
+        if not user:
+            return ""
+        return str(user.get("username") or "").strip()
+    except Exception:
+        return ""
+
+
+def _expand_user_destination_placeholder(
+    path_value: str,
+    user_id: Optional[int] = None,
+    username: Optional[str] = None,
+) -> str:
+    """Expand `{User}` placeholders in destination paths."""
+    if not isinstance(path_value, str):
+        return path_value
+
+    if not _USER_PLACEHOLDER_PATTERN.search(path_value):
+        return path_value
+
+    resolved_username = _sanitize_user_for_path(
+        _resolve_destination_username(user_id=user_id, username=username)
+    )
+    return _USER_PLACEHOLDER_PATTERN.sub(resolved_username, path_value)
+
+
+def get_destination(
+    is_audiobook: bool = False,
+    user_id: Optional[int] = None,
+    username: Optional[str] = None,
+) -> Path:
     """Get base destination directory. Audiobooks fall back to main destination."""
     from shelfmark.core.config import config
 
@@ -127,12 +184,24 @@ def get_destination(is_audiobook: bool = False, user_id: Optional[int] = None) -
         # Audiobook destination with fallback to main destination
         audiobook_dest = config.get("DESTINATION_AUDIOBOOK", "", user_id=user_id)
         if audiobook_dest:
-            return Path(audiobook_dest)
+            return Path(
+                _expand_user_destination_placeholder(
+                    str(audiobook_dest),
+                    user_id=user_id,
+                    username=username,
+                )
+            )
 
     # Main destination (also fallback for audiobooks)
     # Check new setting first, then legacy INGEST_DIR
     destination = config.get("DESTINATION", "", user_id=user_id) or config.get("INGEST_DIR", "/books")
-    return Path(destination)
+    return Path(
+        _expand_user_destination_placeholder(
+            str(destination),
+            user_id=user_id,
+            username=username,
+        )
+    )
 
 
 def get_aa_content_type_dir(content_type: Optional[str] = None) -> Optional[Path]:

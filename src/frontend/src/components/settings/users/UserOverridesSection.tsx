@@ -40,6 +40,15 @@ const fallbackDestinationField: TextFieldConfig = {
   placeholder: '/books',
 };
 
+const fallbackDestinationAudiobookField: TextFieldConfig = {
+  type: 'TextField',
+  key: 'DESTINATION_AUDIOBOOK',
+  label: 'Destination',
+  description: 'Directory where downloaded audiobook files are saved. Use {User} for per-user folders and leave empty to use the books destination.',
+  value: '',
+  placeholder: '/audiobooks',
+};
+
 const fallbackBookloreLibraryField: SelectFieldConfig = {
   type: 'SelectField',
   key: 'BOOKLORE_LIBRARY_ID',
@@ -118,8 +127,32 @@ const deliveryHeading: HeadingFieldConfig = {
   type: 'HeadingField',
   key: 'delivery_preferences_heading',
   title: 'Delivery Preferences',
-  description: 'Editing values here creates per-user settings. Use Reset to inherit the global value.',
+  description: 'Editing values here creates per-user settings. Use Reset to inherit global values.',
 };
+
+const booksHeading: HeadingFieldConfig = {
+  type: 'HeadingField',
+  key: 'delivery_preferences_books_heading',
+  title: 'Books',
+  description: 'Output mode and destination behavior for ebooks, comics, and magazines.',
+};
+
+const audiobooksHeading: HeadingFieldConfig = {
+  type: 'HeadingField',
+  key: 'delivery_preferences_audiobooks_heading',
+  title: 'Audiobooks',
+  description: 'Audiobooks always use folder output. Set a user-specific destination or leave empty to inherit books.',
+};
+
+const BOOK_PREFERENCE_KEYS: DeliverySettingKey[] = [
+  'BOOKS_OUTPUT_MODE',
+  'DESTINATION',
+  'BOOKLORE_LIBRARY_ID',
+  'BOOKLORE_PATH_ID',
+  'EMAIL_RECIPIENT',
+];
+
+const AUDIOBOOK_PREFERENCE_KEYS: DeliverySettingKey[] = ['DESTINATION_AUDIOBOOK'];
 
 export const UserOverridesSection = ({
   deliveryPreferences,
@@ -133,6 +166,7 @@ export const UserOverridesSection = ({
 
   const outputModeField = getFieldByKey<SelectFieldConfig>(fields, 'BOOKS_OUTPUT_MODE', fallbackOutputModeField);
   const destinationField = getFieldByKey<TextFieldConfig>(fields, 'DESTINATION', fallbackDestinationField);
+  const destinationAudiobookField = getFieldByKey<TextFieldConfig>(fields, 'DESTINATION_AUDIOBOOK', fallbackDestinationAudiobookField);
   const bookloreLibraryField = getFieldByKey<SelectFieldConfig>(fields, 'BOOKLORE_LIBRARY_ID', fallbackBookloreLibraryField);
   const booklorePathField = getFieldByKey<SelectFieldConfig>(fields, 'BOOKLORE_PATH_ID', fallbackBooklorePathField);
   const emailRecipientField = getFieldByKey<TextFieldConfig>(fields, 'EMAIL_RECIPIENT', fallbackEmailRecipientField);
@@ -166,14 +200,20 @@ export const UserOverridesSection = ({
   const effectiveOutputMode = normalizeMode(outputModeValue);
 
   const destinationValue = readValue('DESTINATION');
+  const destinationAudiobookValue = readValue('DESTINATION_AUDIOBOOK');
   const libraryValue = readValue('BOOKLORE_LIBRARY_ID');
   const pathValue = readValue('BOOKLORE_PATH_ID');
   const emailRecipientValue = readValue('EMAIL_RECIPIENT');
 
-  const hasAnyDeliveryOverride = preferenceKeys.some((key) => isOverridden(key as DeliverySettingKey));
+  const availableBookPreferenceKeys = BOOK_PREFERENCE_KEYS.filter((key) => preferenceKeys.includes(String(key)));
+  const availableAudiobookPreferenceKeys = AUDIOBOOK_PREFERENCE_KEYS.filter((key) => preferenceKeys.includes(String(key)));
+
+  const hasBookDeliveryOverride = availableBookPreferenceKeys.some((key) => isOverridden(key));
+  const hasAudiobookDeliveryOverride = availableAudiobookPreferenceKeys.some((key) => isOverridden(key));
 
   const canOverrideOutputMode = isUserOverridable('BOOKS_OUTPUT_MODE');
   const canOverrideDestination = isUserOverridable('DESTINATION');
+  const canOverrideAudiobookDestination = isUserOverridable('DESTINATION_AUDIOBOOK');
   const canOverrideBookloreLibrary = isUserOverridable('BOOKLORE_LIBRARY_ID');
   const canOverrideBooklorePath = isUserOverridable('BOOKLORE_PATH_ID');
   const canOverrideEmailRecipient = isUserOverridable('EMAIL_RECIPIENT');
@@ -185,15 +225,16 @@ export const UserOverridesSection = ({
   return (
     <div className="space-y-4">
       <HeadingField field={deliveryHeading} />
+      <HeadingField field={booksHeading} />
 
       {canOverrideOutputMode && (
         <FieldWrapper
           field={outputModeField}
           headerRight={
-            hasAnyDeliveryOverride ? (
+            hasBookDeliveryOverride ? (
               <ResetOverrideButton
                 label="Reset all"
-                onClick={() => resetKeys(preferenceKeys as DeliverySettingKey[])}
+                onClick={() => resetKeys(availableBookPreferenceKeys)}
               />
             ) : undefined
           }
@@ -313,6 +354,30 @@ export const UserOverridesSection = ({
             disabled={Boolean(emailRecipientField.fromEnv)}
           />
         </FieldWrapper>
+      )}
+
+      {canOverrideAudiobookDestination && (
+        <>
+          <HeadingField field={audiobooksHeading} />
+          <FieldWrapper
+            field={destinationAudiobookField}
+            headerRight={
+              hasAudiobookDeliveryOverride ? (
+                <ResetOverrideButton
+                  disabled={Boolean(destinationAudiobookField.fromEnv)}
+                  onClick={() => resetKeys(availableAudiobookPreferenceKeys)}
+                />
+              ) : undefined
+            }
+          >
+            <TextField
+              field={destinationAudiobookField}
+              value={destinationAudiobookValue}
+              onChange={(value) => setUserSettings((prev) => ({ ...prev, DESTINATION_AUDIOBOOK: value }))}
+              disabled={Boolean(destinationAudiobookField.fromEnv)}
+            />
+          </FieldWrapper>
+        </>
       )}
     </div>
   );

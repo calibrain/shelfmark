@@ -1017,8 +1017,9 @@ def download_settings():
         TextField(
             key="DESTINATION_AUDIOBOOK",
             label="Destination",
-            description="Leave empty to use Books destination.",
+            description="Leave empty to use Books destination. Use {User} for per-user folders (e.g. /audiobooks/{User}).",
             placeholder="/audiobooks",
+            user_overridable=True,
             universal_only=True,
         ),
         SelectField(

@@ -129,17 +129,19 @@ class TestPerUserDestination:
         """When task has a user_id, destination resolution should receive it."""
         from pathlib import Path
 
-        captured: dict[str, int | None] = {"user_id": None}
+        captured: dict[str, object] = {"user_id": None, "username": None}
 
         task = DownloadTask(
             task_id="book1",
             source="direct_download",
             title="Test Book",
             user_id=42,
+            username="alice",
         )
 
-        def fake_get_destination(is_audiobook: bool = False, user_id=None):
+        def fake_get_destination(is_audiobook: bool = False, user_id=None, username=None):
             captured["user_id"] = user_id
+            captured["username"] = username
             return Path("/user-books/alice")
 
         monkeypatch.setattr(
@@ -156,12 +158,13 @@ class TestPerUserDestination:
         result = get_final_destination(task)
         assert result == Path("/user-books/alice")
         assert captured["user_id"] == 42
+        assert captured["username"] == "alice"
 
     def test_without_user_id_uses_global_context(self, monkeypatch):
         """When task has no user_id, destination resolution should use global context."""
         from pathlib import Path
 
-        captured: dict[str, int | None] = {"user_id": 99}
+        captured: dict[str, object] = {"user_id": 99, "username": "someone"}
 
         task = DownloadTask(
             task_id="book1",
@@ -169,8 +172,9 @@ class TestPerUserDestination:
             title="Test Book",
         )
 
-        def fake_get_destination(is_audiobook: bool = False, user_id=None):
+        def fake_get_destination(is_audiobook: bool = False, user_id=None, username=None):
             captured["user_id"] = user_id
+            captured["username"] = username
             return Path("/global/books")
 
         monkeypatch.setattr(
@@ -187,6 +191,7 @@ class TestPerUserDestination:
         result = get_final_destination(task)
         assert result == Path("/global/books")
         assert captured["user_id"] is None
+        assert captured["username"] is None
 
     def test_content_type_routing_still_wins(self, monkeypatch):
         """Direct mode content-type routing should take priority over destination lookup."""
@@ -202,7 +207,7 @@ class TestPerUserDestination:
 
         monkeypatch.setattr(
             "shelfmark.download.postprocess.destination.get_destination",
-            lambda is_audiobook=False, user_id=None: Path("/global/books"),
+            lambda is_audiobook=False, user_id=None, username=None: Path("/global/books"),
         )
         monkeypatch.setattr(
             "shelfmark.download.postprocess.destination.get_aa_content_type_dir",
@@ -213,6 +218,46 @@ class TestPerUserDestination:
 
         result = get_final_destination(task)
         assert result == Path("/routed/books")
+
+
+class TestUserDestinationTemplate:
+    """Destination settings should support {User} placeholder expansion."""
+
+    def test_get_destination_expands_user_for_books(self, monkeypatch):
+        from pathlib import Path
+
+        from shelfmark.core.config import config
+        from shelfmark.core.utils import get_destination
+
+        def fake_config_get(key, default=None, user_id=None):
+            if key == "DESTINATION":
+                return "/books/{User}"
+            if key == "INGEST_DIR":
+                return "/books"
+            return default
+
+        monkeypatch.setattr(config, "get", fake_config_get)
+        result = get_destination(is_audiobook=False, user_id=42, username="alice")
+        assert result == Path("/books/alice")
+
+    def test_get_destination_expands_user_for_audiobooks(self, monkeypatch):
+        from pathlib import Path
+
+        from shelfmark.core.config import config
+        from shelfmark.core.utils import get_destination
+
+        def fake_config_get(key, default=None, user_id=None):
+            if key == "DESTINATION_AUDIOBOOK":
+                return "/audiobooks/{User}"
+            if key == "DESTINATION":
+                return "/books/{User}"
+            if key == "INGEST_DIR":
+                return "/books"
+            return default
+
+        monkeypatch.setattr(config, "get", fake_config_get)
+        result = get_destination(is_audiobook=True, user_id=42, username="alice")
+        assert result == Path("/audiobooks/alice")
 
 
 class TestTaskToDictUsername:

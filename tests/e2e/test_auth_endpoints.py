@@ -45,7 +45,16 @@ class TestGetAuthMode:
             "shelfmark.core.settings_registry.load_config_file",
             return_value={"AUTH_METHOD": "builtin"},
         ):
-            assert main_module.get_auth_mode() == "builtin"
+            with patch.object(main_module, "has_local_password_admin", return_value=True):
+                assert main_module.get_auth_mode() == "builtin"
+
+    def test_get_auth_mode_builtin_without_local_admin_falls_back_to_none(self, main_module):
+        with patch(
+            "shelfmark.core.settings_registry.load_config_file",
+            return_value={"AUTH_METHOD": "builtin"},
+        ):
+            with patch.object(main_module, "has_local_password_admin", return_value=False):
+                assert main_module.get_auth_mode() == "none"
 
     def test_get_auth_mode_proxy(self, main_module):
         with patch(
