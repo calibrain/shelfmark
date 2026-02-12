@@ -14,6 +14,7 @@ AUTH_SOURCES = (
     AUTH_SOURCE_CWA,
 )
 AUTH_SOURCE_SET = frozenset(AUTH_SOURCES)
+_ALWAYS_ADMIN_SETTINGS_TABS = frozenset({"security", "users"})
 
 
 def has_local_password_admin(user_db: Any | None = None) -> bool:
@@ -82,11 +83,35 @@ def is_settings_or_onboarding_path(path: str) -> bool:
     return path.startswith("/api/settings") or path.startswith("/api/onboarding")
 
 
+def get_settings_tab_from_path(path: str) -> str | None:
+    """Extract tab name from /api/settings/<tab>[...] paths."""
+    if not path.startswith("/api/settings/"):
+        return None
+
+    suffix = path[len("/api/settings/"):]
+    if not suffix:
+        return None
+
+    return suffix.split("/", 1)[0] or None
+
+
 def should_restrict_settings_to_admin(
     users_config: Mapping[str, Any],
 ) -> bool:
     """Return whether settings/onboarding access is limited to admins."""
     return bool(users_config.get("RESTRICT_SETTINGS_TO_ADMIN", True))
+
+
+def requires_admin_for_settings_access(
+    path: str,
+    users_config: Mapping[str, Any],
+) -> bool:
+    """Return whether this settings/onboarding request requires admin privileges."""
+    tab_name = get_settings_tab_from_path(path)
+    if tab_name in _ALWAYS_ADMIN_SETTINGS_TABS:
+        return True
+
+    return should_restrict_settings_to_admin(users_config)
 
 
 def get_auth_check_admin_status(

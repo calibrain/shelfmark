@@ -27,16 +27,23 @@ export const useUsersFetch = ({ onShowToast }: UseUsersFetchParams) => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const fetchUsers = useCallback(async () => {
+  const shouldSuppressAccessToast = (message: string): boolean =>
+    message.toLowerCase().includes('admin access required');
+
+  const fetchUsers = useCallback(async (): Promise<AdminUser[]> => {
     try {
       setLoading(true);
       setLoadError(null);
       const data = await getAdminUsers();
       setUsers(data);
+      return data;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load users';
       setLoadError(message);
-      onShowToast?.(message, 'error');
+      if (!shouldSuppressAccessToast(message)) {
+        onShowToast?.(message, 'error');
+      }
+      return [];
     } finally {
       setLoading(false);
     }

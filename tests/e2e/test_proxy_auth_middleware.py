@@ -205,6 +205,38 @@ class TestLoginRequiredDecorator:
 
         assert resp[0]["success"] is True
 
+    def test_security_tab_always_blocks_non_admin_even_when_toggle_off(self, main_module, view):
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch(
+                "shelfmark.core.settings_registry.load_config_file",
+                return_value={"RESTRICT_SETTINGS_TO_ADMIN": False},
+            ):
+                with main_module.app.test_request_context("/api/settings/security"):
+                    main_module.session["user_id"] = "user"
+                    main_module.session["is_admin"] = False
+                    decorated = main_module.login_required(view)
+                    resp = _as_response(decorated())
+                    data = resp.get_json()
+
+        assert resp.status_code == 403
+        assert "Admin access required" in (data.get("error") or "")
+
+    def test_users_tab_always_blocks_non_admin_even_when_toggle_off(self, main_module, view):
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch(
+                "shelfmark.core.settings_registry.load_config_file",
+                return_value={"RESTRICT_SETTINGS_TO_ADMIN": False},
+            ):
+                with main_module.app.test_request_context("/api/settings/users"):
+                    main_module.session["user_id"] = "user"
+                    main_module.session["is_admin"] = False
+                    decorated = main_module.login_required(view)
+                    resp = _as_response(decorated())
+                    data = resp.get_json()
+
+        assert resp.status_code == 403
+        assert "Admin access required" in (data.get("error") or "")
+
     def test_proxy_admin_restriction_blocks_non_admin(self, main_module, view):
         with patch.object(main_module, "get_auth_mode", return_value="proxy"):
             with patch(

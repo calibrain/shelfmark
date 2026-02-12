@@ -420,6 +420,23 @@ class TestAdminUserUpdateEndpoint:
         updated = user_db.get_user(user_id=user["id"])
         assert updated["role"] == "admin"
 
+    def test_demote_last_admin_allowed(self, admin_client, user_db):
+        user = user_db.create_user(
+            username="onlyadmin",
+            role="admin",
+            password_hash="hashed_pw",
+        )
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"role": "user"},
+        )
+
+        assert resp.status_code == 200
+        updated = user_db.get_user(user_id=user["id"])
+        assert updated is not None
+        assert updated["role"] == "user"
+
     def test_update_user_email(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
 
@@ -744,6 +761,12 @@ class TestAdminSyncCwaUsersEndpoint:
             role="admin",
             auth_source="builtin",
         )
+        stale_cwa = user_db.create_user(
+            username="stale__cwa",
+            email="stale@example.com",
+            role="user",
+            auth_source="cwa",
+        )
 
         with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="cwa"):
             with patch("shelfmark.core.admin_routes.CWA_DB_PATH", cwa_db_path):
@@ -753,6 +776,7 @@ class TestAdminSyncCwaUsersEndpoint:
         assert resp.json["success"] is True
         assert resp.json["created"] == 1
         assert resp.json["updated"] == 1
+        assert resp.json["deleted"] == 1
         assert resp.json["total"] == 2
 
         alice_linked = user_db.get_user(user_id=local_email_match["id"])
@@ -775,6 +799,7 @@ class TestAdminSyncCwaUsersEndpoint:
         )
         assert bob_cwa["username"].startswith("bob__cwa")
         assert bob_cwa["role"] == "user"
+        assert user_db.get_user(user_id=stale_cwa["id"]) is None
 
     def test_sync_cwa_users_rejected_when_not_in_cwa_mode(self, admin_client):
         with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="builtin"):
@@ -1129,14 +1154,23 @@ class TestAdminUserDeleteEndpoint:
         assert len(resp.json) == 1
         assert resp.json[0]["username"] == "bob"
 
-    def test_delete_active_proxy_user_rejected(self, admin_client, user_db):
+    def test_delete_active_proxy_user_allowed(self, admin_client, user_db):
         user = user_db.create_user(username="proxyuser", auth_source="proxy")
 
         with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="proxy"):
             resp = admin_client.delete(f"/api/admin/users/{user['id']}")
 
+        assert resp.status_code == 200
+        assert resp.json["success"] is True
+
+    def test_delete_active_cwa_user_rejected(self, admin_client, user_db):
+        user = user_db.create_user(username="cwauser", auth_source="cwa")
+
+        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="cwa"):
+            resp = admin_client.delete(f"/api/admin/users/{user['id']}")
+
         assert resp.status_code == 400
-        assert "Cannot delete active PROXY users" in resp.json["error"]
+        assert "Cannot delete active CWA users" in resp.json["error"]
 
     def test_delete_inactive_proxy_user_allowed(self, admin_client, user_db):
         user = user_db.create_user(username="proxyuser", auth_source="proxy")
@@ -1159,6 +1193,20 @@ class TestAdminUserDeleteEndpoint:
 
         assert resp.status_code == 200
         assert resp.json["success"] is True
+
+    def test_delete_last_local_admin_allowed(self, admin_client, user_db):
+        user = user_db.create_user(
+            username="onlyadmin",
+            password_hash="hashed_pw",
+            role="admin",
+        )
+
+        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="builtin"):
+            resp = admin_client.delete(f"/api/admin/users/{user['id']}")
+
+        assert resp.status_code == 200
+        assert resp.json["success"] is True
+        assert user_db.get_user(user_id=user["id"]) is None
 
 
 # ---------------------------------------------------------------------------

@@ -32,7 +32,7 @@ from shelfmark.core.auth_modes import (
     get_auth_check_admin_status,
     has_local_password_admin,
     is_settings_or_onboarding_path,
-    should_restrict_settings_to_admin,
+    requires_admin_for_settings_access,
 )
 from shelfmark.core.cwa_user_sync import upsert_cwa_user
 from shelfmark.core.external_user_linking import upsert_external_user
@@ -403,9 +403,10 @@ def login_required(f):
 
             try:
                 users_config = load_config_file("users")
-                restrict_to_admin = should_restrict_settings_to_admin(users_config)
-
-                if restrict_to_admin and not session.get('is_admin', False):
+                if (
+                    requires_admin_for_settings_access(request.path, users_config)
+                    and not session.get('is_admin', False)
+                ):
                     return jsonify({"error": "Admin access required"}), 403
 
             except Exception as e:

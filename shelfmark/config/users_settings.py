@@ -25,7 +25,8 @@ def users_settings():
             label="Restrict Settings and Onboarding to Admins",
             description=(
                 "When enabled, only admin users can access Settings and Onboarding. "
-                "When disabled, any authenticated user can access them."
+                "When disabled, any authenticated user can access them. "
+                "Security and Users are always admin-only."
             ),
             default=True,
             env_supported=False,

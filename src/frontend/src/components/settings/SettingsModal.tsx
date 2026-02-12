@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useSettings } from '../../hooks/useSettings';
 import { useSearchMode } from '../../contexts/SearchModeContext';
-import { getAdminSettingsOverridesSummary } from '../../services/api';
+import { getAdminSettingsOverridesSummary, getSettingsTab } from '../../services/api';
 import { SettingsHeader } from './SettingsHeader';
 import { SettingsSidebar } from './SettingsSidebar';
 import { SettingsContent } from './SettingsContent';
@@ -37,7 +37,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
   const [isMobile, setIsMobile] = useState(false);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
-  const [usersSubpageState, setUsersSubpageState] = useState<{ title: string; onBack: () => void } | null>(null);
+  const [securityAccessError, setSecurityAccessError] = useState<string | null>(null);
   const [tabOverrideSummaries, setTabOverrideSummaries] = useState<
     Record<string, Record<string, { count: number; users: Array<{ userId: number; username: string; value: unknown }> }>>
   >({});
@@ -97,16 +97,36 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
     if (isOpen) {
       setShowMobileDetail(false);
       setIsClosing(false);
-      setUsersSubpageState(null);
       setTabOverrideSummaries({});
     }
   }, [isOpen]);
 
   useEffect(() => {
-    if (selectedTab !== 'users') {
-      setUsersSubpageState(null);
+    if (!isOpen || selectedTab !== 'security') {
+      setSecurityAccessError(null);
+      return;
     }
-  }, [selectedTab]);
+
+    let cancelled = false;
+    getSettingsTab("security")
+      .then(() => {
+        if (cancelled) return;
+        setSecurityAccessError(null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : 'Failed to load security settings';
+        if (message.toLowerCase().includes('admin access required')) {
+          setSecurityAccessError(message);
+          return;
+        }
+        setSecurityAccessError(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, selectedTab]);
 
   useEffect(() => {
     if (!isOpen || !selectedTab || selectedTab === 'users') {
@@ -243,7 +263,6 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
 
   const currentTab = tabs.find((t) => t.name === selectedTab);
   const currentTabDisplayName = currentTab?.displayName || 'Settings';
-  const usersHeaderTitle = usersSubpageState ? `Settings / ${usersSubpageState.title}` : null;
   const selectedAuthMethod = values.security?.AUTH_METHOD;
   const usersAuthMode = typeof selectedAuthMethod === 'string' ? selectedAuthMethod : authMode;
   const currentTabContent = currentTab
@@ -258,8 +277,11 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
         isSaving={isSaving}
         hasChanges={currentTabHasChanges}
         onShowToast={onShowToast}
-        onSubpageStateChange={setUsersSubpageState}
       />
+    ) : (selectedTab === 'security' && securityAccessError) ? (
+      <div className="flex-1 flex flex-col items-center justify-center p-8 gap-3">
+        <p className="text-sm opacity-60">{securityAccessError}</p>
+      </div>
     ) : (
       <SettingsContent
         tab={currentTab}
@@ -381,9 +403,9 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
           // Detail view
           <>
             <SettingsHeader
-              title={selectedTab === 'users' && usersHeaderTitle ? usersHeaderTitle : currentTabDisplayName}
+              title={currentTabDisplayName}
               showBack
-              onBack={selectedTab === 'users' && usersSubpageState ? usersSubpageState.onBack : handleBack}
+              onBack={handleBack}
               onClose={handleClose}
             />
             {currentTabContent}
@@ -416,9 +438,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
         aria-label="Settings"
       >
         <SettingsHeader
-          title={selectedTab === 'users' && usersHeaderTitle ? usersHeaderTitle : 'Settings'}
-          showBack={selectedTab === 'users' && !!usersSubpageState}
-          onBack={selectedTab === 'users' && usersSubpageState ? usersSubpageState.onBack : undefined}
+          title="Settings"
           onClose={handleClose}
         />
 

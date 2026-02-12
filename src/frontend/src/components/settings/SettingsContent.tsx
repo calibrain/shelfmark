@@ -17,7 +17,7 @@ import {
   ShowWhenCondition,
   TableFieldConfig,
 } from '../../types/settings';
-import { FieldWrapper } from './shared';
+import { FieldWrapper, SettingsSaveBar } from './shared';
 import {
   TextField,
   PasswordField,
@@ -351,14 +351,7 @@ export const SettingsContent = ({
       </div>
 
       {/* Save button - only visible when there are changes */}
-      {hasChanges && (
-        <div
-          className="flex-shrink-0 px-6 py-4 border-t border-[var(--border-muted)] bg-[var(--bg)] animate-slide-up"
-          style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
-        >
-          {saveButton}
-        </div>
-      )}
+      {hasChanges && <SettingsSaveBar onSave={onSave} isSaving={isSaving} />}
     </div>
   );
 };

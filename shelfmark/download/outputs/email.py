@@ -296,7 +296,10 @@ def _post_process_email(
     recipient = str(output_args.get("to", "") or "").strip()
     label = str(output_args.get("label", "") or "").strip() or recipient
     if not recipient:
-        status_callback("error", "No email recipient selected")
+        status_callback(
+            "error",
+            "No email recipient configured. Set a per-user email recipient or a default in Downloads -> Books.",
+        )
         return None
 
     status_callback("resolving", "Preparing email")

@@ -2,6 +2,19 @@ import { useState } from 'react';
 import { AdminUser, DeliveryPreferencesResponse, DownloadDefaults } from '../../../services/api';
 import { CreateUserFormState, INITIAL_CREATE_FORM, PerUserSettings } from './types';
 import { UserEditContext } from './useUsersFetch';
+import { buildUserSettingsPayload } from './settingsPayload';
+
+const normalizeUserSettings = (settings: PerUserSettings): PerUserSettings => {
+  const normalized: PerUserSettings = {};
+  Object.keys(settings).sort().forEach((key) => {
+    const typedKey = key as keyof PerUserSettings;
+    const value = settings[typedKey];
+    if (value !== null && value !== undefined) {
+      normalized[typedKey] = value;
+    }
+  });
+  return normalized;
+};
 
 export const useUserForm = () => {
   const [createForm, setCreateForm] = useState<CreateUserFormState>({ ...INITIAL_CREATE_FORM });
@@ -11,6 +24,7 @@ export const useUserForm = () => {
   const [downloadDefaults, setDownloadDefaults] = useState<DownloadDefaults | null>(null);
   const [deliveryPreferences, setDeliveryPreferences] = useState<DeliveryPreferencesResponse | null>(null);
   const [userSettings, setUserSettings] = useState<PerUserSettings>({});
+  const [originalUserSettings, setOriginalUserSettings] = useState<PerUserSettings>({});
   const [userOverridableSettings, setUserOverridableSettings] = useState<Set<string>>(new Set());
 
   const resetCreateForm = () => setCreateForm({ ...INITIAL_CREATE_FORM });
@@ -19,6 +33,7 @@ export const useUserForm = () => {
     setDownloadDefaults(null);
     setDeliveryPreferences(null);
     setUserSettings({});
+    setOriginalUserSettings({});
     setUserOverridableSettings(new Set());
   };
 
@@ -29,10 +44,12 @@ export const useUserForm = () => {
   };
 
   const applyUserEditContext = (context: UserEditContext) => {
+    const normalizedSettings = normalizeUserSettings(context.userSettings);
     setEditingUser({ ...context.user });
     setDownloadDefaults(context.downloadDefaults);
     setDeliveryPreferences(context.deliveryPreferences);
-    setUserSettings(context.userSettings);
+    setUserSettings(normalizedSettings);
+    setOriginalUserSettings(normalizedSettings);
     setUserOverridableSettings(new Set(context.userOverridableSettings));
   };
 
@@ -44,6 +61,9 @@ export const useUserForm = () => {
   };
 
   const isUserOverridable = (key: keyof PerUserSettings) => userOverridableSettings.has(String(key));
+  const hasUserSettingsChanges =
+    JSON.stringify(buildUserSettingsPayload(userSettings, userOverridableSettings, deliveryPreferences))
+    !== JSON.stringify(buildUserSettingsPayload(originalUserSettings, userOverridableSettings, deliveryPreferences));
 
   return {
     createForm,
@@ -63,6 +83,7 @@ export const useUserForm = () => {
     deliveryPreferences,
     userSettings,
     setUserSettings,
+    hasUserSettingsChanges,
     userOverridableSettings,
     isUserOverridable,
   };

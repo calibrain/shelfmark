@@ -44,9 +44,8 @@ const fallbackDestinationAudiobookField: TextFieldConfig = {
   type: 'TextField',
   key: 'DESTINATION_AUDIOBOOK',
   label: 'Destination',
-  description: 'Directory where downloaded audiobook files are saved. Use {User} for per-user folders and leave empty to use the books destination.',
+  description: 'Directory for this user\'s audiobook downloads.',
   value: '',
-  placeholder: '/audiobooks',
 };
 
 const fallbackBookloreLibraryField: SelectFieldConfig = {
@@ -141,7 +140,7 @@ const audiobooksHeading: HeadingFieldConfig = {
   type: 'HeadingField',
   key: 'delivery_preferences_audiobooks_heading',
   title: 'Audiobooks',
-  description: 'Audiobooks always use folder output. Set a user-specific destination or leave empty to inherit books.',
+  description: 'Audiobooks always use folder output. Use Reset to inherit the global audiobook destination.',
 };
 
 const BOOK_PREFERENCE_KEYS: DeliverySettingKey[] = [
@@ -169,12 +168,26 @@ export const UserOverridesSection = ({
   const destinationAudiobookField = getFieldByKey<TextFieldConfig>(fields, 'DESTINATION_AUDIOBOOK', fallbackDestinationAudiobookField);
   const bookloreLibraryField = getFieldByKey<SelectFieldConfig>(fields, 'BOOKLORE_LIBRARY_ID', fallbackBookloreLibraryField);
   const booklorePathField = getFieldByKey<SelectFieldConfig>(fields, 'BOOKLORE_PATH_ID', fallbackBooklorePathField);
-  const emailRecipientField = getFieldByKey<TextFieldConfig>(fields, 'EMAIL_RECIPIENT', fallbackEmailRecipientField);
+  const emailRecipientFieldSource = getFieldByKey<TextFieldConfig>(fields, 'EMAIL_RECIPIENT', fallbackEmailRecipientField);
+  const emailRecipientField: TextFieldConfig = {
+    ...emailRecipientFieldSource,
+    label: 'Email Recipient',
+    description: 'Email address used for this user in Email output mode.',
+  };
 
-  const isOverridden = (key: DeliverySettingKey): boolean =>
-    Object.prototype.hasOwnProperty.call(userSettings, key) &&
-    userSettings[key] !== null &&
-    userSettings[key] !== undefined;
+  const isOverridden = (key: DeliverySettingKey): boolean => {
+    if (
+      !Object.prototype.hasOwnProperty.call(userSettings, key) ||
+      userSettings[key] === null ||
+      userSettings[key] === undefined
+    ) {
+      return false;
+    }
+
+    const userValue = toStringValue(userSettings[key]);
+    const globalValue = toStringValue(globalValues[key as string]);
+    return userValue !== globalValue;
+  };
 
   const resetKeys = (keys: DeliverySettingKey[]) => {
     setUserSettings((prev) => {
@@ -242,24 +255,7 @@ export const UserOverridesSection = ({
           <SelectField
             field={outputModeField}
             value={outputModeValue}
-            onChange={(value) => {
-              setUserSettings((prev) => {
-                const next: PerUserSettings = { ...prev, BOOKS_OUTPUT_MODE: value };
-                if (value === 'folder') {
-                  delete next.BOOKLORE_LIBRARY_ID;
-                  delete next.BOOKLORE_PATH_ID;
-                  delete next.EMAIL_RECIPIENT;
-                } else if (value === 'booklore') {
-                  delete next.DESTINATION;
-                  delete next.EMAIL_RECIPIENT;
-                } else if (value === 'email') {
-                  delete next.DESTINATION;
-                  delete next.BOOKLORE_LIBRARY_ID;
-                  delete next.BOOKLORE_PATH_ID;
-                }
-                return next;
-              });
-            }}
+            onChange={(value) => setUserSettings((prev) => ({ ...prev, BOOKS_OUTPUT_MODE: value }))}
             disabled={Boolean(outputModeField.fromEnv)}
           />
         </FieldWrapper>
@@ -370,12 +366,12 @@ export const UserOverridesSection = ({
               ) : undefined
             }
           >
-            <TextField
-              field={destinationAudiobookField}
-              value={destinationAudiobookValue}
-              onChange={(value) => setUserSettings((prev) => ({ ...prev, DESTINATION_AUDIOBOOK: value }))}
-              disabled={Boolean(destinationAudiobookField.fromEnv)}
-            />
+          <TextField
+            field={destinationAudiobookField}
+            value={destinationAudiobookValue}
+            onChange={(value) => setUserSettings((prev) => ({ ...prev, DESTINATION_AUDIOBOOK: value }))}
+            disabled={Boolean(destinationAudiobookField.fromEnv)}
+          />
           </FieldWrapper>
         </>
       )}

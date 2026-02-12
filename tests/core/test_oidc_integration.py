@@ -2,8 +2,10 @@
 
 from shelfmark.core.auth_modes import (
     determine_auth_mode,
+    get_settings_tab_from_path,
     get_auth_check_admin_status,
     is_settings_or_onboarding_path,
+    requires_admin_for_settings_access,
     should_restrict_settings_to_admin,
 )
 
@@ -71,6 +73,26 @@ class TestSettingsRestrictionPolicy:
     def test_respects_global_users_toggle(self):
         assert should_restrict_settings_to_admin({"RESTRICT_SETTINGS_TO_ADMIN": True}) is True
         assert should_restrict_settings_to_admin({"RESTRICT_SETTINGS_TO_ADMIN": False}) is False
+
+    def test_extracts_settings_tab_from_path(self):
+        assert get_settings_tab_from_path("/api/settings/security") == "security"
+        assert get_settings_tab_from_path("/api/settings/users/action/open_users_tab") == "users"
+        assert get_settings_tab_from_path("/api/settings") is None
+
+    def test_security_and_users_tabs_always_require_admin(self):
+        users_config = {"RESTRICT_SETTINGS_TO_ADMIN": False}
+        assert requires_admin_for_settings_access("/api/settings/security", users_config) is True
+        assert requires_admin_for_settings_access("/api/settings/users", users_config) is True
+
+    def test_other_tabs_follow_global_toggle(self):
+        assert requires_admin_for_settings_access(
+            "/api/settings/general",
+            {"RESTRICT_SETTINGS_TO_ADMIN": False},
+        ) is False
+        assert requires_admin_for_settings_access(
+            "/api/settings/general",
+            {"RESTRICT_SETTINGS_TO_ADMIN": True},
+        ) is True
 
 
 class TestAuthCheckAdminStatus:

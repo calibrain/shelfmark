@@ -5,7 +5,7 @@ import tempfile
 
 import pytest
 
-from shelfmark.core.cwa_user_sync import upsert_cwa_user
+from shelfmark.core.cwa_user_sync import sync_cwa_users_from_rows, upsert_cwa_user
 from shelfmark.core.user_db import UserDB
 
 
@@ -93,3 +93,41 @@ def test_upsert_updates_existing_cwa_user_by_username_before_email(user_db):
     assert user["auth_source"] == "cwa"
     assert user["email"] == "new@example.com"
     assert user["role"] == "admin"
+
+
+def test_sync_prunes_cwa_users_missing_from_source(user_db):
+    active_cwa = user_db.create_user(
+        username="active_cwa",
+        email="active@example.com",
+        role="user",
+        auth_source="cwa",
+    )
+    stale_cwa = user_db.create_user(
+        username="stale_cwa",
+        email="stale@example.com",
+        role="admin",
+        auth_source="cwa",
+    )
+    local_builtin = user_db.create_user(
+        username="local_user",
+        email="local@example.com",
+        role="admin",
+        auth_source="builtin",
+    )
+
+    summary = sync_cwa_users_from_rows(
+        user_db,
+        rows=[("active_cwa", 1, "active@example.com")],
+    )
+
+    assert summary["created"] == 0
+    assert summary["updated"] == 1
+    assert summary["deleted"] == 1
+    assert summary["total"] == 1
+
+    active_after = user_db.get_user(user_id=active_cwa["id"])
+    assert active_after is not None
+    assert active_after["role"] == "admin"
+
+    assert user_db.get_user(user_id=stale_cwa["id"]) is None
+    assert user_db.get_user(user_id=local_builtin["id"]) is not None

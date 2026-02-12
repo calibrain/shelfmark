@@ -165,7 +165,11 @@ interface UserEditFieldsProps {
   editPasswordConfirm: string;
   onEditPasswordConfirmChange: (value: string) => void;
   downloadDefaults: DownloadDefaults | null;
-  onEditOverrides?: () => void;
+  onDelete?: () => void;
+  onConfirmDelete?: () => void;
+  onCancelDelete?: () => void;
+  isDeletePending?: boolean;
+  deleting?: boolean;
 }
 
 export const UserEditFields = ({
@@ -179,7 +183,11 @@ export const UserEditFields = ({
   editPasswordConfirm,
   onEditPasswordConfirmChange,
   downloadDefaults,
-  onEditOverrides,
+  onDelete,
+  onConfirmDelete,
+  onCancelDelete,
+  isDeletePending = false,
+  deleting = false,
 }: UserEditFieldsProps) => {
   const capabilities = user.edit_capabilities;
   const { authSource, canSetPassword, canEditRole, canEditEmail, canEditDisplayName } = capabilities;
@@ -246,29 +254,53 @@ export const UserEditFields = ({
         </>
       )}
 
-      <div className="flex flex-wrap gap-2 pt-2">
-        <button
-          onClick={onSave}
-          disabled={saving}
-          className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          {saving ? 'Saving...' : 'Save Changes'}
-        </button>
-        <button
-          onClick={onCancel}
-          className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
-                     bg-[var(--bg)] hover:bg-[var(--hover-surface)] transition-colors"
-        >
-          Cancel
-        </button>
-        {onEditOverrides && (
+      <div className="flex flex-col gap-2 pt-3 border-t border-[var(--border-muted)] sm:flex-row sm:items-center">
+        <div className="flex flex-wrap gap-2">
           <button
-            onClick={onEditOverrides}
-            className="ml-auto px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
+            onClick={onSave}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
                        bg-[var(--bg)] hover:bg-[var(--hover-surface)] transition-colors"
           >
-            User Preferences
+            Cancel
           </button>
+        </div>
+        {onDelete && (
+          <div className="flex flex-wrap gap-2 sm:ml-auto">
+            {isDeletePending ? (
+              <>
+                <button
+                  onClick={onConfirmDelete}
+                  disabled={deleting}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {deleting ? 'Deleting...' : 'Confirm Delete'}
+                </button>
+                <button
+                  onClick={onCancelDelete}
+                  disabled={deleting}
+                  className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
+                             bg-[var(--bg)] hover:bg-[var(--hover-surface)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={onDelete}
+                className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                           border border-red-500/40 text-red-600 hover:bg-red-500/10"
+              >
+                Delete User
+              </button>
+            )}
+          </div>
         )}
       </div>
     </>

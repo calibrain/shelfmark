@@ -328,15 +328,9 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
                 "message": "Display name is managed by your identity provider.",
             }), 400
 
-        # Prevent demoting the last admin
-        if role_changed and user_fields["role"] != "admin":
-            if user.get("role") == "admin":
-                other_admins = [
-                    u for u in user_db.list_users()
-                    if u["role"] == "admin" and u["id"] != user_id
-                ]
-                if not other_admins:
-                    return jsonify({"error": "Cannot remove admin role from the last admin account"}), 400
+        # Allow demoting the last admin account.
+        # Auth mode resolution automatically falls back to "none" when no
+        # local password admin remains.
 
         # Avoid unnecessary writes for no-op field updates.
         for field in ("role", "email", "display_name"):
@@ -401,7 +395,8 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
         message = (
             f"Synced {summary['total']} CWA users "
-            f"({summary['created']} created, {summary['updated']} updated)."
+            f"({summary['created']} created, {summary['updated']} updated, "
+            f"{summary.get('deleted', 0)} deleted)."
         )
         logger.info(message)
         return jsonify({
@@ -429,20 +424,15 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             user.get("auth_source"),
             user.get("oidc_subject"),
         )
-        if auth_source in {AUTH_SOURCE_PROXY, AUTH_SOURCE_CWA} and auth_source == auth_mode:
+        if auth_source == AUTH_SOURCE_CWA and auth_source == auth_mode:
             return jsonify({
                 "error": f"Cannot delete active {auth_source.upper()} users",
                 "message": f"{auth_source.upper()} users are automatically re-provisioned on login.",
             }), 400
 
-        # Prevent deleting the last local admin
-        if user.get("role") == "admin" and user.get("password_hash"):
-            local_admins = [
-                u for u in user_db.list_users()
-                if u["role"] == "admin" and u.get("password_hash") and u["id"] != user_id
-            ]
-            if not local_admins:
-                return jsonify({"error": "Cannot delete the last local admin account"}), 400
+        # Allow deleting the last local admin account.
+        # Auth mode resolution automatically falls back to "none" when no
+        # local password admin remains.
 
         user_db.delete_user(user_id)
         logger.info(f"Admin deleted user {user_id}: {user['username']}")

@@ -636,14 +636,8 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
         # Preferred model: single recipient for global default and per-user override.
         raw_recipient = str(effective.get("EMAIL_RECIPIENT", "") or "").strip()
 
-        if not raw_recipient:
-            return {
-                "error": True,
-                "message": "Email recipient is required (Downloads -> Books -> Email Recipient).",
-                "values": values,
-            }
-
-        if not _is_plain_email_address(raw_recipient):
+        # Optional global fallback: validate only when a default recipient is provided.
+        if raw_recipient and not _is_plain_email_address(raw_recipient):
             return {
                 "error": True,
                 "message": "Email recipient must be a valid plain email address.",
@@ -909,8 +903,8 @@ def download_settings():
         ),
         TextField(
             key="EMAIL_RECIPIENT",
-            label="Email Recipient",
-            description="Email address that should receive downloaded books when Output Mode is Email.",
+            label="Default Email Recipient",
+            description="Optional fallback email address when no per-user email recipient override is configured.",
             placeholder="reader@example.com",
             user_overridable=True,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
@@ -1017,8 +1011,7 @@ def download_settings():
         TextField(
             key="DESTINATION_AUDIOBOOK",
             label="Destination",
-            description="Leave empty to use Books destination. Use {User} for per-user folders (e.g. /audiobooks/{User}).",
-            placeholder="/audiobooks",
+            description="Directory where downloaded audiobook files are saved. Leave empty to use the Books destination.",
             user_overridable=True,
             universal_only=True,
         ),

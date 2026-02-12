@@ -95,7 +95,7 @@ def _resolve_email_destination(
             return configured_recipient, None
         return None, "Configured email recipient is invalid"
 
-    return None, "Email recipient is required"
+    return None, None
 
 
 def queue_book(
@@ -126,10 +126,8 @@ def queue_book(
             email_to, email_error = _resolve_email_destination(user_id=user_id)
             if email_error:
                 return False, email_error
-            if not email_to:
-                return False, "Email recipient is required"
-
-            output_args = {"to": email_to}
+            if email_to:
+                output_args = {"to": email_to}
 
         # Create a source-agnostic download task
         task = DownloadTask(
@@ -204,10 +202,8 @@ def queue_release(
             email_to, email_error = _resolve_email_destination(user_id=user_id)
             if email_error:
                 return False, email_error
-            if not email_to:
-                return False, "Email recipient is required"
-
-            output_args = {"to": email_to}
+            if email_to:
+                output_args = {"to": email_to}
 
         # Create a source-agnostic download task from release data
         task = DownloadTask(

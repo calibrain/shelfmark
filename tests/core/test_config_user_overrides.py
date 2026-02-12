@@ -60,3 +60,20 @@ def test_get_ignores_user_override_for_non_overridable_field(monkeypatch):
     )
 
     assert config.get("FILE_ORGANIZATION", "rename", user_id=10) == "rename"
+
+
+def test_get_respects_empty_user_override_for_destination_audiobook(monkeypatch):
+    monkeypatch.setattr(config, "_ensure_loaded", lambda: None)
+    monkeypatch.setattr(config, "_cache", {"DESTINATION_AUDIOBOOK": "/global/audiobooks"})
+    monkeypatch.setattr(
+        config,
+        "_field_map",
+        {"DESTINATION_AUDIOBOOK": (_DummyField(env_supported=True, user_overridable=True), "downloads")},
+    )
+    monkeypatch.setattr(config, "_get_user_override", lambda user_id, key: "")
+    monkeypatch.setattr(
+        "shelfmark.core.config._get_registry",
+        lambda: SimpleNamespace(is_value_from_env=lambda field: False),
+    )
+
+    assert config.get("DESTINATION_AUDIOBOOK", "/default", user_id=10) == ""

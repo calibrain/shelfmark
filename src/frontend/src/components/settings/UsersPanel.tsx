@@ -11,7 +11,7 @@ import {
   useUsersPanelState,
 } from './users';
 import { SettingsContent } from './SettingsContent';
-import { SettingsSubpage } from './shared';
+import { SettingsSaveBar } from './shared';
 
 interface UsersPanelProps {
   authMode: string;
@@ -23,7 +23,6 @@ interface UsersPanelProps {
   isSaving: boolean;
   hasChanges: boolean;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
-  onSubpageStateChange?: (state: { title: string; onBack: () => void } | null) => void;
 }
 
 export const UsersPanel = ({
@@ -36,7 +35,6 @@ export const UsersPanel = ({
   isSaving,
   hasChanges,
   onShowToast,
-  onSubpageStateChange,
 }: UsersPanelProps) => {
   const { route, openCreate, openEdit, openEditOverrides, backToList } = useUsersPanelState();
 
@@ -63,6 +61,7 @@ export const UsersPanel = ({
     isUserOverridable,
     userSettings,
     setUserSettings,
+    hasUserSettingsChanges,
     beginEditing,
     applyUserEditContext,
     resetEditContext,
@@ -82,6 +81,7 @@ export const UsersPanel = ({
   } = useUserMutations({
     onShowToast,
     fetchUsers,
+    users,
     createForm,
     resetCreateForm,
     editingUser,
@@ -146,35 +146,24 @@ export const UsersPanel = ({
   };
 
   useEffect(() => {
-    if (!onSubpageStateChange) {
-      return undefined;
-    }
-
-    if (route.kind === 'edit-overrides') {
-      const username = editingUser && editingUser.id === route.userId
-        ? editingUser.username
-        : 'User';
-      onSubpageStateChange({
-        title: `Users / User Preferences: ${username}`,
-        onBack: handleBackToEdit,
-      });
-    } else {
-      onSubpageStateChange(null);
-    }
-
-    return () => {
-      onSubpageStateChange(null);
-    };
-  }, [editingUser, handleBackToEdit, onSubpageStateChange, route]);
-
-  useEffect(() => {
     if (route.kind === 'create' && !canCreateLocalUsers) {
       backToList();
     }
   }, [backToList, canCreateLocalUsers, route.kind]);
 
-  const handleSave = async () => {
-    const ok = await saveEditedUser();
+  const handleSaveUserEdit = async () => {
+    const ok = await saveEditedUser({ includeSettings: false });
+    if (ok) {
+      backToList();
+    }
+  };
+
+  const handleSaveUserOverrides = async () => {
+    const ok = await saveEditedUser({
+      includeProfile: false,
+      includePassword: false,
+      includeSettings: true,
+    });
     if (ok) {
       backToList();
     }
@@ -213,65 +202,79 @@ export const UsersPanel = ({
     }
 
     return (
-      <UserOverridesView
-        onSave={handleSave}
-        saving={saving}
-        onBack={handleBackToEdit}
-        deliveryPreferences={deliveryPreferences}
-        isUserOverridable={isUserOverridable}
-        userSettings={userSettings}
-        setUserSettings={(updater) => setUserSettings(updater)}
-      />
+      <div className="flex-1 flex flex-col min-h-0">
+        <UserOverridesView
+          hasChanges={hasUserSettingsChanges}
+          onBack={handleBackToEdit}
+          deliveryPreferences={deliveryPreferences}
+          isUserOverridable={isUserOverridable}
+          userSettings={userSettings}
+          setUserSettings={(updater) => setUserSettings(updater)}
+        />
+
+        {hasUserSettingsChanges && (
+          <SettingsSaveBar onSave={handleSaveUserOverrides} isSaving={saving} />
+        )}
+      </div>
     );
   }
 
   return (
-    <SettingsSubpage>
-      <div>
-        <UserListView
-          authMode={authMode}
-          users={users}
-          onCreate={openCreate}
-          showCreateForm={route.kind === 'create'}
-          createForm={createForm}
-          onCreateFormChange={setCreateForm}
-          creating={creating}
-          isFirstUser={users.length === 0}
-          onCreateSubmit={handleCreate}
-          onCancelCreate={handleCancelCreate}
-          showEditForm={route.kind === 'edit'}
-          activeEditUserId={route.kind === 'edit' ? route.userId : null}
-          editingUser={route.kind === 'edit' ? editingUser : null}
-          onEditingUserChange={setEditingUser}
-          onEditSave={handleSave}
-          saving={saving}
-          onCancelEdit={handleBackToList}
-          editPassword={editPassword}
-          onEditPasswordChange={setEditPassword}
-          editPasswordConfirm={editPasswordConfirm}
-          onEditPasswordConfirmChange={setEditPasswordConfirm}
-          downloadDefaults={downloadDefaults}
-          onOpenOverrides={handleOpenOverrides}
-          onEdit={handleEdit}
-          onDelete={deleteUser}
-          deletingUserId={deletingUserId}
-          onSyncCwa={handleSyncCwa}
-          syncingCwa={syncingCwa}
-        />
-
-        <div className="pt-5 mt-4 border-t border-black/10 dark:border-white/10">
-          <SettingsContent
-            tab={tab}
-            values={values}
-            onChange={onChange}
-            onSave={onSave}
-            onAction={onAction}
-            isSaving={isSaving}
-            hasChanges={hasChanges}
-            embedded
+    <div className="flex-1 flex flex-col min-h-0">
+      <div
+        className="flex-1 overflow-y-auto p-6"
+        style={{ paddingBottom: hasChanges ? 'calc(5rem + env(safe-area-inset-bottom))' : '1.5rem' }}
+      >
+        <div>
+          <UserListView
+            authMode={authMode}
+            users={users}
+            onCreate={openCreate}
+            showCreateForm={route.kind === 'create'}
+            createForm={createForm}
+            onCreateFormChange={setCreateForm}
+            creating={creating}
+            isFirstUser={users.length === 0}
+            onCreateSubmit={handleCreate}
+            onCancelCreate={handleCancelCreate}
+            showEditForm={route.kind === 'edit'}
+            activeEditUserId={route.kind === 'edit' ? route.userId : null}
+            editingUser={route.kind === 'edit' ? editingUser : null}
+            onEditingUserChange={setEditingUser}
+            onEditSave={handleSaveUserEdit}
+            saving={saving}
+            onCancelEdit={handleBackToList}
+            editPassword={editPassword}
+            onEditPasswordChange={setEditPassword}
+            editPasswordConfirm={editPasswordConfirm}
+            onEditPasswordConfirmChange={setEditPasswordConfirm}
+            downloadDefaults={downloadDefaults}
+            onOpenOverrides={handleOpenOverrides}
+            onEdit={handleEdit}
+            onDelete={deleteUser}
+            deletingUserId={deletingUserId}
+            onSyncCwa={handleSyncCwa}
+            syncingCwa={syncingCwa}
           />
+
+          <div className="pt-5 mt-4 border-t border-black/10 dark:border-white/10">
+            <SettingsContent
+              tab={tab}
+              values={values}
+              onChange={onChange}
+              onSave={onSave}
+              onAction={onAction}
+              isSaving={isSaving}
+              hasChanges={false}
+              embedded
+            />
+          </div>
         </div>
       </div>
-    </SettingsSubpage>
+
+      {hasChanges && (
+        <SettingsSaveBar onSave={onSave} isSaving={isSaving} />
+      )}
+    </div>
   );
 };

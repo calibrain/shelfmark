@@ -48,7 +48,6 @@ class Config:
 
     _instance: Optional['Config'] = None
     _lock = Lock()
-
     def __new__(cls) -> 'Config':
         if cls._instance is None:
             with cls._lock:
