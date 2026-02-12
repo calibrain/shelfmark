@@ -1,10 +1,12 @@
 """SQLite user database for multi-user support."""
 
 import json
+import os
 import sqlite3
 import threading
 from typing import Any, Dict, List, Optional
 
+from shelfmark.core.auth_modes import AUTH_SOURCE_BUILTIN, AUTH_SOURCE_SET
 from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -29,10 +31,53 @@ CREATE TABLE IF NOT EXISTS user_settings (
 """
 
 
+def get_users_db_path(config_dir: Optional[str] = None) -> str:
+    """Return the configured users database path."""
+    root = config_dir or os.environ.get("CONFIG_DIR", "/config")
+    return os.path.join(root, "users.db")
+
+
+def sync_builtin_admin_user(
+    username: str,
+    password_hash: str,
+    db_path: Optional[str] = None,
+) -> None:
+    """Ensure a local admin user exists for configured builtin credentials."""
+    normalized_username = (username or "").strip()
+    normalized_hash = password_hash or ""
+    if not normalized_username or not normalized_hash:
+        return
+
+    user_db = UserDB(db_path or get_users_db_path())
+    user_db.initialize()
+
+    existing = user_db.get_user(username=normalized_username)
+    if existing:
+        updates: dict[str, Any] = {}
+        if existing.get("password_hash") != normalized_hash:
+            updates["password_hash"] = normalized_hash
+        if existing.get("role") != "admin":
+            updates["role"] = "admin"
+        if existing.get("auth_source") != AUTH_SOURCE_BUILTIN:
+            updates["auth_source"] = AUTH_SOURCE_BUILTIN
+        if updates:
+            user_db.update_user(existing["id"], **updates)
+            logger.info(f"Updated local admin user '{normalized_username}' from builtin settings")
+        return
+
+    user_db.create_user(
+        username=normalized_username,
+        password_hash=normalized_hash,
+        auth_source=AUTH_SOURCE_BUILTIN,
+        role="admin",
+    )
+    logger.info(f"Created local admin user '{normalized_username}' from builtin settings")
+
+
 class UserDB:
     """Thread-safe SQLite user database."""
 
-    _VALID_AUTH_SOURCES = {"builtin", "oidc", "proxy", "cwa"}
+    _VALID_AUTH_SOURCES = set(AUTH_SOURCE_SET)
 
     def __init__(self, db_path: str):
         self._db_path = db_path

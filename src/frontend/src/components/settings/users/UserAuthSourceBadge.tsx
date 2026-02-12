@@ -2,7 +2,6 @@ import { AdminUser } from '../../../services/api';
 import {
   AUTH_SOURCE_BADGE_CLASSES,
   AUTH_SOURCE_LABEL,
-  normalizeAuthSource,
 } from './types';
 
 interface UserAuthSourceBadgeProps {
@@ -11,7 +10,7 @@ interface UserAuthSourceBadgeProps {
 }
 
 export const UserAuthSourceBadge = ({ user, showInactive = true }: UserAuthSourceBadgeProps) => {
-  const authSource = normalizeAuthSource(user);
+  const authSource = user.auth_source;
   const active = user.is_active !== false;
   const badgeBase = 'inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium leading-none';
 

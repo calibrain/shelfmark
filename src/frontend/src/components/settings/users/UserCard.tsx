@@ -3,7 +3,7 @@ import { AdminUser, DownloadDefaults } from '../../../services/api';
 import { PasswordFieldConfig, SelectFieldConfig, SelectOption, TextFieldConfig } from '../../../types/settings';
 import { PasswordField, SelectField, TextField } from '../fields';
 import { FieldWrapper } from '../shared';
-import { CreateUserFormState, getUserEditCapabilities } from './types';
+import { CreateUserFormState } from './types';
 
 const UserCardShell = ({ title, children }: { title: string; children: ReactNode }) => (
   <div className="space-y-5 p-4 rounded-lg border border-[var(--border-muted)] bg-[var(--bg)]">
@@ -196,7 +196,7 @@ export const UserEditFields = ({
   downloadDefaults,
   onEditOverrides,
 }: UserEditFieldsProps) => {
-  const capabilities = getUserEditCapabilities(user, downloadDefaults?.OIDC_USE_ADMIN_GROUP);
+  const capabilities = user.edit_capabilities;
   const { authSource, canSetPassword, canEditRole, canEditEmail, canEditDisplayName } = capabilities;
 
   const displayNameField = createTextField('display_name', 'Display Name', user.display_name || '', 'Display name');

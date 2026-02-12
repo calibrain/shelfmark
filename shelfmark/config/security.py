@@ -1,9 +1,15 @@
 """Authentication settings registration."""
 
-from typing import Any, Dict
+from typing import Any, Dict, Callable
 
 from werkzeug.security import generate_password_hash
 
+from shelfmark.config.migrations import migrate_security_settings
+from shelfmark.config.security_handlers import (
+    clear_builtin_credentials,
+    on_save_security,
+    test_oidc_connection,
+)
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import (
     register_settings,
@@ -16,264 +22,65 @@ from shelfmark.core.settings_registry import (
     ActionButton,
     TagListField,
 )
+from shelfmark.core.user_db import sync_builtin_admin_user
 
 logger = setup_logger(__name__)
 
 
-def _sync_builtin_admin_user(username: str, password_hash: str) -> None:
-    """Ensure a local admin user exists for the configured builtin credentials."""
-    import os
-    from shelfmark.core.user_db import UserDB
+def _auth_condition(auth_method: str) -> dict[str, str]:
+    return {"field": "AUTH_METHOD", "value": auth_method}
 
-    normalized_username = (username or "").strip()
-    normalized_hash = password_hash or ""
-    if not normalized_username or not normalized_hash:
-        return
 
-    db_path = os.path.join(os.environ.get("CONFIG_DIR", "/config"), "users.db")
-    user_db = UserDB(db_path)
-    user_db.initialize()
+def _ui_field(factory: Callable[..., Any], **kwargs: Any) -> Any:
+    return factory(env_supported=False, **kwargs)
 
-    existing = user_db.get_user(username=normalized_username)
-    if existing:
-        updates = {}
-        if existing.get("password_hash") != normalized_hash:
-            updates["password_hash"] = normalized_hash
-        if existing.get("role") != "admin":
-            updates["role"] = "admin"
-        if existing.get("auth_source") != "builtin":
-            updates["auth_source"] = "builtin"
-        if updates:
-            user_db.update_user(existing["id"], **updates)
-            logger.info(f"Updated local admin user '{normalized_username}' from builtin settings")
-        return
 
-    user_db.create_user(
-        username=normalized_username,
-        password_hash=normalized_hash,
-        auth_source="builtin",
-        role="admin",
-    )
-    logger.info(f"Created local admin user '{normalized_username}' from builtin settings")
+def _auth_ui_field(factory: Callable[..., Any], auth_method: str, **kwargs: Any) -> Any:
+    return _ui_field(factory, show_when=_auth_condition(auth_method), **kwargs)
 
 
 def _migrate_security_settings() -> None:
-    import json
     from shelfmark.core.settings_registry import _get_config_file_path, _ensure_config_dir
 
-    try:
-        config = load_config_file("security")
-        migrated = False
-        
-        # Migrate USE_CWA_AUTH to AUTH_METHOD
-        if "USE_CWA_AUTH" in config:
-            old_value = config.pop("USE_CWA_AUTH")
-            
-            # Only set AUTH_METHOD if it doesn't already exist
-            if "AUTH_METHOD" not in config:
-                if old_value:
-                    config["AUTH_METHOD"] = "cwa"
-                    logger.info("Migrated USE_CWA_AUTH=True to AUTH_METHOD='cwa'")
-                else:
-                    # If USE_CWA_AUTH was False, determine auth method from credentials
-                    if config.get("BUILTIN_USERNAME") and config.get("BUILTIN_PASSWORD_HASH"):
-                        config["AUTH_METHOD"] = "builtin"
-                        logger.info("Migrated USE_CWA_AUTH=False to AUTH_METHOD='builtin'")
-                    else:
-                        config["AUTH_METHOD"] = "none"
-                        logger.info("Migrated USE_CWA_AUTH=False to AUTH_METHOD='none'")
-                migrated = True
-            else:
-                logger.info("Removed deprecated USE_CWA_AUTH setting (AUTH_METHOD already exists)")
-                migrated = True
-        
-        # Migrate RESTRICT_SETTINGS_TO_ADMIN to CWA_RESTRICT_SETTINGS_TO_ADMIN
-        if "RESTRICT_SETTINGS_TO_ADMIN" in config:
-            old_value = config.pop("RESTRICT_SETTINGS_TO_ADMIN")
-            
-            # Only migrate if new key doesn't exist
-            if "CWA_RESTRICT_SETTINGS_TO_ADMIN" not in config:
-                config["CWA_RESTRICT_SETTINGS_TO_ADMIN"] = old_value
-                logger.info(f"Migrated RESTRICT_SETTINGS_TO_ADMIN={old_value} to CWA_RESTRICT_SETTINGS_TO_ADMIN={old_value}")
-                migrated = True
-            else:
-                logger.info("Removed deprecated RESTRICT_SETTINGS_TO_ADMIN setting (CWA_RESTRICT_SETTINGS_TO_ADMIN already exists)")
-                migrated = True
-
-        # Ensure legacy builtin credentials are represented in users.db.
-        try:
-            _sync_builtin_admin_user(
-                config.get("BUILTIN_USERNAME", ""),
-                config.get("BUILTIN_PASSWORD_HASH", ""),
-            )
-        except Exception as e:
-            logger.error(f"Failed to sync builtin credentials to users database during migration: {e}")
-        
-        # Save config if any migrations occurred
-        if migrated:
-            _ensure_config_dir("security")
-            config_path = _get_config_file_path("security")
-            with open(config_path, 'w') as f:
-                json.dump(config, f, indent=2)
-            logger.info("Security settings migration completed successfully")
-        else:
-            logger.debug("No security settings migration needed")
-    
-    except FileNotFoundError:
-        logger.debug("No existing security config file found - nothing to migrate")
-    except Exception as e:
-        logger.error(f"Failed to migrate security settings: {e}")
+    migrate_security_settings(
+        load_security_config=lambda: load_config_file("security"),
+        ensure_config_dir=lambda: _ensure_config_dir("security"),
+        get_config_path=lambda: _get_config_file_path("security"),
+        sync_builtin_admin_user=sync_builtin_admin_user,
+        logger=logger,
+    )
 
 
 def _clear_builtin_credentials() -> Dict[str, Any]:
-    """Clear built-in credentials to allow public access."""
-    import json
     from shelfmark.core.settings_registry import _get_config_file_path, _ensure_config_dir
 
-    try:
-        config = load_config_file("security")
-        config.pop("BUILTIN_USERNAME", None)
-        config.pop("BUILTIN_PASSWORD_HASH", None)
-        # Builtin auth now uses users.db, so switch auth mode to none to keep this
-        # action's historical behavior ("public access").
-        config["AUTH_METHOD"] = "none"
-
-        _ensure_config_dir("security")
-        config_path = _get_config_file_path("security")
-        with open(config_path, 'w') as f:
-            json.dump(config, f, indent=2)
-
-        logger.info("Cleared credentials")
-        return {"success": True, "message": "Credentials cleared. The app is now publicly accessible."}
-
-    except Exception as e:
-        logger.error(f"Failed to clear credentials: {e}")
-        return {"success": False, "message": f"Failed to clear credentials: {str(e)}"}
+    return clear_builtin_credentials(
+        load_security_config=lambda: load_config_file("security"),
+        ensure_config_dir=lambda: _ensure_config_dir("security"),
+        get_config_path=lambda: _get_config_file_path("security"),
+        logger=logger,
+    )
 
 
 def _on_save_security(values: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Custom save handler for security settings.
-
-    Handles password validation and hashing:
-    - If new password is provided, validate confirmation and hash it
-    - If password fields are empty, preserve existing hash
-    - Never store raw passwords
-    - Ensure username is present if password is set
-
-    Returns:
-        Dict with processed values to save and any validation errors.
-    """
-    # If switching to OIDC, ensure a local admin exists as fallback
-    if values.get("AUTH_METHOD") == "oidc":
-        import os
-        from shelfmark.core.user_db import UserDB
-
-        db_path = os.path.join(os.environ.get("CONFIG_DIR", "/config"), "users.db")
-        udb = UserDB(db_path)
-        udb.initialize()
-        users = udb.list_users()
-        has_local_admin = any(
-            u.get("password_hash") and u.get("role") == "admin"
-            for u in users
-        )
-        if not has_local_admin:
-            return {
-                "error": True,
-                "message": (
-                    "Create a local admin account first (Users tab) before enabling OIDC. "
-                    "This ensures you can still log in with a password if SSO is unavailable."
-                ),
-                "values": values,
-            }
-
-    password = values.get("BUILTIN_PASSWORD", "")
-    password_confirm = values.get("BUILTIN_PASSWORD_CONFIRM", "")
-
-    # Remove raw password fields - they should never be persisted
-    values.pop("BUILTIN_PASSWORD", None)
-    values.pop("BUILTIN_PASSWORD_CONFIRM", None)
-
-    # If password is provided, validate and hash it
-    if password:
-        if not values.get("BUILTIN_USERNAME"):
-            return {
-                "error": True,
-                "message": "Username cannot be empty",
-                "values": values
-            }
-
-        if password != password_confirm:
-            return {
-                "error": True,
-                "message": "Passwords do not match",
-                "values": values
-            }
-
-        if len(password) < 4:
-            return {
-                "error": True,
-                "message": "Password must be at least 4 characters",
-                "values": values
-            }
-
-        # Hash the password
-        values["BUILTIN_PASSWORD_HASH"] = generate_password_hash(password)
-        logger.info("Password hash updated")
-
-    # If no password provided but username is being set, preserve existing hash
-    elif "BUILTIN_USERNAME" in values:
-        existing = load_config_file("security")
-        if "BUILTIN_PASSWORD_HASH" in existing:
-            values["BUILTIN_PASSWORD_HASH"] = existing["BUILTIN_PASSWORD_HASH"]
-
-    # Keep users.db in sync with app-wide builtin credentials.
-    if values.get("AUTH_METHOD") == "builtin":
-        try:
-            _sync_builtin_admin_user(
-                values.get("BUILTIN_USERNAME", ""),
-                values.get("BUILTIN_PASSWORD_HASH", ""),
-            )
-        except Exception as e:
-            logger.error(f"Failed to sync builtin admin user: {e}")
-            return {
-                "error": True,
-                "message": "Failed to create/update local admin user from builtin credentials",
-                "values": values,
-            }
-
-    return {"error": False, "values": values}
+    return on_save_security(
+        values,
+        load_security_config=lambda: load_config_file("security"),
+        hash_password=generate_password_hash,
+        sync_builtin_admin_user=sync_builtin_admin_user,
+        logger=logger,
+    )
 
 
 def _test_oidc_connection() -> Dict[str, Any]:
-    """Test OIDC connection by fetching the discovery document."""
-    import requests
-
-    try:
-        config = load_config_file("security")
-        discovery_url = config.get("OIDC_DISCOVERY_URL", "")
-        if not discovery_url:
-            return {"success": False, "message": "Discovery URL is not configured."}
-
-        resp = requests.get(discovery_url, timeout=10)
-        resp.raise_for_status()
-        doc = resp.json()
-
-        # Validate required fields
-        required = ["issuer", "authorization_endpoint", "token_endpoint"]
-        missing = [f for f in required if f not in doc]
-        if missing:
-            return {"success": False, "message": f"Discovery document missing fields: {', '.join(missing)}"}
-
-        return {"success": True, "message": f"Connected to {doc['issuer']}"}
-
-    except Exception as e:
-        logger.error(f"OIDC connection test failed: {e}")
-        return {"success": False, "message": f"Connection failed: {str(e)}"}
+    return test_oidc_connection(
+        load_security_config=lambda: load_config_file("security"),
+        logger=logger,
+    )
 
 
 @register_settings("security", "Security", icon="shield", order=5)
-def security_settings():  
+def security_settings():
     """Security and authentication settings."""
     from shelfmark.config.env import CWA_DB_PATH
 
@@ -301,28 +108,28 @@ def security_settings():
             default="none",
             env_supported=False,
         ),
-        TextField(
+        _auth_ui_field(
+            TextField,
+            "builtin",
             key="BUILTIN_USERNAME",
             label="Username",
             description="Set a username and password to require login. Leave both empty for public access.",
             placeholder="Enter username",
-            env_supported=False,
-            show_when={"field": "AUTH_METHOD", "value": "builtin"},
         ),
-        PasswordField(
+        _auth_ui_field(
+            PasswordField,
+            "builtin",
             key="BUILTIN_PASSWORD",
             label="Set Password",
             description="Fill in to set or change the password.",
             placeholder="Enter new password",
-            env_supported=False,
-            show_when={"field": "AUTH_METHOD", "value": "builtin"},
         ),
-        PasswordField(
+        _auth_ui_field(
+            PasswordField,
+            "builtin",
             key="BUILTIN_PASSWORD_CONFIRM",
             label="Confirm Password",
             placeholder="Confirm new password",
-            env_supported=False,
-            show_when={"field": "AUTH_METHOD", "value": "builtin"},
         ),
         ActionButton(
             key="clear_credentials",
@@ -330,168 +137,152 @@ def security_settings():
             description="Remove login requirement and make the app publicly accessible.",
             style="danger",
             callback=_clear_builtin_credentials,
-            show_when={"field": "AUTH_METHOD", "value": "builtin"},
+            show_when=_auth_condition("builtin"),
         ),
-        TextField(
+        _auth_ui_field(
+            TextField,
+            "proxy",
             key="PROXY_AUTH_USER_HEADER",
             label="Proxy Auth User Header",
-            description=(
-                "The HTTP header your proxy uses to pass the authenticated username."
-            ),
+            description="The HTTP header your proxy uses to pass the authenticated username.",
             placeholder="e.g. X-Auth-User",
             default="X-Auth-User",
-            env_supported=False,
-            show_when={"field": "AUTH_METHOD", "value": "proxy"},
         ),
-        TextField(
+        _auth_ui_field(
+            TextField,
+            "proxy",
             key="PROXY_AUTH_LOGOUT_URL",
             label="Proxy Auth Logout URL",
-            description=(
-                "The URL to redirect users to for logging out."
-                " Leave empty to disable logout functionality."
-            ),
+            description="The URL to redirect users to for logging out. Leave empty to disable logout functionality.",
             placeholder="https://myauth.example.com/logout",
             default="",
-            env_supported=False,
-            show_when={"field": "AUTH_METHOD", "value": "proxy"},
         ),
-        CheckboxField(
+        _auth_ui_field(
+            CheckboxField,
+            "proxy",
             key="PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN",
             label="Restrict Settings to Admins authenticated via Proxy",
-            description=(
-                "Only users in the admin group can access settings."
-            ),
+            description="Only users in the admin group can access settings.",
             default=False,
-            env_supported=False,
-            show_when={"field": "AUTH_METHOD", "value": "proxy"},
         ),
-        TextField(
+        _ui_field(
+            TextField,
             key="PROXY_AUTH_ADMIN_GROUP_HEADER",
             label="Proxy Auth Admin Group Header",
-            description=(
-                "The HTTP header your proxy uses to pass the user's groups/roles."
-            ),
+            description="The HTTP header your proxy uses to pass the user's groups/roles.",
             placeholder="e.g. X-Auth-Groups",
             default="X-Auth-Groups",
-            env_supported=False,
             show_when={"field": "PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", "value": True},
         ),
-        TextField(
+        _ui_field(
+            TextField,
             key="PROXY_AUTH_ADMIN_GROUP_NAME",
             label="Proxy Auth Admin Group Name",
-            description=(
-                "The name of the group/role that should have admin access."
-            ),
+            description="The name of the group/role that should have admin access.",
             placeholder="e.g. admins",
             default="admins",
-            env_supported=False,
             show_when={"field": "PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", "value": True},
         ),
-        CheckboxField(
+        _auth_ui_field(
+            CheckboxField,
+            "cwa",
             key="CWA_RESTRICT_SETTINGS_TO_ADMIN",
             label="Restrict Settings to Admins authenticated via Calibre-Web",
-            description=(
-                "Only users with admin role in Calibre-Web can access settings."
-            ),
+            description="Only users with admin role in Calibre-Web can access settings.",
             default=False,
-            env_supported=False,
-            show_when={"field": "AUTH_METHOD", "value": "cwa"},
         ),
-        # === OIDC SETTINGS ===
-        TextField(
-            key="OIDC_DISCOVERY_URL",
-            label="Discovery URL",
-            description=(
-                "OpenID Connect discovery endpoint URL."
-                " Usually ends with /.well-known/openid-configuration."
-            ),
-            placeholder="https://auth.example.com/.well-known/openid-configuration",
-            required=True,
-            env_supported=False,
-            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+    ]
+
+    oidc_specs = [
+        (
+            TextField,
+            {
+                "key": "OIDC_DISCOVERY_URL",
+                "label": "Discovery URL",
+                "description": "OpenID Connect discovery endpoint URL. Usually ends with /.well-known/openid-configuration.",
+                "placeholder": "https://auth.example.com/.well-known/openid-configuration",
+                "required": True,
+            },
         ),
-        TextField(
-            key="OIDC_CLIENT_ID",
-            label="Client ID",
-            description="OAuth2 client ID from your identity provider.",
-            placeholder="shelfmark",
-            required=True,
-            env_supported=False,
-            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+        (
+            TextField,
+            {
+                "key": "OIDC_CLIENT_ID",
+                "label": "Client ID",
+                "description": "OAuth2 client ID from your identity provider.",
+                "placeholder": "shelfmark",
+                "required": True,
+            },
         ),
-        PasswordField(
-            key="OIDC_CLIENT_SECRET",
-            label="Client Secret",
-            description="OAuth2 client secret from your identity provider.",
-            required=True,
-            env_supported=False,
-            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+        (
+            PasswordField,
+            {
+                "key": "OIDC_CLIENT_SECRET",
+                "label": "Client Secret",
+                "description": "OAuth2 client secret from your identity provider.",
+                "required": True,
+            },
         ),
-        TagListField(
-            key="OIDC_SCOPES",
-            label="Scopes",
-            description="OAuth2 scopes to request from the identity provider. Managed automatically: includes essential scopes and the group claim when using admin group authorization.",
-            default=["openid", "email", "profile"],
-            env_supported=False,
-            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+        (
+            TagListField,
+            {
+                "key": "OIDC_SCOPES",
+                "label": "Scopes",
+                "description": "OAuth2 scopes to request from the identity provider. Managed automatically: includes essential scopes and the group claim when using admin group authorization.",
+                "default": ["openid", "email", "profile"],
+            },
         ),
-        TextField(
-            key="OIDC_GROUP_CLAIM",
-            label="Group Claim Name",
-            description=(
-                "The name of the claim in the ID token that contains user groups."
-            ),
-            placeholder="groups",
-            default="groups",
-            env_supported=False,
-            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+        (
+            TextField,
+            {
+                "key": "OIDC_GROUP_CLAIM",
+                "label": "Group Claim Name",
+                "description": "The name of the claim in the ID token that contains user groups.",
+                "placeholder": "groups",
+                "default": "groups",
+            },
         ),
-        TextField(
-            key="OIDC_ADMIN_GROUP",
-            label="Admin Group Name",
-            description=(
-                "Users in this group will be given admin access (if enabled below). "
-                "Leave empty to use database roles only."
-            ),
-            placeholder="shelfmark-admins",
-            default="",
-            env_supported=False,
-            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+        (
+            TextField,
+            {
+                "key": "OIDC_ADMIN_GROUP",
+                "label": "Admin Group Name",
+                "description": "Users in this group will be given admin access (if enabled below). Leave empty to use database roles only.",
+                "placeholder": "shelfmark-admins",
+                "default": "",
+            },
         ),
-        CheckboxField(
-            key="OIDC_USE_ADMIN_GROUP",
-            label="Use Admin Group for Authorization",
-            description=(
-                "When enabled, users in the Admin Group are granted admin access. "
-                "When disabled, admin access is determined solely by database roles."
-            ),
-            default=True,
-            env_supported=False,
-            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+        (
+            CheckboxField,
+            {
+                "key": "OIDC_USE_ADMIN_GROUP",
+                "label": "Use Admin Group for Authorization",
+                "description": "When enabled, users in the Admin Group are granted admin access. When disabled, admin access is determined solely by database roles.",
+                "default": True,
+            },
         ),
-        CheckboxField(
-            key="OIDC_AUTO_PROVISION",
-            label="Auto-Provision Users",
-            description=(
-                "Automatically create a user account on first OIDC login."
-                " When disabled, users must be pre-created by an admin."
-            ),
-            default=True,
-            env_supported=False,
-            show_when={"field": "AUTH_METHOD", "value": "oidc"},
+        (
+            CheckboxField,
+            {
+                "key": "OIDC_AUTO_PROVISION",
+                "label": "Auto-Provision Users",
+                "description": "Automatically create a user account on first OIDC login. When disabled, users must be pre-created by an admin.",
+                "default": True,
+            },
         ),
+    ]
+    fields.extend(_auth_ui_field(factory, "oidc", **spec) for factory, spec in oidc_specs)
+    fields.append(
         ActionButton(
             key="test_oidc",
             label="Test Connection",
             description="Fetch the OIDC discovery document and validate configuration.",
             style="primary",
             callback=_test_oidc_connection,
-            show_when={"field": "AUTH_METHOD", "value": "oidc"},
-        ),
-    ]
-
+            show_when=_auth_condition("oidc"),
+        )
+    )
     return fields
 
 
-# Register the on_save handler for this tab
 register_on_save("security", _on_save_security)

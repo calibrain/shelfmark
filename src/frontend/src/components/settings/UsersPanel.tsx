@@ -1,10 +1,12 @@
-import { useCallback, useEffect } from 'react';
+import { useEffect } from 'react';
 import { AdminUser } from '../../services/api';
 import {
   canCreateLocalUsersForAuthMode,
   UserListView,
   UserOverridesView,
-  useUsersData,
+  useUserForm,
+  useUserMutations,
+  useUsersFetch,
   useUsersPanelState,
 } from './users';
 
@@ -16,24 +18,21 @@ interface UsersPanelProps {
 
 export const UsersPanel = ({ authMode, onShowToast, onSubpageStateChange }: UsersPanelProps) => {
   const { route, openCreate, openEdit, openEditOverrides, backToList } = useUsersPanelState();
+
   const {
     users,
     loading,
     loadError,
     fetchUsers,
+    fetchUserEditContext,
+  } = useUsersFetch({ onShowToast });
+
+  const {
     createForm,
     setCreateForm,
-    creating,
-    saving,
-    deletingUserId,
-    createUser,
     resetCreateForm,
     editingUser,
     setEditingUser,
-    startEditing,
-    clearEditState,
-    saveEditedUser,
-    deleteUser,
     editPassword,
     setEditPassword,
     editPasswordConfirm,
@@ -43,7 +42,44 @@ export const UsersPanel = ({ authMode, onShowToast, onSubpageStateChange }: User
     isUserOverridable,
     userSettings,
     setUserSettings,
-  } = useUsersData({ onShowToast });
+    beginEditing,
+    applyUserEditContext,
+    resetEditContext,
+    clearEditState,
+    userOverridableSettings,
+  } = useUserForm();
+
+  const {
+    creating,
+    saving,
+    deletingUserId,
+    createUser,
+    saveEditedUser,
+    deleteUser,
+  } = useUserMutations({
+    onShowToast,
+    fetchUsers,
+    createForm,
+    resetCreateForm,
+    editingUser,
+    editPassword,
+    editPasswordConfirm,
+    userSettings,
+    userOverridableSettings,
+    deliveryPreferences,
+    onEditSaveSuccess: clearEditState,
+  });
+
+  const startEditing = async (user: AdminUser) => {
+    beginEditing(user);
+    try {
+      const context = await fetchUserEditContext(user.id);
+      applyUserEditContext(context);
+    } catch {
+      resetEditContext();
+    }
+  };
+
   const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode);
 
   const handleBackToList = () => {
@@ -74,13 +110,13 @@ export const UsersPanel = ({ authMode, onShowToast, onSubpageStateChange }: User
     await startEditing(user);
   };
 
-  const handleBackToEdit = useCallback(() => {
+  const handleBackToEdit = () => {
     if (editingUser) {
       openEdit(editingUser.id);
       return;
     }
     backToList();
-  }, [backToList, editingUser, openEdit]);
+  };
 
   useEffect(() => {
     if (!onSubpageStateChange) {

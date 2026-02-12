@@ -47,21 +47,6 @@ export const AUTH_SOURCE_BADGE_CLASSES: Record<AuthSource, string> = {
   cwa: 'bg-amber-500/15 text-amber-400',
 };
 
-export const normalizeAuthSource = (user: Pick<AdminUser, 'auth_source' | 'oidc_subject'>): AuthSource => {
-  if (user.auth_source === 'builtin' || user.auth_source === 'oidc' || user.auth_source === 'proxy' || user.auth_source === 'cwa') {
-    return user.auth_source;
-  }
-  return user.oidc_subject ? 'oidc' : 'builtin';
-};
-
-export interface UserEditCapabilities {
-  authSource: AuthSource;
-  canSetPassword: boolean;
-  canEditRole: boolean;
-  canEditEmail: boolean;
-  canEditDisplayName: boolean;
-}
-
 export const canCreateLocalUsersForAuthMode = (authMode?: string): boolean => {
   const normalized = String(authMode || 'none').toLowerCase();
   return normalized === 'none' || normalized === 'builtin' || normalized === 'oidc';
@@ -83,20 +68,4 @@ export const getUsersHeadingDescriptionForAuthMode = (authMode?: string): string
     return 'Users are managed in Calibre-Web and synced on login. Local user creation is disabled in CWA mode.';
   }
   return 'No authentication is enabled. You can create local users now to prepare for enabling authentication later.';
-};
-
-export const getUserEditCapabilities = (
-  user: Pick<AdminUser, 'auth_source' | 'oidc_subject'>,
-  oidcUseAdminGroup: boolean | undefined
-): UserEditCapabilities => {
-  const authSource = normalizeAuthSource(user);
-  const roleManagedByOidcGroup = authSource === 'oidc' && oidcUseAdminGroup === true;
-
-  return {
-    authSource,
-    canSetPassword: authSource === 'builtin',
-    canEditRole: authSource === 'builtin' || (authSource === 'oidc' && !roleManagedByOidcGroup),
-    canEditEmail: authSource === 'builtin' || authSource === 'proxy',
-    canEditDisplayName: authSource !== 'oidc',
-  };
 };

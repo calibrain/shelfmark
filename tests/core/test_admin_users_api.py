@@ -122,16 +122,43 @@ class TestAdminUsersListEndpoint:
 
         assert by_username["local_user"]["auth_source"] == "builtin"
         assert by_username["local_user"]["is_active"] is True
+        assert by_username["local_user"]["edit_capabilities"]["canSetPassword"] is True
+        assert by_username["local_user"]["edit_capabilities"]["canEditRole"] is True
+        assert by_username["local_user"]["edit_capabilities"]["canEditEmail"] is True
 
         assert by_username["oidc_user"]["auth_source"] == "oidc"
         assert by_username["oidc_user"]["is_active"] is False
+        assert by_username["oidc_user"]["edit_capabilities"]["canSetPassword"] is False
+        assert by_username["oidc_user"]["edit_capabilities"]["canEditRole"] is False
+        assert by_username["oidc_user"]["edit_capabilities"]["canEditEmail"] is False
+        assert by_username["oidc_user"]["edit_capabilities"]["canEditDisplayName"] is False
 
         assert by_username["proxy_user"]["auth_source"] == "proxy"
         assert by_username["proxy_user"]["is_active"] is False
+        assert by_username["proxy_user"]["edit_capabilities"]["canSetPassword"] is False
+        assert by_username["proxy_user"]["edit_capabilities"]["canEditRole"] is False
+        assert by_username["proxy_user"]["edit_capabilities"]["canEditEmail"] is True
 
     def test_list_users_requires_admin(self, regular_client):
         resp = regular_client.get("/api/admin/users")
         assert resp.status_code == 403
+
+    def test_list_users_oidc_role_editable_when_group_auth_disabled(self, admin_client, user_db):
+        user_db.create_user(
+            username="oidc_user",
+            oidc_subject="oidc-sub-123",
+            auth_source="oidc",
+        )
+
+        with patch(
+            "shelfmark.core.admin_routes.load_config_file",
+            return_value={"OIDC_USE_ADMIN_GROUP": False},
+        ):
+            resp = admin_client.get("/api/admin/users")
+
+        assert resp.status_code == 200
+        oidc_user = next(u for u in resp.json if u["username"] == "oidc_user")
+        assert oidc_user["edit_capabilities"]["canEditRole"] is True
 
     def test_list_users_no_session_allows_access_in_no_auth(self, no_session_client):
         """No session + no-auth mode = admin access allowed."""

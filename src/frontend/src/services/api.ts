@@ -382,16 +382,27 @@ export const getReleases = async (
 
 // Admin user management API
 
+export type AdminAuthSource = 'builtin' | 'oidc' | 'proxy' | 'cwa';
+
+export interface AdminUserEditCapabilities {
+  authSource: AdminAuthSource;
+  canSetPassword: boolean;
+  canEditRole: boolean;
+  canEditEmail: boolean;
+  canEditDisplayName: boolean;
+}
+
 export interface AdminUser {
   id: number;
   username: string;
   email: string | null;
   display_name: string | null;
   role: string;
-  auth_source: 'builtin' | 'oidc' | 'proxy' | 'cwa';
+  auth_source: AdminAuthSource;
   is_active: boolean;
   oidc_subject: string | null;
   created_at: string;
+  edit_capabilities: AdminUserEditCapabilities;
   settings?: Record<string, unknown>;
 }
 

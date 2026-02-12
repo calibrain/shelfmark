@@ -260,6 +260,42 @@ def get_all_settings_tabs() -> List[SettingsTab]:
     return sorted(_SETTINGS_REGISTRY.values(), key=lambda t: (t.order, t.name))
 
 
+def _iter_value_fields(tab: SettingsTab):
+    """Yield value-bearing fields for a tab."""
+    for field in tab.fields:
+        if isinstance(field, (ActionButton, HeadingField)):
+            continue
+        yield field
+
+
+def get_settings_field_map(tab_name: Optional[str] = None) -> Dict[str, tuple[SettingsField, str]]:
+    """Return key -> (field, tab_name) map for value-bearing settings fields."""
+    tabs: List[SettingsTab]
+    if tab_name:
+        tab = get_settings_tab(tab_name)
+        if not tab:
+            return {}
+        tabs = [tab]
+    else:
+        tabs = get_all_settings_tabs()
+
+    field_map: Dict[str, tuple[SettingsField, str]] = {}
+    for tab in tabs:
+        for field in _iter_value_fields(tab):
+            field_map[field.key] = (field, tab.name)
+    return field_map
+
+
+def get_user_overridable_fields(tab_name: Optional[str] = None) -> Dict[str, tuple[SettingsField, str]]:
+    """Return key -> (field, tab_name) map for fields marked user_overridable."""
+    field_map = get_settings_field_map(tab_name=tab_name)
+    return {
+        key: (field, tab)
+        for key, (field, tab) in field_map.items()
+        if getattr(field, "user_overridable", False)
+    }
+
+
 def list_registered_settings() -> List[str]:
     """List all registered settings tab names."""
     return list(_SETTINGS_REGISTRY.keys())
