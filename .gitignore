@@ -232,3 +232,4 @@ pyrightconfig.json
 AGENTS.md
 .claude/
 .playwright-mcp/
+frontend-dist/

@@ -13,6 +13,7 @@ interface UseAuthReturn {
   authRequired: boolean;
   authChecked: boolean;
   isAdmin: boolean;
+  authMode: string;
   loginError: string | null;
   isLoggingIn: boolean;
   setIsAuthenticated: (value: boolean) => void;
@@ -28,6 +29,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
   const [authRequired, setAuthRequired] = useState<boolean>(true);
   const [authChecked, setAuthChecked] = useState<boolean>(false);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [authMode, setAuthMode] = useState<string>('none');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
 
@@ -39,10 +41,12 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
         const authenticated = response.authenticated || false;
         const authIsRequired = response.auth_required !== false;
         const admin = response.is_admin || false;
+        const mode = response.auth_mode || 'none';
 
         setAuthRequired(authIsRequired);
         setIsAuthenticated(authenticated);
         setIsAdmin(admin);
+        setAuthMode(mode);
       } catch (error) {
         console.error('Auth check failed:', error);
         setAuthRequired(true);
@@ -102,6 +106,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
     authRequired,
     authChecked,
     isAdmin,
+    authMode,
     loginError,
     isLoggingIn,
     setIsAuthenticated,

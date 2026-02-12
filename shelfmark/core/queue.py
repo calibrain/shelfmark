@@ -107,14 +107,22 @@ class BookQueue:
             if task_id in self._task_data:
                 self._task_data[task_id].status_message = message
 
-    def get_status(self) -> Dict[QueueStatus, Dict[str, DownloadTask]]:
-        """Get current queue status grouped by status."""
+    def get_status(self, user_id: Optional[int] = None) -> Dict[QueueStatus, Dict[str, DownloadTask]]:
+        """Get current queue status grouped by status.
+
+        Args:
+            user_id: If provided, only return tasks belonging to this user
+                     (plus legacy tasks with no user_id). If None, return all.
+        """
         self.refresh()
         with self._lock:
             result: Dict[QueueStatus, Dict[str, DownloadTask]] = {status: {} for status in QueueStatus}
             for task_id, status in self._status.items():
                 if task_id in self._task_data:
-                    result[status][task_id] = self._task_data[task_id]
+                    task = self._task_data[task_id]
+                    if user_id is not None and task.user_id is not None and task.user_id != user_id:
+                        continue
+                    result[status][task_id] = task
             return result
 
     def get_queue_order(self) -> List[Dict[str, Any]]:

@@ -79,6 +79,7 @@ function App() {
     authRequired,
     authChecked,
     isAdmin,
+    authMode,
     loginError,
     isLoggingIn,
     setIsAuthenticated,
@@ -854,6 +855,7 @@ function App() {
               onLogin={handleLogin}
               error={loginError}
               isLoading={isLoggingIn}
+              authMode={authMode}
             />
           )
         }

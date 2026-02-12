@@ -72,6 +72,7 @@ socketio = SocketIO(
 
 # Initialize WebSocket manager
 ws_manager.init_app(app, socketio)
+ws_manager.set_queue_status_fn(backend.queue_status)
 logger.info(f"Flask-SocketIO initialized with async_mode='{async_mode}'")
 
 # Ensure all plugins are loaded before starting the download coordinator.
@@ -87,6 +88,28 @@ except ImportError as e:
 # Migrate legacy security settings if needed
 from shelfmark.config.security import _migrate_security_settings
 _migrate_security_settings()
+
+# Initialize user database and register multi-user routes
+# If CONFIG_DIR doesn't exist or is read-only, multi-user features will be disabled
+import os as _os
+from shelfmark.core.user_db import UserDB
+_user_db_path = _os.path.join(_os.environ.get("CONFIG_DIR", "/config"), "users.db")
+user_db: UserDB | None = None
+try:
+    user_db = UserDB(_user_db_path)
+    user_db.initialize()
+    import shelfmark.config.users_settings as _  # noqa: F401 - registers users tab
+    from shelfmark.core.oidc_routes import register_oidc_routes
+    from shelfmark.core.admin_routes import register_admin_routes
+    register_oidc_routes(app, user_db)
+    register_admin_routes(app, user_db)
+except (sqlite3.OperationalError, OSError) as e:
+    logger.warning(
+        f"User database initialization failed: {e}. "
+        f"Multi-user authentication features will be disabled. "
+        f"Ensure CONFIG_DIR ({_os.environ.get('CONFIG_DIR', '/config')}) exists and is writable."
+    )
+    user_db = None
 
 # Start download coordinator
 backend.start()
@@ -174,6 +197,8 @@ def get_auth_mode() -> str:
             return "builtin"
         if auth_mode == "proxy" and security_config.get("PROXY_AUTH_USER_HEADER"):
             return "proxy"
+        if auth_mode == "oidc" and security_config.get("OIDC_DISCOVERY_URL") and security_config.get("OIDC_CLIENT_ID"):
+            return "oidc"
     except Exception:
         pass
 
@@ -346,17 +371,22 @@ def login_required(f):
         if 'user_id' not in session:
             return jsonify({"error": "Unauthorized"}), 401
 
-        # Check admin access for settings endpoints (proxy and CWA modes)
-        if auth_mode in ("proxy", "cwa") and (request.path.startswith('/api/settings') or request.path.startswith('/api/onboarding')):
+        # Check admin access for settings endpoints (proxy, CWA, OIDC, and builtin modes)
+        if auth_mode in ("proxy", "cwa", "oidc", "builtin") and (request.path.startswith('/api/settings') or request.path.startswith('/api/onboarding')):
             from shelfmark.core.settings_registry import load_config_file
 
             try:
                 security_config = load_config_file("security")
 
-                if auth_mode == "proxy":
+                if auth_mode == "builtin":
+                    # Builtin multi-user: settings are always admin-only
+                    restrict_to_admin = 'db_user_id' in session
+                elif auth_mode == "proxy":
                     restrict_to_admin = security_config.get("PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", False)
                 else:
-                    restrict_to_admin = security_config.get("CWA_RESTRICT_SETTINGS_TO_ADMIN", False)
+                    # For OIDC and CWA, settings are always admin-only
+                    # The user's admin status comes from their group or database role
+                    restrict_to_admin = True
 
                 if restrict_to_admin and not session.get('is_admin', False):
                     return jsonify({"error": "Admin access required"}), 403
@@ -563,7 +593,14 @@ def api_download() -> Union[Response, Tuple[Response, int]]:
     try:
         priority = int(request.args.get('priority', 0))
         email_recipient = request.args.get('email_recipient')
-        success, error_msg = backend.queue_book(book_id, priority, email_recipient=email_recipient)
+        # Per-user download overrides
+        db_user_id = session.get('db_user_id')
+        _username = session.get('user_id')
+        _user_overrides = user_db.get_user_settings(db_user_id) if (user_db and db_user_id) else {}
+        success, error_msg = backend.queue_book(
+            book_id, priority, email_recipient=email_recipient,
+            user_id=db_user_id, username=_username, user_overrides=_user_overrides,
+        )
         if success:
             return jsonify({"status": "queued", "priority": priority})
         return jsonify({"error": error_msg or "Failed to queue book"}), 500
@@ -602,7 +639,14 @@ def api_download_release() -> Union[Response, Tuple[Response, int]]:
 
         priority = data.get('priority', 0)
         email_recipient = data.get('email_recipient')
-        success, error_msg = backend.queue_release(data, priority, email_recipient=email_recipient)
+        # Per-user download overrides
+        db_user_id = session.get('db_user_id')
+        _username = session.get('user_id')
+        _user_overrides = user_db.get_user_settings(db_user_id) if (user_db and db_user_id) else {}
+        success, error_msg = backend.queue_release(
+            data, priority, email_recipient=email_recipient,
+            user_id=db_user_id, username=_username, user_overrides=_user_overrides,
+        )
 
         if success:
             return jsonify({"status": "queued", "priority": priority})
@@ -704,7 +748,11 @@ def api_status() -> Union[Response, Tuple[Response, int]]:
         flask.Response: JSON object with queue status.
     """
     try:
-        status = backend.queue_status()
+        # Non-admin users only see their own downloads
+        user_id = None
+        if not session.get('is_admin', True):
+            user_id = session.get('db_user_id')
+        status = backend.queue_status(user_id=user_id)
         return jsonify(status)
     except Exception as e:
         logger.error_trace(f"Status error: {e}")
@@ -1054,22 +1102,47 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
             logger.info(f"Login successful for user '{username}' from IP {ip_address} (no auth configured)")
             return jsonify({"success": True})
 
-        # Built-in authentication mode
-        if auth_mode == "builtin":
+        # Password authentication (builtin and OIDC modes)
+        # OIDC mode also allows password login as a fallback so admins don't get locked out
+        if auth_mode in ("builtin", "oidc"):
+            if user_db is None:
+                logger.error(f"User database not available for {auth_mode} auth")
+                return jsonify({"error": "Authentication service unavailable"}), 503
             try:
-                security_config = load_config_file("security")
-                stored_username = security_config.get("BUILTIN_USERNAME", "")
-                stored_hash = security_config.get("BUILTIN_PASSWORD_HASH", "")
+                db_user = user_db.get_user(username=username)
 
-                # Check credentials
-                if username == stored_username and check_password_hash(stored_hash, password):
+                # If user not in DB, try legacy config credentials and auto-migrate
+                if not db_user:
+                    security_config = load_config_file("security")
+                    stored_username = security_config.get("BUILTIN_USERNAME", "")
+                    stored_hash = security_config.get("BUILTIN_PASSWORD_HASH", "")
+
+                    if username == stored_username and stored_hash and check_password_hash(stored_hash, password):
+                        # Auto-migrate: create admin user in DB from config
+                        db_user = user_db.create_user(
+                            username=stored_username,
+                            password_hash=stored_hash,
+                            role="admin",
+                        )
+                        logger.info(f"Migrated builtin admin '{stored_username}' to users database")
+                    else:
+                        return _failed_login_response(username, ip_address)
+
+                # Authenticate against DB user
+                if db_user:
+                    if not db_user.get("password_hash") or not check_password_hash(db_user["password_hash"], password):
+                        return _failed_login_response(username, ip_address)
+
+                    is_admin = db_user["role"] == "admin"
                     session['user_id'] = username
+                    session['db_user_id'] = db_user["id"]
+                    session['is_admin'] = is_admin
                     session.permanent = remember_me
                     clear_failed_logins(username)
-                    logger.info(f"Login successful for user '{username}' from IP {ip_address} (builtin auth, remember_me={remember_me})")
+                    logger.info(f"Login successful for user '{username}' from IP {ip_address} ({auth_mode} auth, is_admin={is_admin}, remember_me={remember_me})")
                     return jsonify({"success": True})
-                else:
-                    return _failed_login_response(username, ip_address)
+
+                return _failed_login_response(username, ip_address)
 
             except Exception as e:
                 logger.error_trace(f"Built-in auth error: {e}")
@@ -1176,11 +1249,11 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
         is_authenticated = 'user_id' in session
 
         # Determine admin status for settings access
-        # - Built-in auth: single user is always admin
+        # - Built-in auth: check DB user role (legacy single-user is always admin)
         # - CWA auth: check RESTRICT_SETTINGS_TO_ADMIN setting
         # - Proxy auth: check PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN setting
         if auth_mode == "builtin":
-            is_admin = True
+            is_admin = session.get('is_admin', True)
         elif auth_mode == "cwa":
             restrict_to_admin = security_config.get("CWA_RESTRICT_SETTINGS_TO_ADMIN", False)
             if restrict_to_admin:
@@ -1191,6 +1264,10 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
         elif auth_mode == "proxy":
             restrict_to_admin = security_config.get("PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", False)
             is_admin = session.get('is_admin', not restrict_to_admin)
+        elif auth_mode == "oidc":
+            # OIDC admin status is determined by group membership during login
+            # and stored in session['is_admin'] - use it directly
+            is_admin = session.get('is_admin', False)
         else:
             is_admin = False
 
@@ -1846,22 +1923,35 @@ def catch_all(path: str) -> Response:
 def handle_connect():
     """Handle client connection."""
     logger.info("WebSocket client connected")
-    
+
     # Track the connection (triggers warmup callbacks on first connect)
     ws_manager.client_connected()
-    
-    # Send initial status to the newly connected client
+
+    # Join appropriate room based on user session
+    is_admin = session.get('is_admin', True)
+    db_user_id = session.get('db_user_id')
+    ws_manager.join_user_room(request.sid, is_admin, db_user_id)
+
+    # Send initial status to the newly connected client (filtered)
     try:
-        status = backend.queue_status()
+        user_id = None
+        if not is_admin:
+            user_id = db_user_id
+        status = backend.queue_status(user_id=user_id)
         emit('status_update', status)
     except Exception as e:
         logger.error(f"Error sending initial status: {e}")
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    """Handle client disconnection."""  
+    """Handle client disconnection."""
     logger.info("WebSocket client disconnected")
-    
+
+    # Leave room
+    is_admin = session.get('is_admin', True)
+    db_user_id = session.get('db_user_id')
+    ws_manager.leave_user_room(request.sid, is_admin, db_user_id)
+
     # Track the disconnection
     ws_manager.client_disconnected()
 
@@ -1869,7 +1959,10 @@ def handle_disconnect():
 def handle_status_request():
     """Handle manual status request from client."""
     try:
-        status = backend.queue_status()
+        user_id = None
+        if not session.get('is_admin', True):
+            user_id = session.get('db_user_id')
+        status = backend.queue_status(user_id=user_id)
         emit('status_update', status)
     except Exception as e:
         logger.error(f"Error handling status request: {e}")
