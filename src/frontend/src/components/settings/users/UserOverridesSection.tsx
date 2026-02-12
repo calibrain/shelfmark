@@ -1,15 +1,15 @@
 import { DeliveryPreferencesResponse } from '../../../services/api';
 import {
+  HeadingFieldConfig,
   SelectFieldConfig,
   SettingsField,
   TextFieldConfig,
 } from '../../../types/settings';
-import { SelectField, TextField } from '../fields';
+import { HeadingField, SelectField, TextField } from '../fields';
 import { FieldWrapper } from '../shared';
 import { PerUserSettings } from './types';
 
 interface UserOverridesSectionProps {
-  standalone?: boolean;
   deliveryPreferences: DeliveryPreferencesResponse | null;
   isUserOverridable: (key: keyof PerUserSettings) => boolean;
   userSettings: PerUserSettings;
@@ -114,8 +114,14 @@ const ResetOverrideButton = ({ disabled = false, label = 'Reset', onClick }: Res
   </button>
 );
 
+const deliveryHeading: HeadingFieldConfig = {
+  type: 'HeadingField',
+  key: 'delivery_preferences_heading',
+  title: 'Delivery Preferences',
+  description: 'Editing values here creates per-user settings. Use Reset to inherit the global value.',
+};
+
 export const UserOverridesSection = ({
-  standalone = false,
   deliveryPreferences,
   isUserOverridable,
   userSettings,
@@ -178,12 +184,7 @@ export const UserOverridesSection = ({
 
   return (
     <div className="space-y-4">
-      <div className={standalone ? '' : 'border-t border-[var(--border-muted)] pt-4'}>
-        <p className="text-xs font-medium opacity-60 mb-1">Delivery Preferences</p>
-        <p className="text-xs opacity-40 mb-3">
-          Editing values here creates per-user settings. Use Reset to inherit the global value.
-        </p>
-      </div>
+      <HeadingField field={deliveryHeading} />
 
       {canOverrideOutputMode && (
         <FieldWrapper

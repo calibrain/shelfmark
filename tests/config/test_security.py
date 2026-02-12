@@ -384,36 +384,3 @@ class TestBuiltinAdminSync:
         assert check_password_hash(user["password_hash"], "newpassword")
 
 
-class TestClearCredentials:
-    """Tests for clearing built-in credentials."""
-
-    def test_clear_credentials_removes_username_and_hash_and_disables_builtin(self, temp_config_dir):
-        config_file = temp_config_dir / "config.json"
-        config = {
-            "AUTH_METHOD": "builtin",
-            "BUILTIN_USERNAME": "admin",
-            "BUILTIN_PASSWORD_HASH": "hashed_password",
-        }
-        config_file.write_text(json.dumps(config, indent=2))
-
-        with patch("shelfmark.core.settings_registry._get_config_file_path", return_value=str(config_file)):
-            with patch("shelfmark.core.settings_registry._ensure_config_dir"):
-                with patch("shelfmark.config.security.load_config_file", return_value=config.copy()):
-                    from shelfmark.config.security import _clear_builtin_credentials
-
-                    result = _clear_builtin_credentials()
-
-        assert result["success"] is True
-        cleared = json.loads(config_file.read_text())
-        assert "BUILTIN_USERNAME" not in cleared
-        assert "BUILTIN_PASSWORD_HASH" not in cleared
-        assert cleared.get("AUTH_METHOD") == "none"
-
-    def test_clear_credentials_handles_errors(self):
-        with patch("shelfmark.config.security.load_config_file", side_effect=Exception("Test error")):
-            from shelfmark.config.security import _clear_builtin_credentials
-
-            result = _clear_builtin_credentials()
-
-        assert result["success"] is False
-        assert "Test error" in result["message"]

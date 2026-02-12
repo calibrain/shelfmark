@@ -1,6 +1,5 @@
 """Operational handlers for security settings (save/actions)."""
 
-import json
 import os
 from typing import Any, Callable
 
@@ -58,32 +57,6 @@ def on_save_security(
             return {"error": True, "message": "Failed to create/update local admin user from builtin credentials", "values": values}
 
     return {"error": False, "values": values}
-
-
-def clear_builtin_credentials(
-    *,
-    load_security_config: Callable[[], dict[str, Any]],
-    ensure_config_dir: Callable[[], None],
-    get_config_path: Callable[[], str],
-    logger: Any,
-) -> dict[str, Any]:
-    """Clear builtin credentials and switch auth mode to none."""
-    try:
-        config = load_security_config()
-        config.pop("BUILTIN_USERNAME", None)
-        config.pop("BUILTIN_PASSWORD_HASH", None)
-        # Builtin auth now uses users.db; switching to none preserves public-access behavior.
-        config["AUTH_METHOD"] = "none"
-
-        ensure_config_dir()
-        with open(get_config_path(), "w") as handle:
-            json.dump(config, handle, indent=2)
-
-        logger.info("Cleared credentials")
-        return {"success": True, "message": "Credentials cleared. The app is now publicly accessible."}
-    except Exception as exc:
-        logger.error(f"Failed to clear credentials: {exc}")
-        return {"success": False, "message": f"Failed to clear credentials: {str(exc)}"}
 
 
 def test_oidc_connection(

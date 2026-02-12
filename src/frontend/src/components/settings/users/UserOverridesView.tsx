@@ -1,11 +1,9 @@
-import { AdminUser, DeliveryPreferencesResponse } from '../../../services/api';
+import { DeliveryPreferencesResponse } from '../../../services/api';
 import { PerUserSettings } from './types';
 import { SettingsSubpage } from '../shared';
-import { UserAuthSourceBadge } from './UserAuthSourceBadge';
 import { UserOverridesSection } from './UserOverridesSection';
 
 interface UserOverridesViewProps {
-  user: AdminUser;
   onSave: () => void;
   saving: boolean;
   onBack: () => void;
@@ -16,7 +14,6 @@ interface UserOverridesViewProps {
 }
 
 export const UserOverridesView = ({
-  user,
   onSave,
   saving,
   onBack,
@@ -27,12 +24,7 @@ export const UserOverridesView = ({
 }: UserOverridesViewProps) => (
   <SettingsSubpage>
     <div className="space-y-5">
-      <div className="flex items-center gap-2">
-        <UserAuthSourceBadge user={user} />
-      </div>
-
       <UserOverridesSection
-        standalone
         deliveryPreferences={deliveryPreferences}
         isUserOverridable={isUserOverridable}
         userSettings={userSettings}

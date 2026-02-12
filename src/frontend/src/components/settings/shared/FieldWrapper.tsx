@@ -139,7 +139,7 @@ export const FieldWrapper = ({
   const isFullyDimmed = isDisabled && !field.fromEnv;
 
   return (
-    <div className={`space-y-1.5 ${isFullyDimmed ? 'opacity-60' : ''}`}>
+    <div className="space-y-1.5">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <label className={`text-sm font-medium ${isFullyDimmed ? 'text-zinc-500' : ''}`}>
@@ -159,14 +159,14 @@ export const FieldWrapper = ({
         <div className="flex items-center gap-2 shrink-0">{headerRight}</div>
       </div>
 
-      {children}
+      <div className={isFullyDimmed ? 'opacity-50' : ''}>{children}</div>
 
       {field.description && (
         <p className="text-xs opacity-60">{field.description}</p>
       )}
 
       {isDisabled && disabledReason && (
-        <p className="text-xs text-zinc-500 italic">{disabledReason}</p>
+        <p className="text-xs text-zinc-400 italic">{disabledReason}</p>
       )}
     </div>
   );

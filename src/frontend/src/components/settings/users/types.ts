@@ -42,9 +42,9 @@ export const AUTH_SOURCE_LABEL: Record<AuthSource, string> = {
 
 export const AUTH_SOURCE_BADGE_CLASSES: Record<AuthSource, string> = {
   builtin: 'bg-zinc-500/15 opacity-70',
-  oidc: 'bg-sky-500/15 text-sky-400',
-  proxy: 'bg-emerald-500/15 text-emerald-400',
-  cwa: 'bg-amber-500/15 text-amber-400',
+  oidc: 'bg-sky-500/15 text-sky-600 dark:text-sky-400',
+  proxy: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+  cwa: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
 };
 
 export const canCreateLocalUsersForAuthMode = (authMode?: string): boolean => {

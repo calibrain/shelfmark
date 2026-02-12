@@ -14,6 +14,9 @@ interface UseAuthReturn {
   authChecked: boolean;
   isAdmin: boolean;
   authMode: string;
+  username: string | null;
+  displayName: string | null;
+  oidcButtonLabel: string | null;
   loginError: string | null;
   isLoggingIn: boolean;
   setIsAuthenticated: (value: boolean) => void;
@@ -30,23 +33,27 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
   const [authChecked, setAuthChecked] = useState<boolean>(false);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [authMode, setAuthMode] = useState<string>('none');
+  const [username, setUsername] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [oidcButtonLabel, setOidcButtonLabel] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+
+  const applyAuthResponse = useCallback((response: Awaited<ReturnType<typeof checkAuth>>) => {
+    setAuthRequired(response.auth_required !== false);
+    setIsAuthenticated(response.authenticated || false);
+    setIsAdmin(response.is_admin || false);
+    setAuthMode(response.auth_mode || 'none');
+    setUsername(response.username || null);
+    setDisplayName(response.display_name || null);
+    setOidcButtonLabel(response.oidc_button_label || null);
+  }, []);
 
   // Check authentication on mount
   useEffect(() => {
     const verifyAuth = async () => {
       try {
-        const response = await checkAuth();
-        const authenticated = response.authenticated || false;
-        const authIsRequired = response.auth_required !== false;
-        const admin = response.is_admin || false;
-        const mode = response.auth_mode || 'none';
-
-        setAuthRequired(authIsRequired);
-        setIsAuthenticated(authenticated);
-        setIsAdmin(admin);
-        setAuthMode(mode);
+        applyAuthResponse(await checkAuth());
       } catch (error) {
         console.error('Auth check failed:', error);
         setAuthRequired(true);
@@ -57,7 +64,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
       }
     };
     verifyAuth();
-  }, []);
+  }, [applyAuthResponse]);
 
   const handleLogin = useCallback(async (credentials: LoginCredentials) => {
     setIsLoggingIn(true);
@@ -65,10 +72,8 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
     try {
       const response = await login(credentials);
       if (response.success) {
-        // Re-check auth to get updated admin status from session
-        const authResponse = await checkAuth();
-        setIsAuthenticated(true);
-        setIsAdmin(authResponse.is_admin || false);
+        // Re-check auth to get updated session state
+        applyAuthResponse(await checkAuth());
         setLoginError(null);
         navigate('/', { replace: true });
       } else {
@@ -83,7 +88,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
     } finally {
       setIsLoggingIn(false);
     }
-  }, [navigate]);
+  }, [navigate, applyAuthResponse]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -107,6 +112,9 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
     authChecked,
     isAdmin,
     authMode,
+    username,
+    displayName,
+    oidcButtonLabel,
     loginError,
     isLoggingIn,
     setIsAuthenticated,

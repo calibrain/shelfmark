@@ -6,7 +6,6 @@ from werkzeug.security import generate_password_hash
 
 from shelfmark.config.migrations import migrate_security_settings
 from shelfmark.config.security_handlers import (
-    clear_builtin_credentials,
     on_save_security,
     test_oidc_connection,
 )
@@ -50,16 +49,6 @@ def _migrate_security_settings() -> None:
         logger=logger,
     )
 
-
-def _clear_builtin_credentials() -> Dict[str, Any]:
-    from shelfmark.core.settings_registry import _get_config_file_path, _ensure_config_dir
-
-    return clear_builtin_credentials(
-        load_security_config=lambda: load_config_file("security"),
-        ensure_config_dir=lambda: _ensure_config_dir("security"),
-        get_config_path=lambda: _get_config_file_path("security"),
-        logger=logger,
-    )
 
 
 def _on_save_security(values: Dict[str, Any]) -> Dict[str, Any]:
@@ -112,16 +101,16 @@ def security_settings():
             TextField,
             "builtin",
             key="BUILTIN_USERNAME",
-            label="Username",
-            description="Set a username and password to require login. Leave both empty for public access.",
+            label="Default User Username",
+            description="Creates a default admin user with these credentials. Manage additional users in the Users tab.",
             placeholder="Enter username",
         ),
         _auth_ui_field(
             PasswordField,
             "builtin",
             key="BUILTIN_PASSWORD",
-            label="Set Password",
-            description="Fill in to set or change the password.",
+            label="Default User Password",
+            description="Set or change the default user's password.",
             placeholder="Enter new password",
         ),
         _auth_ui_field(
@@ -130,14 +119,6 @@ def security_settings():
             key="BUILTIN_PASSWORD_CONFIRM",
             label="Confirm Password",
             placeholder="Confirm new password",
-        ),
-        ActionButton(
-            key="clear_credentials",
-            label="Clear Credentials",
-            description="Remove login requirement and make the app publicly accessible.",
-            style="danger",
-            callback=_clear_builtin_credentials,
-            show_when=_auth_condition("builtin"),
         ),
         _auth_ui_field(
             TextField,
@@ -268,6 +249,16 @@ def security_settings():
                 "label": "Auto-Provision Users",
                 "description": "Automatically create a user account on first OIDC login. When disabled, users must be pre-created by an admin.",
                 "default": True,
+            },
+        ),
+        (
+            TextField,
+            {
+                "key": "OIDC_BUTTON_LABEL",
+                "label": "Login Button Label",
+                "description": "Custom label for the OIDC sign-in button on the login page.",
+                "placeholder": "Sign in with OIDC",
+                "default": "",
             },
         ),
     ]

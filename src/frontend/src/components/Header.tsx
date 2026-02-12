@@ -26,10 +26,13 @@ interface HeaderProps {
   isLoading?: boolean;
   onDownloadsClick?: () => void;
   onSettingsClick?: () => void;
+  isAdmin?: boolean;
   statusCounts?: StatusCounts;
   onLogoClick?: () => void;
   authRequired?: boolean;
   isAuthenticated?: boolean;
+  username?: string | null;
+  displayName?: string | null;
   onLogout?: () => void;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info', persistent?: boolean) => string;
   onRemoveToast?: (id: string) => void;
@@ -50,10 +53,13 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   isLoading = false,
   onDownloadsClick,
   onSettingsClick,
+  isAdmin = false,
   statusCounts = { ongoing: 0, completed: 0, errored: 0 },
   onLogoClick,
   authRequired = false,
   isAuthenticated = false,
+  username,
+  displayName,
   onLogout,
   onShowToast,
   onRemoveToast,
@@ -311,11 +317,14 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
               {onSettingsClick && (
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={isAdmin ? () => {
                     closeDropdown();
                     onSettingsClick();
-                  }}
-                  className="w-full text-left px-4 py-2 hover-surface transition-colors flex items-center gap-3"
+                  } : undefined}
+                  disabled={!isAdmin}
+                  className={`w-full text-left px-4 py-2 transition-colors flex items-center gap-3 ${
+                    isAdmin ? 'hover-surface' : 'opacity-40 cursor-not-allowed'
+                  }`}
                 >
                   <svg
                     className="w-5 h-5"
@@ -409,18 +418,36 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
                 </>
               )}
 
-              {/* Logout Button */}
-              {authRequired && isAuthenticated && onLogout && (
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="w-full text-left px-4 py-2 hover-surface transition-colors flex items-center gap-3 text-red-600 dark:text-red-400"
+              {/* User Footer */}
+              {authRequired && isAuthenticated && username && (
+                <div
+                  className="border-t"
+                  style={{ borderColor: 'var(--border-muted)' }}
                 >
-                  <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
-                  </svg>
-                  <span>Sign Out</span>
-                </button>
+                  <div className="px-4 py-3 flex items-center gap-2.5">
+                    <span
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-semibold shrink-0 uppercase"
+                      style={{ backgroundColor: 'var(--hover-surface)', color: 'var(--text)' }}
+                    >
+                      {(displayName || username).slice(0, 2)}
+                    </span>
+                    <div className="flex-1 min-w-0 truncate text-sm font-medium">
+                      {displayName || username}
+                    </div>
+                    {onLogout && (
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="shrink-0 p-2 rounded-full hover-action transition-colors text-red-600 dark:text-red-400"
+                        title="Sign Out"
+                      >
+                        <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           </div>

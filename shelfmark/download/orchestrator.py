@@ -113,7 +113,9 @@ def queue_book(
             logger.warning(error_msg)
             return False, error_msg
 
-        books_output_mode = str(config.get("BOOKS_OUTPUT_MODE", "folder") or "folder").strip().lower()
+        books_output_mode = str(
+            config.get("BOOKS_OUTPUT_MODE", "folder", user_id=user_id) or "folder"
+        ).strip().lower()
         is_audiobook = check_audiobook(book_info.content)
 
         # Capture output mode at queue time so tasks aren't affected if settings change later.
@@ -190,7 +192,9 @@ def queue_release(
         series_position = release_data.get('series_position') or extra.get('series_position')
         subtitle = release_data.get('subtitle') or extra.get('subtitle')
 
-        books_output_mode = str(config.get("BOOKS_OUTPUT_MODE", "folder") or "folder").strip().lower()
+        books_output_mode = str(
+            config.get("BOOKS_OUTPUT_MODE", "folder", user_id=user_id) or "folder"
+        ).strip().lower()
         is_audiobook = check_audiobook(content_type)
 
         output_mode = "folder" if is_audiobook else books_output_mode

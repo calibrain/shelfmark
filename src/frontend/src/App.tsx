@@ -78,6 +78,9 @@ function App() {
     authChecked,
     isAdmin,
     authMode,
+    username,
+    displayName,
+    oidcButtonLabel,
     loginError,
     isLoggingIn,
     setIsAuthenticated,
@@ -567,13 +570,16 @@ function App() {
         searchInput={searchInput}
         onSearchChange={setSearchInput}
         onDownloadsClick={() => setDownloadsSidebarOpen(true)}
-        onSettingsClick={isAdmin ? () => {
+        onSettingsClick={() => {
           if (config?.settings_enabled) {
             setSettingsOpen(true);
           } else {
             setConfigBannerOpen(true);
           }
-        } : undefined}
+        }}
+        isAdmin={isAdmin}
+        username={username}
+        displayName={displayName}
         statusCounts={statusCounts}
         onLogoClick={() => handleResetSearch(config)}
         authRequired={authRequired}
@@ -787,6 +793,7 @@ function App() {
               error={loginError}
               isLoading={isLoggingIn}
               authMode={authMode}
+              oidcButtonLabel={oidcButtonLabel}
             />
           )
         }

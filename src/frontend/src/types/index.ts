@@ -188,8 +188,11 @@ export interface AuthResponse {
   auth_required?: boolean;
   auth_mode?: string;
   is_admin?: boolean;
+  username?: string;
+  display_name?: string | null;
   error?: string;
   logout_url?: string;
+  oidc_button_label?: string;
 }
 
 // Type guard to check if a book is from a metadata provider

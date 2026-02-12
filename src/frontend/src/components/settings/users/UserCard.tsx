@@ -12,15 +12,6 @@ const UserCardShell = ({ title, children }: { title: string; children: ReactNode
   </div>
 );
 
-const AuthInfoBanner = ({ message }: { message: string }) => (
-  <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs bg-sky-500/10 text-sky-400">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0">
-      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
-    </svg>
-    {message}
-  </div>
-);
-
 const CREATE_ROLE_OPTIONS: SelectOption[] = [
   { value: 'user', label: 'User' },
   { value: 'admin', label: 'Admin' },
@@ -30,12 +21,6 @@ const EDIT_ROLE_OPTIONS: SelectOption[] = [
   { value: 'admin', label: 'Admin' },
   { value: 'user', label: 'User' },
 ];
-
-const AUTH_SOURCE_MESSAGES: Record<string, string> = {
-  oidc: 'This user authenticates via OIDC. Password, email, and display name are managed by the identity provider.',
-  proxy: 'This user authenticates via proxy headers. Password authentication is unavailable for proxy users.',
-  cwa: 'This user authenticates via Calibre-Web. Password authentication is unavailable in Shelfmark for CWA users.',
-};
 
 const createTextField = (
   key: string,
@@ -135,9 +120,9 @@ export const UserCreateCard = ({
   return (
     <UserCardShell title="Create Local User">
       {isFirstUser && (
-        <div className="text-xs px-3 py-2 rounded-lg bg-sky-500/10 text-sky-400">
+        <p className="text-xs text-zinc-500">
           This will be the first account and will be created as admin.
-        </div>
+        </p>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -223,23 +208,8 @@ export const UserEditFields = ({
       : 'Role is managed by the external authentication source.')
     : undefined;
 
-  const authSourceMessage = AUTH_SOURCE_MESSAGES[authSource] || null;
-
-  const oidcAdminGroupMessage = authSource === 'oidc' && downloadDefaults?.OIDC_USE_ADMIN_GROUP === true
-    ? (downloadDefaults?.OIDC_ADMIN_GROUP
-      ? `Admin role is managed by the ${downloadDefaults.OIDC_ADMIN_GROUP} group in your identity provider.`
-      : 'Admin group authorization is enabled but no group name is configured.')
-    : null;
-
   return (
     <>
-      {authSourceMessage && (
-        <div className="space-y-2">
-          <AuthInfoBanner message={authSourceMessage} />
-          {oidcAdminGroupMessage && <AuthInfoBanner message={oidcAdminGroupMessage} />}
-        </div>
-      )}
-
       {renderTextField(
         displayNameField,
         user.display_name || '',

@@ -1252,12 +1252,26 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
 
         is_admin = get_auth_check_admin_status(auth_mode, security_config, session)
 
+        display_name = None
+        if is_authenticated and session.get('db_user_id'):
+            try:
+                from shelfmark.core.user_db import UserDB
+                import os
+                user_db = UserDB(os.path.join(os.environ.get("CONFIG_DIR", "/config"), "users.db"))
+                user_db.initialize()
+                db_user = user_db.get_user(user_id=session['db_user_id'])
+                if db_user:
+                    display_name = db_user.get("display_name") or None
+            except Exception:
+                pass
+
         response_data = {
             "authenticated": is_authenticated,
             "auth_required": True,
             "auth_mode": auth_mode,
             "is_admin": is_admin if is_authenticated else False,
-            "username": session.get('user_id') if is_authenticated else None
+            "username": session.get('user_id') if is_authenticated else None,
+            "display_name": display_name,
         }
         
         # Add logout URL for proxy auth if configured
@@ -1265,6 +1279,12 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
             logout_url = security_config.get("PROXY_AUTH_LOGOUT_URL", "")
             if logout_url:
                 response_data["logout_url"] = logout_url
+
+        # Add custom OIDC button label if configured
+        if auth_mode == "oidc":
+            oidc_button_label = security_config.get("OIDC_BUTTON_LABEL", "")
+            if oidc_button_label:
+                response_data["oidc_button_label"] = oidc_button_label
         
         return jsonify(response_data)
     except Exception as e:

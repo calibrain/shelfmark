@@ -187,7 +187,6 @@ export const UsersPanel = ({ authMode, onShowToast, onSubpageStateChange }: User
 
     return (
       <UserOverridesView
-        user={editingUser}
         onSave={handleSave}
         saving={saving}
         onBack={handleBackToEdit}

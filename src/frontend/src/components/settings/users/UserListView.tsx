@@ -112,7 +112,7 @@ export const UserListView = ({
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <div
                       className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium shrink-0
-                        ${user.role === 'admin' ? 'bg-sky-500/20 text-sky-400' : 'bg-zinc-500/20'}`}
+                        ${user.role === 'admin' ? 'bg-sky-500/20 text-sky-600 dark:text-sky-400' : 'bg-zinc-500/20'}`}
                     >
                       {user.username.charAt(0).toUpperCase()}
                     </div>
@@ -140,7 +140,7 @@ export const UserListView = ({
                   <div className="flex items-center flex-wrap gap-2 shrink-0 sm:justify-end">
                     <span
                       className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium leading-none
-                        ${user.role === 'admin' ? 'bg-sky-500/15 text-sky-400' : 'bg-zinc-500/10 opacity-70'}`}
+                        ${user.role === 'admin' ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400' : 'bg-zinc-500/10 opacity-70'}`}
                     >
                       {roleLabel}
                     </span>

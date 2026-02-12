@@ -7,9 +7,10 @@ interface LoginPageProps {
   error: string | null;
   isLoading: boolean;
   authMode?: string;
+  oidcButtonLabel?: string | null;
 }
 
-export const LoginPage = ({ onLogin, error, isLoading, authMode }: LoginPageProps) => {
+export const LoginPage = ({ onLogin, error, isLoading, authMode, oidcButtonLabel }: LoginPageProps) => {
   const logoUrl = withBasePath('/logo.png');
 
   return (
@@ -18,19 +19,18 @@ export const LoginPage = ({ onLogin, error, isLoading, authMode }: LoginPageProp
       style={{ backgroundColor: 'var(--background-color)', color: 'var(--text-color)' }}
     >
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <img src={logoUrl} alt="Logo" className="mx-auto mb-6 w-20 h-20" />
-          <h1 className="text-2xl font-semibold">Sign in to continue</h1>
-        </div>
         <div
-          className="rounded-lg shadow-2xl p-8 border"
+          className="rounded-lg shadow-2xl p-6 border"
           style={{
             backgroundColor: 'var(--card-background)',
             borderColor: 'var(--border-color)',
             color: 'var(--text-color)',
           }}
         >
-          <LoginForm onSubmit={onLogin} error={error} isLoading={isLoading} authMode={authMode} />
+          <div className="text-center mb-5">
+            <img src={logoUrl} alt="Logo" className="mx-auto w-12 h-12" />
+          </div>
+          <LoginForm onSubmit={onLogin} error={error} isLoading={isLoading} authMode={authMode} oidcButtonLabel={oidcButtonLabel} />
         </div>
       </div>
     </div>

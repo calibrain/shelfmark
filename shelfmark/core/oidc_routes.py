@@ -72,6 +72,7 @@ def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
     if admin_group and use_admin_group and group_claim and group_claim not in scopes:
         scopes.append(group_claim)
 
+    oauth._clients.pop("shelfmark_idp", None)
     oauth.register(
         name="shelfmark_idp",
         client_id=client_id,
