@@ -442,6 +442,20 @@ export const deleteAdminUser = async (userId: number): Promise<{ success: boolea
   });
 };
 
+export interface CwaUserSyncResult {
+  success: boolean;
+  message: string;
+  created: number;
+  updated: number;
+  total: number;
+}
+
+export const syncAdminCwaUsers = async (): Promise<CwaUserSyncResult> => {
+  return fetchJSON<CwaUserSyncResult>(`${API_BASE}/admin/users/sync-cwa`, {
+    method: 'POST',
+  });
+};
+
 export interface DownloadDefaults {
   BOOKS_OUTPUT_MODE: string;
   DESTINATION: string;

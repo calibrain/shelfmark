@@ -5,6 +5,8 @@ All endpoints require admin session.
 """
 
 from functools import wraps
+import os
+import sqlite3
 from typing import Any
 
 from flask import Flask, jsonify, request, session
@@ -27,6 +29,7 @@ from shelfmark.core.auth_modes import (
     determine_auth_mode,
     normalize_auth_source,
 )
+from shelfmark.core.cwa_user_sync import sync_cwa_users_from_rows
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_db import UserDB
@@ -135,6 +138,24 @@ def _serialize_user(
     return payload
 
 
+def _sync_all_cwa_users(user_db: UserDB) -> dict[str, int]:
+    """Sync all users from the Calibre-Web database into users.db."""
+    if not CWA_DB_PATH or not CWA_DB_PATH.exists():
+        raise FileNotFoundError("Calibre-Web database is not available")
+
+    db_path = os.fspath(CWA_DB_PATH)
+    db_uri = f"file:{db_path}?mode=ro&immutable=1"
+    conn = sqlite3.connect(db_uri, uri=True)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT name, role, email FROM user")
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    return sync_cwa_users_from_rows(user_db, rows)
+
+
 def register_admin_routes(app: Flask, user_db: UserDB) -> None:
     """Register admin user management routes on the Flask app."""
 
@@ -199,7 +220,11 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             )
         except ValueError:
             return jsonify({"error": "Username already exists"}), 409
-        logger.info(f"Admin created user: {username} (role={role})")
+        logger.info(
+            "Shelfmark user created "
+            f"(source=manual_admin_create, created_by={session.get('user_id', 'unknown')}, "
+            f"username={username}, role={role}, auth_source={AUTH_SOURCE_BUILTIN})"
+        )
         return jsonify(
             _serialize_user(
                 user,
@@ -346,6 +371,40 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         logger.info(f"Admin updated user {user_id}")
         return jsonify(result)
 
+    @app.route("/api/admin/users/sync-cwa", methods=["POST"])
+    @_require_admin
+    def admin_sync_cwa_users():
+        """Manually sync users from Calibre-Web into users.db."""
+        auth_mode = _get_auth_mode()
+        if auth_mode != AUTH_SOURCE_CWA:
+            return jsonify({
+                "error": "CWA sync is only available when CWA authentication is enabled",
+            }), 400
+
+        try:
+            summary = _sync_all_cwa_users(user_db)
+        except FileNotFoundError:
+            return jsonify({
+                "error": "Calibre-Web database is not available",
+                "message": "Verify app.db is mounted and readable at /auth/app.db.",
+            }), 503
+        except Exception as exc:
+            logger.error(f"Failed to sync CWA users: {exc}")
+            return jsonify({
+                "error": "Failed to sync users from Calibre-Web",
+            }), 500
+
+        message = (
+            f"Synced {summary['total']} CWA users "
+            f"({summary['created']} created, {summary['updated']} updated)."
+        )
+        logger.info(message)
+        return jsonify({
+            "success": True,
+            "message": message,
+            **summary,
+        })
+
     register_admin_settings_routes(app, user_db, _require_admin)
 
     @app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
@@ -370,13 +429,6 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
                 "error": f"Cannot delete active {auth_source.upper()} users",
                 "message": f"{auth_source.upper()} users are automatically re-provisioned on login.",
             }), 400
-        if auth_source == AUTH_SOURCE_OIDC and auth_mode == AUTH_SOURCE_OIDC:
-            security_config = load_config_file("security")
-            if security_config.get("OIDC_AUTO_PROVISION", True):
-                return jsonify({
-                    "error": "Cannot delete active OIDC users",
-                    "message": "OIDC users are automatically re-provisioned on login while auto-provisioning is enabled.",
-                }), 400
 
         # Prevent deleting the last local admin
         if user.get("role") == "admin" and user.get("password_hash"):

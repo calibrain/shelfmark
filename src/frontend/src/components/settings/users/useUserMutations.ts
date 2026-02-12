@@ -1,5 +1,12 @@
 import { useState } from 'react';
-import { AdminUser, DeliveryPreferencesResponse, createAdminUser, deleteAdminUser, updateAdminUser } from '../../../services/api';
+import {
+  AdminUser,
+  DeliveryPreferencesResponse,
+  createAdminUser,
+  deleteAdminUser,
+  syncAdminCwaUsers,
+  updateAdminUser,
+} from '../../../services/api';
 import { CreateUserFormState, PerUserSettings } from './types';
 
 const MIN_PASSWORD_LENGTH = 4;
@@ -48,6 +55,7 @@ export const useUserMutations = ({
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
+  const [syncingCwa, setSyncingCwa] = useState(false);
   const fail = (message: string) => (onShowToast?.(message, 'error'), false);
 
   const createUser = async () => {
@@ -116,5 +124,28 @@ export const useUserMutations = ({
     }
   };
 
-  return { creating, saving, deletingUserId, createUser, saveEditedUser, deleteUser };
+  const syncCwaUsers = async () => {
+    setSyncingCwa(true);
+    try {
+      const result = await syncAdminCwaUsers();
+      onShowToast?.(result.message || 'Users synced from CWA', 'success');
+      await fetchUsers();
+      return true;
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : 'Failed to sync users from CWA');
+    } finally {
+      setSyncingCwa(false);
+    }
+  };
+
+  return {
+    creating,
+    saving,
+    deletingUserId,
+    syncingCwa,
+    createUser,
+    saveEditedUser,
+    deleteUser,
+    syncCwaUsers,
+  };
 };

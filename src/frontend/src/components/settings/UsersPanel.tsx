@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { AdminUser } from '../../services/api';
+import { ActionResult, SettingsTab } from '../../types/settings';
 import {
   canCreateLocalUsersForAuthMode,
   UserListView,
@@ -9,14 +10,34 @@ import {
   useUsersFetch,
   useUsersPanelState,
 } from './users';
+import { SettingsContent } from './SettingsContent';
+import { SettingsSubpage } from './shared';
 
 interface UsersPanelProps {
   authMode: string;
+  tab: SettingsTab;
+  values: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+  onSave: () => Promise<void>;
+  onAction: (key: string) => Promise<ActionResult>;
+  isSaving: boolean;
+  hasChanges: boolean;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
   onSubpageStateChange?: (state: { title: string; onBack: () => void } | null) => void;
 }
 
-export const UsersPanel = ({ authMode, onShowToast, onSubpageStateChange }: UsersPanelProps) => {
+export const UsersPanel = ({
+  authMode,
+  tab,
+  values,
+  onChange,
+  onSave,
+  onAction,
+  isSaving,
+  hasChanges,
+  onShowToast,
+  onSubpageStateChange,
+}: UsersPanelProps) => {
   const { route, openCreate, openEdit, openEditOverrides, backToList } = useUsersPanelState();
 
   const {
@@ -53,9 +74,11 @@ export const UsersPanel = ({ authMode, onShowToast, onSubpageStateChange }: User
     creating,
     saving,
     deletingUserId,
+    syncingCwa,
     createUser,
     saveEditedUser,
     deleteUser,
+    syncCwaUsers,
   } = useUserMutations({
     onShowToast,
     fetchUsers,
@@ -108,6 +131,10 @@ export const UsersPanel = ({ authMode, onShowToast, onSubpageStateChange }: User
   const handleEdit = async (user: AdminUser) => {
     openEdit(user.id);
     await startEditing(user);
+  };
+
+  const handleSyncCwa = async () => {
+    await syncCwaUsers();
   };
 
   const handleBackToEdit = () => {
@@ -199,33 +226,52 @@ export const UsersPanel = ({ authMode, onShowToast, onSubpageStateChange }: User
   }
 
   return (
-    <UserListView
-      authMode={authMode}
-      users={users}
-      onCreate={openCreate}
-      showCreateForm={route.kind === 'create'}
-      createForm={createForm}
-      onCreateFormChange={setCreateForm}
-      creating={creating}
-      isFirstUser={users.length === 0}
-      onCreateSubmit={handleCreate}
-      onCancelCreate={handleCancelCreate}
-      showEditForm={route.kind === 'edit'}
-      activeEditUserId={route.kind === 'edit' ? route.userId : null}
-      editingUser={route.kind === 'edit' ? editingUser : null}
-      onEditingUserChange={setEditingUser}
-      onEditSave={handleSave}
-      saving={saving}
-      onCancelEdit={handleBackToList}
-      editPassword={editPassword}
-      onEditPasswordChange={setEditPassword}
-      editPasswordConfirm={editPasswordConfirm}
-      onEditPasswordConfirmChange={setEditPasswordConfirm}
-      downloadDefaults={downloadDefaults}
-      onOpenOverrides={handleOpenOverrides}
-      onEdit={handleEdit}
-      onDelete={deleteUser}
-      deletingUserId={deletingUserId}
-    />
+    <SettingsSubpage>
+      <div>
+        <UserListView
+          authMode={authMode}
+          users={users}
+          onCreate={openCreate}
+          showCreateForm={route.kind === 'create'}
+          createForm={createForm}
+          onCreateFormChange={setCreateForm}
+          creating={creating}
+          isFirstUser={users.length === 0}
+          onCreateSubmit={handleCreate}
+          onCancelCreate={handleCancelCreate}
+          showEditForm={route.kind === 'edit'}
+          activeEditUserId={route.kind === 'edit' ? route.userId : null}
+          editingUser={route.kind === 'edit' ? editingUser : null}
+          onEditingUserChange={setEditingUser}
+          onEditSave={handleSave}
+          saving={saving}
+          onCancelEdit={handleBackToList}
+          editPassword={editPassword}
+          onEditPasswordChange={setEditPassword}
+          editPasswordConfirm={editPasswordConfirm}
+          onEditPasswordConfirmChange={setEditPasswordConfirm}
+          downloadDefaults={downloadDefaults}
+          onOpenOverrides={handleOpenOverrides}
+          onEdit={handleEdit}
+          onDelete={deleteUser}
+          deletingUserId={deletingUserId}
+          onSyncCwa={handleSyncCwa}
+          syncingCwa={syncingCwa}
+        />
+
+        <div className="pt-5 mt-4 border-t border-black/10 dark:border-white/10">
+          <SettingsContent
+            tab={tab}
+            values={values}
+            onChange={onChange}
+            onSave={onSave}
+            onAction={onAction}
+            isSaving={isSaving}
+            hasChanges={hasChanges}
+            embedded
+          />
+        </div>
+      </div>
+    </SettingsSubpage>
   );
 };

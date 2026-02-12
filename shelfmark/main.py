@@ -33,6 +33,8 @@ from shelfmark.core.auth_modes import (
     is_settings_or_onboarding_path,
     should_restrict_settings_to_admin,
 )
+from shelfmark.core.cwa_user_sync import upsert_cwa_user
+from shelfmark.core.external_user_linking import upsert_external_user
 from shelfmark.core.utils import normalize_base_path
 from shelfmark.api.websocket import ws_manager
 
@@ -321,20 +323,23 @@ def proxy_auth_middleware():
             logger.warning(f"Proxy auth enabled but no username found in header '{user_header}'")
             return jsonify({"error": "Authentication required. Proxy header not set."}), 401
         
-        # Check if settings access should be restricted to admins
-        restrict_to_admin = security_config.get("PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", False)
-        is_admin = True  # Default to admin if not restricting
-        
-        if restrict_to_admin:
-            admin_group_header = security_config.get("PROXY_AUTH_ADMIN_GROUP_HEADER", "X-Auth-Groups")
-            admin_group_name = security_config.get("PROXY_AUTH_ADMIN_GROUP_NAME", "admins")
-            
-            # Extract groups from proxy header (can be comma or pipe separated)
+        # Resolve admin role for proxy sessions.
+        # If an admin group is configured, derive from groups header.
+        # Otherwise preserve existing DB role for known users and default
+        # first-time users to admin (to avoid lockouts).
+        admin_group_header = security_config.get("PROXY_AUTH_ADMIN_GROUP_HEADER", "X-Auth-Groups")
+        admin_group_name = str(security_config.get("PROXY_AUTH_ADMIN_GROUP_NAME", "") or "").strip()
+        is_admin = True
+
+        if admin_group_name:
             groups_header = get_proxy_header(admin_group_header) or ""
             user_groups_delimiter = "," if "," in groups_header else "|"
             user_groups = [g.strip() for g in groups_header.split(user_groups_delimiter) if g.strip()]
-            
             is_admin = admin_group_name in user_groups
+        elif user_db is not None:
+            existing_db_user = user_db.get_user(username=username)
+            if existing_db_user:
+                is_admin = existing_db_user.get("role") == "admin"
         
         # Create or update session
         previous_username = session.get('user_id')
@@ -348,21 +353,16 @@ def proxy_auth_middleware():
         # Provision proxy-authenticated users into users.db for multi-user features.
         if user_db is not None and 'db_user_id' not in session:
             role = "admin" if is_admin else "user"
-            db_user = user_db.get_user(username=username)
-            if not db_user:
-                db_user = user_db.create_user(
-                    username=username,
-                    role=role,
-                    auth_source="proxy",
-                )
-                logger.info(f"Provisioned proxy user '{username}' in users database")
-            else:
-                user_db.update_user(
-                    db_user["id"],
-                    role=role,
-                    auth_source="proxy",
-                )
-                db_user = user_db.get_user(user_id=db_user["id"]) or db_user
+            db_user, _ = upsert_external_user(
+                user_db,
+                auth_source="proxy",
+                username=username,
+                role=role,
+                collision_strategy="takeover",
+                context="proxy_request",
+            )
+            if db_user is None:
+                raise RuntimeError("Unexpected proxy user sync result: no user returned")
 
             session['db_user_id'] = db_user["id"]
 
@@ -392,17 +392,13 @@ def login_required(f):
         if 'user_id' not in session:
             return jsonify({"error": "Unauthorized"}), 401
 
-        # Check admin access for settings endpoints (proxy, CWA, OIDC, and builtin modes)
-        if auth_mode in ("proxy", "cwa", "oidc", "builtin") and is_settings_or_onboarding_path(request.path):
+        # Check admin access for settings/onboarding endpoints.
+        if is_settings_or_onboarding_path(request.path):
             from shelfmark.core.settings_registry import load_config_file
 
             try:
-                security_config = load_config_file("security")
-                restrict_to_admin = should_restrict_settings_to_admin(
-                    auth_mode,
-                    security_config,
-                    session,
-                )
+                users_config = load_config_file("users")
+                restrict_to_admin = should_restrict_settings_to_admin(users_config)
 
                 if restrict_to_admin and not session.get('is_admin', False):
                     return jsonify({"error": "Admin access required"}), 403
@@ -1153,23 +1149,13 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
                 db_user_id = None
                 if user_db is not None:
                     role = "admin" if is_admin else "user"
-                    db_user = user_db.get_user(username=username)
-                    if not db_user:
-                        db_user = user_db.create_user(
-                            username=username,
-                            email=cwa_email,
-                            role=role,
-                            auth_source="cwa",
-                        )
-                        logger.info(f"Provisioned CWA user '{username}' in users database")
-                    else:
-                        user_db.update_user(
-                            db_user["id"],
-                            email=cwa_email,
-                            role=role,
-                            auth_source="cwa",
-                        )
-                        db_user = user_db.get_user(user_id=db_user["id"]) or db_user
+                    db_user, _ = upsert_cwa_user(
+                        user_db,
+                        cwa_username=username,
+                        cwa_email=cwa_email,
+                        role=role,
+                        context="cwa_login",
+                    )
                     db_user_id = db_user["id"]
 
                 # Successful authentication - create session and clear failed attempts
@@ -1236,6 +1222,7 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
 
     try:
         security_config = load_config_file("security")
+        users_config = load_config_file("users")
         auth_mode = get_auth_mode()
 
         # If no authentication is configured, access is allowed (full admin)
@@ -1250,7 +1237,7 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
         # Check if user has a valid session
         is_authenticated = 'user_id' in session
 
-        is_admin = get_auth_check_admin_status(auth_mode, security_config, session)
+        is_admin = get_auth_check_admin_status(auth_mode, users_config, session)
 
         display_name = None
         if is_authenticated and session.get('db_user_id'):

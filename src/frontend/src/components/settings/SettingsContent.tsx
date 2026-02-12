@@ -42,6 +42,7 @@ interface SettingsContentProps {
   hasChanges: boolean;
   isUniversalMode?: boolean; // Whether app is in Universal search mode
   overrideSummary?: Record<string, { count: number; users: Array<{ userId: number; username: string; value: unknown }> }>;
+  embedded?: boolean;
 }
 
 function evaluateShowWhenCondition(
@@ -247,21 +248,96 @@ export const SettingsContent = ({
   hasChanges,
   isUniversalMode = true,
   overrideSummary,
+  embedded = false,
 }: SettingsContentProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Reset scroll position when tab changes
   useEffect(() => {
+    if (embedded) {
+      return;
+    }
     if (scrollRef.current) {
       scrollRef.current.scrollTop = 0;
     }
-  }, [tab.name]);
+  }, [embedded, tab.name]);
 
   // Memoize the visible fields to avoid recalculating on every render
   const visibleFields = useMemo(
     () => tab.fields.filter((field) => isFieldVisible(field, values, isUniversalMode)),
     [tab.fields, values, isUniversalMode]
   );
+
+  const renderedFields = (
+    <div className="space-y-5">
+      {visibleFields.map((field) => {
+        const disabledState = getDisabledState(field, values);
+        const fieldOverrideSummary = overrideSummary?.[field.key];
+        return (
+          <FieldWrapper
+            key={`${tab.name}-${field.key}`}
+            field={field}
+            disabledOverride={disabledState.disabled}
+            disabledReasonOverride={disabledState.reason}
+            userOverrideCount={fieldOverrideSummary?.count}
+            userOverrideDetails={fieldOverrideSummary?.users}
+          >
+            {renderField(
+              field,
+              values[field.key],
+              (v) => onChange(field.key, v),
+              () => onAction(field.key),
+              disabledState.disabled,
+              values
+            )}
+          </FieldWrapper>
+        );
+      })}
+    </div>
+  );
+
+  const saveButton = hasChanges ? (
+    <button
+      onClick={onSave}
+      disabled={isSaving}
+      className="w-full py-2.5 px-4 rounded-lg font-medium transition-colors
+                 bg-sky-600 text-white hover:bg-sky-700
+                 disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {isSaving ? (
+        <span className="flex items-center justify-center gap-2">
+          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+              fill="none"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
+          </svg>
+          Saving...
+        </span>
+      ) : (
+        'Save Changes'
+      )}
+    </button>
+  ) : null;
+
+  if (embedded) {
+    return (
+      <div className="space-y-5">
+        {renderedFields}
+        {saveButton}
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -271,31 +347,7 @@ export const SettingsContent = ({
         className="flex-1 overflow-y-auto p-6"
         style={{ paddingBottom: hasChanges ? 'calc(5rem + env(safe-area-inset-bottom))' : '1.5rem' }}
       >
-        <div className="space-y-5">
-          {visibleFields.map((field) => {
-            const disabledState = getDisabledState(field, values);
-            const fieldOverrideSummary = overrideSummary?.[field.key];
-            return (
-              <FieldWrapper
-                key={`${tab.name}-${field.key}`}
-                field={field}
-                disabledOverride={disabledState.disabled}
-                disabledReasonOverride={disabledState.reason}
-                userOverrideCount={fieldOverrideSummary?.count}
-                userOverrideDetails={fieldOverrideSummary?.users}
-              >
-                {renderField(
-                  field,
-                  values[field.key],
-                  (v) => onChange(field.key, v),
-                  () => onAction(field.key),
-                  disabledState.disabled,
-                  values
-                )}
-              </FieldWrapper>
-            );
-          })}
-        </div>
+        {renderedFields}
       </div>
 
       {/* Save button - only visible when there are changes */}
@@ -304,37 +356,7 @@ export const SettingsContent = ({
           className="flex-shrink-0 px-6 py-4 border-t border-[var(--border-muted)] bg-[var(--bg)] animate-slide-up"
           style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
         >
-          <button
-            onClick={onSave}
-            disabled={isSaving}
-            className="w-full py-2.5 px-4 rounded-lg font-medium transition-colors
-                       bg-sky-600 text-white hover:bg-sky-700
-                       disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSaving ? (
-              <span className="flex items-center justify-center gap-2">
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                    fill="none"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                  />
-                </svg>
-                Saving...
-              </span>
-            ) : (
-              'Save Changes'
-            )}
-          </button>
+          {saveButton}
         </div>
       )}
     </div>

@@ -51,52 +51,43 @@ class TestSettingsRestrictionPolicy:
         assert is_settings_or_onboarding_path("/api/onboarding")
         assert not is_settings_or_onboarding_path("/api/search")
 
-    def test_oidc_is_always_admin_restricted_for_settings(self):
-        config = {}
-        session_data = {"user_id": "user", "is_admin": False}
-        assert should_restrict_settings_to_admin("oidc", config, session_data) is True
+    def test_default_is_admin_restricted(self):
+        assert should_restrict_settings_to_admin({}) is True
 
-    def test_cwa_is_always_admin_restricted_for_settings(self):
-        assert should_restrict_settings_to_admin("cwa", {}, {"user_id": "user"}) is True
-
-    def test_proxy_respects_config_toggle(self):
-        assert should_restrict_settings_to_admin(
-            "proxy",
-            {"PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN": True},
-            {"user_id": "user"},
-        )
-        assert not should_restrict_settings_to_admin(
-            "proxy",
-            {"PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN": False},
-            {"user_id": "user"},
-        )
-
-    def test_builtin_restricts_only_in_multi_user_session(self):
-        assert should_restrict_settings_to_admin("builtin", {}, {"db_user_id": 1})
-        assert not should_restrict_settings_to_admin("builtin", {}, {"user_id": "admin"})
+    def test_respects_global_users_toggle(self):
+        assert should_restrict_settings_to_admin({"RESTRICT_SETTINGS_TO_ADMIN": True}) is True
+        assert should_restrict_settings_to_admin({"RESTRICT_SETTINGS_TO_ADMIN": False}) is False
 
 
 class TestAuthCheckAdminStatus:
-    def test_oidc_authenticated_admin(self):
-        result = get_auth_check_admin_status("oidc", {}, {"user_id": "admin", "is_admin": True})
-        assert result is True
-
-    def test_oidc_authenticated_non_admin(self):
-        result = get_auth_check_admin_status("oidc", {}, {"user_id": "user", "is_admin": False})
-        assert result is False
-
-    def test_oidc_auth_check_uses_session_admin_state_only(self):
+    def test_authenticated_admin_when_restricted(self):
         result = get_auth_check_admin_status(
             "oidc",
-            {},
+            {"RESTRICT_SETTINGS_TO_ADMIN": True},
+            {"user_id": "admin", "is_admin": True},
+        )
+        assert result is True
+
+    def test_authenticated_non_admin_when_restricted(self):
+        result = get_auth_check_admin_status(
+            "oidc",
+            {"RESTRICT_SETTINGS_TO_ADMIN": True},
             {"user_id": "user", "is_admin": False},
         )
         assert result is False
 
-    def test_proxy_defaults_to_non_admin_when_restricted(self):
+    def test_authenticated_user_when_not_restricted(self):
         result = get_auth_check_admin_status(
             "proxy",
-            {"PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN": True},
-            {"user_id": "user"},
+            {"RESTRICT_SETTINGS_TO_ADMIN": False},
+            {"user_id": "user", "is_admin": False},
+        )
+        assert result is True
+
+    def test_unauthenticated_is_never_admin(self):
+        result = get_auth_check_admin_status(
+            "builtin",
+            {"RESTRICT_SETTINGS_TO_ADMIN": False},
+            {"is_admin": True},
         )
         assert result is False

@@ -4,9 +4,51 @@ import json
 from typing import Any, Callable
 
 
+_DEPRECATED_SETTINGS_RESTRICTION_KEYS = (
+    "PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN",
+    "CWA_RESTRICT_SETTINGS_TO_ADMIN",
+    "RESTRICT_SETTINGS_TO_ADMIN",
+)
+
+
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def _pick_legacy_settings_restriction(config: dict[str, Any]) -> bool | None:
+    """Pick the best legacy admin-restriction value to migrate."""
+    auth_method = str(config.get("AUTH_METHOD", "")).strip().lower()
+
+    if (
+        auth_method == "proxy"
+        and "PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN" in config
+    ):
+        return _as_bool(config.get("PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN"))
+
+    if auth_method == "cwa" and "CWA_RESTRICT_SETTINGS_TO_ADMIN" in config:
+        return _as_bool(config.get("CWA_RESTRICT_SETTINGS_TO_ADMIN"))
+
+    if "RESTRICT_SETTINGS_TO_ADMIN" in config:
+        return _as_bool(config.get("RESTRICT_SETTINGS_TO_ADMIN"))
+
+    if "PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN" in config:
+        return _as_bool(config.get("PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN"))
+
+    if "CWA_RESTRICT_SETTINGS_TO_ADMIN" in config:
+        return _as_bool(config.get("CWA_RESTRICT_SETTINGS_TO_ADMIN"))
+
+    return None
+
+
 def migrate_security_settings(
     *,
     load_security_config: Callable[[], dict[str, Any]],
+    load_users_config: Callable[[], dict[str, Any]],
+    save_users_config: Callable[[dict[str, Any]], None],
     ensure_config_dir: Callable[[], None],
     get_config_path: Callable[[], Any],
     sync_builtin_admin_user: Callable[[str, str], None],
@@ -15,7 +57,9 @@ def migrate_security_settings(
     """Migrate legacy security keys and sync builtin admin credentials."""
     try:
         config = load_security_config()
-        migrated = False
+        users_config = load_users_config()
+        migrated_security = False
+        migrated_users = False
 
         if "USE_CWA_AUTH" in config:
             old_value = config.pop("USE_CWA_AUTH")
@@ -30,26 +74,26 @@ def migrate_security_settings(
                     else:
                         config["AUTH_METHOD"] = "none"
                         logger.info("Migrated USE_CWA_AUTH=False to AUTH_METHOD='none'")
-                migrated = True
+                migrated_security = True
             else:
                 logger.info("Removed deprecated USE_CWA_AUTH setting (AUTH_METHOD already exists)")
-                migrated = True
+                migrated_security = True
 
-        if "RESTRICT_SETTINGS_TO_ADMIN" in config:
-            old_value = config.pop("RESTRICT_SETTINGS_TO_ADMIN")
-            if "CWA_RESTRICT_SETTINGS_TO_ADMIN" not in config:
-                config["CWA_RESTRICT_SETTINGS_TO_ADMIN"] = old_value
+        if "RESTRICT_SETTINGS_TO_ADMIN" not in users_config:
+            legacy_restrict = _pick_legacy_settings_restriction(config)
+            if legacy_restrict is not None:
+                save_users_config({"RESTRICT_SETTINGS_TO_ADMIN": legacy_restrict})
+                migrated_users = True
                 logger.info(
-                    "Migrated RESTRICT_SETTINGS_TO_ADMIN="
-                    f"{old_value} to CWA_RESTRICT_SETTINGS_TO_ADMIN={old_value}"
+                    "Migrated legacy settings-admin restriction to users.RESTRICT_SETTINGS_TO_ADMIN="
+                    f"{legacy_restrict}"
                 )
-                migrated = True
-            else:
-                logger.info(
-                    "Removed deprecated RESTRICT_SETTINGS_TO_ADMIN setting "
-                    "(CWA_RESTRICT_SETTINGS_TO_ADMIN already exists)"
-                )
-                migrated = True
+
+        for deprecated_key in _DEPRECATED_SETTINGS_RESTRICTION_KEYS:
+            if deprecated_key in config:
+                config.pop(deprecated_key, None)
+                migrated_security = True
+                logger.info(f"Removed deprecated security setting: {deprecated_key}")
 
         try:
             sync_builtin_admin_user(
@@ -62,12 +106,14 @@ def migrate_security_settings(
                 f"{exc}"
             )
 
-        if migrated:
+        if migrated_security:
             ensure_config_dir()
             config_path = get_config_path()
             with open(config_path, "w") as f:
                 json.dump(config, f, indent=2)
             logger.info("Security settings migration completed successfully")
+        elif migrated_users:
+            logger.info("Users settings migration completed successfully")
         else:
             logger.debug("No security settings migration needed")
 

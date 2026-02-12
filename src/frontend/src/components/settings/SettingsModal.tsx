@@ -242,6 +242,13 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
     ? (selectedTab === 'users' ? (
       <UsersPanel
         authMode={usersAuthMode}
+        tab={currentTab}
+        values={values[currentTab.name] || {}}
+        onChange={handleFieldChange}
+        onSave={handleSave}
+        onAction={handleAction}
+        isSaving={isSaving}
+        hasChanges={currentTabHasChanges}
         onShowToast={onShowToast}
         onSubpageStateChange={setUsersSubpageState}
       />

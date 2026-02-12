@@ -6,11 +6,8 @@ Flask route handlers are registered separately in main.py.
 
 from typing import Any, Dict, List, Optional
 
-from shelfmark.core.logger import setup_logger
+from shelfmark.core.external_user_linking import upsert_external_user
 from shelfmark.core.user_db import UserDB
-
-logger = setup_logger(__name__)
-
 
 def parse_group_claims(id_token: Dict[str, Any], group_claim: str) -> List[str]:
     """Extract group list from an ID token claim.
@@ -52,53 +49,32 @@ def provision_oidc_user(
     db: UserDB,
     user_info: Dict[str, Any],
     is_admin: Optional[bool] = None,
-) -> Dict[str, Any]:
+    allow_email_link: bool = False,
+    allow_create: bool = True,
+) -> Optional[Dict[str, Any]]:
     """Create or update a user from OIDC claims.
 
-    If a user with the same oidc_subject exists, updates their info.
-    If the username is taken by a different user, appends a numeric suffix.
+    Matching and collision handling use the shared external user linker:
+    - OIDC subject first
+    - optionally unique email linking (when `allow_email_link=True`)
+    - username conflict resolution via numeric suffix.
 
-    Admin role is synced from IdP when group-based auth is enabled (is_admin is not None):
-    - is_admin=True → DB role = admin
-    - is_admin=False → DB role = user (downgrade if needed)
-
-    When group-based auth is disabled (is_admin=None), preserve existing DB role.
-    The database is always the single source of truth for auth checks.
+    Returns None when no existing user is matchable and `allow_create=False`.
     """
     oidc_subject = user_info["oidc_subject"]
-
-    # Check if user already exists by OIDC subject
-    existing = db.get_user(oidc_subject=oidc_subject)
-    if existing:
-        updates: Dict[str, Any] = {
-            "email": user_info.get("email"),
-            "display_name": user_info.get("display_name"),
-            "auth_source": "oidc",
-        }
-        # Sync role from IdP when group-based auth is enabled
-        if is_admin is not None:
-            updates["role"] = "admin" if is_admin else "user"
-        db.update_user(existing["id"], **updates)
-        return db.get_user(user_id=existing["id"])
-
-    role = "admin" if is_admin else "user"
-
-    # New user — resolve username conflicts
-    username = user_info["username"] or oidc_subject
-    if db.get_user(username=username):
-        # Username taken, append suffix
-        suffix = 1
-        while db.get_user(username=f"{username}_{suffix}"):
-            suffix += 1
-        username = f"{username}_{suffix}"
-
-    user = db.create_user(
-        username=username,
+    user, _ = upsert_external_user(
+        db,
+        auth_source="oidc",
+        username=user_info["username"] or oidc_subject,
+        role="admin" if is_admin else "user",
         email=user_info.get("email"),
         display_name=user_info.get("display_name"),
-        oidc_subject=oidc_subject,
-        auth_source="oidc",
-        role=role,
+        subject_field="oidc_subject",
+        subject=oidc_subject,
+        allow_email_link=allow_email_link,
+        sync_role=is_admin is not None,
+        allow_create=allow_create,
+        collision_strategy="suffix",
+        context="oidc_login",
     )
-    logger.info(f"Provisioned OIDC user: {username} (sub={oidc_subject})")
     return user

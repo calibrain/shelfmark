@@ -146,34 +146,19 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             if admin_group and use_admin_group:
                 is_admin = admin_group in groups
 
-            # Account linking: OIDC subject first, then verified email.
-            existing_user = user_db.get_user(oidc_subject=user_info["oidc_subject"])
-
-            if not existing_user and user_info.get("email") and _is_email_verified(claims):
-                matching_users = [
-                    u for u in user_db.list_users()
-                    if u.get("email") and u["email"].lower() == user_info["email"].lower()
-                ]
-                if len(matching_users) == 1:
-                    existing_user = matching_users[0]
-                    user_db.update_user(existing_user["id"], oidc_subject=user_info["oidc_subject"])
-                    logger.info(
-                        f"Linked OIDC subject {user_info['oidc_subject']} to existing user "
-                        f"{existing_user['username']}"
-                    )
-                elif len(matching_users) > 1:
-                    logger.warning(
-                        "OIDC email linking skipped: multiple local accounts match email "
-                        f"{user_info['email']}"
-                    )
-
-            if not existing_user and not auto_provision:
+            allow_email_link = bool(user_info.get("email")) and _is_email_verified(claims)
+            user = provision_oidc_user(
+                user_db,
+                user_info,
+                is_admin=is_admin,
+                allow_email_link=allow_email_link,
+                allow_create=bool(auto_provision),
+            )
+            if user is None:
                 logger.warning(
                     f"OIDC login rejected: auto-provision disabled for {user_info['username']}"
                 )
                 return jsonify({"error": "Account not found. Contact your administrator."}), 403
-
-            user = provision_oidc_user(user_db, user_info, is_admin=is_admin)
 
             session["user_id"] = user["username"]
             session["is_admin"] = user.get("role") == "admin"

@@ -37,6 +37,8 @@ interface UserListViewProps {
   onEdit: (user: AdminUser) => void;
   onDelete: (userId: number) => Promise<boolean>;
   deletingUserId: number | null;
+  onSyncCwa: () => Promise<void> | void;
+  syncingCwa: boolean;
 }
 
 export const UserListView = ({
@@ -66,9 +68,12 @@ export const UserListView = ({
   onEdit,
   onDelete,
   deletingUserId,
+  onSyncCwa,
+  syncingCwa,
 }: UserListViewProps) => {
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode);
+  const isCwaMode = String(authMode || 'none').toLowerCase() === 'cwa';
   const usersHeading: HeadingFieldConfig = {
     key: 'users_heading',
     type: 'HeadingField',
@@ -84,8 +89,8 @@ export const UserListView = ({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
-      <div className="mb-5">
+    <div className="space-y-4">
+      <div>
         <HeadingField field={usersHeading} />
       </div>
 
@@ -242,7 +247,7 @@ export const UserListView = ({
       )}
 
       {canCreateLocalUsers && (
-        <div className="mt-4">
+        <div>
           {showCreateForm ? (
             <UserCreateCard
               form={createForm}
@@ -260,6 +265,18 @@ export const UserListView = ({
               Create Local User
             </button>
           )}
+        </div>
+      )}
+
+      {!canCreateLocalUsers && isCwaMode && (
+        <div>
+          <button
+            onClick={onSyncCwa}
+            disabled={syncingCwa}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {syncingCwa ? 'Syncing with CWA...' : 'Sync with CWA'}
+          </button>
         </div>
       )}
     </div>

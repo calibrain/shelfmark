@@ -122,7 +122,7 @@ class TestSecurityMigration:
         assert "USE_CWA_AUTH" not in migrated
 
     def test_migrate_restrict_settings_to_admin(self, temp_config_dir, mock_logger):
-        """RESTRICT_SETTINGS_TO_ADMIN should migrate to CWA_RESTRICT_SETTINGS_TO_ADMIN."""
+        """Legacy settings restriction should migrate to users tab global toggle."""
         config_file = temp_config_dir / "config.json"
         legacy_config = {
             "AUTH_METHOD": "cwa",
@@ -130,17 +130,54 @@ class TestSecurityMigration:
         }
         config_file.write_text(json.dumps(legacy_config, indent=2))
 
-        with patch("shelfmark.config.security.load_config_file", return_value=legacy_config.copy()):
+        def _load_config(tab_name: str):
+            if tab_name == "security":
+                return legacy_config.copy()
+            if tab_name == "users":
+                return {}
+            return {}
+
+        with patch("shelfmark.config.security.load_config_file", side_effect=_load_config):
             with patch("shelfmark.core.settings_registry._get_config_file_path", return_value=str(config_file)):
                 with patch("shelfmark.core.settings_registry._ensure_config_dir"):
-                    with patch("shelfmark.config.security.logger", mock_logger):
-                        from shelfmark.config.security import _migrate_security_settings
+                    with patch("shelfmark.core.settings_registry.save_config_file") as mock_save_config:
+                        with patch("shelfmark.config.security.logger", mock_logger):
+                            from shelfmark.config.security import _migrate_security_settings
 
-                        _migrate_security_settings()
+                            _migrate_security_settings()
 
         migrated = json.loads(config_file.read_text())
-        assert migrated["CWA_RESTRICT_SETTINGS_TO_ADMIN"] is True
         assert "RESTRICT_SETTINGS_TO_ADMIN" not in migrated
+        mock_save_config.assert_called_with("users", {"RESTRICT_SETTINGS_TO_ADMIN": True})
+
+    def test_migrate_proxy_restriction_to_users_global(self, temp_config_dir, mock_logger):
+        """Proxy-specific restriction should migrate to users.RESTRICT_SETTINGS_TO_ADMIN."""
+        config_file = temp_config_dir / "config.json"
+        legacy_config = {
+            "AUTH_METHOD": "proxy",
+            "PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN": False,
+        }
+        config_file.write_text(json.dumps(legacy_config, indent=2))
+
+        def _load_config(tab_name: str):
+            if tab_name == "security":
+                return legacy_config.copy()
+            if tab_name == "users":
+                return {}
+            return {}
+
+        with patch("shelfmark.config.security.load_config_file", side_effect=_load_config):
+            with patch("shelfmark.core.settings_registry._get_config_file_path", return_value=str(config_file)):
+                with patch("shelfmark.core.settings_registry._ensure_config_dir"):
+                    with patch("shelfmark.core.settings_registry.save_config_file") as mock_save_config:
+                        with patch("shelfmark.config.security.logger", mock_logger):
+                            from shelfmark.config.security import _migrate_security_settings
+
+                            _migrate_security_settings()
+
+        migrated = json.loads(config_file.read_text())
+        assert "PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN" not in migrated
+        mock_save_config.assert_called_with("users", {"RESTRICT_SETTINGS_TO_ADMIN": False})
 
     def test_migrate_preserves_existing_auth_method(self, temp_config_dir, mock_logger):
         """Existing AUTH_METHOD should not be overwritten."""
@@ -246,7 +283,6 @@ class TestSecuritySettings:
         assert "BUILTIN_USERNAME" in field_keys
         assert "BUILTIN_PASSWORD" in field_keys
         assert "BUILTIN_PASSWORD_CONFIRM" in field_keys
-        assert "clear_credentials" in field_keys
 
 
 class TestPasswordValidation:
@@ -382,5 +418,3 @@ class TestBuiltinAdminSync:
         assert user["role"] == "admin"
         assert user["auth_source"] == "builtin"
         assert check_password_hash(user["password_hash"], "newpassword")
-
-

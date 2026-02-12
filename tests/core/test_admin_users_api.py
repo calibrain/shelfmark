@@ -5,6 +5,7 @@ Tests CRUD endpoints for managing users from the admin panel.
 """
 
 import os
+import sqlite3
 import tempfile
 
 from unittest.mock import patch
@@ -682,6 +683,106 @@ class TestAdminUserPasswordUpdate:
 
 
 # ---------------------------------------------------------------------------
+# POST /api/admin/users/sync-cwa
+# ---------------------------------------------------------------------------
+
+
+class TestAdminSyncCwaUsersEndpoint:
+    """Tests for POST /api/admin/users/sync-cwa."""
+
+    def test_sync_cwa_users_links_by_email_and_avoids_username_overwrite(
+        self,
+        admin_client,
+        user_db,
+        tmp_path,
+    ):
+        cwa_db_path = tmp_path / "app.db"
+        conn = sqlite3.connect(cwa_db_path)
+        try:
+            conn.execute(
+                """
+                CREATE TABLE user (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT,
+                    role INTEGER,
+                    email TEXT
+                )
+                """
+            )
+            conn.executemany(
+                "INSERT INTO user (name, role, email) VALUES (?, ?, ?)",
+                [
+                    ("alice", 1, "alice@example.com"),
+                    ("bob", 0, "bob@example.com"),
+                    (" ", 1, "skip@example.com"),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        local_email_match = user_db.create_user(
+            username="alice_local",
+            email="alice@example.com",
+            role="user",
+            auth_source="builtin",
+        )
+        local_username_collision = user_db.create_user(
+            username="bob",
+            email="old@example.com",
+            role="admin",
+            auth_source="builtin",
+        )
+
+        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="cwa"):
+            with patch("shelfmark.core.admin_routes.CWA_DB_PATH", cwa_db_path):
+                resp = admin_client.post("/api/admin/users/sync-cwa")
+
+        assert resp.status_code == 200
+        assert resp.json["success"] is True
+        assert resp.json["created"] == 1
+        assert resp.json["updated"] == 1
+        assert resp.json["total"] == 2
+
+        alice_linked = user_db.get_user(user_id=local_email_match["id"])
+        assert alice_linked is not None
+        assert alice_linked["username"] == "alice_local"
+        assert alice_linked["auth_source"] == "cwa"
+        assert alice_linked["role"] == "admin"
+        assert alice_linked["email"] == "alice@example.com"
+
+        bob_original = user_db.get_user(user_id=local_username_collision["id"])
+        assert bob_original is not None
+        assert bob_original["username"] == "bob"
+        assert bob_original["auth_source"] == "builtin"
+        assert bob_original["role"] == "admin"
+        assert bob_original["email"] == "old@example.com"
+
+        bob_cwa = next(
+            user for user in user_db.list_users()
+            if user.get("auth_source") == "cwa" and user.get("email") == "bob@example.com"
+        )
+        assert bob_cwa["username"].startswith("bob__cwa")
+        assert bob_cwa["role"] == "user"
+
+    def test_sync_cwa_users_rejected_when_not_in_cwa_mode(self, admin_client):
+        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="builtin"):
+            resp = admin_client.post("/api/admin/users/sync-cwa")
+
+        assert resp.status_code == 400
+        assert "only available" in resp.json["error"]
+
+    def test_sync_cwa_users_returns_503_when_db_unavailable(self, admin_client, tmp_path):
+        missing_db_path = tmp_path / "missing.db"
+        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="cwa"):
+            with patch("shelfmark.core.admin_routes.CWA_DB_PATH", missing_db_path):
+                resp = admin_client.post("/api/admin/users/sync-cwa")
+
+        assert resp.status_code == 503
+        assert "not available" in resp.json["error"]
+
+
+# ---------------------------------------------------------------------------
 # GET /api/admin/download-defaults
 # ---------------------------------------------------------------------------
 
@@ -1026,7 +1127,7 @@ class TestAdminUserDeleteEndpoint:
         assert resp.status_code == 200
         assert resp.json["success"] is True
 
-    def test_delete_active_oidc_user_rejected_when_auto_provision_enabled(self, admin_client, user_db):
+    def test_delete_active_oidc_user_allowed_when_auto_provision_enabled(self, admin_client, user_db):
         user = user_db.create_user(
             username="oidcuser",
             oidc_subject="sub-123",
@@ -1034,14 +1135,10 @@ class TestAdminUserDeleteEndpoint:
         )
 
         with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="oidc"):
-            with patch(
-                "shelfmark.core.admin_routes.load_config_file",
-                return_value={"OIDC_AUTO_PROVISION": True},
-            ):
-                resp = admin_client.delete(f"/api/admin/users/{user['id']}")
+            resp = admin_client.delete(f"/api/admin/users/{user['id']}")
 
-        assert resp.status_code == 400
-        assert "Cannot delete active OIDC users" in resp.json["error"]
+        assert resp.status_code == 200
+        assert resp.json["success"] is True
 
 
 # ---------------------------------------------------------------------------

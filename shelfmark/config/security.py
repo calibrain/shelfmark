@@ -39,10 +39,16 @@ def _auth_ui_field(factory: Callable[..., Any], auth_method: str, **kwargs: Any)
 
 
 def _migrate_security_settings() -> None:
-    from shelfmark.core.settings_registry import _get_config_file_path, _ensure_config_dir
+    from shelfmark.core.settings_registry import (
+        _get_config_file_path,
+        _ensure_config_dir,
+        save_config_file,
+    )
 
     migrate_security_settings(
         load_security_config=lambda: load_config_file("security"),
+        load_users_config=lambda: load_config_file("users"),
+        save_users_config=lambda values: save_config_file("users", values),
         ensure_config_dir=lambda: _ensure_config_dir("security"),
         get_config_path=lambda: _get_config_file_path("security"),
         sync_builtin_admin_user=sync_builtin_admin_user,
@@ -139,38 +145,22 @@ def security_settings():
             default="",
         ),
         _auth_ui_field(
-            CheckboxField,
-            "proxy",
-            key="PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN",
-            label="Restrict Settings to Admins authenticated via Proxy",
-            description="Only users in the admin group can access settings.",
-            default=False,
-        ),
-        _ui_field(
             TextField,
+            "proxy",
             key="PROXY_AUTH_ADMIN_GROUP_HEADER",
             label="Proxy Auth Admin Group Header",
-            description="The HTTP header your proxy uses to pass the user's groups/roles.",
+            description="Optional: header your proxy uses to pass user groups/roles.",
             placeholder="e.g. X-Auth-Groups",
             default="X-Auth-Groups",
-            show_when={"field": "PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", "value": True},
-        ),
-        _ui_field(
-            TextField,
-            key="PROXY_AUTH_ADMIN_GROUP_NAME",
-            label="Proxy Auth Admin Group Name",
-            description="The name of the group/role that should have admin access.",
-            placeholder="e.g. admins",
-            default="admins",
-            show_when={"field": "PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", "value": True},
         ),
         _auth_ui_field(
-            CheckboxField,
-            "cwa",
-            key="CWA_RESTRICT_SETTINGS_TO_ADMIN",
-            label="Restrict Settings to Admins authenticated via Calibre-Web",
-            description="Only users with admin role in Calibre-Web can access settings.",
-            default=False,
+            TextField,
+            "proxy",
+            key="PROXY_AUTH_ADMIN_GROUP_NAME",
+            label="Proxy Auth Admin Group",
+            description="Optional: users in this group are treated as admins. Leave blank to skip group-based admin detection.",
+            placeholder="e.g. admins",
+            default="",
         ),
     ]
 

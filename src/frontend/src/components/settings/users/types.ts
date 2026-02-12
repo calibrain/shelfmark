@@ -56,16 +56,16 @@ export const getUsersHeadingDescriptionForAuthMode = (authMode?: string): string
   const normalized = String(authMode || 'none').toLowerCase();
 
   if (normalized === 'builtin') {
-    return 'Local users are managed here. Admins can create and manage local users.';
+    return 'Create and manage user accounts directly. Passwords are stored locally and users sign in with their username and password.';
   }
   if (normalized === 'oidc') {
-    return 'OIDC users can be auto-provisioned on login. Create local users for fallback admin access or when auto-provision is disabled.';
+    return 'Users sign in through your identity provider. New accounts can be created automatically on first login when auto-provisioning is enabled, or you can pre-create users here and they\u2019ll be linked by email on first sign-in.';
   }
   if (normalized === 'proxy') {
-    return 'Proxy users are auto-created from proxy headers on first login. Local user creation is disabled in proxy mode.';
+    return 'Users are authenticated by your reverse proxy. Accounts are automatically created on first sign-in. If a local user with a matching username already exists, it will be linked instead.';
   }
   if (normalized === 'cwa') {
-    return 'Users are managed in Calibre-Web and synced on login. Local user creation is disabled in CWA mode.';
+    return 'User accounts are synced from your Calibre-Web database. Users are matched by email, and new accounts are created here when new CWA users are found.';
   }
-  return 'No authentication is enabled. You can create local users now to prepare for enabling authentication later.';
+  return 'Authentication is disabled. Anyone can access Shelfmark without signing in.';
 };

@@ -60,44 +60,22 @@ def is_settings_or_onboarding_path(path: str) -> bool:
 
 
 def should_restrict_settings_to_admin(
-    auth_mode: str,
-    security_config: Mapping[str, Any],
-    session_data: Mapping[str, Any],
+    users_config: Mapping[str, Any],
 ) -> bool:
-    """Return whether settings access must be restricted to admin users."""
-    if auth_mode == AUTH_SOURCE_BUILTIN:
-        # Builtin multi-user sessions include db_user_id.
-        return "db_user_id" in session_data
-
-    if auth_mode == AUTH_SOURCE_PROXY:
-        return security_config.get("PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", False)
-
-    if auth_mode in (AUTH_SOURCE_CWA, AUTH_SOURCE_OIDC):
-        return True
-
-    return False
+    """Return whether settings/onboarding access is limited to admins."""
+    return bool(users_config.get("RESTRICT_SETTINGS_TO_ADMIN", True))
 
 
 def get_auth_check_admin_status(
-    auth_mode: str,
-    security_config: Mapping[str, Any],
+    _auth_mode: str,
+    users_config: Mapping[str, Any],
     session_data: Mapping[str, Any],
 ) -> bool:
-    """Resolve admin status for /api/auth/check response."""
-    if auth_mode == AUTH_SOURCE_BUILTIN:
-        return session_data.get("is_admin", True)
+    """Resolve /api/auth/check `is_admin` value for settings UI access control."""
+    if "user_id" not in session_data:
+        return False
 
-    if auth_mode == AUTH_SOURCE_CWA:
-        restrict_to_admin = security_config.get("CWA_RESTRICT_SETTINGS_TO_ADMIN", False)
-        if restrict_to_admin:
-            return session_data.get("is_admin", False)
+    if not should_restrict_settings_to_admin(users_config):
         return True
 
-    if auth_mode == AUTH_SOURCE_PROXY:
-        restrict_to_admin = security_config.get("PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN", False)
-        return session_data.get("is_admin", not restrict_to_admin)
-
-    if auth_mode == AUTH_SOURCE_OIDC:
-        return session_data.get("is_admin", False)
-
-    return False
+    return bool(session_data.get("is_admin", False))
