@@ -8,6 +8,12 @@ export interface PerUserSettings {
   BOOKLORE_LIBRARY_ID?: string;
   BOOKLORE_PATH_ID?: string;
   EMAIL_RECIPIENT?: string;
+  REQUESTS_ENABLED?: boolean;
+  REQUEST_POLICY_DEFAULT_EBOOK?: string;
+  REQUEST_POLICY_DEFAULT_AUDIOBOOK?: string;
+  REQUEST_POLICY_RULES?: Array<Record<string, unknown>>;
+  MAX_PENDING_REQUESTS_PER_USER?: number;
+  REQUESTS_ALLOW_NOTES?: boolean;
 }
 
 export interface CreateUserFormState {

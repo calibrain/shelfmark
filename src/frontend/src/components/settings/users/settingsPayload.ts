@@ -13,7 +13,12 @@ export const buildUserSettingsPayload = (
   userOverridableSettings: Set<string>,
   deliveryPreferences: DeliveryPreferencesResponse | null,
 ): Record<string, unknown> =>
-  (deliveryPreferences?.keys || [...userOverridableSettings])
+  Array.from(
+    new Set([
+      ...(deliveryPreferences?.keys || []),
+      ...userOverridableSettings,
+    ])
+  )
     .map(String)
     .sort()
     .reduce<Record<string, unknown>>((payload, key) => {

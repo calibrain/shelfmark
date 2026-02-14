@@ -72,7 +72,31 @@ def merge_request_policy_settings(
 ) -> dict[str, Any]:
     """Merge global settings with per-user request-policy overrides."""
     merged = filter_request_policy_settings(global_settings)
-    merged.update(filter_request_policy_settings(user_settings))
+    user_filtered = filter_request_policy_settings(user_settings)
+
+    # Preserve global rules by default and treat user rules as per-cell overlays.
+    # This allows per-user REQUEST_POLICY_RULES payloads to store only explicit
+    # differences instead of replacing the full global matrix.
+    global_rules = list(_iter_rules(merged.get("REQUEST_POLICY_RULES", [])))
+    user_has_rules = "REQUEST_POLICY_RULES" in user_filtered
+
+    for key, value in user_filtered.items():
+        if key == "REQUEST_POLICY_RULES":
+            continue
+        merged[key] = value
+
+    if user_has_rules:
+        merged_rules: dict[tuple[str, str], tuple[str, str, PolicyMode]] = {
+            (source, content_type): (source, content_type, mode)
+            for source, content_type, mode in global_rules
+        }
+        for source, content_type, mode in _iter_rules(user_filtered.get("REQUEST_POLICY_RULES", [])):
+            merged_rules[(source, content_type)] = (source, content_type, mode)
+        merged["REQUEST_POLICY_RULES"] = [
+            {"source": source, "content_type": content_type, "mode": mode.value}
+            for source, content_type, mode in merged_rules.values()
+        ]
+
     return merged
 
 

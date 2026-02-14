@@ -7,6 +7,7 @@ import {
   getAdminUser,
   getAdminUsers,
   getDownloadDefaults,
+  getSettingsTab,
 } from '../../../services/api';
 import { PerUserSettings } from './types';
 
@@ -70,6 +71,16 @@ export const useUsersFetch = ({ onShowToast }: UseUsersFetchParams) => {
       userOverridableSettings = new Set(preferences.keys || []);
     } catch {
       // Delivery preference introspection is best-effort.
+    }
+
+    try {
+      const usersTab = await getSettingsTab('users');
+      const usersOverridableKeys = usersTab.fields
+        .filter((field) => field.type !== 'HeadingField' && (field as { userOverridable?: boolean }).userOverridable)
+        .map((field) => field.key);
+      usersOverridableKeys.forEach((key) => userOverridableSettings.add(key));
+    } catch {
+      // Users-tab metadata is best-effort; save still validates server-side.
     }
 
     return {

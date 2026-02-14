@@ -1262,6 +1262,34 @@ class TestPolicyEndpointEdgeCases:
 
         assert resp.status_code == 401
 
+    def test_policy_endpoint_includes_allow_notes_from_effective_settings(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(default_ebook="download", requests_allow_notes=False)
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+                    resp = client.get("/api/request-policy")
+
+        assert resp.status_code == 200
+        assert resp.json["allow_notes"] is False
+
+    def test_policy_endpoint_allow_notes_reflects_per_user_override(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        global_policy = _policy(default_ebook="download", requests_allow_notes=False)
+        main_module.user_db.set_user_settings(user["id"], {"REQUESTS_ALLOW_NOTES": True})
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "_load_users_request_policy_settings", return_value=global_policy):
+                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=global_policy):
+                    resp = client.get("/api/request-policy")
+
+        assert resp.status_code == 200
+        assert resp.json["allow_notes"] is True
+
 
 class TestDownloadPolicyGuardsExtended:
     """Extended policy enforcement tests for download endpoints."""

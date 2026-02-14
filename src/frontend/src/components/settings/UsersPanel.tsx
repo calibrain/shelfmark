@@ -1,8 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { AdminUser } from '../../services/api';
-import { ActionResult, SettingsTab } from '../../types/settings';
+import { ActionResult, SettingsTab, TableFieldConfig } from '../../types/settings';
 import {
   canCreateLocalUsersForAuthMode,
+  RequestPolicyGrid,
+  normalizeRequestPolicyDefaults,
+  normalizeRequestPolicyRules,
+  parseSourceCapabilitiesFromRulesField,
   UserListView,
   UserOverridesView,
   useUserForm,
@@ -10,6 +14,7 @@ import {
   useUsersFetch,
   useUsersPanelState,
 } from './users';
+import type { RequestPolicyContentType, RequestPolicyMode } from './users';
 import { SettingsContent } from './SettingsContent';
 import { SettingsSaveBar } from './shared';
 
@@ -210,6 +215,8 @@ export const UsersPanel = ({
           isUserOverridable={isUserOverridable}
           userSettings={userSettings}
           setUserSettings={(updater) => setUserSettings(updater)}
+          usersTab={tab}
+          globalUsersSettingsValues={values}
         />
 
         {hasUserSettingsChanges && (
@@ -218,6 +225,76 @@ export const UsersPanel = ({
       </div>
     );
   }
+
+  const requestRulesField = tab.fields.find(
+    (field): field is TableFieldConfig =>
+      field.key === 'REQUEST_POLICY_RULES' && field.type === 'TableField'
+  );
+  const hasRequestPolicyGrid = Boolean(requestRulesField);
+
+  const globalRequestDefaults = useMemo(
+    () =>
+      normalizeRequestPolicyDefaults({
+        ebook: values.REQUEST_POLICY_DEFAULT_EBOOK,
+        audiobook: values.REQUEST_POLICY_DEFAULT_AUDIOBOOK,
+      }),
+    [values.REQUEST_POLICY_DEFAULT_EBOOK, values.REQUEST_POLICY_DEFAULT_AUDIOBOOK]
+  );
+
+  const explicitGlobalRules = useMemo(
+    () => normalizeRequestPolicyRules(values.REQUEST_POLICY_RULES),
+    [values.REQUEST_POLICY_RULES]
+  );
+
+  const requestSourceCapabilities = useMemo(
+    () =>
+      parseSourceCapabilitiesFromRulesField(
+        requestRulesField,
+        explicitGlobalRules.map((row) => row.source)
+      ),
+    [requestRulesField, explicitGlobalRules]
+  );
+
+  const requestRulesIndex = tab.fields.findIndex((field) => field.key === 'REQUEST_POLICY_RULES');
+  const shouldSplitRequestPolicyFields = hasRequestPolicyGrid && requestRulesIndex >= 0;
+  const requestPolicyFieldKeys = new Set([
+    'REQUEST_POLICY_DEFAULT_EBOOK',
+    'REQUEST_POLICY_DEFAULT_AUDIOBOOK',
+    'REQUEST_POLICY_RULES',
+  ]);
+
+  const beforeRequestGridTab: SettingsTab = shouldSplitRequestPolicyFields
+    ? {
+        ...tab,
+        fields: tab.fields.filter(
+          (field, index) =>
+            index <= requestRulesIndex && !requestPolicyFieldKeys.has(field.key)
+        ),
+      }
+    : tab;
+
+  const afterRequestGridTab: SettingsTab | null = shouldSplitRequestPolicyFields
+    ? {
+        ...tab,
+        fields: tab.fields.filter(
+          (field, index) =>
+            index > requestRulesIndex && !requestPolicyFieldKeys.has(field.key)
+        ),
+      }
+    : null;
+
+  const onGlobalDefaultModeChange = (contentType: RequestPolicyContentType, mode: RequestPolicyMode) => {
+    const key =
+      contentType === 'ebook' ? 'REQUEST_POLICY_DEFAULT_EBOOK' : 'REQUEST_POLICY_DEFAULT_AUDIOBOOK';
+    onChange(key, mode);
+  };
+
+  const onGlobalRulesChange = (rules: Array<{ source: string; content_type: 'ebook' | 'audiobook'; mode: 'download' | 'request_release' | 'blocked' }>) => {
+    onChange('REQUEST_POLICY_RULES', rules);
+  };
+
+  const defaultEbookField = tab.fields.find((field) => field.key === 'REQUEST_POLICY_DEFAULT_EBOOK');
+  const defaultAudioField = tab.fields.find((field) => field.key === 'REQUEST_POLICY_DEFAULT_AUDIOBOOK');
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -259,7 +336,7 @@ export const UsersPanel = ({
 
           <div className="pt-5 mt-4 border-t border-black/10 dark:border-white/10">
             <SettingsContent
-              tab={tab}
+              tab={beforeRequestGridTab}
               values={values}
               onChange={onChange}
               onSave={onSave}
@@ -268,6 +345,41 @@ export const UsersPanel = ({
               hasChanges={false}
               embedded
             />
+
+            {shouldSplitRequestPolicyFields && (
+              <div className="space-y-2 pt-5">
+                {requestRulesField?.description && (
+                  <p className="text-xs opacity-60">{requestRulesField.description}</p>
+                )}
+                <RequestPolicyGrid
+                  defaultModes={globalRequestDefaults}
+                  onDefaultModeChange={onGlobalDefaultModeChange}
+                  defaultModeDisabled={{
+                    ebook: Boolean(defaultEbookField && 'fromEnv' in defaultEbookField && defaultEbookField.fromEnv),
+                    audiobook: Boolean(defaultAudioField && 'fromEnv' in defaultAudioField && defaultAudioField.fromEnv),
+                  }}
+                  explicitRules={explicitGlobalRules}
+                  onExplicitRulesChange={onGlobalRulesChange}
+                  sourceCapabilities={requestSourceCapabilities}
+                  rulesDisabled={Boolean(requestRulesField && 'fromEnv' in requestRulesField && requestRulesField.fromEnv)}
+                />
+              </div>
+            )}
+
+            {afterRequestGridTab && afterRequestGridTab.fields.length > 0 && (
+              <div className="pt-5">
+                <SettingsContent
+                  tab={afterRequestGridTab}
+                  values={values}
+                  onChange={onChange}
+                  onSave={onSave}
+                  onAction={onAction}
+                  isSaving={isSaving}
+                  hasChanges={false}
+                  embedded
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

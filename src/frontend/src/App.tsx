@@ -8,6 +8,7 @@ import {
   ContentType,
   ButtonStateInfo,
   RequestPolicyMode,
+  CreateRequestPayload,
 } from './types';
 import {
   getBookInfo,
@@ -33,6 +34,7 @@ import { AdvancedFilters } from './components/AdvancedFilters';
 import { ResultsSection } from './components/ResultsSection';
 import { DetailsModal } from './components/DetailsModal';
 import { ReleaseModal } from './components/ReleaseModal';
+import { RequestConfirmationModal } from './components/RequestConfirmationModal';
 import { DownloadsSidebar } from './components/DownloadsSidebar';
 import { ToastContainer } from './components/ToastContainer';
 import { Footer } from './components/Footer';
@@ -47,6 +49,13 @@ import {
   applyDirectPolicyModeToButtonState,
   applyUniversalPolicyModeToButtonState,
 } from './utils/requestPolicyUi';
+import {
+  buildDirectRequestPayload,
+  buildMetadataBookRequestData,
+  buildReleaseDataFromMetadataRelease,
+  getRequestSuccessMessage,
+  toContentType,
+} from './utils/requestPayload';
 import { SearchModeProvider } from './contexts/SearchModeContext';
 import './styles.css';
 
@@ -79,83 +88,6 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
     return error.message;
   }
   return fallback;
-};
-
-const toContentType = (value: ContentType | string): ContentType => {
-  return String(value).trim().toLowerCase() === 'audiobook' ? 'audiobook' : 'ebook';
-};
-
-const buildMetadataBookRequestData = (book: Book, contentType: ContentType) => {
-  return {
-    title: book.title || 'Unknown title',
-    author: book.author || 'Unknown author',
-    content_type: contentType,
-    provider: book.provider || 'metadata',
-    provider_id: book.provider_id || book.id,
-    year: book.year,
-    preview: book.preview,
-    series_name: book.series_name,
-    series_position: book.series_position,
-    subtitle: book.subtitle,
-    source_url: book.source_url,
-  };
-};
-
-const buildDirectBookRequestData = (book: Book) => {
-  return {
-    title: book.title || 'Unknown title',
-    author: book.author || 'Unknown author',
-    content_type: 'ebook' as const,
-    provider: 'direct_download',
-    provider_id: book.id,
-    year: book.year,
-    format: book.format,
-    size: book.size,
-    preview: book.preview,
-    source: book.source || 'direct_download',
-    source_url: book.source_url,
-  };
-};
-
-const buildReleaseDataFromMetadataRelease = (
-  book: Book,
-  release: Release,
-  contentType: ContentType
-) => {
-  return {
-    source: release.source,
-    source_id: release.source_id,
-    title: book.title || release.title || 'Unknown title',
-    author: book.author,
-    year: book.year,
-    format: release.format,
-    size: release.size,
-    size_bytes: release.size_bytes,
-    download_url: release.download_url,
-    protocol: release.protocol,
-    indexer: release.indexer,
-    seeders: release.seeders,
-    extra: release.extra,
-    preview: book.preview,
-    content_type: contentType,
-    series_name: book.series_name,
-    series_position: book.series_position,
-    subtitle: book.subtitle,
-  };
-};
-
-const buildReleaseDataFromDirectBook = (book: Book) => {
-  return {
-    source: 'direct_download',
-    source_id: book.id,
-    title: book.title || 'Unknown title',
-    author: book.author,
-    year: book.year,
-    format: book.format,
-    size: book.size,
-    preview: book.preview,
-    content_type: 'ebook' as const,
-  };
 };
 
 function App() {
@@ -215,6 +147,7 @@ function App() {
   const {
     getDefaultMode,
     getSourceMode,
+    allowNotes: allowRequestNotes,
     refresh: refreshRequestPolicy,
   } = useRequestPolicy({
     enabled: isAuthenticated,
@@ -251,11 +184,14 @@ function App() {
     contentType,
   });
 
+  const [pendingRequestPayload, setPendingRequestPayload] = useState<CreateRequestPayload | null>(null);
+
   // Wire up logout callback to clear search state
   const handleLogoutWithCleanup = useCallback(async () => {
     await handleLogout();
     setBooks([]);
     clearTracking();
+    setPendingRequestPayload(null);
   }, [handleLogout, setBooks, clearTracking]);
 
   // UI state
@@ -566,18 +502,7 @@ function App() {
   };
 
   const submitRequest = useCallback(
-    async (
-      payload: {
-        book_data: Record<string, unknown>;
-        release_data?: Record<string, unknown> | null;
-        context: {
-          source: string;
-          content_type: ContentType;
-          request_level: 'book' | 'release';
-        };
-      },
-      successMessage: string
-    ): Promise<boolean> => {
+    async (payload: CreateRequestPayload, successMessage: string): Promise<boolean> => {
       try {
         await createRequest(payload);
         showToast(successMessage, 'success');
@@ -593,6 +518,21 @@ function App() {
       }
     },
     [showToast, refreshRequestPolicy]
+  );
+
+  const openRequestConfirmation = useCallback((payload: CreateRequestPayload) => {
+    setPendingRequestPayload(payload);
+  }, []);
+
+  const handleConfirmRequest = useCallback(
+    async (payload: CreateRequestPayload): Promise<boolean> => {
+      const success = await submitRequest(payload, getRequestSuccessMessage(payload));
+      if (success) {
+        setPendingRequestPayload(null);
+      }
+      return success;
+    },
+    [submitRequest]
   );
 
   const getDirectPolicyMode = useCallback((): RequestPolicyMode => {
@@ -614,18 +554,7 @@ function App() {
     }
 
     if (mode === 'request_release' || mode === 'request_book') {
-      await submitRequest(
-        {
-          book_data: buildDirectBookRequestData(book),
-          release_data: buildReleaseDataFromDirectBook(book),
-          context: {
-            source: 'direct_download',
-            content_type: 'ebook',
-            request_level: 'release',
-          },
-        },
-        `Request submitted: ${book.title || 'Untitled'}`
-      );
+      openRequestConfirmation(buildDirectRequestPayload(book, mode));
       return;
     }
 
@@ -678,18 +607,15 @@ function App() {
     }
 
     if (mode === 'request_book') {
-      await submitRequest(
-        {
-          book_data: buildMetadataBookRequestData(book, normalizedContentType),
-          release_data: null,
-          context: {
-            source: '*',
-            content_type: normalizedContentType,
-            request_level: 'book',
-          },
+      openRequestConfirmation({
+        book_data: buildMetadataBookRequestData(book, normalizedContentType),
+        release_data: null,
+        context: {
+          source: '*',
+          content_type: normalizedContentType,
+          request_level: 'book',
         },
-        `Request submitted: ${book.title || 'Untitled'}`
-      );
+      });
       return;
     }
 
@@ -755,20 +681,17 @@ function App() {
     async (book: Book, release: Release, releaseContentType: ContentType): Promise<void> => {
       void refreshRequestPolicy();
       const normalizedContentType = toContentType(releaseContentType);
-      await submitRequest(
-        {
-          book_data: buildMetadataBookRequestData(book, normalizedContentType),
-          release_data: buildReleaseDataFromMetadataRelease(book, release, normalizedContentType),
-          context: {
-            source: release.source || 'direct_download',
-            content_type: normalizedContentType,
-            request_level: 'release',
-          },
+      openRequestConfirmation({
+        book_data: buildMetadataBookRequestData(book, normalizedContentType),
+        release_data: buildReleaseDataFromMetadataRelease(book, release, normalizedContentType),
+        context: {
+          source: release.source || 'direct_download',
+          content_type: normalizedContentType,
+          request_level: 'release',
         },
-        `Request submitted: ${book.title || 'Untitled'}`
-      );
+      });
     },
-    [submitRequest, refreshRequestPolicy]
+    [openRequestConfirmation, refreshRequestPolicy]
   );
 
   const getDirectActionButtonState = useCallback(
@@ -957,6 +880,15 @@ function App() {
             currentStatus={currentStatus}
             defaultReleaseSource={config?.default_release_source}
             onSearchSeries={handleSearchSeries}
+          />
+        )}
+
+        {pendingRequestPayload && (
+          <RequestConfirmationModal
+            payload={pendingRequestPayload}
+            allowNotes={allowRequestNotes}
+            onConfirm={handleConfirmRequest}
+            onClose={() => setPendingRequestPayload(null)}
           />
         )}
 

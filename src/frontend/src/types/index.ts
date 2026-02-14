@@ -174,6 +174,7 @@ export interface RequestPolicySourceMode {
 export interface RequestPolicyResponse {
   requests_enabled: boolean;
   is_admin: boolean;
+  allow_notes: boolean;
   defaults: RequestPolicyDefaults;
   rules: Array<Record<string, unknown>>;
   source_modes: RequestPolicySourceMode[];

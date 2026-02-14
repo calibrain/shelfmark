@@ -19,6 +19,7 @@ interface UseRequestPolicyReturn {
   isLoading: boolean;
   isAdmin: boolean;
   requestsEnabled: boolean;
+  allowNotes: boolean;
   getDefaultMode: (contentType: ContentType | string) => RequestPolicyMode;
   getSourceMode: (source: string, contentType: ContentType | string) => RequestPolicyMode;
   refresh: (options?: { force?: boolean }) => Promise<RequestPolicyResponse | null>;
@@ -99,6 +100,7 @@ export function useRequestPolicy({
     isLoading,
     isAdmin: isAdmin || Boolean(policy?.is_admin),
     requestsEnabled: Boolean(policy?.requests_enabled),
+    allowNotes: policy?.allow_notes ?? true,
     getDefaultMode,
     getSourceMode,
     refresh,

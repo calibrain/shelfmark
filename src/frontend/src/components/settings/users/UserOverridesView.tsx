@@ -2,6 +2,8 @@ import { DeliveryPreferencesResponse } from '../../../services/api';
 import { PerUserSettings } from './types';
 import { SettingsSubpage } from '../shared';
 import { UserOverridesSection } from './UserOverridesSection';
+import { SettingsTab } from '../../../types/settings';
+import { UserRequestPolicyOverridesSection } from './UserRequestPolicyOverridesSection';
 
 interface UserOverridesViewProps {
   hasChanges: boolean;
@@ -10,6 +12,8 @@ interface UserOverridesViewProps {
   isUserOverridable: (key: keyof PerUserSettings) => boolean;
   userSettings: PerUserSettings;
   setUserSettings: (updater: (prev: PerUserSettings) => PerUserSettings) => void;
+  usersTab: SettingsTab;
+  globalUsersSettingsValues: Record<string, unknown>;
 }
 
 export const UserOverridesView = ({
@@ -19,6 +23,8 @@ export const UserOverridesView = ({
   isUserOverridable,
   userSettings,
   setUserSettings,
+  usersTab,
+  globalUsersSettingsValues,
 }: UserOverridesViewProps) => (
   <SettingsSubpage hasBottomSaveBar={hasChanges}>
     <div className="space-y-5">
@@ -44,6 +50,14 @@ export const UserOverridesView = ({
 
       <UserOverridesSection
         deliveryPreferences={deliveryPreferences}
+        isUserOverridable={isUserOverridable}
+        userSettings={userSettings}
+        setUserSettings={setUserSettings}
+      />
+
+      <UserRequestPolicyOverridesSection
+        usersTab={usersTab}
+        globalUsersSettingsValues={globalUsersSettingsValues}
         isUserOverridable={isUserOverridable}
         userSettings={userSettings}
         setUserSettings={setUserSettings}

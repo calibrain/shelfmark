@@ -53,6 +53,47 @@ def test_merge_request_policy_settings_applies_user_overrides():
     assert "DESTINATION" not in merged
 
 
+def test_merge_request_policy_settings_overlays_user_rules_on_global_rules():
+    global_settings = {
+        "REQUEST_POLICY_DEFAULT_EBOOK": "download",
+        "REQUEST_POLICY_DEFAULT_AUDIOBOOK": "download",
+        "REQUEST_POLICY_RULES": [
+            {"source": "direct_download", "content_type": "ebook", "mode": "download"},
+            {"source": "prowlarr", "content_type": "ebook", "mode": "request_release"},
+        ],
+    }
+    user_settings = {
+        "REQUEST_POLICY_RULES": [
+            {"source": "direct_download", "content_type": "ebook", "mode": "blocked"},
+        ],
+    }
+
+    merged = merge_request_policy_settings(global_settings, user_settings)
+
+    assert sorted(merged["REQUEST_POLICY_RULES"], key=lambda row: (row["source"], row["content_type"])) == [
+        {"source": "direct_download", "content_type": "ebook", "mode": "blocked"},
+        {"source": "prowlarr", "content_type": "ebook", "mode": "request_release"},
+    ]
+
+
+def test_merge_request_policy_settings_empty_user_rules_preserve_global_rules():
+    global_settings = {
+        "REQUEST_POLICY_DEFAULT_EBOOK": "download",
+        "REQUEST_POLICY_RULES": [
+            {"source": "prowlarr", "content_type": "ebook", "mode": "request_release"},
+        ],
+    }
+    user_settings = {
+        "REQUEST_POLICY_RULES": [],
+    }
+
+    merged = merge_request_policy_settings(global_settings, user_settings)
+
+    assert merged["REQUEST_POLICY_RULES"] == [
+        {"source": "prowlarr", "content_type": "ebook", "mode": "request_release"},
+    ]
+
+
 def test_normalize_content_type_defaults_to_ebook_for_unknown_values():
     assert normalize_content_type(None) == "ebook"
     assert normalize_content_type("") == "ebook"

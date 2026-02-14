@@ -10,6 +10,7 @@ import type { RequestPolicyResponse } from '../types/index.js';
 const makePolicy = (overrides: Partial<RequestPolicyResponse> = {}): RequestPolicyResponse => ({
   requests_enabled: true,
   is_admin: false,
+  allow_notes: true,
   defaults: {
     ebook: 'download',
     audiobook: 'request_release',

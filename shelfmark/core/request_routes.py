@@ -200,6 +200,7 @@ def register_request_routes(
             {
                 "requests_enabled": requests_enabled,
                 "is_admin": is_admin,
+                "allow_notes": _as_bool(effective.get("REQUESTS_ALLOW_NOTES"), default=True),
                 "defaults": {
                     "ebook": (
                         default_ebook_mode.value
