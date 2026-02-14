@@ -190,6 +190,31 @@ HeadingField(
 )
 ```
 
+### CustomComponentField
+
+Render a frontend-registered custom settings component while still using the
+decorator-based schema.
+
+```python
+from shelfmark.core.settings_registry import CustomComponentField
+
+CustomComponentField(
+    key="request_policy_editor",
+    component="request_policy_grid",  # frontend registry key
+    label="Request Policy Rules",
+    description="Custom editor for policy defaults and matrix rules.",
+    value_fields=[
+        SelectField(key="REQUEST_POLICY_DEFAULT_EBOOK", label="Default Ebook Mode", default="download"),
+        SelectField(key="REQUEST_POLICY_DEFAULT_AUDIOBOOK", label="Default Audiobook Mode", default="download"),
+        TableField(key="REQUEST_POLICY_RULES", label="Rules", columns=_rule_columns, default=[]),
+    ],
+    wrap_in_field_wrapper=True,  # use standard FieldWrapper label/description layout
+)
+```
+
+When `value_fields` is provided, those backing fields are included in
+serialization/save/validation automatically and are hidden from the default renderer.
+
 ## Common Field Properties
 
 All field types support these common properties:
@@ -206,6 +231,7 @@ All field types support these common properties:
 | `requires_restart` | `bool` | `False` | Whether changes require container restart |
 | `show_when` | `dict` | `None` | Conditional visibility (see below) |
 | `disabled_when` | `dict` | `None` | Conditional disable (see below) |
+| `hidden_in_ui` | `bool` | `False` | Hide from default renderer but keep in schema/save path |
 
 ## Conditional Visibility
 

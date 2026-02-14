@@ -6,6 +6,7 @@ import { SettingsTab } from '../../../types/settings';
 import { UserRequestPolicyOverridesSection } from './UserRequestPolicyOverridesSection';
 
 interface UserOverridesViewProps {
+  embedded?: boolean;
   hasChanges: boolean;
   onBack: () => void;
   deliveryPreferences: DeliveryPreferencesResponse | null;
@@ -17,6 +18,7 @@ interface UserOverridesViewProps {
 }
 
 export const UserOverridesView = ({
+  embedded = false,
   hasChanges,
   onBack,
   deliveryPreferences,
@@ -25,8 +27,8 @@ export const UserOverridesView = ({
   setUserSettings,
   usersTab,
   globalUsersSettingsValues,
-}: UserOverridesViewProps) => (
-  <SettingsSubpage hasBottomSaveBar={hasChanges}>
+}: UserOverridesViewProps) => {
+  const content = (
     <div className="space-y-5">
       <div>
         <button
@@ -63,5 +65,15 @@ export const UserOverridesView = ({
         setUserSettings={setUserSettings}
       />
     </div>
-  </SettingsSubpage>
-);
+  );
+
+  if (embedded) {
+    return content;
+  }
+
+  return (
+    <SettingsSubpage hasBottomSaveBar={hasChanges}>
+      {content}
+    </SettingsSubpage>
+  );
+};

@@ -18,43 +18,10 @@ def _has_local_password_admin() -> bool:
 
 def on_save_security(
     values: dict[str, Any],
-    *,
-    load_security_config: Callable[[], dict[str, Any]],
-    hash_password: Callable[[str], str],
-    sync_builtin_admin_user: Callable[[str, str], None],
-    logger: Any,
 ) -> dict[str, Any]:
-    """Validate/process security values before persistence."""
+    """Validate security values before persistence."""
     if values.get("AUTH_METHOD") == "oidc" and not _has_local_password_admin():
         return {"error": True, "message": _OIDC_LOCKOUT_MESSAGE, "values": values}
-
-    password = values.pop("BUILTIN_PASSWORD", "")
-    password_confirm = values.pop("BUILTIN_PASSWORD_CONFIRM", "")
-
-    if password:
-        if not values.get("BUILTIN_USERNAME"):
-            return {"error": True, "message": "Username cannot be empty", "values": values}
-        if password != password_confirm:
-            return {"error": True, "message": "Passwords do not match", "values": values}
-        if len(password) < 4:
-            return {"error": True, "message": "Password must be at least 4 characters", "values": values}
-
-        values["BUILTIN_PASSWORD_HASH"] = hash_password(password)
-        logger.info("Password hash updated")
-    elif "BUILTIN_USERNAME" in values:
-        existing = load_security_config()
-        if "BUILTIN_PASSWORD_HASH" in existing:
-            values["BUILTIN_PASSWORD_HASH"] = existing["BUILTIN_PASSWORD_HASH"]
-
-    if values.get("AUTH_METHOD") == "builtin":
-        try:
-            sync_builtin_admin_user(
-                values.get("BUILTIN_USERNAME", ""),
-                values.get("BUILTIN_PASSWORD_HASH", ""),
-            )
-        except Exception as exc:
-            logger.error(f"Failed to sync builtin admin user: {exc}")
-            return {"error": True, "message": "Failed to create/update local admin user from builtin credentials", "values": values}
 
     return {"error": False, "values": values}
 

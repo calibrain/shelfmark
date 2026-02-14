@@ -20,14 +20,42 @@ def test_users_tab_is_renamed_to_users_and_requests():
 def test_users_tab_registers_request_policy_fields():
     fields = _field_map("users")
     expected_keys = {
+        "users_management",
         "REQUESTS_ENABLED",
-        "REQUEST_POLICY_DEFAULT_EBOOK",
-        "REQUEST_POLICY_DEFAULT_AUDIOBOOK",
-        "REQUEST_POLICY_RULES",
+        "request_policy_editor",
         "MAX_PENDING_REQUESTS_PER_USER",
         "REQUESTS_ALLOW_NOTES",
     }
     assert expected_keys.issubset(set(fields))
+    assert "REQUEST_POLICY_DEFAULT_EBOOK" not in fields
+    assert "REQUEST_POLICY_DEFAULT_AUDIOBOOK" not in fields
+    assert "REQUEST_POLICY_RULES" not in fields
+
+
+def test_users_heading_contains_auth_mode_specific_descriptions():
+    fields = _field_map("users")
+    heading = fields["users_heading"]
+
+    assert heading.description_by_auth_mode["builtin"] == (
+        "Create and manage user accounts directly. Passwords are stored locally and users sign in "
+        "with their username and password."
+    )
+    assert heading.description_by_auth_mode["oidc"] == (
+        "Users sign in through your identity provider. New accounts can be created automatically on "
+        "first login when auto-provisioning is enabled, or you can pre-create users here and they\u2019ll "
+        "be linked by email on first sign-in."
+    )
+    assert heading.description_by_auth_mode["proxy"] == (
+        "Users are authenticated by your reverse proxy. Accounts are automatically created on first "
+        "sign-in. If a local user with a matching username already exists, it will be linked instead."
+    )
+    assert heading.description_by_auth_mode["cwa"] == (
+        "User accounts are synced from your Calibre-Web database. Users are matched by email, and new "
+        "accounts are created here when new CWA users are found."
+    )
+    assert heading.description_by_auth_mode["none"] == (
+        "Authentication is disabled. Anyone can access Shelfmark without signing in."
+    )
 
 
 def test_request_policy_fields_are_user_overridable():
@@ -44,13 +72,91 @@ def test_request_policy_fields_are_user_overridable():
     assert "RESTRICT_SETTINGS_TO_ADMIN" not in overridable_map
 
 
+def test_users_tab_registers_custom_components():
+    fields = _field_map("users")
+
+    users_management = fields["users_management"]
+    request_policy_editor = fields["request_policy_editor"]
+
+    assert users_management.get_field_type() == "CustomComponentField"
+    assert users_management.component == "users_management"
+
+    assert request_policy_editor.get_field_type() == "CustomComponentField"
+    assert request_policy_editor.component == "request_policy_grid"
+    assert request_policy_editor.wrap_in_field_wrapper is True
+    assert request_policy_editor.get_bind_keys() == [
+        "REQUEST_POLICY_DEFAULT_EBOOK",
+        "REQUEST_POLICY_DEFAULT_AUDIOBOOK",
+        "REQUEST_POLICY_RULES",
+    ]
+    assert [field.key for field in request_policy_editor.value_fields] == [
+        "REQUEST_POLICY_DEFAULT_EBOOK",
+        "REQUEST_POLICY_DEFAULT_AUDIOBOOK",
+        "REQUEST_POLICY_RULES",
+    ]
+    assert request_policy_editor.show_when == {"field": "REQUESTS_ENABLED", "value": True}
+
+
+def test_request_policy_raw_fields_are_scoped_to_custom_component():
+    fields = _field_map("users")
+    request_policy_editor = fields["request_policy_editor"]
+
+    assert "REQUEST_POLICY_DEFAULT_EBOOK" not in fields
+    assert "REQUEST_POLICY_DEFAULT_AUDIOBOOK" not in fields
+    assert "REQUEST_POLICY_RULES" not in fields
+    assert [field.key for field in request_policy_editor.value_fields] == [
+        "REQUEST_POLICY_DEFAULT_EBOOK",
+        "REQUEST_POLICY_DEFAULT_AUDIOBOOK",
+        "REQUEST_POLICY_RULES",
+    ]
+
+
 def test_request_policy_rules_field_has_expected_columns():
     fields = _field_map("users")
-    rules_field = fields["REQUEST_POLICY_RULES"]
+    request_policy_editor = fields["request_policy_editor"]
+    rules_field = next(
+        field for field in request_policy_editor.value_fields if field.key == "REQUEST_POLICY_RULES"
+    )
 
     columns = rules_field.columns() if callable(rules_field.columns) else rules_field.columns
     column_keys = [column["key"] for column in columns]
     assert column_keys == ["source", "content_type", "mode"]
+
+
+def test_request_workflow_dependent_fields_are_gated_by_toggle():
+    fields = _field_map("users")
+
+    assert fields["MAX_PENDING_REQUESTS_PER_USER"].show_when == {
+        "field": "REQUESTS_ENABLED",
+        "value": True,
+    }
+    assert fields["REQUESTS_ALLOW_NOTES"].show_when == {
+        "field": "REQUESTS_ENABLED",
+        "value": True,
+    }
+
+
+def test_users_tab_serialization_scopes_request_policy_to_bound_fields():
+    tab = settings_registry.get_settings_tab("users")
+    assert tab is not None
+
+    serialized_tab = settings_registry.serialize_tab(tab)
+    serialized_fields = {field["key"]: field for field in serialized_tab["fields"]}
+
+    assert "REQUEST_POLICY_DEFAULT_EBOOK" not in serialized_fields
+    assert "REQUEST_POLICY_DEFAULT_AUDIOBOOK" not in serialized_fields
+    assert "REQUEST_POLICY_RULES" not in serialized_fields
+
+    request_policy_editor = serialized_fields["request_policy_editor"]
+    bound_fields = request_policy_editor.get("boundFields", [])
+
+    assert [field["key"] for field in bound_fields] == [
+        "REQUEST_POLICY_DEFAULT_EBOOK",
+        "REQUEST_POLICY_DEFAULT_AUDIOBOOK",
+        "REQUEST_POLICY_RULES",
+    ]
+    assert all(field.get("hiddenInUi") is True for field in bound_fields)
+    assert serialized_fields["users_heading"].get("descriptionByAuthMode", {}).get("builtin")
 
 
 def test_request_policy_rules_source_options_are_dynamic(monkeypatch):

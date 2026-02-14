@@ -5,7 +5,6 @@ import { getAdminSettingsOverridesSummary, getSettingsTab } from '../../services
 import { SettingsHeader } from './SettingsHeader';
 import { SettingsSidebar } from './SettingsSidebar';
 import { SettingsContent } from './SettingsContent';
-import { UsersPanel } from './UsersPanel';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -129,7 +128,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
   }, [isOpen, selectedTab]);
 
   useEffect(() => {
-    if (!isOpen || !selectedTab || selectedTab === 'users') {
+    if (!isOpen || !selectedTab) {
       return;
     }
 
@@ -266,19 +265,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
   const selectedAuthMethod = values.security?.AUTH_METHOD;
   const usersAuthMode = typeof selectedAuthMethod === 'string' ? selectedAuthMethod : authMode;
   const currentTabContent = currentTab
-    ? (selectedTab === 'users' ? (
-      <UsersPanel
-        authMode={usersAuthMode}
-        tab={currentTab}
-        values={values[currentTab.name] || {}}
-        onChange={handleFieldChange}
-        onSave={handleSave}
-        onAction={handleAction}
-        isSaving={isSaving}
-        hasChanges={currentTabHasChanges}
-        onShowToast={onShowToast}
-      />
-    ) : (selectedTab === 'security' && securityAccessError) ? (
+    ? ((selectedTab === 'security' && securityAccessError) ? (
       <div className="flex-1 flex flex-col items-center justify-center p-8 gap-3">
         <p className="text-sm opacity-60">{securityAccessError}</p>
       </div>
@@ -293,6 +280,10 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
         hasChanges={currentTabHasChanges}
         isUniversalMode={isUniversalMode}
         overrideSummary={tabOverrideSummaries[currentTab.name]}
+        customFieldContext={{
+          authMode: usersAuthMode,
+          onShowToast,
+        }}
       />
     ))
     : null;

@@ -9,6 +9,11 @@ import {
   UpdateResult,
 } from '../types/settings';
 
+type ValueBearingField = Exclude<
+  SettingsField,
+  { type: 'ActionButton' } | { type: 'HeadingField' } | { type: 'CustomComponentField' }
+>;
+
 // Client-side only theme field that gets injected into the general tab
 const THEME_FIELD: SelectFieldConfig = {
   type: 'SelectField',
@@ -34,7 +39,11 @@ function applyTheme(theme: string): void {
 // Extract value from a field based on its type
 function getFieldValue(field: SettingsField): unknown {
   // These field types have no value property
-  if (field.type === 'ActionButton' || field.type === 'HeadingField') {
+  if (
+    field.type === 'ActionButton'
+    || field.type === 'HeadingField'
+    || field.type === 'CustomComponentField'
+  ) {
     return undefined;
   }
 
@@ -44,6 +53,35 @@ function getFieldValue(field: SettingsField): unknown {
 
   // All other fields have a value property
   return field.value ?? '';
+}
+
+function getValueBearingFields(fields: SettingsField[]): ValueBearingField[] {
+  const seen = new Set<string>();
+  const valueFields: ValueBearingField[] = [];
+
+  const collect = (items: SettingsField[]) => {
+    items.forEach((field) => {
+      if (field.type === 'CustomComponentField') {
+        if (field.boundFields && field.boundFields.length > 0) {
+          collect(field.boundFields);
+        }
+        return;
+      }
+
+      if (field.type === 'ActionButton' || field.type === 'HeadingField') {
+        return;
+      }
+
+      if (seen.has(field.key)) {
+        return;
+      }
+      seen.add(field.key);
+      valueFields.push(field);
+    });
+  };
+
+  collect(fields);
+  return valueFields;
 }
 
 interface UseSettingsReturn {
@@ -97,14 +135,12 @@ export function useSettings(): UseSettingsReturn {
       const initialValues: Record<string, Record<string, unknown>> = {};
       tabsWithTheme.forEach((tab) => {
         initialValues[tab.name] = {};
-        tab.fields.forEach((field) => {
-          if (field.type !== 'ActionButton') {
-            // Special handling for theme field - get from localStorage
-            if (field.key === '_THEME') {
-              initialValues[tab.name][field.key] = localStorage.getItem('preferred-theme') || 'auto';
-            } else {
-              initialValues[tab.name][field.key] = getFieldValue(field);
-            }
+        getValueBearingFields(tab.fields).forEach((field) => {
+          // Special handling for theme field - get from localStorage
+          if (field.key === '_THEME') {
+            initialValues[tab.name][field.key] = localStorage.getItem('preferred-theme') || 'auto';
+          } else {
+            initialValues[tab.name][field.key] = getFieldValue(field);
           }
         });
       });
@@ -163,9 +199,7 @@ export function useSettings(): UseSettingsReturn {
       const tab = tabs.find((t) => t.name === tabName);
       if (!tab) return false;
 
-      for (const field of tab.fields) {
-        if (field.type === 'ActionButton' || field.type === 'HeadingField') continue;
-
+      for (const field of getValueBearingFields(tab.fields)) {
         const currentValue = current[field.key];
         const originalValue = original[field.key];
 
@@ -192,8 +226,7 @@ export function useSettings(): UseSettingsReturn {
         const valuesToSave: Record<string, unknown> = {};
 
         if (tab) {
-          for (const field of tab.fields) {
-            if (field.type === 'ActionButton' || field.type === 'HeadingField') continue;
+          for (const field of getValueBearingFields(tab.fields)) {
             if (field.fromEnv) continue; // Skip env-locked fields
             if (field.key === '_THEME') continue; // Skip client-side only theme field
 

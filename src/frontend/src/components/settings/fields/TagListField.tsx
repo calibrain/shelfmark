@@ -82,7 +82,7 @@ export const TagListField = ({ field, value, onChange, disabled, requiredTags }:
 
   return (
     <div
-      className={`w-full px-3 py-2 rounded-lg border border-[var(--border-muted)]
+      className={`w-full px-2 py-1 rounded-lg border border-[var(--border-muted)]
                   bg-[var(--bg-soft)] text-sm
                   ${isDisabled ? 'opacity-60 cursor-not-allowed' : 'cursor-text'}`}
       onClick={() => {
@@ -90,11 +90,11 @@ export const TagListField = ({ field, value, onChange, disabled, requiredTags }:
         inputRef.current?.focus();
       }}
     >
-      <div className="flex flex-wrap gap-2 items-center">
+      <div className="flex flex-wrap gap-1 items-center">
         {tags.map((tag, idx) => (
           <span
             key={`${tag}-${idx}`}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md
                        border border-[var(--border-muted)] bg-[var(--bg)]
                        max-w-full"
             title={tag}
@@ -107,7 +107,7 @@ export const TagListField = ({ field, value, onChange, disabled, requiredTags }:
                   e.stopPropagation();
                   removeAt(idx);
                 }}
-                className="p-0.5 rounded-full hover:bg-[var(--hover-surface)]"
+                className="p-0.5 rounded hover:bg-[var(--hover-surface)]"
                 aria-label={`Remove ${tag}`}
               >
                 <svg
@@ -144,7 +144,7 @@ export const TagListField = ({ field, value, onChange, disabled, requiredTags }:
             }}
             onBlur={() => commitDraft()}
             placeholder={tags.length === 0 ? field.placeholder : ''}
-            className="flex-1 min-w-[12rem] bg-transparent outline-none py-1"
+            className="flex-1 min-w-[4rem] bg-transparent outline-none px-1 py-0.5"
           />
         )}
 

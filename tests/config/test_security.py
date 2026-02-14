@@ -2,7 +2,7 @@
 Tests for security configuration and migration.
 
 Tests the security settings registration, migration from old settings,
-and builtin credential handling/synchronization.
+and current on-save guard behavior.
 """
 
 import json
@@ -11,7 +11,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from werkzeug.security import check_password_hash
 
 from shelfmark.core.user_db import UserDB
 
@@ -313,136 +312,39 @@ class TestSecuritySettings:
         assert action.show_when == {"field": "AUTH_METHOD", "value": "builtin"}
 
 
-class TestPasswordValidation:
-    """Tests for password validation in the on_save handler."""
+class TestSecurityOnSave:
+    """Tests for current security on-save guard behavior."""
 
-    def test_on_save_validates_password_match(self):
-        from shelfmark.config.security import _on_save_security
-
-        values = {
-            "AUTH_METHOD": "builtin",
-            "BUILTIN_USERNAME": "admin",
-            "BUILTIN_PASSWORD": "password123",
-            "BUILTIN_PASSWORD_CONFIRM": "different_password",
-        }
-
-        result = _on_save_security(values)
-
-        assert result["error"] is True
-        assert "do not match" in result["message"]
-
-    def test_on_save_validates_password_length(self):
-        from shelfmark.config.security import _on_save_security
-
-        values = {
-            "AUTH_METHOD": "builtin",
-            "BUILTIN_USERNAME": "admin",
-            "BUILTIN_PASSWORD": "abc",
-            "BUILTIN_PASSWORD_CONFIRM": "abc",
-        }
-
-        result = _on_save_security(values)
-
-        assert result["error"] is True
-        assert "at least 4 characters" in result["message"]
-
-    def test_on_save_requires_username_with_password(self):
-        from shelfmark.config.security import _on_save_security
-
-        values = {
-            "AUTH_METHOD": "builtin",
-            "BUILTIN_PASSWORD": "password123",
-            "BUILTIN_PASSWORD_CONFIRM": "password123",
-        }
-
-        result = _on_save_security(values)
-
-        assert result["error"] is True
-        assert "Username cannot be empty" in result["message"]
-
-    def test_on_save_hashes_password(self, tmp_path, monkeypatch):
+    def test_on_save_passthrough_for_non_oidc(self, tmp_path, monkeypatch):
         from shelfmark.config.security import _on_save_security
 
         monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+        values = {"AUTH_METHOD": "builtin", "PROXY_AUTH_USER_HEADER": "X-Auth-User"}
 
-        values = {
-            "AUTH_METHOD": "builtin",
-            "BUILTIN_USERNAME": "admin",
-            "BUILTIN_PASSWORD": "password123",
-            "BUILTIN_PASSWORD_CONFIRM": "password123",
-        }
-
-        result = _on_save_security(values)
+        result = _on_save_security(values.copy())
 
         assert result["error"] is False
-        assert "BUILTIN_PASSWORD_HASH" in result["values"]
-        assert "BUILTIN_PASSWORD" not in result["values"]
-        assert "BUILTIN_PASSWORD_CONFIRM" not in result["values"]
-        assert result["values"]["BUILTIN_PASSWORD_HASH"] != "password123"
+        assert result["values"] == values
 
-    def test_on_save_preserves_existing_hash_when_no_password(self):
+    def test_on_save_blocks_oidc_without_local_admin(self, tmp_path, monkeypatch):
         from shelfmark.config.security import _on_save_security
 
-        with patch("shelfmark.config.security.load_config_file") as mock_load:
-            mock_load.return_value = {"BUILTIN_PASSWORD_HASH": "existing_hash"}
-
-            values = {
-                "AUTH_METHOD": "builtin",
-                "BUILTIN_USERNAME": "admin",
-            }
-
-            result = _on_save_security(values)
-
-            assert result["error"] is False
-            assert result["values"]["BUILTIN_PASSWORD_HASH"] == "existing_hash"
-
-
-class TestBuiltinAdminSync:
-    """Builtin credential save should create/update a local admin user."""
-
-    @pytest.fixture(autouse=True)
-    def setup_user_db(self, tmp_path, monkeypatch):
         monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
-        self.user_db = UserDB(str(tmp_path / "users.db"))
-        self.user_db.initialize()
+        UserDB(str(tmp_path / "users.db")).initialize()
 
-    def test_on_save_builtin_creates_local_admin(self):
+        result = _on_save_security({"AUTH_METHOD": "oidc"})
+
+        assert result["error"] is True
+        assert "local admin" in result["message"].lower()
+
+    def test_on_save_allows_oidc_with_local_password_admin(self, tmp_path, monkeypatch):
         from shelfmark.config.security import _on_save_security
 
-        values = {
-            "AUTH_METHOD": "builtin",
-            "BUILTIN_USERNAME": "admin",
-            "BUILTIN_PASSWORD": "password123",
-            "BUILTIN_PASSWORD_CONFIRM": "password123",
-        }
+        monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+        user_db = UserDB(str(tmp_path / "users.db"))
+        user_db.initialize()
+        user_db.create_user(username="admin", password_hash="hash", role="admin")
 
-        result = _on_save_security(values)
+        result = _on_save_security({"AUTH_METHOD": "oidc"})
 
         assert result["error"] is False
-        user = self.user_db.get_user(username="admin")
-        assert user is not None
-        assert user["role"] == "admin"
-        assert user["auth_source"] == "builtin"
-        assert check_password_hash(user["password_hash"], "password123")
-
-    def test_on_save_builtin_updates_existing_user(self):
-        from shelfmark.config.security import _on_save_security
-
-        existing = self.user_db.create_user(username="admin", role="user")
-        assert existing["role"] == "user"
-
-        values = {
-            "AUTH_METHOD": "builtin",
-            "BUILTIN_USERNAME": "admin",
-            "BUILTIN_PASSWORD": "newpassword",
-            "BUILTIN_PASSWORD_CONFIRM": "newpassword",
-        }
-
-        result = _on_save_security(values)
-
-        assert result["error"] is False
-        user = self.user_db.get_user(username="admin")
-        assert user is not None
-        assert user["role"] == "admin"
-        assert user["auth_source"] == "builtin"
-        assert check_password_hash(user["password_hash"], "newpassword")

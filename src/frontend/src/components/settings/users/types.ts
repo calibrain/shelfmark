@@ -20,6 +20,7 @@ export interface CreateUserFormState {
   username: string;
   email: string;
   password: string;
+  password_confirm: string;
   display_name: string;
   role: string;
 }
@@ -28,6 +29,7 @@ export const INITIAL_CREATE_FORM: CreateUserFormState = {
   username: '',
   email: '',
   password: '',
+  password_confirm: '',
   display_name: '',
   role: 'user',
 };

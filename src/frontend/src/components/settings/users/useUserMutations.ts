@@ -70,7 +70,8 @@ export const useUserMutations = ({
 
   const createUser = async () => {
     if (!createForm.username || !createForm.password) return fail('Username and password are required');
-    if (createForm.password.length < MIN_PASSWORD_LENGTH) return fail(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+    const createPasswordError = getPasswordError(createForm.password, createForm.password_confirm);
+    if (createPasswordError) return fail(createPasswordError);
 
     setCreating(true);
     try {

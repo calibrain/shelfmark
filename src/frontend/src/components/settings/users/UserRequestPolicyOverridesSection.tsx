@@ -1,4 +1,10 @@
-import { HeadingFieldConfig, SettingsTab, TableFieldConfig } from '../../../types/settings';
+import {
+  CustomComponentFieldConfig,
+  HeadingFieldConfig,
+  SelectFieldConfig,
+  SettingsTab,
+  TableFieldConfig,
+} from '../../../types/settings';
 import { HeadingField } from '../fields';
 import { PerUserSettings } from './types';
 import { RequestPolicyGrid } from './RequestPolicyGrid';
@@ -44,9 +50,21 @@ export const UserRequestPolicyOverridesSection = ({
   userSettings,
   setUserSettings,
 }: UserRequestPolicyOverridesSectionProps) => {
-  const rulesField = usersTab.fields.find(
+  const requestPolicyEditorField = usersTab.fields.find(
+    (field): field is CustomComponentFieldConfig =>
+      field.key === 'request_policy_editor' && field.type === 'CustomComponentField'
+  );
+  const rulesField = requestPolicyEditorField?.boundFields?.find(
     (field): field is TableFieldConfig =>
       field.key === 'REQUEST_POLICY_RULES' && field.type === 'TableField'
+  );
+  const defaultEbookField = requestPolicyEditorField?.boundFields?.find(
+    (field): field is SelectFieldConfig =>
+      field.key === 'REQUEST_POLICY_DEFAULT_EBOOK' && field.type === 'SelectField'
+  );
+  const defaultAudioField = requestPolicyEditorField?.boundFields?.find(
+    (field): field is SelectFieldConfig =>
+      field.key === 'REQUEST_POLICY_DEFAULT_AUDIOBOOK' && field.type === 'SelectField'
   );
 
   if (!rulesField) {
@@ -108,6 +126,7 @@ export const UserRequestPolicyOverridesSection = ({
 
   return (
     <div className="space-y-3">
+      <div className="border-t border-[var(--border-muted)]" />
       <HeadingField field={requestPolicyHeading} />
 
       <RequestPolicyGrid
@@ -159,14 +178,10 @@ export const UserRequestPolicyOverridesSection = ({
         defaultModeDisabled={{
           ebook:
             !isUserOverridable('REQUEST_POLICY_DEFAULT_EBOOK') ||
-            Boolean(
-              usersTab.fields.find((field) => field.key === 'REQUEST_POLICY_DEFAULT_EBOOK' && 'fromEnv' in field && field.fromEnv)
-            ),
+            Boolean(defaultEbookField?.fromEnv),
           audiobook:
             !isUserOverridable('REQUEST_POLICY_DEFAULT_AUDIOBOOK') ||
-            Boolean(
-              usersTab.fields.find((field) => field.key === 'REQUEST_POLICY_DEFAULT_AUDIOBOOK' && 'fromEnv' in field && field.fromEnv)
-            ),
+            Boolean(defaultAudioField?.fromEnv),
         }}
         explicitRules={explicitUserRules}
         baseRules={globalRules}

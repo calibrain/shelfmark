@@ -7,6 +7,7 @@ that talks to /api/admin/users endpoints.
 
 from shelfmark.core.settings_registry import (
     CheckboxField,
+    CustomComponentField,
     HeadingField,
     NumberField,
     SelectField,
@@ -47,6 +48,28 @@ _REQUEST_DEFAULT_MODE_OPTIONS = [
 _REQUEST_MATRIX_MODE_OPTIONS = [
     option for option in _REQUEST_DEFAULT_MODE_OPTIONS if option["value"] != "request_book"
 ]
+
+_USERS_HEADING_DESCRIPTION_BY_AUTH_MODE = {
+    "builtin": (
+        "Create and manage user accounts directly. Passwords are stored locally and users sign in "
+        "with their username and password."
+    ),
+    "oidc": (
+        "Users sign in through your identity provider. New accounts can be created automatically on "
+        "first login when auto-provisioning is enabled, or you can pre-create users here and they\u2019ll "
+        "be linked by email on first sign-in."
+    ),
+    "proxy": (
+        "Users are authenticated by your reverse proxy. Accounts are automatically created on first "
+        "sign-in. If a local user with a matching username already exists, it will be linked instead."
+    ),
+    "cwa": (
+        "User accounts are synced from your Calibre-Web database. Users are matched by email, and new "
+        "accounts are created here when new CWA users are found."
+    ),
+    "none": "Authentication is disabled. Anyone can access Shelfmark without signing in.",
+    "default": "Authentication is disabled. Anyone can access Shelfmark without signing in.",
+}
 
 
 def _get_request_source_options():
@@ -147,6 +170,16 @@ def users_settings():
     """User management tab - rendered as a custom component on the frontend."""
     return [
         HeadingField(
+            key="users_heading",
+            title="Users",
+            description=_USERS_HEADING_DESCRIPTION_BY_AUTH_MODE["default"],
+            description_by_auth_mode=_USERS_HEADING_DESCRIPTION_BY_AUTH_MODE,
+        ),
+        CustomComponentField(
+            key="users_management",
+            component="users_management",
+        ),
+        HeadingField(
             key="users_access_heading",
             title="Options",
         ),
@@ -177,38 +210,50 @@ def users_settings():
             default=False,
             user_overridable=True,
         ),
-        SelectField(
-            key="REQUEST_POLICY_DEFAULT_EBOOK",
-            label="Default Ebook Mode",
-            description=(
-                "Global ceiling for ebook actions. Source rules can only match or restrict this mode."
-            ),
-            options=_REQUEST_DEFAULT_MODE_OPTIONS,
-            default="download",
-            user_overridable=True,
-        ),
-        SelectField(
-            key="REQUEST_POLICY_DEFAULT_AUDIOBOOK",
-            label="Default Audiobook Mode",
-            description=(
-                "Global ceiling for audiobook actions. Source rules can only match or restrict this mode."
-            ),
-            options=_REQUEST_DEFAULT_MODE_OPTIONS,
-            default="download",
-            user_overridable=True,
-        ),
-        TableField(
-            key="REQUEST_POLICY_RULES",
+        CustomComponentField(
+            key="request_policy_editor",
+            component="request_policy_grid",
             label="Request Policy Rules",
             description=(
                 "Source/content-type rules can only restrict the content-type default ceiling."
             ),
-            columns=_get_request_policy_rule_columns,
-            default=[],
-            add_label="Add Rule",
-            empty_message="No request policy rules configured.",
-            env_supported=False,
-            user_overridable=True,
+            show_when={"field": "REQUESTS_ENABLED", "value": True},
+            wrap_in_field_wrapper=True,
+            value_fields=[
+                SelectField(
+                    key="REQUEST_POLICY_DEFAULT_EBOOK",
+                    label="Default Ebook Mode",
+                    description=(
+                        "Global ceiling for ebook actions. Source rules can only match or restrict this mode."
+                    ),
+                    options=_REQUEST_DEFAULT_MODE_OPTIONS,
+                    default="download",
+                    user_overridable=True,
+                ),
+                SelectField(
+                    key="REQUEST_POLICY_DEFAULT_AUDIOBOOK",
+                    label="Default Audiobook Mode",
+                    description=(
+                        "Global ceiling for audiobook actions. Source rules can only match or restrict this mode."
+                    ),
+                    options=_REQUEST_DEFAULT_MODE_OPTIONS,
+                    default="download",
+                    user_overridable=True,
+                ),
+                TableField(
+                    key="REQUEST_POLICY_RULES",
+                    label="Request Policy Rules",
+                    description=(
+                        "Source/content-type rules can only restrict the content-type default ceiling."
+                    ),
+                    columns=_get_request_policy_rule_columns,
+                    default=[],
+                    add_label="Add Rule",
+                    empty_message="No request policy rules configured.",
+                    env_supported=False,
+                    user_overridable=True,
+                ),
+            ],
         ),
         NumberField(
             key="MAX_PENDING_REQUESTS_PER_USER",
@@ -218,6 +263,7 @@ def users_settings():
             min_value=1,
             max_value=1000,
             user_overridable=True,
+            show_when={"field": "REQUESTS_ENABLED", "value": True},
         ),
         CheckboxField(
             key="REQUESTS_ALLOW_NOTES",
@@ -225,5 +271,6 @@ def users_settings():
             description="Allow users to include notes when creating requests.",
             default=True,
             user_overridable=True,
+            show_when={"field": "REQUESTS_ENABLED", "value": True},
         ),
     ]
