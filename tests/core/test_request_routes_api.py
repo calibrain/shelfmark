@@ -1638,3 +1638,144 @@ class TestDownloadPolicyGuardsExtended:
                         })
 
         assert resp.status_code == 200
+
+
+def test_clear_queue_marks_fulfilled_request_delivery_as_cleared(main_module, client):
+    user = _create_user(main_module, prefix="reader")
+    admin = _create_user(main_module, prefix="admin", role="admin")
+    _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
+
+    created = main_module.user_db.create_request(
+        user_id=user["id"],
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data={
+            "title": "Clear Delivery State",
+            "author": "QA",
+            "content_type": "ebook",
+            "provider": "openlibrary",
+            "provider_id": "ol-clear-delivery",
+        },
+        release_data={
+            "source": "prowlarr",
+            "source_id": "clear-delivery-source-id",
+            "title": "Clear Delivery State.epub",
+        },
+        status="fulfilled",
+        delivery_state="complete",
+    )
+
+    status_before_clear = {
+        "complete": {"clear-delivery-source-id": {"id": "clear-delivery-source-id"}},
+        "queued": {},
+        "resolving": {},
+        "locating": {},
+        "downloading": {},
+        "error": {},
+        "cancelled": {},
+    }
+
+    with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+        with patch.object(main_module.ws_manager, "is_enabled", return_value=False):
+            with patch.object(main_module.ws_manager, "broadcast_status_update"):
+                with patch.object(main_module.backend, "queue_status", side_effect=[status_before_clear, {}]) as mock_queue_status:
+                    with patch.object(main_module.backend, "clear_completed", return_value=1) as mock_clear_completed:
+                        resp = client.delete("/api/queue/clear")
+
+    assert resp.status_code == 200
+    assert resp.json["status"] == "cleared"
+    assert resp.json["removed_count"] == 1
+    assert mock_queue_status.call_args_list[0].kwargs == {"user_id": None}
+    mock_clear_completed.assert_called_once_with(user_id=None)
+
+    refreshed = main_module.user_db.get_request(created["id"])
+    assert refreshed["delivery_state"] == "cleared"
+    assert refreshed["delivery_updated_at"] is not None
+
+
+def test_non_admin_clear_queue_is_scoped_to_their_downloads(main_module, client):
+    alice = _create_user(main_module, prefix="alice")
+    bob = _create_user(main_module, prefix="bob")
+    _set_session(client, user_id=alice["username"], db_user_id=alice["id"], is_admin=False)
+
+    alice_request = main_module.user_db.create_request(
+        user_id=alice["id"],
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data={
+            "title": "Alice Clear Scope",
+            "author": "QA",
+            "content_type": "ebook",
+            "provider": "openlibrary",
+            "provider_id": "ol-alice-scope",
+        },
+        release_data={
+            "source": "prowlarr",
+            "source_id": "shared-clear-scope-source-id",
+            "title": "Alice Scope.epub",
+        },
+        status="fulfilled",
+        delivery_state="complete",
+    )
+    bob_request = main_module.user_db.create_request(
+        user_id=bob["id"],
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data={
+            "title": "Bob Clear Scope",
+            "author": "QA",
+            "content_type": "ebook",
+            "provider": "openlibrary",
+            "provider_id": "ol-bob-scope",
+        },
+        release_data={
+            "source": "prowlarr",
+            "source_id": "shared-clear-scope-source-id",
+            "title": "Bob Scope.epub",
+        },
+        status="fulfilled",
+        delivery_state="complete",
+    )
+
+    status_before_clear = {
+        "complete": {"shared-clear-scope-source-id": {"id": "shared-clear-scope-source-id"}},
+        "queued": {},
+        "resolving": {},
+        "locating": {},
+        "downloading": {},
+        "error": {},
+        "cancelled": {},
+    }
+
+    with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+        with patch.object(main_module.ws_manager, "is_enabled", return_value=False):
+            with patch.object(main_module.ws_manager, "broadcast_status_update"):
+                with patch.object(main_module.backend, "queue_status", side_effect=[status_before_clear, {}]) as mock_queue_status:
+                    with patch.object(main_module.backend, "clear_completed", return_value=1) as mock_clear_completed:
+                        resp = client.delete("/api/queue/clear")
+
+    assert resp.status_code == 200
+    assert resp.json["status"] == "cleared"
+    assert resp.json["removed_count"] == 1
+    assert mock_queue_status.call_args_list[0].kwargs == {"user_id": alice["id"]}
+    mock_clear_completed.assert_called_once_with(user_id=alice["id"])
+
+    refreshed_alice = main_module.user_db.get_request(alice_request["id"])
+    refreshed_bob = main_module.user_db.get_request(bob_request["id"])
+    assert refreshed_alice["delivery_state"] == "cleared"
+    assert refreshed_bob["delivery_state"] == "complete"
+
+
+def test_non_admin_clear_queue_without_db_user_id_returns_403(main_module, client):
+    _set_session(client, user_id="reader-no-db", db_user_id=None, is_admin=False)
+
+    with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+        with patch.object(main_module.backend, "clear_completed") as mock_clear_completed:
+            resp = client.delete("/api/queue/clear")
+
+    assert resp.status_code == 403
+    assert resp.json["code"] == "user_identity_unavailable"
+    mock_clear_completed.assert_not_called()

@@ -53,10 +53,10 @@ const toRequestVisualStatus = (status: RequestRecord['status']): ActivityVisualS
 
 const getPendingRequestText = (item: ActivityItem, isAdmin: boolean): string => {
   if (!isAdmin) {
-    return 'Pending';
+    return 'Awaiting review';
   }
   const username = item.username?.trim() || item.requestRecord?.username?.trim();
-  return username ? `Requested by ${username}` : 'Requested';
+  return username ? `Needs review · ${username}` : 'Needs review';
 };
 
 const getRequestBadge = (item: ActivityItem, isAdmin: boolean): ActivityCardBadge => {
@@ -72,15 +72,15 @@ const getRequestBadge = (item: ActivityItem, isAdmin: boolean): ActivityCardBadg
 
   let text = item.statusLabel;
   if (hasInFlightLinkedDownload) {
-    text = isAdmin ? 'Request approved' : 'Approved';
+    text = 'Approved';
   } else if (requestVisualStatus === 'pending') {
     text = getPendingRequestText(item, isAdmin);
   } else if (requestVisualStatus === 'fulfilled') {
-    text = isAdmin ? 'Request fulfilled' : 'Approved';
+    text = 'Approved';
   } else if (requestVisualStatus === 'rejected') {
-    text = 'Rejected';
+    text = isAdmin ? 'Declined' : 'Not approved';
   } else if (requestVisualStatus === 'cancelled') {
-    text = 'Cancelled';
+    text = isAdmin ? 'Cancelled by requester' : 'Cancelled';
   }
 
   return {
@@ -122,6 +122,7 @@ const buildBadges = (item: ActivityItem, isAdmin: boolean): ActivityCardBadge[] 
 
 const buildRequestNoteLine = (item: ActivityItem): string | undefined => {
   const requestStatus = item.requestRecord?.status;
+  const deliveryState = item.requestRecord?.delivery_state;
   if (item.requestNote && (requestStatus === 'pending' || item.visualStatus === 'pending')) {
     return `"${item.requestNote}"`;
   }
@@ -135,6 +136,9 @@ const buildRequestNoteLine = (item: ActivityItem): string | undefined => {
     )
   ) {
     return `"${item.adminNote}"`;
+  }
+  if (requestStatus === 'fulfilled' && deliveryState === 'cleared') {
+    return '"Cleared from queue"';
   }
   return undefined;
 };

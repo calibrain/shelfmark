@@ -528,9 +528,9 @@ def get_active_downloads() -> List[str]:
     """Get list of currently active downloads."""
     return book_queue.get_active_downloads()
 
-def clear_completed() -> int:
-    """Clear all completed downloads from tracking."""
-    return book_queue.clear_completed()
+def clear_completed(user_id: Optional[int] = None) -> int:
+    """Clear completed downloads from tracking (optionally user-scoped)."""
+    return book_queue.clear_completed(user_id=user_id)
 
 def _cleanup_progress_tracking(task_id: str) -> None:
     """Clean up progress tracking data for a completed/cancelled download."""

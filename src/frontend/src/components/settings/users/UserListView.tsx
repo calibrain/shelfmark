@@ -1,18 +1,10 @@
 import { useState } from 'react';
 import { AdminUser, DownloadDefaults } from '../../../services/api';
-import { DropdownList } from '../../DropdownList';
-import { Tooltip } from '../../shared/Tooltip';
 import {
   canCreateLocalUsersForAuthMode,
   CreateUserFormState,
 } from './types';
-import { UserAuthSourceBadge } from './UserAuthSourceBadge';
-import { UserCreateCard, UserEditFields } from './UserCard';
-
-const EDIT_ROLE_OPTIONS = [
-  { value: 'admin', label: 'Admin' },
-  { value: 'user', label: 'User' },
-];
+import { UserAccountCardContent, UserCreateCard, UserIdentityHeader, UserRoleControl } from './UserCard';
 
 interface UserListViewProps {
   authMode: string;
@@ -123,7 +115,6 @@ export const UserListView = ({
             const active = user.is_active !== false;
             const isEditingRow = showEditForm && activeEditUserId === user.id;
             const hasLoadedEditUser = isEditingRow && editingUser?.id === user.id;
-            const roleLabel = user.role.charAt(0).toUpperCase() + user.role.slice(1);
             return (
               <div
                 key={user.id}
@@ -132,82 +123,18 @@ export const UserListView = ({
                 <div
                   className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 ${isEditingRow ? 'border-b border-[var(--border-muted)]' : ''}`}
                 >
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium shrink-0
-                        ${user.role === 'admin' ? 'bg-sky-500/20 text-sky-600 dark:text-sky-400' : 'bg-zinc-500/20'}`}
-                    >
-                      {user.username.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium truncate">
-                          {user.display_name || user.username}
-                        </span>
-                        {user.display_name && (
-                          <span className="text-xs opacity-40 truncate">@{user.username}</span>
-                        )}
-                        <UserAuthSourceBadge user={user} />
-                      </div>
-                      <div className="text-xs opacity-50 truncate">
-                        {user.email || 'No email'}
-                      </div>
-                      {!active && (
-                        <div className="text-[11px] opacity-60 truncate">
-                          Inactive for current authentication mode
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                  <UserIdentityHeader user={user} />
 
                   <div className="flex items-center flex-wrap gap-2 shrink-0 sm:justify-end">
-                    {hasLoadedEditUser && editingUser ? (() => {
-                      const caps = editingUser.edit_capabilities;
-                      const canEditRole = caps.canEditRole;
-                      const roleDisabledReason = !canEditRole
-                        ? (caps.authSource === 'oidc'
-                          ? (downloadDefaults?.OIDC_ADMIN_GROUP
-                            ? `Role is managed by the ${downloadDefaults.OIDC_ADMIN_GROUP} group in your identity provider.`
-                            : 'Role is managed by OIDC group authorization.')
-                          : 'Role is managed by the external authentication source.')
-                        : undefined;
-
-                      if (!canEditRole) {
-                        return (
-                          <Tooltip content={roleDisabledReason || 'Role cannot be changed'} position="bottom">
-                            <span
-                              className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium leading-none cursor-not-allowed
-                                ${editingUser.role === 'admin' ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400' : 'bg-zinc-500/10 opacity-70'}`}
-                            >
-                              {editingUser.role.charAt(0).toUpperCase() + editingUser.role.slice(1)}
-                            </span>
-                          </Tooltip>
-                        );
-                      }
-
-                      return (
-                        <DropdownList
-                          options={EDIT_ROLE_OPTIONS}
-                          value={editingUser.role}
-                          onChange={(value) => {
-                            const val = Array.isArray(value) ? value[0] ?? '' : value;
-                            onEditingUserChange({ ...editingUser, role: val });
-                          }}
-                          widthClassName="w-28"
-                          buttonClassName={`!py-1 !px-2.5 !text-xs !font-medium ${
-                            editingUser.role === 'admin'
-                              ? '!bg-sky-500/15 !text-sky-600 dark:!text-sky-400 !border-sky-500/30'
-                              : '!bg-zinc-500/10 !opacity-70'
-                          }`}
-                        />
-                      );
-                    })() : (
-                      <span
-                        className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium leading-none
-                          ${user.role === 'admin' ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400' : 'bg-zinc-500/10 opacity-70'}`}
-                      >
-                        {roleLabel}
-                      </span>
+                    {hasLoadedEditUser && editingUser ? (
+                      <UserRoleControl
+                        user={editingUser}
+                        onUserChange={onEditingUserChange}
+                        oidcAdminGroup={downloadDefaults?.OIDC_ADMIN_GROUP}
+                        tooltipPosition="bottom"
+                      />
+                    ) : (
+                      <UserRoleControl user={user} />
                     )}
 
                     <button
@@ -244,38 +171,27 @@ export const UserListView = ({
                 {isEditingRow && (
                   <div className="p-4 space-y-5 bg-[var(--bg)] rounded-b-lg">
                     {hasLoadedEditUser && editingUser ? (
-                      <>
-                        <div>
-                          <label className="text-sm font-medium">User Preferences</label>
-                          <p className="text-xs opacity-60 mt-0.5">Override global delivery and request policy settings for this user.</p>
-                          <button
-                            onClick={onOpenOverrides}
-                            className="mt-2 px-4 py-2 rounded-lg text-sm font-medium text-white
-                                       bg-sky-600 hover:bg-sky-700 transition-colors"
-                          >
-                            Open User Preferences
-                          </button>
-                        </div>
-
-                        <div className="border-t border-[var(--border-muted)]" />
-
-                        <UserEditFields
-                          user={editingUser}
-                          onUserChange={onEditingUserChange}
-                          onSave={onEditSave}
-                          saving={saving}
-                          onCancel={onCancelEdit}
-                          editPassword={editPassword}
-                          onEditPasswordChange={onEditPasswordChange}
-                          editPasswordConfirm={editPasswordConfirm}
-                          onEditPasswordConfirmChange={onEditPasswordConfirmChange}
-                          onDelete={() => setConfirmDelete(user.id)}
-                          onConfirmDelete={() => handleDelete(user.id)}
-                          onCancelDelete={() => setConfirmDelete(null)}
-                          isDeletePending={confirmDelete === user.id}
-                          deleting={deletingUserId === user.id}
-                        />
-                      </>
+                      <UserAccountCardContent
+                        user={editingUser}
+                        onUserChange={onEditingUserChange}
+                        onSave={onEditSave}
+                        saving={saving}
+                        onCancel={onCancelEdit}
+                        editPassword={editPassword}
+                        onEditPasswordChange={onEditPasswordChange}
+                        editPasswordConfirm={editPasswordConfirm}
+                        onEditPasswordConfirmChange={onEditPasswordConfirmChange}
+                        onDelete={() => setConfirmDelete(user.id)}
+                        onConfirmDelete={() => handleDelete(user.id)}
+                        onCancelDelete={() => setConfirmDelete(null)}
+                        isDeletePending={confirmDelete === user.id}
+                        deleting={deletingUserId === user.id}
+                        preferencesPanel={{
+                          description: 'Override global delivery and request policy settings for this user.',
+                          actionLabel: 'Open User Preferences',
+                          onAction: onOpenOverrides,
+                        }}
+                      />
                     ) : (
                       <div className="text-sm opacity-60">Loading user details...</div>
                     )}

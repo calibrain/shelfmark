@@ -4,37 +4,19 @@ import {
   SettingsTab,
   SettingsGroup,
   SettingsField,
-  SelectFieldConfig,
   ActionResult,
   UpdateResult,
 } from '../types/settings';
+import {
+  getStoredThemePreference,
+  setThemePreference,
+  THEME_FIELD,
+} from '../utils/themePreference';
 
 type ValueBearingField = Exclude<
   SettingsField,
   { type: 'ActionButton' } | { type: 'HeadingField' } | { type: 'CustomComponentField' }
 >;
-
-// Client-side only theme field that gets injected into the general tab
-const THEME_FIELD: SelectFieldConfig = {
-  type: 'SelectField',
-  key: '_THEME',
-  label: 'Theme',
-  description: 'Choose your preferred color scheme.',
-  value: 'auto', // Placeholder, actual value comes from localStorage
-  options: [
-    { value: 'light', label: 'Light' },
-    { value: 'dark', label: 'Dark' },
-    { value: 'auto', label: 'Auto (System)' },
-  ],
-};
-
-// Apply theme to document
-function applyTheme(theme: string): void {
-  const effectiveTheme = theme === 'auto'
-    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-    : theme;
-  document.documentElement.setAttribute('data-theme', effectiveTheme);
-}
 
 // Extract value from a field based on its type
 function getFieldValue(field: SettingsField): unknown {
@@ -138,7 +120,7 @@ export function useSettings(): UseSettingsReturn {
         getValueBearingFields(tab.fields).forEach((field) => {
           // Special handling for theme field - get from localStorage
           if (field.key === '_THEME') {
-            initialValues[tab.name][field.key] = localStorage.getItem('preferred-theme') || 'auto';
+            initialValues[tab.name][field.key] = getStoredThemePreference();
           } else {
             initialValues[tab.name][field.key] = getFieldValue(field);
           }
@@ -169,8 +151,7 @@ export function useSettings(): UseSettingsReturn {
   const updateValue = useCallback((tabName: string, key: string, value: unknown) => {
     // Apply theme immediately when changed (no save button needed)
     if (key === '_THEME' && typeof value === 'string') {
-      localStorage.setItem('preferred-theme', value);
-      applyTheme(value);
+      setThemePreference(value);
       // Also update original value so it doesn't show as pending change
       setOriginalValues((prev) => ({
         ...prev,

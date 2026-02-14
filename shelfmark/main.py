@@ -45,6 +45,10 @@ from shelfmark.core.request_policy import (
     normalize_source,
     resolve_policy_mode,
 )
+from shelfmark.core.requests_service import (
+    mark_delivery_states_cleared,
+    sync_delivery_states_from_queue_status,
+)
 from shelfmark.core.utils import normalize_base_path
 from shelfmark.api.websocket import ws_manager
 
@@ -119,8 +123,10 @@ try:
     import shelfmark.config.users_settings as _  # noqa: F401 - registers users tab
     from shelfmark.core.oidc_routes import register_oidc_routes
     from shelfmark.core.admin_routes import register_admin_routes
+    from shelfmark.core.self_user_routes import register_self_user_routes
     register_oidc_routes(app, user_db)
     register_admin_routes(app, user_db)
+    register_self_user_routes(app, user_db)
 except (sqlite3.OperationalError, OSError) as e:
     logger.warning(
         f"User database initialization failed: {e}. "
@@ -970,6 +976,30 @@ def _resolve_status_scope(*, require_authenticated: bool = True) -> tuple[bool, 
     return False, db_user_id, True
 
 
+def _emit_request_update_events(updated_requests: list[dict[str, Any]]) -> None:
+    """Broadcast request_update events for rows changed by delivery-state sync."""
+    if not updated_requests or ws_manager is None:
+        return
+
+    try:
+        socketio_ref = getattr(ws_manager, "socketio", None)
+        is_enabled = getattr(ws_manager, "is_enabled", None)
+        if socketio_ref is None or not callable(is_enabled) or not is_enabled():
+            return
+
+        for updated in updated_requests:
+            payload = {
+                "request_id": updated["id"],
+                "status": updated["status"],
+                "delivery_state": updated.get("delivery_state"),
+                "title": (updated.get("book_data") or {}).get("title") or "Unknown title",
+            }
+            socketio_ref.emit("request_update", payload, to=f"user_{updated['user_id']}")
+            socketio_ref.emit("request_update", payload, to="admins")
+    except Exception as exc:
+        logger.warning(f"Failed to emit delivery request_update events: {exc}")
+
+
 @app.route('/api/status', methods=['GET'])
 @login_required
 def api_status() -> Union[Response, Tuple[Response, int]]:
@@ -986,6 +1016,13 @@ def api_status() -> Union[Response, Tuple[Response, int]]:
 
         user_id = None if is_admin else db_user_id
         status = backend.queue_status(user_id=user_id)
+        if user_db is not None:
+            updated_requests = sync_delivery_states_from_queue_status(
+                user_db,
+                queue_status=status,
+                user_id=user_id,
+            )
+            _emit_request_update_events(updated_requests)
         return jsonify(status)
     except Exception as e:
         logger.error_trace(f"Status error: {e}")
@@ -1227,11 +1264,31 @@ def api_clear_completed() -> Union[Response, Tuple[Response, int]]:
         flask.Response: JSON with count of removed books.
     """
     try:
-        removed_count = backend.clear_completed()
+        is_admin, db_user_id, can_access_status = _resolve_status_scope()
+        if not can_access_status:
+            return jsonify({"error": "User identity unavailable", "code": "user_identity_unavailable"}), 403
+
+        scoped_user_id = None if is_admin else db_user_id
+        status_before_clear = backend.queue_status(user_id=scoped_user_id)
+        terminal_source_ids = set()
+        for status_key in ("complete", "error", "cancelled"):
+            status_bucket = status_before_clear.get(status_key, {})
+            if isinstance(status_bucket, dict):
+                terminal_source_ids.update(status_bucket.keys())
+
+        removed_count = backend.clear_completed(user_id=scoped_user_id)
+        updated_requests: list[dict[str, Any]] = []
+        if user_db is not None and terminal_source_ids:
+            updated_requests = mark_delivery_states_cleared(
+                user_db,
+                source_ids=terminal_source_ids,
+                user_id=scoped_user_id,
+            )
         
         # Broadcast status update after clearing
         if ws_manager:
             ws_manager.broadcast_status_update(backend.queue_status())
+        _emit_request_update_events(updated_requests)
         
         return jsonify({"status": "cleared", "removed_count": removed_count})
     except Exception as e:

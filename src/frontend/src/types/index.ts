@@ -197,6 +197,8 @@ export interface RequestRecord {
   id: number;
   user_id: number;
   status: 'pending' | 'fulfilled' | 'rejected' | 'cancelled';
+  delivery_state?: 'none' | 'unknown' | 'queued' | 'resolving' | 'locating' | 'downloading' | 'complete' | 'error' | 'cancelled' | 'cleared';
+  delivery_updated_at?: string | null;
   source_hint: string | null;
   content_type: ContentType;
   request_level: 'book' | 'release';

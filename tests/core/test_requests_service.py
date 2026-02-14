@@ -13,10 +13,13 @@ from shelfmark.core.requests_service import (
     cancel_request,
     create_request,
     fulfil_request,
+    mark_delivery_states_cleared,
     normalize_policy_mode,
+    normalize_delivery_state,
     normalize_request_level,
     normalize_request_status,
     reject_request,
+    sync_delivery_states_from_queue_status,
     validate_request_level_payload,
     validate_status_transition,
 )
@@ -59,6 +62,17 @@ def test_normalize_request_status_accepts_known_values():
 def test_normalize_request_status_rejects_unknown_values():
     with pytest.raises(ValueError, match="Invalid request status"):
         normalize_request_status("queued")
+
+
+def test_normalize_delivery_state_accepts_known_values():
+    assert normalize_delivery_state("none") == "none"
+    assert normalize_delivery_state(" QUEUED ") == "queued"
+    assert normalize_delivery_state("cleared") == "cleared"
+
+
+def test_normalize_delivery_state_rejects_unknown_values():
+    with pytest.raises(ValueError, match="Invalid delivery_state"):
+        normalize_delivery_state("pending")
 
 
 def test_normalize_policy_mode_accepts_strings_and_enum():
@@ -370,6 +384,8 @@ def test_fulfil_request_queues_as_requesting_user(user_db):
     )
 
     assert fulfilled["status"] == "fulfilled"
+    assert fulfilled["delivery_state"] == "queued"
+    assert fulfilled["delivery_updated_at"] is not None
     assert fulfilled["reviewed_by"] == admin["id"]
     assert captured["priority"] == 0
     assert captured["user_id"] == alice["id"]
@@ -411,11 +427,136 @@ def test_fulfil_book_level_request_stores_selected_release_data(user_db):
     )
 
     assert fulfilled["status"] == "fulfilled"
+    assert fulfilled["delivery_state"] == "queued"
+    assert fulfilled["delivery_updated_at"] is not None
     assert fulfilled["request_level"] == "book"
     assert fulfilled["release_data"]["source_id"] == "admin-picked-book-release"
     assert captured["release_data"]["source_id"] == "admin-picked-book-release"
     assert captured["user_id"] == alice["id"]
     assert captured["username"] == "alice"
+
+
+def test_sync_delivery_states_from_queue_status_updates_matching_fulfilled_requests(user_db):
+    alice = user_db.create_user(username="alice")
+    bob = user_db.create_user(username="bob")
+
+    alice_request = user_db.create_request(
+        user_id=alice["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={"source": "prowlarr", "source_id": "alice-rel", "title": "Alice Release"},
+        status="fulfilled",
+        delivery_state="queued",
+    )
+    bob_request = user_db.create_request(
+        user_id=bob["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={"source": "prowlarr", "source_id": "bob-rel", "title": "Bob Release"},
+        status="fulfilled",
+        delivery_state="queued",
+    )
+
+    updated = sync_delivery_states_from_queue_status(
+        user_db,
+        queue_status={
+            "downloading": {"alice-rel": {"id": "alice-rel"}},
+            "complete": {"bob-rel": {"id": "bob-rel"}},
+        },
+        user_id=alice["id"],
+    )
+
+    assert [row["id"] for row in updated] == [alice_request["id"]]
+    refreshed_alice = user_db.get_request(alice_request["id"])
+    refreshed_bob = user_db.get_request(bob_request["id"])
+    assert refreshed_alice["delivery_state"] == "downloading"
+    assert refreshed_alice["delivery_updated_at"] is not None
+    assert refreshed_bob["delivery_state"] == "queued"
+
+
+def test_mark_delivery_states_cleared_marks_matching_source_ids(user_db):
+    user = user_db.create_user(username="alice")
+
+    matched = user_db.create_request(
+        user_id=user["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={"source": "prowlarr", "source_id": "rel-match", "title": "Matched"},
+        status="fulfilled",
+        delivery_state="complete",
+    )
+    unmatched = user_db.create_request(
+        user_id=user["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={"source": "prowlarr", "source_id": "rel-other", "title": "Other"},
+        status="fulfilled",
+        delivery_state="complete",
+    )
+
+    updated = mark_delivery_states_cleared(
+        user_db,
+        source_ids={"rel-match"},
+    )
+
+    assert [row["id"] for row in updated] == [matched["id"]]
+    refreshed_matched = user_db.get_request(matched["id"])
+    refreshed_unmatched = user_db.get_request(unmatched["id"])
+    assert refreshed_matched["delivery_state"] == "cleared"
+    assert refreshed_matched["delivery_updated_at"] is not None
+    assert refreshed_unmatched["delivery_state"] == "complete"
+
+
+def test_mark_delivery_states_cleared_respects_user_scope(user_db):
+    alice = user_db.create_user(username="alice")
+    bob = user_db.create_user(username="bob")
+
+    alice_match = user_db.create_request(
+        user_id=alice["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={"source": "prowlarr", "source_id": "shared-rel", "title": "Alice"},
+        status="fulfilled",
+        delivery_state="complete",
+    )
+    bob_match = user_db.create_request(
+        user_id=bob["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={"source": "prowlarr", "source_id": "shared-rel", "title": "Bob"},
+        status="fulfilled",
+        delivery_state="complete",
+    )
+
+    updated = mark_delivery_states_cleared(
+        user_db,
+        source_ids={"shared-rel"},
+        user_id=alice["id"],
+    )
+
+    assert [row["id"] for row in updated] == [alice_match["id"]]
+    refreshed_alice = user_db.get_request(alice_match["id"])
+    refreshed_bob = user_db.get_request(bob_match["id"])
+    assert refreshed_alice["delivery_state"] == "cleared"
+    assert refreshed_bob["delivery_state"] == "complete"
 
 
 # ---------------------------------------------------------------------------

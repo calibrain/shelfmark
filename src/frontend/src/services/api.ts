@@ -527,6 +527,12 @@ export interface AdminUser {
   settings?: Record<string, unknown>;
 }
 
+export interface SelfUserEditContext {
+  user: AdminUser;
+  deliveryPreferences: DeliveryPreferencesResponse | null;
+  userOverridableKeys: string[];
+}
+
 export const getAdminUsers = async (): Promise<AdminUser[]> => {
   return fetchJSON<AdminUser[]>(`${API_BASE}/admin/users`);
 };
@@ -643,4 +649,20 @@ export const getAdminSettingsOverridesSummary = async (
   tabName: string
 ): Promise<SettingsOverridesSummaryResponse> => {
   return fetchJSON<SettingsOverridesSummaryResponse>(`${API_BASE}/admin/settings/overrides-summary?tab=${encodeURIComponent(tabName)}`);
+};
+
+export const getSelfUserEditContext = async (): Promise<SelfUserEditContext> => {
+  return fetchJSON<SelfUserEditContext>(`${API_BASE}/users/me/edit-context`);
+};
+
+export const updateSelfUser = async (
+  data: Partial<Pick<AdminUser, 'email' | 'display_name'>> & {
+    password?: string;
+    settings?: Record<string, unknown>;
+  }
+): Promise<AdminUser> => {
+  return fetchJSON<AdminUser>(`${API_BASE}/users/me`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
 };

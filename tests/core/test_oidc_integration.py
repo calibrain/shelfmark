@@ -70,9 +70,9 @@ class TestSettingsRestrictionPolicy:
     def test_default_is_admin_restricted(self):
         assert should_restrict_settings_to_admin({}) is True
 
-    def test_respects_global_users_toggle(self):
+    def test_restriction_is_always_enabled(self):
         assert should_restrict_settings_to_admin({"RESTRICT_SETTINGS_TO_ADMIN": True}) is True
-        assert should_restrict_settings_to_admin({"RESTRICT_SETTINGS_TO_ADMIN": False}) is False
+        assert should_restrict_settings_to_admin({"RESTRICT_SETTINGS_TO_ADMIN": False}) is True
 
     def test_extracts_settings_tab_from_path(self):
         assert get_settings_tab_from_path("/api/settings/security") == "security"
@@ -84,11 +84,11 @@ class TestSettingsRestrictionPolicy:
         assert requires_admin_for_settings_access("/api/settings/security", users_config) is True
         assert requires_admin_for_settings_access("/api/settings/users", users_config) is True
 
-    def test_other_tabs_follow_global_toggle(self):
+    def test_other_tabs_also_require_admin(self):
         assert requires_admin_for_settings_access(
             "/api/settings/general",
             {"RESTRICT_SETTINGS_TO_ADMIN": False},
-        ) is False
+        ) is True
         assert requires_admin_for_settings_access(
             "/api/settings/general",
             {"RESTRICT_SETTINGS_TO_ADMIN": True},
@@ -112,13 +112,13 @@ class TestAuthCheckAdminStatus:
         )
         assert result is False
 
-    def test_authenticated_user_when_not_restricted(self):
+    def test_authenticated_non_admin_user_is_not_admin(self):
         result = get_auth_check_admin_status(
             "proxy",
             {"RESTRICT_SETTINGS_TO_ADMIN": False},
             {"user_id": "user", "is_admin": False},
         )
-        assert result is True
+        assert result is False
 
     def test_unauthenticated_is_never_admin(self):
         result = get_auth_check_admin_status(

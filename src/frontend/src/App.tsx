@@ -42,7 +42,7 @@ import { ToastContainer } from './components/ToastContainer';
 import { Footer } from './components/Footer';
 import { ActivitySidebar, requestToActivityItem } from './components/activity';
 import { LoginPage } from './pages/LoginPage';
-import { SettingsModal } from './components/settings';
+import { SelfSettingsModal, SettingsModal } from './components/settings';
 import { ConfigSetupBanner } from './components/ConfigSetupBanner';
 import { OnboardingModal } from './components/OnboardingModal';
 import { DEFAULT_LANGUAGES, DEFAULT_SUPPORTED_FORMATS } from './data/languages';
@@ -144,7 +144,7 @@ function App() {
     isAuthenticated,
     authRequired,
     authChecked,
-    isAdmin: authCanAccessSettings,
+    isAdmin: authIsAdmin,
     authMode,
     username,
     displayName,
@@ -163,9 +163,9 @@ function App() {
     if (!authChecked || !isAuthenticated) {
       return;
     }
-    policyTrace('auth.status', { authChecked, isAuthenticated, isAdmin: authCanAccessSettings, username });
+    policyTrace('auth.status', { authChecked, isAuthenticated, isAdmin: authIsAdmin, username });
     void fetchStatus();
-  }, [authChecked, isAuthenticated, authCanAccessSettings, username, fetchStatus]);
+  }, [authChecked, isAuthenticated, authIsAdmin, username, fetchStatus]);
 
   // Content type state (ebook vs audiobook) - defined before useSearch since it's passed to it
   const [contentType, setContentType] = useState<ContentType>(() => getInitialContentType());
@@ -187,7 +187,7 @@ function App() {
     refresh: refreshRequestPolicy,
   } = useRequestPolicy({
     enabled: isAuthenticated,
-    isAdmin: authCanAccessSettings,
+    isAdmin: authIsAdmin,
   });
 
   const requestRoleIsAdmin = requestPolicy ? Boolean(requestPolicy.is_admin) : false;
@@ -196,6 +196,7 @@ function App() {
     requests,
     pendingCount: pendingRequestCount,
     isLoading: isRequestsLoading,
+    refresh: refreshRequests,
     cancelRequest: cancelUserRequest,
     fulfilRequest: fulfilSidebarRequest,
     rejectRequest: rejectSidebarRequest,
@@ -317,6 +318,8 @@ function App() {
     clearTracking();
     setPendingRequestPayload(null);
     setFulfillingRequest(null);
+    setSettingsOpen(false);
+    setSelfSettingsOpen(false);
   }, [handleLogout, setBooks, clearTracking]);
 
   // UI state
@@ -341,6 +344,7 @@ function App() {
     headerObserverRef.current = observer;
   }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [selfSettingsOpen, setSelfSettingsOpen] = useState(false);
   const [configBannerOpen, setConfigBannerOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
 
@@ -773,6 +777,7 @@ function App() {
     try {
       await clearCompleted();
       await fetchStatus();
+      await refreshRequests();
     } catch (error) {
       console.error('Clear completed failed:', error);
       showToast('Failed to clear finished downloads', 'error');
@@ -1128,13 +1133,17 @@ function App() {
           onDownloadsClick={() => setDownloadsSidebarOpen((prev) => !prev)}
           onSettingsClick={() => {
             if (config?.settings_enabled) {
-              setSettingsOpen(true);
+              if (authIsAdmin) {
+                setSettingsOpen(true);
+              } else {
+                setSelfSettingsOpen(true);
+              }
             } else {
               setConfigBannerOpen(true);
             }
           }}
           isAdmin={requestRoleIsAdmin}
-          canAccessSettings={authCanAccessSettings}
+          canAccessSettings={isAuthenticated}
           username={username}
           displayName={displayName}
           statusCounts={statusCounts}
@@ -1176,6 +1185,7 @@ function App() {
                 bottom: 0,
                 left: 0,
                 right: '25rem',
+                zIndex: 40,
               }
             : { paddingTop: `${headerHeight}px` }
         }
@@ -1328,6 +1338,12 @@ function App() {
         onSettingsSaved={handleSettingsSaved}
       />
 
+      <SelfSettingsModal
+        isOpen={selfSettingsOpen}
+        onClose={() => setSelfSettingsOpen(false)}
+        onShowToast={showToast}
+      />
+
       {/* Auto-show banner on startup for users without config */}
       {config && (
         <ConfigSetupBanner settingsEnabled={config.settings_enabled} />
@@ -1339,7 +1355,11 @@ function App() {
         onClose={() => setConfigBannerOpen(false)}
         onContinue={() => {
           setConfigBannerOpen(false);
-          setSettingsOpen(true);
+          if (authIsAdmin) {
+            setSettingsOpen(true);
+          } else {
+            setSelfSettingsOpen(true);
+          }
         }}
       />
 

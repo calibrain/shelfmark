@@ -96,10 +96,10 @@ def get_settings_tab_from_path(path: str) -> str | None:
 
 
 def should_restrict_settings_to_admin(
-    users_config: Mapping[str, Any],
+    _users_config: Mapping[str, Any],
 ) -> bool:
-    """Return whether settings/onboarding access is limited to admins."""
-    return bool(users_config.get("RESTRICT_SETTINGS_TO_ADMIN", True))
+    """Settings/onboarding is always admin-only."""
+    return True
 
 
 def requires_admin_for_settings_access(
@@ -116,14 +116,11 @@ def requires_admin_for_settings_access(
 
 def get_auth_check_admin_status(
     _auth_mode: str,
-    users_config: Mapping[str, Any],
+    _users_config: Mapping[str, Any],
     session_data: Mapping[str, Any],
 ) -> bool:
-    """Resolve /api/auth/check `is_admin` value for settings UI access control."""
+    """Resolve /api/auth/check `is_admin` as the session's real admin role."""
     if "user_id" not in session_data:
         return False
-
-    if not should_restrict_settings_to_admin(users_config):
-        return True
 
     return bool(session_data.get("is_admin", False))

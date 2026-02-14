@@ -39,7 +39,9 @@ const DOWNLOAD_STATUS_KEYS: DownloadStatusKey[] = [
 type ActivityCategoryKey =
   | 'downloads'
   | 'pending_requests'
-  | 'fulfilled_requests'
+  | 'approved_requests'
+  | 'completed_requests'
+  | 'request_history'
   | 'other_requests';
 
 const getCategoryLabel = (
@@ -50,12 +52,18 @@ const getCategoryLabel = (
     return 'Downloads';
   }
   if (key === 'pending_requests') {
-    return 'Pending Requests';
+    return isAdmin ? 'Needs Review' : 'Awaiting Review';
   }
-  if (key === 'fulfilled_requests') {
-    return isAdmin ? 'Fulfilled Requests' : 'Completed Requests';
+  if (key === 'approved_requests') {
+    return 'Approved';
   }
-  return 'Other Requests';
+  if (key === 'completed_requests') {
+    return isAdmin ? 'Completed Requests' : 'Completed';
+  }
+  if (key === 'request_history') {
+    return 'Request History';
+  }
+  return 'Closed';
 };
 
 const getVisibleCategoryOrder = (
@@ -65,12 +73,12 @@ const getVisibleCategoryOrder = (
     return ['downloads'];
   }
   if (tab === 'requests') {
-    return ['pending_requests', 'fulfilled_requests', 'other_requests'];
+    return ['pending_requests', 'approved_requests', 'completed_requests', 'request_history', 'other_requests'];
   }
-  return ['downloads', 'pending_requests', 'fulfilled_requests', 'other_requests'];
+  return ['downloads', 'pending_requests', 'approved_requests', 'completed_requests', 'other_requests'];
 };
 
-const getActivityCategory = (item: ActivityItem): ActivityCategoryKey => {
+const getActivityCategory = (item: ActivityItem, isAdmin: boolean): ActivityCategoryKey => {
   if (!item.requestId) {
     return 'downloads';
   }
@@ -80,7 +88,21 @@ const getActivityCategory = (item: ActivityItem): ActivityCategoryKey => {
   }
 
   if (item.requestRecord?.status === 'fulfilled' || item.visualStatus === 'fulfilled') {
-    return 'fulfilled_requests';
+    const deliveryState = item.requestRecord?.delivery_state;
+    if (deliveryState === 'cleared' && isAdmin) {
+      return 'request_history';
+    }
+    const isTerminalDeliveryState = (
+      deliveryState === 'complete' ||
+      deliveryState === 'error' ||
+      deliveryState === 'cancelled' ||
+      deliveryState === 'cleared'
+    );
+    const isTerminalLinkedDownload =
+      item.kind === 'download' &&
+      (item.visualStatus === 'complete' || item.visualStatus === 'error' || item.visualStatus === 'cancelled');
+
+    return (isTerminalLinkedDownload || isTerminalDeliveryState) ? 'completed_requests' : 'approved_requests';
   }
 
   return 'other_requests';
@@ -185,7 +207,7 @@ export const ActivitySidebar = ({
   const [isDesktop, setIsDesktop] = useState<boolean>(() => getInitialDesktopState());
   const [activeTab, setActiveTab] = useState<'all' | 'downloads' | 'requests'>('all');
   const [rejectingRequest, setRejectingRequest] = useState<{ requestId: number; bookTitle: string } | null>(null);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({ request_history: true });
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -323,7 +345,7 @@ export const ActivitySidebar = ({
     visibleCategoryOrder.forEach((key) => grouped.set(key, []));
 
     visibleItems.forEach((item) => {
-      const category = activeTab === 'downloads' ? 'downloads' : getActivityCategory(item);
+      const category = activeTab === 'downloads' ? 'downloads' : getActivityCategory(item, isAdmin);
       if (!grouped.has(category)) {
         grouped.set(category, []);
       }
