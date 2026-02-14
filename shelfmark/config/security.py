@@ -2,8 +2,6 @@
 
 from typing import Any, Dict, Callable
 
-from werkzeug.security import generate_password_hash
-
 from shelfmark.config.migrations import migrate_security_settings
 from shelfmark.config.security_handlers import (
     on_save_security,
@@ -58,13 +56,7 @@ def _migrate_security_settings() -> None:
 
 
 def _on_save_security(values: Dict[str, Any]) -> Dict[str, Any]:
-    return on_save_security(
-        values,
-        load_security_config=lambda: load_config_file("security"),
-        hash_password=generate_password_hash,
-        sync_builtin_admin_user=sync_builtin_admin_user,
-        logger=logger,
-    )
+    return on_save_security(values)
 
 
 def _test_oidc_connection() -> Dict[str, Any]:

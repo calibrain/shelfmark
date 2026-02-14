@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { AdminUser, DownloadDefaults } from '../../../services/api';
+import { AdminUser } from '../../../services/api';
 import { PasswordFieldConfig, SelectFieldConfig, SelectOption, TextFieldConfig } from '../../../types/settings';
 import { PasswordField, SelectField, TextField } from '../fields';
 import { FieldWrapper } from '../shared';
@@ -15,11 +15,6 @@ const UserCardShell = ({ title, children }: { title: string; children: ReactNode
 const CREATE_ROLE_OPTIONS: SelectOption[] = [
   { value: 'user', label: 'User' },
   { value: 'admin', label: 'Admin' },
-];
-
-const EDIT_ROLE_OPTIONS: SelectOption[] = [
-  { value: 'admin', label: 'Admin' },
-  { value: 'user', label: 'User' },
 ];
 
 const createTextField = (
@@ -112,10 +107,17 @@ export const UserCreateCard = ({
   onCancel,
 }: UserCreateCardProps) => {
   const usernameField = createTextField('username', 'Username', form.username, 'username', true);
+  const roleField = createRoleField(form.role, CREATE_ROLE_OPTIONS);
   const displayNameField = createTextField('display_name', 'Display Name', form.display_name, 'Display name');
   const emailField = createTextField('email', 'Email', form.email, 'user@example.com');
   const passwordField = createPasswordField('password', 'Password', form.password, 'Min 4 characters', true);
-  const roleField = createRoleField(form.role, CREATE_ROLE_OPTIONS);
+  const confirmPasswordField = createPasswordField(
+    'confirm_password',
+    'Confirm Password',
+    form.password_confirm,
+    'Confirm password',
+    true,
+  );
 
   return (
     <UserCardShell title="Create Local User">
@@ -127,12 +129,18 @@ export const UserCreateCard = ({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {renderTextField(usernameField, form.username, (value) => onChange({ ...form, username: value }))}
+        {renderSelectField(roleField, form.role, (value) => onChange({ ...form, role: value }))}
         {renderTextField(displayNameField, form.display_name, (value) => onChange({ ...form, display_name: value }))}
         {renderTextField(emailField, form.email, (value) => onChange({ ...form, email: value }))}
-        {renderPasswordField(passwordField, form.password, (value) => onChange({ ...form, password: value }))}
       </div>
 
-      {renderSelectField(roleField, form.role, (value) => onChange({ ...form, role: value }))}
+      {renderPasswordField(passwordField, form.password, (value) => onChange({ ...form, password: value }))}
+
+      {renderPasswordField(
+        confirmPasswordField,
+        form.password_confirm,
+        (value) => onChange({ ...form, password_confirm: value }),
+      )}
 
       <div className="flex items-center gap-2 pt-1">
         <button
@@ -164,7 +172,6 @@ interface UserEditFieldsProps {
   onEditPasswordChange: (value: string) => void;
   editPasswordConfirm: string;
   onEditPasswordConfirmChange: (value: string) => void;
-  downloadDefaults: DownloadDefaults | null;
   onDelete?: () => void;
   onConfirmDelete?: () => void;
   onCancelDelete?: () => void;
@@ -182,7 +189,6 @@ export const UserEditFields = ({
   onEditPasswordChange,
   editPasswordConfirm,
   onEditPasswordConfirmChange,
-  downloadDefaults,
   onDelete,
   onConfirmDelete,
   onCancelDelete,
@@ -190,11 +196,10 @@ export const UserEditFields = ({
   deleting = false,
 }: UserEditFieldsProps) => {
   const capabilities = user.edit_capabilities;
-  const { authSource, canSetPassword, canEditRole, canEditEmail, canEditDisplayName } = capabilities;
+  const { authSource, canSetPassword, canEditEmail, canEditDisplayName } = capabilities;
 
   const displayNameField = createTextField('display_name', 'Display Name', user.display_name || '', 'Display name');
   const emailField = createTextField('email', 'Email', user.email || '', 'user@example.com');
-  const roleField = createRoleField(user.role, EDIT_ROLE_OPTIONS);
   const newPasswordField = createPasswordField('new_password', 'New Password', editPassword, 'Leave empty to keep current');
   const confirmPasswordField = createPasswordField('confirm_password', 'Confirm Password', editPasswordConfirm, 'Confirm new password', true);
 
@@ -208,46 +213,28 @@ export const UserEditFields = ({
       : 'Email is managed by your identity provider.')
     : undefined;
 
-  const roleDisabledReason = !canEditRole
-    ? (authSource === 'oidc'
-      ? (downloadDefaults?.OIDC_ADMIN_GROUP
-        ? `Role is managed by the ${downloadDefaults.OIDC_ADMIN_GROUP} group in your identity provider.`
-        : 'Role is managed by OIDC group authorization.')
-      : 'Role is managed by the external authentication source.')
-    : undefined;
-
   return (
     <>
-      {renderTextField(
-        displayNameField,
-        user.display_name || '',
-        (value) => onUserChange({ ...user, display_name: value || null }),
-        !canEditDisplayName,
-        displayNameDisabledReason,
-      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {renderTextField(
+          displayNameField,
+          user.display_name || '',
+          (value) => onUserChange({ ...user, display_name: value || null }),
+          !canEditDisplayName,
+          displayNameDisabledReason,
+        )}
 
-      {renderTextField(
-        emailField,
-        user.email || '',
-        (value) => onUserChange({ ...user, email: value || null }),
-        !canEditEmail,
-        emailDisabledReason,
-      )}
-
-      {renderSelectField(
-        roleField,
-        user.role,
-        (value) => onUserChange({ ...user, role: value }),
-        !canEditRole,
-        roleDisabledReason,
-      )}
+        {renderTextField(
+          emailField,
+          user.email || '',
+          (value) => onUserChange({ ...user, email: value || null }),
+          !canEditEmail,
+          emailDisabledReason,
+        )}
+      </div>
 
       {canSetPassword && (
         <>
-          <div className="border-t border-[var(--border-muted)] pt-4">
-            <p className="text-xs font-medium opacity-60 mb-3">Change Password</p>
-          </div>
-
           {renderPasswordField(newPasswordField, editPassword, onEditPasswordChange)}
 
           {editPassword && renderPasswordField(confirmPasswordField, editPasswordConfirm, onEditPasswordConfirmChange)}

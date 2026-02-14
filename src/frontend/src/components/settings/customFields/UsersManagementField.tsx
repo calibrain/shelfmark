@@ -1,0 +1,245 @@
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { AdminUser } from '../../../services/api';
+import { CustomSettingsFieldRendererProps } from './types';
+import {
+  canCreateLocalUsersForAuthMode,
+  UserListView,
+  UserOverridesView,
+  useUserForm,
+  useUserMutations,
+  useUsersFetch,
+  useUsersPanelState,
+} from '../users';
+
+export const UsersManagementField = ({
+  tab: usersTab,
+  values,
+  onUiStateChange,
+  authMode,
+  onShowToast,
+}: CustomSettingsFieldRendererProps) => {
+  const { route, openCreate, openEdit, openEditOverrides, backToList } = useUsersPanelState();
+
+  const {
+    users,
+    loading,
+    loadError,
+    fetchUsers,
+    fetchUserEditContext,
+  } = useUsersFetch({ onShowToast });
+
+  const {
+    createForm,
+    setCreateForm,
+    resetCreateForm,
+    editingUser,
+    setEditingUser,
+    editPassword,
+    setEditPassword,
+    editPasswordConfirm,
+    setEditPasswordConfirm,
+    downloadDefaults,
+    deliveryPreferences,
+    isUserOverridable,
+    userSettings,
+    setUserSettings,
+    hasUserSettingsChanges,
+    beginEditing,
+    applyUserEditContext,
+    resetEditContext,
+    clearEditState,
+    userOverridableSettings,
+  } = useUserForm();
+
+  const {
+    creating,
+    saving,
+    deletingUserId,
+    syncingCwa,
+    createUser,
+    saveEditedUser,
+    deleteUser,
+    syncCwaUsers,
+  } = useUserMutations({
+    onShowToast,
+    fetchUsers,
+    users,
+    createForm,
+    resetCreateForm,
+    editingUser,
+    editPassword,
+    editPasswordConfirm,
+    userSettings,
+    userOverridableSettings,
+    deliveryPreferences,
+    onEditSaveSuccess: clearEditState,
+  });
+
+  const startEditing = async (user: AdminUser) => {
+    beginEditing(user);
+    try {
+      const context = await fetchUserEditContext(user.id);
+      applyUserEditContext(context);
+    } catch {
+      resetEditContext();
+    }
+  };
+
+  const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode || 'none');
+
+  const handleBackToList = () => {
+    onUiStateChange('routeKind', 'list');
+    clearEditState();
+    backToList();
+  };
+
+  const handleCancelCreate = () => {
+    onUiStateChange('routeKind', 'list');
+    resetCreateForm();
+    backToList();
+  };
+
+  const handleCreate = async () => {
+    const ok = await createUser();
+    if (ok) {
+      backToList();
+    }
+  };
+
+  const handleOpenOverrides = () => {
+    if (editingUser) {
+      onUiStateChange('routeKind', 'edit-overrides');
+      openEditOverrides(editingUser.id);
+    }
+  };
+
+  const handleEdit = async (user: AdminUser) => {
+    onUiStateChange('routeKind', 'edit');
+    openEdit(user.id);
+    await startEditing(user);
+  };
+
+  const handleSyncCwa = async () => {
+    await syncCwaUsers();
+  };
+
+  const handleBackToEdit = () => {
+    if (editingUser) {
+      onUiStateChange('routeKind', 'edit');
+      openEdit(editingUser.id);
+      return;
+    }
+    onUiStateChange('routeKind', 'list');
+    backToList();
+  };
+
+  useEffect(() => {
+    if (route.kind === 'create' && !canCreateLocalUsers) {
+      backToList();
+    }
+  }, [backToList, canCreateLocalUsers, route.kind]);
+
+  useLayoutEffect(() => {
+    onUiStateChange('routeKind', route.kind);
+  }, [onUiStateChange, route.kind]);
+
+  const handleSaveUserEdit = useCallback(async () => {
+    const ok = await saveEditedUser({ includeSettings: false });
+    if (ok) {
+      backToList();
+    }
+  }, [backToList, saveEditedUser]);
+
+  const handleSaveUserOverrides = useCallback(async () => {
+    const ok = await saveEditedUser({
+      includeProfile: false,
+      includePassword: false,
+      includeSettings: true,
+    });
+    if (ok) {
+      backToList();
+    }
+  }, [backToList, saveEditedUser]);
+
+  const handleSaveUserOverridesRef = useRef(handleSaveUserOverrides);
+  useEffect(() => {
+    handleSaveUserOverridesRef.current = handleSaveUserOverrides;
+  }, [handleSaveUserOverrides]);
+
+  const triggerSaveUserOverrides = useCallback(async () => {
+    await handleSaveUserOverridesRef.current();
+  }, []);
+
+  useEffect(() => {
+    if (route.kind !== 'edit-overrides') {
+      onUiStateChange('hasChanges', false);
+      onUiStateChange('isSaving', false);
+      onUiStateChange('onSave', undefined);
+      return;
+    }
+
+    onUiStateChange('hasChanges', hasUserSettingsChanges);
+    onUiStateChange('isSaving', saving);
+    onUiStateChange('onSave', triggerSaveUserOverrides);
+  }, [hasUserSettingsChanges, onUiStateChange, route.kind, saving, triggerSaveUserOverrides]);
+
+  if (route.kind === 'edit-overrides') {
+    if (!editingUser || editingUser.id !== route.userId) {
+      return (
+        <div className="flex items-center justify-center text-sm opacity-60 py-8">
+          Loading user details...
+        </div>
+      );
+    }
+
+    return (
+      <UserOverridesView
+        embedded
+        hasChanges={hasUserSettingsChanges}
+        onBack={handleBackToEdit}
+        deliveryPreferences={deliveryPreferences}
+        isUserOverridable={isUserOverridable}
+        userSettings={userSettings}
+        setUserSettings={(updater) => setUserSettings(updater)}
+        usersTab={usersTab}
+        globalUsersSettingsValues={values}
+      />
+    );
+  }
+
+  return (
+    <UserListView
+      authMode={authMode || 'none'}
+      users={users}
+      loadingUsers={loading}
+      loadError={loadError}
+      onRetryLoadUsers={() => void fetchUsers()}
+      onCreate={openCreate}
+      showCreateForm={route.kind === 'create'}
+      createForm={createForm}
+      onCreateFormChange={setCreateForm}
+      creating={creating}
+      isFirstUser={users.length === 0}
+      onCreateSubmit={handleCreate}
+      onCancelCreate={handleCancelCreate}
+      showEditForm={route.kind === 'edit'}
+      activeEditUserId={route.kind === 'edit' ? route.userId : null}
+      editingUser={route.kind === 'edit' ? editingUser : null}
+      onEditingUserChange={setEditingUser}
+      onEditSave={handleSaveUserEdit}
+      saving={saving}
+      onCancelEdit={handleBackToList}
+      editPassword={editPassword}
+      onEditPasswordChange={setEditPassword}
+      editPasswordConfirm={editPasswordConfirm}
+      onEditPasswordConfirmChange={setEditPasswordConfirm}
+      downloadDefaults={downloadDefaults}
+      onOpenOverrides={handleOpenOverrides}
+      onEdit={handleEdit}
+      onDelete={deleteUser}
+      deletingUserId={deletingUserId}
+      onSyncCwa={handleSyncCwa}
+      syncingCwa={syncingCwa}
+    />
+  );
+};

@@ -1,7 +1,27 @@
-import { Book, StatusData, AppConfig, LoginCredentials, AuthResponse, ReleaseSource, ReleasesResponse } from '../types';
+import {
+  Book,
+  StatusData,
+  AppConfig,
+  LoginCredentials,
+  AuthResponse,
+  ReleaseSource,
+  ReleasesResponse,
+  RequestPolicyResponse,
+  CreateRequestPayload,
+  RequestRecord,
+} from '../types';
 import { SettingsResponse, ActionResult, UpdateResult, SettingsTab } from '../types/settings';
 import { MetadataBookData, transformMetadataToBook } from '../utils/bookTransformers';
 import { getApiBase } from '../utils/basePath';
+import {
+  buildAdminRequestActionUrl,
+  buildFulfilAdminRequestBody,
+  buildRejectAdminRequestBody,
+  buildRequestListUrl,
+  FulfilAdminRequestBody,
+  RejectAdminRequestBody,
+  RequestListParams,
+} from './requestApiHelpers';
 
 const API_BASE = getApiBase();
 
@@ -20,6 +40,10 @@ const API = {
   logout: `${API_BASE}/auth/logout`,
   authCheck: `${API_BASE}/auth/check`,
   settings: `${API_BASE}/settings`,
+  requestPolicy: `${API_BASE}/request-policy`,
+  requests: `${API_BASE}/requests`,
+  adminRequests: `${API_BASE}/admin/requests`,
+  adminRequestCounts: `${API_BASE}/admin/requests/count`,
 };
 
 // Custom error class for authentication failures
@@ -37,6 +61,34 @@ export class TimeoutError extends Error {
     this.name = 'TimeoutError';
   }
 }
+
+export class ApiResponseError extends Error {
+  status: number;
+  code?: string;
+  requiredMode?: string;
+  payload?: Record<string, unknown>;
+
+  constructor(
+    message: string,
+    params: {
+      status: number;
+      code?: string;
+      requiredMode?: string;
+      payload?: Record<string, unknown>;
+    }
+  ) {
+    super(message);
+    this.name = 'ApiResponseError';
+    this.status = params.status;
+    this.code = params.code;
+    this.requiredMode = params.requiredMode;
+    this.payload = params.payload;
+  }
+}
+
+export const isApiResponseError = (error: unknown): error is ApiResponseError => {
+  return error instanceof ApiResponseError;
+};
 
 // Default request timeout in milliseconds (30 seconds)
 const DEFAULT_TIMEOUT_MS = 30000;
@@ -67,13 +119,17 @@ async function fetchJSON<T>(
       // Try to parse error message from response body
       let errorMessage = `${res.status} ${res.statusText}`;
       let hasServerMessage = false;
+      let errorData: Record<string, unknown> | null = null;
       try {
-        const errorData = await res.json();
+        const parsed = await res.json();
+        if (parsed && typeof parsed === 'object') {
+          errorData = parsed as Record<string, unknown>;
+        }
         // Prefer user-friendly 'message' field, fall back to 'error'
-        if (errorData.message) {
+        if (typeof errorData?.message === 'string') {
           errorMessage = errorData.message;
           hasServerMessage = true;
-        } else if (errorData.error) {
+        } else if (typeof errorData?.error === 'string') {
           errorMessage = errorData.error;
           hasServerMessage = true;
         }
@@ -94,7 +150,13 @@ async function fetchJSON<T>(
         throw new AuthenticationError(errorMessage);
       }
 
-      throw new Error(errorMessage);
+      throw new ApiResponseError(errorMessage, {
+        status: res.status,
+        code: typeof errorData?.code === 'string' ? errorData.code : undefined,
+        requiredMode:
+          typeof errorData?.required_mode === 'string' ? errorData.required_mode : undefined,
+        payload: errorData || undefined,
+      });
     }
 
     return res.json();
@@ -237,6 +299,65 @@ export const clearCompleted = async (): Promise<void> => {
 
 export const getConfig = async (): Promise<AppConfig> => {
   return fetchJSON<AppConfig>(API.config);
+};
+
+export type ListRequestsParams = RequestListParams;
+
+export interface AdminRequestCounts {
+  pending: number;
+  total: number;
+  by_status: Record<string, number>;
+}
+
+export const fetchRequestPolicy = async (): Promise<RequestPolicyResponse> => {
+  return fetchJSON<RequestPolicyResponse>(API.requestPolicy);
+};
+
+export const createRequest = async (payload: CreateRequestPayload): Promise<RequestRecord> => {
+  return fetchJSON<RequestRecord>(API.requests, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+};
+
+export const listRequests = async (params: ListRequestsParams = {}): Promise<RequestRecord[]> => {
+  const url = buildRequestListUrl(API.requests, params);
+  return fetchJSON<RequestRecord[]>(url);
+};
+
+export const cancelRequest = async (id: number): Promise<RequestRecord> => {
+  return fetchJSON<RequestRecord>(`${API.requests}/${encodeURIComponent(String(id))}`, {
+    method: 'DELETE',
+  });
+};
+
+export const listAdminRequests = async (params: ListRequestsParams = {}): Promise<RequestRecord[]> => {
+  const url = buildRequestListUrl(API.adminRequests, params);
+  return fetchJSON<RequestRecord[]>(url);
+};
+
+export const getAdminRequestCounts = async (): Promise<AdminRequestCounts> => {
+  return fetchJSON<AdminRequestCounts>(API.adminRequestCounts);
+};
+
+export const fulfilAdminRequest = async (
+  id: number,
+  body: FulfilAdminRequestBody = {}
+): Promise<RequestRecord> => {
+  return fetchJSON<RequestRecord>(buildAdminRequestActionUrl(API.adminRequests, id, 'fulfil'), {
+    method: 'POST',
+    body: JSON.stringify(buildFulfilAdminRequestBody(body)),
+  });
+};
+
+export const rejectAdminRequest = async (
+  id: number,
+  body: RejectAdminRequestBody = {}
+): Promise<RequestRecord> => {
+  return fetchJSON<RequestRecord>(buildAdminRequestActionUrl(API.adminRequests, id, 'reject'), {
+    method: 'POST',
+    body: JSON.stringify(buildRejectAdminRequestBody(body)),
+  });
 };
 
 // Authentication functions

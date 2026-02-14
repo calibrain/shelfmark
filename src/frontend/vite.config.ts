@@ -22,8 +22,13 @@ export default defineConfig(({ command }) => ({
         changeOrigin: true,
         secure: false,
       },
-      // Note: Socket.IO connects directly to backend (port 8084) in dev mode
-      // to avoid Vite WebSocket proxy issues. No proxy needed here.
+      // Proxy Socket.IO so websocket polling/upgrades share the same origin/cookies as /api.
+      '/socket.io': {
+        target: 'http://localhost:8084',
+        changeOrigin: true,
+        secure: false,
+        ws: true,
+      },
     },
   },
   build: {

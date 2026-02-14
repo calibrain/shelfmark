@@ -3,6 +3,7 @@
 import io
 import logging
 import os
+import re
 import sqlite3
 import time
 from datetime import datetime, timedelta
@@ -36,6 +37,14 @@ from shelfmark.core.auth_modes import (
 )
 from shelfmark.core.cwa_user_sync import upsert_cwa_user
 from shelfmark.core.external_user_linking import upsert_external_user
+from shelfmark.core.request_policy import (
+    PolicyMode,
+    get_source_content_type_capabilities,
+    merge_request_policy_settings,
+    normalize_content_type,
+    normalize_source,
+    resolve_policy_mode,
+)
 from shelfmark.core.utils import normalize_base_path
 from shelfmark.api.websocket import ws_manager
 
@@ -204,6 +213,183 @@ def get_auth_mode() -> str:
         )
     except Exception:
         return "none"
+
+
+def _load_users_request_policy_settings() -> dict[str, Any]:
+    """Load global request policy settings from users config."""
+    from shelfmark.core.settings_registry import load_config_file
+
+    return load_config_file("users")
+
+
+def _as_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off", ""}:
+            return False
+    return bool(value)
+
+
+_AUDIOBOOK_CATEGORY_RANGE = (3030, 3049)
+_AUDIOBOOK_FORMAT_HINTS = frozenset(
+    {
+        "m4b",
+        "mp3",
+        "m4a",
+        "flac",
+        "ogg",
+        "wma",
+        "aac",
+        "wav",
+        "opus",
+    }
+)
+
+
+def _contains_audiobook_format_hint(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+
+    normalized = value.strip().lower()
+    if not normalized:
+        return False
+
+    tokens = [token for token in re.split(r"[^a-z0-9]+", normalized) if token]
+    return any(token in _AUDIOBOOK_FORMAT_HINTS for token in tokens)
+
+
+def _resolve_release_content_type(data: dict[str, Any], source: Any) -> tuple[str, bool]:
+    """Resolve release content type for policy checks and queue payload normalization."""
+    extra = data.get("extra")
+    if not isinstance(extra, dict):
+        extra = {}
+
+    explicit_content_type = data.get("content_type")
+    if explicit_content_type is None:
+        explicit_content_type = extra.get("content_type")
+    if explicit_content_type is not None:
+        return normalize_content_type(explicit_content_type), False
+
+    categories = extra.get("categories")
+    if isinstance(categories, list):
+        min_cat, max_cat = _AUDIOBOOK_CATEGORY_RANGE
+        for raw_category in categories:
+            try:
+                category_id = int(raw_category)
+            except (TypeError, ValueError):
+                continue
+            if min_cat <= category_id <= max_cat:
+                return "audiobook", True
+
+    candidates: list[Any] = [
+        data.get("format"),
+        extra.get("format"),
+        extra.get("formats_display"),
+        data.get("title"),
+    ]
+    formats = extra.get("formats")
+    if isinstance(formats, list):
+        candidates.extend(formats)
+    else:
+        candidates.append(formats)
+
+    if any(_contains_audiobook_format_hint(candidate) for candidate in candidates):
+        return "audiobook", True
+
+    capabilities = get_source_content_type_capabilities()
+    supported = capabilities.get(normalize_source(source))
+    if supported and len(supported) == 1:
+        return normalize_content_type(next(iter(supported))), True
+
+    return "ebook", False
+
+
+def _resolve_policy_mode_for_current_user(*, source: Any, content_type: Any) -> PolicyMode | None:
+    """Resolve policy mode for current session, or None when policy guard is bypassed."""
+    auth_mode = get_auth_mode()
+    if auth_mode == "none":
+        return None
+    if session.get("is_admin", True):
+        return None
+    if user_db is None:
+        return None
+
+    global_settings = _load_users_request_policy_settings()
+    db_user_id = session.get("db_user_id")
+    user_settings: dict[str, Any] | None = None
+    if db_user_id is not None:
+        try:
+            user_settings = user_db.get_user_settings(int(db_user_id))
+        except (TypeError, ValueError):
+            user_settings = None
+
+    effective = merge_request_policy_settings(global_settings, user_settings)
+    if not _as_bool(effective.get("REQUESTS_ENABLED"), False):
+        return None
+
+    resolved_mode = resolve_policy_mode(
+        source=source,
+        content_type=content_type,
+        global_settings=global_settings,
+        user_settings=user_settings,
+    )
+    logger.debug(
+        "download policy resolve user=%s db_user_id=%s is_admin=%s source=%s content_type=%s mode=%s",
+        session.get("user_id"),
+        db_user_id,
+        bool(session.get("is_admin", False)),
+        source,
+        content_type,
+        resolved_mode.value,
+    )
+    return resolved_mode
+
+
+def _policy_block_response(mode: PolicyMode):
+    logger.debug(
+        "download policy guard user=%s db_user_id=%s mode=%s",
+        session.get("user_id"),
+        session.get("db_user_id"),
+        mode.value,
+    )
+    if mode == PolicyMode.BLOCKED:
+        return (
+            jsonify({
+                "error": "Download not allowed by policy",
+                "code": "policy_blocked",
+                "required_mode": PolicyMode.BLOCKED.value,
+            }),
+            403,
+        )
+    return (
+        jsonify({
+            "error": "Download not allowed by policy",
+            "code": "policy_requires_request",
+            "required_mode": mode.value,
+        }),
+        403,
+    )
+
+
+if user_db is not None:
+    try:
+        from shelfmark.core.request_routes import register_request_routes
+
+        register_request_routes(
+            app,
+            user_db,
+            resolve_auth_mode=lambda: get_auth_mode(),
+            queue_release=lambda *args, **kwargs: backend.queue_release(*args, **kwargs),
+            ws_manager=ws_manager,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to register request routes: {e}")
 
 
 # Enable CORS in development mode for local frontend development
@@ -609,6 +795,13 @@ def api_download() -> Union[Response, Tuple[Response, int]]:
         return jsonify({"error": "No book ID provided"}), 400
 
     try:
+        policy_mode = _resolve_policy_mode_for_current_user(
+            source="direct_download",
+            content_type="ebook",
+        )
+        if policy_mode is not None and policy_mode != PolicyMode.DOWNLOAD:
+            return _policy_block_response(policy_mode)
+
         priority = int(request.args.get('priority', 0))
         # Per-user download overrides
         db_user_id = session.get('db_user_id')
@@ -653,12 +846,26 @@ def api_download_release() -> Union[Response, Tuple[Response, int]]:
         if 'source_id' not in data:
             return jsonify({"error": "source_id is required"}), 400
 
+        source = data.get('source', 'direct_download')
+        resolved_content_type, inferred_content_type = _resolve_release_content_type(data, source)
+        policy_mode = _resolve_policy_mode_for_current_user(
+            source=source,
+            content_type=resolved_content_type,
+        )
+        if policy_mode is not None and policy_mode != PolicyMode.DOWNLOAD:
+            return _policy_block_response(policy_mode)
+
+        release_payload = data
+        if inferred_content_type and data.get("content_type") is None:
+            release_payload = dict(data)
+            release_payload["content_type"] = resolved_content_type
+
         priority = data.get('priority', 0)
         # Per-user download overrides
         db_user_id = session.get('db_user_id')
         _username = session.get('user_id')
         success, error_msg = backend.queue_release(
-            data, priority,
+            release_payload, priority,
             user_id=db_user_id, username=_username,
         )
 
@@ -733,6 +940,36 @@ def api_health() -> Union[Response, Tuple[Response, int]]:
 
     return jsonify(response)
 
+
+def _resolve_status_scope(*, require_authenticated: bool = True) -> tuple[bool, int | None, bool]:
+    """Resolve queue-status visibility from session state.
+
+    Returns:
+        (is_admin, db_user_id, can_access_status)
+    """
+    auth_mode = get_auth_mode()
+    if auth_mode == "none":
+        return True, None, True
+
+    if require_authenticated and 'user_id' not in session:
+        return False, None, False
+
+    is_admin = bool(session.get('is_admin', False))
+    if is_admin:
+        return True, None, True
+
+    raw_db_user_id = session.get('db_user_id')
+    try:
+        db_user_id = int(raw_db_user_id) if raw_db_user_id is not None else None
+    except (TypeError, ValueError):
+        db_user_id = None
+
+    if db_user_id is None:
+        return False, None, False
+
+    return False, db_user_id, True
+
+
 @app.route('/api/status', methods=['GET'])
 @login_required
 def api_status() -> Union[Response, Tuple[Response, int]]:
@@ -743,10 +980,11 @@ def api_status() -> Union[Response, Tuple[Response, int]]:
         flask.Response: JSON object with queue status.
     """
     try:
-        # Non-admin users only see their own downloads
-        user_id = None
-        if not session.get('is_admin', True):
-            user_id = session.get('db_user_id')
+        is_admin, db_user_id, can_access_status = _resolve_status_scope()
+        if not can_access_status:
+            return jsonify({})
+
+        user_id = None if is_admin else db_user_id
         status = backend.queue_status(user_id=user_id)
         return jsonify(status)
     except Exception as e:
@@ -1246,12 +1484,8 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
         is_admin = get_auth_check_admin_status(auth_mode, users_config, session)
 
         display_name = None
-        if is_authenticated and session.get('db_user_id'):
+        if is_authenticated and session.get('db_user_id') and user_db is not None:
             try:
-                from shelfmark.core.user_db import UserDB
-                import os
-                user_db = UserDB(os.path.join(os.environ.get("CONFIG_DIR", "/config"), "users.db"))
-                user_db.initialize()
                 db_user = user_db.get_user(user_id=session['db_user_id'])
                 if db_user:
                     display_name = db_user.get("display_name") or None
@@ -1921,16 +2155,17 @@ def handle_connect():
     # Track the connection (triggers warmup callbacks on first connect)
     ws_manager.client_connected()
 
-    # Join appropriate room based on user session
-    is_admin = session.get('is_admin', True)
-    db_user_id = session.get('db_user_id')
+    # Join appropriate room based on authenticated user session
+    is_admin, db_user_id, can_access_status = _resolve_status_scope()
     ws_manager.join_user_room(request.sid, is_admin, db_user_id)
 
     # Send initial status to the newly connected client (filtered)
     try:
-        user_id = None
-        if not is_admin:
-            user_id = db_user_id
+        if not can_access_status:
+            emit('status_update', {})
+            return
+
+        user_id = None if is_admin else db_user_id
         status = backend.queue_status(user_id=user_id)
         emit('status_update', status)
     except Exception as e:
@@ -1942,9 +2177,7 @@ def handle_disconnect():
     logger.info("WebSocket client disconnected")
 
     # Leave room
-    is_admin = session.get('is_admin', True)
-    db_user_id = session.get('db_user_id')
-    ws_manager.leave_user_room(request.sid, is_admin, db_user_id)
+    ws_manager.leave_user_room(request.sid)
 
     # Track the disconnection
     ws_manager.client_disconnected()
@@ -1953,9 +2186,14 @@ def handle_disconnect():
 def handle_status_request():
     """Handle manual status request from client."""
     try:
-        user_id = None
-        if not session.get('is_admin', True):
-            user_id = session.get('db_user_id')
+        is_admin, db_user_id, can_access_status = _resolve_status_scope()
+        ws_manager.sync_user_room(request.sid, is_admin, db_user_id)
+
+        if not can_access_status:
+            emit('status_update', {})
+            return
+
+        user_id = None if is_admin else db_user_id
         status = backend.queue_status(user_id=user_id)
         emit('status_update', status)
     except Exception as e:

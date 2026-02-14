@@ -20,10 +20,8 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
-    // In dev mode (port 5173), connect directly to backend to avoid Vite proxy issues
-    const wsUrl = window.location.port === '5173'
-      ? 'http://localhost:8084'
-      : window.location.origin;
+    // Always connect via current origin so dev proxy and session cookies stay aligned.
+    const wsUrl = window.location.origin;
     const socketPath = withBasePath('/socket.io');
 
     console.log('SocketProvider: Connecting to', wsUrl);
@@ -31,7 +29,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
     const socket = io(wsUrl, {
       path: socketPath,
       transports: ['polling', 'websocket'],
-      withCredentials: false,
+      withCredentials: true,
     });
 
     socketRef.current = socket;

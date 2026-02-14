@@ -8,6 +8,13 @@ from typing import Any, Dict, List, Optional
 
 from shelfmark.core.auth_modes import AUTH_SOURCE_BUILTIN, AUTH_SOURCE_SET
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.requests_service import (
+    normalize_policy_mode,
+    normalize_request_level,
+    normalize_request_status,
+    validate_request_level_payload,
+    validate_status_transition,
+)
 
 logger = setup_logger(__name__)
 
@@ -28,6 +35,29 @@ CREATE TABLE IF NOT EXISTS user_settings (
     user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     settings_json TEXT NOT NULL DEFAULT '{}'
 );
+
+CREATE TABLE IF NOT EXISTS download_requests (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status         TEXT NOT NULL DEFAULT 'pending',
+    source_hint    TEXT,
+    content_type   TEXT NOT NULL,
+    request_level  TEXT NOT NULL,
+    policy_mode    TEXT NOT NULL,
+    book_data      TEXT NOT NULL,
+    release_data   TEXT,
+    note           TEXT,
+    admin_note     TEXT,
+    reviewed_by    INTEGER REFERENCES users(id),
+    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    reviewed_at    TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_download_requests_user_status_created_at
+ON download_requests (user_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_download_requests_status_created_at
+ON download_requests (status, created_at DESC);
 """
 
 
@@ -278,3 +308,291 @@ class UserDB:
                 conn.commit()
             finally:
                 conn.close()
+
+    @staticmethod
+    def _serialize_json(value: Any, field: str) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            return json.dumps(value)
+        except TypeError as exc:
+            raise ValueError(f"{field} must be JSON-serializable") from exc
+
+    @staticmethod
+    def _parse_request_row(row: Optional[sqlite3.Row]) -> Optional[Dict[str, Any]]:
+        if row is None:
+            return None
+
+        payload = dict(row)
+        for key in ("book_data", "release_data"):
+            raw_value = payload.get(key)
+            if raw_value is None:
+                payload[key] = None
+                continue
+            try:
+                payload[key] = json.loads(raw_value)
+            except (ValueError, TypeError):
+                payload[key] = None
+        return payload
+
+    def create_request(
+        self,
+        *,
+        user_id: int,
+        content_type: str,
+        request_level: str,
+        policy_mode: str,
+        book_data: Dict[str, Any],
+        release_data: Optional[Dict[str, Any]] = None,
+        status: str = "pending",
+        source_hint: Optional[str] = None,
+        note: Optional[str] = None,
+        admin_note: Optional[str] = None,
+        reviewed_by: Optional[int] = None,
+        reviewed_at: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create a download request row and return the created record."""
+        if not isinstance(book_data, dict):
+            raise ValueError("book_data must be an object")
+        if release_data is not None and not isinstance(release_data, dict):
+            raise ValueError("release_data must be an object when provided")
+        if not content_type:
+            raise ValueError("content_type is required")
+
+        normalized_status = normalize_request_status(status)
+        normalized_policy_mode = normalize_policy_mode(policy_mode)
+        normalized_request_level = validate_request_level_payload(request_level, release_data)
+
+        with self._lock:
+            conn = self._connect()
+            try:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO download_requests (
+                        user_id,
+                        status,
+                        source_hint,
+                        content_type,
+                        request_level,
+                        policy_mode,
+                        book_data,
+                        release_data,
+                        note,
+                        admin_note,
+                        reviewed_by,
+                        reviewed_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        user_id,
+                        normalized_status,
+                        source_hint,
+                        content_type,
+                        normalized_request_level,
+                        normalized_policy_mode,
+                        self._serialize_json(book_data, "book_data"),
+                        self._serialize_json(release_data, "release_data"),
+                        note,
+                        admin_note,
+                        reviewed_by,
+                        reviewed_at,
+                    ),
+                )
+                conn.commit()
+                request_id = cursor.lastrowid
+                row = conn.execute(
+                    "SELECT * FROM download_requests WHERE id = ?",
+                    (request_id,),
+                ).fetchone()
+                parsed = self._parse_request_row(row)
+                if parsed is None:
+                    raise ValueError(f"Request {request_id} not found after creation")
+                return parsed
+            finally:
+                conn.close()
+
+    def get_request(self, request_id: int) -> Optional[Dict[str, Any]]:
+        """Get a request row by ID."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT * FROM download_requests WHERE id = ?",
+                (request_id,),
+            ).fetchone()
+            return self._parse_request_row(row)
+        finally:
+            conn.close()
+
+    def list_requests(
+        self,
+        *,
+        user_id: Optional[int] = None,
+        status: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """List requests with optional user/status filters."""
+        where_clauses: List[str] = []
+        params: List[Any] = []
+
+        if user_id is not None:
+            where_clauses.append("user_id = ?")
+            params.append(user_id)
+
+        if status is not None:
+            where_clauses.append("status = ?")
+            params.append(normalize_request_status(status))
+
+        query = "SELECT * FROM download_requests"
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
+        query += " ORDER BY created_at DESC, id DESC"
+
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(int(limit))
+            if offset:
+                query += " OFFSET ?"
+                params.append(offset)
+        elif offset:
+            query += " LIMIT -1 OFFSET ?"
+            params.append(offset)
+
+        conn = self._connect()
+        try:
+            rows = conn.execute(query, params).fetchall()
+            results: List[Dict[str, Any]] = []
+            for row in rows:
+                parsed = self._parse_request_row(row)
+                if parsed is not None:
+                    results.append(parsed)
+            return results
+        finally:
+            conn.close()
+
+    _ALLOWED_REQUEST_UPDATE_COLUMNS = {
+        "status",
+        "source_hint",
+        "content_type",
+        "request_level",
+        "policy_mode",
+        "book_data",
+        "release_data",
+        "note",
+        "admin_note",
+        "reviewed_by",
+        "reviewed_at",
+    }
+
+    def update_request(self, request_id: int, **kwargs) -> Dict[str, Any]:
+        """Update request fields and return the updated record."""
+        if not kwargs:
+            request = self.get_request(request_id)
+            if request is None:
+                raise ValueError(f"Request {request_id} not found")
+            return request
+
+        for key in kwargs:
+            if key not in self._ALLOWED_REQUEST_UPDATE_COLUMNS:
+                raise ValueError(f"Invalid request column: {key}")
+
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(
+                    "SELECT * FROM download_requests WHERE id = ?",
+                    (request_id,),
+                ).fetchone()
+                current = self._parse_request_row(row)
+                if current is None:
+                    raise ValueError(f"Request {request_id} not found")
+
+                updates = dict(kwargs)
+
+                if "status" in updates:
+                    _, normalized_status = validate_status_transition(
+                        current["status"],
+                        updates["status"],
+                    )
+                    updates["status"] = normalized_status
+
+                if "policy_mode" in updates:
+                    updates["policy_mode"] = normalize_policy_mode(updates["policy_mode"])
+
+                if "content_type" in updates and not updates["content_type"]:
+                    raise ValueError("content_type is required")
+
+                candidate_request_level = updates.get("request_level", current["request_level"])
+                candidate_release_data = (
+                    updates["release_data"] if "release_data" in updates else current["release_data"]
+                )
+                candidate_status = updates.get("status", current["status"])
+                normalized_request_level = normalize_request_level(candidate_request_level)
+                normalized_candidate_status = normalize_request_status(candidate_status)
+
+                if normalized_request_level == "release" and candidate_release_data is None:
+                    raise ValueError("request_level=release requires non-null release_data")
+                if (
+                    normalized_request_level == "book"
+                    and candidate_release_data is not None
+                    and normalized_candidate_status != "fulfilled"
+                ):
+                    raise ValueError("request_level=book requires null release_data")
+                if "request_level" in updates:
+                    updates["request_level"] = normalized_request_level
+
+                if "book_data" in updates:
+                    if not isinstance(updates["book_data"], dict):
+                        raise ValueError("book_data must be an object")
+                    updates["book_data"] = self._serialize_json(updates["book_data"], "book_data")
+
+                if "release_data" in updates:
+                    if updates["release_data"] is not None and not isinstance(updates["release_data"], dict):
+                        raise ValueError("release_data must be an object when provided")
+                    updates["release_data"] = self._serialize_json(
+                        updates["release_data"],
+                        "release_data",
+                    )
+
+                set_clause = ", ".join(f"{column} = ?" for column in updates)
+                values = list(updates.values()) + [request_id]
+                conn.execute(
+                    f"UPDATE download_requests SET {set_clause} WHERE id = ?",
+                    values,
+                )
+                conn.commit()
+
+                updated_row = conn.execute(
+                    "SELECT * FROM download_requests WHERE id = ?",
+                    (request_id,),
+                ).fetchone()
+                parsed = self._parse_request_row(updated_row)
+                if parsed is None:
+                    raise ValueError(f"Request {request_id} not found after update")
+                return parsed
+            finally:
+                conn.close()
+
+    def count_pending_requests(self) -> int:
+        """Count all pending requests."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS count FROM download_requests WHERE status = 'pending'"
+            ).fetchone()
+            return int(row["count"]) if row else 0
+        finally:
+            conn.close()
+
+    def count_user_pending_requests(self, user_id: int) -> int:
+        """Count pending requests for a specific user."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS count FROM download_requests WHERE user_id = ? AND status = 'pending'",
+                (user_id,),
+            ).fetchone()
+            return int(row["count"]) if row else 0
+        finally:
+            conn.close()

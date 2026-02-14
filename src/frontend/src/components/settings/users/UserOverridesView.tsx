@@ -2,25 +2,33 @@ import { DeliveryPreferencesResponse } from '../../../services/api';
 import { PerUserSettings } from './types';
 import { SettingsSubpage } from '../shared';
 import { UserOverridesSection } from './UserOverridesSection';
+import { SettingsTab } from '../../../types/settings';
+import { UserRequestPolicyOverridesSection } from './UserRequestPolicyOverridesSection';
 
 interface UserOverridesViewProps {
+  embedded?: boolean;
   hasChanges: boolean;
   onBack: () => void;
   deliveryPreferences: DeliveryPreferencesResponse | null;
   isUserOverridable: (key: keyof PerUserSettings) => boolean;
   userSettings: PerUserSettings;
   setUserSettings: (updater: (prev: PerUserSettings) => PerUserSettings) => void;
+  usersTab: SettingsTab;
+  globalUsersSettingsValues: Record<string, unknown>;
 }
 
 export const UserOverridesView = ({
+  embedded = false,
   hasChanges,
   onBack,
   deliveryPreferences,
   isUserOverridable,
   userSettings,
   setUserSettings,
-}: UserOverridesViewProps) => (
-  <SettingsSubpage hasBottomSaveBar={hasChanges}>
+  usersTab,
+  globalUsersSettingsValues,
+}: UserOverridesViewProps) => {
+  const content = (
     <div className="space-y-5">
       <div>
         <button
@@ -48,6 +56,24 @@ export const UserOverridesView = ({
         userSettings={userSettings}
         setUserSettings={setUserSettings}
       />
+
+      <UserRequestPolicyOverridesSection
+        usersTab={usersTab}
+        globalUsersSettingsValues={globalUsersSettingsValues}
+        isUserOverridable={isUserOverridable}
+        userSettings={userSettings}
+        setUserSettings={setUserSettings}
+      />
     </div>
-  </SettingsSubpage>
-);
+  );
+
+  if (embedded) {
+    return content;
+  }
+
+  return (
+    <SettingsSubpage hasBottomSaveBar={hasChanges}>
+      {content}
+    </SettingsSubpage>
+  );
+};

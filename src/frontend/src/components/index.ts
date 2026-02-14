@@ -4,6 +4,7 @@ export { SearchBar } from './SearchBar';
 export { ResultsSection } from './ResultsSection';
 export { DetailsModal } from './DetailsModal';
 export { DownloadsSidebar } from './DownloadsSidebar';
+export { ActivitySidebar } from './activity';
 export { ToastContainer } from './ToastContainer';
 export { Footer } from './Footer';
 export { CardView } from './resultsViews/CardView';

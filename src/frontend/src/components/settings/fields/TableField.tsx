@@ -1,4 +1,4 @@
-import { useMemo, CSSProperties } from 'react';
+import { useMemo, useEffect, CSSProperties } from 'react';
 import { TableFieldConfig, TableFieldColumn } from '../../../types/settings';
 import { DropdownList } from '../../DropdownList';
 
@@ -29,6 +29,38 @@ function normalizeRows(rows: Record<string, unknown>[], columns: TableFieldColum
     }
     return normalized;
   });
+}
+
+function getFilteredSelectOptions(
+  column: TableFieldColumn,
+  row: Record<string, unknown>
+): Array<{ value: string; label: string; description?: string; childOf?: string }> {
+  const options = (column.options ?? []).map((opt) => ({
+    value: String(opt.value),
+    label: opt.label ?? String(opt.value),
+    description: opt.description,
+    childOf:
+      opt.childOf === undefined || opt.childOf === null
+        ? undefined
+        : String(opt.childOf),
+  }));
+
+  const filterByField = column.filterByField;
+  if (!filterByField) {
+    return options.filter((opt) => !opt.childOf);
+  }
+
+  const rawFilterValue = row[filterByField];
+  const filterValue =
+    rawFilterValue === undefined || rawFilterValue === null || rawFilterValue === ''
+      ? undefined
+      : String(rawFilterValue);
+
+  if (!filterValue) {
+    return options.filter((opt) => !opt.childOf);
+  }
+
+  return options.filter((opt) => !opt.childOf || opt.childOf === filterValue);
 }
 
 export const TableField = ({ field, value, onChange, disabled }: TableFieldProps) => {
@@ -67,6 +99,42 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
     const next = rows.filter((_, idx) => idx !== rowIndex);
     onChange(next);
   };
+
+  useEffect(() => {
+    if (rows.length === 0) return;
+
+    const nextRows = rows.map((row) => ({ ...row }));
+    let hasChanges = false;
+
+    rows.forEach((row, rowIndex) => {
+      columns.forEach((col) => {
+        if (col.type !== 'select') return;
+
+        const filteredOptions = getFilteredSelectOptions(col, row);
+        const currentValue = String(row[col.key] ?? '');
+        const currentValueIsValid = filteredOptions.some((opt) => opt.value === currentValue);
+        const nonEmptyOptions = filteredOptions.filter((opt) => opt.value !== '');
+
+        if (nonEmptyOptions.length === 1) {
+          const onlyOption = nonEmptyOptions[0].value;
+          if (currentValue !== onlyOption) {
+            nextRows[rowIndex][col.key] = onlyOption;
+            hasChanges = true;
+          }
+          return;
+        }
+
+        if (currentValue && !currentValueIsValid) {
+          nextRows[rowIndex][col.key] = '';
+          hasChanges = true;
+        }
+      });
+    });
+
+    if (hasChanges) {
+      onChange(nextRows);
+    }
+  }, [rows, columns, onChange]);
 
   if (rows.length === 0) {
     return (
@@ -129,8 +197,8 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
               }
 
               if (col.type === 'select') {
-                const options = (col.options ?? []).map((opt) => ({
-                  value: String(opt.value),
+                const options = getFilteredSelectOptions(col, row).map((opt) => ({
+                  value: opt.value,
                   label: opt.label,
                   description: opt.description,
                 }));

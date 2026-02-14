@@ -491,6 +491,59 @@ class TestAdminUserUpdateEndpoint:
         settings = user_db.get_user_settings(user["id"])
         assert settings["DESTINATION_AUDIOBOOK"] == "/audiobooks/alice"
 
+    def test_update_user_settings_accepts_valid_request_policy_rule(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={
+                "settings": {
+                    "REQUEST_POLICY_RULES": [
+                        {
+                            "source": "prowlarr",
+                            "content_type": "audiobook",
+                            "mode": "request_release",
+                        }
+                    ]
+                }
+            },
+        )
+
+        assert resp.status_code == 200
+        settings = user_db.get_user_settings(user["id"])
+        assert settings["REQUEST_POLICY_RULES"] == [
+            {
+                "source": "prowlarr",
+                "content_type": "audiobook",
+                "mode": "request_release",
+            }
+        ]
+
+    def test_update_user_settings_rejects_invalid_source_content_type_pair(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={
+                "settings": {
+                    "REQUEST_POLICY_RULES": [
+                        {
+                            "source": "direct_download",
+                            "content_type": "audiobook",
+                            "mode": "request_release",
+                        }
+                    ]
+                }
+            },
+        )
+
+        assert resp.status_code == 400
+        assert resp.json["error"] == "Invalid settings payload"
+        assert any(
+            "does not support content_type 'audiobook'" in msg
+            for msg in resp.json["details"]
+        )
+
     def test_update_settings_merges(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
         user_db.set_user_settings(user["id"], {"DESTINATION": "/books/alice"})
@@ -514,6 +567,67 @@ class TestAdminUserUpdateEndpoint:
         assert resp.status_code == 200
         assert "settings" in resp.json
         assert resp.json["settings"]["DESTINATION"] == "/books/alice"
+
+    def test_update_user_settings_null_clears_override(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+        user_db.set_user_settings(user["id"], {"DESTINATION": "/books/alice"})
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"settings": {"DESTINATION": None}},
+        )
+        assert resp.status_code == 200
+        settings = user_db.get_user_settings(user["id"])
+        assert settings.get("DESTINATION") is None
+
+    def test_update_user_settings_null_policy_mode_accepted(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+        user_db.set_user_settings(user["id"], {"REQUEST_POLICY_DEFAULT_EBOOK": "request_book"})
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"settings": {"REQUEST_POLICY_DEFAULT_EBOOK": None}},
+        )
+        assert resp.status_code == 200
+        settings = user_db.get_user_settings(user["id"])
+        assert settings.get("REQUEST_POLICY_DEFAULT_EBOOK") is None
+
+    def test_update_user_settings_null_policy_rules_accepted(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+        user_db.set_user_settings(user["id"], {
+            "REQUEST_POLICY_RULES": [{"source": "prowlarr", "content_type": "audiobook", "mode": "request_release"}],
+        })
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"settings": {"REQUEST_POLICY_RULES": None}},
+        )
+        assert resp.status_code == 200
+        settings = user_db.get_user_settings(user["id"])
+        assert settings.get("REQUEST_POLICY_RULES") is None
+
+    def test_update_user_settings_mixed_null_and_values(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+        user_db.set_user_settings(user["id"], {
+            "DESTINATION": "/books/alice",
+            "REQUEST_POLICY_DEFAULT_EBOOK": "request_book",
+        })
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"settings": {
+                "DESTINATION": None,
+                "BOOKLORE_LIBRARY_ID": "5",
+                "REQUEST_POLICY_DEFAULT_EBOOK": None,
+                "REQUEST_POLICY_DEFAULT_AUDIOBOOK": "download",
+            }},
+        )
+        assert resp.status_code == 200
+        settings = user_db.get_user_settings(user["id"])
+        assert settings.get("DESTINATION") is None
+        assert settings["BOOKLORE_LIBRARY_ID"] == "5"
+        assert settings.get("REQUEST_POLICY_DEFAULT_EBOOK") is None
+        assert settings["REQUEST_POLICY_DEFAULT_AUDIOBOOK"] == "download"
 
     def test_update_user_settings_rejects_unknown_key(self, admin_client, user_db):
         user = user_db.create_user(username="alice")

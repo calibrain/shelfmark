@@ -61,6 +61,10 @@ function isFieldVisible(
   field: SettingsField,
   values: Record<string, unknown>
 ): boolean {
+  if ('hiddenInUi' in field && field.hiddenInUi) {
+    return false;
+  }
+
   const showWhen = field.showWhen;
   if (!showWhen) return true;
 

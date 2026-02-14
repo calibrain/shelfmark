@@ -1,18 +1,25 @@
 import { useState } from 'react';
 import { AdminUser, DownloadDefaults } from '../../../services/api';
+import { DropdownList } from '../../DropdownList';
+import { Tooltip } from '../../shared/Tooltip';
 import {
   canCreateLocalUsersForAuthMode,
   CreateUserFormState,
-  getUsersHeadingDescriptionForAuthMode,
 } from './types';
 import { UserAuthSourceBadge } from './UserAuthSourceBadge';
 import { UserCreateCard, UserEditFields } from './UserCard';
-import { HeadingField } from '../fields';
-import { HeadingFieldConfig } from '../../../types/settings';
+
+const EDIT_ROLE_OPTIONS = [
+  { value: 'admin', label: 'Admin' },
+  { value: 'user', label: 'User' },
+];
 
 interface UserListViewProps {
   authMode: string;
   users: AdminUser[];
+  loadingUsers: boolean;
+  loadError: string | null;
+  onRetryLoadUsers: () => void;
   onCreate: () => void;
   showCreateForm: boolean;
   createForm: CreateUserFormState;
@@ -44,6 +51,9 @@ interface UserListViewProps {
 export const UserListView = ({
   authMode,
   users,
+  loadingUsers,
+  loadError,
+  onRetryLoadUsers,
   onCreate,
   showCreateForm,
   createForm,
@@ -75,12 +85,6 @@ export const UserListView = ({
   const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode);
   const isCwaMode = String(authMode || 'none').toLowerCase() === 'cwa';
   const toggleButtonClasses = 'p-2 rounded-full hover-action transition-colors text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100';
-  const usersHeading: HeadingFieldConfig = {
-    key: 'users_heading',
-    type: 'HeadingField',
-    title: 'Users',
-    description: getUsersHeadingDescriptionForAuthMode(authMode),
-  };
 
   const handleDelete = async (userId: number) => {
     const ok = await onDelete(userId);
@@ -91,11 +95,22 @@ export const UserListView = ({
 
   return (
     <div className="space-y-4">
-      <div>
-        <HeadingField field={usersHeading} />
-      </div>
-
-      {users.length === 0 ? (
+      {(loadingUsers && users.length === 0) ? (
+        <div className="text-center py-8 space-y-2">
+          <p className="text-sm opacity-50">Loading users...</p>
+        </div>
+      ) : (loadError && users.length === 0) ? (
+        <div className="text-center py-8 space-y-3">
+          <p className="text-sm opacity-60">{loadError}</p>
+          <button
+            onClick={onRetryLoadUsers}
+            className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
+                       bg-[var(--bg-soft)] hover:bg-[var(--hover-surface)] transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      ) : users.length === 0 ? (
         <div className="text-center py-8 space-y-2">
           <p className="text-sm opacity-50">No users yet.</p>
           <p className="text-xs opacity-40">
@@ -146,21 +161,53 @@ export const UserListView = ({
                   </div>
 
                   <div className="flex items-center flex-wrap gap-2 shrink-0 sm:justify-end">
-                    <span
-                      className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium leading-none
-                        ${user.role === 'admin' ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400' : 'bg-zinc-500/10 opacity-70'}`}
-                    >
-                      {roleLabel}
-                    </span>
+                    {hasLoadedEditUser && editingUser ? (() => {
+                      const caps = editingUser.edit_capabilities;
+                      const canEditRole = caps.canEditRole;
+                      const roleDisabledReason = !canEditRole
+                        ? (caps.authSource === 'oidc'
+                          ? (downloadDefaults?.OIDC_ADMIN_GROUP
+                            ? `Role is managed by the ${downloadDefaults.OIDC_ADMIN_GROUP} group in your identity provider.`
+                            : 'Role is managed by OIDC group authorization.')
+                          : 'Role is managed by the external authentication source.')
+                        : undefined;
 
-                    {isEditingRow && (
-                      <button
-                        onClick={onOpenOverrides}
-                        className="px-4 py-2 rounded-lg text-sm font-medium text-white
-                                   bg-sky-600 hover:bg-sky-700 transition-colors"
+                      if (!canEditRole) {
+                        return (
+                          <Tooltip content={roleDisabledReason || 'Role cannot be changed'} position="bottom">
+                            <span
+                              className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium leading-none cursor-not-allowed
+                                ${editingUser.role === 'admin' ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400' : 'bg-zinc-500/10 opacity-70'}`}
+                            >
+                              {editingUser.role.charAt(0).toUpperCase() + editingUser.role.slice(1)}
+                            </span>
+                          </Tooltip>
+                        );
+                      }
+
+                      return (
+                        <DropdownList
+                          options={EDIT_ROLE_OPTIONS}
+                          value={editingUser.role}
+                          onChange={(value) => {
+                            const val = Array.isArray(value) ? value[0] ?? '' : value;
+                            onEditingUserChange({ ...editingUser, role: val });
+                          }}
+                          widthClassName="w-28"
+                          buttonClassName={`!py-1 !px-2.5 !text-xs !font-medium ${
+                            editingUser.role === 'admin'
+                              ? '!bg-sky-500/15 !text-sky-600 dark:!text-sky-400 !border-sky-500/30'
+                              : '!bg-zinc-500/10 !opacity-70'
+                          }`}
+                        />
+                      );
+                    })() : (
+                      <span
+                        className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium leading-none
+                          ${user.role === 'admin' ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400' : 'bg-zinc-500/10 opacity-70'}`}
                       >
-                        User Preferences
-                      </button>
+                        {roleLabel}
+                      </span>
                     )}
 
                     <button
@@ -197,23 +244,38 @@ export const UserListView = ({
                 {isEditingRow && (
                   <div className="p-4 space-y-5 bg-[var(--bg)] rounded-b-lg">
                     {hasLoadedEditUser && editingUser ? (
-                      <UserEditFields
-                        user={editingUser}
-                        onUserChange={onEditingUserChange}
-                        onSave={onEditSave}
-                        saving={saving}
-                        onCancel={onCancelEdit}
-                        editPassword={editPassword}
-                        onEditPasswordChange={onEditPasswordChange}
-                        editPasswordConfirm={editPasswordConfirm}
-                        onEditPasswordConfirmChange={onEditPasswordConfirmChange}
-                        downloadDefaults={downloadDefaults}
-                        onDelete={() => setConfirmDelete(user.id)}
-                        onConfirmDelete={() => handleDelete(user.id)}
-                        onCancelDelete={() => setConfirmDelete(null)}
-                        isDeletePending={confirmDelete === user.id}
-                        deleting={deletingUserId === user.id}
-                      />
+                      <>
+                        <div>
+                          <label className="text-sm font-medium">User Preferences</label>
+                          <p className="text-xs opacity-60 mt-0.5">Override global delivery and request policy settings for this user.</p>
+                          <button
+                            onClick={onOpenOverrides}
+                            className="mt-2 px-4 py-2 rounded-lg text-sm font-medium text-white
+                                       bg-sky-600 hover:bg-sky-700 transition-colors"
+                          >
+                            Open User Preferences
+                          </button>
+                        </div>
+
+                        <div className="border-t border-[var(--border-muted)]" />
+
+                        <UserEditFields
+                          user={editingUser}
+                          onUserChange={onEditingUserChange}
+                          onSave={onEditSave}
+                          saving={saving}
+                          onCancel={onCancelEdit}
+                          editPassword={editPassword}
+                          onEditPasswordChange={onEditPasswordChange}
+                          editPasswordConfirm={editPasswordConfirm}
+                          onEditPasswordConfirmChange={onEditPasswordConfirmChange}
+                          onDelete={() => setConfirmDelete(user.id)}
+                          onConfirmDelete={() => handleDelete(user.id)}
+                          onCancelDelete={() => setConfirmDelete(null)}
+                          isDeletePending={confirmDelete === user.id}
+                          deleting={deletingUserId === user.id}
+                        />
+                      </>
                     ) : (
                       <div className="text-sm opacity-60">Loading user details...</div>
                     )}

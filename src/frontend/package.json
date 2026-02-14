@@ -7,7 +7,9 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:unit": "npm run test:unit:build && node --experimental-specifier-resolution=node --test ../../.local/frontend-test-dist/tests/**/*.node.test.js",
+    "test:unit:build": "tsc -p tsconfig.tests.json"
   },
   "dependencies": {
     "react": "^18.3.1",

@@ -63,8 +63,9 @@ export const BookDownloadButton = ({
 
   const isCompleted = buttonState.state === 'complete';
   const hasError = buttonState.state === 'error';
+  const isBlocked = buttonState.state === 'blocked';
   const isInProgress = ['queued', 'resolving', 'locating', 'downloading'].includes(buttonState.state);
-  const isDisabled = buttonState.state !== 'download' || isQueuing || isCompleted;
+  const isDisabled = buttonState.state !== 'download' || isQueuing || isCompleted || isBlocked;
   const displayText = isQueuing ? 'Queuing...' : buttonState.text;
   const showCircularProgress = buttonState.state === 'downloading' && buttonState.progress !== undefined;
   const showSpinner = (isInProgress && !showCircularProgress) || isQueuing;
@@ -74,6 +75,8 @@ export const BookDownloadButton = ({
       ? 'bg-green-600 cursor-not-allowed'
       : hasError
       ? 'bg-red-600 cursor-not-allowed opacity-75'
+      : isBlocked
+      ? 'bg-gray-500 cursor-not-allowed opacity-70'
       : isInProgress
       ? 'bg-gray-500 cursor-not-allowed opacity-75'
       : 'bg-sky-700 hover:bg-sky-800';
@@ -83,6 +86,8 @@ export const BookDownloadButton = ({
       ? 'bg-green-600 text-white cursor-not-allowed'
       : hasError
       ? 'bg-red-600 text-white cursor-not-allowed opacity-75'
+      : isBlocked
+      ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-70'
       : isInProgress
       ? 'bg-gray-500 text-white cursor-not-allowed opacity-75'
       : 'text-gray-600 dark:text-gray-200 hover-action';
@@ -105,7 +110,9 @@ export const BookDownloadButton = ({
       await onDownload();
     } catch (error) {
       setIsQueuing(false);
+      return;
     }
+    setIsQueuing(false);
   };
 
   const renderStatusIcon = () => {
@@ -145,6 +152,26 @@ export const BookDownloadButton = ({
       return (
         <svg className={primaryIconSizes[size]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      );
+    }
+
+    if (isBlocked) {
+      if (variant === 'icon' && iconSizes) {
+        return (
+          <>
+            <svg className={`${iconSizes.mobile} sm:hidden`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.5 10.5V7.875a4.125 4.125 0 1 0-8.25 0V10.5m-.75 0h9a2.25 2.25 0 0 1 2.25 2.25v6A2.25 2.25 0 0 1 16.5 21h-9a2.25 2.25 0 0 1-2.25-2.25v-6a2.25 2.25 0 0 1 2.25-2.25Z" />
+            </svg>
+            <svg className={`${iconSizes.desktop} hidden sm:block`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.5 10.5V7.875a4.125 4.125 0 1 0-8.25 0V10.5m-.75 0h9a2.25 2.25 0 0 1 2.25 2.25v6A2.25 2.25 0 0 1 16.5 21h-9a2.25 2.25 0 0 1-2.25-2.25v-6a2.25 2.25 0 0 1 2.25-2.25Z" />
+            </svg>
+          </>
+        );
+      }
+      return (
+        <svg className={primaryIconSizes[size]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 10.5V7.875a4.125 4.125 0 1 0-8.25 0V10.5m-.75 0h9a2.25 2.25 0 0 1 2.25 2.25v6A2.25 2.25 0 0 1 16.5 21h-9a2.25 2.25 0 0 1-2.25-2.25v-6a2.25 2.25 0 0 1 2.25-2.25Z" />
         </svg>
       );
     }

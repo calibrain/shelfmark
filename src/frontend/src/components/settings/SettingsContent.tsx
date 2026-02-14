@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   SettingsTab,
   SettingsField,
@@ -16,6 +16,7 @@ import {
   HeadingFieldConfig,
   ShowWhenCondition,
   TableFieldConfig,
+  CustomComponentFieldConfig,
 } from '../../types/settings';
 import { FieldWrapper, SettingsSaveBar } from './shared';
 import {
@@ -31,6 +32,11 @@ import {
   HeadingField,
   TableField,
 } from './fields';
+import {
+  CustomSettingsFieldLayout,
+  getCustomSettingsFieldLayout,
+  renderCustomSettingsField,
+} from './customFields';
 
 interface SettingsContentProps {
   tab: SettingsTab;
@@ -43,6 +49,10 @@ interface SettingsContentProps {
   isUniversalMode?: boolean; // Whether app is in Universal search mode
   overrideSummary?: Record<string, { count: number; users: Array<{ userId: number; username: string; value: unknown }> }>;
   embedded?: boolean;
+  customFieldContext?: {
+    authMode?: string;
+    onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+  };
 }
 
 function evaluateShowWhenCondition(
@@ -69,6 +79,10 @@ function isFieldVisible(
   values: Record<string, unknown>,
   isUniversalMode: boolean
 ): boolean {
+  if ('hiddenInUi' in field && field.hiddenInUi) {
+    return false;
+  }
+
   // Check universalOnly - hide these fields in Direct mode
   if ('universalOnly' in field && field.universalOnly && !isUniversalMode) {
     return false;
@@ -134,7 +148,8 @@ const renderField = (
   onChange: (value: unknown) => void,
   onAction: () => Promise<ActionResult>,
   isDisabled: boolean,
-  allValues: Record<string, unknown> // All form values for cascading dropdown support
+  allValues: Record<string, unknown>, // All form values for cascading dropdown support
+  authMode?: string
 ) => {
   switch (field.type) {
     case 'TextField':
@@ -232,7 +247,27 @@ const renderField = (
         />
       );
     case 'HeadingField':
-      return <HeadingField field={field as HeadingFieldConfig} />;
+      {
+        const headingField = field as HeadingFieldConfig;
+        const normalizedAuthMode = String(authMode || '').toLowerCase();
+        const dynamicDescription = headingField.descriptionByAuthMode
+          ? (
+              headingField.descriptionByAuthMode[normalizedAuthMode]
+              ?? headingField.descriptionByAuthMode.default
+              ?? headingField.descriptionByAuthMode.none
+              ?? headingField.description
+            )
+          : headingField.description;
+
+        return (
+          <HeadingField
+            field={{
+              ...headingField,
+              description: dynamicDescription,
+            }}
+          />
+        );
+      }
     default:
       return <div>Unknown field type</div>;
   }
@@ -249,11 +284,13 @@ export const SettingsContent = ({
   isUniversalMode = true,
   overrideSummary,
   embedded = false,
+  customFieldContext,
 }: SettingsContentProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [customFieldUiState, setCustomFieldUiState] = useState<Record<string, Record<string, unknown>>>({});
 
-  // Reset scroll position when tab changes
-  useEffect(() => {
+  // Reset scroll position when tab changes before paint.
+  useLayoutEffect(() => {
     if (embedded) {
       return;
     }
@@ -262,17 +299,135 @@ export const SettingsContent = ({
     }
   }, [embedded, tab.name]);
 
+  useEffect(() => {
+    setCustomFieldUiState({});
+  }, [tab.name]);
+
+  const updateCustomFieldUiState = useCallback((fieldKey: string, key: string, value: unknown) => {
+    setCustomFieldUiState((prev) => {
+      const previousFieldState = prev[fieldKey] || {};
+      if (previousFieldState[key] === value) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [fieldKey]: {
+          ...previousFieldState,
+          [key]: value,
+        },
+      };
+    });
+  }, []);
+
   // Memoize the visible fields to avoid recalculating on every render
-  const visibleFields = useMemo(
+  const baseVisibleFields = useMemo(
     () => tab.fields.filter((field) => isFieldVisible(field, values, isUniversalMode)),
     [tab.fields, values, isUniversalMode]
   );
+
+  const customFieldLayouts = useMemo(() => {
+    const layouts: Record<string, CustomSettingsFieldLayout> = {};
+    baseVisibleFields.forEach((field) => {
+      if (field.type !== 'CustomComponentField') {
+        return;
+      }
+      layouts[field.key] = getCustomSettingsFieldLayout({
+        field: field as CustomComponentFieldConfig,
+        tab,
+        values,
+        uiState: customFieldUiState[field.key] || {},
+      });
+    });
+    return layouts;
+  }, [baseVisibleFields, tab, values, customFieldUiState]);
+
+  const activeTakeOverFieldKey = useMemo(() => {
+    for (const field of baseVisibleFields) {
+      if (field.type !== 'CustomComponentField') {
+        continue;
+      }
+      if (customFieldLayouts[field.key]?.takeOverTab) {
+        return field.key;
+      }
+    }
+    return null;
+  }, [baseVisibleFields, customFieldLayouts]);
+
+  // Reset scroll when entering/leaving a custom subpage takeover before paint.
+  useLayoutEffect(() => {
+    if (embedded) {
+      return;
+    }
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [embedded, activeTakeOverFieldKey]);
+
+  const visibleFields = useMemo(() => {
+    if (!activeTakeOverFieldKey) {
+      return baseVisibleFields;
+    }
+    return baseVisibleFields.filter((field) => field.key === activeTakeOverFieldKey);
+  }, [activeTakeOverFieldKey, baseVisibleFields]);
+
+  const activeTakeOverLayout = activeTakeOverFieldKey
+    ? customFieldLayouts[activeTakeOverFieldKey]
+    : undefined;
+  const isTakeOverActive = Boolean(activeTakeOverFieldKey);
+  const customSaveBar = activeTakeOverLayout?.saveBar;
+
+  const saveBarOnSave = isTakeOverActive
+    ? customSaveBar?.onSave
+    : onSave;
+  const saveBarIsSaving = isTakeOverActive
+    ? Boolean(customSaveBar?.isSaving)
+    : isSaving;
+  const saveBarHasChanges = isTakeOverActive
+    ? Boolean(customSaveBar?.hasChanges && customSaveBar?.onSave)
+    : hasChanges;
 
   const renderedFields = (
     <div className="space-y-5">
       {visibleFields.map((field) => {
         const disabledState = getDisabledState(field, values);
         const fieldOverrideSummary = overrideSummary?.[field.key];
+
+        const renderedField = field.type === 'CustomComponentField'
+          ? renderCustomSettingsField({
+              field: field as CustomComponentFieldConfig,
+              tab,
+              values,
+              onChange,
+              onAction,
+              uiState: customFieldUiState[field.key] || {},
+              onUiStateChange: (key, value) => updateCustomFieldUiState(field.key, key, value),
+              isDisabled: disabledState.disabled,
+              disabledReason: disabledState.reason,
+              authMode: customFieldContext?.authMode,
+              onShowToast: customFieldContext?.onShowToast,
+            })
+          : renderField(
+              field,
+              values[field.key],
+              (v) => onChange(field.key, v),
+              () => onAction(field.key),
+              disabledState.disabled,
+              values,
+              customFieldContext?.authMode
+            );
+
+        const shouldWrapInFieldWrapper = !(
+          field.type === 'CustomComponentField' && !(field as CustomComponentFieldConfig).wrapInFieldWrapper
+        );
+
+        if (!shouldWrapInFieldWrapper) {
+          return (
+            <div key={`${tab.name}-${field.key}`}>
+              {renderedField}
+            </div>
+          );
+        }
+
         return (
           <FieldWrapper
             key={`${tab.name}-${field.key}`}
@@ -282,29 +437,22 @@ export const SettingsContent = ({
             userOverrideCount={fieldOverrideSummary?.count}
             userOverrideDetails={fieldOverrideSummary?.users}
           >
-            {renderField(
-              field,
-              values[field.key],
-              (v) => onChange(field.key, v),
-              () => onAction(field.key),
-              disabledState.disabled,
-              values
-            )}
+            {renderedField}
           </FieldWrapper>
         );
       })}
     </div>
   );
 
-  const saveButton = hasChanges ? (
+  const saveButton = saveBarHasChanges && saveBarOnSave ? (
     <button
-      onClick={onSave}
-      disabled={isSaving}
+      onClick={() => { void saveBarOnSave(); }}
+      disabled={saveBarIsSaving}
       className="w-full py-2.5 px-4 rounded-lg font-medium transition-colors
                  bg-sky-600 text-white hover:bg-sky-700
                  disabled:opacity-50 disabled:cursor-not-allowed"
     >
-      {isSaving ? (
+      {saveBarIsSaving ? (
         <span className="flex items-center justify-center gap-2">
           <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
             <circle
@@ -345,13 +493,15 @@ export const SettingsContent = ({
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto p-6"
-        style={{ paddingBottom: hasChanges ? 'calc(5rem + env(safe-area-inset-bottom))' : '1.5rem' }}
+        style={{ paddingBottom: saveBarHasChanges ? 'calc(5rem + env(safe-area-inset-bottom))' : '1.5rem' }}
       >
         {renderedFields}
       </div>
 
       {/* Save button - only visible when there are changes */}
-      {hasChanges && <SettingsSaveBar onSave={onSave} isSaving={isSaving} />}
+      {saveBarHasChanges && saveBarOnSave && (
+        <SettingsSaveBar onSave={saveBarOnSave} isSaving={saveBarIsSaving} />
+      )}
     </div>
   );
 };

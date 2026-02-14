@@ -10,6 +10,7 @@ export type FieldType =
   | 'TagListField'
   | 'OrderableListField'
   | 'TableField'
+  | 'CustomComponentField'
   | 'ActionButton'
   | 'HeadingField';
 
@@ -51,6 +52,7 @@ export interface BaseField {
   requiresRestart?: boolean; // True if changing this setting requires a container restart
   userOverridable?: boolean; // True when this field supports per-user overrides
   universalOnly?: boolean; // Only show in Universal search mode (hide in Direct mode)
+  hiddenInUi?: boolean; // Keep value in schema/save path but hide default renderer
 }
 
 // Specific field interfaces
@@ -128,10 +130,19 @@ export interface ActionButtonConfig extends BaseField {
   style: 'default' | 'primary' | 'danger';
 }
 
+export interface CustomComponentFieldConfig extends BaseField {
+  type: 'CustomComponentField';
+  component: string; // Frontend custom component registry key
+  bindKeys?: string[]; // Related value keys this component edits
+  boundFields?: SettingsField[]; // Backing value schema edited by this component
+  wrapInFieldWrapper?: boolean; // Whether to render with standard FieldWrapper layout
+}
+
 export interface TableFieldColumnOption {
   value: string;
   label: string;
   description?: string;
+  childOf?: string;
 }
 
 export type TableFieldColumnType = 'text' | 'select' | 'checkbox' | 'path';
@@ -143,6 +154,7 @@ export interface TableFieldColumn {
   placeholder?: string;
   options?: TableFieldColumnOption[];
   defaultValue?: string | boolean;
+  filterByField?: string;
 }
 
 export interface TableFieldConfig extends BaseField {
@@ -158,6 +170,7 @@ export interface HeadingFieldConfig {
   type: 'HeadingField';
   title: string;
   description?: string;
+  descriptionByAuthMode?: Record<string, string>;
   linkUrl?: string;
   linkText?: string;
   showWhen?: ShowWhen; // Conditional visibility based on another field's value
@@ -175,6 +188,7 @@ export type SettingsField =
   | TagListFieldConfig
   | OrderableListFieldConfig
   | TableFieldConfig
+  | CustomComponentFieldConfig
   | ActionButtonConfig
   | HeadingFieldConfig;
 
