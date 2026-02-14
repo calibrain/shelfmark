@@ -84,6 +84,7 @@ class Config:
         # This handles cases where config is accessed before settings are registered
         try:
             import shelfmark.config.settings  # noqa: F401 - main app settings
+            import shelfmark.config.notifications_settings  # noqa: F401 - notifications settings
             import shelfmark.release_sources  # noqa: F401 - plugin settings
             import shelfmark.metadata_providers  # noqa: F401 - plugin settings
         except ImportError:

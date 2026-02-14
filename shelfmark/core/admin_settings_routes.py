@@ -13,6 +13,7 @@ def _get_settings_registry():
     # Ensure settings modules are loaded before reading registry metadata.
     import shelfmark.config.settings  # noqa: F401
     import shelfmark.config.security  # noqa: F401
+    import shelfmark.config.notifications_settings  # noqa: F401
     import shelfmark.config.users_settings  # noqa: F401
     from shelfmark.core import settings_registry
 
