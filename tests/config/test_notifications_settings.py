@@ -14,13 +14,18 @@ def test_notifications_tab_registers_expected_fields():
     fields = _field_map("notifications")
     expected = {
         "notifications_heading",
-        "notifications_help",
         "NOTIFICATIONS_ENABLED",
-        "ADMIN_NOTIFICATION_URLS",
-        "ADMIN_NOTIFICATION_EVENTS",
+        "ADMIN_NOTIFICATION_ROUTES",
         "test_admin_notification",
+        "USER_NOTIFICATIONS_ENABLED",
+        "USER_NOTIFICATION_ROUTES",
     }
     assert expected.issubset(fields.keys())
+
+    assert fields["USER_NOTIFICATIONS_ENABLED"].user_overridable is True
+    assert fields["USER_NOTIFICATIONS_ENABLED"].hidden_in_ui is True
+    assert fields["USER_NOTIFICATION_ROUTES"].user_overridable is True
+    assert fields["USER_NOTIFICATION_ROUTES"].hidden_in_ui is True
 
 
 def test_on_save_notifications_rejects_invalid_urls(monkeypatch):
@@ -32,16 +37,17 @@ def test_on_save_notifications_rejects_invalid_urls(monkeypatch):
     result = notifications_settings_module._on_save_notifications(
         {
             "NOTIFICATIONS_ENABLED": True,
-            "ADMIN_NOTIFICATION_URLS": ["not-a-valid-url"],
-            "ADMIN_NOTIFICATION_EVENTS": ["request_created"],
+            "ADMIN_NOTIFICATION_ROUTES": [
+                {"event": "all", "url": "not-a-valid-url"},
+            ],
         }
     )
 
     assert result["error"] is True
-    assert "invalid notification URL" in result["message"]
+    assert "invalid global notification URL" in result["message"]
 
 
-def test_on_save_notifications_normalizes_urls_and_events(monkeypatch):
+def test_on_save_notifications_normalizes_routes(monkeypatch):
     monkeypatch.setattr(
         "shelfmark.config.notifications_settings.load_config_file",
         lambda _tab: {},
@@ -49,34 +55,25 @@ def test_on_save_notifications_normalizes_urls_and_events(monkeypatch):
 
     values = {
         "NOTIFICATIONS_ENABLED": True,
-        "ADMIN_NOTIFICATION_URLS": [
-            " discord://Webhook/Token ",
-            "",
-            "discord://Webhook/Token",
-            "ntfys://ntfy.sh/shelfmark",
-        ],
-        "ADMIN_NOTIFICATION_EVENTS": [
-            "download_failed",
-            "invalid_event",
-            "request_created",
-            "download_failed",
+        "ADMIN_NOTIFICATION_ROUTES": [
+            {"event": "all", "url": " ntfys://ntfy.sh/shelfmark "},
+            {"event": "request_created", "url": ""},
+            {"event": "request_created", "url": "ntfys://ntfy.sh/requests"},
+            {"event": "request_created", "url": "ntfys://ntfy.sh/requests"},
         ],
     }
 
     result = notifications_settings_module._on_save_notifications(values)
 
     assert result["error"] is False
-    assert result["values"]["ADMIN_NOTIFICATION_URLS"] == [
-        "discord://Webhook/Token",
-        "ntfys://ntfy.sh/shelfmark",
-    ]
-    assert result["values"]["ADMIN_NOTIFICATION_EVENTS"] == [
-        "request_created",
-        "download_failed",
+    assert result["values"]["ADMIN_NOTIFICATION_ROUTES"] == [
+        {"event": "all", "url": "ntfys://ntfy.sh/shelfmark"},
+        {"event": "request_created", "url": ""},
+        {"event": "request_created", "url": "ntfys://ntfy.sh/requests"},
     ]
 
 
-def test_on_save_notifications_requires_event_when_enabled(monkeypatch):
+def test_on_save_notifications_requires_route_url_when_enabled(monkeypatch):
     monkeypatch.setattr(
         "shelfmark.config.notifications_settings.load_config_file",
         lambda _tab: {},
@@ -85,19 +82,18 @@ def test_on_save_notifications_requires_event_when_enabled(monkeypatch):
     result = notifications_settings_module._on_save_notifications(
         {
             "NOTIFICATIONS_ENABLED": True,
-            "ADMIN_NOTIFICATION_URLS": ["discord://Webhook/Token"],
-            "ADMIN_NOTIFICATION_EVENTS": [],
+            "ADMIN_NOTIFICATION_ROUTES": [{"event": "all", "url": ""}],
         }
     )
 
     assert result["error"] is True
-    assert "Select at least one notification event" in result["message"]
+    assert "Add at least one global notification URL route" in result["message"]
 
 
 def test_test_admin_notification_action_uses_current_unsaved_values(monkeypatch):
     monkeypatch.setattr(
         "shelfmark.config.notifications_settings.load_config_file",
-        lambda _tab: {"NOTIFICATIONS_ENABLED": False, "ADMIN_NOTIFICATION_URLS": []},
+        lambda _tab: {"NOTIFICATIONS_ENABLED": False, "ADMIN_NOTIFICATION_ROUTES": []},
     )
 
     captured: dict[str, object] = {}
@@ -114,10 +110,16 @@ def test_test_admin_notification_action_uses_current_unsaved_values(monkeypatch)
     result = notifications_settings_module._test_admin_notification_action(
         {
             "NOTIFICATIONS_ENABLED": True,
-            "ADMIN_NOTIFICATION_URLS": [" ntfys://ntfy.sh/shelfmark "],
+            "ADMIN_NOTIFICATION_ROUTES": [
+                {"event": "all", "url": " ntfys://ntfy.sh/shelfmark "},
+                {"event": "download_failed", "url": "ntfys://ntfy.sh/errors"},
+                {"event": "download_failed", "url": "ntfys://ntfy.sh/errors"},
+            ],
         }
     )
 
     assert result["success"] is True
-    assert captured["urls"] == ["ntfys://ntfy.sh/shelfmark"]
-
+    assert captured["urls"] == [
+        "ntfys://ntfy.sh/shelfmark",
+        "ntfys://ntfy.sh/errors",
+    ]

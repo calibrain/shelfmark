@@ -29,6 +29,7 @@ from shelfmark.core.notifications import (
     NotificationContext,
     NotificationEvent,
     notify_admin,
+    notify_user,
 )
 from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_db import UserDB
@@ -232,6 +233,15 @@ def _resolve_request_source_and_format(request_row: dict[str, Any]) -> tuple[str
     return normalize_source(request_row.get("source_hint")), None
 
 
+def _resolve_request_user_id(request_row: dict[str, Any]) -> int | None:
+    raw_user_id = request_row.get("user_id")
+    try:
+        user_id = int(raw_user_id)
+    except (TypeError, ValueError):
+        return None
+    return user_id if user_id > 0 else None
+
+
 def _notify_admin_for_request_event(
     user_db: UserDB,
     *,
@@ -261,12 +271,25 @@ def _notify_admin_for_request_event(
         admin_note=_normalize_optional_text(request_row.get("admin_note")),
         error_message=None,
     )
+
+    owner_user_id = _resolve_request_user_id(request_row)
     try:
         notify_admin(event, context)
     except Exception as exc:
         logger.warning(
             "Failed to trigger admin notification for request event '%s': %s",
             event.value,
+            exc,
+        )
+    if owner_user_id is None:
+        return
+    try:
+        notify_user(owner_user_id, event, context)
+    except Exception as exc:
+        logger.warning(
+            "Failed to trigger user notification for request event '%s' (user_id=%s): %s",
+            event.value,
+            owner_user_id,
             exc,
         )
 

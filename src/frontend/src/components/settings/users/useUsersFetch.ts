@@ -4,6 +4,7 @@ import {
   DeliveryPreferencesResponse,
   DownloadDefaults,
   getAdminDeliveryPreferences,
+  getAdminNotificationPreferences,
   getAdminUser,
   getAdminUsers,
   getDownloadDefaults,
@@ -59,6 +60,7 @@ export interface UserEditContext {
   user: AdminUser;
   downloadDefaults: DownloadDefaults;
   deliveryPreferences: DeliveryPreferencesResponse | null;
+  notificationPreferences: DeliveryPreferencesResponse | null;
   userSettings: PerUserSettings;
   userOverridableSettings: Set<string>;
 }
@@ -130,16 +132,33 @@ export const useUsersFetch = ({ onShowToast }: UseUsersFetchParams) => {
     ]);
 
     let deliveryPreferences: DeliveryPreferencesResponse | null = null;
-    let userSettings = (fullUser.settings || {}) as PerUserSettings;
+    let notificationPreferences: DeliveryPreferencesResponse | null = null;
+    let userSettings = {
+      ...(fullUser.settings || {}),
+    } as PerUserSettings;
     let userOverridableSettings = new Set<string>();
 
-    try {
-      const preferences = await getAdminDeliveryPreferences(userId);
-      deliveryPreferences = preferences;
-      userSettings = (preferences.userOverrides || fullUser.settings || {}) as PerUserSettings;
-      userOverridableSettings = new Set(preferences.keys || []);
-    } catch {
-      // Delivery preference introspection is best-effort.
+    const [deliveryResult, notificationResult] = await Promise.allSettled([
+      getAdminDeliveryPreferences(userId),
+      getAdminNotificationPreferences(userId),
+    ]);
+
+    if (deliveryResult.status === 'fulfilled') {
+      deliveryPreferences = deliveryResult.value;
+      userSettings = {
+        ...userSettings,
+        ...(deliveryResult.value.userOverrides || {}),
+      } as PerUserSettings;
+      deliveryResult.value.keys.forEach((key) => userOverridableSettings.add(key));
+    }
+
+    if (notificationResult.status === 'fulfilled') {
+      notificationPreferences = notificationResult.value;
+      userSettings = {
+        ...userSettings,
+        ...(notificationResult.value.userOverrides || {}),
+      } as PerUserSettings;
+      notificationResult.value.keys.forEach((key) => userOverridableSettings.add(key));
     }
 
     try {
@@ -154,6 +173,7 @@ export const useUsersFetch = ({ onShowToast }: UseUsersFetchParams) => {
       user: fullUser,
       downloadDefaults: defaults,
       deliveryPreferences,
+      notificationPreferences,
       userSettings,
       userOverridableSettings,
     };

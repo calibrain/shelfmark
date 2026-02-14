@@ -1,4 +1,4 @@
-"""Apprise notification dispatch for global admin events."""
+"""Apprise notification dispatch for global and per-user events."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ logger = setup_logger(__name__)
 
 # Small pool for non-blocking dispatch. Notification sends are I/O bound and infrequent.
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="Notify")
+_ROUTE_EVENT_ALL = "all"
 
 
 class NotificationEvent(str, Enum):
@@ -86,24 +87,85 @@ def _normalize_urls(value: Any) -> list[str]:
     return normalized
 
 
-def _normalize_events(value: Any) -> set[str]:
-    if value is None:
-        return set()
-    if isinstance(value, list):
-        raw_values = value
-    elif isinstance(value, str):
-        raw_values = value.split(",")
-    else:
-        raw_values = [value]
-    return {str(raw_event or "").strip() for raw_event in raw_values if str(raw_event or "").strip()}
+def _normalize_routes(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+
+    allowed_events = {_ROUTE_EVENT_ALL, *(event.value for event in NotificationEvent)}
+    normalized: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for row in value:
+        if not isinstance(row, dict):
+            continue
+
+        event = str(row.get("event") or "").strip().lower()
+        if event not in allowed_events:
+            continue
+
+        url = str(row.get("url") or "").strip()
+        if not url:
+            continue
+
+        key = (event, url)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        normalized.append({"event": event, "url": url})
+
+    return normalized
 
 
-def _resolve_admin_urls_and_events() -> tuple[list[str], set[str]]:
+def _resolve_admin_routes() -> list[dict[str, str]]:
     if not _as_bool(app_config.get("NOTIFICATIONS_ENABLED", False)):
-        return [], set()
-    urls = _normalize_urls(app_config.get("ADMIN_NOTIFICATION_URLS", []))
-    events = _normalize_events(app_config.get("ADMIN_NOTIFICATION_EVENTS", []))
-    return urls, events
+        return []
+    return _normalize_routes(app_config.get("ADMIN_NOTIFICATION_ROUTES", []))
+
+
+def _normalize_user_id(value: Any) -> int | None:
+    try:
+        user_id = int(value)
+    except (TypeError, ValueError):
+        return None
+    if user_id < 1:
+        return None
+    return user_id
+
+
+def _resolve_user_routes(user_id: int | None) -> list[dict[str, str]]:
+    normalized_user_id = _normalize_user_id(user_id)
+    if normalized_user_id is None:
+        return []
+
+    if not _as_bool(app_config.get("USER_NOTIFICATIONS_ENABLED", False, user_id=normalized_user_id)):
+        return []
+    return _normalize_routes(
+        app_config.get("USER_NOTIFICATION_ROUTES", [], user_id=normalized_user_id)
+    )
+
+
+def _resolve_route_urls_for_event(
+    routes: list[dict[str, str]],
+    event: NotificationEvent,
+) -> list[str]:
+    selected: list[str] = []
+    seen: set[str] = set()
+    event_value = event.value
+
+    for row in routes:
+        row_event = row.get("event", "")
+        if row_event not in {_ROUTE_EVENT_ALL, event_value}:
+            continue
+
+        url = row.get("url", "")
+        if not url or url in seen:
+            continue
+
+        seen.add(url)
+        selected.append(url)
+
+    return selected
 
 
 def _resolve_notify_type(event: NotificationEvent) -> Any:
@@ -209,10 +271,9 @@ def _send_admin_event(event: NotificationEvent, context: NotificationContext, ur
 
 def notify_admin(event: NotificationEvent, context: NotificationContext) -> None:
     """Send a global admin notification for an event if subscribed."""
-    urls, subscribed_events = _resolve_admin_urls_and_events()
+    routes = _resolve_admin_routes()
+    urls = _resolve_route_urls_for_event(routes, event)
     if not urls:
-        return
-    if event.value not in subscribed_events:
         return
 
     try:
@@ -221,10 +282,48 @@ def notify_admin(event: NotificationEvent, context: NotificationContext) -> None
         logger.warning("Failed to queue admin notification '%s': %s", event.value, exc)
 
 
+def notify_user(user_id: int | None, event: NotificationEvent, context: NotificationContext) -> None:
+    """Send a per-user notification for an event if subscribed."""
+    normalized_user_id = _normalize_user_id(user_id)
+    if normalized_user_id is None:
+        return
+
+    routes = _resolve_user_routes(normalized_user_id)
+    urls = _resolve_route_urls_for_event(routes, event)
+    if not urls:
+        return
+
+    try:
+        _executor.submit(_dispatch_user_async, normalized_user_id, event, context, urls)
+    except Exception as exc:
+        logger.warning(
+            "Failed to queue user notification '%s' for user_id=%s: %s",
+            event.value,
+            normalized_user_id,
+            exc,
+        )
+
+
 def _dispatch_admin_async(event: NotificationEvent, context: NotificationContext, urls: list[str]) -> None:
     result = _send_admin_event(event, context, urls)
     if not result.get("success", False):
         logger.warning("Admin notification failed for event '%s': %s", event.value, result.get("message"))
+
+
+def _dispatch_user_async(
+    user_id: int,
+    event: NotificationEvent,
+    context: NotificationContext,
+    urls: list[str],
+) -> None:
+    result = _send_admin_event(event, context, urls)
+    if not result.get("success", False):
+        logger.warning(
+            "User notification failed for event '%s' (user_id=%s): %s",
+            event.value,
+            user_id,
+            result.get("message"),
+        )
 
 
 def send_test_notification(urls: list[str]) -> dict[str, Any]:
@@ -240,4 +339,3 @@ def send_test_notification(urls: list[str]) -> dict[str, Any]:
         username="Shelfmark",
     )
     return _send_admin_event(NotificationEvent.REQUEST_CREATED, test_context, normalized_urls)
-

@@ -169,7 +169,6 @@ class UserDB:
                 conn.execute("PRAGMA journal_mode=WAL")
             finally:
                 conn.close()
-        logger.info(f"User database initialized at {self._db_path}")
 
     def _migrate_auth_source_column(self, conn: sqlite3.Connection) -> None:
         """Ensure users.auth_source exists and backfill historical rows."""

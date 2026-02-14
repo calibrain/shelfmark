@@ -11,14 +11,15 @@ from shelfmark.core.settings_registry import (
     ActionButton,
     CheckboxField,
     HeadingField,
-    MultiSelectField,
-    TagListField,
+    TableField,
     load_config_file,
     register_on_save,
     register_settings,
 )
 
 _URL_SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*$")
+
+_ROUTE_EVENT_ALL = "all"
 _ADMIN_EVENT_OPTIONS = [
     {"value": NotificationEvent.REQUEST_CREATED.value, "label": "New request submitted"},
     {"value": NotificationEvent.REQUEST_FULFILLED.value, "label": "Request fulfilled"},
@@ -26,11 +27,14 @@ _ADMIN_EVENT_OPTIONS = [
     {"value": NotificationEvent.DOWNLOAD_COMPLETE.value, "label": "Download complete"},
     {"value": NotificationEvent.DOWNLOAD_FAILED.value, "label": "Download failed"},
 ]
-_ADMIN_EVENT_ORDER = [option["value"] for option in _ADMIN_EVENT_OPTIONS]
-_DEFAULT_ADMIN_EVENTS = [
-    NotificationEvent.REQUEST_CREATED.value,
-    NotificationEvent.DOWNLOAD_FAILED.value,
+_ROUTE_EVENT_OPTIONS = [
+    {"value": _ROUTE_EVENT_ALL, "label": "All"},
+    *_ADMIN_EVENT_OPTIONS,
 ]
+_ROUTE_EVENT_ORDER = [option["value"] for option in _ROUTE_EVENT_OPTIONS]
+_ALLOWED_ROUTE_EVENTS = set(_ROUTE_EVENT_ORDER)
+
+_DEFAULT_ROUTE_ROWS = [{"event": _ROUTE_EVENT_ALL, "url": ""}]
 
 
 def _as_bool(value: Any, default: bool = False) -> bool:
@@ -47,46 +51,6 @@ def _as_bool(value: Any, default: bool = False) -> bool:
     return bool(value)
 
 
-def _normalize_urls(value: Any) -> list[str]:
-    if value is None:
-        return []
-
-    raw_values: list[Any]
-    if isinstance(value, list):
-        raw_values = value
-    elif isinstance(value, str):
-        raw_values = [segment for part in value.splitlines() for segment in part.split(",")]
-    else:
-        raw_values = [value]
-
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for raw_url in raw_values:
-        url = str(raw_url or "").strip()
-        if not url:
-            continue
-        if url in seen:
-            continue
-        seen.add(url)
-        normalized.append(url)
-    return normalized
-
-
-def _normalize_admin_events(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, list):
-        raw_values = value
-    elif isinstance(value, str):
-        raw_values = value.split(",")
-    else:
-        raw_values = [value]
-
-    allowed = set(_ADMIN_EVENT_ORDER)
-    selected = {str(raw_event or "").strip() for raw_event in raw_values if str(raw_event or "").strip() in allowed}
-    return [event for event in _ADMIN_EVENT_ORDER if event in selected]
-
-
 def _looks_like_apprise_url(url: str) -> bool:
     split = urlsplit(url)
     if not split.scheme:
@@ -96,36 +60,168 @@ def _looks_like_apprise_url(url: str) -> bool:
     return " " not in url
 
 
+def _coerce_route_rows(value: Any) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [row for row in value if isinstance(row, dict)]
+    if isinstance(value, dict):
+        return [value]
+    return []
+
+
+def _normalize_routes(value: Any) -> list[dict[str, str]]:
+    normalized: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for row in _coerce_route_rows(value):
+        event = str(row.get("event") or "").strip().lower()
+        if event not in _ALLOWED_ROUTE_EVENTS:
+            continue
+
+        url = str(row.get("url") or "").strip()
+        key = (event, url)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        normalized.append({"event": event, "url": url})
+
+    return normalized
+
+
+def _count_invalid_route_events(value: Any) -> int:
+    invalid = 0
+    for row in _coerce_route_rows(value):
+        event = str(row.get("event") or "").strip().lower()
+        if event not in _ALLOWED_ROUTE_EVENTS:
+            invalid += 1
+    return invalid
+
+
+def _count_invalid_route_urls(routes: list[dict[str, str]]) -> int:
+    return sum(1 for row in routes if row["url"] and not _looks_like_apprise_url(row["url"]))
+
+
+def _ensure_default_route_row(routes: list[dict[str, str]]) -> list[dict[str, str]]:
+    return routes if routes else [dict(row) for row in _DEFAULT_ROUTE_ROWS]
+
+
+def _has_at_least_one_valid_route_url(routes: list[dict[str, str]]) -> bool:
+    return any(row["url"] and _looks_like_apprise_url(row["url"]) for row in routes)
+
+
+def _extract_unique_route_urls(routes: list[dict[str, str]]) -> list[str]:
+    urls: list[str] = []
+    seen: set[str] = set()
+    for row in routes:
+        url = row.get("url", "")
+        if not url:
+            continue
+        if url in seen:
+            continue
+        seen.add(url)
+        urls.append(url)
+    return urls
+
+
+def coerce_notifications_bool(value: Any, default: bool = False) -> bool:
+    """Shared bool coercion for notifications preferences."""
+    return _as_bool(value, default=default)
+
+
+def normalize_notification_routes(value: Any) -> list[dict[str, str]]:
+    """Normalize route table rows for notification preferences."""
+    return _normalize_routes(value)
+
+
+def is_valid_notification_url(url: str) -> bool:
+    """Shared URL validation for notifications preferences."""
+    return _looks_like_apprise_url(url)
+
+
 def _on_save_notifications(values: dict[str, Any]) -> dict[str, Any]:
     existing = load_config_file("notifications")
     effective: dict[str, Any] = dict(existing)
     effective.update(values)
 
     enabled = _as_bool(effective.get("NOTIFICATIONS_ENABLED", False))
-    normalized_urls = _normalize_urls(effective.get("ADMIN_NOTIFICATION_URLS", []))
-    invalid_count = sum(1 for url in normalized_urls if not _looks_like_apprise_url(url))
-    if invalid_count:
+    user_enabled = _as_bool(effective.get("USER_NOTIFICATIONS_ENABLED", False))
+
+    admin_routes_input = effective.get("ADMIN_NOTIFICATION_ROUTES", [])
+    invalid_admin_event_count = _count_invalid_route_events(admin_routes_input)
+    if invalid_admin_event_count:
         return {
             "error": True,
             "message": (
-                f"Found {invalid_count} invalid notification URL(s). "
-                "Use Apprise URLs with a valid scheme, e.g. discord://... or ntfys://..."
+                f"Found {invalid_admin_event_count} invalid global notification route event value(s)."
             ),
             "values": values,
         }
 
-    normalized_events = _normalize_admin_events(effective.get("ADMIN_NOTIFICATION_EVENTS", []))
-    if enabled and not normalized_events:
+    normalized_admin_routes = _normalize_routes(admin_routes_input)
+    invalid_admin_url_count = _count_invalid_route_urls(normalized_admin_routes)
+    if invalid_admin_url_count:
         return {
             "error": True,
-            "message": "Select at least one notification event when notifications are enabled.",
+            "message": (
+                f"Found {invalid_admin_url_count} invalid global notification URL(s). "
+                "Use URL values with a valid scheme, e.g. discord://... or ntfys://..."
+            ),
             "values": values,
         }
 
-    if "ADMIN_NOTIFICATION_URLS" in values:
-        values["ADMIN_NOTIFICATION_URLS"] = normalized_urls
-    if "ADMIN_NOTIFICATION_EVENTS" in values:
-        values["ADMIN_NOTIFICATION_EVENTS"] = normalized_events
+    if enabled and not _has_at_least_one_valid_route_url(normalized_admin_routes):
+        return {
+            "error": True,
+            "message": "Add at least one global notification URL route when notifications are enabled.",
+            "values": values,
+        }
+
+    user_routes_input = effective.get("USER_NOTIFICATION_ROUTES", [])
+    invalid_user_event_count = _count_invalid_route_events(user_routes_input)
+    if invalid_user_event_count:
+        return {
+            "error": True,
+            "message": (
+                f"Found {invalid_user_event_count} invalid personal notification route event value(s)."
+            ),
+            "values": values,
+        }
+
+    normalized_user_routes = _normalize_routes(user_routes_input)
+    invalid_user_url_count = _count_invalid_route_urls(normalized_user_routes)
+    if invalid_user_url_count:
+        return {
+            "error": True,
+            "message": (
+                f"Found {invalid_user_url_count} invalid personal notification URL(s). "
+                "Use URL values with a valid scheme, e.g. discord://... or ntfys://..."
+            ),
+            "values": values,
+        }
+
+    if user_enabled and not _has_at_least_one_valid_route_url(normalized_user_routes):
+        return {
+            "error": True,
+            "message": (
+                "Add at least one personal notification URL route when personal notifications are enabled."
+            ),
+            "values": values,
+        }
+
+    if "NOTIFICATIONS_ENABLED" in values:
+        values["NOTIFICATIONS_ENABLED"] = enabled
+    if "USER_NOTIFICATIONS_ENABLED" in values:
+        values["USER_NOTIFICATIONS_ENABLED"] = user_enabled
+
+    admin_routes_touched = "ADMIN_NOTIFICATION_ROUTES" in values
+    if admin_routes_touched:
+        values["ADMIN_NOTIFICATION_ROUTES"] = _ensure_default_route_row(normalized_admin_routes)
+
+    user_routes_touched = "USER_NOTIFICATION_ROUTES" in values
+    if user_routes_touched:
+        values["USER_NOTIFICATION_ROUTES"] = _ensure_default_route_row(normalized_user_routes)
 
     return {"error": False, "values": values}
 
@@ -139,15 +235,34 @@ def _test_admin_notification_action(current_values: dict[str, Any]) -> dict[str,
     if not _as_bool(effective.get("NOTIFICATIONS_ENABLED", False)):
         return {"success": False, "message": "Enable notifications first."}
 
-    urls = _normalize_urls(effective.get("ADMIN_NOTIFICATION_URLS", []))
-    invalid_count = sum(1 for url in urls if not _looks_like_apprise_url(url))
-    if invalid_count:
+    routes_input = effective.get("ADMIN_NOTIFICATION_ROUTES", [])
+
+    invalid_event_count = _count_invalid_route_events(routes_input)
+    if invalid_event_count:
         return {
             "success": False,
             "message": (
-                f"Found {invalid_count} invalid notification URL(s). "
-                "Fix URL formatting before running a test."
+                f"Found {invalid_event_count} invalid global notification route event value(s). "
+                "Fix route events before running a test."
             ),
+        }
+
+    normalized_routes = _normalize_routes(routes_input)
+    invalid_url_count = _count_invalid_route_urls(normalized_routes)
+    if invalid_url_count:
+        return {
+            "success": False,
+            "message": (
+                f"Found {invalid_url_count} invalid global notification URL(s). "
+                "Fix route URLs before running a test."
+            ),
+        }
+
+    urls = _extract_unique_route_urls(normalized_routes)
+    if not urls:
+        return {
+            "success": False,
+            "message": "Add at least one global notification URL route first.",
         }
 
     return send_test_notification(urls)
@@ -162,45 +277,90 @@ def notifications_settings():
     return [
         HeadingField(
             key="notifications_heading",
-            title="Notifications",
-            description="Send push notifications via Apprise.",
-        ),
-        HeadingField(
-            key="notifications_help",
-            title="Setup Help",
-            description="See Apprise service URL formats and setup steps.",
-            link_url="https://github.com/caronc/apprise/wiki",
-            link_text="Apprise Wiki",
+            title="Global Notifications",
+            description=(
+                "Global notifications send selected events for all users to configured routes. "
+                "Users can manage personal notifications in User Preferences."
+            ),
         ),
         CheckboxField(
             key="NOTIFICATIONS_ENABLED",
-            label="Enable Notifications",
-            description="Master toggle for global notifications.",
+            label="Enable Global Notifications",
+            description="Master toggle for global notifications across all users.",
             default=False,
         ),
-        TagListField(
-            key="ADMIN_NOTIFICATION_URLS",
-            label="Notification URLs",
-            description="One Apprise URL per entry.",
-            default=[],
-            placeholder="e.g. discord://WebhookID/Token",
-            show_when={"field": "NOTIFICATIONS_ENABLED", "value": True},
-        ),
-        MultiSelectField(
-            key="ADMIN_NOTIFICATION_EVENTS",
-            label="Notification Events",
-            description="Choose which events are sent to configured notification URLs.",
-            options=_ADMIN_EVENT_OPTIONS,
-            default=_DEFAULT_ADMIN_EVENTS,
+        TableField(
+            key="ADMIN_NOTIFICATION_ROUTES",
+            label="",
+            description=(
+                "Create one route per URL. Start with All, then add event-specific routes "
+                "for targeted delivery. Need format examples? "
+                "[View Apprise URL formats](https://appriseit.com/services/)."
+            ),
+            columns=[
+                {
+                    "key": "event",
+                    "label": "Event",
+                    "type": "select",
+                    "options": _ROUTE_EVENT_OPTIONS,
+                    "defaultValue": _ROUTE_EVENT_ALL,
+                },
+                {
+                    "key": "url",
+                    "label": "Notification URL",
+                    "type": "text",
+                    "placeholder": "e.g. ntfys://ntfy.sh/shelfmark",
+                },
+            ],
+            default=[dict(row) for row in _DEFAULT_ROUTE_ROWS],
+            add_label="Add Route",
+            empty_message="No routes configured.",
             show_when={"field": "NOTIFICATIONS_ENABLED", "value": True},
         ),
         ActionButton(
             key="test_admin_notification",
             label="Test Notification",
-            description="Send a test notification to the configured URLs.",
+            description="Send a test notification to all configured global route URLs.",
             style="primary",
             callback=_test_admin_notification_action,
             show_when={"field": "NOTIFICATIONS_ENABLED", "value": True},
         ),
+        CheckboxField(
+            key="USER_NOTIFICATIONS_ENABLED",
+            label="Enable Personal Notifications",
+            description="Per-user master toggle for personal notifications.",
+            default=False,
+            user_overridable=True,
+            hidden_in_ui=True,
+        ),
+        TableField(
+            key="USER_NOTIFICATION_ROUTES",
+            label="",
+            description=(
+                "Create one route per URL. Start with All, then add event-specific routes "
+                "for targeted delivery. Need format examples? "
+                "[View Apprise URL formats](https://appriseit.com/services/)."
+            ),
+            columns=[
+                {
+                    "key": "event",
+                    "label": "Event",
+                    "type": "select",
+                    "options": _ROUTE_EVENT_OPTIONS,
+                    "defaultValue": _ROUTE_EVENT_ALL,
+                },
+                {
+                    "key": "url",
+                    "label": "Notification URL",
+                    "type": "text",
+                    "placeholder": "e.g. ntfys://ntfy.sh/username-topic",
+                },
+            ],
+            default=[dict(row) for row in _DEFAULT_ROUTE_ROWS],
+            add_label="Add Route",
+            empty_message="No routes configured.",
+            user_overridable=True,
+            hidden_in_ui=True,
+            show_when={"field": "USER_NOTIFICATIONS_ENABLED", "value": True},
+        ),
     ]
-

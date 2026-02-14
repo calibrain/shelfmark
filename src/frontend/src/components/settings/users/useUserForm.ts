@@ -23,6 +23,7 @@ export const useUserForm = () => {
   const [editPasswordConfirm, setEditPasswordConfirm] = useState('');
   const [downloadDefaults, setDownloadDefaults] = useState<DownloadDefaults | null>(null);
   const [deliveryPreferences, setDeliveryPreferences] = useState<DeliveryPreferencesResponse | null>(null);
+  const [notificationPreferences, setNotificationPreferences] = useState<DeliveryPreferencesResponse | null>(null);
   const [userSettings, setUserSettings] = useState<PerUserSettings>({});
   const [originalUserSettings, setOriginalUserSettings] = useState<PerUserSettings>({});
   const [userOverridableSettings, setUserOverridableSettings] = useState<Set<string>>(new Set());
@@ -32,6 +33,7 @@ export const useUserForm = () => {
   const resetEditContext = () => {
     setDownloadDefaults(null);
     setDeliveryPreferences(null);
+    setNotificationPreferences(null);
     setUserSettings({});
     setOriginalUserSettings({});
     setUserOverridableSettings(new Set());
@@ -48,6 +50,7 @@ export const useUserForm = () => {
     setEditingUser({ ...context.user });
     setDownloadDefaults(context.downloadDefaults);
     setDeliveryPreferences(context.deliveryPreferences);
+    setNotificationPreferences(context.notificationPreferences);
     setUserSettings(normalizedSettings);
     setOriginalUserSettings(normalizedSettings);
     setUserOverridableSettings(new Set(context.userOverridableSettings));
@@ -62,8 +65,20 @@ export const useUserForm = () => {
 
   const isUserOverridable = (key: keyof PerUserSettings) => userOverridableSettings.has(String(key));
   const hasUserSettingsChanges =
-    JSON.stringify(buildUserSettingsPayload(userSettings, userOverridableSettings, deliveryPreferences))
-    !== JSON.stringify(buildUserSettingsPayload(originalUserSettings, userOverridableSettings, deliveryPreferences));
+    JSON.stringify(
+      buildUserSettingsPayload(
+        userSettings,
+        userOverridableSettings,
+        [deliveryPreferences, notificationPreferences]
+      )
+    )
+    !== JSON.stringify(
+      buildUserSettingsPayload(
+        originalUserSettings,
+        userOverridableSettings,
+        [deliveryPreferences, notificationPreferences]
+      )
+    );
 
   return {
     createForm,
@@ -81,6 +96,7 @@ export const useUserForm = () => {
     setEditPasswordConfirm,
     downloadDefaults,
     deliveryPreferences,
+    notificationPreferences,
     userSettings,
     setUserSettings,
     hasUserSettingsChanges,

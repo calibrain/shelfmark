@@ -82,15 +82,17 @@ export const TagListField = ({ field, value, onChange, disabled, requiredTags }:
 
   return (
     <div
-      className={`w-full px-2 py-1 rounded-lg border border-[var(--border-muted)]
+      className={`w-full px-3 py-2 rounded-lg border border-[var(--border-muted)]
                   bg-[var(--bg-soft)] text-sm
+                  focus-within:outline-none focus-within:ring-2 focus-within:ring-sky-500/50 focus-within:border-sky-500
+                  transition-colors
                   ${isDisabled ? 'opacity-60 cursor-not-allowed' : 'cursor-text'}`}
       onClick={() => {
         if (isDisabled) return;
         inputRef.current?.focus();
       }}
     >
-      <div className="flex flex-wrap gap-1 items-center">
+      <div className="flex flex-wrap gap-1 items-center min-h-[1.25rem]">
         {tags.map((tag, idx) => (
           <span
             key={`${tag}-${idx}`}
@@ -144,7 +146,7 @@ export const TagListField = ({ field, value, onChange, disabled, requiredTags }:
             }}
             onBlur={() => commitDraft()}
             placeholder={tags.length === 0 ? field.placeholder : ''}
-            className="flex-1 min-w-[4rem] bg-transparent outline-none px-1 py-0.5"
+            className="flex-1 min-w-[4rem] bg-transparent outline-none px-1 py-0"
           />
         )}
 

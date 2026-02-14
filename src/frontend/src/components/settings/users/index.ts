@@ -9,6 +9,7 @@ export {
 } from './UserCard';
 export { UserListView } from './UserListView';
 export { RequestPolicyGrid } from './RequestPolicyGrid';
+export { UserNotificationOverridesSection } from './UserNotificationOverridesSection';
 export { UserOverridesSection } from './UserOverridesSection';
 export { UserOverridesView } from './UserOverridesView';
 export { useUserForm } from './useUserForm';

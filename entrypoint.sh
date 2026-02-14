@@ -164,7 +164,9 @@ make_writable() {
     # Fix any misowned subdirectories/files (e.g., from previous runs as root)
     if [ "$did_full_chown" -eq 0 ] && [ -d "$folder" ]; then
         echo "Checking for misowned files/directories in $folder"
-        find "$folder" -mindepth 1 \( ! -user "$RUN_UID" -o ! -group "$RUN_GID" \) \
+        # Stay on the same filesystem to avoid traversing mounted subpaths
+        # (for example read-only bind mounts under /app in dev setups).
+        find "$folder" -xdev -mindepth 1 \( ! -user "$RUN_UID" -o ! -group "$RUN_GID" \) \
             -exec chown "$RUN_UID:$RUN_GID" {} + 2>/dev/null || true
     fi
     test_write $folder || echo "Failed to test write to ${folder}, continuing..."
@@ -174,7 +176,9 @@ fix_misowned() {
     folder=$1
     mkdir -p $folder
     echo "Checking for misowned files/directories in $folder"
-    find "$folder" \( ! -user "$RUN_UID" -o ! -group "$RUN_GID" \) \
+    # Stay on the same filesystem to avoid traversing mounted subpaths
+    # (for example read-only bind mounts under /app in dev setups).
+    find "$folder" -xdev \( ! -user "$RUN_UID" -o ! -group "$RUN_GID" \) \
         -exec chown "$RUN_UID:$RUN_GID" {} + 2>/dev/null || true
 }
 

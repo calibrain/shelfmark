@@ -3,6 +3,57 @@ import { SettingsField } from '../../../types/settings';
 import { Tooltip } from '../../shared/Tooltip';
 import { EnvLockBadge } from './EnvLockBadge';
 
+const MARKDOWN_LINK_PATTERN = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+
+const renderDescriptionWithLinks = (description: string): ReactNode => {
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+
+  MARKDOWN_LINK_PATTERN.lastIndex = 0;
+  let match: RegExpExecArray | null = MARKDOWN_LINK_PATTERN.exec(description);
+  while (match) {
+    const [fullMatch, label, url] = match;
+    const matchIndex = match.index;
+
+    if (matchIndex > lastIndex) {
+      parts.push(
+        <span key={`text-${lastIndex}-${matchIndex}`} className="opacity-60">
+          {description.slice(lastIndex, matchIndex)}
+        </span>
+      );
+    }
+
+    parts.push(
+      <a
+        key={`${url}-${matchIndex}`}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline text-sky-600 dark:text-sky-400 hover:text-sky-500 dark:hover:text-sky-300 hover:no-underline"
+      >
+        {label}
+      </a>
+    );
+
+    lastIndex = matchIndex + fullMatch.length;
+    match = MARKDOWN_LINK_PATTERN.exec(description);
+  }
+
+  if (lastIndex < description.length) {
+    parts.push(
+      <span key={`text-${lastIndex}-end`} className="opacity-60">
+        {description.slice(lastIndex)}
+      </span>
+    );
+  }
+
+  if (parts.length === 0) {
+    return <span className="opacity-60">{description}</span>;
+  }
+
+  return parts;
+};
+
 interface FieldWrapperProps {
   field: SettingsField;
   children: ReactNode;
@@ -123,9 +174,8 @@ export const FieldWrapper = ({
   userOverrideCount,
   userOverrideDetails,
 }: FieldWrapperProps) => {
-  // Action buttons, headings, and table fields handle their own layout
-  // Table fields have column headers, so they don't need a separate label
-  if (field.type === 'ActionButton' || field.type === 'HeadingField' || field.type === 'TableField') {
+  // Action buttons and headings handle their own layout
+  if (field.type === 'ActionButton' || field.type === 'HeadingField') {
     return <>{children}</>;
   }
 
@@ -134,35 +184,45 @@ export const FieldWrapper = ({
   const isDisabled = disabledOverride ?? field.disabled;
   const disabledReason = disabledReasonOverride ?? field.disabledReason;
   const requiresRestart = field.requiresRestart;
+  const hasUserOverrides = Boolean(userOverrideCount) && (userOverrideCount || 0) > 0;
+  const hasLabel = Boolean(field.label && field.label.trim().length > 0);
+  const showHeaderLeft = hasLabel || field.fromEnv || (requiresRestart && !isDisabled && !field.fromEnv)
+    || (isDisabled && !field.fromEnv) || hasUserOverrides;
+  const showHeader = showHeaderLeft || Boolean(headerRight);
 
   // ENV-locked fields should only dim the control, not the label/description
   const isFullyDimmed = isDisabled && !field.fromEnv;
-
   return (
     <div className="space-y-1.5">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <label className={`text-sm font-medium ${isFullyDimmed ? 'text-zinc-500' : ''}`}>
-            {field.label}
-            {field.required && !isDisabled && <span className="text-red-500 ml-0.5">*</span>}
-          </label>
-          {field.fromEnv && <EnvLockBadge />}
-          {requiresRestart && !isDisabled && !field.fromEnv && <RestartRequiredBadge />}
-          {isDisabled && !field.fromEnv && <DisabledBadge reason={disabledReason} />}
-          {Boolean(userOverrideCount) && (userOverrideCount || 0) > 0 && (
-            <UserOverriddenBadge
-              count={userOverrideCount || 0}
-              details={userOverrideDetails}
-            />
+      {showHeader && (
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            {hasLabel && (
+              <label className={`text-sm font-medium ${isFullyDimmed ? 'text-zinc-500' : ''}`}>
+                {field.label}
+                {field.required && !isDisabled && <span className="text-red-500 ml-0.5">*</span>}
+              </label>
+            )}
+            {field.fromEnv && <EnvLockBadge />}
+            {requiresRestart && !isDisabled && !field.fromEnv && <RestartRequiredBadge />}
+            {isDisabled && !field.fromEnv && <DisabledBadge reason={disabledReason} />}
+            {hasUserOverrides && (
+              <UserOverriddenBadge
+                count={userOverrideCount || 0}
+                details={userOverrideDetails}
+              />
+            )}
+          </div>
+          {headerRight && (
+            <div className="flex items-center gap-2 shrink-0">{headerRight}</div>
           )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">{headerRight}</div>
-      </div>
+      )}
 
       <div className={isFullyDimmed ? 'opacity-50' : ''}>{children}</div>
 
       {field.description && (
-        <p className="text-xs opacity-60">{field.description}</p>
+        <p className="text-xs">{renderDescriptionWithLinks(field.description)}</p>
       )}
 
       {isDisabled && disabledReason && (

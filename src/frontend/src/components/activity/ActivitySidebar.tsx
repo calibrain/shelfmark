@@ -889,8 +889,8 @@ export const ActivitySidebar = ({
       <aside
         className="hidden lg:flex fixed right-0 w-96 flex-col bg-[var(--bg-soft)] z-30 rounded-2xl shadow-lg overflow-hidden"
         style={{
-          top: `calc(${pinnedTopOffset}px + 0.75rem)`,
-          height: `calc(100dvh - ${pinnedTopOffset}px - 1.5rem)`,
+          top: `${pinnedTopOffset}px`,
+          height: `calc(100dvh - ${pinnedTopOffset}px - 0.75rem)`,
           right: '0.75rem',
         }}
         onWheel={handlePinnedWheel}

@@ -4,12 +4,14 @@ import { SettingsSubpage } from '../shared';
 import { UserOverridesSection } from './UserOverridesSection';
 import { SettingsTab } from '../../../types/settings';
 import { UserRequestPolicyOverridesSection } from './UserRequestPolicyOverridesSection';
+import { UserNotificationOverridesSection } from './UserNotificationOverridesSection';
 
 interface UserOverridesViewProps {
   embedded?: boolean;
   hasChanges: boolean;
   onBack: () => void;
   deliveryPreferences: DeliveryPreferencesResponse | null;
+  notificationPreferences: DeliveryPreferencesResponse | null;
   isUserOverridable: (key: keyof PerUserSettings) => boolean;
   userSettings: PerUserSettings;
   setUserSettings: (updater: (prev: PerUserSettings) => PerUserSettings) => void;
@@ -22,6 +24,7 @@ export const UserOverridesView = ({
   hasChanges,
   onBack,
   deliveryPreferences,
+  notificationPreferences,
   isUserOverridable,
   userSettings,
   setUserSettings,
@@ -56,6 +59,15 @@ export const UserOverridesView = ({
         userSettings={userSettings}
         setUserSettings={setUserSettings}
       />
+
+      <div className="border-t border-[var(--border-muted)]" />
+      <UserNotificationOverridesSection
+        notificationPreferences={notificationPreferences}
+        isUserOverridable={isUserOverridable}
+        userSettings={userSettings}
+        setUserSettings={setUserSettings}
+      />
+      <div className="border-t border-[var(--border-muted)]" />
 
       <UserRequestPolicyOverridesSection
         usersTab={usersTab}

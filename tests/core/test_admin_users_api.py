@@ -491,6 +491,44 @@ class TestAdminUserUpdateEndpoint:
         settings = user_db.get_user_settings(user["id"])
         assert settings["DESTINATION_AUDIOBOOK"] == "/audiobooks/alice"
 
+    def test_update_user_settings_accepts_notification_overrides(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={
+                "settings": {
+                    "USER_NOTIFICATIONS_ENABLED": True,
+                    "USER_NOTIFICATION_ROUTES": [
+                        {"event": "all", "url": " ntfys://ntfy.sh/alice "},
+                        {"event": "download_failed", "url": "ntfys://ntfy.sh/errors"},
+                        {"event": "download_failed", "url": "ntfys://ntfy.sh/errors"},
+                    ],
+                }
+            },
+        )
+        assert resp.status_code == 200
+        settings = user_db.get_user_settings(user["id"])
+        assert settings["USER_NOTIFICATIONS_ENABLED"] is True
+        assert settings["USER_NOTIFICATION_ROUTES"] == [
+            {"event": "all", "url": "ntfys://ntfy.sh/alice"},
+            {"event": "download_failed", "url": "ntfys://ntfy.sh/errors"},
+        ]
+
+    def test_update_user_settings_rejects_invalid_notification_url(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"settings": {"USER_NOTIFICATION_ROUTES": [{"event": "all", "url": "not-a-valid-url"}]}},
+        )
+        assert resp.status_code == 400
+        assert resp.json["error"] == "Invalid settings payload"
+        assert any(
+            "Invalid value for USER_NOTIFICATION_ROUTES" in msg
+            for msg in resp.json["details"]
+        )
+
     def test_update_user_settings_accepts_valid_request_policy_rule(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
 
@@ -1112,6 +1150,87 @@ class TestAdminDeliveryPreferences:
     def test_requires_admin(self, regular_client, user_db):
         user = user_db.create_user(username="alice")
         resp = regular_client.get(f"/api/admin/users/{user['id']}/delivery-preferences")
+        assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# GET /api/admin/users/<id>/notification-preferences
+# ---------------------------------------------------------------------------
+
+
+class TestAdminNotificationPreferences:
+    """Tests for GET /api/admin/users/<id>/notification-preferences."""
+
+    @pytest.fixture(autouse=True)
+    def setup_config(self, tmp_path, monkeypatch):
+        import json
+        from pathlib import Path
+
+        config_dir = str(tmp_path)
+        monkeypatch.setenv("CONFIG_DIR", config_dir)
+        monkeypatch.setattr("shelfmark.config.env.CONFIG_DIR", Path(config_dir))
+
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+        notifications_config = {
+            "NOTIFICATIONS_ENABLED": True,
+            "ADMIN_NOTIFICATION_ROUTES": [
+                {"event": "all", "url": "ntfys://ntfy.sh/admin"},
+                {"event": "download_failed", "url": "ntfys://ntfy.sh/admin-errors"},
+            ],
+            "USER_NOTIFICATIONS_ENABLED": False,
+            "USER_NOTIFICATION_ROUTES": [
+                {"event": "all", "url": "ntfys://ntfy.sh/default-user"},
+            ],
+        }
+        (plugins_dir / "notifications.json").write_text(json.dumps(notifications_config))
+
+        from shelfmark.core.config import config as app_config
+        app_config.refresh()
+
+    def test_returns_curated_fields_and_effective_values(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+        user_db.set_user_settings(
+            user["id"],
+            {
+                "USER_NOTIFICATIONS_ENABLED": True,
+                "USER_NOTIFICATION_ROUTES": [
+                    {"event": "all", "url": "ntfys://ntfy.sh/alice"},
+                    {"event": "download_failed", "url": "ntfys://ntfy.sh/alice-errors"},
+                ],
+            },
+        )
+
+        resp = admin_client.get(f"/api/admin/users/{user['id']}/notification-preferences")
+        assert resp.status_code == 200
+
+        data = resp.json
+        assert data["tab"] == "notifications"
+        assert data["keys"] == [
+            "USER_NOTIFICATIONS_ENABLED",
+            "USER_NOTIFICATION_ROUTES",
+        ]
+
+        field_keys = [field["key"] for field in data["fields"]]
+        assert set(field_keys) == set(data["keys"])
+
+        assert data["userOverrides"]["USER_NOTIFICATIONS_ENABLED"] is True
+        assert data["userOverrides"]["USER_NOTIFICATION_ROUTES"] == [
+            {"event": "all", "url": "ntfys://ntfy.sh/alice"},
+            {"event": "download_failed", "url": "ntfys://ntfy.sh/alice-errors"},
+        ]
+
+        assert data["effective"]["USER_NOTIFICATIONS_ENABLED"]["source"] == "user_override"
+        assert data["effective"]["USER_NOTIFICATIONS_ENABLED"]["value"] is True
+        assert data["effective"]["USER_NOTIFICATION_ROUTES"]["source"] == "user_override"
+
+    def test_returns_404_for_unknown_user(self, admin_client):
+        resp = admin_client.get("/api/admin/users/9999/notification-preferences")
+        assert resp.status_code == 404
+
+    def test_requires_admin(self, regular_client, user_db):
+        user = user_db.create_user(username="alice")
+        resp = regular_client.get(f"/api/admin/users/{user['id']}/notification-preferences")
         assert resp.status_code == 403
 
 

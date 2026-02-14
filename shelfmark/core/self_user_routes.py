@@ -121,15 +121,15 @@ def _get_ordered_user_overridable_fields(tab_name: str) -> list[tuple[str, Any]]
     return [(field.key, field) for field in tab.fields if field.key in overridable_map]
 
 
-def _build_delivery_preferences_payload(user_db: UserDB, user_id: int) -> dict[str, Any]:
+def _build_user_preferences_payload(user_db: UserDB, user_id: int, tab_name: str) -> dict[str, Any]:
     from shelfmark.core.config import config as app_config
 
     settings_registry = _get_settings_registry()
-    ordered_fields = _get_ordered_user_overridable_fields("downloads")
+    ordered_fields = _get_ordered_user_overridable_fields(tab_name)
     if not ordered_fields:
-        raise ValueError("Downloads settings tab not found")
+        raise ValueError(f"{tab_name.capitalize()} settings tab not found")
 
-    download_config = load_config_file("downloads")
+    tab_config = load_config_file(tab_name)
     user_settings = user_db.get_user_settings(user_id)
     ordered_keys = [key for key, _ in ordered_fields]
 
@@ -138,7 +138,7 @@ def _build_delivery_preferences_payload(user_db: UserDB, user_id: int) -> dict[s
     effective: dict[str, dict[str, Any]] = {}
 
     for key, field in ordered_fields:
-        serialized = settings_registry.serialize_field(field, "downloads", include_value=False)
+        serialized = settings_registry.serialize_field(field, tab_name, include_value=False)
         serialized["fromEnv"] = bool(
             field.env_supported and settings_registry.is_value_from_env(field)
         )
@@ -153,7 +153,7 @@ def _build_delivery_preferences_payload(user_db: UserDB, user_id: int) -> dict[s
         elif key in user_settings and user_settings[key] is not None:
             source = "user_override"
             value = user_settings[key]
-        elif key in download_config:
+        elif key in tab_config:
             source = "global_config"
 
         effective[key] = {"value": value, "source": source}
@@ -165,7 +165,7 @@ def _build_delivery_preferences_payload(user_db: UserDB, user_id: int) -> dict[s
     }
 
     return {
-        "tab": "downloads",
+        "tab": tab_name,
         "keys": ordered_keys,
         "fields": fields_payload,
         "globalValues": global_values,
@@ -189,21 +189,31 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
         serialized_user["settings"] = user_db.get_user_settings(user_id)
 
         try:
-            delivery_preferences = _build_delivery_preferences_payload(user_db, user_id)
+            delivery_preferences = _build_user_preferences_payload(user_db, user_id, "downloads")
         except ValueError:
             return jsonify({"error": "Downloads settings tab not found"}), 500
         except Exception as exc:
             logger.warning(f"Failed to build user delivery preferences for user_id={user_id}: {exc}")
             delivery_preferences = None
 
+        try:
+            notification_preferences = _build_user_preferences_payload(user_db, user_id, "notifications")
+        except ValueError:
+            return jsonify({"error": "Notifications settings tab not found"}), 500
+        except Exception as exc:
+            logger.warning(f"Failed to build user notification preferences for user_id={user_id}: {exc}")
+            notification_preferences = None
+
         user_overridable_keys = sorted(
             set(delivery_preferences.get("keys", []) if delivery_preferences else [])
+            | set(notification_preferences.get("keys", []) if notification_preferences else [])
         )
 
         return jsonify(
             {
                 "user": serialized_user,
                 "deliveryPreferences": delivery_preferences,
+                "notificationPreferences": notification_preferences,
                 "userOverridableKeys": user_overridable_keys,
             }
         )
@@ -293,6 +303,8 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
 
             allowed_user_settings_keys = {
                 key for key, _field in _get_ordered_user_overridable_fields("downloads")
+            } | {
+                key for key, _field in _get_ordered_user_overridable_fields("notifications")
             }
             disallowed_keys = sorted(
                 key for key in settings_payload if key not in allowed_user_settings_keys

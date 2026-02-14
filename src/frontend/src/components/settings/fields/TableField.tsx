@@ -146,7 +146,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
           disabled={isDisabled}
           className="px-3 py-2 rounded-lg text-sm font-medium
                      bg-[var(--bg-soft)] border border-[var(--border-muted)]
-                     hover:bg-[var(--hover-surface)] transition-colors
+                     hover-action transition-colors
                      disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {field.addLabel || 'Add'}
@@ -248,7 +248,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
                 type="button"
                 onClick={() => removeRow(rowIndex)}
                 disabled={isDisabled}
-                className="p-1.5 rounded-full hover:bg-[var(--hover-surface)]
+                className="p-1.5 rounded-full hover-action
                            disabled:opacity-60 disabled:cursor-not-allowed"
                 aria-label="Remove row"
               >
@@ -276,7 +276,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
         disabled={isDisabled}
         className="px-3 py-2 rounded-lg text-sm font-medium
                    bg-[var(--bg-soft)] border border-[var(--border-muted)]
-                   hover:bg-[var(--hover-surface)] transition-colors
+                   hover-action transition-colors
                    disabled:opacity-60 disabled:cursor-not-allowed"
       >
         {field.addLabel || 'Add'}

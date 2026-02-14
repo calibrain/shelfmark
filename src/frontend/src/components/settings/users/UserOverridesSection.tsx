@@ -114,8 +114,7 @@ const ResetOverrideButton = ({ disabled = false, label = 'Reset', onClick }: Res
     type="button"
     onClick={onClick}
     disabled={disabled}
-    className="px-2.5 py-1 rounded-lg text-xs font-medium border border-[var(--border-muted)]
-               bg-[var(--bg)] hover:bg-[var(--hover-surface)] transition-colors
+    className="text-xs font-medium text-sky-500 hover:text-sky-400 transition-colors shrink-0
                disabled:opacity-50 disabled:cursor-not-allowed"
   >
     {label}

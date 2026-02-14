@@ -171,7 +171,8 @@ class TestTerminalSnapshotCapture:
 
         try:
             with patch.object(main_module, "notify_admin") as mock_notify:
-                main_module.backend.book_queue.update_status(task_id, QueueStatus.COMPLETE)
+                with patch.object(main_module, "notify_user") as mock_notify_user:
+                    main_module.backend.book_queue.update_status(task_id, QueueStatus.COMPLETE)
 
             mock_notify.assert_called_once()
             event, context = mock_notify.call_args.args
@@ -179,6 +180,11 @@ class TestTerminalSnapshotCapture:
             assert context.title == "Notify Complete Snapshot"
             assert context.author == "Notify Author"
             assert context.username == user["username"]
+            mock_notify_user.assert_called_once()
+            user_id, user_event, user_context = mock_notify_user.call_args.args
+            assert user_id == user["id"]
+            assert user_event == NotificationEvent.DOWNLOAD_COMPLETE
+            assert user_context.title == "Notify Complete Snapshot"
         finally:
             main_module.backend.book_queue.cancel_download(task_id)
 
@@ -198,13 +204,19 @@ class TestTerminalSnapshotCapture:
         try:
             main_module.backend.book_queue.update_status_message(task_id, "Resolver timed out")
             with patch.object(main_module, "notify_admin") as mock_notify:
-                main_module.backend.book_queue.update_status(task_id, QueueStatus.ERROR)
+                with patch.object(main_module, "notify_user") as mock_notify_user:
+                    main_module.backend.book_queue.update_status(task_id, QueueStatus.ERROR)
 
             mock_notify.assert_called_once()
             event, context = mock_notify.call_args.args
             assert event == NotificationEvent.DOWNLOAD_FAILED
             assert context.title == "Notify Error Snapshot"
             assert context.error_message == "Resolver timed out"
+            mock_notify_user.assert_called_once()
+            user_id, user_event, user_context = mock_notify_user.call_args.args
+            assert user_id == user["id"]
+            assert user_event == NotificationEvent.DOWNLOAD_FAILED
+            assert user_context.error_message == "Resolver timed out"
         finally:
             main_module.backend.book_queue.cancel_download(task_id)
 
@@ -223,8 +235,10 @@ class TestTerminalSnapshotCapture:
 
         try:
             with patch.object(main_module, "notify_admin") as mock_notify:
-                main_module.backend.book_queue.update_status(task_id, QueueStatus.CANCELLED)
+                with patch.object(main_module, "notify_user") as mock_notify_user:
+                    main_module.backend.book_queue.update_status(task_id, QueueStatus.CANCELLED)
 
             mock_notify.assert_not_called()
+            mock_notify_user.assert_not_called()
         finally:
             main_module.backend.book_queue.cancel_download(task_id)

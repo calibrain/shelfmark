@@ -49,7 +49,7 @@ from shelfmark.core.requests_service import (
     sync_delivery_states_from_queue_status,
 )
 from shelfmark.core.activity_service import ActivityService, build_download_item_key
-from shelfmark.core.notifications import NotificationContext, NotificationEvent, notify_admin
+from shelfmark.core.notifications import NotificationContext, NotificationEvent, notify_admin, notify_user
 from shelfmark.core.utils import normalize_base_path
 from shelfmark.api.websocket import ws_manager
 
@@ -1033,6 +1033,12 @@ def _notify_admin_for_terminal_download_status(*, task_id: str, status: QueueSta
     if event is None:
         return
 
+    raw_owner_user_id = getattr(task, "user_id", None)
+    try:
+        owner_user_id = int(raw_owner_user_id) if raw_owner_user_id is not None else None
+    except (TypeError, ValueError):
+        owner_user_id = None
+
     content_type = _normalize_optional_text(getattr(task, "content_type", None))
     context = NotificationContext(
         event=event,
@@ -1055,6 +1061,18 @@ def _notify_admin_for_terminal_download_status(*, task_id: str, status: QueueSta
             "Failed to trigger admin notification for download %s (%s): %s",
             task_id,
             status.value,
+            exc,
+        )
+    if owner_user_id is None:
+        return
+    try:
+        notify_user(owner_user_id, event, context)
+    except Exception as exc:
+        logger.warning(
+            "Failed to trigger user notification for download %s (%s, user_id=%s): %s",
+            task_id,
+            status.value,
+            owner_user_id,
             exc,
         )
 

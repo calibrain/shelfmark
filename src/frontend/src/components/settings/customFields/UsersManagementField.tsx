@@ -40,6 +40,7 @@ export const UsersManagementField = ({
     setEditPasswordConfirm,
     downloadDefaults,
     deliveryPreferences,
+    notificationPreferences,
     isUserOverridable,
     userSettings,
     setUserSettings,
@@ -72,6 +73,7 @@ export const UsersManagementField = ({
     userSettings,
     userOverridableSettings,
     deliveryPreferences,
+    notificationPreferences,
     onEditSaveSuccess: clearEditState,
   });
 
@@ -198,6 +200,7 @@ export const UsersManagementField = ({
         hasChanges={hasUserSettingsChanges}
         onBack={handleBackToEdit}
         deliveryPreferences={deliveryPreferences}
+        notificationPreferences={notificationPreferences}
         isUserOverridable={isUserOverridable}
         userSettings={userSettings}
         setUserSettings={(updater) => setUserSettings(updater)}

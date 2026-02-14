@@ -146,7 +146,6 @@ export const UserRequestPolicyOverridesSection = ({
 
   return (
     <div className="space-y-3">
-      <div className="border-t border-[var(--border-muted)]" />
       <HeadingField field={requestPolicyHeading} />
 
       <RequestPolicyGrid

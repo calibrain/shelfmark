@@ -278,7 +278,8 @@ class TestRequestRoutes:
             with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
                 with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
                     with patch("shelfmark.core.request_routes.notify_admin") as mock_notify:
-                        resp = client.post("/api/requests", json=payload)
+                        with patch("shelfmark.core.request_routes.notify_user") as mock_notify_user:
+                            resp = client.post("/api/requests", json=payload)
 
         assert resp.status_code == 201
         mock_notify.assert_called_once()
@@ -287,6 +288,11 @@ class TestRequestRoutes:
         assert context.title == "Notify Create Book"
         assert context.author == "Notify Create Author"
         assert context.username == user["username"]
+        mock_notify_user.assert_called_once()
+        user_id, user_event, user_context = mock_notify_user.call_args.args
+        assert user_id == user["id"]
+        assert user_event == NotificationEvent.REQUEST_CREATED
+        assert user_context.title == "Notify Create Book"
 
     def test_cancel_request_emits_to_user_and_admin_rooms(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -635,10 +641,11 @@ class TestRequestRoutes:
 
                     _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
                     with patch("shelfmark.core.request_routes.notify_admin") as mock_notify:
-                        reject_resp = client.post(
-                            f"/api/admin/requests/{request_id}/reject",
-                            json={"admin_note": "Needs better metadata"},
-                        )
+                        with patch("shelfmark.core.request_routes.notify_user") as mock_notify_user:
+                            reject_resp = client.post(
+                                f"/api/admin/requests/{request_id}/reject",
+                                json={"admin_note": "Needs better metadata"},
+                            )
 
         assert create_resp.status_code == 201
         assert reject_resp.status_code == 200
@@ -648,6 +655,11 @@ class TestRequestRoutes:
         assert context.title == "Reject Notify Book"
         assert context.admin_note == "Needs better metadata"
         assert context.username == user["username"]
+        mock_notify_user.assert_called_once()
+        user_id, user_event, user_context = mock_notify_user.call_args.args
+        assert user_id == user["id"]
+        assert user_event == NotificationEvent.REQUEST_REJECTED
+        assert user_context.admin_note == "Needs better metadata"
 
     def test_admin_fulfil_queues_for_requesting_user(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -787,10 +799,11 @@ class TestRequestRoutes:
                     _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
                     with patch.object(main_module.backend, "queue_release", return_value=(True, None)):
                         with patch("shelfmark.core.request_routes.notify_admin") as mock_notify:
-                            fulfil_resp = client.post(
-                                f"/api/admin/requests/{request_id}/fulfil",
-                                json={"admin_note": "Approved"},
-                            )
+                            with patch("shelfmark.core.request_routes.notify_user") as mock_notify_user:
+                                fulfil_resp = client.post(
+                                    f"/api/admin/requests/{request_id}/fulfil",
+                                    json={"admin_note": "Approved"},
+                                )
 
         assert create_resp.status_code == 201
         assert fulfil_resp.status_code == 200
@@ -799,6 +812,11 @@ class TestRequestRoutes:
         assert event == NotificationEvent.REQUEST_FULFILLED
         assert context.title == "Fulfil Notify Book"
         assert context.username == user["username"]
+        mock_notify_user.assert_called_once()
+        user_id, user_event, user_context = mock_notify_user.call_args.args
+        assert user_id == user["id"]
+        assert user_event == NotificationEvent.REQUEST_FULFILLED
+        assert user_context.title == "Fulfil Notify Book"
 
     def test_admin_fulfil_book_level_request_requires_release_data(self, main_module, client):
         user = _create_user(main_module, prefix="reader")

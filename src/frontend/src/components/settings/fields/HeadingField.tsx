@@ -17,7 +17,7 @@ export const HeadingField = ({ field }: HeadingFieldProps) => (
               href={field.linkUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sky-500 hover:text-sky-400 underline"
+              className="underline text-sky-600 dark:text-sky-400 hover:text-sky-500 dark:hover:text-sky-300"
             >
               {field.linkText || field.linkUrl}
             </a>

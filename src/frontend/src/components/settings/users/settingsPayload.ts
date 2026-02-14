@@ -5,20 +5,25 @@ const normalizeComparableValue = (value: unknown): string => {
   if (value === null || value === undefined) {
     return '';
   }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
   return String(value);
 };
 
 export const buildUserSettingsPayload = (
   userSettings: PerUserSettings,
   userOverridableSettings: Set<string>,
-  deliveryPreferences: DeliveryPreferencesResponse | null,
+  preferenceGroups: Array<DeliveryPreferencesResponse | null>,
 ): Record<string, unknown> =>
-  Array.from(
-    new Set([
-      ...(deliveryPreferences?.keys || []),
-      ...userOverridableSettings,
-    ])
-  )
+  Array.from(new Set([
+    ...preferenceGroups.flatMap((preferences) => preferences?.keys || []),
+    ...userOverridableSettings,
+  ]))
     .map(String)
     .sort()
     .reduce<Record<string, unknown>>((payload, key) => {
@@ -33,8 +38,15 @@ export const buildUserSettingsPayload = (
       }
 
       const userValue = userSettings[typedKey];
-      const globalValue = deliveryPreferences?.globalValues?.[key];
-      const isDifferentFromGlobal = deliveryPreferences
+      const matchingPreferences = preferenceGroups.find((preferences) =>
+        preferences?.keys?.includes(key)
+      );
+      const hasGlobalValue = Boolean(
+        matchingPreferences
+        && Object.prototype.hasOwnProperty.call(matchingPreferences.globalValues, key)
+      );
+      const globalValue = matchingPreferences?.globalValues?.[key];
+      const isDifferentFromGlobal = hasGlobalValue
         ? normalizeComparableValue(userValue) !== normalizeComparableValue(globalValue)
         : true;
 

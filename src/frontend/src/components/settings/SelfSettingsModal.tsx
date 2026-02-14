@@ -8,6 +8,7 @@ import {
 import { SelectField } from './fields';
 import { FieldWrapper } from './shared';
 import { UserAccountCardContent, UserEditActions, UserIdentityHeader } from './users/UserCard';
+import { UserNotificationOverridesSection } from './users/UserNotificationOverridesSection';
 import { UserOverridesSection } from './users/UserOverridesSection';
 import { buildUserSettingsPayload } from './users/settingsPayload';
 import { PerUserSettings } from './users/types';
@@ -62,6 +63,7 @@ export const SelfSettingsModal = ({ isOpen, onClose, onShowToast }: SelfSettings
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [originalUser, setOriginalUser] = useState<AdminUser | null>(null);
   const [deliveryPreferences, setDeliveryPreferences] = useState<DeliveryPreferencesResponse | null>(null);
+  const [notificationPreferences, setNotificationPreferences] = useState<DeliveryPreferencesResponse | null>(null);
 
   const [editPassword, setEditPassword] = useState('');
   const [editPasswordConfirm, setEditPasswordConfirm] = useState('');
@@ -81,6 +83,7 @@ export const SelfSettingsModal = ({ isOpen, onClose, onShowToast }: SelfSettings
       setEditingUser(context.user);
       setOriginalUser(context.user);
       setDeliveryPreferences(context.deliveryPreferences || null);
+      setNotificationPreferences(context.notificationPreferences || null);
       setUserSettings(normalizedSettings);
       setOriginalUserSettings(normalizedSettings);
       setUserOverridableSettings(new Set(context.userOverridableKeys || []));
@@ -142,13 +145,21 @@ export const SelfSettingsModal = ({ isOpen, onClose, onShowToast }: SelfSettings
   );
 
   const currentSettingsPayload = useMemo(
-    () => buildUserSettingsPayload(userSettings, userOverridableSettings, deliveryPreferences),
-    [deliveryPreferences, userOverridableSettings, userSettings]
+    () => buildUserSettingsPayload(
+      userSettings,
+      userOverridableSettings,
+      [deliveryPreferences, notificationPreferences]
+    ),
+    [deliveryPreferences, notificationPreferences, userOverridableSettings, userSettings]
   );
 
   const originalSettingsPayload = useMemo(
-    () => buildUserSettingsPayload(originalUserSettings, userOverridableSettings, deliveryPreferences),
-    [deliveryPreferences, originalUserSettings, userOverridableSettings]
+    () => buildUserSettingsPayload(
+      originalUserSettings,
+      userOverridableSettings,
+      [deliveryPreferences, notificationPreferences]
+    ),
+    [deliveryPreferences, notificationPreferences, originalUserSettings, userOverridableSettings]
   );
 
   const hasSettingsChanges =
@@ -323,6 +334,14 @@ export const SelfSettingsModal = ({ isOpen, onClose, onShowToast }: SelfSettings
                     <div className="space-y-5">
                       <UserOverridesSection
                         deliveryPreferences={deliveryPreferences}
+                        isUserOverridable={isUserOverridable}
+                        userSettings={userSettings}
+                        setUserSettings={(updater) => setUserSettings(updater)}
+                      />
+
+                      <div className="border-t border-[var(--border-muted)]" />
+                      <UserNotificationOverridesSection
+                        notificationPreferences={notificationPreferences}
                         isUserOverridable={isUserOverridable}
                         userSettings={userSettings}
                         setUserSettings={(updater) => setUserSettings(updater)}

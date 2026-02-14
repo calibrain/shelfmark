@@ -71,13 +71,13 @@ def test_render_message_includes_error_line_for_download_failure():
     assert "Connection timeout" in body
 
 
-def test_notify_admin_submits_non_blocking_when_event_is_subscribed(monkeypatch):
+def test_notify_admin_submits_non_blocking_when_route_matches_event(monkeypatch):
     fake_executor = _FakeExecutor()
     monkeypatch.setattr(notifications_module, "_executor", fake_executor)
     monkeypatch.setattr(
         notifications_module,
-        "_resolve_admin_urls_and_events",
-        lambda: (["discord://Webhook/Token"], {"request_created"}),
+        "_resolve_admin_routes",
+        lambda: [{"event": "request_created", "url": "discord://Webhook/Token"}],
     )
 
     context = notifications_module.NotificationContext(
@@ -95,13 +95,13 @@ def test_notify_admin_submits_non_blocking_when_event_is_subscribed(monkeypatch)
     assert len(fake_executor.calls) == 1
 
 
-def test_notify_admin_skips_when_event_not_subscribed(monkeypatch):
+def test_notify_admin_skips_when_no_route_matches_event(monkeypatch):
     fake_executor = _FakeExecutor()
     monkeypatch.setattr(notifications_module, "_executor", fake_executor)
     monkeypatch.setattr(
         notifications_module,
-        "_resolve_admin_urls_and_events",
-        lambda: (["discord://Webhook/Token"], {"download_failed"}),
+        "_resolve_admin_routes",
+        lambda: [{"event": "download_failed", "url": "discord://Webhook/Token"}],
     )
 
     context = notifications_module.NotificationContext(
@@ -143,7 +143,7 @@ def test_send_admin_event_passes_expected_title_body_and_notify_type(monkeypatch
     assert notify_kwargs["notify_type"] == _FakeNotifyType.WARNING
 
 
-def test_resolve_admin_urls_and_events_returns_empty_when_disabled(monkeypatch):
+def test_resolve_admin_routes_returns_empty_when_disabled(monkeypatch):
     def _fake_get(key, default=None):
         if key == "NOTIFICATIONS_ENABLED":
             return False
@@ -151,8 +151,92 @@ def test_resolve_admin_urls_and_events_returns_empty_when_disabled(monkeypatch):
 
     monkeypatch.setattr(notifications_module.app_config, "get", _fake_get)
 
-    urls, events = notifications_module._resolve_admin_urls_and_events()
+    routes = notifications_module._resolve_admin_routes()
 
-    assert urls == []
-    assert events == set()
+    assert routes == []
 
+
+def test_resolve_user_routes_uses_user_overrides(monkeypatch):
+    def _fake_get(key, default=None, user_id=None):
+        if user_id != 42:
+            return default
+        values = {
+            "USER_NOTIFICATIONS_ENABLED": True,
+            "USER_NOTIFICATION_ROUTES": [
+                {"event": "all", "url": " ntfys://ntfy.sh/alice "},
+                {"event": "download_failed", "url": "ntfys://ntfy.sh/errors"},
+                {"event": "download_failed", "url": "ntfys://ntfy.sh/errors"},
+            ],
+        }
+        return values.get(key, default)
+
+    monkeypatch.setattr(notifications_module.app_config, "get", _fake_get)
+
+    routes = notifications_module._resolve_user_routes(42)
+
+    assert routes == [
+        {"event": "all", "url": "ntfys://ntfy.sh/alice"},
+        {"event": "download_failed", "url": "ntfys://ntfy.sh/errors"},
+    ]
+
+
+def test_notify_user_submits_non_blocking_when_route_matches_event(monkeypatch):
+    fake_executor = _FakeExecutor()
+    monkeypatch.setattr(notifications_module, "_executor", fake_executor)
+    monkeypatch.setattr(
+        notifications_module,
+        "_resolve_user_routes",
+        lambda _user_id: [{"event": "download_failed", "url": "discord://Webhook/Token"}],
+    )
+
+    context = notifications_module.NotificationContext(
+        event=notifications_module.NotificationEvent.DOWNLOAD_FAILED,
+        title="Example Book",
+        author="Example Author",
+        username="reader",
+    )
+
+    notifications_module.notify_user(
+        7,
+        notifications_module.NotificationEvent.DOWNLOAD_FAILED,
+        context,
+    )
+
+    assert len(fake_executor.calls) == 1
+
+
+def test_notify_user_skips_when_user_id_is_invalid(monkeypatch):
+    fake_executor = _FakeExecutor()
+    monkeypatch.setattr(notifications_module, "_executor", fake_executor)
+
+    context = notifications_module.NotificationContext(
+        event=notifications_module.NotificationEvent.DOWNLOAD_COMPLETE,
+        title="Example Book",
+        author="Example Author",
+    )
+
+    notifications_module.notify_user(
+        None,
+        notifications_module.NotificationEvent.DOWNLOAD_COMPLETE,
+        context,
+    )
+
+    assert fake_executor.calls == []
+
+
+def test_resolve_route_urls_for_event_includes_all_and_specific_rows():
+    routes = [
+        {"event": "all", "url": "ntfys://ntfy.sh/all"},
+        {"event": "download_failed", "url": "ntfys://ntfy.sh/errors"},
+        {"event": "request_created", "url": "ntfys://ntfy.sh/requests"},
+    ]
+
+    urls = notifications_module._resolve_route_urls_for_event(
+        routes,
+        notifications_module.NotificationEvent.DOWNLOAD_FAILED,
+    )
+
+    assert urls == [
+        "ntfys://ntfy.sh/all",
+        "ntfys://ntfy.sh/errors",
+    ]

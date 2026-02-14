@@ -8,6 +8,8 @@ export interface PerUserSettings {
   BOOKLORE_LIBRARY_ID?: string;
   BOOKLORE_PATH_ID?: string;
   EMAIL_RECIPIENT?: string;
+  USER_NOTIFICATIONS_ENABLED?: boolean;
+  USER_NOTIFICATION_ROUTES?: Array<Record<string, unknown>>;
   REQUESTS_ENABLED?: boolean;
   REQUEST_POLICY_DEFAULT_EBOOK?: string;
   REQUEST_POLICY_DEFAULT_AUDIOBOOK?: string;

@@ -598,6 +598,7 @@ export interface AdminUser {
 export interface SelfUserEditContext {
   user: AdminUser;
   deliveryPreferences: DeliveryPreferencesResponse | null;
+  notificationPreferences: DeliveryPreferencesResponse | null;
   userOverridableKeys: string[];
 }
 
@@ -695,6 +696,12 @@ export const getAdminDeliveryPreferences = async (
   userId: number
 ): Promise<DeliveryPreferencesResponse> => {
   return fetchJSON<DeliveryPreferencesResponse>(`${API_BASE}/admin/users/${userId}/delivery-preferences`);
+};
+
+export const getAdminNotificationPreferences = async (
+  userId: number
+): Promise<DeliveryPreferencesResponse> => {
+  return fetchJSON<DeliveryPreferencesResponse>(`${API_BASE}/admin/users/${userId}/notification-preferences`);
 };
 
 export interface SettingsOverrideUserDetail {
