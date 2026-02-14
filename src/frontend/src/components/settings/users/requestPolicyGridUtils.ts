@@ -133,7 +133,7 @@ export const capPolicyMode = (mode: RequestPolicyMode, ceiling: RequestPolicyMod
 };
 
 export const isMatrixConfigurable = (defaultMode: RequestPolicyMode): boolean => {
-  return defaultMode === 'download' || defaultMode === 'request_release';
+  return defaultMode !== 'blocked';
 };
 
 export const getAllowedMatrixModes = (defaultMode: RequestPolicyMode): RequestPolicyMatrixMode[] => {
@@ -288,12 +288,12 @@ const isSourceContentTypeSupported = (
 
 export const normalizeExplicitRulesForPersistence = ({
   explicitRules,
-  baseRules,
   defaultModes,
   sourceCapabilities,
 }: {
   explicitRules: RequestPolicyRuleRow[];
-  baseRules: RequestPolicyRuleRow[];
+  /** @deprecated No longer used — kept for call-site compatibility */
+  baseRules?: RequestPolicyRuleRow[];
   defaultModes: RequestPolicyDefaultsValue;
   sourceCapabilities: RequestPolicySourceCapability[];
 }): RequestPolicyRuleRow[] => {
@@ -310,9 +310,7 @@ export const normalizeExplicitRulesForPersistence = ({
       return false;
     }
 
-    const inheritedMode = getInheritedCellMode(rule.source, rule.content_type, defaultModes, baseRules);
-    const effectiveMode = capPolicyMode(rule.mode, defaultMode);
-    return effectiveMode !== inheritedMode;
+    return true;
   });
 
   return sortRules(filtered);

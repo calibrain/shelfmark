@@ -7,6 +7,7 @@ import {
   resolveDefaultModeFromPolicy,
   resolveSourceModeFromPolicy,
 } from './requestPolicyCore';
+import { policyTrace } from '../utils/policyTrace';
 
 interface UseRequestPolicyOptions {
   enabled: boolean;
@@ -49,7 +50,7 @@ export function useRequestPolicy({
         return null;
       }
 
-      if (!enabled || isAdmin) {
+      if (!enabled) {
         cache.reset();
         setPolicy(null);
         setIsLoading(false);
@@ -58,9 +59,23 @@ export function useRequestPolicy({
 
       setIsLoading(true);
       try {
-        const response = await cache.refresh({ enabled, isAdmin, force });
+        policyTrace('policy.refresh:start', { force, enabled, isAdmin });
+        // Always fetch server policy while authenticated so backend auth state
+        // remains authoritative even if local auth state is stale.
+        const response = await cache.refresh({ enabled, isAdmin: false, force });
+        policyTrace('policy.refresh:ok', {
+          force,
+          requestsEnabled: response?.requests_enabled ?? null,
+          defaults: response?.defaults ?? null,
+        });
         setPolicy(response);
         return response;
+      } catch (error) {
+        policyTrace('policy.refresh:error', {
+          force,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
       } finally {
         setIsLoading(false);
       }
@@ -69,24 +84,26 @@ export function useRequestPolicy({
   );
 
   useEffect(() => {
-    if (!enabled || isAdmin) {
+    if (!enabled) {
       cacheRef.current?.reset();
       setPolicy(null);
       return;
     }
     void fetchPolicy(true);
-  }, [enabled, isAdmin, fetchPolicy]);
+  }, [enabled, fetchPolicy]);
 
   const getDefaultMode = useCallback(
     (contentType: ContentType | string): RequestPolicyMode => {
-      return resolveDefaultModeFromPolicy(policy, isAdmin, contentType);
+      const effectiveIsAdmin = policy ? Boolean(policy.is_admin) : isAdmin;
+      return resolveDefaultModeFromPolicy(policy, effectiveIsAdmin, contentType);
     },
     [policy, isAdmin]
   );
 
   const getSourceMode = useCallback(
     (source: string, contentType: ContentType | string): RequestPolicyMode => {
-      return resolveSourceModeFromPolicy(policy, isAdmin, source, contentType);
+      const effectiveIsAdmin = policy ? Boolean(policy.is_admin) : isAdmin;
+      return resolveSourceModeFromPolicy(policy, effectiveIsAdmin, source, contentType);
     },
     [policy, isAdmin]
   );
@@ -98,7 +115,7 @@ export function useRequestPolicy({
   return {
     policy,
     isLoading,
-    isAdmin: isAdmin || Boolean(policy?.is_admin),
+    isAdmin: policy ? Boolean(policy.is_admin) : isAdmin,
     requestsEnabled: Boolean(policy?.requests_enabled),
     allowNotes: policy?.allow_notes ?? true,
     getDefaultMode,

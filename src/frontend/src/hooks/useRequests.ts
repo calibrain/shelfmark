@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   cancelRequest as cancelUserRequest,
   fulfilAdminRequest,
+  isApiResponseError,
   listAdminRequests,
   listRequests,
   rejectAdminRequest,
@@ -43,6 +44,10 @@ const toErrorMessage = (error: unknown, fallback: string): string => {
   return fallback;
 };
 
+const shouldFallbackToUserRequestList = (error: unknown): boolean => {
+  return isApiResponseError(error) && (error.status === 401 || error.status === 403);
+};
+
 export const useRequests = ({
   isAdmin,
   enabled,
@@ -67,7 +72,22 @@ export const useRequests = ({
 
     setIsLoading(true);
     try {
-      const rows = isAdmin ? await listAdminRequests() : await listRequests();
+      let rows: RequestRecord[];
+      if (isAdmin) {
+        try {
+          rows = await listAdminRequests();
+        } catch (err) {
+          // Role/session state can momentarily desync between tabs.
+          // If admin list is unauthorized, fall back to user-scoped list.
+          if (shouldFallbackToUserRequestList(err)) {
+            rows = await listRequests();
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        rows = await listRequests();
+      }
       setRequests(rows);
       setError(null);
     } catch (err) {

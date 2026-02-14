@@ -21,6 +21,7 @@ export const buildMetadataBookRequestData = (book: Book, contentType: ContentTyp
     preview: book.preview,
     series_name: book.series_name,
     series_position: book.series_position,
+    series_count: book.series_count,
     subtitle: book.subtitle,
     source_url: book.source_url,
   };
@@ -65,6 +66,7 @@ export const buildReleaseDataFromMetadataRelease = (
     content_type: contentType,
     series_name: book.series_name,
     series_position: book.series_position,
+    series_count: book.series_count,
     subtitle: book.subtitle,
   };
 };

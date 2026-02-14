@@ -196,6 +196,26 @@ def register_request_routes(
                 }
             )
 
+        logger.debug(
+            "request-policy snapshot user=%s db_user_id=%s is_admin=%s requests_enabled=%s defaults=%s",
+            session.get("user_id"),
+            db_user_id,
+            is_admin,
+            requests_enabled,
+            {
+                "ebook": (
+                    default_ebook_mode.value
+                    if default_ebook_mode is not None
+                    else REQUEST_POLICY_DEFAULT_FALLBACK_MODE.value
+                ),
+                "audiobook": (
+                    default_audio_mode.value
+                    if default_audio_mode is not None
+                    else REQUEST_POLICY_DEFAULT_FALLBACK_MODE.value
+                ),
+            },
+        )
+
         return jsonify(
             {
                 "requests_enabled": requests_enabled,
@@ -279,6 +299,15 @@ def register_request_routes(
             content_type=content_type,
             global_settings=global_settings,
             user_settings=user_settings,
+        )
+        logger.debug(
+            "request create policy user=%s db_user_id=%s source=%s content_type=%s request_level=%s resolved_mode=%s",
+            session.get("user_id"),
+            db_user_id,
+            source,
+            content_type,
+            request_level,
+            resolved_mode.value,
         )
 
         if resolved_mode == PolicyMode.BLOCKED:

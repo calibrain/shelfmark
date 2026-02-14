@@ -38,7 +38,7 @@ export const STATUS_BADGE_STYLES: Record<ActivityVisualStatus, StatusBadgeStyle>
     bg: 'bg-amber-500/15',
     text: 'text-amber-700 dark:text-amber-300',
     waveColor: 'rgba(217, 119, 6, 0.3)',
-    fillColor: 'rgba(217, 119, 6, 0.25)',
+    fillColor: 'rgba(217, 119, 6, 0.4)',
   },
   pending: {
     bg: 'bg-amber-500/15',
@@ -48,19 +48,19 @@ export const STATUS_BADGE_STYLES: Record<ActivityVisualStatus, StatusBadgeStyle>
     bg: 'bg-indigo-500/15',
     text: 'text-indigo-700 dark:text-indigo-300',
     waveColor: 'rgba(79, 70, 229, 0.3)',
-    fillColor: 'rgba(79, 70, 229, 0.25)',
+    fillColor: 'rgba(79, 70, 229, 0.4)',
   },
   locating: {
     bg: 'bg-teal-500/15',
     text: 'text-teal-700 dark:text-teal-300',
     waveColor: 'rgba(13, 148, 136, 0.3)',
-    fillColor: 'rgba(13, 148, 136, 0.25)',
+    fillColor: 'rgba(13, 148, 136, 0.4)',
   },
   downloading: {
     bg: 'bg-sky-500/15',
     text: 'text-sky-700 dark:text-sky-300',
     waveColor: 'rgba(2, 132, 199, 0.3)',
-    fillColor: 'rgba(2, 132, 199, 0.25)',
+    fillColor: 'rgba(2, 132, 199, 0.4)',
   },
   complete: {
     bg: 'bg-green-500/15',

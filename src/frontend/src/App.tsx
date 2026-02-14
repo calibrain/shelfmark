@@ -29,6 +29,7 @@ import { useSearch } from './hooks/useSearch';
 import { useUrlSearch } from './hooks/useUrlSearch';
 import { useDownloadTracking } from './hooks/useDownloadTracking';
 import { useRequestPolicy } from './hooks/useRequestPolicy';
+import { resolveDefaultModeFromPolicy, resolveSourceModeFromPolicy } from './hooks/requestPolicyCore';
 import { useRequests } from './hooks/useRequests';
 import { Header } from './components/Header';
 import { SearchSection } from './components/SearchSection';
@@ -59,6 +60,7 @@ import {
   toContentType,
 } from './utils/requestPayload';
 import { bookFromRequestData } from './utils/requestFulfil';
+import { policyTrace } from './utils/policyTrace';
 import { SearchModeProvider } from './contexts/SearchModeContext';
 import './styles.css';
 
@@ -84,6 +86,26 @@ const isPolicyGuardError = (error: unknown): boolean => {
     error.status === 403 &&
     Boolean(error.code && POLICY_GUARD_ERROR_CODES.has(error.code))
   );
+};
+
+const asRequestPolicyMode = (value: unknown): RequestPolicyMode | null => {
+  return value === 'download' || value === 'request_release' || value === 'request_book' || value === 'blocked'
+    ? value
+    : null;
+};
+
+const getPolicyGuardRequiredMode = (error: unknown): RequestPolicyMode | null => {
+  if (!isPolicyGuardError(error) || !isApiResponseError(error)) {
+    return null;
+  }
+  const explicitMode = asRequestPolicyMode(error.requiredMode);
+  if (explicitMode) {
+    return explicitMode;
+  }
+  if (error.code === 'policy_blocked') {
+    return 'blocked';
+  }
+  return null;
 };
 
 const getErrorMessage = (error: unknown, fallback: string): string => {
@@ -122,7 +144,7 @@ function App() {
     isAuthenticated,
     authRequired,
     authChecked,
-    isAdmin,
+    isAdmin: authCanAccessSettings,
     authMode,
     username,
     displayName,
@@ -135,6 +157,15 @@ function App() {
   } = useAuth({
     showToast,
   });
+
+  // Re-request status after auth is established so the server can re-scope socket room membership.
+  useEffect(() => {
+    if (!authChecked || !isAuthenticated) {
+      return;
+    }
+    policyTrace('auth.status', { authChecked, isAuthenticated, isAdmin: authCanAccessSettings, username });
+    void fetchStatus();
+  }, [authChecked, isAuthenticated, authCanAccessSettings, username, fetchStatus]);
 
   // Content type state (ebook vs audiobook) - defined before useSearch since it's passed to it
   const [contentType, setContentType] = useState<ContentType>(() => getInitialContentType());
@@ -156,8 +187,10 @@ function App() {
     refresh: refreshRequestPolicy,
   } = useRequestPolicy({
     enabled: isAuthenticated,
-    isAdmin,
+    isAdmin: authCanAccessSettings,
   });
+
+  const requestRoleIsAdmin = requestPolicy ? Boolean(requestPolicy.is_admin) : false;
 
   const {
     requests,
@@ -167,20 +200,65 @@ function App() {
     fulfilRequest: fulfilSidebarRequest,
     rejectRequest: rejectSidebarRequest,
   } = useRequests({
-    isAdmin,
+    isAdmin: requestRoleIsAdmin,
     enabled: isAuthenticated,
   });
+
+  const dismissedRequestStorageKey = useMemo(() => {
+    const roleScope = requestRoleIsAdmin ? 'admin' : 'user';
+    const userScope = username?.trim().toLowerCase() || 'anonymous';
+    return `activity-dismissed-requests:${roleScope}:${userScope}`;
+  }, [requestRoleIsAdmin, username]);
+
+  const [dismissedRequestIds, setDismissedRequestIds] = useState<number[]>([]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setDismissedRequestIds([]);
+      return;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(dismissedRequestStorageKey);
+      if (!raw) {
+        setDismissedRequestIds([]);
+        return;
+      }
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        setDismissedRequestIds([]);
+        return;
+      }
+
+      const ids = parsed.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+      setDismissedRequestIds(ids);
+    } catch {
+      setDismissedRequestIds([]);
+    }
+  }, [dismissedRequestStorageKey, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+    try {
+      window.localStorage.setItem(dismissedRequestStorageKey, JSON.stringify(dismissedRequestIds));
+    } catch {
+      // Ignore storage failures in restricted/private contexts.
+    }
+  }, [dismissedRequestIds, dismissedRequestStorageKey, isAuthenticated]);
 
   const requestItems = useMemo(
     () =>
       requests
-        .map((record) => requestToActivityItem(record, isAdmin ? 'admin' : 'user'))
+        .filter((record) => !dismissedRequestIds.includes(record.id))
+        .map((record) => requestToActivityItem(record, requestRoleIsAdmin ? 'admin' : 'user'))
         .sort((left, right) => right.timestamp - left.timestamp),
-    [requests, isAdmin]
+    [requests, requestRoleIsAdmin, dismissedRequestIds]
   );
 
   const showRequestsTab = useMemo(() => {
-    if (isAdmin) {
+    if (requestRoleIsAdmin) {
       return true;
     }
     if (!isAuthenticated || !requestsPolicyEnabled) {
@@ -193,7 +271,7 @@ function App() {
       requestPolicy.defaults.ebook === 'download' &&
       requestPolicy.defaults.audiobook === 'download'
     );
-  }, [isAdmin, isAuthenticated, requestsPolicyEnabled, requestPolicy]);
+  }, [requestRoleIsAdmin, isAuthenticated, requestsPolicyEnabled, requestPolicy]);
 
   // Search state and handlers
   const {
@@ -613,15 +691,42 @@ function App() {
 
   // Direct-mode action (download or release-level request based on policy).
   const handleDownload = async (book: Book): Promise<void> => {
-    void refreshRequestPolicy();
-    const mode = getDirectPolicyMode();
+    let mode = getDirectPolicyMode();
+    policyTrace('direct.action:start', {
+      bookId: book.id,
+      contentType: 'ebook',
+      cachedMode: mode,
+      isAdmin: requestRoleIsAdmin,
+    });
+    try {
+      const latestPolicy = await refreshRequestPolicy({ force: true });
+      const effectiveIsAdmin = latestPolicy ? Boolean(latestPolicy.is_admin) : requestRoleIsAdmin;
+      mode = resolveSourceModeFromPolicy(latestPolicy, effectiveIsAdmin, 'direct_download', 'ebook');
+      policyTrace('direct.action:resolved', {
+        bookId: book.id,
+        resolvedMode: mode,
+        effectiveIsAdmin,
+        defaults: latestPolicy?.defaults ?? null,
+        requestsEnabled: latestPolicy?.requests_enabled ?? null,
+      });
+    } catch (error) {
+      console.warn('Failed to refresh request policy before direct action:', error);
+      policyTrace('direct.action:refresh_failed', {
+        bookId: book.id,
+        mode,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     if (mode === 'blocked') {
+      policyTrace('direct.action:block', { bookId: book.id, mode });
       showToast('Download blocked by policy', 'error');
       await refreshRequestPolicy({ force: true });
       return;
     }
 
     if (mode === 'request_release' || mode === 'request_book') {
+      policyTrace('direct.action:request_modal', { bookId: book.id, mode });
       openRequestConfirmation(buildDirectRequestPayload(book, mode));
       return;
     }
@@ -632,6 +737,17 @@ function App() {
     } catch (error) {
       console.error('Download failed:', error);
       if (isPolicyGuardError(error)) {
+        const requiredMode = getPolicyGuardRequiredMode(error);
+        policyTrace('direct.action:policy_guard', {
+          bookId: book.id,
+          requiredMode,
+          code: isApiResponseError(error) ? error.code : null,
+        });
+        if (requiredMode === 'request_release' || requiredMode === 'request_book') {
+          openRequestConfirmation(buildDirectRequestPayload(book, requiredMode));
+          await refreshRequestPolicy({ force: true });
+          return;
+        }
         showToast('Download blocked by policy', 'error');
         await refreshRequestPolicy({ force: true });
         return;
@@ -665,16 +781,48 @@ function App() {
 
   // Universal-mode "Get" action (open releases, request-book, or block by policy).
   const handleGetReleases = async (book: Book) => {
-    await refreshRequestPolicy();
-    const mode = getUniversalDefaultPolicyMode();
+    let mode = getUniversalDefaultPolicyMode();
     const normalizedContentType = toContentType(contentType);
+    policyTrace('universal.get:start', {
+      bookId: book.id,
+      contentType: normalizedContentType,
+      cachedMode: mode,
+      isAdmin: requestRoleIsAdmin,
+    });
+    try {
+      const latestPolicy = await refreshRequestPolicy({ force: true });
+      const effectiveIsAdmin = latestPolicy ? Boolean(latestPolicy.is_admin) : requestRoleIsAdmin;
+      mode = resolveDefaultModeFromPolicy(latestPolicy, effectiveIsAdmin, contentType);
+      policyTrace('universal.get:resolved', {
+        bookId: book.id,
+        contentType: normalizedContentType,
+        resolvedMode: mode,
+        effectiveIsAdmin,
+        defaults: latestPolicy?.defaults ?? null,
+        requestsEnabled: latestPolicy?.requests_enabled ?? null,
+      });
+    } catch (error) {
+      console.warn('Failed to refresh request policy before universal action:', error);
+      policyTrace('universal.get:refresh_failed', {
+        bookId: book.id,
+        contentType: normalizedContentType,
+        mode,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     if (mode === 'blocked') {
+      policyTrace('universal.get:block', { bookId: book.id, contentType: normalizedContentType });
       showToast('This title is unavailable by policy', 'error');
       return;
     }
 
     if (mode === 'request_book') {
+      policyTrace('universal.get:request_modal', {
+        bookId: book.id,
+        requestLevel: 'book',
+        contentType: normalizedContentType,
+      });
       openRequestConfirmation({
         book_data: buildMetadataBookRequestData(book, normalizedContentType),
         release_data: null,
@@ -689,6 +837,10 @@ function App() {
 
     if (book.provider && book.provider_id) {
       try {
+        policyTrace('universal.get:open_release_modal', {
+          bookId: book.id,
+          contentType: normalizedContentType,
+        });
         const fullBook = await getMetadataBookInfo(book.provider, book.provider_id);
         setReleaseBook({
           ...book,
@@ -699,17 +851,31 @@ function App() {
         });
       } catch (error) {
         console.error('Failed to load book description, using search data:', error);
+        policyTrace('universal.get:open_release_modal_fallback', {
+          bookId: book.id,
+          contentType: normalizedContentType,
+          message: error instanceof Error ? error.message : String(error),
+        });
         setReleaseBook(book);
       }
     } else {
+      policyTrace('universal.get:open_release_modal_no_provider', {
+        bookId: book.id,
+        contentType: normalizedContentType,
+      });
       setReleaseBook(book);
     }
   };
 
   // Handle download from ReleaseModal (universal mode release rows).
   const handleReleaseDownload = async (book: Book, release: Release, releaseContentType: ContentType) => {
-    void refreshRequestPolicy();
     try {
+      policyTrace('release.action:start', {
+        bookId: book.id,
+        releaseId: release.source_id,
+        source: release.source,
+        contentType: toContentType(releaseContentType),
+      });
       trackRelease(book.id, release.source_id);
 
       await downloadRelease({
@@ -736,6 +902,43 @@ function App() {
     } catch (error) {
       console.error('Release download failed:', error);
       if (isPolicyGuardError(error)) {
+        const requiredMode = getPolicyGuardRequiredMode(error);
+        const normalizedContentType = toContentType(releaseContentType);
+        policyTrace('release.action:policy_guard', {
+          bookId: book.id,
+          releaseId: release.source_id,
+          source: release.source,
+          requiredMode,
+          code: isApiResponseError(error) ? error.code : null,
+          contentType: normalizedContentType,
+        });
+        if (requiredMode === 'request_release') {
+          openRequestConfirmation({
+            book_data: buildMetadataBookRequestData(book, normalizedContentType),
+            release_data: buildReleaseDataFromMetadataRelease(book, release, normalizedContentType),
+            context: {
+              source: release.source || 'direct_download',
+              content_type: normalizedContentType,
+              request_level: 'release',
+            },
+          });
+          await refreshRequestPolicy({ force: true });
+          return;
+        }
+        if (requiredMode === 'request_book') {
+          setReleaseBook(null);
+          openRequestConfirmation({
+            book_data: buildMetadataBookRequestData(book, normalizedContentType),
+            release_data: null,
+            context: {
+              source: release.source || 'direct_download',
+              content_type: normalizedContentType,
+              request_level: 'book',
+            },
+          });
+          await refreshRequestPolicy({ force: true });
+          return;
+        }
         showToast('Download blocked by policy', 'error');
         await refreshRequestPolicy({ force: true });
         return;
@@ -774,9 +977,15 @@ function App() {
     [cancelUserRequest, showToast]
   );
 
+  const handleRequestDismiss = useCallback((requestId: number) => {
+    setDismissedRequestIds((previous) =>
+      previous.includes(requestId) ? previous : [...previous, requestId]
+    );
+  }, []);
+
   const handleRequestReject = useCallback(
     async (requestId: number, adminNote?: string) => {
-      if (!isAdmin) {
+      if (!requestRoleIsAdmin) {
         return;
       }
 
@@ -787,12 +996,12 @@ function App() {
         showToast(getErrorMessage(error, 'Failed to reject request'), 'error');
       }
     },
-    [isAdmin, rejectSidebarRequest, showToast]
+    [requestRoleIsAdmin, rejectSidebarRequest, showToast]
   );
 
   const handleRequestApprove = useCallback(
     async (requestId: number, record: RequestRecord) => {
-      if (!isAdmin) {
+      if (!requestRoleIsAdmin) {
         return;
       }
 
@@ -814,7 +1023,7 @@ function App() {
         contentType: record.content_type,
       });
     },
-    [isAdmin, fulfilSidebarRequest, showToast, fetchStatus]
+    [requestRoleIsAdmin, fulfilSidebarRequest, showToast, fetchStatus]
   );
 
   const handleBrowseFulfilDownload = useCallback(
@@ -895,6 +1104,7 @@ function App() {
   const isBrowseFulfilMode = fulfillingRequest !== null;
   const activeReleaseBook = fulfillingRequest?.book ?? releaseBook;
   const activeReleaseContentType = fulfillingRequest?.contentType ?? contentType;
+  const usePinnedMainScrollContainer = sidebarPinnedOpen;
 
   const handleReleaseModalClose = useCallback(() => {
     if (isBrowseFulfilMode) {
@@ -915,7 +1125,7 @@ function App() {
           showSearch={!isInitialState}
           searchInput={searchInput}
           onSearchChange={setSearchInput}
-          onDownloadsClick={() => setDownloadsSidebarOpen(true)}
+          onDownloadsClick={() => setDownloadsSidebarOpen((prev) => !prev)}
           onSettingsClick={() => {
             if (config?.settings_enabled) {
               setSettingsOpen(true);
@@ -923,7 +1133,8 @@ function App() {
               setConfigBannerOpen(true);
             }
           }}
-          isAdmin={isAdmin}
+          isAdmin={requestRoleIsAdmin}
+          canAccessSettings={authCanAccessSettings}
           username={username}
           displayName={displayName}
           statusCounts={statusCounts}
@@ -952,8 +1163,22 @@ function App() {
       </div>
 
       <div
-        className={`flex flex-1 flex-col${sidebarPinnedOpen ? ' lg:mr-96' : ''}`}
-        style={{ paddingTop: `${headerHeight}px` }}
+        className={`flex flex-col${
+          usePinnedMainScrollContainer
+            ? ' min-h-0 overflow-y-auto overscroll-y-contain'
+            : ' flex-1'
+        }`}
+        style={
+          usePinnedMainScrollContainer
+            ? {
+                position: 'fixed',
+                top: `${headerHeight}px`,
+                bottom: 0,
+                left: 0,
+                right: '25rem',
+              }
+            : { paddingTop: `${headerHeight}px` }
+        }
       >
         <AdvancedFilters
         visible={showAdvanced && !isInitialState}
@@ -978,7 +1203,14 @@ function App() {
         }}
       />
 
-      <main className="relative w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-6">
+      <main
+        className="relative w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-6"
+        style={
+          usePinnedMainScrollContainer
+            ? { display: 'block', flex: '0 0 auto', minHeight: 0 }
+            : undefined
+        }
+      >
         <SearchSection
           onSearch={(query) => runSearchWithPolicyRefresh(query)}
           isLoading={isSearching}
@@ -1035,7 +1267,7 @@ function App() {
             onDownload={isBrowseFulfilMode ? handleBrowseFulfilDownload : handleReleaseDownload}
             onRequestRelease={isBrowseFulfilMode ? undefined : handleReleaseRequest}
             getPolicyModeForSource={isBrowseFulfilMode ? () => 'download' : (source, ct) => getSourceMode(source, ct)}
-            onPolicyRefresh={refreshRequestPolicy}
+            onPolicyRefresh={() => refreshRequestPolicy({ force: true })}
             supportedFormats={supportedFormats}
             supportedAudiobookFormats={config?.supported_audiobook_formats || []}
             contentType={activeReleaseContentType}
@@ -1058,18 +1290,20 @@ function App() {
 
       </main>
 
-      <Footer
-        buildVersion={config?.build_version}
-        releaseVersion={config?.release_version}
-        debug={config?.debug}
-      />
+      <div className={usePinnedMainScrollContainer ? 'mt-auto' : undefined}>
+        <Footer
+          buildVersion={config?.build_version}
+          releaseVersion={config?.release_version}
+          debug={config?.debug}
+        />
+      </div>
       </div>
 
       <ActivitySidebar
         isOpen={downloadsSidebarOpen}
         onClose={() => setDownloadsSidebarOpen(false)}
         status={currentStatus}
-        isAdmin={isAdmin}
+        isAdmin={requestRoleIsAdmin}
         onClearCompleted={handleClearCompleted}
         onCancel={handleCancel}
         requestItems={requestItems}
@@ -1077,8 +1311,9 @@ function App() {
         showRequestsTab={showRequestsTab}
         isRequestsLoading={isRequestsLoading}
         onRequestCancel={showRequestsTab ? handleRequestCancel : undefined}
-        onRequestApprove={isAdmin ? handleRequestApprove : undefined}
-        onRequestReject={isAdmin ? handleRequestReject : undefined}
+        onRequestApprove={requestRoleIsAdmin ? handleRequestApprove : undefined}
+        onRequestReject={requestRoleIsAdmin ? handleRequestReject : undefined}
+        onRequestDismiss={showRequestsTab ? handleRequestDismiss : undefined}
         onPinnedOpenChange={setSidebarPinnedOpen}
         pinnedTopOffset={headerHeight}
       />

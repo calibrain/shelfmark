@@ -47,6 +47,8 @@ describe('requestConfirmation utilities', () => {
     assert.equal(preview.author, 'Example Author');
     assert.equal(preview.preview, 'https://example.com/cover.jpg');
     assert.equal(preview.releaseLine, 'EPUB | 2 MB | Prowlarr');
+    assert.equal(preview.year, '');
+    assert.equal(preview.seriesLine, '');
   });
 
   it('omits release line for book-level payloads', () => {
@@ -55,6 +57,66 @@ describe('requestConfirmation utilities', () => {
     assert.equal(preview.title, 'Book Level');
     assert.equal(preview.author, 'Book Author');
     assert.equal(preview.releaseLine, '');
+  });
+
+  it('includes year and series info when present', () => {
+    const payload: CreateRequestPayload = {
+      book_data: {
+        title: 'Dune',
+        author: 'Frank Herbert',
+        year: '1965',
+        series_name: 'Dune Chronicles',
+        series_position: 1,
+        series_count: 6,
+      },
+      release_data: null,
+      context: {
+        source: '*',
+        content_type: 'ebook',
+        request_level: 'book',
+      },
+    };
+    const preview = buildRequestConfirmationPreview(payload);
+
+    assert.equal(preview.year, '1965');
+    assert.equal(preview.seriesLine, '#1 of 6 in Dune Chronicles');
+  });
+
+  it('shows series position without count when count is absent', () => {
+    const payload: CreateRequestPayload = {
+      book_data: {
+        title: 'Dune',
+        author: 'Frank Herbert',
+        series_name: 'Dune Chronicles',
+        series_position: 1,
+      },
+      release_data: null,
+      context: {
+        source: '*',
+        content_type: 'ebook',
+        request_level: 'book',
+      },
+    };
+    const preview = buildRequestConfirmationPreview(payload);
+    assert.equal(preview.seriesLine, '#1 in Dune Chronicles');
+  });
+
+  it('shows series name without position when position is absent', () => {
+    const payload: CreateRequestPayload = {
+      book_data: {
+        title: 'Test',
+        author: 'Author',
+        series_name: 'My Series',
+      },
+      release_data: null,
+      context: {
+        source: '*',
+        content_type: 'ebook',
+        request_level: 'book',
+      },
+    };
+    const preview = buildRequestConfirmationPreview(payload);
+    assert.equal(preview.seriesLine, 'My Series');
   });
 
   it('applies trimmed note when notes are allowed', () => {

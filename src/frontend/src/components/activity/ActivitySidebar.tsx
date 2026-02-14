@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
 import { RequestRecord, StatusData } from '../../types';
 import { downloadToActivityItem, DownloadStatusKey } from './activityMappers';
 import { ActivityItem } from './activityTypes';
@@ -19,6 +19,7 @@ interface ActivitySidebarProps {
   onRequestCancel?: (requestId: number) => Promise<void> | void;
   onRequestApprove?: (requestId: number, record: RequestRecord) => Promise<void> | void;
   onRequestReject?: (requestId: number, adminNote?: string) => Promise<void> | void;
+  onRequestDismiss?: (requestId: number) => void;
   onPinnedOpenChange?: (pinnedOpen: boolean) => void;
   pinnedTopOffset?: number;
 }
@@ -34,6 +35,108 @@ const DOWNLOAD_STATUS_KEYS: DownloadStatusKey[] = [
   'complete',
   'cancelled',
 ];
+
+type ActivityCategoryKey =
+  | 'downloads'
+  | 'pending_requests'
+  | 'fulfilled_requests'
+  | 'other_requests';
+
+const getCategoryLabel = (
+  key: ActivityCategoryKey,
+  isAdmin: boolean
+): string => {
+  if (key === 'downloads') {
+    return 'Downloads';
+  }
+  if (key === 'pending_requests') {
+    return 'Pending Requests';
+  }
+  if (key === 'fulfilled_requests') {
+    return isAdmin ? 'Fulfilled Requests' : 'Completed Requests';
+  }
+  return 'Other Requests';
+};
+
+const getVisibleCategoryOrder = (
+  tab: 'all' | 'downloads' | 'requests'
+): ActivityCategoryKey[] => {
+  if (tab === 'downloads') {
+    return ['downloads'];
+  }
+  if (tab === 'requests') {
+    return ['pending_requests', 'fulfilled_requests', 'other_requests'];
+  }
+  return ['downloads', 'pending_requests', 'fulfilled_requests', 'other_requests'];
+};
+
+const getActivityCategory = (item: ActivityItem): ActivityCategoryKey => {
+  if (!item.requestId) {
+    return 'downloads';
+  }
+
+  if (item.requestRecord?.status === 'pending' || item.visualStatus === 'pending') {
+    return 'pending_requests';
+  }
+
+  if (item.requestRecord?.status === 'fulfilled' || item.visualStatus === 'fulfilled') {
+    return 'fulfilled_requests';
+  }
+
+  return 'other_requests';
+};
+
+const getLinkedDownloadIdFromRequestItem = (item: ActivityItem): string | null => {
+  if (item.kind !== 'request' || item.visualStatus !== 'fulfilled') {
+    return null;
+  }
+
+  const releaseData = item.requestRecord?.release_data;
+  if (!releaseData || typeof releaseData !== 'object') {
+    return null;
+  }
+
+  const sourceId = (releaseData as Record<string, unknown>).source_id;
+  if (typeof sourceId !== 'string') {
+    return null;
+  }
+
+  const trimmed = sourceId.trim();
+  return trimmed ? trimmed : null;
+};
+
+const mergeRequestWithDownload = (
+  requestItem: ActivityItem,
+  downloadItem: ActivityItem
+): ActivityItem => {
+  return {
+    ...downloadItem,
+    id: requestItem.id,
+    kind: 'download',
+    title: downloadItem.title || requestItem.title,
+    author: downloadItem.author || requestItem.author,
+    preview: downloadItem.preview || requestItem.preview,
+    metaLine: downloadItem.metaLine,
+    timestamp: Math.max(downloadItem.timestamp, requestItem.timestamp),
+    username: requestItem.username || downloadItem.username,
+    adminNote: requestItem.adminNote,
+    requestId: requestItem.requestId,
+    requestLevel: requestItem.requestLevel,
+    requestNote: requestItem.requestNote,
+    requestRecord: requestItem.requestRecord,
+  };
+};
+
+const dedupeById = (items: ActivityItem[]): ActivityItem[] => {
+  const byId = new Map<string, ActivityItem>();
+  items.forEach((item) => {
+    const current = byId.get(item.id);
+    if (!current || item.timestamp >= current.timestamp) {
+      byId.set(item.id, item);
+    }
+  });
+  return Array.from(byId.values());
+};
 
 const parsePinned = (value: string | null): boolean => {
   if (!value) {
@@ -74,6 +177,7 @@ export const ActivitySidebar = ({
   onRequestCancel,
   onRequestApprove,
   onRequestReject,
+  onRequestDismiss,
   onPinnedOpenChange,
   pinnedTopOffset = 0,
 }: ActivitySidebarProps) => {
@@ -81,6 +185,8 @@ export const ActivitySidebar = ({
   const [isDesktop, setIsDesktop] = useState<boolean>(() => getInitialDesktopState());
   const [activeTab, setActiveTab] = useState<'all' | 'downloads' | 'requests'>('all');
   const [rejectingRequest, setRejectingRequest] = useState<{ requestId: number; bookTitle: string } | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const scrollViewportRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(min-width: 1024px)');
@@ -146,20 +252,92 @@ export const ActivitySidebar = ({
     return items.sort((left, right) => right.timestamp - left.timestamp);
   }, [status]);
 
+  const { mergedRequestItems, mergedDownloadItems } = useMemo(() => {
+    const downloadsById = new Map<string, ActivityItem>();
+    downloadItems.forEach((item) => {
+      if (item.downloadBookId) {
+        downloadsById.set(item.downloadBookId, item);
+      }
+    });
+
+    const mergedByDownloadId = new Map<string, ActivityItem>();
+    const nextRequestItems = requestItems.map((requestItem) => {
+      const linkedDownloadId = getLinkedDownloadIdFromRequestItem(requestItem);
+      if (!linkedDownloadId) {
+        return requestItem;
+      }
+
+      const matchedDownload = downloadsById.get(linkedDownloadId);
+      if (!matchedDownload) {
+        return requestItem;
+      }
+
+      const merged = mergeRequestWithDownload(requestItem, matchedDownload);
+      if (!mergedByDownloadId.has(linkedDownloadId)) {
+        mergedByDownloadId.set(linkedDownloadId, merged);
+      }
+      return merged;
+    });
+
+    const nextDownloadItems = downloadItems.map((downloadItem) => {
+      const downloadId = downloadItem.downloadBookId;
+      if (!downloadId) {
+        return downloadItem;
+      }
+      return mergedByDownloadId.get(downloadId) || downloadItem;
+    });
+
+    return {
+      mergedRequestItems: nextRequestItems,
+      mergedDownloadItems: nextDownloadItems,
+    };
+  }, [downloadItems, requestItems]);
+
   const hasTerminalDownloadItems = useMemo(
     () =>
-      downloadItems.some(
+      mergedDownloadItems.some(
         (item) =>
           item.visualStatus === 'complete' || item.visualStatus === 'error' || item.visualStatus === 'cancelled'
       ),
-    [downloadItems]
+    [mergedDownloadItems]
   );
 
   const allItems = useMemo(() => {
-    return [...downloadItems, ...requestItems].sort((a, b) => b.timestamp - a.timestamp);
-  }, [downloadItems, requestItems]);
+    const combined = dedupeById([...mergedDownloadItems, ...mergedRequestItems]);
+    return combined.sort((a, b) => b.timestamp - a.timestamp);
+  }, [mergedDownloadItems, mergedRequestItems]);
 
-  const visibleItems = activeTab === 'all' ? allItems : activeTab === 'requests' ? requestItems : downloadItems;
+  const visibleItems = activeTab === 'all'
+    ? allItems
+    : activeTab === 'requests'
+      ? mergedRequestItems
+      : mergedDownloadItems;
+
+  const visibleCategoryOrder = useMemo(
+    () => getVisibleCategoryOrder(activeTab),
+    [activeTab]
+  );
+
+  const groupedVisibleItems = useMemo(() => {
+    const grouped = new Map<ActivityCategoryKey, ActivityItem[]>();
+    visibleCategoryOrder.forEach((key) => grouped.set(key, []));
+
+    visibleItems.forEach((item) => {
+      const category = activeTab === 'downloads' ? 'downloads' : getActivityCategory(item);
+      if (!grouped.has(category)) {
+        grouped.set(category, []);
+      }
+      grouped.get(category)!.push(item);
+    });
+
+    return visibleCategoryOrder
+      .map((key) => ({
+        key,
+        label: getCategoryLabel(key, isAdmin),
+        items: (grouped.get(key) || []).sort((left, right) => right.timestamp - left.timestamp),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [activeTab, isAdmin, visibleItems, visibleCategoryOrder]);
 
   const handleTogglePinned = () => {
     const next = !isPinned;
@@ -268,9 +446,9 @@ export const ActivitySidebar = ({
                 aria-current={activeTab === 'downloads' ? 'page' : undefined}
               >
                 Downloads
-                {downloadItems.length > 0 && (
-                  <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300">
-                    {downloadItems.length}
+                {mergedDownloadItems.length > 0 && (
+                  <span className="ml-1.5 text-[11px] h-[18px] min-w-[18px] px-1 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 inline-flex items-center justify-center leading-none">
+                    {mergedDownloadItems.length}
                   </span>
                 )}
               </button>
@@ -287,7 +465,7 @@ export const ActivitySidebar = ({
               >
                 Requests
                 {pendingRequestCount > 0 && (
-                  <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                  <span className="ml-1.5 text-[11px] h-[18px] min-w-[18px] px-1 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 inline-flex items-center justify-center leading-none">
                     {pendingRequestCount}
                   </span>
                 )}
@@ -298,7 +476,8 @@ export const ActivitySidebar = ({
       </div>
 
       <div
-        className="flex-1 overflow-y-auto p-4 divide-y divide-[var(--border-muted)]"
+        ref={scrollViewportRef}
+        className="flex-1 overflow-y-auto overscroll-y-contain p-4"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
       >
         {visibleItems.length === 0 ? (
@@ -310,41 +489,71 @@ export const ActivitySidebar = ({
                 : 'No activity'}
           </p>
         ) : (
-          visibleItems.map((item) => {
-            const showRequestActions = activeTab === 'requests' || activeTab === 'all';
-            const shouldShowRejectDialog =
-              showRequestActions &&
-              rejectingRequest !== null &&
-              item.requestId === rejectingRequest.requestId;
+          groupedVisibleItems.map((group) => (
+            <section key={group.key} className="mb-4 last:mb-0">
+              {activeTab !== 'downloads' && (
+                <button
+                  type="button"
+                  onClick={() => setCollapsedGroups((prev) => ({ ...prev, [group.key]: !prev[group.key] }))}
+                  className="mb-2 w-full flex items-center justify-between text-[11px] uppercase tracking-wide opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <svg
+                      className={`w-3 h-3 transition-transform ${collapsedGroups[group.key] ? '-rotate-90' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      strokeWidth="1.5"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                    <span>{group.label}</span>
+                  </div>
+                  <span className="rounded-full h-[18px] min-w-[18px] px-1 bg-gray-500/10 dark:bg-gray-400/10 inline-flex items-center justify-center leading-none">{group.items.length}</span>
+                </button>
+              )}
+              {!collapsedGroups[group.key] && (
+              <div className="divide-y divide-[color-mix(in_srgb,var(--border-muted)_60%,transparent)]">
+                {group.items.map((item) => {
+                  const showRequestActions = activeTab === 'requests' || activeTab === 'all';
+                  const shouldShowRejectDialog =
+                    showRequestActions &&
+                    rejectingRequest !== null &&
+                    item.requestId === rejectingRequest.requestId;
 
-            return (
-              <div key={item.id} className="py-2 first:pt-0 last:pb-0">
-                <ActivityCard
-                  item={item}
-                  isAdmin={isAdmin}
-                  onDownloadCancel={onCancel}
-                  onRequestCancel={onRequestCancel}
-                  onRequestApprove={onRequestApprove}
-                  onRequestReject={
-                    showRequestActions && onRequestReject
-                      ? (requestId) => {
-                          const title = item.title || 'Untitled request';
-                          setRejectingRequest({ requestId, bookTitle: title });
+                  return (
+                    <div key={item.id}>
+                      <ActivityCard
+                        item={item}
+                        isAdmin={isAdmin}
+                        onDownloadCancel={onCancel}
+                        onRequestCancel={onRequestCancel}
+                        onRequestApprove={onRequestApprove}
+                        onRequestDismiss={onRequestDismiss}
+                        onRequestReject={
+                          showRequestActions && onRequestReject
+                            ? (requestId) => {
+                                const title = item.title || 'Untitled request';
+                                setRejectingRequest({ requestId, bookTitle: title });
+                              }
+                            : undefined
                         }
-                      : undefined
-                  }
-                />
-                {shouldShowRejectDialog && onRequestReject && (
-                  <RejectDialog
-                    requestId={rejectingRequest.requestId}
-                    bookTitle={rejectingRequest.bookTitle}
-                    onConfirm={onRequestReject}
-                    onCancel={() => setRejectingRequest(null)}
-                  />
-                )}
+                      />
+                      {shouldShowRejectDialog && onRequestReject && (
+                        <RejectDialog
+                          requestId={rejectingRequest.requestId}
+                          bookTitle={rejectingRequest.bookTitle}
+                          onConfirm={onRequestReject}
+                          onCancel={() => setRejectingRequest(null)}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })
+              )}
+            </section>
+          ))
         )}
       </div>
 
@@ -369,14 +578,26 @@ export const ActivitySidebar = ({
   );
 
   if (isPinnedOpen) {
+    const handlePinnedWheel = (event: WheelEvent<HTMLElement>) => {
+      const viewport = scrollViewportRef.current;
+      if (!viewport) {
+        return;
+      }
+      // Keep wheel/trackpad scrolling contained to the pinned activity panel.
+      event.preventDefault();
+      event.stopPropagation();
+      viewport.scrollTop += event.deltaY;
+    };
+
     return (
       <aside
         className="hidden lg:flex fixed right-0 w-96 flex-col bg-[var(--bg-soft)] z-30 rounded-2xl shadow-lg overflow-hidden"
         style={{
           top: `calc(${pinnedTopOffset}px + 0.75rem)`,
-          height: `calc(100vh - ${pinnedTopOffset}px - 1.5rem)`,
+          height: `calc(100dvh - ${pinnedTopOffset}px - 1.5rem)`,
           right: '0.75rem',
         }}
+        onWheel={handlePinnedWheel}
         aria-hidden={!isOpen}
       >
         {panel}
@@ -397,7 +618,7 @@ export const ActivitySidebar = ({
         className={`fixed top-0 right-0 h-full w-full sm:w-96 z-50 flex flex-col shadow-2xl transition-transform duration-300 ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
-        style={{ background: 'var(--bg-soft)' }}
+        style={{ background: 'var(--bg)' }}
         aria-hidden={!isOpen}
       >
         {panel}

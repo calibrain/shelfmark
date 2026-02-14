@@ -22,6 +22,7 @@ interface HeaderProps {
   onDownloadsClick?: () => void;
   onSettingsClick?: () => void;
   isAdmin?: boolean;
+  canAccessSettings?: boolean;
   statusCounts?: ActivityStatusCounts;
   onLogoClick?: () => void;
   authRequired?: boolean;
@@ -49,6 +50,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   onDownloadsClick,
   onSettingsClick,
   isAdmin = false,
+  canAccessSettings,
   statusCounts = { ongoing: 0, completed: 0, errored: 0, pendingRequests: 0 },
   onLogoClick,
   authRequired = false,
@@ -62,6 +64,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   onContentTypeChange,
 }, ref) => {
   const activityBadge = getActivityBadgeState(statusCounts, isAdmin);
+  const settingsEnabled = canAccessSettings ?? isAdmin;
   const searchBarRef = useRef<SearchBarHandle>(null);
 
   useImperativeHandle(ref, () => ({
@@ -306,13 +309,13 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
               {onSettingsClick && (
                 <button
                   type="button"
-                  onClick={isAdmin ? () => {
+                  onClick={settingsEnabled ? () => {
                     closeDropdown();
                     onSettingsClick();
                   } : undefined}
-                  disabled={!isAdmin}
+                  disabled={!settingsEnabled}
                   className={`w-full text-left px-4 py-2 transition-colors flex items-center gap-3 ${
-                    isAdmin ? 'hover-surface' : 'opacity-40 cursor-not-allowed'
+                    settingsEnabled ? 'hover-surface' : 'opacity-40 cursor-not-allowed'
                   }`}
                 >
                   <svg

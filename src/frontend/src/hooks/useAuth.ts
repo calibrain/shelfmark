@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LoginCredentials } from '../types';
 import { login, logout, checkAuth } from '../services/api';
+import { useSocket } from '../contexts/SocketContext';
 
 interface UseAuthOptions {
   onLogoutSuccess?: () => void;
@@ -27,6 +28,7 @@ interface UseAuthReturn {
 export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
   const { onLogoutSuccess, showToast } = options;
   const navigate = useNavigate();
+  const { socket } = useSocket();
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [authRequired, setAuthRequired] = useState<boolean>(true);
@@ -49,6 +51,16 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
     setOidcButtonLabel(response.oidc_button_label || null);
   }, []);
 
+  const refreshSocketSession = useCallback(() => {
+    if (!socket) {
+      return;
+    }
+    // Flask-SocketIO reads session state from the socket handshake context.
+    // Reconnect after auth state changes so socket events use the latest session.
+    socket.disconnect();
+    socket.connect();
+  }, [socket]);
+
   // Check authentication on mount
   useEffect(() => {
     const verifyAuth = async () => {
@@ -66,6 +78,35 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
     verifyAuth();
   }, [applyAuthResponse]);
 
+  // Re-sync auth when returning to the tab, so role/session changes in
+  // another tab/profile don't leave stale local auth state.
+  useEffect(() => {
+    const verifyAuthOnFocus = async () => {
+      try {
+        applyAuthResponse(await checkAuth());
+      } catch (error) {
+        console.error('Auth re-check failed:', error);
+      }
+    };
+
+    const handleFocus = () => {
+      void verifyAuthOnFocus();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void verifyAuthOnFocus();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [applyAuthResponse]);
+
   const handleLogin = useCallback(async (credentials: LoginCredentials) => {
     setIsLoggingIn(true);
     setLoginError(null);
@@ -74,6 +115,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
       if (response.success) {
         // Re-check auth to get updated session state
         applyAuthResponse(await checkAuth());
+        refreshSocketSession();
         setLoginError(null);
         navigate('/', { replace: true });
       } else {
@@ -88,7 +130,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
     } finally {
       setIsLoggingIn(false);
     }
-  }, [navigate, applyAuthResponse]);
+  }, [navigate, applyAuthResponse, refreshSocketSession]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -97,14 +139,19 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
         window.location.href = logout_url;
         return;
       }
+      refreshSocketSession();
       setIsAuthenticated(false);
+      setIsAdmin(false);
+      setUsername(null);
+      setDisplayName(null);
+      setOidcButtonLabel(null);
       onLogoutSuccess?.();
       navigate('/login', { replace: true });
     } catch (error) {
       console.error('Logout failed:', error);
       showToast?.('Logout failed', 'error');
     }
-  }, [navigate, onLogoutSuccess, showToast]);
+  }, [navigate, onLogoutSuccess, refreshSocketSession, showToast]);
 
   return {
     isAuthenticated,

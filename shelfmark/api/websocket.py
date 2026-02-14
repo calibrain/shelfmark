@@ -21,6 +21,7 @@ class WebSocketManager:
         self._on_all_disconnect_callbacks: List[Callable[[], None]] = []
         self._needs_rewarm = False  # Flag to trigger warmup callbacks on next connect
         self._user_rooms: Dict[str, int] = {}  # room_name -> ref count
+        self._sid_rooms: Dict[str, str] = {}  # sid -> room_name
         self._rooms_lock = threading.Lock()
         self._queue_status_fn: Optional[Callable] = None  # Reference to queue_status()
 
@@ -107,29 +108,53 @@ class WebSocketManager:
         """Set the queue_status function reference for per-room filtering."""
         self._queue_status_fn = fn
 
+    def _increment_user_room_locked(self, room: str):
+        self._user_rooms[room] = self._user_rooms.get(room, 0) + 1
+
+    def _decrement_user_room_locked(self, room: str):
+        count = self._user_rooms.get(room, 1) - 1
+        if count <= 0:
+            self._user_rooms.pop(room, None)
+        else:
+            self._user_rooms[room] = count
+
+    def _set_sid_room_locked(self, sid: str, room: Optional[str]):
+        current_room = self._sid_rooms.get(sid)
+        if current_room == room:
+            return
+
+        if current_room is not None:
+            leave_room(current_room, sid=sid)
+            if current_room.startswith("user_"):
+                self._decrement_user_room_locked(current_room)
+            self._sid_rooms.pop(sid, None)
+
+        if room is not None:
+            join_room(room, sid=sid)
+            self._sid_rooms[sid] = room
+            if room.startswith("user_"):
+                self._increment_user_room_locked(room)
+
+    def sync_user_room(self, sid: str, is_admin: bool, db_user_id: Optional[int] = None):
+        """Ensure a SID is in exactly one room matching the current session scope."""
+        room: Optional[str] = None
+        if is_admin:
+            room = "admins"
+        elif db_user_id is not None:
+            room = f"user_{db_user_id}"
+
+        with self._rooms_lock:
+            self._set_sid_room_locked(sid, room)
+
     def join_user_room(self, sid: str, is_admin: bool, db_user_id: Optional[int] = None):
         """Join the appropriate room based on user role."""
-        if is_admin or db_user_id is None:
-            join_room("admins", sid=sid)
-        else:
-            room = f"user_{db_user_id}"
-            join_room(room, sid=sid)
-            with self._rooms_lock:
-                self._user_rooms[room] = self._user_rooms.get(room, 0) + 1
+        self.sync_user_room(sid, is_admin, db_user_id)
 
-    def leave_user_room(self, sid: str, is_admin: bool, db_user_id: Optional[int] = None):
-        """Leave the user's room on disconnect."""
-        if is_admin or db_user_id is None:
-            leave_room("admins", sid=sid)
-        else:
-            room = f"user_{db_user_id}"
-            leave_room(room, sid=sid)
-            with self._rooms_lock:
-                count = self._user_rooms.get(room, 1) - 1
-                if count <= 0:
-                    self._user_rooms.pop(room, None)
-                else:
-                    self._user_rooms[room] = count
+    def leave_user_room(self, sid: str, is_admin: bool = False, db_user_id: Optional[int] = None):
+        """Leave whichever room the SID currently belongs to."""
+        del is_admin, db_user_id  # Backward-compatible signature; routing is SID-based.
+        with self._rooms_lock:
+            self._set_sid_room_locked(sid, None)
 
     def broadcast_status_update(self, status_data: Dict[str, Any]):
         """Broadcast status update to all connected clients, filtered by user room."""

@@ -333,15 +333,31 @@ def _resolve_policy_mode_for_current_user(*, source: Any, content_type: Any) -> 
     if not _as_bool(effective.get("REQUESTS_ENABLED"), False):
         return None
 
-    return resolve_policy_mode(
+    resolved_mode = resolve_policy_mode(
         source=source,
         content_type=content_type,
         global_settings=global_settings,
         user_settings=user_settings,
     )
+    logger.debug(
+        "download policy resolve user=%s db_user_id=%s is_admin=%s source=%s content_type=%s mode=%s",
+        session.get("user_id"),
+        db_user_id,
+        bool(session.get("is_admin", False)),
+        source,
+        content_type,
+        resolved_mode.value,
+    )
+    return resolved_mode
 
 
 def _policy_block_response(mode: PolicyMode):
+    logger.debug(
+        "download policy guard user=%s db_user_id=%s mode=%s",
+        session.get("user_id"),
+        session.get("db_user_id"),
+        mode.value,
+    )
     if mode == PolicyMode.BLOCKED:
         return (
             jsonify({
@@ -924,6 +940,36 @@ def api_health() -> Union[Response, Tuple[Response, int]]:
 
     return jsonify(response)
 
+
+def _resolve_status_scope(*, require_authenticated: bool = True) -> tuple[bool, int | None, bool]:
+    """Resolve queue-status visibility from session state.
+
+    Returns:
+        (is_admin, db_user_id, can_access_status)
+    """
+    auth_mode = get_auth_mode()
+    if auth_mode == "none":
+        return True, None, True
+
+    if require_authenticated and 'user_id' not in session:
+        return False, None, False
+
+    is_admin = bool(session.get('is_admin', False))
+    if is_admin:
+        return True, None, True
+
+    raw_db_user_id = session.get('db_user_id')
+    try:
+        db_user_id = int(raw_db_user_id) if raw_db_user_id is not None else None
+    except (TypeError, ValueError):
+        db_user_id = None
+
+    if db_user_id is None:
+        return False, None, False
+
+    return False, db_user_id, True
+
+
 @app.route('/api/status', methods=['GET'])
 @login_required
 def api_status() -> Union[Response, Tuple[Response, int]]:
@@ -934,10 +980,11 @@ def api_status() -> Union[Response, Tuple[Response, int]]:
         flask.Response: JSON object with queue status.
     """
     try:
-        # Non-admin users only see their own downloads
-        user_id = None
-        if not session.get('is_admin', True):
-            user_id = session.get('db_user_id')
+        is_admin, db_user_id, can_access_status = _resolve_status_scope()
+        if not can_access_status:
+            return jsonify({})
+
+        user_id = None if is_admin else db_user_id
         status = backend.queue_status(user_id=user_id)
         return jsonify(status)
     except Exception as e:
@@ -2108,16 +2155,17 @@ def handle_connect():
     # Track the connection (triggers warmup callbacks on first connect)
     ws_manager.client_connected()
 
-    # Join appropriate room based on user session
-    is_admin = session.get('is_admin', True)
-    db_user_id = session.get('db_user_id')
+    # Join appropriate room based on authenticated user session
+    is_admin, db_user_id, can_access_status = _resolve_status_scope()
     ws_manager.join_user_room(request.sid, is_admin, db_user_id)
 
     # Send initial status to the newly connected client (filtered)
     try:
-        user_id = None
-        if not is_admin:
-            user_id = db_user_id
+        if not can_access_status:
+            emit('status_update', {})
+            return
+
+        user_id = None if is_admin else db_user_id
         status = backend.queue_status(user_id=user_id)
         emit('status_update', status)
     except Exception as e:
@@ -2129,9 +2177,7 @@ def handle_disconnect():
     logger.info("WebSocket client disconnected")
 
     # Leave room
-    is_admin = session.get('is_admin', True)
-    db_user_id = session.get('db_user_id')
-    ws_manager.leave_user_room(request.sid, is_admin, db_user_id)
+    ws_manager.leave_user_room(request.sid)
 
     # Track the disconnection
     ws_manager.client_disconnected()
@@ -2140,9 +2186,14 @@ def handle_disconnect():
 def handle_status_request():
     """Handle manual status request from client."""
     try:
-        user_id = None
-        if not session.get('is_admin', True):
-            user_id = session.get('db_user_id')
+        is_admin, db_user_id, can_access_status = _resolve_status_scope()
+        ws_manager.sync_user_room(request.sid, is_admin, db_user_id)
+
+        if not can_access_status:
+            emit('status_update', {})
+            return
+
+        user_id = None if is_admin else db_user_id
         status = backend.queue_status(user_id=user_id)
         emit('status_update', status)
     except Exception as e:

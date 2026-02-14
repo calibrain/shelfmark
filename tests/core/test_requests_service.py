@@ -377,6 +377,47 @@ def test_fulfil_request_queues_as_requesting_user(user_db):
     assert isinstance(captured["release_data"], dict)
 
 
+def test_fulfil_book_level_request_stores_selected_release_data(user_db):
+    alice = user_db.create_user(username="alice")
+    admin = user_db.create_user(username="admin", role="admin")
+    created = create_request(
+        user_db,
+        user_id=alice["id"],
+        source_hint="*",
+        content_type="ebook",
+        request_level="book",
+        policy_mode="request_book",
+        book_data=_book_data(),
+    )
+
+    selected_release = _release_data()
+    selected_release["source_id"] = "admin-picked-book-release"
+
+    captured: dict[str, object] = {}
+
+    def fake_queue_release(release_data, priority, user_id=None, username=None):
+        captured["release_data"] = release_data
+        captured["priority"] = priority
+        captured["user_id"] = user_id
+        captured["username"] = username
+        return True, None
+
+    fulfilled = fulfil_request(
+        user_db,
+        request_id=created["id"],
+        admin_user_id=admin["id"],
+        queue_release=fake_queue_release,
+        release_data=selected_release,
+    )
+
+    assert fulfilled["status"] == "fulfilled"
+    assert fulfilled["request_level"] == "book"
+    assert fulfilled["release_data"]["source_id"] == "admin-picked-book-release"
+    assert captured["release_data"]["source_id"] == "admin-picked-book-release"
+    assert captured["user_id"] == alice["id"]
+    assert captured["username"] == "alice"
+
+
 # ---------------------------------------------------------------------------
 # book_data validation
 # ---------------------------------------------------------------------------

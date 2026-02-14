@@ -10,6 +10,7 @@ from shelfmark.core.auth_modes import AUTH_SOURCE_BUILTIN, AUTH_SOURCE_SET
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.requests_service import (
     normalize_policy_mode,
+    normalize_request_level,
     normalize_request_status,
     validate_request_level_payload,
     validate_status_transition,
@@ -526,10 +527,18 @@ class UserDB:
                 candidate_release_data = (
                     updates["release_data"] if "release_data" in updates else current["release_data"]
                 )
-                normalized_request_level = validate_request_level_payload(
-                    candidate_request_level,
-                    candidate_release_data,
-                )
+                candidate_status = updates.get("status", current["status"])
+                normalized_request_level = normalize_request_level(candidate_request_level)
+                normalized_candidate_status = normalize_request_status(candidate_status)
+
+                if normalized_request_level == "release" and candidate_release_data is None:
+                    raise ValueError("request_level=release requires non-null release_data")
+                if (
+                    normalized_request_level == "book"
+                    and candidate_release_data is not None
+                    and normalized_candidate_status != "fulfilled"
+                ):
+                    raise ValueError("request_level=book requires null release_data")
                 if "request_level" in updates:
                     updates["request_level"] = normalized_request_level
 

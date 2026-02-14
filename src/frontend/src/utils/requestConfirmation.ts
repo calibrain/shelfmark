@@ -1,4 +1,4 @@
-import { CreateRequestPayload } from '../types';
+import { Book, CreateRequestPayload } from '../types';
 
 export const MAX_REQUEST_NOTE_LENGTH = 1000;
 
@@ -20,9 +20,23 @@ export const formatSourceLabel = (value: unknown): string => {
     .join(' ');
 };
 
+const buildSeriesLine = (
+  name: string,
+  position: number | null,
+  count: number | null,
+): string => {
+  if (!name) return '';
+  if (position != null) {
+    return `#${position}${count ? ` of ${count}` : ''} in ${name}`;
+  }
+  return name;
+};
+
 export interface RequestConfirmationPreview {
   title: string;
   author: string;
+  year: string;
+  seriesLine: string;
   preview: string;
   releaseLine: string;
 }
@@ -34,9 +48,17 @@ export const buildRequestConfirmationPreview = (
   const releaseData = payload.release_data || {};
   const requestLevel = payload.context?.request_level;
 
+  const seriesLine = buildSeriesLine(
+    toText(bookData.series_name, ''),
+    typeof bookData.series_position === 'number' ? bookData.series_position : null,
+    typeof bookData.series_count === 'number' ? bookData.series_count : null,
+  );
+
   return {
     title: toText(bookData.title ?? releaseData.title, 'Untitled'),
     author: toText(bookData.author ?? releaseData.author, 'Unknown author'),
+    year: toText(bookData.year ?? releaseData.year, ''),
+    seriesLine,
     preview:
       typeof bookData.preview === 'string'
         ? bookData.preview
@@ -62,6 +84,24 @@ export const truncateRequestNote = (
   value: string,
   maxLength: number = MAX_REQUEST_NOTE_LENGTH
 ): string => value.slice(0, maxLength);
+
+export const enrichPreviewFromBook = (
+  base: RequestConfirmationPreview,
+  book: Book,
+): RequestConfirmationPreview => {
+  const seriesLine = buildSeriesLine(
+    book.series_name ?? '',
+    book.series_position ?? null,
+    book.series_count ?? null,
+  );
+  if (!seriesLine && !book.year) return base;
+
+  return {
+    ...base,
+    seriesLine: seriesLine || base.seriesLine,
+    year: (book.year && !base.year) ? book.year : base.year,
+  };
+};
 
 export const applyRequestNoteToPayload = (
   payload: CreateRequestPayload,

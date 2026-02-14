@@ -677,6 +677,65 @@ class TestRequestRoutes:
         assert fulfil_resp.status_code == 400
         assert "release_data is required to fulfil book-level requests" in fulfil_resp.json["error"]
 
+    def test_admin_fulfil_book_level_request_with_release_data(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        admin = _create_user(main_module, prefix="admin", role="admin")
+        policy = _policy(default_ebook="request_book")
+
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        create_payload = {
+            "book_data": {
+                "title": "Book Level Fulfil",
+                "author": "QA Author",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "ol-book-fulfil",
+            },
+            "context": {
+                "source": "direct_download",
+                "content_type": "ebook",
+                "request_level": "book",
+            },
+        }
+
+        captured: dict[str, object] = {}
+
+        def fake_queue_release(release_data, priority, user_id=None, username=None):
+            captured["release_data"] = release_data
+            captured["priority"] = priority
+            captured["user_id"] = user_id
+            captured["username"] = username
+            return True, None
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+                    create_resp = client.post("/api/requests", json=create_payload)
+                    request_id = create_resp.json["id"]
+
+                    _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
+                    with patch.object(main_module.backend, "queue_release", side_effect=fake_queue_release):
+                        fulfil_resp = client.post(
+                            f"/api/admin/requests/{request_id}/fulfil",
+                            json={
+                                "release_data": {
+                                    "source": "direct_download",
+                                    "source_id": "book-level-picked-release",
+                                    "title": "Book Level Fulfil.epub",
+                                }
+                            },
+                        )
+
+        assert create_resp.status_code == 201
+        assert fulfil_resp.status_code == 200
+        assert fulfil_resp.json["status"] == "fulfilled"
+        assert fulfil_resp.json["request_level"] == "book"
+        assert fulfil_resp.json["release_data"]["source_id"] == "book-level-picked-release"
+        assert captured["release_data"]["source_id"] == "book-level-picked-release"
+        assert captured["priority"] == 0
+        assert captured["user_id"] == user["id"]
+        assert captured["username"] == user["username"]
+
     def test_admin_fulfil_uses_real_queue_and_preserves_requesting_identity(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         other_user = _create_user(main_module, prefix="reader")

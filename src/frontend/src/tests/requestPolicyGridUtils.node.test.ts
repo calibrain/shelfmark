@@ -78,11 +78,11 @@ describe('requestPolicyGridUtils', () => {
   it('filters allowed matrix modes by default ceiling', () => {
     assert.deepEqual(getAllowedMatrixModes('download'), ['download', 'request_release', 'blocked']);
     assert.deepEqual(getAllowedMatrixModes('request_release'), ['request_release', 'blocked']);
-    assert.deepEqual(getAllowedMatrixModes('request_book'), []);
+    assert.deepEqual(getAllowedMatrixModes('request_book'), ['blocked']);
     assert.deepEqual(getAllowedMatrixModes('blocked'), []);
   });
 
-  it('keeps only meaningful persisted rules and removes inherited rows', () => {
+  it('preserves explicit rules that match inherited values but removes unsupported pairs', () => {
     const sourceCapabilities = parseSourceCapabilitiesFromRulesField(tableFieldFixture);
     const defaultModes = normalizeRequestPolicyDefaults({
       ebook: 'request_release',
@@ -94,8 +94,8 @@ describe('requestPolicyGridUtils', () => {
     ]);
 
     const explicitRules = normalizeRequestPolicyRules([
-      { source: 'direct_download', content_type: 'ebook', mode: 'request_release' }, // same as inherited default -> removed
-      { source: 'prowlarr', content_type: 'ebook', mode: 'blocked' }, // same as inherited global rule -> removed
+      { source: 'direct_download', content_type: 'ebook', mode: 'request_release' }, // same as inherited default -> kept (explicit intent)
+      { source: 'prowlarr', content_type: 'ebook', mode: 'blocked' }, // same as inherited global rule -> kept (explicit intent)
       { source: 'prowlarr', content_type: 'audiobook', mode: 'request_release' }, // meaningful override -> kept
       { source: 'irc', content_type: 'audiobook', mode: 'blocked' }, // unsupported pair -> removed
     ]);
@@ -108,7 +108,9 @@ describe('requestPolicyGridUtils', () => {
     });
 
     assert.deepEqual(persisted, [
+      { source: 'direct_download', content_type: 'ebook', mode: 'request_release' },
       { source: 'prowlarr', content_type: 'audiobook', mode: 'request_release' },
+      { source: 'prowlarr', content_type: 'ebook', mode: 'blocked' },
     ]);
   });
 

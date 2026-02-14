@@ -65,6 +65,32 @@ describe('requestPolicyCore mode resolution', () => {
     assert.equal(resolveDefaultModeFromPolicy(makePolicy(), true, 'ebook'), 'download');
     assert.equal(resolveSourceModeFromPolicy(makePolicy(), true, 'prowlarr', 'audiobook'), 'download');
   });
+
+  it('falls back to wildcard rules when source_modes entry is missing', () => {
+    const policy = makePolicy({
+      defaults: {
+        ebook: 'download',
+        audiobook: 'request_release',
+      },
+      source_modes: [],
+      rules: [{ source: '*', content_type: 'ebook', mode: 'request_release' }],
+    });
+
+    assert.equal(resolveSourceModeFromPolicy(policy, false, 'mystery_source', 'ebook'), 'request_release');
+  });
+
+  it('caps wildcard rule results to the content default ceiling', () => {
+    const policy = makePolicy({
+      defaults: {
+        ebook: 'request_release',
+        audiobook: 'request_release',
+      },
+      source_modes: [],
+      rules: [{ source: '*', content_type: 'ebook', mode: 'download' }],
+    });
+
+    assert.equal(resolveSourceModeFromPolicy(policy, false, 'mystery_source', 'ebook'), 'request_release');
+  });
 });
 
 describe('RequestPolicyCache', () => {
@@ -154,5 +180,49 @@ describe('RequestPolicyCache', () => {
 
     const adminResult = await cache.refresh({ enabled: true, isAdmin: true });
     assert.equal(adminResult, null);
+  });
+
+  it('runs a fresh forced fetch when a non-forced refresh is already in flight', async () => {
+    let fetchCount = 0;
+    const pendingResolvers: Array<() => void> = [];
+    const firstPolicy = makePolicy({
+      defaults: { ebook: 'download', audiobook: 'download' },
+    });
+    const secondPolicy = makePolicy({
+      defaults: { ebook: 'request_book', audiobook: 'request_release' },
+    });
+
+    const fetcher = (): Promise<RequestPolicyResponse> => {
+      fetchCount += 1;
+      const response = fetchCount === 1 ? firstPolicy : secondPolicy;
+      return new Promise<RequestPolicyResponse>((resolve) => {
+        pendingResolvers.push(() => resolve(response));
+      });
+    };
+
+    const cache = new RequestPolicyCache(fetcher, 60_000);
+
+    const nonForcedPromise = cache.refresh({ enabled: true, isAdmin: false });
+    const forcedPromise = cache.refresh({ enabled: true, isAdmin: false, force: true });
+
+    assert.equal(fetchCount, 1);
+    const firstResolver = pendingResolvers.shift();
+    if (!firstResolver) {
+      throw new Error('Missing first in-flight resolver');
+    }
+    firstResolver();
+
+    const nonForcedResult = await nonForcedPromise;
+    assert.deepEqual(nonForcedResult, firstPolicy);
+    assert.equal(fetchCount, 2);
+
+    const secondResolver = pendingResolvers.shift();
+    if (!secondResolver) {
+      throw new Error('Missing second in-flight resolver');
+    }
+    secondResolver();
+
+    const forcedResult = await forcedPromise;
+    assert.deepEqual(forcedResult, secondPolicy);
   });
 });

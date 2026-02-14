@@ -40,7 +40,7 @@ const toSourceLabel = (value: unknown): string | undefined => {
 };
 
 const joinMetaParts = (parts: Array<string | undefined>): string => {
-  return parts.filter((part): part is string => Boolean(part && part.trim())).join(' | ');
+  return parts.filter((part): part is string => Boolean(part && part.trim())).join(' · ');
 };
 
 const statusKeyToVisualStatus = (statusKey: DownloadStatusKey): ActivityVisualStatus => {
@@ -91,6 +91,7 @@ export const downloadToActivityItem = (book: Book, statusKey: DownloadStatusKey)
     username: toOptionalText(book.username),
     downloadBookId: book.id,
     downloadPath: toOptionalText(book.download_path),
+    sizeRaw: toOptionalText(book.size),
   };
 };
 

@@ -541,6 +541,27 @@ class TestDownloadRequests:
         assert updated["policy_mode"] == "request_release"
         assert updated["release_data"]["source_id"] == "release-1"
 
+    def test_update_request_allows_fulfilled_book_level_to_store_release_data(self, user_db):
+        user = user_db.create_user(username="alice")
+        created = user_db.create_request(
+            user_id=user["id"],
+            content_type="ebook",
+            request_level="book",
+            policy_mode="request_book",
+            book_data=self._book_data(),
+        )
+
+        updated = user_db.update_request(
+            created["id"],
+            status="fulfilled",
+            release_data=self._release_data(),
+            admin_note="Approved from browse mode",
+        )
+        assert updated["request_level"] == "book"
+        assert updated["status"] == "fulfilled"
+        assert updated["release_data"]["source_id"] == "release-1"
+        assert updated["admin_note"] == "Approved from browse mode"
+
     def test_update_request_rejects_non_object_release_data(self, user_db):
         user = user_db.create_user(username="alice")
         created = user_db.create_request(
