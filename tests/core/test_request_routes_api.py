@@ -7,6 +7,7 @@ import uuid
 from unittest.mock import ANY, patch
 
 import pytest
+from shelfmark.core.notifications import NotificationEvent
 
 
 @pytest.fixture(scope="module")
@@ -252,6 +253,40 @@ class TestRequestRoutes:
         assert emitted_payloads["new_request"]["status"] == "pending"
         assert emitted_payloads["new_request"]["title"] == "Eventful Book"
         assert emitted_payloads["request_update"]["request_id"] == request_id
+
+    def test_create_request_triggers_admin_notification(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(default_ebook="request_book")
+
+        payload = {
+            "book_data": {
+                "title": "Notify Create Book",
+                "author": "Notify Create Author",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "ol-notify-create",
+            },
+            "context": {
+                "source": "direct_download",
+                "content_type": "ebook",
+                "request_level": "book",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+                    with patch("shelfmark.core.request_routes.notify_admin") as mock_notify:
+                        resp = client.post("/api/requests", json=payload)
+
+        assert resp.status_code == 201
+        mock_notify.assert_called_once()
+        event, context = mock_notify.call_args.args
+        assert event == NotificationEvent.REQUEST_CREATED
+        assert context.title == "Notify Create Book"
+        assert context.author == "Notify Create Author"
+        assert context.username == user["username"]
 
     def test_cancel_request_emits_to_user_and_admin_rooms(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -571,6 +606,49 @@ class TestRequestRoutes:
         mock_emit.assert_any_call("request_update", ANY, to=f"user_{user['id']}")
         mock_emit.assert_any_call("request_update", ANY, to="admins")
 
+    def test_admin_reject_triggers_admin_notification(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        admin = _create_user(main_module, prefix="admin", role="admin")
+        policy = _policy(default_ebook="request_book")
+
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        create_payload = {
+            "book_data": {
+                "title": "Reject Notify Book",
+                "author": "Reject Notify Author",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "ol-reject-notify",
+            },
+            "context": {
+                "source": "direct_download",
+                "content_type": "ebook",
+                "request_level": "book",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+                    create_resp = client.post("/api/requests", json=create_payload)
+                    request_id = create_resp.json["id"]
+
+                    _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
+                    with patch("shelfmark.core.request_routes.notify_admin") as mock_notify:
+                        reject_resp = client.post(
+                            f"/api/admin/requests/{request_id}/reject",
+                            json={"admin_note": "Needs better metadata"},
+                        )
+
+        assert create_resp.status_code == 201
+        assert reject_resp.status_code == 200
+        mock_notify.assert_called_once()
+        event, context = mock_notify.call_args.args
+        assert event == NotificationEvent.REQUEST_REJECTED
+        assert context.title == "Reject Notify Book"
+        assert context.admin_note == "Needs better metadata"
+        assert context.username == user["username"]
+
     def test_admin_fulfil_queues_for_requesting_user(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         admin = _create_user(main_module, prefix="admin", role="admin")
@@ -673,6 +751,54 @@ class TestRequestRoutes:
         assert mock_emit.call_count == 2
         mock_emit.assert_any_call("request_update", ANY, to=f"user_{user['id']}")
         mock_emit.assert_any_call("request_update", ANY, to="admins")
+
+    def test_admin_fulfil_triggers_admin_notification(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        admin = _create_user(main_module, prefix="admin", role="admin")
+        policy = _policy(default_ebook="request_release")
+
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        create_payload = {
+            "book_data": {
+                "title": "Fulfil Notify Book",
+                "author": "Fulfil Notify Author",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "ol-fulfil-notify",
+            },
+            "context": {
+                "source": "prowlarr",
+                "content_type": "ebook",
+                "request_level": "release",
+            },
+            "release_data": {
+                "source": "prowlarr",
+                "source_id": "rel-fulfil-notify",
+                "title": "Fulfil Notify Book.epub",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+                    create_resp = client.post("/api/requests", json=create_payload)
+                    request_id = create_resp.json["id"]
+
+                    _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
+                    with patch.object(main_module.backend, "queue_release", return_value=(True, None)):
+                        with patch("shelfmark.core.request_routes.notify_admin") as mock_notify:
+                            fulfil_resp = client.post(
+                                f"/api/admin/requests/{request_id}/fulfil",
+                                json={"admin_note": "Approved"},
+                            )
+
+        assert create_resp.status_code == 201
+        assert fulfil_resp.status_code == 200
+        mock_notify.assert_called_once()
+        event, context = mock_notify.call_args.args
+        assert event == NotificationEvent.REQUEST_FULFILLED
+        assert context.title == "Fulfil Notify Book"
+        assert context.username == user["username"]
 
     def test_admin_fulfil_book_level_request_requires_release_data(self, main_module, client):
         user = _create_user(main_module, prefix="reader")

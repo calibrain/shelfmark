@@ -25,6 +25,11 @@ from shelfmark.core.requests_service import (
     reject_request,
 )
 from shelfmark.core.activity_service import ActivityService, build_request_item_key
+from shelfmark.core.notifications import (
+    NotificationContext,
+    NotificationEvent,
+    notify_admin,
+)
 from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_db import UserDB
 
@@ -186,6 +191,84 @@ def _record_terminal_request_snapshot(
         )
     except Exception as exc:
         logger.warning("Failed to record terminal request snapshot for request %s: %s", request_id, exc)
+
+
+def _normalize_optional_text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _resolve_request_username(
+    user_db: UserDB,
+    *,
+    request_row: dict[str, Any],
+    fallback_username: str | None = None,
+) -> str | None:
+    normalized_fallback = _normalize_optional_text(fallback_username)
+    raw_user_id = request_row.get("user_id")
+    try:
+        request_user_id = int(raw_user_id)
+    except (TypeError, ValueError):
+        return normalized_fallback
+
+    requester = user_db.get_user(user_id=request_user_id)
+    if not isinstance(requester, dict):
+        return normalized_fallback
+    return _normalize_optional_text(requester.get("username")) or normalized_fallback
+
+
+def _resolve_request_source_and_format(request_row: dict[str, Any]) -> tuple[str, str | None]:
+    release_data = request_row.get("release_data")
+    if isinstance(release_data, dict):
+        source = normalize_source(release_data.get("source") or request_row.get("source_hint"))
+        release_format = _normalize_optional_text(
+            release_data.get("format")
+            or release_data.get("filetype")
+            or release_data.get("extension")
+        )
+        return source, release_format
+    return normalize_source(request_row.get("source_hint")), None
+
+
+def _notify_admin_for_request_event(
+    user_db: UserDB,
+    *,
+    event: NotificationEvent,
+    request_row: dict[str, Any],
+    fallback_username: str | None = None,
+) -> None:
+    book_data = request_row.get("book_data")
+    if not isinstance(book_data, dict):
+        book_data = {}
+
+    source, release_format = _resolve_request_source_and_format(request_row)
+    context = NotificationContext(
+        event=event,
+        title=str(book_data.get("title") or "Unknown title"),
+        author=str(book_data.get("author") or "Unknown author"),
+        username=_resolve_request_username(
+            user_db,
+            request_row=request_row,
+            fallback_username=fallback_username,
+        ),
+        content_type=normalize_content_type(
+            request_row.get("content_type") or book_data.get("content_type")
+        ),
+        format=release_format,
+        source=source,
+        admin_note=_normalize_optional_text(request_row.get("admin_note")),
+        error_message=None,
+    )
+    try:
+        notify_admin(event, context)
+    except Exception as exc:
+        logger.warning(
+            "Failed to trigger admin notification for request event '%s': %s",
+            event.value,
+            exc,
+        )
 
 
 def register_request_routes(
@@ -417,6 +500,14 @@ def register_request_routes(
             room=f"user_{db_user_id}",
         )
 
+        actor_username = session.get("user_id") if isinstance(session.get("user_id"), str) else None
+        _notify_admin_for_request_event(
+            user_db,
+            event=NotificationEvent.REQUEST_CREATED,
+            request_row=created,
+            fallback_username=actor_username,
+        )
+
         return jsonify(created), 201
 
     @app.route("/api/requests", methods=["GET"])
@@ -582,6 +673,12 @@ def register_request_routes(
             room="admins",
         )
 
+        _notify_admin_for_request_event(
+            user_db,
+            event=NotificationEvent.REQUEST_FULFILLED,
+            request_row=updated,
+        )
+
         return jsonify(updated)
 
     @app.route("/api/admin/requests/<int:request_id>/reject", methods=["POST"])
@@ -632,6 +729,12 @@ def register_request_routes(
             event_name="request_update",
             payload=event_payload,
             room="admins",
+        )
+
+        _notify_admin_for_request_event(
+            user_db,
+            event=NotificationEvent.REQUEST_REJECTED,
+            request_row=updated,
         )
 
         return jsonify(updated)

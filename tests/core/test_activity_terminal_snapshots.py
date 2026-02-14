@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from shelfmark.core.models import DownloadTask, QueueStatus
+from shelfmark.core.notifications import NotificationEvent
 
 
 @pytest.fixture(scope="module")
@@ -152,5 +153,78 @@ class TestTerminalSnapshotCapture:
             assert row is not None
             snapshot = json.loads(row["snapshot_json"])
             assert snapshot["download"]["status_message"] == "Complete"
+        finally:
+            main_module.backend.book_queue.cancel_download(task_id)
+
+    def test_complete_transition_triggers_download_complete_notification(self, main_module):
+        user = _create_user(main_module, prefix="snap-notify-complete")
+        task_id = f"notify-complete-{uuid.uuid4().hex[:8]}"
+        task = DownloadTask(
+            task_id=task_id,
+            source="direct_download",
+            title="Notify Complete Snapshot",
+            author="Notify Author",
+            user_id=user["id"],
+            username=user["username"],
+        )
+        assert main_module.backend.book_queue.add(task) is True
+
+        try:
+            with patch.object(main_module, "notify_admin") as mock_notify:
+                main_module.backend.book_queue.update_status(task_id, QueueStatus.COMPLETE)
+
+            mock_notify.assert_called_once()
+            event, context = mock_notify.call_args.args
+            assert event == NotificationEvent.DOWNLOAD_COMPLETE
+            assert context.title == "Notify Complete Snapshot"
+            assert context.author == "Notify Author"
+            assert context.username == user["username"]
+        finally:
+            main_module.backend.book_queue.cancel_download(task_id)
+
+    def test_error_transition_triggers_download_failed_notification(self, main_module):
+        user = _create_user(main_module, prefix="snap-notify-error")
+        task_id = f"notify-error-{uuid.uuid4().hex[:8]}"
+        task = DownloadTask(
+            task_id=task_id,
+            source="direct_download",
+            title="Notify Error Snapshot",
+            author="Notify Error Author",
+            user_id=user["id"],
+            username=user["username"],
+        )
+        assert main_module.backend.book_queue.add(task) is True
+
+        try:
+            main_module.backend.book_queue.update_status_message(task_id, "Resolver timed out")
+            with patch.object(main_module, "notify_admin") as mock_notify:
+                main_module.backend.book_queue.update_status(task_id, QueueStatus.ERROR)
+
+            mock_notify.assert_called_once()
+            event, context = mock_notify.call_args.args
+            assert event == NotificationEvent.DOWNLOAD_FAILED
+            assert context.title == "Notify Error Snapshot"
+            assert context.error_message == "Resolver timed out"
+        finally:
+            main_module.backend.book_queue.cancel_download(task_id)
+
+    def test_cancelled_transition_does_not_trigger_notification(self, main_module):
+        user = _create_user(main_module, prefix="snap-notify-cancel")
+        task_id = f"notify-cancel-{uuid.uuid4().hex[:8]}"
+        task = DownloadTask(
+            task_id=task_id,
+            source="direct_download",
+            title="Notify Cancel Snapshot",
+            author="Notify Cancel Author",
+            user_id=user["id"],
+            username=user["username"],
+        )
+        assert main_module.backend.book_queue.add(task) is True
+
+        try:
+            with patch.object(main_module, "notify_admin") as mock_notify:
+                main_module.backend.book_queue.update_status(task_id, QueueStatus.CANCELLED)
+
+            mock_notify.assert_not_called()
         finally:
             main_module.backend.book_queue.cancel_download(task_id)

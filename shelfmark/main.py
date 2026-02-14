@@ -49,6 +49,7 @@ from shelfmark.core.requests_service import (
     sync_delivery_states_from_queue_status,
 )
 from shelfmark.core.activity_service import ActivityService, build_download_item_key
+from shelfmark.core.notifications import NotificationContext, NotificationEvent, notify_admin
 from shelfmark.core.utils import normalize_base_path
 from shelfmark.api.websocket import ws_manager
 
@@ -1012,7 +1013,55 @@ def _queue_status_to_final_activity_status(status: QueueStatus) -> str | None:
     return None
 
 
+def _normalize_optional_text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _queue_status_to_notification_event(status: QueueStatus) -> NotificationEvent | None:
+    if status in {QueueStatus.COMPLETE, QueueStatus.AVAILABLE, QueueStatus.DONE}:
+        return NotificationEvent.DOWNLOAD_COMPLETE
+    if status == QueueStatus.ERROR:
+        return NotificationEvent.DOWNLOAD_FAILED
+    return None
+
+
+def _notify_admin_for_terminal_download_status(*, task_id: str, status: QueueStatus, task: Any) -> None:
+    event = _queue_status_to_notification_event(status)
+    if event is None:
+        return
+
+    content_type = _normalize_optional_text(getattr(task, "content_type", None))
+    context = NotificationContext(
+        event=event,
+        title=str(getattr(task, "title", "Unknown title") or "Unknown title"),
+        author=str(getattr(task, "author", "Unknown author") or "Unknown author"),
+        username=_normalize_optional_text(getattr(task, "username", None)),
+        content_type=normalize_content_type(content_type) if content_type is not None else None,
+        format=_normalize_optional_text(getattr(task, "format", None)),
+        source=normalize_source(getattr(task, "source", None)),
+        error_message=(
+            _normalize_optional_text(getattr(task, "status_message", None))
+            if event == NotificationEvent.DOWNLOAD_FAILED
+            else None
+        ),
+    )
+    try:
+        notify_admin(event, context)
+    except Exception as exc:
+        logger.warning(
+            "Failed to trigger admin notification for download %s (%s): %s",
+            task_id,
+            status.value,
+            exc,
+        )
+
+
 def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: Any) -> None:
+    _notify_admin_for_terminal_download_status(task_id=task_id, status=status, task=task)
+
     if activity_service is None:
         return
 
@@ -1106,8 +1155,7 @@ def _is_graduated_request_download(task_id: str, *, user_id: int) -> bool:
     return False
 
 
-if activity_service is not None:
-    backend.book_queue.set_terminal_status_hook(_record_download_terminal_snapshot)
+backend.book_queue.set_terminal_status_hook(_record_download_terminal_snapshot)
 
 
 def _emit_request_update_events(updated_requests: list[dict[str, Any]]) -> None:
