@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useSettings } from '../../hooks/useSettings';
 import { useSearchMode } from '../../contexts/SearchModeContext';
 import { getAdminSettingsOverridesSummary, getSettingsTab } from '../../services/api';
+import { primeUsersCache } from './users/useUsersFetch';
 import { SettingsHeader } from './SettingsHeader';
 import { SettingsSidebar } from './SettingsSidebar';
 import { SettingsContent } from './SettingsContent';
@@ -97,6 +98,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
       setShowMobileDetail(false);
       setIsClosing(false);
       setTabOverrideSummaries({});
+      void primeUsersCache();
     }
   }, [isOpen]);
 

@@ -151,21 +151,15 @@ If you need Cloudflare bypass with the Lite image, configure an external resolve
 
 ## 🔐 Authentication
 
-Authentication is optional but recommended for shared or exposed instances. Four authentication methods are available in Settings:
+Authentication is optional but recommended for shared or exposed instances. Three authentication methods are available in Settings:
 
-**1. Built-in Username/Password**
+**1. Single Username/Password**
 
-Multi-user support with admin user management. The first user is always admin. Admins can create additional users, set per-user download destinations, and manage roles.
-
-**2. OpenID Connect (OIDC)**
-
-Integrate with any OIDC provider (Authentik, Keycloak, Pocket ID, etc.) for SSO. Supports auto-provisioning, group-based admin mapping, and per-user download settings. Configure your provider's discovery URL, client ID, and client secret in Settings.
-
-**3. Proxy (Forward) Authentication**
+**2. Proxy (Forward) Authentication**
 
 Proxy auth trusts headers set by your reverse proxy (e.g. `X-Auth-User`). Ensure Shelfmark is not directly exposed, and configure your proxy to strip/overwrite these headers for all inbound requests.
 
-**4. Calibre-Web Database**
+**3. Calibre-Web Database**
 
 If you're running Calibre-Web, you can reuse its user database by mounting it:
 
@@ -173,15 +167,6 @@ If you're running Calibre-Web, you can reuse its user database by mounting it:
 volumes:
   - /path/to/calibre-web/app.db:/auth/app.db:ro
 ```
-
-### Multi-User Features (Built-in & OIDC)
-
-- Admin user management panel in Settings
-- Per-user download destination overrides
-- Per-user BookLore library/path overrides
-- Per-user email recipient overrides
-- Download queue scoped per user (admins see all)
-- `{User}` template variable for organizing downloads by user
 
 ## Health Monitoring
 
@@ -230,16 +215,13 @@ The frontend dev server proxies to the backend on port 8084.
 ├─────────────────────────────────────────────────────────────┤
 │                      Flask Backend                          │
 │                   (REST API + WebSocket)                    │
-├─────────────────────────────────────────────────────────────┤
-│                    Authentication                           │
-│        (Built-in / OIDC / Proxy / CWA / None)              │
 ├───────────────────┬─────────────────────┬───────────────────┤
 │ Metadata Providers│   Download Queue    │  Cloudflare       │
 │                   │   & Orchestrator    │  Bypass           │
 ├───────────────────┼─────────────────────┼───────────────────┤
 │ • Hardcover       │ • Task scheduling   │ • Internal        │
 │ • Open Library    │ • Progress tracking │ • External        │
-│                   │ • Per-user scoping  │   (FlareSolverr)  │
+│                   │ • Retry logic       │   (FlareSolverr)  │
 ├───────────────────┴─────────────────────┴───────────────────┤
 │                     Release Sources                         │
 ├─────────────────────────────────────────────────────────────┤

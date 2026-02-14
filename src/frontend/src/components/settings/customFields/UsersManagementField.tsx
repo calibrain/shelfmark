@@ -183,29 +183,6 @@ export const UsersManagementField = ({
     onUiStateChange('onSave', triggerSaveUserOverrides);
   }, [hasUserSettingsChanges, onUiStateChange, route.kind, saving, triggerSaveUserOverrides]);
 
-  if (loading && users.length === 0) {
-    return (
-      <div className="flex items-center justify-center text-sm opacity-60 py-8">
-        Loading users...
-      </div>
-    );
-  }
-
-  if (loadError && users.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-8 gap-3">
-        <p className="text-sm opacity-60">{loadError}</p>
-        <button
-          onClick={fetchUsers}
-          className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
-                     bg-[var(--bg-soft)] hover:bg-[var(--hover-surface)] transition-colors"
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
-
   if (route.kind === 'edit-overrides') {
     if (!editingUser || editingUser.id !== route.userId) {
       return (
@@ -234,6 +211,9 @@ export const UsersManagementField = ({
     <UserListView
       authMode={authMode || 'none'}
       users={users}
+      loadingUsers={loading}
+      loadError={loadError}
+      onRetryLoadUsers={() => void fetchUsers()}
       onCreate={openCreate}
       showCreateForm={route.kind === 'create'}
       createForm={createForm}

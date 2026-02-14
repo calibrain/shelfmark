@@ -17,6 +17,9 @@ const EDIT_ROLE_OPTIONS = [
 interface UserListViewProps {
   authMode: string;
   users: AdminUser[];
+  loadingUsers: boolean;
+  loadError: string | null;
+  onRetryLoadUsers: () => void;
   onCreate: () => void;
   showCreateForm: boolean;
   createForm: CreateUserFormState;
@@ -48,6 +51,9 @@ interface UserListViewProps {
 export const UserListView = ({
   authMode,
   users,
+  loadingUsers,
+  loadError,
+  onRetryLoadUsers,
   onCreate,
   showCreateForm,
   createForm,
@@ -89,7 +95,22 @@ export const UserListView = ({
 
   return (
     <div className="space-y-4">
-      {users.length === 0 ? (
+      {(loadingUsers && users.length === 0) ? (
+        <div className="text-center py-8 space-y-2">
+          <p className="text-sm opacity-50">Loading users...</p>
+        </div>
+      ) : (loadError && users.length === 0) ? (
+        <div className="text-center py-8 space-y-3">
+          <p className="text-sm opacity-60">{loadError}</p>
+          <button
+            onClick={onRetryLoadUsers}
+            className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
+                       bg-[var(--bg-soft)] hover:bg-[var(--hover-surface)] transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      ) : users.length === 0 ? (
         <div className="text-center py-8 space-y-2">
           <p className="text-sm opacity-50">No users yet.</p>
           <p className="text-xs opacity-40">

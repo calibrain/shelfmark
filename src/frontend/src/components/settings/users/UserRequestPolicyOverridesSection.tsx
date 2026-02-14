@@ -43,6 +43,16 @@ const hasOwnNonNull = (settings: PerUserSettings, key: keyof PerUserSettings): b
   return Object.prototype.hasOwnProperty.call(settings, key) && settings[key] !== null && settings[key] !== undefined;
 };
 
+const toBoolean = (value: unknown): boolean => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
+  }
+  return Boolean(value);
+};
+
 export const UserRequestPolicyOverridesSection = ({
   usersTab,
   globalUsersSettingsValues,
@@ -50,6 +60,16 @@ export const UserRequestPolicyOverridesSection = ({
   userSettings,
   setUserSettings,
 }: UserRequestPolicyOverridesSectionProps) => {
+  const requestsEnabledOverridePresent = hasOwnNonNull(userSettings, 'REQUESTS_ENABLED');
+  const effectiveRequestsEnabled = toBoolean(
+    requestsEnabledOverridePresent
+      ? userSettings.REQUESTS_ENABLED
+      : globalUsersSettingsValues.REQUESTS_ENABLED
+  );
+  if (!effectiveRequestsEnabled) {
+    return null;
+  }
+
   const requestPolicyEditorField = usersTab.fields.find(
     (field): field is CustomComponentFieldConfig =>
       field.key === 'request_policy_editor' && field.type === 'CustomComponentField'

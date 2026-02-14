@@ -18,6 +18,42 @@ interface UseUsersFetchParams {
 
 let cachedUsers: AdminUser[] | null = null;
 let cachedLoadError: string | null = null;
+let usersCacheLoadPromise: Promise<AdminUser[]> | null = null;
+
+const shouldSuppressAccessToast = (message: string): boolean =>
+  message.toLowerCase().includes('admin access required');
+
+const toLoadErrorMessage = (err: unknown): string =>
+  err instanceof Error ? err.message : 'Failed to load users';
+
+const loadUsersIntoCache = async (): Promise<AdminUser[]> => {
+  if (cachedUsers !== null) {
+    return cachedUsers;
+  }
+  if (usersCacheLoadPromise) {
+    return usersCacheLoadPromise;
+  }
+
+  usersCacheLoadPromise = getAdminUsers()
+    .then((data) => {
+      cachedUsers = data;
+      cachedLoadError = null;
+      return data;
+    })
+    .finally(() => {
+      usersCacheLoadPromise = null;
+    });
+
+  return usersCacheLoadPromise;
+};
+
+export const primeUsersCache = async (): Promise<void> => {
+  try {
+    await loadUsersIntoCache();
+  } catch {
+    // Silent best-effort warmup.
+  }
+};
 
 export interface UserEditContext {
   user: AdminUser;
@@ -60,9 +96,6 @@ export const useUsersFetch = ({ onShowToast }: UseUsersFetchParams) => {
   const [loading, setLoading] = useState<boolean>(() => cachedUsers === null);
   const [loadError, setLoadError] = useState<string | null>(() => cachedLoadError);
 
-  const shouldSuppressAccessToast = (message: string): boolean =>
-    message.toLowerCase().includes('admin access required');
-
   const fetchUsers = useCallback(async (): Promise<AdminUser[]> => {
     const hasCachedResult = cachedUsers !== null;
     try {
@@ -70,13 +103,11 @@ export const useUsersFetch = ({ onShowToast }: UseUsersFetchParams) => {
         setLoading(true);
       }
       setLoadError(null);
-      const data = await getAdminUsers();
-      cachedUsers = data;
-      cachedLoadError = null;
+      const data = await loadUsersIntoCache();
       setUsers(data);
       return data;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load users';
+      const message = toLoadErrorMessage(err);
       cachedLoadError = message;
       setLoadError(message);
       if (!shouldSuppressAccessToast(message)) {
