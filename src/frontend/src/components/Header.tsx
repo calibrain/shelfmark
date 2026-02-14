@@ -1,16 +1,11 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { SearchBar, SearchBarHandle } from './SearchBar';
 import { ContentType } from '../types';
+import { ActivityStatusCounts, getActivityBadgeState } from '../utils/activityBadge';
 import { withBasePath } from '../utils/basePath';
 
 export interface HeaderHandle {
   submitSearch: () => void;
-}
-
-interface StatusCounts {
-  ongoing: number;
-  completed: number;
-  errored: number;
 }
 
 interface HeaderProps {
@@ -27,7 +22,7 @@ interface HeaderProps {
   onDownloadsClick?: () => void;
   onSettingsClick?: () => void;
   isAdmin?: boolean;
-  statusCounts?: StatusCounts;
+  statusCounts?: ActivityStatusCounts;
   onLogoClick?: () => void;
   authRequired?: boolean;
   isAuthenticated?: boolean;
@@ -54,7 +49,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   onDownloadsClick,
   onSettingsClick,
   isAdmin = false,
-  statusCounts = { ongoing: 0, completed: 0, errored: 0 },
+  statusCounts = { ongoing: 0, completed: 0, errored: 0, pendingRequests: 0 },
   onLogoClick,
   authRequired = false,
   isAuthenticated = false,
@@ -66,6 +61,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   contentType = 'ebook',
   onContentTypeChange,
 }, ref) => {
+  const activityBadge = getActivityBadgeState(statusCounts, isAdmin);
   const searchBarRef = useRef<SearchBarHandle>(null);
 
   useImperativeHandle(ref, () => ({
@@ -206,13 +202,13 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
         </a>
       )}
 
-      {/* Downloads Button */}
+      {/* Activity Button */}
       {onDownloadsClick && (
         <button
           onClick={onDownloadsClick}
           className="relative flex items-center gap-2 px-3 py-2 rounded-full hover-action transition-all duration-200 text-gray-900 dark:text-gray-100"
-          aria-label="View downloads"
-          title="Downloads"
+          aria-label="View activity"
+          title="Activity"
         >
           <div className="relative">
             <svg
@@ -229,23 +225,16 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
                 d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
               />
             </svg>
-            {/* Show badge with appropriate color based on status */}
-            {(statusCounts.ongoing > 0 || statusCounts.completed > 0 || statusCounts.errored > 0) && (
-            <span
-              className={`absolute -top-1 -right-1 text-white text-[0.55rem] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center ${
-                  statusCounts.errored > 0
-                    ? 'bg-red-500'
-                    : statusCounts.ongoing > 0
-                    ? 'bg-blue-500'
-                    : 'bg-green-500'
-                }`}
-                title={`${statusCounts.ongoing} ongoing, ${statusCounts.completed} completed, ${statusCounts.errored} failed`}
+            {activityBadge && (
+              <span
+                className={`absolute -top-1 -right-1 text-white text-[0.55rem] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center ${activityBadge.colorClass}`}
+                title={activityBadge.title}
               >
-                {statusCounts.ongoing + statusCounts.completed + statusCounts.errored}
+                {activityBadge.total}
               </span>
             )}
           </div>
-          <span className="hidden sm:inline text-sm font-medium">Downloads</span>
+          <span className="hidden sm:inline text-sm font-medium">Activity</span>
         </button>
       )}
 

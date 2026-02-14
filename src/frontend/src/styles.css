@@ -184,6 +184,15 @@ footer {
     to { transform: rotate(360deg); }
 }
 
+@keyframes wave {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.activity-wave {
+    animation: wave 2s linear infinite;
+}
+
 /* Use translate3d() for GPU acceleration on iOS Safari */
 @keyframes slide-up {
     from {

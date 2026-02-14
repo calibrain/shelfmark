@@ -156,6 +156,35 @@ export const UsersPanel = ({
     }
   }, [backToList, canCreateLocalUsers, route.kind]);
 
+  const requestRulesField = tab.fields.find(
+    (field): field is TableFieldConfig =>
+      field.key === 'REQUEST_POLICY_RULES' && field.type === 'TableField'
+  );
+  const hasRequestPolicyGrid = Boolean(requestRulesField);
+
+  const globalRequestDefaults = useMemo(
+    () =>
+      normalizeRequestPolicyDefaults({
+        ebook: values.REQUEST_POLICY_DEFAULT_EBOOK,
+        audiobook: values.REQUEST_POLICY_DEFAULT_AUDIOBOOK,
+      }),
+    [values.REQUEST_POLICY_DEFAULT_EBOOK, values.REQUEST_POLICY_DEFAULT_AUDIOBOOK]
+  );
+
+  const explicitGlobalRules = useMemo(
+    () => normalizeRequestPolicyRules(values.REQUEST_POLICY_RULES),
+    [values.REQUEST_POLICY_RULES]
+  );
+
+  const requestSourceCapabilities = useMemo(
+    () =>
+      parseSourceCapabilitiesFromRulesField(
+        requestRulesField,
+        explicitGlobalRules.map((row) => row.source)
+      ),
+    [requestRulesField, explicitGlobalRules]
+  );
+
   const handleSaveUserEdit = async () => {
     const ok = await saveEditedUser({ includeSettings: false });
     if (ok) {
@@ -225,35 +254,6 @@ export const UsersPanel = ({
       </div>
     );
   }
-
-  const requestRulesField = tab.fields.find(
-    (field): field is TableFieldConfig =>
-      field.key === 'REQUEST_POLICY_RULES' && field.type === 'TableField'
-  );
-  const hasRequestPolicyGrid = Boolean(requestRulesField);
-
-  const globalRequestDefaults = useMemo(
-    () =>
-      normalizeRequestPolicyDefaults({
-        ebook: values.REQUEST_POLICY_DEFAULT_EBOOK,
-        audiobook: values.REQUEST_POLICY_DEFAULT_AUDIOBOOK,
-      }),
-    [values.REQUEST_POLICY_DEFAULT_EBOOK, values.REQUEST_POLICY_DEFAULT_AUDIOBOOK]
-  );
-
-  const explicitGlobalRules = useMemo(
-    () => normalizeRequestPolicyRules(values.REQUEST_POLICY_RULES),
-    [values.REQUEST_POLICY_RULES]
-  );
-
-  const requestSourceCapabilities = useMemo(
-    () =>
-      parseSourceCapabilitiesFromRulesField(
-        requestRulesField,
-        explicitGlobalRules.map((row) => row.source)
-      ),
-    [requestRulesField, explicitGlobalRules]
-  );
 
   const requestRulesIndex = tab.fields.findIndex((field) => field.key === 'REQUEST_POLICY_RULES');
   const shouldSplitRequestPolicyFields = hasRequestPolicyGrid && requestRulesIndex >= 0;

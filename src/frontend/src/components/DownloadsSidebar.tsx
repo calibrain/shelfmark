@@ -20,19 +20,6 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; label: string; w
   cancelled: { bg: 'bg-gray-500/20', text: 'text-gray-700 dark:text-gray-300', label: 'Cancelled', waveColor: '' },
 };
 
-// Add keyframe animation for wave effect
-const styleSheet = document.createElement('style');
-styleSheet.textContent = `
-  @keyframes wave {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-  }
-`;
-if (!document.head.querySelector('style[data-wave-animation]')) {
-  styleSheet.setAttribute('data-wave-animation', 'true');
-  document.head.appendChild(styleSheet);
-}
-
 // Book thumbnail component with fallback
 const BookThumbnail = ({ preview, title }: { preview?: string; title?: string }) => {
   if (!preview) {

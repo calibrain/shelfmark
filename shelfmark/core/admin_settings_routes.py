@@ -41,6 +41,11 @@ def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], li
         elif key not in overridable_map:
             errors.append(f"Setting not user-overridable: {key}")
         else:
+            # null means "clear the per-user override; use global default"
+            if value is None:
+                valid[key] = None
+                continue
+
             if key in {"REQUEST_POLICY_DEFAULT_EBOOK", "REQUEST_POLICY_DEFAULT_AUDIOBOOK"}:
                 if parse_policy_mode(value) is None:
                     errors.append(f"Invalid policy mode for {key}: {value}")

@@ -13,6 +13,15 @@ import {
 import { SettingsResponse, ActionResult, UpdateResult, SettingsTab } from '../types/settings';
 import { MetadataBookData, transformMetadataToBook } from '../utils/bookTransformers';
 import { getApiBase } from '../utils/basePath';
+import {
+  buildAdminRequestActionUrl,
+  buildFulfilAdminRequestBody,
+  buildRejectAdminRequestBody,
+  buildRequestListUrl,
+  FulfilAdminRequestBody,
+  RejectAdminRequestBody,
+  RequestListParams,
+} from './requestApiHelpers';
 
 const API_BASE = getApiBase();
 
@@ -33,6 +42,8 @@ const API = {
   settings: `${API_BASE}/settings`,
   requestPolicy: `${API_BASE}/request-policy`,
   requests: `${API_BASE}/requests`,
+  adminRequests: `${API_BASE}/admin/requests`,
+  adminRequestCounts: `${API_BASE}/admin/requests/count`,
 };
 
 // Custom error class for authentication failures
@@ -290,10 +301,12 @@ export const getConfig = async (): Promise<AppConfig> => {
   return fetchJSON<AppConfig>(API.config);
 };
 
-export interface ListRequestsParams {
-  status?: RequestRecord['status'];
-  limit?: number;
-  offset?: number;
+export type ListRequestsParams = RequestListParams;
+
+export interface AdminRequestCounts {
+  pending: number;
+  total: number;
+  by_status: Record<string, number>;
 }
 
 export const fetchRequestPolicy = async (): Promise<RequestPolicyResponse> => {
@@ -308,25 +321,42 @@ export const createRequest = async (payload: CreateRequestPayload): Promise<Requ
 };
 
 export const listRequests = async (params: ListRequestsParams = {}): Promise<RequestRecord[]> => {
-  const query = new URLSearchParams();
-  if (params.status) {
-    query.set('status', params.status);
-  }
-  if (typeof params.limit === 'number') {
-    query.set('limit', String(params.limit));
-  }
-  if (typeof params.offset === 'number') {
-    query.set('offset', String(params.offset));
-  }
-
-  const queryString = query.toString();
-  const url = queryString ? `${API.requests}?${queryString}` : API.requests;
+  const url = buildRequestListUrl(API.requests, params);
   return fetchJSON<RequestRecord[]>(url);
 };
 
 export const cancelRequest = async (id: number): Promise<RequestRecord> => {
   return fetchJSON<RequestRecord>(`${API.requests}/${encodeURIComponent(String(id))}`, {
     method: 'DELETE',
+  });
+};
+
+export const listAdminRequests = async (params: ListRequestsParams = {}): Promise<RequestRecord[]> => {
+  const url = buildRequestListUrl(API.adminRequests, params);
+  return fetchJSON<RequestRecord[]>(url);
+};
+
+export const getAdminRequestCounts = async (): Promise<AdminRequestCounts> => {
+  return fetchJSON<AdminRequestCounts>(API.adminRequestCounts);
+};
+
+export const fulfilAdminRequest = async (
+  id: number,
+  body: FulfilAdminRequestBody = {}
+): Promise<RequestRecord> => {
+  return fetchJSON<RequestRecord>(buildAdminRequestActionUrl(API.adminRequests, id, 'fulfil'), {
+    method: 'POST',
+    body: JSON.stringify(buildFulfilAdminRequestBody(body)),
+  });
+};
+
+export const rejectAdminRequest = async (
+  id: number,
+  body: RejectAdminRequestBody = {}
+): Promise<RequestRecord> => {
+  return fetchJSON<RequestRecord>(buildAdminRequestActionUrl(API.adminRequests, id, 'reject'), {
+    method: 'POST',
+    body: JSON.stringify(buildRejectAdminRequestBody(body)),
   });
 };
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 import json
 from typing import Any, Callable, TYPE_CHECKING
 
@@ -160,7 +160,7 @@ def _find_duplicate_pending_request(
 
 
 def _now_timestamp() -> str:
-    return datetime.now(UTC).isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def create_request(

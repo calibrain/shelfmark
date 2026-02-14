@@ -234,6 +234,45 @@ class TestRequestRoutes:
         assert emitted_payloads["new_request"]["title"] == "Eventful Book"
         assert emitted_payloads["request_update"]["request_id"] == request_id
 
+    def test_cancel_request_emits_to_user_and_admin_rooms(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(default_ebook="request_book")
+
+        payload = {
+            "book_data": {
+                "title": "Cancelable Book",
+                "author": "Cancelable Author",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "ol-cancel",
+            },
+            "context": {
+                "source": "direct_download",
+                "content_type": "ebook",
+                "request_level": "book",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+                    with patch.object(main_module.ws_manager, "is_enabled", return_value=True):
+                        with patch.object(main_module.ws_manager.socketio, "emit") as mock_emit:
+                            create_resp = client.post("/api/requests", json=payload)
+                            request_id = create_resp.json["id"]
+
+                            mock_emit.reset_mock()
+                            cancel_resp = client.delete(f"/api/requests/{request_id}")
+
+        assert create_resp.status_code == 201
+        assert cancel_resp.status_code == 200
+        assert cancel_resp.json["status"] == "cancelled"
+
+        assert mock_emit.call_count == 2
+        mock_emit.assert_any_call("request_update", ANY, to=f"user_{user['id']}")
+        mock_emit.assert_any_call("request_update", ANY, to="admins")
+
     def test_create_request_level_payload_mismatch_returns_400(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
@@ -459,6 +498,49 @@ class TestRequestRoutes:
         assert reject_again_resp.status_code == 409
         assert reject_again_resp.json["code"] == "stale_transition"
 
+    def test_admin_reject_emits_update_to_user_and_admin_rooms(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        admin = _create_user(main_module, prefix="admin", role="admin")
+        policy = _policy(default_ebook="request_book")
+
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        create_payload = {
+            "book_data": {
+                "title": "Reject Emit Book",
+                "author": "Reject Emit Author",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "ol-reject-emit",
+            },
+            "context": {
+                "source": "direct_download",
+                "content_type": "ebook",
+                "request_level": "book",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+                    create_resp = client.post("/api/requests", json=create_payload)
+                    request_id = create_resp.json["id"]
+
+                    _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
+                    with patch.object(main_module.ws_manager, "is_enabled", return_value=True):
+                        with patch.object(main_module.ws_manager.socketio, "emit") as mock_emit:
+                            reject_resp = client.post(
+                                f"/api/admin/requests/{request_id}/reject",
+                                json={"admin_note": "Rejected with event fanout"},
+                            )
+
+        assert create_resp.status_code == 201
+        assert reject_resp.status_code == 200
+        assert reject_resp.json["status"] == "rejected"
+
+        assert mock_emit.call_count == 2
+        mock_emit.assert_any_call("request_update", ANY, to=f"user_{user['id']}")
+        mock_emit.assert_any_call("request_update", ANY, to="admins")
+
     def test_admin_fulfil_queues_for_requesting_user(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         admin = _create_user(main_module, prefix="admin", role="admin")
@@ -512,6 +594,55 @@ class TestRequestRoutes:
         assert captured["priority"] == 0
         assert captured["user_id"] == user["id"]
         assert captured["username"] == user["username"]
+
+    def test_admin_fulfil_emits_update_to_user_and_admin_rooms(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        admin = _create_user(main_module, prefix="admin", role="admin")
+        policy = _policy(default_ebook="request_release")
+
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        create_payload = {
+            "book_data": {
+                "title": "Fulfil Emit Book",
+                "author": "Fulfil Emit Author",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "ol-fulfil-emit",
+            },
+            "context": {
+                "source": "prowlarr",
+                "content_type": "ebook",
+                "request_level": "release",
+            },
+            "release_data": {
+                "source": "prowlarr",
+                "source_id": "rel-fulfil-emit",
+                "title": "Fulfil Emit Book.epub",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+                    create_resp = client.post("/api/requests", json=create_payload)
+                    request_id = create_resp.json["id"]
+
+                    _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
+                    with patch.object(main_module.backend, "queue_release", return_value=(True, None)):
+                        with patch.object(main_module.ws_manager, "is_enabled", return_value=True):
+                            with patch.object(main_module.ws_manager.socketio, "emit") as mock_emit:
+                                fulfil_resp = client.post(
+                                    f"/api/admin/requests/{request_id}/fulfil",
+                                    json={"admin_note": "Approved with event fanout"},
+                                )
+
+        assert create_resp.status_code == 201
+        assert fulfil_resp.status_code == 200
+        assert fulfil_resp.json["status"] == "fulfilled"
+
+        assert mock_emit.call_count == 2
+        mock_emit.assert_any_call("request_update", ANY, to=f"user_{user['id']}")
+        mock_emit.assert_any_call("request_update", ANY, to="admins")
 
     def test_admin_fulfil_book_level_request_requires_release_data(self, main_module, client):
         user = _create_user(main_module, prefix="reader")

@@ -390,6 +390,12 @@ def register_request_routes(
             payload=event_payload,
             room=f"user_{db_user_id}",
         )
+        _emit_request_event(
+            ws_manager,
+            event_name="request_update",
+            payload=event_payload,
+            room="admins",
+        )
 
         return jsonify(updated)
 
@@ -483,6 +489,12 @@ def register_request_routes(
             payload=event_payload,
             room=f"user_{updated['user_id']}",
         )
+        _emit_request_event(
+            ws_manager,
+            event_name="request_update",
+            payload=event_payload,
+            room="admins",
+        )
 
         return jsonify(updated)
 
@@ -526,6 +538,12 @@ def register_request_routes(
             event_name="request_update",
             payload=event_payload,
             room=f"user_{updated['user_id']}",
+        )
+        _emit_request_event(
+            ws_manager,
+            event_name="request_update",
+            payload=event_payload,
+            room="admins",
         )
 
         return jsonify(updated)

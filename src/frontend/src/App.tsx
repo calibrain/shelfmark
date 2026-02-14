@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import {
   Book,
   Release,
+  RequestRecord,
   StatusData,
   AppConfig,
   ContentType,
@@ -28,6 +29,7 @@ import { useSearch } from './hooks/useSearch';
 import { useUrlSearch } from './hooks/useUrlSearch';
 import { useDownloadTracking } from './hooks/useDownloadTracking';
 import { useRequestPolicy } from './hooks/useRequestPolicy';
+import { useRequests } from './hooks/useRequests';
 import { Header } from './components/Header';
 import { SearchSection } from './components/SearchSection';
 import { AdvancedFilters } from './components/AdvancedFilters';
@@ -35,9 +37,9 @@ import { ResultsSection } from './components/ResultsSection';
 import { DetailsModal } from './components/DetailsModal';
 import { ReleaseModal } from './components/ReleaseModal';
 import { RequestConfirmationModal } from './components/RequestConfirmationModal';
-import { DownloadsSidebar } from './components/DownloadsSidebar';
 import { ToastContainer } from './components/ToastContainer';
 import { Footer } from './components/Footer';
+import { ActivitySidebar, requestToActivityItem } from './components/activity';
 import { LoginPage } from './pages/LoginPage';
 import { SettingsModal } from './components/settings';
 import { ConfigSetupBanner } from './components/ConfigSetupBanner';
@@ -56,6 +58,7 @@ import {
   getRequestSuccessMessage,
   toContentType,
 } from './utils/requestPayload';
+import { bookFromRequestData } from './utils/requestFulfil';
 import { SearchModeProvider } from './contexts/SearchModeContext';
 import './styles.css';
 
@@ -145,14 +148,52 @@ function App() {
   }, [contentType]);
 
   const {
+    policy: requestPolicy,
     getDefaultMode,
     getSourceMode,
+    requestsEnabled: requestsPolicyEnabled,
     allowNotes: allowRequestNotes,
     refresh: refreshRequestPolicy,
   } = useRequestPolicy({
     enabled: isAuthenticated,
     isAdmin,
   });
+
+  const {
+    requests,
+    pendingCount: pendingRequestCount,
+    isLoading: isRequestsLoading,
+    cancelRequest: cancelUserRequest,
+    fulfilRequest: fulfilSidebarRequest,
+    rejectRequest: rejectSidebarRequest,
+  } = useRequests({
+    isAdmin,
+    enabled: isAuthenticated,
+  });
+
+  const requestItems = useMemo(
+    () =>
+      requests
+        .map((record) => requestToActivityItem(record, isAdmin ? 'admin' : 'user'))
+        .sort((left, right) => right.timestamp - left.timestamp),
+    [requests, isAdmin]
+  );
+
+  const showRequestsTab = useMemo(() => {
+    if (isAdmin) {
+      return true;
+    }
+    if (!isAuthenticated || !requestsPolicyEnabled) {
+      return false;
+    }
+    if (!requestPolicy) {
+      return false;
+    }
+    return !(
+      requestPolicy.defaults.ebook === 'download' &&
+      requestPolicy.defaults.audiobook === 'download'
+    );
+  }, [isAdmin, isAuthenticated, requestsPolicyEnabled, requestPolicy]);
 
   // Search state and handlers
   const {
@@ -185,6 +226,11 @@ function App() {
   });
 
   const [pendingRequestPayload, setPendingRequestPayload] = useState<CreateRequestPayload | null>(null);
+  const [fulfillingRequest, setFulfillingRequest] = useState<{
+    requestId: number;
+    book: Book;
+    contentType: ContentType;
+  } | null>(null);
 
   // Wire up logout callback to clear search state
   const handleLogoutWithCleanup = useCallback(async () => {
@@ -192,6 +238,7 @@ function App() {
     setBooks([]);
     clearTracking();
     setPendingRequestPayload(null);
+    setFulfillingRequest(null);
   }, [handleLogout, setBooks, clearTracking]);
 
   // UI state
@@ -199,6 +246,22 @@ function App() {
   const [releaseBook, setReleaseBook] = useState<Book | null>(null);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [downloadsSidebarOpen, setDownloadsSidebarOpen] = useState(false);
+  const [sidebarPinnedOpen, setSidebarPinnedOpen] = useState(false);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const headerObserverRef = useRef<ResizeObserver | null>(null);
+  const headerRef = useCallback((el: HTMLDivElement | null) => {
+    if (headerObserverRef.current) {
+      headerObserverRef.current.disconnect();
+      headerObserverRef.current = null;
+    }
+    if (!el) return;
+    setHeaderHeight(el.getBoundingClientRect().height);
+    const observer = new ResizeObserver(() => {
+      setHeaderHeight(el.getBoundingClientRect().height);
+    });
+    observer.observe(el);
+    headerObserverRef.current = observer;
+  }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [configBannerOpen, setConfigBannerOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
@@ -235,8 +298,13 @@ function App() {
 
     const errored = currentStatus.error ? Object.keys(currentStatus.error).length : 0;
 
-    return { ongoing, completed, errored };
-  }, [currentStatus]);
+    return {
+      ongoing,
+      completed,
+      errored,
+      pendingRequests: pendingRequestCount,
+    };
+  }, [currentStatus, pendingRequestCount]);
 
 
   // Compute visibility states
@@ -694,6 +762,84 @@ function App() {
     [openRequestConfirmation, refreshRequestPolicy]
   );
 
+  const handleRequestCancel = useCallback(
+    async (requestId: number) => {
+      try {
+        await cancelUserRequest(requestId);
+        showToast('Request cancelled', 'success');
+      } catch (error) {
+        showToast(getErrorMessage(error, 'Failed to cancel request'), 'error');
+      }
+    },
+    [cancelUserRequest, showToast]
+  );
+
+  const handleRequestReject = useCallback(
+    async (requestId: number, adminNote?: string) => {
+      if (!isAdmin) {
+        return;
+      }
+
+      try {
+        await rejectSidebarRequest(requestId, adminNote);
+        showToast('Request rejected', 'success');
+      } catch (error) {
+        showToast(getErrorMessage(error, 'Failed to reject request'), 'error');
+      }
+    },
+    [isAdmin, rejectSidebarRequest, showToast]
+  );
+
+  const handleRequestApprove = useCallback(
+    async (requestId: number, record: RequestRecord) => {
+      if (!isAdmin) {
+        return;
+      }
+
+      if (record.request_level === 'release') {
+        try {
+          await fulfilSidebarRequest(requestId, record.release_data || undefined);
+          showToast('Request approved', 'success');
+          await fetchStatus();
+        } catch (error) {
+          showToast(getErrorMessage(error, 'Failed to approve request'), 'error');
+        }
+        return;
+      }
+
+      setReleaseBook(null);
+      setFulfillingRequest({
+        requestId,
+        book: bookFromRequestData(record.book_data),
+        contentType: record.content_type,
+      });
+    },
+    [isAdmin, fulfilSidebarRequest, showToast, fetchStatus]
+  );
+
+  const handleBrowseFulfilDownload = useCallback(
+    async (book: Book, release: Release, releaseContentType: ContentType) => {
+      if (!fulfillingRequest) {
+        return;
+      }
+
+      try {
+        await fulfilSidebarRequest(
+          fulfillingRequest.requestId,
+          buildReleaseDataFromMetadataRelease(book, release, toContentType(releaseContentType))
+        );
+        showToast(`Request approved: ${book.title || 'Untitled'}`, 'success');
+        setFulfillingRequest(null);
+        await fetchStatus();
+      } catch (error) {
+        console.error('Browse fulfil failed:', error);
+        showToast(getErrorMessage(error, 'Failed to fulfil request'), 'error');
+        throw error;
+      }
+    },
+    [fulfillingRequest, fulfilSidebarRequest, showToast, fetchStatus]
+  );
+
   const getDirectActionButtonState = useCallback(
     (bookId: string): ButtonStateInfo => {
       const baseState = getButtonState(bookId);
@@ -746,52 +892,70 @@ function App() {
     runSearchWithPolicyRefresh(query, { ...searchFieldValues, series: seriesName });
   }, [setSearchInput, clearTracking, searchFieldValues, advancedFilters, setAdvancedFilters, bookLanguages, defaultLanguageCodes, searchMode, runSearchWithPolicyRefresh]);
 
+  const isBrowseFulfilMode = fulfillingRequest !== null;
+  const activeReleaseBook = fulfillingRequest?.book ?? releaseBook;
+  const activeReleaseContentType = fulfillingRequest?.contentType ?? contentType;
+
+  const handleReleaseModalClose = useCallback(() => {
+    if (isBrowseFulfilMode) {
+      setFulfillingRequest(null);
+      return;
+    }
+    setReleaseBook(null);
+  }, [isBrowseFulfilMode]);
+
   const mainAppContent = (
     <SearchModeProvider searchMode={searchMode}>
-      <Header
-        calibreWebUrl={config?.calibre_web_url || ''}
-        audiobookLibraryUrl={config?.audiobook_library_url || ''}
-        debug={config?.debug || false}
-        logoUrl={logoUrl}
-        showSearch={!isInitialState}
-        searchInput={searchInput}
-        onSearchChange={setSearchInput}
-        onDownloadsClick={() => setDownloadsSidebarOpen(true)}
-        onSettingsClick={() => {
-          if (config?.settings_enabled) {
-            setSettingsOpen(true);
-          } else {
-            setConfigBannerOpen(true);
-          }
-        }}
-        isAdmin={isAdmin}
-        username={username}
-        displayName={displayName}
-        statusCounts={statusCounts}
-        onLogoClick={() => handleResetSearch(config)}
-        authRequired={authRequired}
-        isAuthenticated={isAuthenticated}
-        onLogout={handleLogoutWithCleanup}
-        onSearch={() => {
-          const query = buildSearchQuery({
-            searchInput,
-            showAdvanced,
-            advancedFilters,
-            bookLanguages,
-            defaultLanguage: defaultLanguageCodes,
-            searchMode,
-          });
-          runSearchWithPolicyRefresh(query);
-        }}
-        onAdvancedToggle={() => setShowAdvanced(!showAdvanced)}
-        isLoading={isSearching}
-        onShowToast={showToast}
-        onRemoveToast={removeToast}
-        contentType={contentType}
-        onContentTypeChange={setContentType}
-      />
+      <div ref={headerRef} className="fixed top-0 left-0 right-0 z-40">
+        <Header
+          calibreWebUrl={config?.calibre_web_url || ''}
+          audiobookLibraryUrl={config?.audiobook_library_url || ''}
+          debug={config?.debug || false}
+          logoUrl={logoUrl}
+          showSearch={!isInitialState}
+          searchInput={searchInput}
+          onSearchChange={setSearchInput}
+          onDownloadsClick={() => setDownloadsSidebarOpen(true)}
+          onSettingsClick={() => {
+            if (config?.settings_enabled) {
+              setSettingsOpen(true);
+            } else {
+              setConfigBannerOpen(true);
+            }
+          }}
+          isAdmin={isAdmin}
+          username={username}
+          displayName={displayName}
+          statusCounts={statusCounts}
+          onLogoClick={() => handleResetSearch(config)}
+          authRequired={authRequired}
+          isAuthenticated={isAuthenticated}
+          onLogout={handleLogoutWithCleanup}
+          onSearch={() => {
+            const query = buildSearchQuery({
+              searchInput,
+              showAdvanced,
+              advancedFilters,
+              bookLanguages,
+              defaultLanguage: defaultLanguageCodes,
+              searchMode,
+            });
+            runSearchWithPolicyRefresh(query);
+          }}
+          onAdvancedToggle={() => setShowAdvanced(!showAdvanced)}
+          isLoading={isSearching}
+          onShowToast={showToast}
+          onRemoveToast={removeToast}
+          contentType={contentType}
+          onContentTypeChange={setContentType}
+        />
+      </div>
 
-      <AdvancedFilters
+      <div
+        className={`flex flex-1 flex-col${sidebarPinnedOpen ? ' lg:mr-96' : ''}`}
+        style={{ paddingTop: `${headerHeight}px` }}
+      >
+        <AdvancedFilters
         visible={showAdvanced && !isInitialState}
         bookLanguages={bookLanguages}
         defaultLanguage={defaultLanguageCodes}
@@ -864,22 +1028,22 @@ function App() {
           />
         )}
 
-        {releaseBook && (
+        {activeReleaseBook && (
           <ReleaseModal
-            book={releaseBook}
-            onClose={() => setReleaseBook(null)}
-            onDownload={handleReleaseDownload}
-            onRequestRelease={handleReleaseRequest}
-            getPolicyModeForSource={(source, ct) => getSourceMode(source, ct)}
+            book={activeReleaseBook}
+            onClose={handleReleaseModalClose}
+            onDownload={isBrowseFulfilMode ? handleBrowseFulfilDownload : handleReleaseDownload}
+            onRequestRelease={isBrowseFulfilMode ? undefined : handleReleaseRequest}
+            getPolicyModeForSource={isBrowseFulfilMode ? () => 'download' : (source, ct) => getSourceMode(source, ct)}
             onPolicyRefresh={refreshRequestPolicy}
             supportedFormats={supportedFormats}
             supportedAudiobookFormats={config?.supported_audiobook_formats || []}
-            contentType={contentType}
+            contentType={activeReleaseContentType}
             defaultLanguages={defaultLanguageCodes}
             bookLanguages={bookLanguages}
             currentStatus={currentStatus}
             defaultReleaseSource={config?.default_release_source}
-            onSearchSeries={handleSearchSeries}
+            onSearchSeries={isBrowseFulfilMode ? undefined : handleSearchSeries}
           />
         )}
 
@@ -899,15 +1063,27 @@ function App() {
         releaseVersion={config?.release_version}
         debug={config?.debug}
       />
-      <ToastContainer toasts={toasts} />
+      </div>
 
-      <DownloadsSidebar
+      <ActivitySidebar
         isOpen={downloadsSidebarOpen}
         onClose={() => setDownloadsSidebarOpen(false)}
         status={currentStatus}
+        isAdmin={isAdmin}
         onClearCompleted={handleClearCompleted}
         onCancel={handleCancel}
+        requestItems={requestItems}
+        pendingRequestCount={pendingRequestCount}
+        showRequestsTab={showRequestsTab}
+        isRequestsLoading={isRequestsLoading}
+        onRequestCancel={showRequestsTab ? handleRequestCancel : undefined}
+        onRequestApprove={isAdmin ? handleRequestApprove : undefined}
+        onRequestReject={isAdmin ? handleRequestReject : undefined}
+        onPinnedOpenChange={setSidebarPinnedOpen}
+        pinnedTopOffset={headerHeight}
       />
+
+      <ToastContainer toasts={toasts} />
 
       <SettingsModal
         isOpen={settingsOpen}

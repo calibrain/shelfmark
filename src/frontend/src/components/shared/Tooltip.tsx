@@ -7,6 +7,7 @@ interface TooltipProps {
   position?: 'top' | 'bottom' | 'left' | 'right';
   delay?: number;
   className?: string;
+  unstyled?: boolean;
 }
 
 export function Tooltip({
@@ -15,6 +16,7 @@ export function Tooltip({
   position = 'top',
   delay = 200,
   className = '',
+  unstyled = false,
 }: TooltipProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
@@ -89,7 +91,7 @@ export function Tooltip({
         onMouseLeave={hideTooltip}
         onFocusCapture={showTooltip}
         onBlurCapture={hideTooltip}
-        className="inline-flex"
+        className="inline-flex max-w-full"
       >
         {children}
       </div>
@@ -101,9 +103,11 @@ export function Tooltip({
           style={{
             top: coords.top,
             left: coords.left,
-            background: 'var(--bg-soft)',
-            color: 'var(--text)',
-            border: '1px solid var(--border-muted)',
+            ...(unstyled ? {} : {
+              background: 'var(--bg-soft)',
+              color: 'var(--text)',
+              border: '1px solid var(--border-muted)',
+            }),
           }}
         >
           {content}

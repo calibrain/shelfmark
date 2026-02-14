@@ -1437,12 +1437,8 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
         is_admin = get_auth_check_admin_status(auth_mode, users_config, session)
 
         display_name = None
-        if is_authenticated and session.get('db_user_id'):
+        if is_authenticated and session.get('db_user_id') and user_db is not None:
             try:
-                from shelfmark.core.user_db import UserDB
-                import os
-                user_db = UserDB(os.path.join(os.environ.get("CONFIG_DIR", "/config"), "users.db"))
-                user_db.initialize()
                 db_user = user_db.get_user(user_id=session['db_user_id'])
                 if db_user:
                     display_name = db_user.get("display_name") or None
