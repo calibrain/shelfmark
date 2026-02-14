@@ -45,10 +45,10 @@ const formatSourceLabel = (source: string): string => {
 const toRuleKey = (source: string, contentType: RequestPolicyContentType) => `${source}::${contentType}`;
 
 const modeDescriptions: Record<RequestPolicyMode, string> = {
-  download: 'Direct downloads allowed.',
-  request_release: 'Specific release requests only.',
-  request_book: 'Book-level requests only.',
-  blocked: 'Unavailable.',
+  download: 'Users can download directly.',
+  request_release: 'Users pick a release and request it.',
+  request_book: 'Users can request a book, admin picks the release.',
+  blocked: 'Downloads and requests are blocked.',
 };
 
 export const RequestPolicyGrid = ({
@@ -328,7 +328,7 @@ export const RequestPolicyGrid = ({
         ) : (
           <div className="px-3 py-3">
             <p className="text-xs opacity-60">
-              Per-source overrides are available when a default is set to Download or Request Release.
+              Per-source settings become available when a default is set to Download or Request Release.
             </p>
           </div>
         )}

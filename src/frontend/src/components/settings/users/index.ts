@@ -1,5 +1,12 @@
 export { UserAuthSourceBadge } from './UserAuthSourceBadge';
-export { UserCreateCard, UserEditFields } from './UserCard';
+export {
+  UserAccountCardContent,
+  UserCreateCard,
+  UserEditActions,
+  UserEditFields,
+  UserIdentityHeader,
+  UserRoleControl,
+} from './UserCard';
 export { UserListView } from './UserListView';
 export { RequestPolicyGrid } from './RequestPolicyGrid';
 export { UserOverridesSection } from './UserOverridesSection';

@@ -1,6 +1,9 @@
 import { ReactNode } from 'react';
 import { AdminUser } from '../../../services/api';
 import { PasswordFieldConfig, SelectFieldConfig, SelectOption, TextFieldConfig } from '../../../types/settings';
+import { DropdownList } from '../../DropdownList';
+import { Tooltip } from '../../shared/Tooltip';
+import { UserAuthSourceBadge } from './UserAuthSourceBadge';
 import { PasswordField, SelectField, TextField } from '../fields';
 import { FieldWrapper } from '../shared';
 import { CreateUserFormState } from './types';
@@ -15,6 +18,11 @@ const UserCardShell = ({ title, children }: { title: string; children: ReactNode
 const CREATE_ROLE_OPTIONS: SelectOption[] = [
   { value: 'user', label: 'User' },
   { value: 'admin', label: 'Admin' },
+];
+
+const EDIT_ROLE_OPTIONS: SelectOption[] = [
+  { value: 'admin', label: 'Admin' },
+  { value: 'user', label: 'User' },
 ];
 
 const createTextField = (
@@ -88,6 +96,240 @@ const renderPasswordField = (
     <PasswordField field={field} value={value} onChange={onChange} />
   </FieldWrapper>
 );
+
+const getRoleLabel = (role: string) => role.charAt(0).toUpperCase() + role.slice(1);
+
+const getRoleBadgeClassName = (role: string, disabled = false) => (
+  `inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium leading-none ${
+    disabled ? 'cursor-not-allowed' : ''
+  } ${role === 'admin' ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400' : 'bg-zinc-500/10 opacity-70'}`
+);
+
+const getRoleDisabledReason = (user: AdminUser, oidcAdminGroup?: string): string => {
+  if (user.edit_capabilities.authSource === 'oidc') {
+    if (oidcAdminGroup) {
+      return `Role is managed by the ${oidcAdminGroup} group in your identity provider.`;
+    }
+    return 'Role is managed by OIDC group authorization.';
+  }
+  if (user.edit_capabilities.authSource === 'builtin') {
+    return 'Role can only be changed by admins.';
+  }
+  return 'Role is managed by the external authentication source.';
+};
+
+interface UserRoleControlProps {
+  user: AdminUser;
+  onUserChange?: (user: AdminUser) => void;
+  oidcAdminGroup?: string;
+  tooltipPosition?: 'top' | 'bottom' | 'left' | 'right';
+}
+
+export const UserRoleControl = ({
+  user,
+  onUserChange,
+  oidcAdminGroup,
+  tooltipPosition = 'bottom',
+}: UserRoleControlProps) => {
+  const roleLabel = getRoleLabel(user.role);
+  const canEditRole = Boolean(onUserChange) && user.edit_capabilities.canEditRole;
+  const roleDisabledReason = !user.edit_capabilities.canEditRole
+    ? getRoleDisabledReason(user, oidcAdminGroup)
+    : undefined;
+
+  if (canEditRole && onUserChange) {
+    return (
+      <DropdownList
+        options={EDIT_ROLE_OPTIONS}
+        value={user.role}
+        onChange={(value) => {
+          const nextRole = Array.isArray(value) ? value[0] ?? '' : value;
+          onUserChange({ ...user, role: nextRole });
+        }}
+        widthClassName="w-28"
+        buttonClassName={`!py-1 !px-2.5 !text-xs !font-medium ${
+          user.role === 'admin'
+            ? '!bg-sky-500/15 !text-sky-600 dark:!text-sky-400 !border-sky-500/30'
+            : '!bg-zinc-500/10 !opacity-70'
+        }`}
+      />
+    );
+  }
+
+  if (onUserChange && !user.edit_capabilities.canEditRole) {
+    return (
+      <Tooltip content={roleDisabledReason || 'Role cannot be changed'} position={tooltipPosition}>
+        <span className={getRoleBadgeClassName(user.role, true)}>
+          {roleLabel}
+        </span>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <span className={getRoleBadgeClassName(user.role)}>
+      {roleLabel}
+    </span>
+  );
+};
+
+interface UserIdentityHeaderProps {
+  user: AdminUser;
+  showAuthSource?: boolean;
+  showInactiveState?: boolean;
+}
+
+export const UserIdentityHeader = ({
+  user,
+  showAuthSource = true,
+  showInactiveState = true,
+}: UserIdentityHeaderProps) => {
+  const active = user.is_active !== false;
+
+  return (
+    <div className="flex items-center gap-3 min-w-0 flex-1">
+      <div
+        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium shrink-0
+          ${user.role === 'admin' ? 'bg-sky-500/20 text-sky-600 dark:text-sky-400' : 'bg-zinc-500/20'}`}
+      >
+        {user.username.charAt(0).toUpperCase()}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-medium truncate">
+            {user.display_name || user.username}
+          </span>
+          {user.display_name && (
+            <span className="text-xs opacity-40 truncate">@{user.username}</span>
+          )}
+          {showAuthSource && <UserAuthSourceBadge user={user} showInactive={false} />}
+        </div>
+        <div className="text-xs opacity-50 truncate">
+          {user.email || 'No email'}
+        </div>
+        {showInactiveState && !active && (
+          <div className="text-[11px] opacity-60 truncate">
+            Inactive for current authentication mode
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+interface UserEditActionsProps {
+  onSave: () => void;
+  saving: boolean;
+  saveDisabled?: boolean;
+  onCancel: () => void;
+  cancelDisabled?: boolean;
+  onDelete?: () => void;
+  onConfirmDelete?: () => void;
+  onCancelDelete?: () => void;
+  isDeletePending?: boolean;
+  deleting?: boolean;
+  variant?: 'card' | 'modalFooter';
+}
+
+export const UserEditActions = ({
+  onSave,
+  saving,
+  saveDisabled = false,
+  onCancel,
+  cancelDisabled = false,
+  onDelete,
+  onConfirmDelete,
+  onCancelDelete,
+  isDeletePending = false,
+  deleting = false,
+  variant = 'card',
+}: UserEditActionsProps) => {
+  if (variant === 'modalFooter') {
+    return (
+      <div className="flex items-center justify-end gap-3">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={cancelDisabled}
+          className="px-4 py-2 rounded-lg text-sm font-medium bg-[var(--bg-soft)] border border-[var(--border-muted)] hover-action transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saveDisabled}
+          className="px-5 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+        >
+          {saving ? (
+            <>
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Saving...
+            </>
+          ) : (
+            'Save Changes'
+          )}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 pt-3 border-t border-[var(--border-muted)] sm:flex-row sm:items-center">
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={onSave}
+          disabled={saveDisabled}
+          className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {saving ? 'Saving...' : 'Save Changes'}
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={cancelDisabled}
+          className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
+                     bg-[var(--bg)] hover:bg-[var(--hover-surface)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          Cancel
+        </button>
+      </div>
+      {onDelete && (
+        <div className="flex flex-wrap gap-2 sm:ml-auto">
+          {isDeletePending ? (
+            <>
+              <button
+                onClick={onConfirmDelete}
+                disabled={deleting}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {deleting ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+              <button
+                onClick={onCancelDelete}
+                disabled={deleting}
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
+                           bg-[var(--bg)] hover:bg-[var(--hover-surface)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={onDelete}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                         border border-red-500/40 text-red-600 hover:bg-red-500/10"
+            >
+              Delete User
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface UserCreateCardProps {
   form: CreateUserFormState;
@@ -168,6 +410,7 @@ interface UserEditFieldsProps {
   onSave: () => void;
   saving: boolean;
   onCancel: () => void;
+  hideActions?: boolean;
   editPassword: string;
   onEditPasswordChange: (value: string) => void;
   editPasswordConfirm: string;
@@ -185,6 +428,7 @@ export const UserEditFields = ({
   onSave,
   saving,
   onCancel,
+  hideActions = false,
   editPassword,
   onEditPasswordChange,
   editPasswordConfirm,
@@ -241,55 +485,116 @@ export const UserEditFields = ({
         </>
       )}
 
-      <div className="flex flex-col gap-2 pt-3 border-t border-[var(--border-muted)] sm:flex-row sm:items-center">
-        <div className="flex flex-wrap gap-2">
+      {!hideActions && (
+        <UserEditActions
+          onSave={onSave}
+          saving={saving}
+          saveDisabled={saving}
+          onCancel={onCancel}
+          onDelete={onDelete}
+          onConfirmDelete={onConfirmDelete}
+          onCancelDelete={onCancelDelete}
+          isDeletePending={isDeletePending}
+          deleting={deleting}
+        />
+      )}
+    </>
+  );
+};
+
+interface UserPreferencesPanelProps {
+  description?: string;
+  hideTitle?: boolean;
+  actionLabel?: string;
+  onAction?: () => void;
+  children?: ReactNode;
+}
+
+interface UserAccountCardContentProps extends Omit<UserEditFieldsProps, 'hideActions'> {
+  hideEditActions?: boolean;
+  preferencesPanel?: UserPreferencesPanelProps;
+  preferencesPlacement?: 'before' | 'after';
+}
+
+const renderPreferencesPanel = (panel: UserPreferencesPanelProps) => (
+  <div className="space-y-3">
+    {(!panel.hideTitle || panel.onAction) && (
+      <div>
+        {!panel.hideTitle && (
+          <label className="text-sm font-medium">User Preferences</label>
+        )}
+        {!panel.hideTitle && panel.description && (
+          <p className="text-xs opacity-60 mt-0.5">{panel.description}</p>
+        )}
+        {panel.onAction && (
           <button
-            onClick={onSave}
-            disabled={saving}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            onClick={panel.onAction}
+            className="mt-2 px-4 py-2 rounded-lg text-sm font-medium text-white
+                       bg-sky-600 hover:bg-sky-700 transition-colors"
           >
-            {saving ? 'Saving...' : 'Save Changes'}
+            {panel.actionLabel || 'Open User Preferences'}
           </button>
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
-                       bg-[var(--bg)] hover:bg-[var(--hover-surface)] transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-        {onDelete && (
-          <div className="flex flex-wrap gap-2 sm:ml-auto">
-            {isDeletePending ? (
-              <>
-                <button
-                  onClick={onConfirmDelete}
-                  disabled={deleting}
-                  className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {deleting ? 'Deleting...' : 'Confirm Delete'}
-                </button>
-                <button
-                  onClick={onCancelDelete}
-                  disabled={deleting}
-                  className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
-                             bg-[var(--bg)] hover:bg-[var(--hover-surface)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  Cancel
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={onDelete}
-                className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
-                           border border-red-500/40 text-red-600 hover:bg-red-500/10"
-              >
-                Delete User
-              </button>
-            )}
-          </div>
         )}
       </div>
-    </>
+    )}
+    {panel.children}
+  </div>
+);
+
+export const UserAccountCardContent = ({
+  user,
+  onUserChange,
+  onSave,
+  saving,
+  onCancel,
+  hideEditActions = false,
+  editPassword,
+  onEditPasswordChange,
+  editPasswordConfirm,
+  onEditPasswordConfirmChange,
+  onDelete,
+  onConfirmDelete,
+  onCancelDelete,
+  isDeletePending,
+  deleting,
+  preferencesPanel,
+  preferencesPlacement = 'before',
+}: UserAccountCardContentProps) => {
+  const preferencesContent = preferencesPanel ? renderPreferencesPanel(preferencesPanel) : null;
+
+  return (
+    <div className="space-y-5">
+      {preferencesContent && preferencesPlacement === 'before' && (
+        <>
+          {preferencesContent}
+          <div className="border-t border-[var(--border-muted)]" />
+        </>
+      )}
+
+      <UserEditFields
+        user={user}
+        onUserChange={onUserChange}
+        onSave={onSave}
+        saving={saving}
+        onCancel={onCancel}
+        hideActions={hideEditActions}
+        editPassword={editPassword}
+        onEditPasswordChange={onEditPasswordChange}
+        editPasswordConfirm={editPasswordConfirm}
+        onEditPasswordConfirmChange={onEditPasswordConfirmChange}
+        onDelete={onDelete}
+        onConfirmDelete={onConfirmDelete}
+        onCancelDelete={onCancelDelete}
+        isDeletePending={isDeletePending}
+        deleting={deleting}
+      />
+
+      {preferencesContent && preferencesPlacement === 'after' && (
+        <>
+          <div className="border-t border-[var(--border-muted)]" />
+          {preferencesContent}
+        </>
+      )}
+    </div>
   );
 };

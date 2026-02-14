@@ -74,7 +74,7 @@ describe('activityMappers.downloadToActivityItem', () => {
     assert.equal(item.kind, 'download');
     assert.equal(item.visualStatus, 'queued');
     assert.equal(item.statusLabel, 'Queued');
-    assert.equal(item.metaLine, 'EPUB | 3 MB | Direct Download | alice');
+    assert.equal(item.metaLine, 'EPUB · 3 MB · Direct Download · alice');
     assert.equal(item.progress, 5);
     assert.equal(item.progressAnimated, true);
     assert.equal(item.timestamp, 123);
@@ -117,7 +117,7 @@ describe('activityMappers.requestToActivityItem', () => {
 
     assert.equal(item.kind, 'request');
     assert.equal(item.visualStatus, 'pending');
-    assert.equal(item.metaLine, 'EPUB | 2 MB | Prowlarr | alice');
+    assert.equal(item.metaLine, 'EPUB · 2 MB · Prowlarr · alice');
     assert.equal(item.requestId, 42);
     assert.equal(item.requestLevel, 'release');
     assert.equal(item.requestNote, 'please add this');
@@ -153,6 +153,6 @@ describe('activityMappers.requestToActivityItem', () => {
 
   it('does not append username to meta line for user viewer role', () => {
     const item = requestToActivityItem(makeRequest(), 'user');
-    assert.equal(item.metaLine, 'EPUB | 2 MB | Prowlarr');
+    assert.equal(item.metaLine, 'EPUB · 2 MB · Prowlarr');
   });
 });

@@ -53,10 +53,10 @@ const toRequestVisualStatus = (status: RequestRecord['status']): ActivityVisualS
 
 const getPendingRequestText = (item: ActivityItem, isAdmin: boolean): string => {
   if (!isAdmin) {
-    return 'Pending';
+    return 'Awaiting review';
   }
   const username = item.username?.trim() || item.requestRecord?.username?.trim();
-  return username ? `Requested by ${username}` : 'Requested';
+  return username ? `Needs review · ${username}` : 'Needs review';
 };
 
 const getRequestBadge = (item: ActivityItem, isAdmin: boolean): ActivityCardBadge => {
@@ -72,15 +72,15 @@ const getRequestBadge = (item: ActivityItem, isAdmin: boolean): ActivityCardBadg
 
   let text = item.statusLabel;
   if (hasInFlightLinkedDownload) {
-    text = isAdmin ? 'Request approved' : 'Approved';
+    text = 'Approved';
   } else if (requestVisualStatus === 'pending') {
     text = getPendingRequestText(item, isAdmin);
   } else if (requestVisualStatus === 'fulfilled') {
-    text = isAdmin ? 'Request fulfilled' : 'Approved';
+    text = 'Approved';
   } else if (requestVisualStatus === 'rejected') {
-    text = 'Rejected';
+    text = isAdmin ? 'Declined' : 'Not approved';
   } else if (requestVisualStatus === 'cancelled') {
-    text = 'Cancelled';
+    text = isAdmin ? 'Cancelled by requester' : 'Cancelled';
   }
 
   return {
@@ -109,6 +109,10 @@ const getDownloadBadge = (item: ActivityItem): ActivityCardBadge => {
 };
 
 const buildBadges = (item: ActivityItem, isAdmin: boolean): ActivityCardBadge[] => {
+  if (item.kind === 'download' && item.visualStatus === 'complete') {
+    return [getDownloadBadge(item)];
+  }
+
   if (item.kind === 'download' && item.requestId && item.requestRecord) {
     return [getRequestBadge(item, isAdmin), getDownloadBadge(item)];
   }

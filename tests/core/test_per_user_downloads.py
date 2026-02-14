@@ -5,7 +5,7 @@ Tests that DownloadTask has a user_id field and that the queue
 can be filtered by user.
 """
 
-from shelfmark.core.models import DownloadTask
+from shelfmark.core.models import DownloadTask, QueueStatus
 from shelfmark.core.queue import BookQueue
 
 
@@ -115,6 +115,39 @@ class TestQueueFilterByUser:
             all_tasks.update(tasks_by_status)
         # User 1 sees their own + legacy (no user_id)
         assert len(all_tasks) == 2
+
+    def test_clear_completed_for_user_only_removes_user_terminal_tasks(self):
+        q = BookQueue()
+        q.add(self._make_task("book-1", user_id=1))
+        q.add(self._make_task("book-2", user_id=2))
+        q.add(self._make_task("book-3", user_id=1))
+
+        q.update_status("book-1", QueueStatus.COMPLETE)
+        q.update_status("book-2", QueueStatus.ERROR)
+        q.update_status("book-3", QueueStatus.QUEUED)
+
+        removed = q.clear_completed(user_id=1)
+        assert removed == 1
+
+        status = q.get_status()
+        all_tasks = {}
+        for tasks_by_status in status.values():
+            all_tasks.update(tasks_by_status)
+
+        assert "book-1" not in all_tasks
+        assert "book-2" in all_tasks
+        assert "book-3" in all_tasks
+
+    def test_clear_completed_for_user_includes_legacy_tasks(self):
+        q = BookQueue()
+        q.add(self._make_task("legacy-book", user_id=None))
+        q.add(self._make_task("user-book", user_id=1))
+
+        q.update_status("legacy-book", QueueStatus.COMPLETE)
+        q.update_status("user-book", QueueStatus.COMPLETE)
+
+        removed = q.clear_completed(user_id=1)
+        assert removed == 2
 
 
 # ---------------------------------------------------------------------------

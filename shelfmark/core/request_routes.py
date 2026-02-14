@@ -24,6 +24,7 @@ from shelfmark.core.requests_service import (
     fulfil_request,
     reject_request,
 )
+from shelfmark.core.activity_service import ActivityService, build_request_item_key
 from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_db import UserDB
 
@@ -134,12 +135,66 @@ def _emit_request_event(
         logger.warning(f"Failed to emit WebSocket event '{event_name}' to room '{room}': {exc}")
 
 
+def _extract_release_source_id(release_data: Any) -> str | None:
+    if not isinstance(release_data, dict):
+        return None
+    source_id = release_data.get("source_id")
+    if not isinstance(source_id, str):
+        return None
+    normalized = source_id.strip()
+    return normalized or None
+
+
+def _record_terminal_request_snapshot(
+    activity_service: ActivityService | None,
+    *,
+    request_row: dict[str, Any],
+) -> None:
+    if activity_service is None:
+        return
+
+    request_status = request_row.get("status")
+    if request_status not in {"rejected", "cancelled"}:
+        return
+
+    raw_request_id = request_row.get("id")
+    try:
+        request_id = int(raw_request_id)
+    except (TypeError, ValueError):
+        return
+    if request_id < 1:
+        return
+
+    raw_user_id = request_row.get("user_id")
+    try:
+        user_id = int(raw_user_id)
+    except (TypeError, ValueError):
+        user_id = None
+
+    source_id = _extract_release_source_id(request_row.get("release_data"))
+
+    try:
+        activity_service.record_terminal_snapshot(
+            user_id=user_id,
+            item_type="request",
+            item_key=build_request_item_key(request_id),
+            origin="request",
+            final_status=request_status,
+            snapshot={"kind": "request", "request": request_row},
+            request_id=request_id,
+            source_id=source_id,
+        )
+    except Exception as exc:
+        logger.warning("Failed to record terminal request snapshot for request %s: %s", request_id, exc)
+
+
 def register_request_routes(
     app: Flask,
     user_db: UserDB,
     *,
     resolve_auth_mode: Callable[[], str],
     queue_release: Callable[..., tuple[bool, str | None]],
+    activity_service: ActivityService | None = None,
     ws_manager: Any | None = None,
 ) -> None:
     """Register request policy and request lifecycle routes."""
@@ -408,6 +463,8 @@ def register_request_routes(
         except RequestServiceError as exc:
             return _error_response(str(exc), exc.status_code, code=exc.code)
 
+        _record_terminal_request_snapshot(activity_service, request_row=updated)
+
         event_payload = {
             "request_id": updated["id"],
             "status": updated["status"],
@@ -556,6 +613,8 @@ def register_request_routes(
             )
         except RequestServiceError as exc:
             return _error_response(str(exc), exc.status_code, code=exc.code)
+
+        _record_terminal_request_snapshot(activity_service, request_row=updated)
 
         event_payload = {
             "request_id": updated["id"],

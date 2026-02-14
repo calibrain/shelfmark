@@ -11,3 +11,4 @@ export {
 } from './activityStyles';
 export type { ActivityItem, ActivityKind, ActivityVisualStatus } from './activityTypes';
 export { ACTIVITY_SIDEBAR_PINNED_STORAGE_KEY } from './ActivitySidebar';
+export type { ActivityDismissTarget } from './ActivitySidebar';

@@ -58,6 +58,14 @@ def _policy(
     }
 
 
+def _read_activity_log_row(main_module, snapshot_id: int):
+    conn = main_module.user_db._connect()
+    try:
+        return conn.execute("SELECT * FROM activity_log WHERE id = ?", (snapshot_id,)).fetchone()
+    finally:
+        conn.close()
+
+
 class TestDownloadPolicyGuards:
     def test_download_endpoint_blocks_before_queue_when_policy_requires_request(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -193,6 +201,17 @@ class TestRequestRoutes:
 
         assert cancel_resp.status_code == 200
         assert cancel_resp.json["status"] == "cancelled"
+
+        snapshot_id = main_module.activity_service.get_latest_activity_log_id(
+            item_type="request",
+            item_key=f"request:{request_id}",
+        )
+        assert snapshot_id is not None
+        log_row = _read_activity_log_row(main_module, snapshot_id)
+        assert log_row is not None
+        assert log_row["user_id"] == user["id"]
+        assert log_row["final_status"] == "cancelled"
+        assert log_row["origin"] == "request"
 
     def test_create_request_emits_websocket_events(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -497,6 +516,17 @@ class TestRequestRoutes:
         assert reject_resp.json["status"] == "rejected"
         assert reject_again_resp.status_code == 409
         assert reject_again_resp.json["code"] == "stale_transition"
+
+        snapshot_id = main_module.activity_service.get_latest_activity_log_id(
+            item_type="request",
+            item_key=f"request:{request_id}",
+        )
+        assert snapshot_id is not None
+        log_row = _read_activity_log_row(main_module, snapshot_id)
+        assert log_row is not None
+        assert log_row["user_id"] == user["id"]
+        assert log_row["final_status"] == "rejected"
+        assert log_row["origin"] == "request"
 
     def test_admin_reject_emits_update_to_user_and_admin_rooms(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -1638,3 +1668,123 @@ class TestDownloadPolicyGuardsExtended:
                         })
 
         assert resp.status_code == 200
+
+
+def test_clear_queue_does_not_mutate_fulfilled_request_delivery_state(main_module, client):
+    user = _create_user(main_module, prefix="reader")
+    admin = _create_user(main_module, prefix="admin", role="admin")
+    _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
+
+    created = main_module.user_db.create_request(
+        user_id=user["id"],
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data={
+            "title": "Clear Delivery State",
+            "author": "QA",
+            "content_type": "ebook",
+            "provider": "openlibrary",
+            "provider_id": "ol-clear-delivery",
+        },
+        release_data={
+            "source": "prowlarr",
+            "source_id": "clear-delivery-source-id",
+            "title": "Clear Delivery State.epub",
+        },
+        status="fulfilled",
+        delivery_state="complete",
+    )
+
+    with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+        with patch.object(main_module.ws_manager, "is_enabled", return_value=False):
+            with patch.object(main_module.ws_manager, "broadcast_status_update"):
+                with patch.object(main_module.backend, "queue_status", return_value={}) as mock_queue_status:
+                    with patch.object(main_module.backend, "clear_completed", return_value=1) as mock_clear_completed:
+                        resp = client.delete("/api/queue/clear")
+
+    assert resp.status_code == 200
+    assert resp.json["status"] == "cleared"
+    assert resp.json["removed_count"] == 1
+    assert mock_queue_status.call_args_list[0].kwargs == {}
+    mock_clear_completed.assert_called_once_with(user_id=None)
+
+    refreshed = main_module.user_db.get_request(created["id"])
+    assert refreshed["delivery_state"] == "complete"
+
+
+def test_non_admin_clear_queue_is_scoped_without_mutating_request_delivery_state(main_module, client):
+    alice = _create_user(main_module, prefix="alice")
+    bob = _create_user(main_module, prefix="bob")
+    _set_session(client, user_id=alice["username"], db_user_id=alice["id"], is_admin=False)
+
+    alice_request = main_module.user_db.create_request(
+        user_id=alice["id"],
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data={
+            "title": "Alice Clear Scope",
+            "author": "QA",
+            "content_type": "ebook",
+            "provider": "openlibrary",
+            "provider_id": "ol-alice-scope",
+        },
+        release_data={
+            "source": "prowlarr",
+            "source_id": "shared-clear-scope-source-id",
+            "title": "Alice Scope.epub",
+        },
+        status="fulfilled",
+        delivery_state="complete",
+    )
+    bob_request = main_module.user_db.create_request(
+        user_id=bob["id"],
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data={
+            "title": "Bob Clear Scope",
+            "author": "QA",
+            "content_type": "ebook",
+            "provider": "openlibrary",
+            "provider_id": "ol-bob-scope",
+        },
+        release_data={
+            "source": "prowlarr",
+            "source_id": "shared-clear-scope-source-id",
+            "title": "Bob Scope.epub",
+        },
+        status="fulfilled",
+        delivery_state="complete",
+    )
+
+    with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+        with patch.object(main_module.ws_manager, "is_enabled", return_value=False):
+            with patch.object(main_module.ws_manager, "broadcast_status_update"):
+                with patch.object(main_module.backend, "queue_status", return_value={}) as mock_queue_status:
+                    with patch.object(main_module.backend, "clear_completed", return_value=1) as mock_clear_completed:
+                        resp = client.delete("/api/queue/clear")
+
+    assert resp.status_code == 200
+    assert resp.json["status"] == "cleared"
+    assert resp.json["removed_count"] == 1
+    assert mock_queue_status.call_args_list[0].kwargs == {}
+    mock_clear_completed.assert_called_once_with(user_id=alice["id"])
+
+    refreshed_alice = main_module.user_db.get_request(alice_request["id"])
+    refreshed_bob = main_module.user_db.get_request(bob_request["id"])
+    assert refreshed_alice["delivery_state"] == "complete"
+    assert refreshed_bob["delivery_state"] == "complete"
+
+
+def test_non_admin_clear_queue_without_db_user_id_returns_403(main_module, client):
+    _set_session(client, user_id="reader-no-db", db_user_id=None, is_admin=False)
+
+    with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+        with patch.object(main_module.backend, "clear_completed") as mock_clear_completed:
+            resp = client.delete("/api/queue/clear")
+
+    assert resp.status_code == 403
+    assert resp.json["code"] == "user_identity_unavailable"
+    mock_clear_completed.assert_not_called()

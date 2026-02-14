@@ -30,7 +30,7 @@ describe('activityCardModel', () => {
     );
 
     assert.equal(model.badges.length, 1);
-    assert.equal(model.badges[0]?.text, 'Requested by testuser');
+    assert.equal(model.badges[0]?.text, 'Needs review · testuser');
   });
 
   it('keeps pending label for requester-side pending requests', () => {
@@ -45,7 +45,7 @@ describe('activityCardModel', () => {
     );
 
     assert.equal(model.badges.length, 1);
-    assert.equal(model.badges[0]?.text, 'Pending');
+    assert.equal(model.badges[0]?.text, 'Awaiting review');
   });
 
   it('uses requester-friendly approved wording for fulfilled requests', () => {
@@ -98,7 +98,7 @@ describe('activityCardModel', () => {
     assert.equal(model.badges[0]?.visualStatus, 'resolving');
   });
 
-  it('shows request and download badges side-by-side for merged request downloads', () => {
+  it('shows a single download completion badge for completed merged request downloads', () => {
     const model = buildActivityCardModel(
       makeItem({
         visualStatus: 'complete',
@@ -127,11 +127,42 @@ describe('activityCardModel', () => {
       true
     );
 
-    assert.equal(model.badges.length, 2);
-    assert.equal(model.badges[0]?.key, 'request');
-    assert.equal(model.badges[0]?.text, 'Request fulfilled');
-    assert.equal(model.badges[1]?.key, 'download');
-    assert.equal(model.badges[1]?.text, 'Sent to Kindle');
+    assert.equal(model.badges.length, 1);
+    assert.equal(model.badges[0]?.key, 'download');
+    assert.equal(model.badges[0]?.text, 'Sent to Kindle');
+    assert.equal(model.badges[0]?.visualStatus, 'complete');
+  });
+
+  it('does not render a special note for fulfilled requests with terminal delivery state', () => {
+    const model = buildActivityCardModel(
+      makeItem({
+        kind: 'request',
+        visualStatus: 'fulfilled',
+        requestId: 42,
+        requestRecord: {
+          id: 42,
+          user_id: 7,
+          status: 'fulfilled',
+          delivery_state: 'complete',
+          source_hint: 'prowlarr',
+          content_type: 'ebook',
+          request_level: 'release',
+          policy_mode: 'request_release',
+          book_data: { title: 'The Martian', author: 'Andy Weir' },
+          release_data: { source_id: 'book-1' },
+          note: null,
+          admin_note: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          created_at: '2026-02-13T12:00:00Z',
+          updated_at: '2026-02-13T12:00:00Z',
+          username: 'testuser',
+        },
+      }),
+      false
+    );
+
+    assert.equal(model.noteLine, undefined);
   });
 
   it('builds pending admin request actions from one normalized source', () => {

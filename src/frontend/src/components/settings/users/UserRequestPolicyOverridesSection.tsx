@@ -35,8 +35,8 @@ const REQUEST_POLICY_OVERRIDE_KEYS: Array<keyof PerUserSettings> = [
 const requestPolicyHeading: HeadingFieldConfig = {
   type: 'HeadingField',
   key: 'request_policy_overrides_heading',
-  title: 'Request Policy',
-  description: 'User-level request policy overrides. Reset to inherit global policy values.',
+  title: 'Requests',
+  description: 'Custom request settings for this user. Reset any to fall back to the global defaults.',
 };
 
 const hasOwnNonNull = (settings: PerUserSettings, key: keyof PerUserSettings): boolean => {

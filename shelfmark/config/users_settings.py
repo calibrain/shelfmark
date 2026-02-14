@@ -26,22 +26,22 @@ _REQUEST_DEFAULT_MODE_OPTIONS = [
     {
         "value": "download",
         "label": "Download",
-        "description": "Allow direct downloads.",
+        "description": "Everything can be downloaded directly.",
     },
     {
         "value": "request_release",
         "label": "Request Release",
-        "description": "Block direct download; allow requesting a specific release.",
+        "description": "Users must request a specific release.",
     },
     {
         "value": "request_book",
         "label": "Request Book",
-        "description": "Block direct download; allow book-level requests only.",
+        "description": "Users request a book, admin picks the release.",
     },
     {
         "value": "blocked",
         "label": "Blocked",
-        "description": "Block both downloading and requesting.",
+        "description": "No downloads or requests allowed.",
     },
 ]
 
@@ -180,32 +180,17 @@ def users_settings():
             component="users_management",
         ),
         HeadingField(
-            key="users_access_heading",
-            title="Options",
-        ),
-        CheckboxField(
-            key="RESTRICT_SETTINGS_TO_ADMIN",
-            label="Restrict Settings and Onboarding to Admins",
-            description=(
-                "When enabled, only admin users can access Settings and Onboarding. "
-                "When disabled, any authenticated user can access them. "
-                "Security and Users are always admin-only."
-            ),
-            default=True,
-            env_supported=False,
-        ),
-        HeadingField(
             key="requests_heading",
-            title="Request Policy",
+            title="Requests",
             description=(
-                "Configure when users can download directly and when they must create requests."
+                "Choose what users can download directly and what needs approval first."
             ),
         ),
         CheckboxField(
             key="REQUESTS_ENABLED",
-            label="Enable Request Workflow",
+            label="Enable Requests",
             description=(
-                "When disabled, request actions are hidden and only direct downloads are used."
+                "Turn this off to let everyone download directly without needing approval."
             ),
             default=False,
             user_overridable=True,
@@ -213,9 +198,9 @@ def users_settings():
         CustomComponentField(
             key="request_policy_editor",
             component="request_policy_grid",
-            label="Request Policy Rules",
+            label="Request Rules",
             description=(
-                "Source/content-type rules can only restrict the content-type default ceiling."
+                "Fine-tune access per source. Source rules can only be the same or more restrictive than the default above."
             ),
             show_when={"field": "REQUESTS_ENABLED", "value": True},
             wrap_in_field_wrapper=True,
@@ -224,7 +209,7 @@ def users_settings():
                     key="REQUEST_POLICY_DEFAULT_EBOOK",
                     label="Default Ebook Mode",
                     description=(
-                        "Global ceiling for ebook actions. Source rules can only match or restrict this mode."
+                        "Sets the baseline for all ebook sources."
                     ),
                     options=_REQUEST_DEFAULT_MODE_OPTIONS,
                     default="download",
@@ -234,7 +219,7 @@ def users_settings():
                     key="REQUEST_POLICY_DEFAULT_AUDIOBOOK",
                     label="Default Audiobook Mode",
                     description=(
-                        "Global ceiling for audiobook actions. Source rules can only match or restrict this mode."
+                        "Sets the baseline for all audiobook sources."
                     ),
                     options=_REQUEST_DEFAULT_MODE_OPTIONS,
                     default="download",
@@ -242,9 +227,9 @@ def users_settings():
                 ),
                 TableField(
                     key="REQUEST_POLICY_RULES",
-                    label="Request Policy Rules",
+                    label="Request Rules",
                     description=(
-                        "Source/content-type rules can only restrict the content-type default ceiling."
+                        "Fine-tune access per source. Source rules can only be the same or more restrictive than the default above."
                     ),
                     columns=_get_request_policy_rule_columns,
                     default=[],
@@ -257,8 +242,8 @@ def users_settings():
         ),
         NumberField(
             key="MAX_PENDING_REQUESTS_PER_USER",
-            label="Max Pending Requests Per User",
-            description="Maximum number of pending requests a user can have at once.",
+            label="Max pending requests per user",
+            description="How many open requests a user can have at a time.",
             default=20,
             min_value=1,
             max_value=1000,
@@ -267,8 +252,8 @@ def users_settings():
         ),
         CheckboxField(
             key="REQUESTS_ALLOW_NOTES",
-            label="Allow Request Notes",
-            description="Allow users to include notes when creating requests.",
+            label="Allow notes on requests",
+            description="Let users add a note when they submit a request.",
             default=True,
             user_overridable=True,
             show_when={"field": "REQUESTS_ENABLED", "value": True},

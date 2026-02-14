@@ -8,9 +8,12 @@ existing contracts.
 from __future__ import annotations
 
 import importlib
+import uuid
 from unittest.mock import patch
 
 import pytest
+
+from shelfmark.core.models import DownloadTask
 
 
 @pytest.fixture(scope="module")
@@ -40,6 +43,11 @@ def _set_authenticated_session(
         sess["is_admin"] = is_admin
         if db_user_id is not None:
             sess["db_user_id"] = db_user_id
+
+
+def _create_user(main_module, *, prefix: str, role: str = "user") -> dict:
+    username = f"{prefix}-{uuid.uuid4().hex[:8]}"
+    return main_module.user_db.create_user(username=username, role=role)
 
 
 class TestDownloadEndpointGuardrails:
@@ -209,6 +217,148 @@ class TestReleaseDownloadEndpointGuardrails:
         assert resp.status_code == 500
         assert "Unsupported Media Type" in body["error"]
         mock_queue_release.assert_not_called()
+
+
+class TestCancelDownloadEndpointGuardrails:
+    def test_owner_can_cancel_direct_download(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+            is_admin=False,
+        )
+        task = DownloadTask(
+            task_id="direct-task-1",
+            source="direct_download",
+            title="Direct Task",
+            user_id=user["id"],
+            username=user["username"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
+                with patch.object(main_module.backend, "cancel_download", return_value=True) as mock_cancel:
+                    resp = client.delete("/api/download/direct-task-1/cancel")
+
+        assert resp.status_code == 200
+        assert resp.get_json() == {"status": "cancelled", "book_id": "direct-task-1"}
+        mock_cancel.assert_called_once_with("direct-task-1")
+
+    def test_non_owner_cannot_cancel_download(self, main_module, client):
+        owner = _create_user(main_module, prefix="owner")
+        actor = _create_user(main_module, prefix="actor")
+        _set_authenticated_session(
+            client,
+            user_id=actor["username"],
+            db_user_id=actor["id"],
+            is_admin=False,
+        )
+        task = DownloadTask(
+            task_id="owned-task-1",
+            source="direct_download",
+            title="Owned Task",
+            user_id=owner["id"],
+            username=owner["username"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
+                with patch.object(main_module.backend, "cancel_download", return_value=True) as mock_cancel:
+                    resp = client.delete("/api/download/owned-task-1/cancel")
+
+        assert resp.status_code == 403
+        assert resp.get_json()["code"] == "download_not_owned"
+        mock_cancel.assert_not_called()
+
+    def test_owner_cannot_cancel_graduated_request_download(self, main_module, client):
+        user = _create_user(main_module, prefix="requester")
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+            is_admin=False,
+        )
+        main_module.user_db.create_request(
+            user_id=user["id"],
+            content_type="ebook",
+            request_level="release",
+            policy_mode="request_release",
+            book_data={
+                "title": "Requested Book",
+                "author": "Request Author",
+                "provider": "openlibrary",
+                "provider_id": "req-guard-1",
+            },
+            release_data={
+                "source": "prowlarr",
+                "source_id": "requested-task-1",
+                "title": "Requested Book.epub",
+            },
+            status="fulfilled",
+            delivery_state="queued",
+        )
+        task = DownloadTask(
+            task_id="requested-task-1",
+            source="prowlarr",
+            title="Requested Book",
+            user_id=user["id"],
+            username=user["username"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
+                with patch.object(main_module.backend, "cancel_download", return_value=True) as mock_cancel:
+                    resp = client.delete("/api/download/requested-task-1/cancel")
+
+        assert resp.status_code == 403
+        assert resp.get_json()["code"] == "requested_download_cancel_forbidden"
+        mock_cancel.assert_not_called()
+
+    def test_admin_can_cancel_graduated_request_download(self, main_module, client):
+        admin = _create_user(main_module, prefix="admin", role="admin")
+        requester = _create_user(main_module, prefix="requester")
+        _set_authenticated_session(
+            client,
+            user_id=admin["username"],
+            db_user_id=admin["id"],
+            is_admin=True,
+        )
+        main_module.user_db.create_request(
+            user_id=requester["id"],
+            content_type="ebook",
+            request_level="release",
+            policy_mode="request_release",
+            book_data={
+                "title": "Admin Requested Book",
+                "author": "Admin Request Author",
+                "provider": "openlibrary",
+                "provider_id": "req-guard-2",
+            },
+            release_data={
+                "source": "prowlarr",
+                "source_id": "requested-task-2",
+                "title": "Admin Requested Book.epub",
+            },
+            status="fulfilled",
+            delivery_state="queued",
+        )
+        task = DownloadTask(
+            task_id="requested-task-2",
+            source="prowlarr",
+            title="Admin Requested Book",
+            user_id=requester["id"],
+            username=requester["username"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
+                with patch.object(main_module.backend, "cancel_download", return_value=True) as mock_cancel:
+                    resp = client.delete("/api/download/requested-task-2/cancel")
+
+        assert resp.status_code == 200
+        assert resp.get_json() == {"status": "cancelled", "book_id": "requested-task-2"}
+        mock_cancel.assert_called_once_with("requested-task-2")
 
 
 class TestStatusEndpointGuardrails:

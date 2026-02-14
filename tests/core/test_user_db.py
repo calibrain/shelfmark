@@ -62,6 +62,18 @@ class TestUserDBInitialization:
         assert cursor.fetchone() is not None
         conn.close()
 
+    def test_initialize_creates_activity_tables(self, user_db, db_path):
+        conn = sqlite3.connect(db_path)
+        activity_log = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='activity_log'"
+        ).fetchone()
+        dismissals = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='activity_dismissals'"
+        ).fetchone()
+        assert activity_log is not None
+        assert dismissals is not None
+        conn.close()
+
     def test_initialize_creates_download_requests_indexes(self, user_db, db_path):
         conn = sqlite3.connect(db_path)
         rows = conn.execute(
@@ -70,6 +82,22 @@ class TestUserDBInitialization:
         index_names = {row[0] for row in rows}
         assert "idx_download_requests_user_status_created_at" in index_names
         assert "idx_download_requests_status_created_at" in index_names
+        conn.close()
+
+    def test_initialize_creates_activity_indexes(self, user_db, db_path):
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='activity_log'"
+        ).fetchall()
+        log_index_names = {row[0] for row in rows}
+        assert "idx_activity_log_user_terminal" in log_index_names
+        assert "idx_activity_log_lookup" in log_index_names
+
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='activity_dismissals'"
+        ).fetchall()
+        dismissal_index_names = {row[0] for row in rows}
+        assert "idx_activity_dismissals_user_dismissed_at" in dismissal_index_names
         conn.close()
 
     def test_initialize_enables_wal_mode(self, user_db, db_path):

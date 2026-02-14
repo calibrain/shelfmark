@@ -1,0 +1,333 @@
+"""Self-service user account routes."""
+
+from functools import wraps
+from typing import Any, Callable, Mapping
+
+from flask import Flask, jsonify, request, session
+from werkzeug.security import generate_password_hash
+
+from shelfmark.config.env import CWA_DB_PATH
+from shelfmark.core.admin_settings_routes import validate_user_settings
+from shelfmark.core.auth_modes import (
+    AUTH_SOURCE_BUILTIN,
+    AUTH_SOURCE_CWA,
+    AUTH_SOURCE_OIDC,
+    AUTH_SOURCE_PROXY,
+    determine_auth_mode,
+    has_local_password_admin,
+    normalize_auth_source,
+)
+from shelfmark.core.logger import setup_logger
+from shelfmark.core.settings_registry import load_config_file
+from shelfmark.core.user_db import UserDB
+
+logger = setup_logger(__name__)
+
+MIN_PASSWORD_LENGTH = 4
+
+
+def _get_auth_mode() -> str:
+    """Get current auth mode from config."""
+    try:
+        config = load_config_file("security")
+        return determine_auth_mode(
+            config,
+            CWA_DB_PATH,
+            has_local_admin=has_local_password_admin(),
+        )
+    except Exception:
+        return "none"
+
+
+def _require_authenticated_user(f: Callable[..., Any]) -> Callable[..., Any]:
+    """Decorator requiring an authenticated session linked to a local user row."""
+
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth_mode = _get_auth_mode()
+        if auth_mode != "none" and "user_id" not in session:
+            return jsonify({"error": "Authentication required"}), 401
+        if "db_user_id" not in session:
+            return jsonify({"error": "Authenticated session is missing local user context"}), 403
+        return f(*args, **kwargs)
+
+    return decorated
+
+
+def _get_current_user(user_db: UserDB) -> tuple[int | None, dict[str, Any] | None, tuple[Any, int] | None]:
+    raw_user_id = session.get("db_user_id")
+    try:
+        user_id = int(raw_user_id)
+    except (TypeError, ValueError):
+        return None, None, (jsonify({"error": "Invalid user context"}), 400)
+
+    user = user_db.get_user(user_id=user_id)
+    if not user:
+        return None, None, (jsonify({"error": "User not found"}), 404)
+    return user_id, user, None
+
+
+def _is_user_active(user: Mapping[str, Any], auth_method: str) -> bool:
+    source = normalize_auth_source(user.get("auth_source"), user.get("oidc_subject"))
+    if source == AUTH_SOURCE_BUILTIN:
+        return auth_method in (AUTH_SOURCE_BUILTIN, AUTH_SOURCE_OIDC)
+    return source == auth_method
+
+
+def _get_self_edit_capabilities(user: Mapping[str, Any]) -> dict[str, Any]:
+    auth_source = normalize_auth_source(
+        user.get("auth_source"),
+        user.get("oidc_subject"),
+    )
+
+    return {
+        "authSource": auth_source,
+        "canSetPassword": auth_source == AUTH_SOURCE_BUILTIN,
+        "canEditRole": False,
+        "canEditEmail": auth_source in {AUTH_SOURCE_BUILTIN, AUTH_SOURCE_PROXY},
+        "canEditDisplayName": auth_source != AUTH_SOURCE_OIDC,
+    }
+
+
+def _serialize_self_user(user: Mapping[str, Any], auth_mode: str) -> dict[str, Any]:
+    payload = dict(user)
+    payload.pop("password_hash", None)
+    payload["auth_source"] = normalize_auth_source(
+        payload.get("auth_source"),
+        payload.get("oidc_subject"),
+    )
+    payload["is_active"] = _is_user_active(payload, auth_mode)
+    payload["edit_capabilities"] = _get_self_edit_capabilities(payload)
+    return payload
+
+
+def _get_settings_registry():
+    # Ensure settings modules are loaded before reading registry metadata.
+    import shelfmark.config.settings  # noqa: F401
+    import shelfmark.config.security  # noqa: F401
+    import shelfmark.config.users_settings  # noqa: F401
+    from shelfmark.core import settings_registry
+
+    return settings_registry
+
+
+def _get_ordered_user_overridable_fields(tab_name: str) -> list[tuple[str, Any]]:
+    settings_registry = _get_settings_registry()
+    tab = settings_registry.get_settings_tab(tab_name)
+    if not tab:
+        return []
+    overridable_map = settings_registry.get_user_overridable_fields(tab_name=tab_name)
+    return [(field.key, field) for field in tab.fields if field.key in overridable_map]
+
+
+def _build_delivery_preferences_payload(user_db: UserDB, user_id: int) -> dict[str, Any]:
+    from shelfmark.core.config import config as app_config
+
+    settings_registry = _get_settings_registry()
+    ordered_fields = _get_ordered_user_overridable_fields("downloads")
+    if not ordered_fields:
+        raise ValueError("Downloads settings tab not found")
+
+    download_config = load_config_file("downloads")
+    user_settings = user_db.get_user_settings(user_id)
+    ordered_keys = [key for key, _ in ordered_fields]
+
+    fields_payload: list[dict[str, Any]] = []
+    global_values: dict[str, Any] = {}
+    effective: dict[str, dict[str, Any]] = {}
+
+    for key, field in ordered_fields:
+        serialized = settings_registry.serialize_field(field, "downloads", include_value=False)
+        serialized["fromEnv"] = bool(
+            field.env_supported and settings_registry.is_value_from_env(field)
+        )
+        fields_payload.append(serialized)
+
+        global_values[key] = app_config.get(key, field.default)
+
+        source = "default"
+        value = app_config.get(key, field.default, user_id=user_id)
+        if field.env_supported and settings_registry.is_value_from_env(field):
+            source = "env_var"
+        elif key in user_settings and user_settings[key] is not None:
+            source = "user_override"
+            value = user_settings[key]
+        elif key in download_config:
+            source = "global_config"
+
+        effective[key] = {"value": value, "source": source}
+
+    user_overrides = {
+        key: user_settings[key]
+        for key in ordered_keys
+        if key in user_settings and user_settings[key] is not None
+    }
+
+    return {
+        "tab": "downloads",
+        "keys": ordered_keys,
+        "fields": fields_payload,
+        "globalValues": global_values,
+        "userOverrides": user_overrides,
+        "effective": effective,
+    }
+
+
+def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
+    """Register self-service user endpoints."""
+
+    @app.route("/api/users/me/edit-context", methods=["GET"])
+    @_require_authenticated_user
+    def users_me_edit_context():
+        user_id, user, user_error = _get_current_user(user_db)
+        if user_error:
+            return user_error
+
+        auth_mode = _get_auth_mode()
+        serialized_user = _serialize_self_user(user, auth_mode)
+        serialized_user["settings"] = user_db.get_user_settings(user_id)
+
+        try:
+            delivery_preferences = _build_delivery_preferences_payload(user_db, user_id)
+        except ValueError:
+            return jsonify({"error": "Downloads settings tab not found"}), 500
+        except Exception as exc:
+            logger.warning(f"Failed to build user delivery preferences for user_id={user_id}: {exc}")
+            delivery_preferences = None
+
+        user_overridable_keys = sorted(
+            set(delivery_preferences.get("keys", []) if delivery_preferences else [])
+        )
+
+        return jsonify(
+            {
+                "user": serialized_user,
+                "deliveryPreferences": delivery_preferences,
+                "userOverridableKeys": user_overridable_keys,
+            }
+        )
+
+    @app.route("/api/users/me", methods=["PUT"])
+    @_require_authenticated_user
+    def users_me_update():
+        user_id, user, user_error = _get_current_user(user_db)
+        if user_error:
+            return user_error
+
+        data = request.get_json() or {}
+        if not isinstance(data, dict):
+            return jsonify({"error": "Request body must be a JSON object"}), 400
+
+        capabilities = _get_self_edit_capabilities(user)
+        auth_source = capabilities["authSource"]
+
+        password = data.get("password", "")
+        if password:
+            if not capabilities["canSetPassword"]:
+                return jsonify(
+                    {
+                        "error": f"Cannot set password for {auth_source.upper()} users",
+                        "message": "Password authentication is only available for local users.",
+                    }
+                ), 400
+            if len(password) < MIN_PASSWORD_LENGTH:
+                return jsonify({"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters"}), 400
+            user_db.update_user(user_id, password_hash=generate_password_hash(password))
+
+        user_fields: dict[str, Any] = {}
+        if "email" in data:
+            incoming_email = data.get("email")
+            if incoming_email is None:
+                user_fields["email"] = None
+            else:
+                user_fields["email"] = str(incoming_email).strip() or None
+        if "display_name" in data:
+            incoming_display_name = data.get("display_name")
+            user_fields["display_name"] = (
+                str(incoming_display_name).strip() or None
+                if incoming_display_name is not None
+                else None
+            )
+
+        email_changed = "email" in user_fields and user_fields["email"] != user.get("email")
+        display_name_changed = (
+            "display_name" in user_fields
+            and user_fields["display_name"] != user.get("display_name")
+        )
+
+        if email_changed and not capabilities["canEditEmail"]:
+            if auth_source == AUTH_SOURCE_CWA:
+                return jsonify(
+                    {
+                        "error": "Cannot change email for CWA users",
+                        "message": "Email is synced from Calibre-Web.",
+                    }
+                ), 400
+            return jsonify(
+                {
+                    "error": "Cannot change email for OIDC users",
+                    "message": "Email is managed by your identity provider.",
+                }
+            ), 400
+
+        if display_name_changed and not capabilities["canEditDisplayName"]:
+            return jsonify(
+                {
+                    "error": "Cannot change display name for OIDC users",
+                    "message": "Display name is managed by your identity provider.",
+                }
+            ), 400
+
+        for field in ("email", "display_name"):
+            if field in user_fields and user_fields[field] == user.get(field):
+                user_fields.pop(field)
+
+        if user_fields:
+            user_db.update_user(user_id, **user_fields)
+
+        if "settings" in data:
+            settings_payload = data["settings"]
+            if not isinstance(settings_payload, dict):
+                return jsonify({"error": "Settings must be an object"}), 400
+
+            allowed_user_settings_keys = {
+                key for key, _field in _get_ordered_user_overridable_fields("downloads")
+            }
+            disallowed_keys = sorted(
+                key for key in settings_payload if key not in allowed_user_settings_keys
+            )
+            if disallowed_keys:
+                return jsonify(
+                    {
+                        "error": "Some settings are admin-only",
+                        "details": [
+                            f"Setting not user-overridable: {key}" for key in disallowed_keys
+                        ],
+                    }
+                ), 400
+
+            validated_settings, validation_errors = validate_user_settings(settings_payload)
+            if validation_errors:
+                return jsonify(
+                    {
+                        "error": "Invalid settings payload",
+                        "details": validation_errors,
+                    }
+                ), 400
+
+            user_db.set_user_settings(user_id, validated_settings)
+            try:
+                from shelfmark.core.config import config as app_config
+
+                app_config.refresh()
+            except Exception:
+                pass
+
+        updated = user_db.get_user(user_id=user_id)
+        if not updated:
+            return jsonify({"error": "User not found"}), 404
+
+        result = _serialize_self_user(updated, _get_auth_mode())
+        result["settings"] = user_db.get_user_settings(user_id)
+        logger.info(f"User {user_id} updated their own account")
+        return jsonify(result)

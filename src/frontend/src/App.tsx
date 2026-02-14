@@ -17,7 +17,6 @@ import {
   downloadBook,
   downloadRelease,
   cancelDownload,
-  clearCompleted,
   getConfig,
   createRequest,
   isApiResponseError,
@@ -31,6 +30,7 @@ import { useDownloadTracking } from './hooks/useDownloadTracking';
 import { useRequestPolicy } from './hooks/useRequestPolicy';
 import { resolveDefaultModeFromPolicy, resolveSourceModeFromPolicy } from './hooks/requestPolicyCore';
 import { useRequests } from './hooks/useRequests';
+import { useActivity } from './hooks/useActivity';
 import { Header } from './components/Header';
 import { SearchSection } from './components/SearchSection';
 import { AdvancedFilters } from './components/AdvancedFilters';
@@ -40,9 +40,9 @@ import { ReleaseModal } from './components/ReleaseModal';
 import { RequestConfirmationModal } from './components/RequestConfirmationModal';
 import { ToastContainer } from './components/ToastContainer';
 import { Footer } from './components/Footer';
-import { ActivitySidebar, requestToActivityItem } from './components/activity';
+import { ActivitySidebar } from './components/activity';
 import { LoginPage } from './pages/LoginPage';
-import { SettingsModal } from './components/settings';
+import { SelfSettingsModal, SettingsModal } from './components/settings';
 import { ConfigSetupBanner } from './components/ConfigSetupBanner';
 import { OnboardingModal } from './components/OnboardingModal';
 import { DEFAULT_LANGUAGES, DEFAULT_SUPPORTED_FORMATS } from './data/languages';
@@ -62,6 +62,7 @@ import {
 import { bookFromRequestData } from './utils/requestFulfil';
 import { policyTrace } from './utils/policyTrace';
 import { SearchModeProvider } from './contexts/SearchModeContext';
+import { useSocket } from './contexts/SocketContext';
 import './styles.css';
 
 const CONTENT_TYPE_STORAGE_KEY = 'preferred-content-type';
@@ -79,7 +80,6 @@ const getInitialContentType = (): ContentType => {
 };
 
 const POLICY_GUARD_ERROR_CODES = new Set(['policy_requires_request', 'policy_blocked']);
-
 const isPolicyGuardError = (error: unknown): boolean => {
   return (
     isApiResponseError(error) &&
@@ -117,6 +117,7 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 
 function App() {
   const { toasts, showToast, removeToast } = useToast();
+  const { socket } = useSocket();
 
   // Realtime status with WebSocket and polling fallback
   // Socket connection is managed by SocketProvider in main.tsx
@@ -144,7 +145,7 @@ function App() {
     isAuthenticated,
     authRequired,
     authChecked,
-    isAdmin: authCanAccessSettings,
+    isAdmin: authIsAdmin,
     authMode,
     username,
     displayName,
@@ -163,9 +164,9 @@ function App() {
     if (!authChecked || !isAuthenticated) {
       return;
     }
-    policyTrace('auth.status', { authChecked, isAuthenticated, isAdmin: authCanAccessSettings, username });
+    policyTrace('auth.status', { authChecked, isAuthenticated, isAdmin: authIsAdmin, username });
     void fetchStatus();
-  }, [authChecked, isAuthenticated, authCanAccessSettings, username, fetchStatus]);
+  }, [authChecked, isAuthenticated, authIsAdmin, username, fetchStatus]);
 
   // Content type state (ebook vs audiobook) - defined before useSearch since it's passed to it
   const [contentType, setContentType] = useState<ContentType>(() => getInitialContentType());
@@ -187,14 +188,12 @@ function App() {
     refresh: refreshRequestPolicy,
   } = useRequestPolicy({
     enabled: isAuthenticated,
-    isAdmin: authCanAccessSettings,
+    isAdmin: authIsAdmin,
   });
 
   const requestRoleIsAdmin = requestPolicy ? Boolean(requestPolicy.is_admin) : false;
 
   const {
-    requests,
-    pendingCount: pendingRequestCount,
     isLoading: isRequestsLoading,
     cancelRequest: cancelUserRequest,
     fulfilRequest: fulfilSidebarRequest,
@@ -204,58 +203,28 @@ function App() {
     enabled: isAuthenticated,
   });
 
-  const dismissedRequestStorageKey = useMemo(() => {
-    const roleScope = requestRoleIsAdmin ? 'admin' : 'user';
-    const userScope = username?.trim().toLowerCase() || 'anonymous';
-    return `activity-dismissed-requests:${roleScope}:${userScope}`;
-  }, [requestRoleIsAdmin, username]);
-
-  const [dismissedRequestIds, setDismissedRequestIds] = useState<number[]>([]);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setDismissedRequestIds([]);
-      return;
-    }
-
-    try {
-      const raw = window.localStorage.getItem(dismissedRequestStorageKey);
-      if (!raw) {
-        setDismissedRequestIds([]);
-        return;
-      }
-      const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed)) {
-        setDismissedRequestIds([]);
-        return;
-      }
-
-      const ids = parsed.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-      setDismissedRequestIds(ids);
-    } catch {
-      setDismissedRequestIds([]);
-    }
-  }, [dismissedRequestStorageKey, isAuthenticated]);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      return;
-    }
-    try {
-      window.localStorage.setItem(dismissedRequestStorageKey, JSON.stringify(dismissedRequestIds));
-    } catch {
-      // Ignore storage failures in restricted/private contexts.
-    }
-  }, [dismissedRequestIds, dismissedRequestStorageKey, isAuthenticated]);
-
-  const requestItems = useMemo(
-    () =>
-      requests
-        .filter((record) => !dismissedRequestIds.includes(record.id))
-        .map((record) => requestToActivityItem(record, requestRoleIsAdmin ? 'admin' : 'user'))
-        .sort((left, right) => right.timestamp - left.timestamp),
-    [requests, requestRoleIsAdmin, dismissedRequestIds]
-  );
+  const {
+    requestItems,
+    dismissedActivityKeys,
+    historyItems,
+    pendingRequestCount,
+    isActivitySnapshotLoading,
+    activityHistoryLoading,
+    activityHistoryHasMore,
+    refreshActivitySnapshot,
+    resetActivity,
+    handleActivityTabChange,
+    handleActivityHistoryLoadMore,
+    handleRequestDismiss,
+    handleDownloadDismiss,
+    handleClearCompleted,
+    handleClearHistory,
+  } = useActivity({
+    isAuthenticated,
+    isAdmin: requestRoleIsAdmin,
+    showToast,
+    socket,
+  });
 
   const showRequestsTab = useMemo(() => {
     if (requestRoleIsAdmin) {
@@ -317,7 +286,10 @@ function App() {
     clearTracking();
     setPendingRequestPayload(null);
     setFulfillingRequest(null);
-  }, [handleLogout, setBooks, clearTracking]);
+    resetActivity();
+    setSettingsOpen(false);
+    setSelfSettingsOpen(false);
+  }, [handleLogout, setBooks, clearTracking, resetActivity]);
 
   // UI state
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
@@ -341,6 +313,7 @@ function App() {
     headerObserverRef.current = observer;
   }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [selfSettingsOpen, setSelfSettingsOpen] = useState(false);
   const [configBannerOpen, setConfigBannerOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
 
@@ -363,26 +336,45 @@ function App() {
 
   // Calculate status counts for header badges (memoized)
   const statusCounts = useMemo(() => {
+    const dismissedKeySet = new Set(dismissedActivityKeys);
+    const countVisibleDownloads = (
+      bucket: Record<string, Book> | undefined,
+      options: { filterDismissed: boolean }
+    ): number => {
+      const { filterDismissed } = options;
+      if (!bucket) {
+        return 0;
+      }
+      if (!filterDismissed) {
+        return Object.keys(bucket).length;
+      }
+      return Object.keys(bucket).filter((taskId) => !dismissedKeySet.has(`download:${taskId}`)).length;
+    };
+
     const ongoing = [
       currentStatus.queued,
       currentStatus.resolving,
       currentStatus.locating,
       currentStatus.downloading,
-    ].reduce((sum, status) => sum + (status ? Object.keys(status).length : 0), 0);
+    ].reduce((sum, status) => sum + countVisibleDownloads(status, { filterDismissed: false }), 0);
 
-    const completed = currentStatus.complete
-      ? Object.keys(currentStatus.complete).length
-      : 0;
-
-    const errored = currentStatus.error ? Object.keys(currentStatus.error).length : 0;
+    const completed = countVisibleDownloads(currentStatus.complete, { filterDismissed: true });
+    const errored = countVisibleDownloads(currentStatus.error, { filterDismissed: true });
+    const pendingVisibleRequests = requestItems.filter((item) => {
+      const requestId = item.requestId;
+      if (!requestId || item.requestRecord?.status !== 'pending') {
+        return false;
+      }
+      return !dismissedKeySet.has(`request:${requestId}`);
+    }).length;
 
     return {
       ongoing,
       completed,
       errored,
-      pendingRequests: pendingRequestCount,
+      pendingRequests: pendingVisibleRequests,
     };
-  }, [currentStatus, pendingRequestCount]);
+  }, [currentStatus, dismissedActivityKeys, requestItems]);
 
 
   // Compute visibility states
@@ -651,6 +643,7 @@ function App() {
     async (payload: CreateRequestPayload, successMessage: string): Promise<boolean> => {
       try {
         await createRequest(payload);
+        await refreshActivitySnapshot();
         showToast(successMessage, 'success');
         await refreshRequestPolicy({ force: true });
         return true;
@@ -663,7 +656,7 @@ function App() {
         return false;
       }
     },
-    [showToast, refreshRequestPolicy]
+    [showToast, refreshRequestPolicy, refreshActivitySnapshot]
   );
 
   const openRequestConfirmation = useCallback((payload: CreateRequestPayload) => {
@@ -765,17 +758,6 @@ function App() {
     } catch (error) {
       console.error('Cancel failed:', error);
       showToast('Failed to cancel/clear download', 'error');
-    }
-  };
-
-  // Clear completed
-  const handleClearCompleted = async () => {
-    try {
-      await clearCompleted();
-      await fetchStatus();
-    } catch (error) {
-      console.error('Clear completed failed:', error);
-      showToast('Failed to clear finished downloads', 'error');
     }
   };
 
@@ -969,19 +951,14 @@ function App() {
     async (requestId: number) => {
       try {
         await cancelUserRequest(requestId);
+        await refreshActivitySnapshot();
         showToast('Request cancelled', 'success');
       } catch (error) {
         showToast(getErrorMessage(error, 'Failed to cancel request'), 'error');
       }
     },
-    [cancelUserRequest, showToast]
+    [cancelUserRequest, refreshActivitySnapshot, showToast]
   );
-
-  const handleRequestDismiss = useCallback((requestId: number) => {
-    setDismissedRequestIds((previous) =>
-      previous.includes(requestId) ? previous : [...previous, requestId]
-    );
-  }, []);
 
   const handleRequestReject = useCallback(
     async (requestId: number, adminNote?: string) => {
@@ -991,12 +968,13 @@ function App() {
 
       try {
         await rejectSidebarRequest(requestId, adminNote);
+        await refreshActivitySnapshot();
         showToast('Request rejected', 'success');
       } catch (error) {
         showToast(getErrorMessage(error, 'Failed to reject request'), 'error');
       }
     },
-    [requestRoleIsAdmin, rejectSidebarRequest, showToast]
+    [refreshActivitySnapshot, requestRoleIsAdmin, rejectSidebarRequest, showToast]
   );
 
   const handleRequestApprove = useCallback(
@@ -1008,6 +986,7 @@ function App() {
       if (record.request_level === 'release') {
         try {
           await fulfilSidebarRequest(requestId, record.release_data || undefined);
+          await refreshActivitySnapshot();
           showToast('Request approved', 'success');
           await fetchStatus();
         } catch (error) {
@@ -1023,7 +1002,7 @@ function App() {
         contentType: record.content_type,
       });
     },
-    [requestRoleIsAdmin, fulfilSidebarRequest, showToast, fetchStatus]
+    [requestRoleIsAdmin, fulfilSidebarRequest, showToast, fetchStatus, refreshActivitySnapshot]
   );
 
   const handleBrowseFulfilDownload = useCallback(
@@ -1037,6 +1016,7 @@ function App() {
           fulfillingRequest.requestId,
           buildReleaseDataFromMetadataRelease(book, release, toContentType(releaseContentType))
         );
+        await refreshActivitySnapshot();
         showToast(`Request approved: ${book.title || 'Untitled'}`, 'success');
         setFulfillingRequest(null);
         await fetchStatus();
@@ -1046,7 +1026,7 @@ function App() {
         throw error;
       }
     },
-    [fulfillingRequest, fulfilSidebarRequest, showToast, fetchStatus]
+    [fulfillingRequest, fulfilSidebarRequest, showToast, fetchStatus, refreshActivitySnapshot]
   );
 
   const getDirectActionButtonState = useCallback(
@@ -1128,13 +1108,17 @@ function App() {
           onDownloadsClick={() => setDownloadsSidebarOpen((prev) => !prev)}
           onSettingsClick={() => {
             if (config?.settings_enabled) {
-              setSettingsOpen(true);
+              if (authIsAdmin) {
+                setSettingsOpen(true);
+              } else {
+                setSelfSettingsOpen(true);
+              }
             } else {
               setConfigBannerOpen(true);
             }
           }}
           isAdmin={requestRoleIsAdmin}
-          canAccessSettings={authCanAccessSettings}
+          canAccessSettings={isAuthenticated}
           username={username}
           displayName={displayName}
           statusCounts={statusCounts}
@@ -1176,6 +1160,7 @@ function App() {
                 bottom: 0,
                 left: 0,
                 right: '25rem',
+                zIndex: 40,
               }
             : { paddingTop: `${headerHeight}px` }
         }
@@ -1306,10 +1291,18 @@ function App() {
         isAdmin={requestRoleIsAdmin}
         onClearCompleted={handleClearCompleted}
         onCancel={handleCancel}
+        onDownloadDismiss={handleDownloadDismiss}
         requestItems={requestItems}
+        dismissedItemKeys={dismissedActivityKeys}
+        historyItems={historyItems}
+        historyHasMore={activityHistoryHasMore}
+        historyLoading={activityHistoryLoading}
+        onHistoryLoadMore={handleActivityHistoryLoadMore}
+        onClearHistory={handleClearHistory}
+        onActiveTabChange={handleActivityTabChange}
         pendingRequestCount={pendingRequestCount}
         showRequestsTab={showRequestsTab}
-        isRequestsLoading={isRequestsLoading}
+        isRequestsLoading={isRequestsLoading || isActivitySnapshotLoading}
         onRequestCancel={showRequestsTab ? handleRequestCancel : undefined}
         onRequestApprove={requestRoleIsAdmin ? handleRequestApprove : undefined}
         onRequestReject={requestRoleIsAdmin ? handleRequestReject : undefined}
@@ -1328,6 +1321,12 @@ function App() {
         onSettingsSaved={handleSettingsSaved}
       />
 
+      <SelfSettingsModal
+        isOpen={selfSettingsOpen}
+        onClose={() => setSelfSettingsOpen(false)}
+        onShowToast={showToast}
+      />
+
       {/* Auto-show banner on startup for users without config */}
       {config && (
         <ConfigSetupBanner settingsEnabled={config.settings_enabled} />
@@ -1339,7 +1338,11 @@ function App() {
         onClose={() => setConfigBannerOpen(false)}
         onContinue={() => {
           setConfigBannerOpen(false);
-          setSettingsOpen(true);
+          if (authIsAdmin) {
+            setSettingsOpen(true);
+          } else {
+            setSelfSettingsOpen(true);
+          }
         }}
       />
 

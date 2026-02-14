@@ -12,6 +12,19 @@ from shelfmark.core.request_policy import normalize_content_type, parse_policy_m
 VALID_REQUEST_STATUSES = frozenset({"pending", "fulfilled", "rejected", "cancelled"})
 TERMINAL_REQUEST_STATUSES = frozenset({"fulfilled", "rejected", "cancelled"})
 VALID_REQUEST_LEVELS = frozenset({"book", "release"})
+VALID_DELIVERY_STATES = frozenset(
+    {
+        "none",
+        "unknown",
+        "queued",
+        "resolving",
+        "locating",
+        "downloading",
+        "complete",
+        "error",
+        "cancelled",
+    }
+)
 MAX_REQUEST_NOTE_LENGTH = 1000
 MAX_REQUEST_JSON_BLOB_BYTES = 10 * 1024
 
@@ -60,6 +73,16 @@ def normalize_request_level(request_level: Any) -> str:
     normalized = request_level.strip().lower()
     if normalized not in VALID_REQUEST_LEVELS:
         raise ValueError(f"Invalid request_level: {request_level}")
+    return normalized
+
+
+def normalize_delivery_state(state: Any) -> str:
+    """Validate and normalize delivery-state values."""
+    if not isinstance(state, str):
+        raise ValueError(f"Invalid delivery_state: {state}")
+    normalized = state.strip().lower()
+    if normalized not in VALID_DELIVERY_STATES:
+        raise ValueError(f"Invalid delivery_state: {state}")
     return normalized
 
 
@@ -161,6 +184,68 @@ def _find_duplicate_pending_request(
 
 def _now_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _extract_release_source_id(release_data: Any) -> str | None:
+    if not isinstance(release_data, dict):
+        return None
+    source_id = release_data.get("source_id")
+    if not isinstance(source_id, str):
+        return None
+    normalized = source_id.strip()
+    return normalized or None
+
+
+def _existing_delivery_state(request_row: dict[str, Any]) -> str:
+    raw_state = request_row.get("delivery_state")
+    if not isinstance(raw_state, str):
+        return "none"
+    normalized = raw_state.strip().lower()
+    return normalized if normalized in VALID_DELIVERY_STATES else "none"
+
+
+def sync_delivery_states_from_queue_status(
+    user_db: "UserDB",
+    *,
+    queue_status: dict[str, dict[str, Any]],
+    user_id: int | None = None,
+) -> list[dict[str, Any]]:
+    """Persist delivery-state transitions for fulfilled requests based on queue status."""
+    source_delivery_states: dict[str, str] = {}
+    for status_key in ("queued", "resolving", "locating", "downloading", "complete", "error", "cancelled"):
+        status_bucket = queue_status.get(status_key)
+        if not isinstance(status_bucket, dict):
+            continue
+        for source_id in status_bucket:
+            source_delivery_states[source_id] = status_key
+
+    if not source_delivery_states:
+        return []
+
+    fulfilled_rows = user_db.list_requests(user_id=user_id, status="fulfilled")
+    updated: list[dict[str, Any]] = []
+
+    for row in fulfilled_rows:
+        source_id = _extract_release_source_id(row.get("release_data"))
+        if source_id is None:
+            continue
+
+        delivery_state = source_delivery_states.get(source_id)
+        if delivery_state is None:
+            continue
+
+        if _existing_delivery_state(row) == delivery_state:
+            continue
+
+        updated.append(
+            user_db.update_request(
+                row["id"],
+                delivery_state=delivery_state,
+                delivery_updated_at=_now_timestamp(),
+            )
+        )
+
+    return updated
 
 
 def create_request(
@@ -383,6 +468,8 @@ def fulfil_request(
             request_id,
             status="fulfilled",
             release_data=selected_release_data,
+            delivery_state="queued",
+            delivery_updated_at=_now_timestamp(),
             admin_note=normalized_admin_note,
             reviewed_by=admin_user_id,
             reviewed_at=_now_timestamp(),

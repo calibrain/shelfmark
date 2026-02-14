@@ -26,7 +26,7 @@ from shelfmark.config.env import (
 )
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import SearchFilters
+from shelfmark.core.models import SearchFilters, QueueStatus
 from shelfmark.core.prefix_middleware import PrefixMiddleware
 from shelfmark.core.auth_modes import (
     determine_auth_mode,
@@ -45,6 +45,10 @@ from shelfmark.core.request_policy import (
     normalize_source,
     resolve_policy_mode,
 )
+from shelfmark.core.requests_service import (
+    sync_delivery_states_from_queue_status,
+)
+from shelfmark.core.activity_service import ActivityService, build_download_item_key
 from shelfmark.core.utils import normalize_base_path
 from shelfmark.api.websocket import ws_manager
 
@@ -113,14 +117,18 @@ import os as _os
 from shelfmark.core.user_db import UserDB
 _user_db_path = _os.path.join(_os.environ.get("CONFIG_DIR", "/config"), "users.db")
 user_db: UserDB | None = None
+activity_service: ActivityService | None = None
 try:
     user_db = UserDB(_user_db_path)
     user_db.initialize()
+    activity_service = ActivityService(_user_db_path)
     import shelfmark.config.users_settings as _  # noqa: F401 - registers users tab
     from shelfmark.core.oidc_routes import register_oidc_routes
     from shelfmark.core.admin_routes import register_admin_routes
+    from shelfmark.core.self_user_routes import register_self_user_routes
     register_oidc_routes(app, user_db)
     register_admin_routes(app, user_db)
+    register_self_user_routes(app, user_db)
 except (sqlite3.OperationalError, OSError) as e:
     logger.warning(
         f"User database initialization failed: {e}. "
@@ -380,14 +388,28 @@ def _policy_block_response(mode: PolicyMode):
 if user_db is not None:
     try:
         from shelfmark.core.request_routes import register_request_routes
+        from shelfmark.core.activity_routes import register_activity_routes
 
         register_request_routes(
             app,
             user_db,
             resolve_auth_mode=lambda: get_auth_mode(),
             queue_release=lambda *args, **kwargs: backend.queue_release(*args, **kwargs),
+            activity_service=activity_service,
             ws_manager=ws_manager,
         )
+        if activity_service is not None:
+            register_activity_routes(
+                app,
+                user_db,
+                activity_service=activity_service,
+                resolve_auth_mode=lambda: get_auth_mode(),
+                resolve_status_scope=lambda: _resolve_status_scope(),
+                queue_status=lambda user_id=None: backend.queue_status(user_id=user_id),
+                sync_request_delivery_states=sync_delivery_states_from_queue_status,
+                emit_request_updates=lambda rows: _emit_request_update_events(rows),
+                ws_manager=ws_manager,
+            )
     except Exception as e:
         logger.warning(f"Failed to register request routes: {e}")
 
@@ -970,6 +992,148 @@ def _resolve_status_scope(*, require_authenticated: bool = True) -> tuple[bool, 
     return False, db_user_id, True
 
 
+def _extract_release_source_id(release_data: Any) -> str | None:
+    if not isinstance(release_data, dict):
+        return None
+    source_id = release_data.get("source_id")
+    if not isinstance(source_id, str):
+        return None
+    normalized = source_id.strip()
+    return normalized or None
+
+
+def _queue_status_to_final_activity_status(status: QueueStatus) -> str | None:
+    if status == QueueStatus.COMPLETE:
+        return "complete"
+    if status == QueueStatus.ERROR:
+        return "error"
+    if status == QueueStatus.CANCELLED:
+        return "cancelled"
+    return None
+
+
+def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: Any) -> None:
+    if activity_service is None:
+        return
+
+    final_status = _queue_status_to_final_activity_status(status)
+    if final_status is None:
+        return
+
+    raw_owner_user_id = getattr(task, "user_id", None)
+    try:
+        owner_user_id = int(raw_owner_user_id) if raw_owner_user_id is not None else None
+    except (TypeError, ValueError):
+        owner_user_id = None
+
+    linked_request: dict[str, Any] | None = None
+    request_id: int | None = None
+    origin = "direct"
+    if user_db is not None and owner_user_id is not None:
+        fulfilled_rows = user_db.list_requests(user_id=owner_user_id, status="fulfilled")
+        for row in fulfilled_rows:
+            source_id = _extract_release_source_id(row.get("release_data"))
+            if source_id == task_id:
+                linked_request = row
+                origin = "requested"
+                try:
+                    request_id = int(row.get("id"))
+                except (TypeError, ValueError):
+                    request_id = None
+                break
+
+    try:
+        download_payload = backend._task_to_dict(task)
+    except Exception as exc:
+        logger.warning("Failed to serialize task payload for terminal snapshot: %s", exc)
+        download_payload = {
+            "id": task_id,
+            "title": getattr(task, "title", "Unknown title"),
+            "author": getattr(task, "author", "Unknown author"),
+            "source": getattr(task, "source", "direct_download"),
+            "added_time": getattr(task, "added_time", 0),
+            "status_message": getattr(task, "status_message", None),
+            "download_path": getattr(task, "download_path", None),
+            "user_id": getattr(task, "user_id", None),
+            "username": getattr(task, "username", None),
+        }
+
+    snapshot: dict[str, Any] = {"kind": "download", "download": download_payload}
+    if linked_request is not None:
+        snapshot["request"] = linked_request
+
+    try:
+        activity_service.record_terminal_snapshot(
+            user_id=owner_user_id,
+            item_type="download",
+            item_key=build_download_item_key(task_id),
+            origin=origin,
+            final_status=final_status,
+            snapshot=snapshot,
+            request_id=request_id,
+            source_id=task_id,
+        )
+    except Exception as exc:
+        logger.warning("Failed to record terminal download snapshot for task %s: %s", task_id, exc)
+
+
+def _task_owned_by_actor(task: Any, *, actor_user_id: int | None, actor_username: str | None) -> bool:
+    raw_task_user_id = getattr(task, "user_id", None)
+    try:
+        task_user_id = int(raw_task_user_id) if raw_task_user_id is not None else None
+    except (TypeError, ValueError):
+        task_user_id = None
+
+    if actor_user_id is not None and task_user_id is not None:
+        return task_user_id == actor_user_id
+
+    task_username = getattr(task, "username", None)
+    if isinstance(task_username, str) and task_username.strip() and isinstance(actor_username, str):
+        return task_username.strip() == actor_username.strip()
+
+    return False
+
+
+def _is_graduated_request_download(task_id: str, *, user_id: int) -> bool:
+    if user_db is None:
+        return False
+
+    fulfilled_rows = user_db.list_requests(user_id=user_id, status="fulfilled")
+    for row in fulfilled_rows:
+        source_id = _extract_release_source_id(row.get("release_data"))
+        if source_id == task_id:
+            return True
+    return False
+
+
+if activity_service is not None:
+    backend.book_queue.set_terminal_status_hook(_record_download_terminal_snapshot)
+
+
+def _emit_request_update_events(updated_requests: list[dict[str, Any]]) -> None:
+    """Broadcast request_update events for rows changed by delivery-state sync."""
+    if not updated_requests or ws_manager is None:
+        return
+
+    try:
+        socketio_ref = getattr(ws_manager, "socketio", None)
+        is_enabled = getattr(ws_manager, "is_enabled", None)
+        if socketio_ref is None or not callable(is_enabled) or not is_enabled():
+            return
+
+        for updated in updated_requests:
+            payload = {
+                "request_id": updated["id"],
+                "status": updated["status"],
+                "delivery_state": updated.get("delivery_state"),
+                "title": (updated.get("book_data") or {}).get("title") or "Unknown title",
+            }
+            socketio_ref.emit("request_update", payload, to=f"user_{updated['user_id']}")
+            socketio_ref.emit("request_update", payload, to="admins")
+    except Exception as exc:
+        logger.warning(f"Failed to emit delivery request_update events: {exc}")
+
+
 @app.route('/api/status', methods=['GET'])
 @login_required
 def api_status() -> Union[Response, Tuple[Response, int]]:
@@ -986,6 +1150,13 @@ def api_status() -> Union[Response, Tuple[Response, int]]:
 
         user_id = None if is_admin else db_user_id
         status = backend.queue_status(user_id=user_id)
+        if user_db is not None:
+            updated_requests = sync_delivery_states_from_queue_status(
+                user_db,
+                queue_status=status,
+                user_id=user_id,
+            )
+            _emit_request_update_events(updated_requests)
         return jsonify(status)
     except Exception as e:
         logger.error_trace(f"Status error: {e}")
@@ -1110,6 +1281,27 @@ def api_cancel_download(book_id: str) -> Union[Response, Tuple[Response, int]]:
         flask.Response: JSON status indicating success or failure.
     """
     try:
+        task = backend.book_queue.get_task(book_id)
+        if task is None:
+            return jsonify({"error": "Failed to cancel download or book not found"}), 404
+
+        is_admin, db_user_id, can_access_status = _resolve_status_scope()
+        if not is_admin:
+            if not can_access_status or db_user_id is None:
+                return jsonify({"error": "User identity unavailable", "code": "user_identity_unavailable"}), 403
+
+            actor_username = session.get("user_id")
+            normalized_actor_username = actor_username if isinstance(actor_username, str) else None
+            if not _task_owned_by_actor(
+                task,
+                actor_user_id=db_user_id,
+                actor_username=normalized_actor_username,
+            ):
+                return jsonify({"error": "Forbidden", "code": "download_not_owned"}), 403
+
+            if _is_graduated_request_download(book_id, user_id=db_user_id):
+                return jsonify({"error": "Forbidden", "code": "requested_download_cancel_forbidden"}), 403
+
         success = backend.cancel_download(book_id)
         if success:
             return jsonify({"status": "cancelled", "book_id": book_id})
@@ -1227,12 +1419,17 @@ def api_clear_completed() -> Union[Response, Tuple[Response, int]]:
         flask.Response: JSON with count of removed books.
     """
     try:
-        removed_count = backend.clear_completed()
-        
+        is_admin, db_user_id, can_access_status = _resolve_status_scope()
+        if not can_access_status:
+            return jsonify({"error": "User identity unavailable", "code": "user_identity_unavailable"}), 403
+
+        scoped_user_id = None if is_admin else db_user_id
+        removed_count = backend.clear_completed(user_id=scoped_user_id)
+
         # Broadcast status update after clearing
         if ws_manager:
             ws_manager.broadcast_status_update(backend.queue_status())
-        
+
         return jsonify({"status": "cleared", "removed_count": removed_count})
     except Exception as e:
         logger.error_trace(f"Clear completed error: {e}")
