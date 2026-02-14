@@ -204,7 +204,6 @@ function App() {
   });
 
   const {
-    activityStatus,
     requestItems,
     dismissedActivityKeys,
     historyItems,
@@ -625,6 +624,7 @@ function App() {
     async (payload: CreateRequestPayload, successMessage: string): Promise<boolean> => {
       try {
         await createRequest(payload);
+        await refreshActivitySnapshot();
         showToast(successMessage, 'success');
         await refreshRequestPolicy({ force: true });
         return true;
@@ -637,7 +637,7 @@ function App() {
         return false;
       }
     },
-    [showToast, refreshRequestPolicy]
+    [showToast, refreshRequestPolicy, refreshActivitySnapshot]
   );
 
   const openRequestConfirmation = useCallback((payload: CreateRequestPayload) => {
@@ -1268,7 +1268,7 @@ function App() {
       <ActivitySidebar
         isOpen={downloadsSidebarOpen}
         onClose={() => setDownloadsSidebarOpen(false)}
-        status={activityStatus}
+        status={currentStatus}
         isAdmin={requestRoleIsAdmin}
         onClearCompleted={handleClearCompleted}
         onCancel={handleCancel}

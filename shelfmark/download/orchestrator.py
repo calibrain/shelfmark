@@ -493,11 +493,12 @@ def update_download_status(book_id: str, status: str, message: Optional[str] = N
             return
         _last_status_event[book_id] = status_event
 
-    book_queue.update_status(book_id, queue_status_enum)
-
-    # Update status message if provided (empty string clears the message)
+    # Update status message first so terminal snapshots capture the final message
+    # (for example, "Complete" or "Sent to ...") instead of a stale in-progress one.
     if message is not None:
         book_queue.update_status_message(book_id, message)
+
+    book_queue.update_status(book_id, queue_status_enum)
 
     # Broadcast status update via WebSocket
     if ws_manager:

@@ -309,7 +309,7 @@ export const ActivityCard = ({
             </div>
           </div>
 
-          <p className="text-xs opacity-60 truncate mt-0.5" title={item.metaLine}>
+          <p className="text-[11px] leading-tight opacity-60 truncate mt-0.5" title={item.metaLine}>
             {item.metaLine}
           </p>
 

@@ -125,6 +125,63 @@ class TestActivityRoutes:
         assert history_after_clear.status_code == 200
         assert history_after_clear.json == []
 
+    def test_admin_snapshot_includes_admin_viewer_dismissals(self, main_module, client):
+        admin = _create_user(main_module, prefix="admin", role="admin")
+        _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            dismiss_response = client.post(
+                "/api/activity/dismiss",
+                json={"item_type": "download", "item_key": "download:admin-visible-task"},
+            )
+            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+                snapshot_response = client.get("/api/activity/snapshot")
+
+        assert dismiss_response.status_code == 200
+        assert snapshot_response.status_code == 200
+        assert {
+            "item_type": "download",
+            "item_key": "download:admin-visible-task",
+        } in snapshot_response.json["dismissed"]
+
+    def test_dismiss_legacy_fulfilled_request_creates_minimal_history_snapshot(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        request_row = main_module.user_db.create_request(
+            user_id=user["id"],
+            content_type="ebook",
+            request_level="book",
+            policy_mode="request_book",
+            book_data={
+                "title": "Legacy Fulfilled Request",
+                "author": "Legacy Author",
+                "provider": "openlibrary",
+                "provider_id": "legacy-fulfilled-1",
+            },
+            status="fulfilled",
+            delivery_state="unknown",
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            dismiss_response = client.post(
+                "/api/activity/dismiss",
+                json={"item_type": "request", "item_key": f"request:{request_row['id']}"},
+            )
+            history_response = client.get("/api/activity/history?limit=10&offset=0")
+
+        assert dismiss_response.status_code == 200
+        assert history_response.status_code == 200
+        assert len(history_response.json) == 1
+
+        history_entry = history_response.json[0]
+        assert history_entry["item_type"] == "request"
+        assert history_entry["item_key"] == f"request:{request_row['id']}"
+        assert history_entry["final_status"] == "complete"
+        assert history_entry["snapshot"]["kind"] == "request"
+        assert history_entry["snapshot"]["request"]["id"] == request_row["id"]
+        assert history_entry["snapshot"]["request"]["book_data"]["title"] == "Legacy Fulfilled Request"
+
     def test_dismiss_requires_db_identity(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=None, is_admin=False)
@@ -221,6 +278,38 @@ class TestActivityRoutes:
         assert response.status_code == 200
         assert "expired-task-1" in response.json["status"]["complete"]
         assert response.json["status"]["complete"]["expired-task-1"]["id"] == "expired-task-1"
+
+    def test_snapshot_clears_stale_download_dismissal_when_same_task_is_active(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            dismiss_response = client.post(
+                "/api/activity/dismiss",
+                json={"item_type": "download", "item_key": "download:task-reused-1"},
+            )
+            assert dismiss_response.status_code == 200
+
+            active_status = _sample_status_payload()
+            active_status["downloading"] = {
+                "task-reused-1": {
+                    "id": "task-reused-1",
+                    "title": "Reused Task",
+                    "author": "Author",
+                    "source": "direct_download",
+                    "added_time": 1,
+                }
+            }
+
+            with patch.object(main_module.backend, "queue_status", return_value=active_status):
+                snapshot_response = client.get("/api/activity/snapshot")
+
+        assert snapshot_response.status_code == 200
+        assert {
+            "item_type": "download",
+            "item_key": "download:task-reused-1",
+        } not in snapshot_response.json["dismissed"]
+        assert main_module.activity_service.get_dismissal_set(user["id"]) == []
 
     def test_dismiss_state_is_isolated_per_user(self, main_module, client):
         user_one = _create_user(main_module, prefix="reader-one")

@@ -98,7 +98,7 @@ describe('activityCardModel', () => {
     assert.equal(model.badges[0]?.visualStatus, 'resolving');
   });
 
-  it('shows request and download badges side-by-side for merged request downloads', () => {
+  it('shows a single download completion badge for completed merged request downloads', () => {
     const model = buildActivityCardModel(
       makeItem({
         visualStatus: 'complete',
@@ -127,11 +127,10 @@ describe('activityCardModel', () => {
       true
     );
 
-    assert.equal(model.badges.length, 2);
-    assert.equal(model.badges[0]?.key, 'request');
-    assert.equal(model.badges[0]?.text, 'Approved');
-    assert.equal(model.badges[1]?.key, 'download');
-    assert.equal(model.badges[1]?.text, 'Sent to Kindle');
+    assert.equal(model.badges.length, 1);
+    assert.equal(model.badges[0]?.key, 'download');
+    assert.equal(model.badges[0]?.text, 'Sent to Kindle');
+    assert.equal(model.badges[0]?.visualStatus, 'complete');
   });
 
   it('does not render a special note for fulfilled requests with terminal delivery state', () => {

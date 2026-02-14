@@ -87,6 +87,17 @@ def _parse_download_item_key(item_key: str) -> str | None:
     return task_id or None
 
 
+def _parse_request_item_key(item_key: str) -> int | None:
+    if not isinstance(item_key, str) or not item_key.startswith("request:"):
+        return None
+    raw_id = item_key.split(":", 1)[1].strip()
+    try:
+        parsed = int(raw_id)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
 def _task_id_from_download_item_key(item_key: str) -> str | None:
     task_id = _parse_download_item_key(item_key)
     if task_id is None:
@@ -135,9 +146,79 @@ def _merge_terminal_snapshot_backfill(
         existing_task_ids.add(task_id)
 
 
+def _collect_active_download_item_keys(status: dict[str, dict[str, Any]]) -> set[str]:
+    active_keys: set[str] = set()
+    for bucket_key in ("queued", "resolving", "locating", "downloading"):
+        bucket = status.get(bucket_key)
+        if not isinstance(bucket, dict):
+            continue
+        for task_id in bucket.keys():
+            normalized_task_id = str(task_id).strip()
+            if not normalized_task_id:
+                continue
+            active_keys.add(f"download:{normalized_task_id}")
+    return active_keys
+
+
+def _extract_request_source_id(row: dict[str, Any]) -> str | None:
+    release_data = row.get("release_data")
+    if not isinstance(release_data, dict):
+        return None
+    source_id = release_data.get("source_id")
+    if not isinstance(source_id, str):
+        return None
+    normalized = source_id.strip()
+    return normalized or None
+
+
+def _request_terminal_status(row: dict[str, Any]) -> str | None:
+    request_status = row.get("status")
+    if request_status == "pending":
+        return None
+    if request_status == "rejected":
+        return "rejected"
+    if request_status == "cancelled":
+        return "cancelled"
+    if request_status != "fulfilled":
+        return None
+
+    delivery_state = str(row.get("delivery_state") or "").strip().lower()
+    if delivery_state in {"error", "cancelled"}:
+        return delivery_state
+    return "complete"
+
+
+def _minimal_request_snapshot(request_row: dict[str, Any], request_id: int) -> dict[str, Any]:
+    book_data = request_row.get("book_data")
+    release_data = request_row.get("release_data")
+    if not isinstance(book_data, dict):
+        book_data = {}
+    if not isinstance(release_data, dict):
+        release_data = {}
+
+    minimal_request = {
+        "id": request_id,
+        "user_id": request_row.get("user_id"),
+        "status": request_row.get("status"),
+        "request_level": request_row.get("request_level"),
+        "delivery_state": request_row.get("delivery_state"),
+        "book_data": book_data,
+        "release_data": release_data,
+        "note": request_row.get("note"),
+        "admin_note": request_row.get("admin_note"),
+        "created_at": request_row.get("created_at"),
+        "updated_at": request_row.get("updated_at"),
+    }
+    username = request_row.get("username")
+    if isinstance(username, str):
+        minimal_request["username"] = username
+    return {"kind": "request", "request": minimal_request}
+
+
 def _get_existing_activity_log_id_for_item(
     *,
     activity_service: ActivityService,
+    user_db: UserDB,
     item_type: str,
     item_key: str,
 ) -> int | None:
@@ -146,10 +227,36 @@ def _get_existing_activity_log_id_for_item(
     if not isinstance(item_key, str) or not item_key.strip():
         return None
 
-    return activity_service.get_latest_activity_log_id(
+    existing_log_id = activity_service.get_latest_activity_log_id(
         item_type=item_type,
         item_key=item_key,
     )
+    if existing_log_id is not None or item_type != "request":
+        return existing_log_id
+
+    request_id = _parse_request_item_key(item_key)
+    if request_id is None:
+        return None
+    row = user_db.get_request(request_id)
+    if row is None:
+        return None
+
+    final_status = _request_terminal_status(row)
+    if final_status is None:
+        return None
+
+    source_id = _extract_request_source_id(row)
+    payload = activity_service.record_terminal_snapshot(
+        user_id=row.get("user_id"),
+        item_type="request",
+        item_key=item_key,
+        origin="request",
+        final_status=final_status,
+        snapshot=_minimal_request_snapshot(row, request_id),
+        request_id=request_id,
+        source_id=source_id,
+    )
+    return int(payload["id"])
 
 
 def register_activity_routes(
@@ -184,6 +291,7 @@ def register_activity_routes(
                 403,
             )
 
+        viewer_db_user_id, _ = _resolve_db_user_id(require_in_auth_mode=False)
         scoped_user_id = None if is_admin else db_user_id
         status = queue_status(user_id=scoped_user_id)
         updated_requests = sync_request_delivery_states(
@@ -201,9 +309,22 @@ def register_activity_routes(
             except Exception as exc:
                 logger.warning("Failed to merge terminal snapshot backfill rows: %s", exc)
 
+        if viewer_db_user_id is not None:
+            active_download_keys = _collect_active_download_item_keys(status)
+            if active_download_keys:
+                try:
+                    activity_service.clear_dismissals_for_item_keys(
+                        user_id=viewer_db_user_id,
+                        item_type="download",
+                        item_keys=active_download_keys,
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to clear stale download dismissals for active tasks: %s", exc)
+
         dismissed: list[dict[str, str]] = []
-        if db_user_id is not None:
-            dismissed = activity_service.get_dismissal_set(db_user_id)
+        # Admins can view unscoped queue status, but dismissals remain per-viewer.
+        if viewer_db_user_id is not None:
+            dismissed = activity_service.get_dismissal_set(viewer_db_user_id)
 
         return jsonify(
             {
@@ -232,6 +353,7 @@ def register_activity_routes(
             try:
                 activity_log_id = _get_existing_activity_log_id_for_item(
                     activity_service=activity_service,
+                    user_db=user_db,
                     item_type=data.get("item_type"),
                     item_key=data.get("item_key"),
                 )
@@ -289,6 +411,7 @@ def register_activity_routes(
                 try:
                     activity_log_id = _get_existing_activity_log_id_for_item(
                         activity_service=activity_service,
+                        user_db=user_db,
                         item_type=item.get("item_type"),
                         item_key=item.get("item_key"),
                     )

@@ -83,6 +83,34 @@ def build_download_item_key(task_id: str) -> str:
     return build_item_key("download", task_id)
 
 
+def _parse_request_id_from_item_key(item_key: Any) -> int | None:
+    if not isinstance(item_key, str) or not item_key.startswith("request:"):
+        return None
+    raw_value = item_key.split(":", 1)[1].strip()
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _request_final_status(request_status: Any, delivery_state: Any) -> str | None:
+    status = str(request_status or "").strip().lower()
+    if status == "pending":
+        return None
+    if status == "rejected":
+        return "rejected"
+    if status == "cancelled":
+        return "cancelled"
+    if status != "fulfilled":
+        return None
+
+    delivery = str(delivery_state or "").strip().lower()
+    if delivery in {"error", "cancelled"}:
+        return delivery
+    return "complete"
+
+
 class ActivityService:
     """Service for per-user activity dismissals and terminal history snapshots."""
 
@@ -108,6 +136,69 @@ class ActivityService:
     @staticmethod
     def _row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
         return dict(row) if row is not None else None
+
+    @staticmethod
+    def _parse_json_column(value: Any) -> Any:
+        if not isinstance(value, str):
+            return None
+        try:
+            return json.loads(value)
+        except (ValueError, TypeError):
+            return None
+
+    def _build_legacy_request_snapshot(
+        self,
+        conn: sqlite3.Connection,
+        request_id: int,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        request_row = conn.execute(
+            """
+            SELECT
+                id,
+                user_id,
+                status,
+                delivery_state,
+                request_level,
+                book_data,
+                release_data,
+                note,
+                admin_note,
+                created_at,
+                reviewed_at
+            FROM download_requests
+            WHERE id = ?
+            """,
+            (request_id,),
+        ).fetchone()
+        if request_row is None:
+            return None, None
+
+        row_dict = dict(request_row)
+        book_data = self._parse_json_column(row_dict.get("book_data"))
+        release_data = self._parse_json_column(row_dict.get("release_data"))
+        if not isinstance(book_data, dict):
+            book_data = {}
+        if not isinstance(release_data, dict):
+            release_data = {}
+
+        snapshot = {
+            "kind": "request",
+            "request": {
+                "id": int(row_dict["id"]),
+                "user_id": row_dict.get("user_id"),
+                "status": row_dict.get("status"),
+                "delivery_state": row_dict.get("delivery_state"),
+                "request_level": row_dict.get("request_level"),
+                "book_data": book_data,
+                "release_data": release_data,
+                "note": row_dict.get("note"),
+                "admin_note": row_dict.get("admin_note"),
+                "created_at": row_dict.get("created_at"),
+                "updated_at": row_dict.get("reviewed_at") or row_dict.get("created_at"),
+            },
+        }
+        final_status = _request_final_status(row_dict.get("status"), row_dict.get("delivery_state"))
+        return snapshot, final_status
 
     def record_terminal_snapshot(
         self,
@@ -347,6 +438,41 @@ class ActivityService:
         finally:
             conn.close()
 
+    def clear_dismissals_for_item_keys(
+        self,
+        *,
+        user_id: int,
+        item_type: str,
+        item_keys: Iterable[str],
+    ) -> int:
+        """Clear dismissals for one user + item type + item keys."""
+        normalized_user_id = self._coerce_positive_int(user_id, "user_id")
+        normalized_item_type = _normalize_item_type(item_type)
+        normalized_keys = {
+            _normalize_item_key(item_key)
+            for item_key in item_keys
+            if isinstance(item_key, str) and item_key.strip()
+        }
+        if not normalized_keys:
+            return 0
+
+        conn = self._connect()
+        try:
+            cursor = conn.executemany(
+                """
+                DELETE FROM activity_dismissals
+                WHERE user_id = ? AND item_type = ? AND item_key = ?
+                """,
+                (
+                    (normalized_user_id, normalized_item_type, item_key)
+                    for item_key in normalized_keys
+                ),
+            )
+            conn.commit()
+            return int(cursor.rowcount or 0)
+        finally:
+            conn.close()
+
     def get_history(self, user_id: int, *, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         """Return paged dismissal history for one user."""
         normalized_user_id = self._coerce_positive_int(user_id, "user_id")
@@ -389,6 +515,28 @@ class ActivityService:
                         snapshot_payload = json.loads(raw_snapshot_json)
                     except (ValueError, TypeError):
                         snapshot_payload = None
+
+                if snapshot_payload is None and row_dict.get("item_type") == "request":
+                    request_id = row_dict.get("request_id")
+                    if request_id is None:
+                        request_id = _parse_request_id_from_item_key(row_dict.get("item_key"))
+                    try:
+                        normalized_request_id = int(request_id) if request_id is not None else None
+                    except (TypeError, ValueError):
+                        normalized_request_id = None
+
+                    if normalized_request_id and normalized_request_id > 0:
+                        fallback_snapshot, fallback_final_status = self._build_legacy_request_snapshot(
+                            conn,
+                            normalized_request_id,
+                        )
+                        if fallback_snapshot is not None:
+                            snapshot_payload = fallback_snapshot
+                            if not row_dict.get("origin"):
+                                row_dict["origin"] = "request"
+                            if not row_dict.get("final_status") and fallback_final_status is not None:
+                                row_dict["final_status"] = fallback_final_status
+
                 row_dict["snapshot"] = snapshot_payload
                 payload.append(row_dict)
             return payload

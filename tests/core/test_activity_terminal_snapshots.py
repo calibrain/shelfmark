@@ -124,3 +124,33 @@ class TestTerminalSnapshotCapture:
             assert snapshot["request"]["id"] == request_row["id"]
         finally:
             main_module.backend.book_queue.cancel_download(task_id)
+
+    def test_complete_transition_snapshot_uses_latest_terminal_status_message(self, main_module):
+        user = _create_user(main_module, prefix="snap-message")
+        task_id = f"message-{uuid.uuid4().hex[:8]}"
+        task = DownloadTask(
+            task_id=task_id,
+            source="direct_download",
+            title="Message Snapshot",
+            user_id=user["id"],
+            username=user["username"],
+        )
+        assert main_module.backend.book_queue.add(task) is True
+
+        try:
+            # Simulate a stale in-progress message that used to leak into history snapshots.
+            main_module.backend.book_queue.update_status_message(task_id, "Moving file")
+            main_module.backend.update_download_status(task_id, "complete", "Complete")
+
+            snapshot_id = main_module.activity_service.get_latest_activity_log_id(
+                item_type="download",
+                item_key=f"download:{task_id}",
+            )
+            assert snapshot_id is not None
+
+            row = _read_activity_log_row(main_module, snapshot_id)
+            assert row is not None
+            snapshot = json.loads(row["snapshot_json"])
+            assert snapshot["download"]["status_message"] == "Complete"
+        finally:
+            main_module.backend.book_queue.cancel_download(task_id)

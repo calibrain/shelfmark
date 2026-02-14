@@ -109,6 +109,10 @@ const getDownloadBadge = (item: ActivityItem): ActivityCardBadge => {
 };
 
 const buildBadges = (item: ActivityItem, isAdmin: boolean): ActivityCardBadge[] => {
+  if (item.kind === 'download' && item.visualStatus === 'complete') {
+    return [getDownloadBadge(item)];
+  }
+
   if (item.kind === 'download' && item.requestId && item.requestRecord) {
     return [getRequestBadge(item, isAdmin), getDownloadBadge(item)];
   }

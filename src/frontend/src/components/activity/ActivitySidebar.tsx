@@ -4,6 +4,7 @@ import { downloadToActivityItem, DownloadStatusKey } from './activityMappers';
 import { ActivityItem } from './activityTypes';
 import { ActivityCard } from './ActivityCard';
 import { RejectDialog } from './RejectDialog';
+import { Dropdown } from '../Dropdown';
 
 interface ActivitySidebarProps {
   isOpen: boolean;
@@ -56,6 +57,7 @@ type ActivityCategoryKey =
   | 'failed';
 
 type ActivityTabKey = 'all' | 'downloads' | 'requests' | 'history';
+const ALL_USERS_FILTER = '__all_users__';
 
 const getCategoryLabel = (
   key: ActivityCategoryKey,
@@ -80,7 +82,7 @@ const getVisibleCategoryOrder = (
     return ['in_progress', 'complete', 'failed'];
   }
   if (tab === 'requests') {
-    return ['needs_review', 'failed'];
+    return ['needs_review', 'in_progress', 'complete', 'failed'];
   }
   if (tab === 'history') {
     return [];
@@ -113,8 +115,24 @@ const getActivityCategory = (item: ActivityItem): ActivityCategoryKey => {
     return 'failed';
   }
 
-  // Fulfilled request records are treated as downloads.
   const deliveryState = item.requestRecord?.delivery_state;
+  if (requestStatus === 'fulfilled' || item.visualStatus === 'fulfilled') {
+    if (
+      deliveryState === 'queued' ||
+      deliveryState === 'resolving' ||
+      deliveryState === 'locating' ||
+      deliveryState === 'downloading'
+    ) {
+      return 'in_progress';
+    }
+    if (deliveryState === 'error' || deliveryState === 'cancelled') {
+      return 'failed';
+    }
+    // Legacy fulfilled requests often have unknown/none delivery state because the
+    // pre-refactor queue state was ephemeral. Treat as completed approval, not in-progress.
+    return 'complete';
+  }
+
   if (deliveryState === 'complete') {
     return 'complete';
   }
@@ -176,6 +194,15 @@ const dedupeById = (items: ActivityItem[]): ActivityItem[] => {
   return Array.from(byId.values());
 };
 
+const getItemUsername = (item: ActivityItem): string | null => {
+  const candidate = item.username || item.requestRecord?.username;
+  if (typeof candidate !== 'string') {
+    return null;
+  }
+  const normalized = candidate.trim();
+  return normalized || null;
+};
+
 const parsePinned = (value: string | null): boolean => {
   if (!value) {
     return false;
@@ -230,6 +257,7 @@ export const ActivitySidebar = ({
   const [isPinned, setIsPinned] = useState<boolean>(() => getInitialPinnedPreference());
   const [isDesktop, setIsDesktop] = useState<boolean>(() => getInitialDesktopState());
   const [activeTab, setActiveTab] = useState<ActivityTabKey>('all');
+  const [selectedUser, setSelectedUser] = useState<string>(ALL_USERS_FILTER);
   const [rejectingRequest, setRejectingRequest] = useState<{ requestId: number; bookTitle: string } | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
@@ -300,7 +328,9 @@ export const ActivitySidebar = ({
       }
       Object.values(bucket).forEach((book) => {
         const itemKey = `download:${book.id}`;
-        if (dismissedKeySet.has(itemKey)) {
+        const isTerminalStatus =
+          statusKey === 'complete' || statusKey === 'error' || statusKey === 'cancelled';
+        if (isTerminalStatus && dismissedKeySet.has(itemKey)) {
           return;
         }
         items.push(downloadToActivityItem(book, statusKey));
@@ -376,16 +406,53 @@ export const ActivitySidebar = ({
     return combined.sort((a, b) => b.timestamp - a.timestamp);
   }, [mergedDownloadItems, mergedRequestItems]);
 
-  const visibleItems = activeTab === 'all'
+  const baseVisibleItems = activeTab === 'all'
     ? allItems
     : activeTab === 'requests'
       ? mergedRequestItems.filter((item) => {
           const requestStatus = item.requestRecord?.status;
-          return requestStatus === 'pending' || requestStatus === 'rejected' || requestStatus === 'cancelled';
+          if (requestStatus === 'pending' || requestStatus === 'rejected' || requestStatus === 'cancelled') {
+            return true;
+          }
+          return requestStatus === 'fulfilled' && item.kind === 'request';
         })
       : activeTab === 'history'
         ? historyItems
         : mergedDownloadItems;
+
+  const availableUsers = useMemo(() => {
+    const userMap = new Map<string, string>();
+    baseVisibleItems.forEach((item) => {
+      const username = getItemUsername(item);
+      if (!username) {
+        return;
+      }
+      const lookupKey = username.toLowerCase();
+      if (!userMap.has(lookupKey)) {
+        userMap.set(lookupKey, username);
+      }
+    });
+
+    return Array.from(userMap.values()).sort((left, right) => left.localeCompare(right));
+  }, [baseVisibleItems]);
+
+  useEffect(() => {
+    if (selectedUser === ALL_USERS_FILTER) {
+      return;
+    }
+    if (!availableUsers.includes(selectedUser)) {
+      setSelectedUser(ALL_USERS_FILTER);
+    }
+  }, [availableUsers, selectedUser]);
+
+  const visibleItems = useMemo(() => {
+    if (selectedUser === ALL_USERS_FILTER) {
+      return baseVisibleItems;
+    }
+    return baseVisibleItems.filter((item) => getItemUsername(item) === selectedUser);
+  }, [baseVisibleItems, selectedUser]);
+
+  const hasUserFilter = isAdmin && availableUsers.length > 1;
 
   const clearCompletedTargets = useMemo(() => {
     const targets: ActivityDismissTarget[] = [];
@@ -464,15 +531,18 @@ export const ActivitySidebar = ({
 
   useEffect(() => {
     const activeButton = tabRefs.current[activeTab];
-    if (activeButton) {
-      const containerRect = activeButton.parentElement?.getBoundingClientRect();
-      const buttonRect = activeButton.getBoundingClientRect();
-      if (containerRect) {
-        setTabIndicatorStyle({
-          left: buttonRect.left - containerRect.left,
-          width: buttonRect.width,
-        });
-      }
+    if (!activeButton) {
+      setTabIndicatorStyle({ left: 0, width: 0 });
+      return;
+    }
+
+    const containerRect = activeButton.parentElement?.getBoundingClientRect();
+    const buttonRect = activeButton.getBoundingClientRect();
+    if (containerRect) {
+      setTabIndicatorStyle({
+        left: buttonRect.left - containerRect.left,
+        width: buttonRect.width,
+      });
     }
   }, [activeTab, showRequestsTab]);
 
@@ -486,9 +556,8 @@ export const ActivitySidebar = ({
         }}
       >
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Activity</h2>
-
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold">{activeTab === 'history' ? 'History' : 'Activity'}</h2>
             <button
               type="button"
               onClick={handleTogglePinned}
@@ -501,10 +570,81 @@ export const ActivitySidebar = ({
                   <path d="M15.804 2.276a.75.75 0 0 0-.336.195l-2 2a.75.75 0 0 0 0 1.062l.47.469-3.572 3.571c-.83-.534-1.773-.808-2.709-.691-1.183.148-2.32.72-3.187 1.587a.75.75 0 0 0 0 1.063L7.938 15l-5.467 5.467a.75.75 0 0 0 0 1.062.75.75 0 0 0 1.062 0L9 16.062l3.468 3.468a.75.75 0 0 0 1.062 0c.868-.868 1.44-2.004 1.588-3.187.117-.935-.158-1.879-.692-2.708L18 10.063l.469.469a.75.75 0 0 0 1.062 0l2-2a.75.75 0 0 0 0-1.062l-5-4.999a.75.75 0 0 0-.726-.195z" />
                 </svg>
               ) : (
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" d="m9 15-6 6M15 6l-1-1 2-2 5 5-2 2-1-1-4.5 4.5c1.5 1.5 1 4-.5 5.5l-8-8c1.5-1.5 4-2 5.5-.5z" />
                 </svg>
               )}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1">
+            {hasUserFilter && (
+              <Dropdown
+                align="right"
+                widthClassName="w-auto"
+                panelClassName="min-w-[11rem]"
+                renderTrigger={({ isOpen, toggle }) => (
+                  <button
+                    type="button"
+                    onClick={toggle}
+                    className={`h-9 w-9 inline-flex items-center justify-center rounded-full hover-action transition-colors ${
+                      isOpen || selectedUser !== ALL_USERS_FILTER ? 'text-sky-600 dark:text-sky-400' : ''
+                    }`}
+                    title={selectedUser === ALL_USERS_FILTER ? 'Filter by user' : `Filtered: ${selectedUser}`}
+                    aria-label={selectedUser === ALL_USERS_FILTER ? 'Filter by user' : `Filtered by user ${selectedUser}`}
+                    aria-expanded={isOpen}
+                  >
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" strokeWidth="1.75" stroke="currentColor" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+                    </svg>
+                  </button>
+                )}
+              >
+                {({ close }) => (
+                  <div role="listbox">
+                    {[ALL_USERS_FILTER, ...availableUsers].map((value) => {
+                      const isSelected = selectedUser === value;
+                      const label = value === ALL_USERS_FILTER ? 'All users' : value;
+                      return (
+                        <button
+                          type="button"
+                          key={value}
+                          className={`w-full px-3 py-2 text-left text-sm hover-surface flex items-center justify-between ${
+                            isSelected ? 'text-sky-600 dark:text-sky-400' : ''
+                          }`}
+                          onClick={() => {
+                            setSelectedUser(value);
+                            close();
+                          }}
+                        >
+                          <span>{label}</span>
+                          {isSelected && (
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="m5 13 4 4L19 7" />
+                            </svg>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </Dropdown>
+            )}
+            <button
+              type="button"
+              onClick={() => setActiveTab((current) => (current === 'history' ? 'all' : 'history'))}
+              className={`relative h-9 w-9 inline-flex items-center justify-center rounded-full hover-action transition-colors ${
+                activeTab === 'history' ? 'text-sky-600 dark:text-sky-400' : ''
+              }`}
+              title={activeTab === 'history' ? 'Back to activity' : 'Open history'}
+              aria-label={activeTab === 'history' ? 'Back to activity' : 'Open history'}
+              aria-pressed={activeTab === 'history'}
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l3.75 2.25" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v4.5h4.5" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12a8.25 8.25 0 1 0 3.37-6.63" />
+              </svg>
             </button>
             <button
               type="button"
@@ -512,94 +652,78 @@ export const ActivitySidebar = ({
               className="h-9 w-9 inline-flex items-center justify-center rounded-full hover-action transition-colors"
               aria-label="Close activity sidebar"
             >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
         </div>
 
-        <div className="mt-2 border-b border-[var(--border-muted)] -mx-4 px-4">
-          <div className="relative flex gap-1">
-            {/* Sliding indicator */}
-            <div
-              className="absolute bottom-0 h-0.5 bg-sky-500 transition-all duration-300 ease-out"
-              style={{
-                left: tabIndicatorStyle.left,
-                width: tabIndicatorStyle.width,
-              }}
-            />
-            <button
-              type="button"
-              ref={(el) => { tabRefs.current.all = el; }}
-              onClick={() => setActiveTab('all')}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${
-                activeTab === 'all'
-                  ? 'text-sky-600 dark:text-sky-400'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-              }`}
-              aria-current={activeTab === 'all' ? 'page' : undefined}
-            >
-              All
-            </button>
-            <button
-              type="button"
-              ref={(el) => { tabRefs.current.downloads = el; }}
-              onClick={() => setActiveTab('downloads')}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${
-                activeTab === 'downloads'
-                  ? 'text-sky-600 dark:text-sky-400'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-              }`}
-              aria-current={activeTab === 'downloads' ? 'page' : undefined}
-            >
-              Downloads
-              {mergedDownloadItems.length > 0 && (
-                <span className="ml-1.5 text-[11px] h-[18px] min-w-[18px] px-1 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 inline-flex items-center justify-center leading-none">
-                  {mergedDownloadItems.length}
-                </span>
-              )}
-            </button>
-            {showRequestsTab && (
+        {activeTab !== 'history' && (
+          <div className="mt-2 border-b border-[var(--border-muted)] -mx-4 px-4">
+            <div className="relative flex gap-1">
+              {/* Sliding indicator */}
+              <div
+                className="absolute bottom-0 h-0.5 bg-sky-500 transition-all duration-300 ease-out"
+                style={{
+                  left: tabIndicatorStyle.left,
+                  width: tabIndicatorStyle.width,
+                }}
+              />
               <button
                 type="button"
-                ref={(el) => { tabRefs.current.requests = el; }}
-                onClick={() => setActiveTab('requests')}
+                ref={(el) => { tabRefs.current.all = el; }}
+                onClick={() => setActiveTab('all')}
                 className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${
-                  activeTab === 'requests'
+                  activeTab === 'all'
                     ? 'text-sky-600 dark:text-sky-400'
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                 }`}
-                aria-current={activeTab === 'requests' ? 'page' : undefined}
+                aria-current={activeTab === 'all' ? 'page' : undefined}
               >
-                Requests
-                {pendingRequestCount > 0 && (
-                  <span className="ml-1.5 text-[11px] h-[18px] min-w-[18px] px-1 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 inline-flex items-center justify-center leading-none">
-                    {pendingRequestCount}
+                All
+              </button>
+              <button
+                type="button"
+                ref={(el) => { tabRefs.current.downloads = el; }}
+                onClick={() => setActiveTab('downloads')}
+                className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${
+                  activeTab === 'downloads'
+                    ? 'text-sky-600 dark:text-sky-400'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                }`}
+                aria-current={activeTab === 'downloads' ? 'page' : undefined}
+              >
+                Downloads
+                {mergedDownloadItems.length > 0 && (
+                  <span className="ml-1.5 text-[11px] h-[18px] min-w-[18px] px-1 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 inline-flex items-center justify-center leading-none">
+                    {mergedDownloadItems.length}
                   </span>
                 )}
               </button>
-            )}
-            <button
-              type="button"
-              ref={(el) => { tabRefs.current.history = el; }}
-              onClick={() => setActiveTab('history')}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${
-                activeTab === 'history'
-                  ? 'text-sky-600 dark:text-sky-400'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-              }`}
-              aria-current={activeTab === 'history' ? 'page' : undefined}
-            >
-              History
-              {historyItems.length > 0 && (
-                <span className="ml-1.5 text-[11px] h-[18px] min-w-[18px] px-1 rounded-full bg-gray-500/15 text-gray-700 dark:text-gray-300 inline-flex items-center justify-center leading-none">
-                  {historyItems.length}
-                </span>
+              {showRequestsTab && (
+                <button
+                  type="button"
+                  ref={(el) => { tabRefs.current.requests = el; }}
+                  onClick={() => setActiveTab('requests')}
+                  className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${
+                    activeTab === 'requests'
+                      ? 'text-sky-600 dark:text-sky-400'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                  }`}
+                  aria-current={activeTab === 'requests' ? 'page' : undefined}
+                >
+                  Requests
+                  {pendingRequestCount > 0 && (
+                    <span className="ml-1.5 text-[11px] h-[18px] min-w-[18px] px-1 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 inline-flex items-center justify-center leading-none">
+                      {pendingRequestCount}
+                    </span>
+                  )}
+                </button>
               )}
-            </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <div
@@ -620,7 +744,7 @@ export const ActivitySidebar = ({
         ) : (
           activeTab === 'history' ? (
             <div className="divide-y divide-[color-mix(in_srgb,var(--border-muted)_60%,transparent)]">
-              {historyItems.map((item) => (
+              {visibleItems.map((item) => (
                 <ActivityCard
                   key={item.id}
                   item={item}

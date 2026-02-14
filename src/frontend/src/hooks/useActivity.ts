@@ -251,16 +251,20 @@ export const useActivity = ({
       return;
     }
 
-    const handleActivityUpdate = () => {
+    const refreshFromSocketEvent = () => {
       void refreshActivitySnapshot();
       if (activityHistoryLoaded) {
         void refreshActivityHistory();
       }
     };
 
-    socket.on('activity_update', handleActivityUpdate);
+    socket.on('activity_update', refreshFromSocketEvent);
+    socket.on('request_update', refreshFromSocketEvent);
+    socket.on('new_request', refreshFromSocketEvent);
     return () => {
-      socket.off('activity_update', handleActivityUpdate);
+      socket.off('activity_update', refreshFromSocketEvent);
+      socket.off('request_update', refreshFromSocketEvent);
+      socket.off('new_request', refreshFromSocketEvent);
     };
   }, [activityHistoryLoaded, isAuthenticated, refreshActivitySnapshot, refreshActivityHistory, socket]);
 
@@ -273,10 +277,35 @@ export const useActivity = ({
   );
 
   const historyItems = useMemo(
-    () =>
-      activityHistoryRows
+    () => {
+      const mappedItems = activityHistoryRows
         .map((row) => mapHistoryRowToActivityItem(row, isAdmin ? 'admin' : 'user'))
-        .sort((left, right) => right.timestamp - left.timestamp),
+        .sort((left, right) => right.timestamp - left.timestamp);
+
+      // Download dismissals already carry linked request context; hide redundant
+      // fulfilled-request history rows that would otherwise appear as "Approved".
+      const requestIdsWithDownloadRows = new Set<number>();
+      mappedItems.forEach((item) => {
+        if (item.kind === 'download' && typeof item.requestId === 'number') {
+          requestIdsWithDownloadRows.add(item.requestId);
+        }
+      });
+
+      if (!requestIdsWithDownloadRows.size) {
+        return mappedItems;
+      }
+
+      return mappedItems.filter((item) => {
+        if (item.kind !== 'request' || typeof item.requestId !== 'number') {
+          return true;
+        }
+        if (!requestIdsWithDownloadRows.has(item.requestId)) {
+          return true;
+        }
+        const requestStatus = item.requestRecord?.status;
+        return requestStatus !== 'fulfilled' && item.visualStatus !== 'fulfilled';
+      });
+    },
     [activityHistoryRows, isAdmin]
   );
 

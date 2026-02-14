@@ -91,6 +91,57 @@ class TestActivityService:
         assert history[0]["final_status"] == "complete"
         assert history[0]["snapshot"] == {"title": "My Book", "status": "complete"}
 
+    def test_history_hydrates_legacy_request_dismissals_without_snapshot(self, user_db, activity_service):
+        user = user_db.create_user(username="legacy-reader")
+        request_row = user_db.create_request(
+            user_id=user["id"],
+            content_type="ebook",
+            request_level="book",
+            policy_mode="request_book",
+            book_data={
+                "title": "Legacy Request",
+                "author": "Legacy Author",
+                "provider": "openlibrary",
+                "provider_id": "legacy-hydrate-1",
+            },
+            status="fulfilled",
+            delivery_state="unknown",
+        )
+
+        activity_service.dismiss_item(
+            user_id=user["id"],
+            item_type="request",
+            item_key=f"request:{request_row['id']}",
+        )
+
+        history = activity_service.get_history(user["id"], limit=10, offset=0)
+        assert len(history) == 1
+        assert history[0]["item_type"] == "request"
+        assert history[0]["item_key"] == f"request:{request_row['id']}"
+        assert history[0]["origin"] == "request"
+        assert history[0]["final_status"] == "complete"
+        assert history[0]["snapshot"] == {
+            "kind": "request",
+            "request": {
+                "id": request_row["id"],
+                "user_id": user["id"],
+                "status": "fulfilled",
+                "delivery_state": "unknown",
+                "request_level": "book",
+                "book_data": {
+                    "title": "Legacy Request",
+                    "author": "Legacy Author",
+                    "provider": "openlibrary",
+                    "provider_id": "legacy-hydrate-1",
+                },
+                "release_data": {},
+                "note": None,
+                "admin_note": None,
+                "created_at": request_row["created_at"],
+                "updated_at": request_row["created_at"],
+            },
+        }
+
     def test_dismiss_many_and_clear_history(self, user_db, activity_service):
         alice = user_db.create_user(username="alice")
         bob = user_db.create_user(username="bob")
