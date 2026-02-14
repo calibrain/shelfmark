@@ -36,6 +36,11 @@ from shelfmark.core.auth_modes import (
 )
 from shelfmark.core.cwa_user_sync import upsert_cwa_user
 from shelfmark.core.external_user_linking import upsert_external_user
+from shelfmark.core.request_policy import (
+    PolicyMode,
+    merge_request_policy_settings,
+    resolve_policy_mode,
+)
 from shelfmark.core.utils import normalize_base_path
 from shelfmark.api.websocket import ws_manager
 
@@ -204,6 +209,93 @@ def get_auth_mode() -> str:
         )
     except Exception:
         return "none"
+
+
+def _load_users_request_policy_settings() -> dict[str, Any]:
+    """Load global request policy settings from users config."""
+    from shelfmark.core.settings_registry import load_config_file
+
+    return load_config_file("users")
+
+
+def _as_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off", ""}:
+            return False
+    return bool(value)
+
+
+def _resolve_policy_mode_for_current_user(*, source: Any, content_type: Any) -> PolicyMode | None:
+    """Resolve policy mode for current session, or None when policy guard is bypassed."""
+    auth_mode = get_auth_mode()
+    if auth_mode == "none":
+        return None
+    if session.get("is_admin", True):
+        return None
+    if user_db is None:
+        return None
+
+    global_settings = _load_users_request_policy_settings()
+    db_user_id = session.get("db_user_id")
+    user_settings: dict[str, Any] | None = None
+    if db_user_id is not None:
+        try:
+            user_settings = user_db.get_user_settings(int(db_user_id))
+        except (TypeError, ValueError):
+            user_settings = None
+
+    effective = merge_request_policy_settings(global_settings, user_settings)
+    if not _as_bool(effective.get("REQUESTS_ENABLED"), False):
+        return None
+
+    return resolve_policy_mode(
+        source=source,
+        content_type=content_type,
+        global_settings=global_settings,
+        user_settings=user_settings,
+    )
+
+
+def _policy_block_response(mode: PolicyMode):
+    if mode == PolicyMode.BLOCKED:
+        return (
+            jsonify({
+                "error": "Download not allowed by policy",
+                "code": "policy_blocked",
+                "required_mode": PolicyMode.BLOCKED.value,
+            }),
+            403,
+        )
+    return (
+        jsonify({
+            "error": "Download not allowed by policy",
+            "code": "policy_requires_request",
+            "required_mode": mode.value,
+        }),
+        403,
+    )
+
+
+if user_db is not None:
+    try:
+        from shelfmark.core.request_routes import register_request_routes
+
+        register_request_routes(
+            app,
+            user_db,
+            resolve_auth_mode=lambda: get_auth_mode(),
+            queue_release=lambda *args, **kwargs: backend.queue_release(*args, **kwargs),
+            ws_manager=ws_manager,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to register request routes: {e}")
 
 
 # Enable CORS in development mode for local frontend development
@@ -609,6 +701,13 @@ def api_download() -> Union[Response, Tuple[Response, int]]:
         return jsonify({"error": "No book ID provided"}), 400
 
     try:
+        policy_mode = _resolve_policy_mode_for_current_user(
+            source="direct_download",
+            content_type="ebook",
+        )
+        if policy_mode is not None and policy_mode != PolicyMode.DOWNLOAD:
+            return _policy_block_response(policy_mode)
+
         priority = int(request.args.get('priority', 0))
         # Per-user download overrides
         db_user_id = session.get('db_user_id')
@@ -652,6 +751,17 @@ def api_download_release() -> Union[Response, Tuple[Response, int]]:
 
         if 'source_id' not in data:
             return jsonify({"error": "source_id is required"}), 400
+
+        source = data.get('source', 'direct_download')
+        content_type = data.get('content_type')
+        if content_type is None and isinstance(data.get('extra'), dict):
+            content_type = data['extra'].get('content_type')
+        policy_mode = _resolve_policy_mode_for_current_user(
+            source=source,
+            content_type=content_type,
+        )
+        if policy_mode is not None and policy_mode != PolicyMode.DOWNLOAD:
+            return _policy_block_response(policy_mode)
 
         priority = data.get('priority', 0)
         # Per-user download overrides

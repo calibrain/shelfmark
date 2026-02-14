@@ -6,12 +6,14 @@ from flask import Flask, jsonify, request
 
 from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_db import UserDB
+from shelfmark.core.request_policy import parse_policy_mode, validate_policy_rules
 
 
 def _get_settings_registry():
     # Ensure settings modules are loaded before reading registry metadata.
     import shelfmark.config.settings  # noqa: F401
     import shelfmark.config.security  # noqa: F401
+    import shelfmark.config.users_settings  # noqa: F401
     from shelfmark.core import settings_registry
 
     return settings_registry
@@ -39,6 +41,19 @@ def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], li
         elif key not in overridable_map:
             errors.append(f"Setting not user-overridable: {key}")
         else:
+            if key in {"REQUEST_POLICY_DEFAULT_EBOOK", "REQUEST_POLICY_DEFAULT_AUDIOBOOK"}:
+                if parse_policy_mode(value) is None:
+                    errors.append(f"Invalid policy mode for {key}: {value}")
+                    continue
+
+            if key == "REQUEST_POLICY_RULES":
+                normalized_rules, rule_errors = validate_policy_rules(value)
+                if rule_errors:
+                    errors.extend(rule_errors)
+                    continue
+                valid[key] = normalized_rules
+                continue
+
             valid[key] = value
 
     return valid, errors
