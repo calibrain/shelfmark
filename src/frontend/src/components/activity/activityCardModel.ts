@@ -122,7 +122,6 @@ const buildBadges = (item: ActivityItem, isAdmin: boolean): ActivityCardBadge[] 
 
 const buildRequestNoteLine = (item: ActivityItem): string | undefined => {
   const requestStatus = item.requestRecord?.status;
-  const deliveryState = item.requestRecord?.delivery_state;
   if (item.requestNote && (requestStatus === 'pending' || item.visualStatus === 'pending')) {
     return `"${item.requestNote}"`;
   }
@@ -136,9 +135,6 @@ const buildRequestNoteLine = (item: ActivityItem): string | undefined => {
     )
   ) {
     return `"${item.adminNote}"`;
-  }
-  if (requestStatus === 'fulfilled' && deliveryState === 'cleared') {
-    return '"Cleared from queue"';
   }
   return undefined;
 };

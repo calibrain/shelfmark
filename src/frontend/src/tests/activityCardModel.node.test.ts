@@ -134,7 +134,7 @@ describe('activityCardModel', () => {
     assert.equal(model.badges[1]?.text, 'Sent to Kindle');
   });
 
-  it('shows a cleared-from-queue note for fulfilled requests with cleared delivery state', () => {
+  it('does not render a special note for fulfilled requests with terminal delivery state', () => {
     const model = buildActivityCardModel(
       makeItem({
         kind: 'request',
@@ -144,7 +144,7 @@ describe('activityCardModel', () => {
           id: 42,
           user_id: 7,
           status: 'fulfilled',
-          delivery_state: 'cleared',
+          delivery_state: 'complete',
           source_hint: 'prowlarr',
           content_type: 'ebook',
           request_level: 'release',
@@ -163,7 +163,7 @@ describe('activityCardModel', () => {
       false
     );
 
-    assert.equal(model.noteLine, '"Cleared from queue"');
+    assert.equal(model.noteLine, undefined);
   });
 
   it('builds pending admin request actions from one normalized source', () => {

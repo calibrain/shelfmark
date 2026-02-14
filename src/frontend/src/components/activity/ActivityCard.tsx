@@ -14,6 +14,7 @@ interface ActivityCardProps {
   item: ActivityItem;
   isAdmin: boolean;
   onDownloadCancel?: (bookId: string) => void;
+  onDownloadDismiss?: (bookId: string, linkedRequestId?: number) => void;
   onRequestCancel?: (requestId: number) => void;
   onRequestApprove?: (requestId: number, record: RequestRecord) => void;
   onRequestReject?: (requestId: number) => void;
@@ -145,6 +146,7 @@ export const ActivityCard = ({
   item,
   isAdmin,
   onDownloadCancel,
+  onDownloadDismiss,
   onRequestCancel,
   onRequestApprove,
   onRequestReject,
@@ -205,10 +207,7 @@ export const ActivityCard = ({
         onDownloadCancel?.(action.bookId);
         break;
       case 'download-dismiss':
-        onDownloadCancel?.(action.bookId);
-        if (action.linkedRequestId) {
-          onRequestDismiss?.(action.linkedRequestId);
-        }
+        onDownloadDismiss?.(action.bookId, action.linkedRequestId);
         break;
       case 'request-approve':
         onRequestApprove?.(action.requestId, action.record);
@@ -231,8 +230,9 @@ export const ActivityCard = ({
     switch (action.kind) {
       case 'download-remove':
       case 'download-stop':
-      case 'download-dismiss':
         return Boolean(onDownloadCancel);
+      case 'download-dismiss':
+        return Boolean(onDownloadDismiss);
       case 'request-approve':
         return Boolean(onRequestApprove);
       case 'request-reject':

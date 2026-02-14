@@ -44,6 +44,10 @@ const API = {
   requests: `${API_BASE}/requests`,
   adminRequests: `${API_BASE}/admin/requests`,
   adminRequestCounts: `${API_BASE}/admin/requests/count`,
+  activitySnapshot: `${API_BASE}/activity/snapshot`,
+  activityDismiss: `${API_BASE}/activity/dismiss`,
+  activityDismissMany: `${API_BASE}/activity/dismiss-many`,
+  activityHistory: `${API_BASE}/activity/history`,
 };
 
 // Custom error class for authentication failures
@@ -289,6 +293,38 @@ export const getStatus = async (): Promise<StatusData> => {
   return fetchJSON<StatusData>(API.status);
 };
 
+export const getActivitySnapshot = async (): Promise<ActivitySnapshotResponse> => {
+  return fetchJSON<ActivitySnapshotResponse>(API.activitySnapshot);
+};
+
+export const dismissActivityItem = async (payload: ActivityDismissPayload): Promise<void> => {
+  await fetchJSON(API.activityDismiss, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+};
+
+export const dismissManyActivityItems = async (items: ActivityDismissPayload[]): Promise<void> => {
+  await fetchJSON(API.activityDismissMany, {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+  });
+};
+
+export const listActivityHistory = async (
+  limit: number = 50,
+  offset: number = 0
+): Promise<ActivityHistoryItem[]> => {
+  const params = new URLSearchParams();
+  params.set('limit', String(limit));
+  params.set('offset', String(offset));
+  return fetchJSON<ActivityHistoryItem[]>(`${API.activityHistory}?${params.toString()}`);
+};
+
+export const clearActivityHistory = async (): Promise<void> => {
+  await fetchJSON(API.activityHistory, { method: 'DELETE' });
+};
+
 export const cancelDownload = async (id: string): Promise<void> => {
   await fetchJSON(`${API.cancelDownload}/${encodeURIComponent(id)}/cancel`, { method: 'DELETE' });
 };
@@ -307,6 +343,38 @@ export interface AdminRequestCounts {
   pending: number;
   total: number;
   by_status: Record<string, number>;
+}
+
+export interface ActivityDismissedItem {
+  item_type: 'download' | 'request';
+  item_key: string;
+}
+
+export interface ActivitySnapshotResponse {
+  status: StatusData;
+  requests: RequestRecord[];
+  dismissed: ActivityDismissedItem[];
+}
+
+export interface ActivityDismissPayload {
+  item_type: 'download' | 'request';
+  item_key: string;
+  activity_log_id?: number;
+}
+
+export interface ActivityHistoryItem {
+  id: number;
+  user_id: number;
+  item_type: 'download' | 'request';
+  item_key: string;
+  activity_log_id: number | null;
+  dismissed_at: string;
+  snapshot: Record<string, unknown> | null;
+  origin: 'direct' | 'request' | 'requested' | null;
+  final_status: string | null;
+  terminal_at: string | null;
+  request_id: number | null;
+  source_id: string | null;
 }
 
 export const fetchRequestPolicy = async (): Promise<RequestPolicyResponse> => {

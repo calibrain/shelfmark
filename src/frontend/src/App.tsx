@@ -17,7 +17,6 @@ import {
   downloadBook,
   downloadRelease,
   cancelDownload,
-  clearCompleted,
   getConfig,
   createRequest,
   isApiResponseError,
@@ -31,6 +30,7 @@ import { useDownloadTracking } from './hooks/useDownloadTracking';
 import { useRequestPolicy } from './hooks/useRequestPolicy';
 import { resolveDefaultModeFromPolicy, resolveSourceModeFromPolicy } from './hooks/requestPolicyCore';
 import { useRequests } from './hooks/useRequests';
+import { useActivity } from './hooks/useActivity';
 import { Header } from './components/Header';
 import { SearchSection } from './components/SearchSection';
 import { AdvancedFilters } from './components/AdvancedFilters';
@@ -40,7 +40,7 @@ import { ReleaseModal } from './components/ReleaseModal';
 import { RequestConfirmationModal } from './components/RequestConfirmationModal';
 import { ToastContainer } from './components/ToastContainer';
 import { Footer } from './components/Footer';
-import { ActivitySidebar, requestToActivityItem } from './components/activity';
+import { ActivitySidebar } from './components/activity';
 import { LoginPage } from './pages/LoginPage';
 import { SelfSettingsModal, SettingsModal } from './components/settings';
 import { ConfigSetupBanner } from './components/ConfigSetupBanner';
@@ -62,6 +62,7 @@ import {
 import { bookFromRequestData } from './utils/requestFulfil';
 import { policyTrace } from './utils/policyTrace';
 import { SearchModeProvider } from './contexts/SearchModeContext';
+import { useSocket } from './contexts/SocketContext';
 import './styles.css';
 
 const CONTENT_TYPE_STORAGE_KEY = 'preferred-content-type';
@@ -79,7 +80,6 @@ const getInitialContentType = (): ContentType => {
 };
 
 const POLICY_GUARD_ERROR_CODES = new Set(['policy_requires_request', 'policy_blocked']);
-
 const isPolicyGuardError = (error: unknown): boolean => {
   return (
     isApiResponseError(error) &&
@@ -117,6 +117,7 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 
 function App() {
   const { toasts, showToast, removeToast } = useToast();
+  const { socket } = useSocket();
 
   // Realtime status with WebSocket and polling fallback
   // Socket connection is managed by SocketProvider in main.tsx
@@ -193,10 +194,7 @@ function App() {
   const requestRoleIsAdmin = requestPolicy ? Boolean(requestPolicy.is_admin) : false;
 
   const {
-    requests,
-    pendingCount: pendingRequestCount,
     isLoading: isRequestsLoading,
-    refresh: refreshRequests,
     cancelRequest: cancelUserRequest,
     fulfilRequest: fulfilSidebarRequest,
     rejectRequest: rejectSidebarRequest,
@@ -205,58 +203,29 @@ function App() {
     enabled: isAuthenticated,
   });
 
-  const dismissedRequestStorageKey = useMemo(() => {
-    const roleScope = requestRoleIsAdmin ? 'admin' : 'user';
-    const userScope = username?.trim().toLowerCase() || 'anonymous';
-    return `activity-dismissed-requests:${roleScope}:${userScope}`;
-  }, [requestRoleIsAdmin, username]);
-
-  const [dismissedRequestIds, setDismissedRequestIds] = useState<number[]>([]);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setDismissedRequestIds([]);
-      return;
-    }
-
-    try {
-      const raw = window.localStorage.getItem(dismissedRequestStorageKey);
-      if (!raw) {
-        setDismissedRequestIds([]);
-        return;
-      }
-      const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed)) {
-        setDismissedRequestIds([]);
-        return;
-      }
-
-      const ids = parsed.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-      setDismissedRequestIds(ids);
-    } catch {
-      setDismissedRequestIds([]);
-    }
-  }, [dismissedRequestStorageKey, isAuthenticated]);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      return;
-    }
-    try {
-      window.localStorage.setItem(dismissedRequestStorageKey, JSON.stringify(dismissedRequestIds));
-    } catch {
-      // Ignore storage failures in restricted/private contexts.
-    }
-  }, [dismissedRequestIds, dismissedRequestStorageKey, isAuthenticated]);
-
-  const requestItems = useMemo(
-    () =>
-      requests
-        .filter((record) => !dismissedRequestIds.includes(record.id))
-        .map((record) => requestToActivityItem(record, requestRoleIsAdmin ? 'admin' : 'user'))
-        .sort((left, right) => right.timestamp - left.timestamp),
-    [requests, requestRoleIsAdmin, dismissedRequestIds]
-  );
+  const {
+    activityStatus,
+    requestItems,
+    dismissedActivityKeys,
+    historyItems,
+    pendingRequestCount,
+    isActivitySnapshotLoading,
+    activityHistoryLoading,
+    activityHistoryHasMore,
+    refreshActivitySnapshot,
+    resetActivity,
+    handleActivityTabChange,
+    handleActivityHistoryLoadMore,
+    handleRequestDismiss,
+    handleDownloadDismiss,
+    handleClearCompleted,
+    handleClearHistory,
+  } = useActivity({
+    isAuthenticated,
+    isAdmin: requestRoleIsAdmin,
+    showToast,
+    socket,
+  });
 
   const showRequestsTab = useMemo(() => {
     if (requestRoleIsAdmin) {
@@ -318,9 +287,10 @@ function App() {
     clearTracking();
     setPendingRequestPayload(null);
     setFulfillingRequest(null);
+    resetActivity();
     setSettingsOpen(false);
     setSelfSettingsOpen(false);
-  }, [handleLogout, setBooks, clearTracking]);
+  }, [handleLogout, setBooks, clearTracking, resetActivity]);
 
   // UI state
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
@@ -772,18 +742,6 @@ function App() {
     }
   };
 
-  // Clear completed
-  const handleClearCompleted = async () => {
-    try {
-      await clearCompleted();
-      await fetchStatus();
-      await refreshRequests();
-    } catch (error) {
-      console.error('Clear completed failed:', error);
-      showToast('Failed to clear finished downloads', 'error');
-    }
-  };
-
   // Universal-mode "Get" action (open releases, request-book, or block by policy).
   const handleGetReleases = async (book: Book) => {
     let mode = getUniversalDefaultPolicyMode();
@@ -974,19 +932,14 @@ function App() {
     async (requestId: number) => {
       try {
         await cancelUserRequest(requestId);
+        await refreshActivitySnapshot();
         showToast('Request cancelled', 'success');
       } catch (error) {
         showToast(getErrorMessage(error, 'Failed to cancel request'), 'error');
       }
     },
-    [cancelUserRequest, showToast]
+    [cancelUserRequest, refreshActivitySnapshot, showToast]
   );
-
-  const handleRequestDismiss = useCallback((requestId: number) => {
-    setDismissedRequestIds((previous) =>
-      previous.includes(requestId) ? previous : [...previous, requestId]
-    );
-  }, []);
 
   const handleRequestReject = useCallback(
     async (requestId: number, adminNote?: string) => {
@@ -996,12 +949,13 @@ function App() {
 
       try {
         await rejectSidebarRequest(requestId, adminNote);
+        await refreshActivitySnapshot();
         showToast('Request rejected', 'success');
       } catch (error) {
         showToast(getErrorMessage(error, 'Failed to reject request'), 'error');
       }
     },
-    [requestRoleIsAdmin, rejectSidebarRequest, showToast]
+    [refreshActivitySnapshot, requestRoleIsAdmin, rejectSidebarRequest, showToast]
   );
 
   const handleRequestApprove = useCallback(
@@ -1013,6 +967,7 @@ function App() {
       if (record.request_level === 'release') {
         try {
           await fulfilSidebarRequest(requestId, record.release_data || undefined);
+          await refreshActivitySnapshot();
           showToast('Request approved', 'success');
           await fetchStatus();
         } catch (error) {
@@ -1028,7 +983,7 @@ function App() {
         contentType: record.content_type,
       });
     },
-    [requestRoleIsAdmin, fulfilSidebarRequest, showToast, fetchStatus]
+    [requestRoleIsAdmin, fulfilSidebarRequest, showToast, fetchStatus, refreshActivitySnapshot]
   );
 
   const handleBrowseFulfilDownload = useCallback(
@@ -1042,6 +997,7 @@ function App() {
           fulfillingRequest.requestId,
           buildReleaseDataFromMetadataRelease(book, release, toContentType(releaseContentType))
         );
+        await refreshActivitySnapshot();
         showToast(`Request approved: ${book.title || 'Untitled'}`, 'success');
         setFulfillingRequest(null);
         await fetchStatus();
@@ -1051,7 +1007,7 @@ function App() {
         throw error;
       }
     },
-    [fulfillingRequest, fulfilSidebarRequest, showToast, fetchStatus]
+    [fulfillingRequest, fulfilSidebarRequest, showToast, fetchStatus, refreshActivitySnapshot]
   );
 
   const getDirectActionButtonState = useCallback(
@@ -1312,14 +1268,22 @@ function App() {
       <ActivitySidebar
         isOpen={downloadsSidebarOpen}
         onClose={() => setDownloadsSidebarOpen(false)}
-        status={currentStatus}
+        status={activityStatus}
         isAdmin={requestRoleIsAdmin}
         onClearCompleted={handleClearCompleted}
         onCancel={handleCancel}
+        onDownloadDismiss={handleDownloadDismiss}
         requestItems={requestItems}
+        dismissedItemKeys={dismissedActivityKeys}
+        historyItems={historyItems}
+        historyHasMore={activityHistoryHasMore}
+        historyLoading={activityHistoryLoading}
+        onHistoryLoadMore={handleActivityHistoryLoadMore}
+        onClearHistory={handleClearHistory}
+        onActiveTabChange={handleActivityTabChange}
         pendingRequestCount={pendingRequestCount}
         showRequestsTab={showRequestsTab}
-        isRequestsLoading={isRequestsLoading}
+        isRequestsLoading={isRequestsLoading || isActivitySnapshotLoading}
         onRequestCancel={showRequestsTab ? handleRequestCancel : undefined}
         onRequestApprove={requestRoleIsAdmin ? handleRequestApprove : undefined}
         onRequestReject={requestRoleIsAdmin ? handleRequestReject : undefined}

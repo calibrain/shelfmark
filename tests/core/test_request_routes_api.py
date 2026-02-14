@@ -58,6 +58,14 @@ def _policy(
     }
 
 
+def _read_activity_log_row(main_module, snapshot_id: int):
+    conn = main_module.user_db._connect()
+    try:
+        return conn.execute("SELECT * FROM activity_log WHERE id = ?", (snapshot_id,)).fetchone()
+    finally:
+        conn.close()
+
+
 class TestDownloadPolicyGuards:
     def test_download_endpoint_blocks_before_queue_when_policy_requires_request(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -193,6 +201,17 @@ class TestRequestRoutes:
 
         assert cancel_resp.status_code == 200
         assert cancel_resp.json["status"] == "cancelled"
+
+        snapshot_id = main_module.activity_service.get_latest_activity_log_id(
+            item_type="request",
+            item_key=f"request:{request_id}",
+        )
+        assert snapshot_id is not None
+        log_row = _read_activity_log_row(main_module, snapshot_id)
+        assert log_row is not None
+        assert log_row["user_id"] == user["id"]
+        assert log_row["final_status"] == "cancelled"
+        assert log_row["origin"] == "request"
 
     def test_create_request_emits_websocket_events(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -497,6 +516,17 @@ class TestRequestRoutes:
         assert reject_resp.json["status"] == "rejected"
         assert reject_again_resp.status_code == 409
         assert reject_again_resp.json["code"] == "stale_transition"
+
+        snapshot_id = main_module.activity_service.get_latest_activity_log_id(
+            item_type="request",
+            item_key=f"request:{request_id}",
+        )
+        assert snapshot_id is not None
+        log_row = _read_activity_log_row(main_module, snapshot_id)
+        assert log_row is not None
+        assert log_row["user_id"] == user["id"]
+        assert log_row["final_status"] == "rejected"
+        assert log_row["origin"] == "request"
 
     def test_admin_reject_emits_update_to_user_and_admin_rooms(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -1640,7 +1670,7 @@ class TestDownloadPolicyGuardsExtended:
         assert resp.status_code == 200
 
 
-def test_clear_queue_marks_fulfilled_request_delivery_as_cleared(main_module, client):
+def test_clear_queue_does_not_mutate_fulfilled_request_delivery_state(main_module, client):
     user = _create_user(main_module, prefix="reader")
     admin = _create_user(main_module, prefix="admin", role="admin")
     _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
@@ -1666,35 +1696,24 @@ def test_clear_queue_marks_fulfilled_request_delivery_as_cleared(main_module, cl
         delivery_state="complete",
     )
 
-    status_before_clear = {
-        "complete": {"clear-delivery-source-id": {"id": "clear-delivery-source-id"}},
-        "queued": {},
-        "resolving": {},
-        "locating": {},
-        "downloading": {},
-        "error": {},
-        "cancelled": {},
-    }
-
     with patch.object(main_module, "get_auth_mode", return_value="builtin"):
         with patch.object(main_module.ws_manager, "is_enabled", return_value=False):
             with patch.object(main_module.ws_manager, "broadcast_status_update"):
-                with patch.object(main_module.backend, "queue_status", side_effect=[status_before_clear, {}]) as mock_queue_status:
+                with patch.object(main_module.backend, "queue_status", return_value={}) as mock_queue_status:
                     with patch.object(main_module.backend, "clear_completed", return_value=1) as mock_clear_completed:
                         resp = client.delete("/api/queue/clear")
 
     assert resp.status_code == 200
     assert resp.json["status"] == "cleared"
     assert resp.json["removed_count"] == 1
-    assert mock_queue_status.call_args_list[0].kwargs == {"user_id": None}
+    assert mock_queue_status.call_args_list[0].kwargs == {}
     mock_clear_completed.assert_called_once_with(user_id=None)
 
     refreshed = main_module.user_db.get_request(created["id"])
-    assert refreshed["delivery_state"] == "cleared"
-    assert refreshed["delivery_updated_at"] is not None
+    assert refreshed["delivery_state"] == "complete"
 
 
-def test_non_admin_clear_queue_is_scoped_to_their_downloads(main_module, client):
+def test_non_admin_clear_queue_is_scoped_without_mutating_request_delivery_state(main_module, client):
     alice = _create_user(main_module, prefix="alice")
     bob = _create_user(main_module, prefix="bob")
     _set_session(client, user_id=alice["username"], db_user_id=alice["id"], is_admin=False)
@@ -1740,32 +1759,22 @@ def test_non_admin_clear_queue_is_scoped_to_their_downloads(main_module, client)
         delivery_state="complete",
     )
 
-    status_before_clear = {
-        "complete": {"shared-clear-scope-source-id": {"id": "shared-clear-scope-source-id"}},
-        "queued": {},
-        "resolving": {},
-        "locating": {},
-        "downloading": {},
-        "error": {},
-        "cancelled": {},
-    }
-
     with patch.object(main_module, "get_auth_mode", return_value="builtin"):
         with patch.object(main_module.ws_manager, "is_enabled", return_value=False):
             with patch.object(main_module.ws_manager, "broadcast_status_update"):
-                with patch.object(main_module.backend, "queue_status", side_effect=[status_before_clear, {}]) as mock_queue_status:
+                with patch.object(main_module.backend, "queue_status", return_value={}) as mock_queue_status:
                     with patch.object(main_module.backend, "clear_completed", return_value=1) as mock_clear_completed:
                         resp = client.delete("/api/queue/clear")
 
     assert resp.status_code == 200
     assert resp.json["status"] == "cleared"
     assert resp.json["removed_count"] == 1
-    assert mock_queue_status.call_args_list[0].kwargs == {"user_id": alice["id"]}
+    assert mock_queue_status.call_args_list[0].kwargs == {}
     mock_clear_completed.assert_called_once_with(user_id=alice["id"])
 
     refreshed_alice = main_module.user_db.get_request(alice_request["id"])
     refreshed_bob = main_module.user_db.get_request(bob_request["id"])
-    assert refreshed_alice["delivery_state"] == "cleared"
+    assert refreshed_alice["delivery_state"] == "complete"
     assert refreshed_bob["delivery_state"] == "complete"
 
 

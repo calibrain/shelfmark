@@ -325,6 +325,7 @@ def _task_to_dict(task: DownloadTask) -> Dict[str, Any]:
         'status': task.status,
         'status_message': task.status_message,
         'download_path': task.download_path,
+        'user_id': task.user_id,
         'username': task.username,
     }
 

@@ -61,6 +61,39 @@ ON download_requests (user_id, status, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_download_requests_status_created_at
 ON download_requests (status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS activity_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    item_type TEXT NOT NULL,
+    item_key TEXT NOT NULL,
+    request_id INTEGER,
+    source_id TEXT,
+    origin TEXT NOT NULL,
+    final_status TEXT NOT NULL,
+    snapshot_json TEXT NOT NULL,
+    terminal_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_log_user_terminal
+ON activity_log (user_id, terminal_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_activity_log_lookup
+ON activity_log (user_id, item_type, item_key, id DESC);
+
+CREATE TABLE IF NOT EXISTS activity_dismissals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    item_type TEXT NOT NULL,
+    item_key TEXT NOT NULL,
+    activity_log_id INTEGER REFERENCES activity_log(id) ON DELETE SET NULL,
+    dismissed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, item_type, item_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_dismissals_user_dismissed_at
+ON activity_dismissals (user_id, dismissed_at DESC);
 """
 
 
@@ -130,6 +163,7 @@ class UserDB:
                 conn.executescript(_CREATE_TABLES_SQL)
                 self._migrate_auth_source_column(conn)
                 self._migrate_request_delivery_columns(conn)
+                self._migrate_activity_tables(conn)
                 conn.commit()
                 # WAL mode must be changed outside an open transaction.
                 conn.execute("PRAGMA journal_mode=WAL")
@@ -189,6 +223,57 @@ class UserDB:
             WHERE delivery_state != 'none' AND delivery_updated_at IS NULL
             """
         )
+        conn.execute(
+            """
+            UPDATE download_requests
+            SET delivery_state = 'complete'
+            WHERE delivery_state = 'cleared'
+            """
+        )
+
+    def _migrate_activity_tables(self, conn: sqlite3.Connection) -> None:
+        """Ensure activity log and dismissal tables exist with current columns/indexes."""
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS activity_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                item_type TEXT NOT NULL,
+                item_key TEXT NOT NULL,
+                request_id INTEGER,
+                source_id TEXT,
+                origin TEXT NOT NULL,
+                final_status TEXT NOT NULL,
+                snapshot_json TEXT NOT NULL,
+                terminal_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_activity_log_user_terminal
+            ON activity_log (user_id, terminal_at DESC);
+
+            CREATE INDEX IF NOT EXISTS idx_activity_log_lookup
+            ON activity_log (user_id, item_type, item_key, id DESC);
+
+            CREATE TABLE IF NOT EXISTS activity_dismissals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                item_type TEXT NOT NULL,
+                item_key TEXT NOT NULL,
+                activity_log_id INTEGER REFERENCES activity_log(id) ON DELETE SET NULL,
+                dismissed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, item_type, item_key)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_activity_dismissals_user_dismissed_at
+            ON activity_dismissals (user_id, dismissed_at DESC);
+            """
+        )
+
+        dismissal_columns = conn.execute("PRAGMA table_info(activity_dismissals)").fetchall()
+        dismissal_column_names = {str(col["name"]) for col in dismissal_columns}
+        if "activity_log_id" not in dismissal_column_names:
+            conn.execute("ALTER TABLE activity_dismissals ADD COLUMN activity_log_id INTEGER")
 
     def create_user(
         self,

@@ -10,9 +10,17 @@ interface ActivitySidebarProps {
   onClose: () => void;
   status: StatusData;
   isAdmin: boolean;
-  onClearCompleted: () => void;
+  onClearCompleted: (items: ActivityDismissTarget[]) => void;
   onCancel: (id: string) => void;
+  onDownloadDismiss?: (bookId: string, linkedRequestId?: number) => void;
   requestItems: ActivityItem[];
+  dismissedItemKeys?: string[];
+  historyItems?: ActivityItem[];
+  historyHasMore?: boolean;
+  historyLoading?: boolean;
+  onHistoryLoadMore?: () => void;
+  onClearHistory?: () => void;
+  onActiveTabChange?: (tab: ActivityTabKey) => void;
   pendingRequestCount: number;
   showRequestsTab: boolean;
   isRequestsLoading?: boolean;
@@ -22,6 +30,11 @@ interface ActivitySidebarProps {
   onRequestDismiss?: (requestId: number) => void;
   onPinnedOpenChange?: (pinnedOpen: boolean) => void;
   pinnedTopOffset?: number;
+}
+
+export interface ActivityDismissTarget {
+  itemType: 'download' | 'request';
+  itemKey: string;
 }
 
 export const ACTIVITY_SIDEBAR_PINNED_STORAGE_KEY = 'activity-sidebar-pinned';
@@ -37,75 +50,78 @@ const DOWNLOAD_STATUS_KEYS: DownloadStatusKey[] = [
 ];
 
 type ActivityCategoryKey =
-  | 'downloads'
-  | 'pending_requests'
-  | 'approved_requests'
-  | 'completed_requests'
-  | 'request_history'
-  | 'other_requests';
+  | 'needs_review'
+  | 'in_progress'
+  | 'complete'
+  | 'failed';
+
+type ActivityTabKey = 'all' | 'downloads' | 'requests' | 'history';
 
 const getCategoryLabel = (
   key: ActivityCategoryKey,
   isAdmin: boolean
 ): string => {
-  if (key === 'downloads') {
-    return 'Downloads';
+  if (key === 'needs_review') {
+    return isAdmin ? 'Needs Review' : 'Waiting';
   }
-  if (key === 'pending_requests') {
-    return isAdmin ? 'Needs Review' : 'Awaiting Review';
+  if (key === 'in_progress') {
+    return 'In Progress';
   }
-  if (key === 'approved_requests') {
-    return 'Approved';
+  if (key === 'complete') {
+    return 'Complete';
   }
-  if (key === 'completed_requests') {
-    return isAdmin ? 'Completed Requests' : 'Completed';
-  }
-  if (key === 'request_history') {
-    return 'Request History';
-  }
-  return 'Closed';
+  return 'Failed';
 };
 
 const getVisibleCategoryOrder = (
-  tab: 'all' | 'downloads' | 'requests'
+  tab: ActivityTabKey
 ): ActivityCategoryKey[] => {
   if (tab === 'downloads') {
-    return ['downloads'];
+    return ['in_progress', 'complete', 'failed'];
   }
   if (tab === 'requests') {
-    return ['pending_requests', 'approved_requests', 'completed_requests', 'request_history', 'other_requests'];
+    return ['needs_review', 'failed'];
   }
-  return ['downloads', 'pending_requests', 'approved_requests', 'completed_requests', 'other_requests'];
+  if (tab === 'history') {
+    return [];
+  }
+  return ['needs_review', 'in_progress', 'complete', 'failed'];
 };
 
-const getActivityCategory = (item: ActivityItem, isAdmin: boolean): ActivityCategoryKey => {
-  if (!item.requestId) {
-    return 'downloads';
-  }
-
-  if (item.requestRecord?.status === 'pending' || item.visualStatus === 'pending') {
-    return 'pending_requests';
-  }
-
-  if (item.requestRecord?.status === 'fulfilled' || item.visualStatus === 'fulfilled') {
-    const deliveryState = item.requestRecord?.delivery_state;
-    if (deliveryState === 'cleared' && isAdmin) {
-      return 'request_history';
+const getActivityCategory = (item: ActivityItem): ActivityCategoryKey => {
+  if (item.kind === 'download') {
+    if (
+      item.visualStatus === 'queued' ||
+      item.visualStatus === 'resolving' ||
+      item.visualStatus === 'locating' ||
+      item.visualStatus === 'downloading'
+    ) {
+      return 'in_progress';
     }
-    const isTerminalDeliveryState = (
-      deliveryState === 'complete' ||
-      deliveryState === 'error' ||
-      deliveryState === 'cancelled' ||
-      deliveryState === 'cleared'
-    );
-    const isTerminalLinkedDownload =
-      item.kind === 'download' &&
-      (item.visualStatus === 'complete' || item.visualStatus === 'error' || item.visualStatus === 'cancelled');
-
-    return (isTerminalLinkedDownload || isTerminalDeliveryState) ? 'completed_requests' : 'approved_requests';
+    if (item.visualStatus === 'complete') {
+      return 'complete';
+    }
+    return 'failed';
   }
 
-  return 'other_requests';
+  const requestStatus = item.requestRecord?.status;
+  if (requestStatus === 'pending' || item.visualStatus === 'pending') {
+    return 'needs_review';
+  }
+
+  if (requestStatus === 'rejected' || requestStatus === 'cancelled') {
+    return 'failed';
+  }
+
+  // Fulfilled request records are treated as downloads.
+  const deliveryState = item.requestRecord?.delivery_state;
+  if (deliveryState === 'complete') {
+    return 'complete';
+  }
+  if (deliveryState === 'error' || deliveryState === 'cancelled') {
+    return 'failed';
+  }
+  return 'in_progress';
 };
 
 const getLinkedDownloadIdFromRequestItem = (item: ActivityItem): string | null => {
@@ -192,7 +208,15 @@ export const ActivitySidebar = ({
   isAdmin,
   onClearCompleted,
   onCancel,
+  onDownloadDismiss,
   requestItems,
+  dismissedItemKeys = [],
+  historyItems = [],
+  historyHasMore = false,
+  historyLoading = false,
+  onHistoryLoadMore,
+  onClearHistory,
+  onActiveTabChange,
   pendingRequestCount,
   showRequestsTab,
   isRequestsLoading = false,
@@ -205,10 +229,14 @@ export const ActivitySidebar = ({
 }: ActivitySidebarProps) => {
   const [isPinned, setIsPinned] = useState<boolean>(() => getInitialPinnedPreference());
   const [isDesktop, setIsDesktop] = useState<boolean>(() => getInitialDesktopState());
-  const [activeTab, setActiveTab] = useState<'all' | 'downloads' | 'requests'>('all');
+  const [activeTab, setActiveTab] = useState<ActivityTabKey>('all');
   const [rejectingRequest, setRejectingRequest] = useState<{ requestId: number; bookTitle: string } | null>(null);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({ request_history: true });
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
+  const dismissedKeySet = useMemo(
+    () => new Set(dismissedItemKeys),
+    [dismissedItemKeys]
+  );
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(min-width: 1024px)');
@@ -230,6 +258,10 @@ export const ActivitySidebar = ({
       setActiveTab('all');
     }
   }, [showRequestsTab, activeTab]);
+
+  useEffect(() => {
+    onActiveTabChange?.(activeTab);
+  }, [activeTab, onActiveTabChange]);
 
   useEffect(() => {
     if (activeTab === 'downloads') {
@@ -267,12 +299,27 @@ export const ActivitySidebar = ({
         return;
       }
       Object.values(bucket).forEach((book) => {
+        const itemKey = `download:${book.id}`;
+        if (dismissedKeySet.has(itemKey)) {
+          return;
+        }
         items.push(downloadToActivityItem(book, statusKey));
       });
     });
 
     return items.sort((left, right) => right.timestamp - left.timestamp);
-  }, [status]);
+  }, [dismissedKeySet, status]);
+
+  const visibleRequestItems = useMemo(
+    () =>
+      requestItems.filter((item) => {
+        if (!item.requestId) {
+          return true;
+        }
+        return !dismissedKeySet.has(`request:${item.requestId}`);
+      }),
+    [dismissedKeySet, requestItems]
+  );
 
   const { mergedRequestItems, mergedDownloadItems } = useMemo(() => {
     const downloadsById = new Map<string, ActivityItem>();
@@ -283,7 +330,7 @@ export const ActivitySidebar = ({
     });
 
     const mergedByDownloadId = new Map<string, ActivityItem>();
-    const nextRequestItems = requestItems.map((requestItem) => {
+    const nextRequestItems = visibleRequestItems.map((requestItem) => {
       const linkedDownloadId = getLinkedDownloadIdFromRequestItem(requestItem);
       if (!linkedDownloadId) {
         return requestItem;
@@ -313,7 +360,7 @@ export const ActivitySidebar = ({
       mergedRequestItems: nextRequestItems,
       mergedDownloadItems: nextDownloadItems,
     };
-  }, [downloadItems, requestItems]);
+  }, [downloadItems, visibleRequestItems]);
 
   const hasTerminalDownloadItems = useMemo(
     () =>
@@ -332,8 +379,44 @@ export const ActivitySidebar = ({
   const visibleItems = activeTab === 'all'
     ? allItems
     : activeTab === 'requests'
-      ? mergedRequestItems
-      : mergedDownloadItems;
+      ? mergedRequestItems.filter((item) => {
+          const requestStatus = item.requestRecord?.status;
+          return requestStatus === 'pending' || requestStatus === 'rejected' || requestStatus === 'cancelled';
+        })
+      : activeTab === 'history'
+        ? historyItems
+        : mergedDownloadItems;
+
+  const clearCompletedTargets = useMemo(() => {
+    const targets: ActivityDismissTarget[] = [];
+    const seen = new Set<string>();
+
+    visibleItems.forEach((item) => {
+      const isTerminalDownload =
+        item.kind === 'download' &&
+        (item.visualStatus === 'complete' || item.visualStatus === 'error' || item.visualStatus === 'cancelled');
+
+      if (!isTerminalDownload || !item.downloadBookId) {
+        return;
+      }
+
+      const downloadKey = `download:${item.downloadBookId}`;
+      if (!seen.has(downloadKey)) {
+        seen.add(downloadKey);
+        targets.push({ itemType: 'download', itemKey: downloadKey });
+      }
+
+      if (item.requestId) {
+        const requestKey = `request:${item.requestId}`;
+        if (!seen.has(requestKey)) {
+          seen.add(requestKey);
+          targets.push({ itemType: 'request', itemKey: requestKey });
+        }
+      }
+    });
+
+    return targets;
+  }, [visibleItems]);
 
   const visibleCategoryOrder = useMemo(
     () => getVisibleCategoryOrder(activeTab),
@@ -341,11 +424,15 @@ export const ActivitySidebar = ({
   );
 
   const groupedVisibleItems = useMemo(() => {
+    if (activeTab === 'history') {
+      return [];
+    }
+
     const grouped = new Map<ActivityCategoryKey, ActivityItem[]>();
     visibleCategoryOrder.forEach((key) => grouped.set(key, []));
 
     visibleItems.forEach((item) => {
-      const category = activeTab === 'downloads' ? 'downloads' : getActivityCategory(item, isAdmin);
+      const category = getActivityCategory(item);
       if (!grouped.has(category)) {
         grouped.set(category, []);
       }
@@ -392,7 +479,7 @@ export const ActivitySidebar = ({
   const panel = (
     <>
       <div
-        className={`px-4 pt-4 ${showRequestsTab ? 'pb-0' : 'pb-4 border-b'}`}
+        className="px-4 pt-4 pb-0"
         style={{
           borderColor: 'var(--border-muted)',
           paddingTop: 'calc(1rem + env(safe-area-inset-top))',
@@ -432,48 +519,48 @@ export const ActivitySidebar = ({
           </div>
         </div>
 
-        {showRequestsTab && (
-          <div className="mt-2 border-b border-[var(--border-muted)] -mx-4 px-4">
-            <div className="relative flex gap-1">
-              {/* Sliding indicator */}
-              <div
-                className="absolute bottom-0 h-0.5 bg-sky-500 transition-all duration-300 ease-out"
-                style={{
-                  left: tabIndicatorStyle.left,
-                  width: tabIndicatorStyle.width,
-                }}
-              />
-              <button
-                type="button"
-                ref={(el) => { tabRefs.current.all = el; }}
-                onClick={() => setActiveTab('all')}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${
-                  activeTab === 'all'
-                    ? 'text-sky-600 dark:text-sky-400'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                }`}
-                aria-current={activeTab === 'all' ? 'page' : undefined}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                ref={(el) => { tabRefs.current.downloads = el; }}
-                onClick={() => setActiveTab('downloads')}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${
-                  activeTab === 'downloads'
-                    ? 'text-sky-600 dark:text-sky-400'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                }`}
-                aria-current={activeTab === 'downloads' ? 'page' : undefined}
-              >
-                Downloads
-                {mergedDownloadItems.length > 0 && (
-                  <span className="ml-1.5 text-[11px] h-[18px] min-w-[18px] px-1 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 inline-flex items-center justify-center leading-none">
-                    {mergedDownloadItems.length}
-                  </span>
-                )}
-              </button>
+        <div className="mt-2 border-b border-[var(--border-muted)] -mx-4 px-4">
+          <div className="relative flex gap-1">
+            {/* Sliding indicator */}
+            <div
+              className="absolute bottom-0 h-0.5 bg-sky-500 transition-all duration-300 ease-out"
+              style={{
+                left: tabIndicatorStyle.left,
+                width: tabIndicatorStyle.width,
+              }}
+            />
+            <button
+              type="button"
+              ref={(el) => { tabRefs.current.all = el; }}
+              onClick={() => setActiveTab('all')}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${
+                activeTab === 'all'
+                  ? 'text-sky-600 dark:text-sky-400'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+              aria-current={activeTab === 'all' ? 'page' : undefined}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              ref={(el) => { tabRefs.current.downloads = el; }}
+              onClick={() => setActiveTab('downloads')}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${
+                activeTab === 'downloads'
+                  ? 'text-sky-600 dark:text-sky-400'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+              aria-current={activeTab === 'downloads' ? 'page' : undefined}
+            >
+              Downloads
+              {mergedDownloadItems.length > 0 && (
+                <span className="ml-1.5 text-[11px] h-[18px] min-w-[18px] px-1 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 inline-flex items-center justify-center leading-none">
+                  {mergedDownloadItems.length}
+                </span>
+              )}
+            </button>
+            {showRequestsTab && (
               <button
                 type="button"
                 ref={(el) => { tabRefs.current.requests = el; }}
@@ -492,9 +579,27 @@ export const ActivitySidebar = ({
                   </span>
                 )}
               </button>
-            </div>
+            )}
+            <button
+              type="button"
+              ref={(el) => { tabRefs.current.history = el; }}
+              onClick={() => setActiveTab('history')}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${
+                activeTab === 'history'
+                  ? 'text-sky-600 dark:text-sky-400'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+              }`}
+              aria-current={activeTab === 'history' ? 'page' : undefined}
+            >
+              History
+              {historyItems.length > 0 && (
+                <span className="ml-1.5 text-[11px] h-[18px] min-w-[18px] px-1 rounded-full bg-gray-500/15 text-gray-700 dark:text-gray-300 inline-flex items-center justify-center leading-none">
+                  {historyItems.length}
+                </span>
+              )}
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
       <div
@@ -506,11 +611,36 @@ export const ActivitySidebar = ({
           <p className="text-center text-sm opacity-70 mt-8">
             {activeTab === 'requests'
               ? isRequestsLoading ? 'Loading requests...' : 'No requests'
+              : activeTab === 'history'
+                ? historyLoading ? 'Loading history...' : 'No history'
               : activeTab === 'downloads'
                 ? 'No downloads'
                 : 'No activity'}
           </p>
         ) : (
+          activeTab === 'history' ? (
+            <div className="divide-y divide-[color-mix(in_srgb,var(--border-muted)_60%,transparent)]">
+              {historyItems.map((item) => (
+                <ActivityCard
+                  key={item.id}
+                  item={item}
+                  isAdmin={isAdmin}
+                />
+              ))}
+              {historyHasMore && (
+                <div className="pt-3 text-center">
+                  <button
+                    type="button"
+                    onClick={onHistoryLoadMore}
+                    disabled={historyLoading}
+                    className="text-sm text-sky-600 dark:text-sky-400 hover:underline disabled:opacity-60"
+                  >
+                    {historyLoading ? 'Loading...' : 'Load more'}
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
           groupedVisibleItems.map((group) => (
             <section key={group.key} className="mb-4 last:mb-0">
               {activeTab !== 'downloads' && (
@@ -549,6 +679,7 @@ export const ActivitySidebar = ({
                         item={item}
                         isAdmin={isAdmin}
                         onDownloadCancel={onCancel}
+                        onDownloadDismiss={onDownloadDismiss}
                         onRequestCancel={onRequestCancel}
                         onRequestApprove={onRequestApprove}
                         onRequestDismiss={onRequestDismiss}
@@ -576,10 +707,11 @@ export const ActivitySidebar = ({
               )}
             </section>
           ))
+          )
         )}
       </div>
 
-      {(activeTab === 'downloads' || activeTab === 'all') && hasTerminalDownloadItems && (
+      {(activeTab === 'downloads' || activeTab === 'all') && hasTerminalDownloadItems && clearCompletedTargets.length > 0 && (
         <div
           className="p-3 border-t flex items-center justify-center"
           style={{
@@ -589,10 +721,28 @@ export const ActivitySidebar = ({
         >
           <button
             type="button"
-            onClick={onClearCompleted}
+            onClick={() => onClearCompleted(clearCompletedTargets)}
             className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
           >
             Clear Completed
+          </button>
+        </div>
+      )}
+
+      {activeTab === 'history' && historyItems.length > 0 && (
+        <div
+          className="p-3 border-t flex items-center justify-center"
+          style={{
+            borderColor: 'var(--border-muted)',
+            paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
+          }}
+        >
+          <button
+            type="button"
+            onClick={onClearHistory}
+            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          >
+            Clear History
           </button>
         </div>
       )}

@@ -23,7 +23,6 @@ VALID_DELIVERY_STATES = frozenset(
         "complete",
         "error",
         "cancelled",
-        "cleared",
     }
 )
 MAX_REQUEST_NOTE_LENGTH = 1000
@@ -243,43 +242,6 @@ def sync_delivery_states_from_queue_status(
                 row["id"],
                 delivery_state=delivery_state,
                 delivery_updated_at=_now_timestamp(),
-            )
-        )
-
-    return updated
-
-
-def mark_delivery_states_cleared(
-    user_db: "UserDB",
-    *,
-    source_ids: set[str],
-    user_id: int | None = None,
-) -> list[dict[str, Any]]:
-    """Mark fulfilled requests as delivery-cleared for matching release source IDs."""
-    if not source_ids:
-        return []
-
-    normalized_source_ids = {source_id.strip() for source_id in source_ids if isinstance(source_id, str) and source_id.strip()}
-    if not normalized_source_ids:
-        return []
-
-    fulfilled_rows = user_db.list_requests(user_id=user_id, status="fulfilled")
-    updated: list[dict[str, Any]] = []
-    timestamp = _now_timestamp()
-
-    for row in fulfilled_rows:
-        source_id = _extract_release_source_id(row.get("release_data"))
-        if source_id not in normalized_source_ids:
-            continue
-
-        if _existing_delivery_state(row) == "cleared":
-            continue
-
-        updated.append(
-            user_db.update_request(
-                row["id"],
-                delivery_state="cleared",
-                delivery_updated_at=timestamp,
             )
         )
 
