@@ -336,26 +336,45 @@ function App() {
 
   // Calculate status counts for header badges (memoized)
   const statusCounts = useMemo(() => {
+    const dismissedKeySet = new Set(dismissedActivityKeys);
+    const countVisibleDownloads = (
+      bucket: Record<string, Book> | undefined,
+      options: { filterDismissed: boolean }
+    ): number => {
+      const { filterDismissed } = options;
+      if (!bucket) {
+        return 0;
+      }
+      if (!filterDismissed) {
+        return Object.keys(bucket).length;
+      }
+      return Object.keys(bucket).filter((taskId) => !dismissedKeySet.has(`download:${taskId}`)).length;
+    };
+
     const ongoing = [
       currentStatus.queued,
       currentStatus.resolving,
       currentStatus.locating,
       currentStatus.downloading,
-    ].reduce((sum, status) => sum + (status ? Object.keys(status).length : 0), 0);
+    ].reduce((sum, status) => sum + countVisibleDownloads(status, { filterDismissed: false }), 0);
 
-    const completed = currentStatus.complete
-      ? Object.keys(currentStatus.complete).length
-      : 0;
-
-    const errored = currentStatus.error ? Object.keys(currentStatus.error).length : 0;
+    const completed = countVisibleDownloads(currentStatus.complete, { filterDismissed: true });
+    const errored = countVisibleDownloads(currentStatus.error, { filterDismissed: true });
+    const pendingVisibleRequests = requestItems.filter((item) => {
+      const requestId = item.requestId;
+      if (!requestId || item.requestRecord?.status !== 'pending') {
+        return false;
+      }
+      return !dismissedKeySet.has(`request:${requestId}`);
+    }).length;
 
     return {
       ongoing,
       completed,
       errored,
-      pendingRequests: pendingRequestCount,
+      pendingRequests: pendingVisibleRequests,
     };
-  }, [currentStatus, pendingRequestCount]);
+  }, [currentStatus, dismissedActivityKeys, requestItems]);
 
 
   // Compute visibility states

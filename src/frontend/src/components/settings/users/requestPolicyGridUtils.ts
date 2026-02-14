@@ -29,22 +29,22 @@ export const REQUEST_POLICY_DEFAULT_OPTIONS: Array<{
   {
     value: 'download',
     label: 'Download',
-    description: 'Allow direct downloads.',
+    description: 'Everything can be downloaded directly.',
   },
   {
     value: 'request_release',
     label: 'Request Release',
-    description: 'Require requesting a specific release.',
+    description: 'Users must request a specific release.',
   },
   {
     value: 'request_book',
     label: 'Request Book',
-    description: 'Allow book-level requests only.',
+    description: 'Users request a book, admin picks the release.',
   },
   {
     value: 'blocked',
     label: 'Blocked',
-    description: 'Block downloads and requests.',
+    description: 'No downloads or requests allowed.',
   },
 ];
 

@@ -187,7 +187,7 @@ export const UserListView = ({
                         isDeletePending={confirmDelete === user.id}
                         deleting={deletingUserId === user.id}
                         preferencesPanel={{
-                          description: 'Override global delivery and request policy settings for this user.',
+                          description: 'Customise delivery and request settings for this user.',
                           actionLabel: 'Open User Preferences',
                           onAction: onOpenOverrides,
                         }}
