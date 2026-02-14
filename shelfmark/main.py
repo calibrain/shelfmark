@@ -3,6 +3,7 @@
 import io
 import logging
 import os
+import re
 import sqlite3
 import time
 from datetime import datetime, timedelta
@@ -38,7 +39,10 @@ from shelfmark.core.cwa_user_sync import upsert_cwa_user
 from shelfmark.core.external_user_linking import upsert_external_user
 from shelfmark.core.request_policy import (
     PolicyMode,
+    get_source_content_type_capabilities,
     merge_request_policy_settings,
+    normalize_content_type,
+    normalize_source,
     resolve_policy_mode,
 )
 from shelfmark.core.utils import normalize_base_path
@@ -230,6 +234,80 @@ def _as_bool(value: Any, default: bool = False) -> bool:
         if normalized in {"0", "false", "no", "off", ""}:
             return False
     return bool(value)
+
+
+_AUDIOBOOK_CATEGORY_RANGE = (3030, 3049)
+_AUDIOBOOK_FORMAT_HINTS = frozenset(
+    {
+        "m4b",
+        "mp3",
+        "m4a",
+        "flac",
+        "ogg",
+        "wma",
+        "aac",
+        "wav",
+        "opus",
+    }
+)
+
+
+def _contains_audiobook_format_hint(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+
+    normalized = value.strip().lower()
+    if not normalized:
+        return False
+
+    tokens = [token for token in re.split(r"[^a-z0-9]+", normalized) if token]
+    return any(token in _AUDIOBOOK_FORMAT_HINTS for token in tokens)
+
+
+def _resolve_release_content_type(data: dict[str, Any], source: Any) -> tuple[str, bool]:
+    """Resolve release content type for policy checks and queue payload normalization."""
+    extra = data.get("extra")
+    if not isinstance(extra, dict):
+        extra = {}
+
+    explicit_content_type = data.get("content_type")
+    if explicit_content_type is None:
+        explicit_content_type = extra.get("content_type")
+    if explicit_content_type is not None:
+        return normalize_content_type(explicit_content_type), False
+
+    categories = extra.get("categories")
+    if isinstance(categories, list):
+        min_cat, max_cat = _AUDIOBOOK_CATEGORY_RANGE
+        for raw_category in categories:
+            try:
+                category_id = int(raw_category)
+            except (TypeError, ValueError):
+                continue
+            if min_cat <= category_id <= max_cat:
+                return "audiobook", True
+
+    candidates: list[Any] = [
+        data.get("format"),
+        extra.get("format"),
+        extra.get("formats_display"),
+        data.get("title"),
+    ]
+    formats = extra.get("formats")
+    if isinstance(formats, list):
+        candidates.extend(formats)
+    else:
+        candidates.append(formats)
+
+    if any(_contains_audiobook_format_hint(candidate) for candidate in candidates):
+        return "audiobook", True
+
+    capabilities = get_source_content_type_capabilities()
+    supported = capabilities.get(normalize_source(source))
+    if supported and len(supported) == 1:
+        return normalize_content_type(next(iter(supported))), True
+
+    return "ebook", False
 
 
 def _resolve_policy_mode_for_current_user(*, source: Any, content_type: Any) -> PolicyMode | None:
@@ -753,22 +831,25 @@ def api_download_release() -> Union[Response, Tuple[Response, int]]:
             return jsonify({"error": "source_id is required"}), 400
 
         source = data.get('source', 'direct_download')
-        content_type = data.get('content_type')
-        if content_type is None and isinstance(data.get('extra'), dict):
-            content_type = data['extra'].get('content_type')
+        resolved_content_type, inferred_content_type = _resolve_release_content_type(data, source)
         policy_mode = _resolve_policy_mode_for_current_user(
             source=source,
-            content_type=content_type,
+            content_type=resolved_content_type,
         )
         if policy_mode is not None and policy_mode != PolicyMode.DOWNLOAD:
             return _policy_block_response(policy_mode)
+
+        release_payload = data
+        if inferred_content_type and data.get("content_type") is None:
+            release_payload = dict(data)
+            release_payload["content_type"] = resolved_content_type
 
         priority = data.get('priority', 0)
         # Per-user download overrides
         db_user_id = session.get('db_user_id')
         _username = session.get('user_id')
         success, error_msg = backend.queue_release(
-            data, priority,
+            release_payload, priority,
             user_id=db_user_id, username=_username,
         )
 

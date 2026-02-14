@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, UTC
+import json
 from typing import Any, Callable, TYPE_CHECKING
 
 from shelfmark.core.request_policy import normalize_content_type, parse_policy_mode
@@ -12,6 +13,7 @@ VALID_REQUEST_STATUSES = frozenset({"pending", "fulfilled", "rejected", "cancell
 TERMINAL_REQUEST_STATUSES = frozenset({"fulfilled", "rejected", "cancelled"})
 VALID_REQUEST_LEVELS = frozenset({"book", "release"})
 MAX_REQUEST_NOTE_LENGTH = 1000
+MAX_REQUEST_JSON_BLOB_BYTES = 10 * 1024
 
 
 if TYPE_CHECKING:
@@ -115,6 +117,24 @@ def _validate_book_data(book_data: Any) -> dict[str, Any]:
     return dict(book_data)
 
 
+def _validate_json_blob_size(field: str, payload: Any) -> None:
+    if payload is None:
+        return
+
+    try:
+        serialized = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+    except (TypeError, ValueError) as exc:
+        raise RequestServiceError(f"{field} must be JSON-serializable", status_code=400) from exc
+
+    payload_size = len(serialized.encode("utf-8"))
+    if payload_size > MAX_REQUEST_JSON_BLOB_BYTES:
+        raise RequestServiceError(
+            f"{field} must be <= {MAX_REQUEST_JSON_BLOB_BYTES} bytes",
+            status_code=400,
+            code="request_payload_too_large",
+        )
+
+
 def _find_duplicate_pending_request(
     user_db: "UserDB",
     *,
@@ -154,6 +174,7 @@ def create_request(
     book_data: Any,
     release_data: Any = None,
     note: Any = None,
+    max_pending_per_user: int | None = None,
 ) -> dict[str, Any]:
     """Create a pending request after service-level validation."""
     validated_book_data = _validate_book_data(book_data)
@@ -168,6 +189,18 @@ def create_request(
         normalized_policy_mode = normalize_policy_mode(policy_mode)
     except ValueError as exc:
         raise RequestServiceError(str(exc), status_code=400) from exc
+
+    _validate_json_blob_size("book_data", validated_book_data)
+    _validate_json_blob_size("release_data", release_data)
+
+    if max_pending_per_user is not None:
+        pending_count = user_db.count_user_pending_requests(user_id)
+        if pending_count >= max_pending_per_user:
+            raise RequestServiceError(
+                "Maximum pending requests reached for this user",
+                status_code=409,
+                code="max_pending_reached",
+            )
 
     duplicate = _find_duplicate_pending_request(
         user_db,
@@ -325,6 +358,8 @@ def fulfil_request(
             "release_data is required to fulfil release-level requests",
             status_code=400,
         )
+
+    _validate_json_blob_size("release_data", selected_release_data)
 
     requester = user_db.get_user(user_id=request_row["user_id"])
     if requester is None:

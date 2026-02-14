@@ -160,10 +160,41 @@ class TestReleaseDownloadEndpointGuardrails:
 
         assert resp.status_code == 200
         assert resp.get_json() == {"status": "queued", "priority": 3}
-        assert captured["release_data"] == payload
+        assert captured["release_data"] == {**payload, "content_type": "ebook"}
         assert captured["priority"] == 3
         assert captured["user_id"] == 19
         assert captured["username"] == "bob"
+
+    def test_missing_content_type_infers_audiobook_from_format(self, main_module, client):
+        captured: dict[str, object] = {}
+
+        def fake_queue_release(release_data, priority, user_id=None, username=None):
+            captured.update(
+                {
+                    "release_data": release_data,
+                    "priority": priority,
+                    "user_id": user_id,
+                    "username": username,
+                }
+            )
+            return True, None
+
+        payload = {
+            "source": "prowlarr",
+            "source_id": "release-audio",
+            "title": "Audio Title [m4b]",
+            "format": "m4b",
+            "priority": 1,
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="none"):
+            with patch.object(main_module.backend, "queue_release", side_effect=fake_queue_release):
+                resp = client.post("/api/releases/download", json=payload)
+
+        assert resp.status_code == 200
+        assert resp.get_json() == {"status": "queued", "priority": 1}
+        assert captured["release_data"] == {**payload, "content_type": "audiobook"}
+        assert captured["priority"] == 1
 
     def test_non_json_payload_returns_500_current_behavior(self, main_module, client):
         with patch.object(main_module, "get_auth_mode", return_value="none"):

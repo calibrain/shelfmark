@@ -49,6 +49,14 @@ def _as_bool(value: Any, default: bool = False) -> bool:
     return bool(value)
 
 
+def _as_int(value: Any, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed
+
+
 def _error_response(
     message: str,
     status_code: int,
@@ -243,7 +251,7 @@ def register_request_routes(
             or book_data.get("content_type")
         )
 
-        global_settings, user_settings, _, requests_enabled = _resolve_effective_policy(
+        global_settings, user_settings, effective, requests_enabled = _resolve_effective_policy(
             user_db,
             db_user_id=db_user_id,
         )
@@ -253,6 +261,17 @@ def register_request_routes(
                 403,
                 code="requests_unavailable",
             )
+
+        max_pending = _as_int(
+            effective.get("MAX_PENDING_REQUESTS_PER_USER"),
+            default=20,
+        )
+        if max_pending < 1:
+            max_pending = 1
+        if max_pending > 1000:
+            max_pending = 1000
+        allow_notes = _as_bool(effective.get("REQUESTS_ALLOW_NOTES"), default=True)
+        note_value = data.get("note") if allow_notes else None
 
         resolved_mode = resolve_policy_mode(
             source=source,
@@ -289,7 +308,8 @@ def register_request_routes(
                 policy_mode=resolved_mode.value,
                 book_data=book_data,
                 release_data=release_data,
-                note=data.get("note"),
+                note=note_value,
+                max_pending_per_user=max_pending,
             )
         except RequestServiceError as exc:
             return _error_response(str(exc), exc.status_code, code=exc.code)
