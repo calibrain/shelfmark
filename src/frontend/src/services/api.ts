@@ -1,4 +1,15 @@
-import { Book, StatusData, AppConfig, LoginCredentials, AuthResponse, ReleaseSource, ReleasesResponse } from '../types';
+import {
+  Book,
+  StatusData,
+  AppConfig,
+  LoginCredentials,
+  AuthResponse,
+  ReleaseSource,
+  ReleasesResponse,
+  RequestPolicyResponse,
+  CreateRequestPayload,
+  RequestRecord,
+} from '../types';
 import { SettingsResponse, ActionResult, UpdateResult, SettingsTab } from '../types/settings';
 import { MetadataBookData, transformMetadataToBook } from '../utils/bookTransformers';
 import { getApiBase } from '../utils/basePath';
@@ -20,6 +31,8 @@ const API = {
   logout: `${API_BASE}/auth/logout`,
   authCheck: `${API_BASE}/auth/check`,
   settings: `${API_BASE}/settings`,
+  requestPolicy: `${API_BASE}/request-policy`,
+  requests: `${API_BASE}/requests`,
 };
 
 // Custom error class for authentication failures
@@ -37,6 +50,34 @@ export class TimeoutError extends Error {
     this.name = 'TimeoutError';
   }
 }
+
+export class ApiResponseError extends Error {
+  status: number;
+  code?: string;
+  requiredMode?: string;
+  payload?: Record<string, unknown>;
+
+  constructor(
+    message: string,
+    params: {
+      status: number;
+      code?: string;
+      requiredMode?: string;
+      payload?: Record<string, unknown>;
+    }
+  ) {
+    super(message);
+    this.name = 'ApiResponseError';
+    this.status = params.status;
+    this.code = params.code;
+    this.requiredMode = params.requiredMode;
+    this.payload = params.payload;
+  }
+}
+
+export const isApiResponseError = (error: unknown): error is ApiResponseError => {
+  return error instanceof ApiResponseError;
+};
 
 // Default request timeout in milliseconds (30 seconds)
 const DEFAULT_TIMEOUT_MS = 30000;
@@ -67,13 +108,17 @@ async function fetchJSON<T>(
       // Try to parse error message from response body
       let errorMessage = `${res.status} ${res.statusText}`;
       let hasServerMessage = false;
+      let errorData: Record<string, unknown> | null = null;
       try {
-        const errorData = await res.json();
+        const parsed = await res.json();
+        if (parsed && typeof parsed === 'object') {
+          errorData = parsed as Record<string, unknown>;
+        }
         // Prefer user-friendly 'message' field, fall back to 'error'
-        if (errorData.message) {
+        if (typeof errorData?.message === 'string') {
           errorMessage = errorData.message;
           hasServerMessage = true;
-        } else if (errorData.error) {
+        } else if (typeof errorData?.error === 'string') {
           errorMessage = errorData.error;
           hasServerMessage = true;
         }
@@ -94,7 +139,13 @@ async function fetchJSON<T>(
         throw new AuthenticationError(errorMessage);
       }
 
-      throw new Error(errorMessage);
+      throw new ApiResponseError(errorMessage, {
+        status: res.status,
+        code: typeof errorData?.code === 'string' ? errorData.code : undefined,
+        requiredMode:
+          typeof errorData?.required_mode === 'string' ? errorData.required_mode : undefined,
+        payload: errorData || undefined,
+      });
     }
 
     return res.json();
@@ -237,6 +288,46 @@ export const clearCompleted = async (): Promise<void> => {
 
 export const getConfig = async (): Promise<AppConfig> => {
   return fetchJSON<AppConfig>(API.config);
+};
+
+export interface ListRequestsParams {
+  status?: RequestRecord['status'];
+  limit?: number;
+  offset?: number;
+}
+
+export const fetchRequestPolicy = async (): Promise<RequestPolicyResponse> => {
+  return fetchJSON<RequestPolicyResponse>(API.requestPolicy);
+};
+
+export const createRequest = async (payload: CreateRequestPayload): Promise<RequestRecord> => {
+  return fetchJSON<RequestRecord>(API.requests, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+};
+
+export const listRequests = async (params: ListRequestsParams = {}): Promise<RequestRecord[]> => {
+  const query = new URLSearchParams();
+  if (params.status) {
+    query.set('status', params.status);
+  }
+  if (typeof params.limit === 'number') {
+    query.set('limit', String(params.limit));
+  }
+  if (typeof params.offset === 'number') {
+    query.set('offset', String(params.offset));
+  }
+
+  const queryString = query.toString();
+  const url = queryString ? `${API.requests}?${queryString}` : API.requests;
+  return fetchJSON<RequestRecord[]>(url);
+};
+
+export const cancelRequest = async (id: number): Promise<RequestRecord> => {
+  return fetchJSON<RequestRecord>(`${API.requests}/${encodeURIComponent(String(id))}`, {
+    method: 'DELETE',
+  });
 };
 
 // Authentication functions

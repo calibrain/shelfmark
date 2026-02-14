@@ -67,7 +67,15 @@ export interface ActiveDownloadsResponse {
 }
 
 // Button states
-export type ButtonState = 'download' | 'queued' | 'resolving' | 'locating' | 'downloading' | 'complete' | 'error';
+export type ButtonState =
+  | 'download'
+  | 'queued'
+  | 'resolving'
+  | 'locating'
+  | 'downloading'
+  | 'complete'
+  | 'error'
+  | 'blocked';
 
 export interface ButtonStateInfo {
   text: string;
@@ -149,6 +157,59 @@ export type MetadataSearchField =
 // App configuration
 // Content type for search (ebook vs audiobook)
 export type ContentType = 'ebook' | 'audiobook';
+
+export type RequestPolicyMode = 'download' | 'request_release' | 'request_book' | 'blocked';
+
+export interface RequestPolicyDefaults {
+  ebook: RequestPolicyMode;
+  audiobook: RequestPolicyMode;
+}
+
+export interface RequestPolicySourceMode {
+  source: string;
+  supported_content_types: string[];
+  modes: Record<string, RequestPolicyMode>;
+}
+
+export interface RequestPolicyResponse {
+  requests_enabled: boolean;
+  is_admin: boolean;
+  defaults: RequestPolicyDefaults;
+  rules: Array<Record<string, unknown>>;
+  source_modes: RequestPolicySourceMode[];
+}
+
+export interface RequestContextPayload {
+  source: string;
+  content_type: ContentType;
+  request_level: 'book' | 'release';
+}
+
+export interface CreateRequestPayload {
+  book_data: Record<string, unknown>;
+  release_data?: Record<string, unknown> | null;
+  note?: string;
+  context: RequestContextPayload;
+}
+
+export interface RequestRecord {
+  id: number;
+  user_id: number;
+  status: 'pending' | 'fulfilled' | 'rejected' | 'cancelled';
+  source_hint: string | null;
+  content_type: ContentType;
+  request_level: 'book' | 'release';
+  policy_mode: RequestPolicyMode;
+  book_data: Record<string, unknown> | null;
+  release_data: Record<string, unknown> | null;
+  note: string | null;
+  admin_note: string | null;
+  reviewed_by: number | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  username?: string;
+}
 
 export type BooksOutputMode = 'folder' | 'booklore' | 'email';
 

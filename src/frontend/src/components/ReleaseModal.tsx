@@ -1,5 +1,19 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Book, Release, ReleaseSource, ReleasesResponse, Language, StatusData, ButtonStateInfo, ColumnSchema, ReleaseColumnConfig, LeadingCellConfig, SearchStatusData, ContentType } from '../types';
+import {
+  Book,
+  Release,
+  ReleaseSource,
+  ReleasesResponse,
+  Language,
+  StatusData,
+  ButtonStateInfo,
+  ColumnSchema,
+  ReleaseColumnConfig,
+  LeadingCellConfig,
+  SearchStatusData,
+  ContentType,
+  RequestPolicyMode,
+} from '../types';
 import { getReleases, getReleaseSources } from '../services/api';
 import { useSocket } from '../contexts/SocketContext';
 import { Dropdown } from './Dropdown';
@@ -178,6 +192,9 @@ interface ReleaseModalProps {
   book: Book | null;
   onClose: () => void;
   onDownload: (book: Book, release: Release, contentType: ContentType) => Promise<void>;
+  onRequestRelease?: (book: Book, release: Release, contentType: ContentType) => Promise<void>;
+  getPolicyModeForSource?: (source: string, contentType: ContentType) => RequestPolicyMode;
+  onPolicyRefresh?: () => Promise<unknown>;
   supportedFormats: string[];
   supportedAudiobookFormats?: string[];  // Audiobook formats (m4b, mp3)
   contentType: ContentType;  // 'ebook' or 'audiobook'
@@ -391,7 +408,7 @@ const ReleaseRow = ({
           onDownload={onDownload}
           variant="icon"
           size="sm"
-          ariaLabel={`Download ${release.title}`}
+          ariaLabel={`${buttonState.text} ${release.title}`}
         />
       </div>
 
@@ -467,7 +484,7 @@ const ReleaseRow = ({
           onDownload={onDownload}
           variant="icon"
           size="sm"
-          ariaLabel={`Download ${release.title}`}
+          ariaLabel={`${buttonState.text} ${release.title}`}
         />
       </div>
     </div>
@@ -603,6 +620,9 @@ export const ReleaseModal = ({
   book,
   onClose,
   onDownload,
+  onRequestRelease,
+  getPolicyModeForSource,
+  onPolicyRefresh,
   supportedFormats,
   supportedAudiobookFormats = [],
   contentType = 'ebook',
@@ -663,6 +683,11 @@ export const ReleaseModal = ({
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [descriptionOverflows, setDescriptionOverflows] = useState(false);
   const descriptionRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    if (!book || !onPolicyRefresh) return;
+    void onPolicyRefresh();
+  }, [book, onPolicyRefresh]);
 
   // Close handler with animation
   const handleClose = useCallback(() => {
@@ -1203,9 +1228,20 @@ export const ReleaseModal = ({
     return { starField, ratingsField, usersField, pagesField };
   }, [book?.display_fields]);
 
-  // Get button state for a release based on its source_id
+  const getReleaseActionMode = useCallback(
+    (release: Release): RequestPolicyMode => {
+      if (!getPolicyModeForSource) {
+        return 'download';
+      }
+      return getPolicyModeForSource(release.source, contentType);
+    },
+    [getPolicyModeForSource, contentType]
+  );
+
+  // Get button state for a release row (queue state + policy mode).
   const getButtonState = useCallback(
-    (releaseId: string): ButtonStateInfo => {
+    (release: Release): ButtonStateInfo => {
+      const releaseId = release.source_id;
       // Check error first
       if (currentStatus.error && currentStatus.error[releaseId]) {
         return { text: 'Failed', state: 'error' };
@@ -1232,21 +1268,43 @@ export const ReleaseModal = ({
       if (currentStatus.queued && currentStatus.queued[releaseId]) {
         return { text: 'Queued', state: 'queued' };
       }
+
+      const mode = getReleaseActionMode(release);
+      if (mode === 'request_release') {
+        return { text: 'Request', state: 'download' };
+      }
+      if (mode === 'blocked' || mode === 'request_book') {
+        return { text: 'Unavailable', state: 'blocked' };
+      }
       return { text: 'Download', state: 'download' };
     },
-    [currentStatus]
+    [currentStatus, getReleaseActionMode]
   );
 
-  // Handle download - close modal once download is successfully queued
-  const handleDownload = useCallback(
+  // Handle row action based on resolved policy mode.
+  const handleReleaseAction = useCallback(
     async (release: Release): Promise<void> => {
-      if (book) {
-        await onDownload(book, release, contentType);
-        // Close modal after successful queue
-        handleClose();
+      if (!book) {
+        return;
       }
+
+      const mode = getReleaseActionMode(release);
+      if (mode === 'download') {
+        await onDownload(book, release, contentType);
+        handleClose();
+        return;
+      }
+      if (mode === 'request_release') {
+        if (onRequestRelease) {
+          await onRequestRelease(book, release, contentType);
+          handleClose();
+        }
+        return;
+      }
+      // blocked / request_book — should not be reachable (button is disabled),
+      // but guard defensively.
     },
-    [book, onDownload, contentType, handleClose]
+    [book, getReleaseActionMode, onDownload, onRequestRelease, contentType, handleClose]
   );
 
   if (!book && !isClosing) return null;
@@ -1856,8 +1914,8 @@ export const ReleaseModal = ({
                         key={`${release.source}-${release.source_id}`}
                         release={release}
                         index={index}
-                        onDownload={() => handleDownload(release)}
-                        buttonState={getButtonState(release.source_id)}
+                        onDownload={() => handleReleaseAction(release)}
+                        buttonState={getButtonState(release)}
                         columns={columnConfig.columns}
                         gridTemplate={columnConfig.grid_template}
                         leadingCell={columnConfig.leading_cell}

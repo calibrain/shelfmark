@@ -56,12 +56,13 @@ export const BookGetButton = ({
   // Determine states based on buttonState
   const isCompleted = buttonState?.state === 'complete';
   const hasError = buttonState?.state === 'error';
+  const isBlocked = buttonState?.state === 'blocked';
   const isInProgress = buttonState && ['queued', 'resolving', 'locating', 'downloading'].includes(buttonState.state);
   const showCircularProgress = buttonState?.state === 'downloading' && buttonState.progress !== undefined;
   const showSpinner = (isInProgress && !showCircularProgress) || isLoading;
 
   // Disable button while loading metadata
-  const isDisabled = isLoading;
+  const isDisabled = isLoading || isBlocked;
 
   // Determine button styling based on state
   const getButtonClasses = () => {
@@ -74,6 +75,11 @@ export const BookGetButton = ({
       return isIconVariant
         ? 'bg-red-600 text-white opacity-75'
         : 'bg-red-600 hover:bg-red-700';
+    }
+    if (isBlocked) {
+      return isIconVariant
+        ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-70'
+        : 'bg-gray-500 opacity-75 cursor-not-allowed';
     }
     if (isLoading) {
       // Show loading state (fetching metadata)
@@ -100,6 +106,7 @@ export const BookGetButton = ({
 
   // Determine display text
   const getDisplayText = () => {
+    if (isBlocked) return buttonState?.text || 'Unavailable';
     if (isCompleted) return 'Downloaded';
     if (hasError) return 'Failed';
     if (isLoading) return 'Loading';
@@ -107,6 +114,7 @@ export const BookGetButton = ({
     if (buttonState?.state === 'locating') return 'Locating files';
     if (buttonState?.state === 'resolving') return 'Resolving';
     if (buttonState?.state === 'queued') return 'Queued';
+    if (buttonState?.state === 'download' && buttonState.text) return buttonState.text;
     return 'Get';
   };
 
@@ -124,6 +132,14 @@ export const BookGetButton = ({
       return (
         <svg className={iconSize} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      );
+    }
+
+    if (isBlocked) {
+      return (
+        <svg className={iconSize} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 10.5V7.875a4.125 4.125 0 1 0-8.25 0V10.5m-.75 0h9a2.25 2.25 0 0 1 2.25 2.25v6A2.25 2.25 0 0 1 16.5 21h-9a2.25 2.25 0 0 1-2.25-2.25v-6a2.25 2.25 0 0 1 2.25-2.25Z" />
         </svg>
       );
     }

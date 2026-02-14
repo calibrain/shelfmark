@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "../../.local/frontend-test-dist",
+    "rootDir": "./src",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "allowImportingTsExtensions": false
+  },
+  "include": [
+    "src/tests/**/*.node.test.ts",
+    "src/hooks/requestPolicyCore.ts",
+    "src/utils/requestPolicyUi.ts",
+    "src/types/index.ts"
+  ]
+}

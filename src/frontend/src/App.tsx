@@ -6,14 +6,27 @@ import {
   StatusData,
   AppConfig,
   ContentType,
+  ButtonStateInfo,
+  RequestPolicyMode,
 } from './types';
-import { getBookInfo, getMetadataBookInfo, downloadBook, downloadRelease, cancelDownload, clearCompleted, getConfig } from './services/api';
+import {
+  getBookInfo,
+  getMetadataBookInfo,
+  downloadBook,
+  downloadRelease,
+  cancelDownload,
+  clearCompleted,
+  getConfig,
+  createRequest,
+  isApiResponseError,
+} from './services/api';
 import { useToast } from './hooks/useToast';
 import { useRealtimeStatus } from './hooks/useRealtimeStatus';
 import { useAuth } from './hooks/useAuth';
 import { useSearch } from './hooks/useSearch';
 import { useUrlSearch } from './hooks/useUrlSearch';
 import { useDownloadTracking } from './hooks/useDownloadTracking';
+import { useRequestPolicy } from './hooks/useRequestPolicy';
 import { Header } from './components/Header';
 import { SearchSection } from './components/SearchSection';
 import { AdvancedFilters } from './components/AdvancedFilters';
@@ -30,6 +43,10 @@ import { OnboardingModal } from './components/OnboardingModal';
 import { DEFAULT_LANGUAGES, DEFAULT_SUPPORTED_FORMATS } from './data/languages';
 import { buildSearchQuery } from './utils/buildSearchQuery';
 import { withBasePath } from './utils/basePath';
+import {
+  applyDirectPolicyModeToButtonState,
+  applyUniversalPolicyModeToButtonState,
+} from './utils/requestPolicyUi';
 import { SearchModeProvider } from './contexts/SearchModeContext';
 import './styles.css';
 
@@ -45,6 +62,100 @@ const getInitialContentType = (): ContentType => {
     // localStorage may be unavailable in private browsing
   }
   return 'ebook';
+};
+
+const POLICY_GUARD_ERROR_CODES = new Set(['policy_requires_request', 'policy_blocked']);
+
+const isPolicyGuardError = (error: unknown): boolean => {
+  return (
+    isApiResponseError(error) &&
+    error.status === 403 &&
+    Boolean(error.code && POLICY_GUARD_ERROR_CODES.has(error.code))
+  );
+};
+
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+};
+
+const toContentType = (value: ContentType | string): ContentType => {
+  return String(value).trim().toLowerCase() === 'audiobook' ? 'audiobook' : 'ebook';
+};
+
+const buildMetadataBookRequestData = (book: Book, contentType: ContentType) => {
+  return {
+    title: book.title || 'Unknown title',
+    author: book.author || 'Unknown author',
+    content_type: contentType,
+    provider: book.provider || 'metadata',
+    provider_id: book.provider_id || book.id,
+    year: book.year,
+    preview: book.preview,
+    series_name: book.series_name,
+    series_position: book.series_position,
+    subtitle: book.subtitle,
+    source_url: book.source_url,
+  };
+};
+
+const buildDirectBookRequestData = (book: Book) => {
+  return {
+    title: book.title || 'Unknown title',
+    author: book.author || 'Unknown author',
+    content_type: 'ebook' as const,
+    provider: 'direct_download',
+    provider_id: book.id,
+    year: book.year,
+    format: book.format,
+    size: book.size,
+    preview: book.preview,
+    source: book.source || 'direct_download',
+    source_url: book.source_url,
+  };
+};
+
+const buildReleaseDataFromMetadataRelease = (
+  book: Book,
+  release: Release,
+  contentType: ContentType
+) => {
+  return {
+    source: release.source,
+    source_id: release.source_id,
+    title: book.title || release.title || 'Unknown title',
+    author: book.author,
+    year: book.year,
+    format: release.format,
+    size: release.size,
+    size_bytes: release.size_bytes,
+    download_url: release.download_url,
+    protocol: release.protocol,
+    indexer: release.indexer,
+    seeders: release.seeders,
+    extra: release.extra,
+    preview: book.preview,
+    content_type: contentType,
+    series_name: book.series_name,
+    series_position: book.series_position,
+    subtitle: book.subtitle,
+  };
+};
+
+const buildReleaseDataFromDirectBook = (book: Book) => {
+  return {
+    source: 'direct_download',
+    source_id: book.id,
+    title: book.title || 'Unknown title',
+    author: book.author,
+    year: book.year,
+    format: book.format,
+    size: book.size,
+    preview: book.preview,
+    content_type: 'ebook' as const,
+  };
 };
 
 function App() {
@@ -100,6 +211,15 @@ function App() {
       // localStorage may be unavailable in private browsing
     }
   }, [contentType]);
+
+  const {
+    getDefaultMode,
+    getSourceMode,
+    refresh: refreshRequestPolicy,
+  } = useRequestPolicy({
+    enabled: isAuthenticated,
+    isAdmin,
+  });
 
   // Search state and handlers
   const {
@@ -317,6 +437,14 @@ function App() {
     }
   }, [isAuthenticated, loadConfig]);
 
+  const runSearchWithPolicyRefresh = useCallback(
+    (query: string, fields = searchFieldValues) => {
+      void refreshRequestPolicy();
+      handleSearch(query, config, fields);
+    },
+    [refreshRequestPolicy, handleSearch, config, searchFieldValues]
+  );
+
   // Execute URL-based search when params are present
   useEffect(() => {
     if (
@@ -370,7 +498,7 @@ function App() {
         searchMode,
       });
 
-      handleSearch(query, config, searchFieldValues);
+      runSearchWithPolicyRefresh(query);
     }
   }, [
     wasProcessed,
@@ -378,7 +506,7 @@ function App() {
     config,
     advancedFilters,
     searchFieldValues,
-    handleSearch,
+    runSearchWithPolicyRefresh,
     setSearchInput,
     setAdvancedFilters,
     setShowAdvanced,
@@ -437,14 +565,81 @@ function App() {
     setReleaseBook(book);
   };
 
-  // Download book
+  const submitRequest = useCallback(
+    async (
+      payload: {
+        book_data: Record<string, unknown>;
+        release_data?: Record<string, unknown> | null;
+        context: {
+          source: string;
+          content_type: ContentType;
+          request_level: 'book' | 'release';
+        };
+      },
+      successMessage: string
+    ): Promise<boolean> => {
+      try {
+        await createRequest(payload);
+        showToast(successMessage, 'success');
+        await refreshRequestPolicy({ force: true });
+        return true;
+      } catch (error) {
+        console.error('Request creation failed:', error);
+        showToast(getErrorMessage(error, 'Failed to create request'), 'error');
+        if (isPolicyGuardError(error)) {
+          await refreshRequestPolicy({ force: true });
+        }
+        return false;
+      }
+    },
+    [showToast, refreshRequestPolicy]
+  );
+
+  const getDirectPolicyMode = useCallback((): RequestPolicyMode => {
+    return getSourceMode('direct_download', 'ebook');
+  }, [getSourceMode]);
+
+  const getUniversalDefaultPolicyMode = useCallback((): RequestPolicyMode => {
+    return getDefaultMode(contentType);
+  }, [getDefaultMode, contentType]);
+
+  // Direct-mode action (download or release-level request based on policy).
   const handleDownload = async (book: Book): Promise<void> => {
+    void refreshRequestPolicy();
+    const mode = getDirectPolicyMode();
+    if (mode === 'blocked') {
+      showToast('Download blocked by policy', 'error');
+      await refreshRequestPolicy({ force: true });
+      return;
+    }
+
+    if (mode === 'request_release' || mode === 'request_book') {
+      await submitRequest(
+        {
+          book_data: buildDirectBookRequestData(book),
+          release_data: buildReleaseDataFromDirectBook(book),
+          context: {
+            source: 'direct_download',
+            content_type: 'ebook',
+            request_level: 'release',
+          },
+        },
+        `Request submitted: ${book.title || 'Untitled'}`
+      );
+      return;
+    }
+
     try {
       await downloadBook(book.id);
       await fetchStatus();
     } catch (error) {
       console.error('Download failed:', error);
-      showToast(error instanceof Error ? error.message : 'Failed to queue download', 'error');
+      if (isPolicyGuardError(error)) {
+        showToast('Download blocked by policy', 'error');
+        await refreshRequestPolicy({ force: true });
+        return;
+      }
+      showToast(getErrorMessage(error, 'Failed to queue download'), 'error');
       throw error;
     }
   };
@@ -471,8 +666,33 @@ function App() {
     }
   };
 
-  // Open release modal
+  // Universal-mode "Get" action (open releases, request-book, or block by policy).
   const handleGetReleases = async (book: Book) => {
+    await refreshRequestPolicy();
+    const mode = getUniversalDefaultPolicyMode();
+    const normalizedContentType = toContentType(contentType);
+
+    if (mode === 'blocked') {
+      showToast('This title is unavailable by policy', 'error');
+      return;
+    }
+
+    if (mode === 'request_book') {
+      await submitRequest(
+        {
+          book_data: buildMetadataBookRequestData(book, normalizedContentType),
+          release_data: null,
+          context: {
+            source: '*',
+            content_type: normalizedContentType,
+            request_level: 'book',
+          },
+        },
+        `Request submitted: ${book.title || 'Untitled'}`
+      );
+      return;
+    }
+
     if (book.provider && book.provider_id) {
       try {
         const fullBook = await getMetadataBookInfo(book.provider, book.provider_id);
@@ -492,8 +712,9 @@ function App() {
     }
   };
 
-  // Handle download from ReleaseModal
+  // Handle download from ReleaseModal (universal mode release rows).
   const handleReleaseDownload = async (book: Book, release: Release, releaseContentType: ContentType) => {
+    void refreshRequestPolicy();
     try {
       trackRelease(book.id, release.source_id);
 
@@ -520,10 +741,53 @@ function App() {
       await fetchStatus();
     } catch (error) {
       console.error('Release download failed:', error);
-      showToast(error instanceof Error ? error.message : 'Failed to queue download', 'error');
+      if (isPolicyGuardError(error)) {
+        showToast('Download blocked by policy', 'error');
+        await refreshRequestPolicy({ force: true });
+        return;
+      }
+      showToast(getErrorMessage(error, 'Failed to queue download'), 'error');
       throw error;
     }
   };
+
+  const handleReleaseRequest = useCallback(
+    async (book: Book, release: Release, releaseContentType: ContentType): Promise<void> => {
+      void refreshRequestPolicy();
+      const normalizedContentType = toContentType(releaseContentType);
+      await submitRequest(
+        {
+          book_data: buildMetadataBookRequestData(book, normalizedContentType),
+          release_data: buildReleaseDataFromMetadataRelease(book, release, normalizedContentType),
+          context: {
+            source: release.source || 'direct_download',
+            content_type: normalizedContentType,
+            request_level: 'release',
+          },
+        },
+        `Request submitted: ${book.title || 'Untitled'}`
+      );
+    },
+    [submitRequest, refreshRequestPolicy]
+  );
+
+  const getDirectActionButtonState = useCallback(
+    (bookId: string): ButtonStateInfo => {
+      const baseState = getButtonState(bookId);
+      const mode = getDirectPolicyMode();
+      return applyDirectPolicyModeToButtonState(baseState, mode);
+    },
+    [getButtonState, getDirectPolicyMode]
+  );
+
+  const getUniversalActionButtonState = useCallback(
+    (bookId: string): ButtonStateInfo => {
+      const baseState = getUniversalButtonState(bookId);
+      const mode = getUniversalDefaultPolicyMode();
+      return applyUniversalPolicyModeToButtonState(baseState, mode);
+    },
+    [getUniversalButtonState, getUniversalDefaultPolicyMode]
+  );
 
   const bookLanguages = config?.book_languages || DEFAULT_LANGUAGES;
   const supportedFormats = config?.supported_formats || DEFAULT_SUPPORTED_FORMATS;
@@ -556,8 +820,8 @@ function App() {
       defaultLanguage: defaultLanguageCodes,
       searchMode,
     });
-    handleSearch(query, config, { ...searchFieldValues, series: seriesName });
-  }, [setSearchInput, clearTracking, searchFieldValues, advancedFilters, setAdvancedFilters, bookLanguages, defaultLanguageCodes, searchMode, config, handleSearch]);
+    runSearchWithPolicyRefresh(query, { ...searchFieldValues, series: seriesName });
+  }, [setSearchInput, clearTracking, searchFieldValues, advancedFilters, setAdvancedFilters, bookLanguages, defaultLanguageCodes, searchMode, runSearchWithPolicyRefresh]);
 
   const mainAppContent = (
     <SearchModeProvider searchMode={searchMode}>
@@ -594,7 +858,7 @@ function App() {
             defaultLanguage: defaultLanguageCodes,
             searchMode,
           });
-          handleSearch(query, config, searchFieldValues);
+          runSearchWithPolicyRefresh(query);
         }}
         onAdvancedToggle={() => setShowAdvanced(!showAdvanced)}
         isLoading={isSearching}
@@ -623,13 +887,13 @@ function App() {
             defaultLanguage: defaultLanguageCodes,
             searchMode,
           });
-          handleSearch(query, config, searchFieldValues);
+          runSearchWithPolicyRefresh(query);
         }}
       />
 
       <main className="relative w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-6">
         <SearchSection
-          onSearch={(query) => handleSearch(query, config, searchFieldValues)}
+          onSearch={(query) => runSearchWithPolicyRefresh(query)}
           isLoading={isSearching}
           isInitialState={isInitialState}
           bookLanguages={bookLanguages}
@@ -655,8 +919,8 @@ function App() {
           onDetails={handleShowDetails}
           onDownload={handleDownload}
           onGetReleases={handleGetReleases}
-          getButtonState={getButtonState}
-          getUniversalButtonState={getUniversalButtonState}
+          getButtonState={getDirectActionButtonState}
+          getUniversalButtonState={getUniversalActionButtonState}
           sortValue={advancedFilters.sort}
           onSortChange={(value) => handleSortChange(value, config)}
           metadataSortOptions={config?.metadata_sort_options}
@@ -673,7 +937,7 @@ function App() {
             onDownload={handleDownload}
             onFindDownloads={handleFindDownloads}
             onSearchSeries={handleSearchSeries}
-            buttonState={getButtonState(selectedBook.id)}
+            buttonState={getDirectActionButtonState(selectedBook.id)}
           />
         )}
 
@@ -682,6 +946,9 @@ function App() {
             book={releaseBook}
             onClose={() => setReleaseBook(null)}
             onDownload={handleReleaseDownload}
+            onRequestRelease={handleReleaseRequest}
+            getPolicyModeForSource={(source, ct) => getSourceMode(source, ct)}
+            onPolicyRefresh={refreshRequestPolicy}
             supportedFormats={supportedFormats}
             supportedAudiobookFormats={config?.supported_audiobook_formats || []}
             contentType={contentType}
