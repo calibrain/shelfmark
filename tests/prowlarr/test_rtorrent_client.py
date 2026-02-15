@@ -393,19 +393,21 @@ class TestRTorrentClientGetStatus:
         )
 
         mock_rpc = MagicMock()
-        mock_rpc.d.multicall.filtered.return_value = [
+        mock_rpc.d.multicall.filtered.side_effect = [
             [
-                "abc123def456",
-                4,
-                1048576000,
-                1048576000,
-                0,
-                2048000,
-                "cwabd",
-                1,
-            ]
+                [
+                    "abc123def456",
+                    4,
+                    1048576000,
+                    1048576000,
+                    0,
+                    2048000,
+                    "cwabd",
+                    1,
+                ]
+            ],
+            [["/downloads/test-torrent"]],
         ]
-        mock_rpc.d.get_base_path.return_value = "/downloads/test-torrent"
 
         mock_xmlrpc = create_mock_xmlrpc_module()
         mock_xmlrpc.ServerProxy.return_value = mock_rpc
@@ -630,7 +632,7 @@ class TestRTorrentClientGetDownloadPath:
         )
 
         mock_rpc = MagicMock()
-        mock_rpc.d.get_base_path.return_value = "/downloads/test-file"
+        mock_rpc.d.multicall.filtered.return_value = [["/downloads/test-file"]]
 
         mock_xmlrpc = create_mock_xmlrpc_module()
         mock_xmlrpc.ServerProxy.return_value = mock_rpc
@@ -663,7 +665,7 @@ class TestRTorrentClientGetDownloadPath:
         )
 
         mock_rpc = MagicMock()
-        mock_rpc.d.get_base_path.side_effect = Exception("Torrent not found")
+        mock_rpc.d.multicall.filtered.return_value = []
 
         mock_xmlrpc = create_mock_xmlrpc_module()
         mock_xmlrpc.ServerProxy.return_value = mock_rpc

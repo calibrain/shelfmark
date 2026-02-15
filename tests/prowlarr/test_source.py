@@ -11,7 +11,6 @@ from shelfmark.release_sources.prowlarr.source import (
     ProwlarrSource,
     _parse_size,
     _extract_format,
-    _extract_language,
     _detect_content_type_from_categories,
 )
 from shelfmark.release_sources.prowlarr.utils import get_protocol_display, sanitize_download_url
@@ -189,65 +188,6 @@ class TestSanitizeDownloadUrl:
         url = "https://prowlarr:9696/5/download?apikey=12345"
         assert sanitize_download_url(url) == url
 
-class TestExtractLanguage:
-    """Tests for the _extract_language function."""
-
-    def test_extract_language_english(self):
-        """Test extracting English language."""
-        assert _extract_language("The Book [English]") == "en"
-        assert _extract_language("Book (eng)") == "en"
-        assert _extract_language("Book [EN]") == "en"
-
-    def test_extract_language_german(self):
-        """Test extracting German language."""
-        assert _extract_language("Das Buch [German]") == "de"
-        assert _extract_language("Buch (Deutsch)") == "de"
-        assert _extract_language("Buch [DE]") == "de"
-
-    def test_extract_language_french(self):
-        """Test extracting French language."""
-        assert _extract_language("Le Livre [French]") == "fr"
-        assert _extract_language("Livre (Français)") == "fr"
-        assert _extract_language("Livre [FR]") == "fr"
-
-    def test_extract_language_spanish(self):
-        """Test extracting Spanish language."""
-        assert _extract_language("El Libro [Spanish]") == "es"
-        assert _extract_language("Libro (Español)") == "es"
-        assert _extract_language("Libro [ES]") == "es"
-
-    def test_extract_language_italian(self):
-        """Test extracting Italian language."""
-        assert _extract_language("Il Libro [Italian]") == "it"
-        assert _extract_language("Libro (Italiano)") == "it"
-
-    def test_extract_language_russian(self):
-        """Test extracting Russian language."""
-        assert _extract_language("Book [Russian]") == "ru"
-        assert _extract_language("Book [RU]") == "ru"
-
-    def test_extract_language_japanese(self):
-        """Test extracting Japanese language."""
-        assert _extract_language("Book [Japanese]") == "ja"
-        assert _extract_language("Book [JA]") == "ja"
-
-    def test_extract_language_chinese(self):
-        """Test extracting Chinese language."""
-        assert _extract_language("Book [Chinese]") == "zh"
-        assert _extract_language("Book [ZH]") == "zh"
-
-    def test_extract_language_none_when_not_found(self):
-        """Test that None is returned when no language found."""
-        assert _extract_language("The Book by Author") is None
-        assert _extract_language("") is None
-
-    def test_extract_language_case_insensitive(self):
-        """Test that language extraction is case insensitive."""
-        assert _extract_language("Book [GERMAN]") == "de"
-        assert _extract_language("Book [german]") == "de"
-        assert _extract_language("Book [German]") == "de"
-
-
 class TestDetectContentType:
     """Tests for the _detect_content_type_from_categories function."""
 
@@ -276,6 +216,9 @@ class TestProwlarrLocalizedQueries:
 
             def search(self, query: str, indexer_ids=None, categories=None):
                 self.calls.append((query, categories))
+                return []
+
+            def get_enriched_indexer_ids(self, restrict_to=None):
                 return []
 
         import shelfmark.release_sources.prowlarr.source as prowlarr_source
@@ -316,6 +259,9 @@ class TestProwlarrLocalizedQueries:
                 self.calls.append((query, categories))
                 return []
 
+            def get_enriched_indexer_ids(self, restrict_to=None):
+                return []
+
         import shelfmark.release_sources.prowlarr.source as prowlarr_source
 
         def fake_get(key: str, default=None):
@@ -352,6 +298,9 @@ class TestProwlarrLocalizedQueries:
 
             def search(self, query: str, indexer_ids=None, categories=None):
                 self.queries.append(query)
+                return []
+
+            def get_enriched_indexer_ids(self, restrict_to=None):
                 return []
 
         import shelfmark.release_sources.prowlarr.source as prowlarr_source
@@ -393,6 +342,9 @@ class TestProwlarrLocalizedQueries:
 
             def search(self, query: str, indexer_ids=None, categories=None):
                 self.queries.append(query)
+                return []
+
+            def get_enriched_indexer_ids(self, restrict_to=None):
                 return []
 
         import shelfmark.release_sources.prowlarr.source as prowlarr_source

@@ -128,41 +128,60 @@ def _should_extract_cookie(name: str, extract_all: bool) -> bool:
     return is_cf or is_ddg
 
 
+def _store_extracted_cookies(
+    *,
+    url: str,
+    cookies: list[Any],
+    user_agent: Optional[str] = None,
+) -> None:
+    """Store filtered bypass cookies (and optional UA) for a URL domain."""
+    parsed = urlparse(url)
+    domain = parsed.hostname or ""
+    if not domain:
+        return
+
+    base_domain = _get_base_domain(domain)
+    extract_all = base_domain in FULL_COOKIE_DOMAINS
+
+    cookies_found: dict[str, dict[str, Any]] = {}
+    for cookie in cookies:
+        name = getattr(cookie, "name", "") or ""
+        if not _should_extract_cookie(name, extract_all):
+            continue
+        expires = getattr(cookie, "expires", None)
+        if expires is not None and expires <= 0:
+            expires = None
+        cookies_found[name] = {
+            "value": getattr(cookie, "value", ""),
+            "domain": getattr(cookie, "domain", None) or domain,
+            "path": getattr(cookie, "path", None) or "/",
+            "expiry": expires,
+            "secure": bool(getattr(cookie, "secure", True)),
+            "httpOnly": True,
+        }
+
+    if not cookies_found:
+        return
+
+    with _cf_cookies_lock:
+        _cf_cookies[base_domain] = cookies_found
+        if user_agent:
+            _cf_user_agents[base_domain] = user_agent
+            logger.debug(f"Stored UA for {base_domain}: {str(user_agent)[:60]}...")
+        else:
+            logger.debug(f"No UA captured for {base_domain}")
+
+    cookie_type = "all" if extract_all else "protection"
+    logger.debug(f"Extracted {len(cookies_found)} {cookie_type} cookies for {base_domain}")
+
+
 async def _extract_cookies_from_cdp(driver, page, url: str) -> None:
     """Extract cookies from a CDP browser after successful bypass."""
     try:
-        parsed = urlparse(url)
-        domain = parsed.hostname or ""
-        if not domain:
-            return
-
-        base_domain = _get_base_domain(domain)
-        extract_all = base_domain in FULL_COOKIE_DOMAINS
-
         try:
             all_cookies = await driver.cookies.get_all(requests_cookie_format=True)
         except Exception as e:
             logger.debug(f"Failed to get cookies via CDP: {e}")
-            return
-
-        cookies_found = {}
-        for cookie in all_cookies:
-            name = getattr(cookie, "name", "") or ""
-            if not _should_extract_cookie(name, extract_all):
-                continue
-            expires = getattr(cookie, "expires", None)
-            if expires is not None and expires <= 0:
-                expires = None
-            cookies_found[name] = {
-                "value": getattr(cookie, "value", ""),
-                "domain": getattr(cookie, "domain", None) or domain,
-                "path": getattr(cookie, "path", None) or "/",
-                "expiry": expires,
-                "secure": bool(getattr(cookie, "secure", True)),
-                "httpOnly": True,
-            }
-
-        if not cookies_found:
             return
 
         try:
@@ -170,20 +189,10 @@ async def _extract_cookies_from_cdp(driver, page, url: str) -> None:
         except Exception:
             user_agent = None
 
-        with _cf_cookies_lock:
-            _cf_cookies[base_domain] = cookies_found
-            if user_agent:
-                _cf_user_agents[base_domain] = user_agent
-                logger.debug(f"Stored UA for {base_domain}: {str(user_agent)[:60]}...")
-            else:
-                logger.debug(f"No UA captured for {base_domain}")
-
-        cookie_type = "all" if extract_all else "protection"
-        logger.debug(f"Extracted {len(cookies_found)} {cookie_type} cookies for {base_domain}")
+        _store_extracted_cookies(url=url, cookies=all_cookies, user_agent=user_agent)
 
     except Exception as e:
         logger.debug(f"Failed to extract cookies: {e}")
-
 
 def get_cf_cookies_for_domain(domain: str) -> dict[str, str]:
     """Get stored cookies for a domain. Returns empty dict if none available."""

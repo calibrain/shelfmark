@@ -1,3 +1,6 @@
+import asyncio
+
+
 def test_bypass_tries_all_methods_before_abort(monkeypatch):
     """Regression test for issue #524: don't abort before cycling through bypass methods."""
     import shelfmark.bypass.internal_bypasser as internal_bypasser
@@ -5,7 +8,7 @@ def test_bypass_tries_all_methods_before_abort(monkeypatch):
     calls: list[str] = []
 
     def _make_method(name: str):
-        def _method(_sb) -> bool:
+        async def _method(_sb) -> bool:
             calls.append(name)
             return False
 
@@ -14,13 +17,22 @@ def test_bypass_tries_all_methods_before_abort(monkeypatch):
 
     methods = [_make_method(f"m{i}") for i in range(6)]
 
+    async def _always_false(*_args, **_kwargs) -> bool:
+        return False
+
+    async def _always_ddos_guard(*_args, **_kwargs) -> str:
+        return "ddos_guard"
+
+    async def _no_sleep(_seconds) -> None:
+        return None
+
     monkeypatch.setattr(internal_bypasser, "BYPASS_METHODS", methods)
-    monkeypatch.setattr(internal_bypasser, "_is_bypassed", lambda _sb, escape_emojis=True: False)
-    monkeypatch.setattr(internal_bypasser, "_detect_challenge_type", lambda _sb: "ddos_guard")
-    monkeypatch.setattr(internal_bypasser.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(internal_bypasser, "_is_bypassed", _always_false)
+    monkeypatch.setattr(internal_bypasser, "_detect_challenge_type", _always_ddos_guard)
+    monkeypatch.setattr(internal_bypasser.asyncio, "sleep", _no_sleep)
     monkeypatch.setattr(internal_bypasser.random, "uniform", lambda _a, _b: 0)
 
-    assert internal_bypasser._bypass(object(), max_retries=10) is False
+    assert asyncio.run(internal_bypasser._bypass(object(), max_retries=10)) is False
     assert calls == [f"m{i}" for i in range(6)]
 
 
@@ -37,19 +49,29 @@ def test_extract_cookies_from_cdp_filters_and_stores_ua():
             self.expires = expires
             self.secure = secure
 
-    class FakeSb:
-        def get_all_cookies(self, requests_cookie_format=False):
+    class FakeCookies:
+        async def get_all(self, requests_cookie_format=False):
             assert requests_cookie_format is True
             return [
                 FakeCookie("cf_clearance", "abc", "example.com", "/", int(time.time()) + 3600),
                 FakeCookie("sessionid", "zzz", "example.com", "/", int(time.time()) + 3600),
             ]
 
-        def get_user_agent(self):
+    class FakeDriver:
+        cookies = FakeCookies()
+
+    class FakePage:
+        async def evaluate(self, _expr):
             return "TestUA/1.0"
 
     internal_bypasser.clear_cf_cookies()
-    internal_bypasser._extract_cookies_from_cdp(FakeSb(), "https://www.example.com/path")
+    asyncio.run(
+        internal_bypasser._extract_cookies_from_cdp(
+            FakeDriver(),
+            FakePage(),
+            "https://www.example.com/path",
+        )
+    )
 
     cookies = internal_bypasser.get_cf_cookies_for_domain("example.com")
     assert cookies == {"cf_clearance": "abc"}
@@ -69,18 +91,28 @@ def test_extract_cookies_from_cdp_normalizes_session_expiry():
             self.expires = expires
             self.secure = secure
 
-    class FakeSb:
-        def get_all_cookies(self, requests_cookie_format=False):
+    class FakeCookies:
+        async def get_all(self, requests_cookie_format=False):
             assert requests_cookie_format is True
             return [
                 FakeCookie("cf_clearance", "abc", "example.com", "/", 0),
             ]
 
-        def get_user_agent(self):
+    class FakeDriver:
+        cookies = FakeCookies()
+
+    class FakePage:
+        async def evaluate(self, _expr):
             return "TestUA/1.0"
 
     internal_bypasser.clear_cf_cookies()
-    internal_bypasser._extract_cookies_from_cdp(FakeSb(), "https://example.com")
+    asyncio.run(
+        internal_bypasser._extract_cookies_from_cdp(
+            FakeDriver(),
+            FakePage(),
+            "https://example.com",
+        )
+    )
 
     stored = internal_bypasser._cf_cookies.get("example.com", {})
     assert stored["cf_clearance"]["expiry"] is None

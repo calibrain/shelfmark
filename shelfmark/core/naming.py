@@ -12,7 +12,16 @@ logger = setup_logger(__name__)
 
 # Known variable tokens, sorted longest-first to avoid partial matches
 # e.g., "SeriesPosition" must match before "Series"
-KNOWN_TOKENS = ['seriesposition', 'partnumber', 'subtitle', 'author', 'series', 'title', 'year', 'user']
+KNOWN_TOKENS = [
+    'seriesposition',
+    'partnumber',
+    'subtitle',
+    'author',
+    'series',
+    'title',
+    'year',
+    'user',
+]
 
 # Match any {...} block for template parsing
 BRACE_PATTERN = re.compile(r'\{([^}]+)\}')
@@ -89,46 +98,74 @@ def parse_naming_template(
     # Normalize metadata keys to lowercase for case-insensitive matching
     normalized = {k.lower(): v for k, v in metadata.items()}
 
-    def replace_block(match: re.Match) -> str:
-        content = match.group(1)
+    def find_token(content: str) -> tuple[Optional[str], int]:
         content_lower = content.lower()
-
-        # Find which known token appears in this block (longest first)
         for token in KNOWN_TOKENS:
             idx = content_lower.find(token)
             if idx != -1:
-                prefix = content[:idx]
-                suffix = content[idx + len(token):]
+                return token, idx
+        return None, -1
 
-                # Get the value for this token
-                value = normalized.get(token)
+    def token_value(token: str) -> str:
+        value = normalized.get(token)
+        if token == 'seriesposition':
+            value = format_series_position(value)
+        if value is None:
+            return ""
+        return str(value).strip()
 
-                # Special handling for series position
-                if token == 'seriesposition':
-                    value = format_series_position(value)
+    def render_block(content: str) -> Optional[str]:
+        token, idx = find_token(content)
+        if token is None:
+            return None
 
-                # Convert to string
-                if value is None:
-                    value = ""
-                else:
-                    value = str(value).strip()
+        prefix = content[:idx]
+        suffix = content[idx + len(token):]
+        value = token_value(token)
+        if not value:
+            return ""
 
-                # If value is empty, return empty string (no prefix/suffix)
-                if not value:
-                    return ""
+        if not allow_path_separators:
+            value = value.replace("/", "_")
+        value = sanitize_filename(value)
+        return f"{prefix}{value}{suffix}"
 
-                if not allow_path_separators:
-                    value = value.replace("/", "_")
-                # Sanitize the value
-                value = sanitize_filename(value)
+    # Process brace blocks in order so we can support conditional literal blocks like:
+    # { - Part }{PartNumber}
+    matches = list(BRACE_PATTERN.finditer(template))
+    if not matches:
+        result = template
+    else:
+        parts: list[str] = []
+        cursor = 0
+        for idx, match in enumerate(matches):
+            parts.append(template[cursor:match.start()])
+            content = match.group(1)
+            rendered = render_block(content)
 
-                return f"{prefix}{value}{suffix}"
+            if rendered is not None:
+                parts.append(rendered)
+            else:
+                conditional_literal = False
+                include_literal = False
+                if idx + 1 < len(matches) and match.end() == matches[idx + 1].start():
+                    next_content = matches[idx + 1].group(1)
+                    next_token, _next_idx = find_token(next_content)
+                    if next_token is not None:
+                        conditional_literal = True
+                        include_literal = bool(token_value(next_token))
+                if include_literal:
+                    parts.append(content)
+                elif not conditional_literal:
+                    # Preserve blocks that look like literal text, but treat bare unknown
+                    # placeholders as missing variables.
+                    if re.search(r"\s", content):
+                        parts.append(match.group(0))
 
-        # No known token found → return original block unchanged
-        return match.group(0)
+            cursor = match.end()
 
-    # Replace all tokens
-    result = BRACE_PATTERN.sub(replace_block, template)
+        parts.append(template[cursor:])
+        result = "".join(parts)
 
     # Clean up any double slashes that might result from empty tokens
     result = re.sub(r'/+', '/', result)

@@ -391,6 +391,48 @@ def test_fulfil_request_queues_as_requesting_user(user_db):
     assert isinstance(captured["release_data"], dict)
 
 
+def test_fulfil_request_rejects_when_state_changes_after_queue_dispatch(user_db):
+    alice = user_db.create_user(username="alice")
+    admin = user_db.create_user(username="admin", role="admin")
+    created = create_request(
+        user_db,
+        user_id=alice["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data=_release_data(),
+    )
+
+    release_data = _release_data()
+
+    def fake_queue_release(_release_data_arg, _priority, user_id=None, username=None):
+        # Simulate another worker fulfilling the same request while this call is in-flight.
+        user_db.update_request(
+            created["id"],
+            status="fulfilled",
+            release_data=release_data,
+            delivery_state="queued",
+            delivery_updated_at="2026-01-01T00:00:00+00:00",
+            reviewed_by=admin["id"],
+            reviewed_at="2026-01-01T00:00:00+00:00",
+        )
+        return True, None
+
+    with pytest.raises(RequestServiceError) as exc_info:
+        fulfil_request(
+            user_db,
+            request_id=created["id"],
+            admin_user_id=admin["id"],
+            queue_release=fake_queue_release,
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.code == "stale_transition"
+    assert user_db.get_request(created["id"])["status"] == "fulfilled"
+
+
 def test_fulfil_book_level_request_stores_selected_release_data(user_db):
     alice = user_db.create_user(username="alice")
     admin = user_db.create_user(username="admin", role="admin")

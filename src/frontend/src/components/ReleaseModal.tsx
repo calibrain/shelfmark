@@ -688,7 +688,7 @@ export const ReleaseModal = ({
   useEffect(() => {
     if (!book || !onPolicyRefresh) return;
     void onPolicyRefresh();
-  }, [book, onPolicyRefresh]);
+  }, [book?.id, onPolicyRefresh]);
 
   // Close handler with animation
   const handleClose = useCallback(() => {

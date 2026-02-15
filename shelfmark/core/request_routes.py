@@ -201,6 +201,27 @@ def _normalize_optional_text(value: Any) -> str | None:
     return normalized or None
 
 
+def _resolve_title_from_book_data(book_data: Any) -> str:
+    if isinstance(book_data, dict):
+        title = _normalize_optional_text(book_data.get("title"))
+        if title is not None:
+            return title
+    return "Unknown title"
+
+
+def _resolve_request_title(request_row: dict[str, Any]) -> str:
+    return _resolve_title_from_book_data(request_row.get("book_data"))
+
+
+def _format_user_label(username: str | None, user_id: int | None = None) -> str:
+    normalized_username = _normalize_optional_text(username)
+    if normalized_username is not None:
+        return normalized_username
+    if user_id is not None and user_id > 0:
+        return f"user#{user_id}"
+    return "unknown user"
+
+
 def _resolve_request_username(
     user_db: UserDB,
     *,
@@ -357,26 +378,6 @@ def register_request_routes(
                 }
             )
 
-        logger.debug(
-            "request-policy snapshot user=%s db_user_id=%s is_admin=%s requests_enabled=%s defaults=%s",
-            session.get("user_id"),
-            db_user_id,
-            is_admin,
-            requests_enabled,
-            {
-                "ebook": (
-                    default_ebook_mode.value
-                    if default_ebook_mode is not None
-                    else REQUEST_POLICY_DEFAULT_FALLBACK_MODE.value
-                ),
-                "audiobook": (
-                    default_audio_mode.value
-                    if default_audio_mode is not None
-                    else REQUEST_POLICY_DEFAULT_FALLBACK_MODE.value
-                ),
-            },
-        )
-
         return jsonify(
             {
                 "requests_enabled": requests_enabled,
@@ -408,6 +409,8 @@ def register_request_routes(
         db_user_id, db_gate = _require_db_user_id()
         if db_gate is not None or db_user_id is None:
             return db_gate
+        actor_username = _normalize_optional_text(session.get("user_id"))
+        actor_label = _format_user_label(actor_username, db_user_id)
 
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
@@ -426,6 +429,7 @@ def register_request_routes(
         book_data = data.get("book_data")
         if not isinstance(book_data, dict):
             return jsonify({"error": "book_data must be an object"}), 400
+        request_title = _resolve_title_from_book_data(book_data)
 
         content_type = normalize_content_type(
             context.get("content_type")
@@ -438,6 +442,11 @@ def register_request_routes(
             db_user_id=db_user_id,
         )
         if not requests_enabled:
+            logger.debug(
+                "Request not created for '%s' by %s: requests are disabled",
+                request_title,
+                actor_label,
+            )
             return _error_response(
                 "Request workflow is disabled by policy",
                 403,
@@ -472,6 +481,11 @@ def register_request_routes(
         )
 
         if resolved_mode == PolicyMode.BLOCKED:
+            logger.debug(
+                "Request blocked by policy for '%s' by %s",
+                request_title,
+                actor_label,
+            )
             return _error_response(
                 "Requesting is blocked by policy",
                 403,
@@ -482,6 +496,11 @@ def register_request_routes(
         if resolved_mode == PolicyMode.REQUEST_BOOK:
             requested_level = str(request_level).strip().lower() if isinstance(request_level, str) else ""
             if requested_level != "book":
+                logger.debug(
+                    "Request not created for '%s' by %s: policy requires book-level requests",
+                    request_title,
+                    actor_label,
+                )
                 return _error_response(
                     "Policy requires book-level requests",
                     403,
@@ -508,8 +527,14 @@ def register_request_routes(
         event_payload = {
             "request_id": created["id"],
             "status": created["status"],
-            "title": (created.get("book_data") or {}).get("title") or "Unknown title",
+            "title": _resolve_request_title(created),
         }
+        logger.info(
+            "Request created #%s for '%s' by %s",
+            created["id"],
+            event_payload["title"],
+            actor_label,
+        )
         _emit_request_event(
             ws_manager,
             event_name="new_request",
@@ -523,7 +548,6 @@ def register_request_routes(
             room=f"user_{db_user_id}",
         )
 
-        actor_username = session.get("user_id") if isinstance(session.get("user_id"), str) else None
         _notify_admin_for_request_event(
             user_db,
             event=NotificationEvent.REQUEST_CREATED,
@@ -582,8 +606,15 @@ def register_request_routes(
         event_payload = {
             "request_id": updated["id"],
             "status": updated["status"],
-            "title": (updated.get("book_data") or {}).get("title") or "Unknown title",
+            "title": _resolve_request_title(updated),
         }
+        actor_label = _format_user_label(_normalize_optional_text(session.get("user_id")), db_user_id)
+        logger.info(
+            "Request cancelled #%s for '%s' by %s",
+            updated["id"],
+            event_payload["title"],
+            actor_label,
+        )
         _emit_request_event(
             ws_manager,
             event_name="request_update",
@@ -681,8 +712,20 @@ def register_request_routes(
         event_payload = {
             "request_id": updated["id"],
             "status": updated["status"],
-            "title": (updated.get("book_data") or {}).get("title") or "Unknown title",
+            "title": _resolve_request_title(updated),
         }
+        admin_label = _format_user_label(_normalize_optional_text(session.get("user_id")), admin_user_id)
+        requester_label = _format_user_label(
+            _resolve_request_username(user_db, request_row=updated),
+            _resolve_request_user_id(updated),
+        )
+        logger.info(
+            "Request fulfilled #%s for '%s' by %s (requested by %s)",
+            updated["id"],
+            event_payload["title"],
+            admin_label,
+            requester_label,
+        )
         _emit_request_event(
             ws_manager,
             event_name="request_update",
@@ -739,8 +782,20 @@ def register_request_routes(
         event_payload = {
             "request_id": updated["id"],
             "status": updated["status"],
-            "title": (updated.get("book_data") or {}).get("title") or "Unknown title",
+            "title": _resolve_request_title(updated),
         }
+        admin_label = _format_user_label(_normalize_optional_text(session.get("user_id")), admin_user_id)
+        requester_label = _format_user_label(
+            _resolve_request_username(user_db, request_row=updated),
+            _resolve_request_user_id(updated),
+        )
+        logger.info(
+            "Request rejected #%s for '%s' by %s (requested by %s)",
+            updated["id"],
+            event_payload["title"],
+            admin_label,
+            requester_label,
+        )
         _emit_request_event(
             ws_manager,
             event_name="request_update",

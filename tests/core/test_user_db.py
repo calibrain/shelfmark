@@ -532,6 +532,30 @@ class TestDownloadRequests:
         assert updated["status"] == "fulfilled"
         assert updated["admin_note"] == "done"
 
+    def test_update_request_expected_current_status_enforces_compare_and_swap(self, user_db):
+        user = user_db.create_user(username="alice")
+        created = user_db.create_request(
+            user_id=user["id"],
+            content_type="ebook",
+            request_level="book",
+            policy_mode="request_book",
+            book_data=self._book_data(),
+        )
+
+        first = user_db.update_request(
+            created["id"],
+            expected_current_status="pending",
+            status="fulfilled",
+        )
+        assert first["status"] == "fulfilled"
+
+        with pytest.raises(ValueError, match="Request state changed before update"):
+            user_db.update_request(
+                created["id"],
+                expected_current_status="pending",
+                status="fulfilled",
+            )
+
     def test_update_request_rejects_terminal_status_mutation(self, user_db):
         user = user_db.create_user(username="alice")
         created = user_db.create_request(

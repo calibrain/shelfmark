@@ -356,7 +356,11 @@ def cancel_request(
         )
 
     try:
-        return user_db.update_request(request_id, status="cancelled")
+        return user_db.update_request(
+            request_id,
+            expected_current_status="pending",
+            status="cancelled",
+        )
     except ValueError as exc:
         raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
 
@@ -391,6 +395,7 @@ def reject_request(
     try:
         return user_db.update_request(
             request_id,
+            expected_current_status="pending",
             status="rejected",
             admin_note=normalized_admin_note,
             reviewed_by=admin_user_id,
@@ -466,6 +471,7 @@ def fulfil_request(
     try:
         return user_db.update_request(
             request_id,
+            expected_current_status="pending",
             status="fulfilled",
             release_data=selected_release_data,
             delivery_state="queued",
