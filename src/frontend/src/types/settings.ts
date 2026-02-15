@@ -95,6 +95,7 @@ export interface MultiSelectFieldConfig extends BaseField {
   value: string[];
   options: SelectOption[];
   variant?: 'pills' | 'dropdown';  // 'pills' (default) or 'dropdown' for checkbox dropdown style
+  placeholder?: string;
 }
 
 export interface TagListFieldConfig extends BaseField {

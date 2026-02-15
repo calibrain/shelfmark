@@ -1,6 +1,7 @@
 import { useMemo, useEffect, CSSProperties } from 'react';
-import { TableFieldConfig, TableFieldColumn } from '../../../types/settings';
+import { MultiSelectFieldConfig, TableFieldConfig, TableFieldColumn } from '../../../types/settings';
 import { DropdownList } from '../../DropdownList';
+import { MultiSelectField } from './MultiSelectField';
 
 interface TableFieldProps {
   field: TableFieldConfig;
@@ -128,11 +129,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
           const filteredOptions = getFilteredSelectOptions(col, row);
           const validValues = new Set(filteredOptions.map((opt) => opt.value));
           const currentValues = normalizeMultiValue(row[col.key]);
-          let normalizedValues = currentValues.filter((entry) => validValues.has(entry));
-
-          if (normalizedValues.includes('all') && normalizedValues.length > 1) {
-            normalizedValues = ['all'];
-          }
+          const normalizedValues = currentValues.filter((entry) => validValues.has(entry));
 
           if (JSON.stringify(currentValues) !== JSON.stringify(normalizedValues)) {
             nextRows[rowIndex][col.key] = normalizedValues;
@@ -261,46 +258,35 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
                   value: opt.value,
                   label: opt.label,
                   description: opt.description,
+                  childOf: opt.childOf,
                 }));
                 const selectedValues = normalizeMultiValue(cellValue).filter((entry) =>
                   options.some((option) => option.value === entry)
                 );
-                const collapsedSelectedValues =
-                  selectedValues.includes('all') && selectedValues.length > 1
-                    ? ['all']
-                    : selectedValues;
-                const selectedLabels = options
-                  .filter((option) => collapsedSelectedValues.includes(option.value))
-                  .map((option) => option.label);
+                const multiSelectField: MultiSelectFieldConfig = {
+                  type: 'MultiSelectField',
+                  key: `${field.key}_${rowIndex}_${col.key}`,
+                  label: col.label,
+                  value: selectedValues,
+                  options,
+                  variant: 'dropdown',
+                  placeholder: col.placeholder || 'Select...',
+                };
 
                 return (
                   <div key={col.key} className="flex flex-col gap-1 min-w-0">
                     {mobileLabel}
-                    {isDisabled ? (
-                      <div className="w-full px-3 py-2 rounded-lg border border-[var(--border-muted)] bg-[var(--bg-soft)] text-sm opacity-60 cursor-not-allowed">
-                        {selectedLabels.length > 0 ? selectedLabels.join(', ') : (col.placeholder || 'Select...')}
-                      </div>
-                    ) : (
-                      <DropdownList
-                        options={options}
-                        value={collapsedSelectedValues}
-                        multiple
-                        showCheckboxes
-                        keepOpenOnSelect
-                        onChange={(val) => {
-                          const nextValues = Array.isArray(val)
-                            ? val.map((entry) => String(entry ?? '').trim()).filter((entry) => entry.length > 0)
-                            : normalizeMultiValue(val);
-                          const normalizedNextValues =
-                            nextValues.includes('all') && nextValues.length > 1
-                              ? ['all']
-                              : nextValues;
-                          updateCell(rowIndex, col.key, normalizedNextValues);
-                        }}
-                        placeholder={col.placeholder || 'Select...'}
-                        widthClassName="w-full"
-                      />
-                    )}
+                    <MultiSelectField
+                      field={multiSelectField}
+                      value={selectedValues}
+                      onChange={(nextValues) => {
+                        const normalizedValues = (nextValues ?? [])
+                          .map((entry) => String(entry ?? '').trim())
+                          .filter((entry) => entry.length > 0);
+                        updateCell(rowIndex, col.key, normalizedValues);
+                      }}
+                      disabled={isDisabled}
+                    />
                   </div>
                 );
               }
