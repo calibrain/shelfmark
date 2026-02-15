@@ -178,6 +178,10 @@ def queue_release(
     try:
         source = release_data.get('source', 'direct_download')
         extra = release_data.get('extra', {})
+        raw_request_id = release_data.get('_request_id')
+        request_id: Optional[int] = None
+        if isinstance(raw_request_id, int) and raw_request_id > 0:
+            request_id = raw_request_id
 
         # Get author, year, preview, and content_type from top-level (preferred) or extra (fallback)
         author = release_data.get('author') or extra.get('author')
@@ -225,6 +229,7 @@ def queue_release(
             priority=priority,
             user_id=user_id,
             username=username,
+            request_id=request_id,
         )
 
         if not book_queue.add(task):
@@ -327,6 +332,7 @@ def _task_to_dict(task: DownloadTask) -> Dict[str, Any]:
         'download_path': task.download_path,
         'user_id': task.user_id,
         'username': task.username,
+        'request_id': task.request_id,
     }
 
 

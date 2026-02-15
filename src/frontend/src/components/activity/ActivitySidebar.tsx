@@ -367,6 +367,23 @@ export const ActivitySidebar = ({
     });
 
     const mergedByDownloadId = new Map<string, ActivityItem>();
+    const reopenedRequestIds = new Set<number>();
+
+    visibleRequestItems.forEach((item) => {
+      if (item.kind !== 'request' || typeof item.requestId !== 'number') {
+        return;
+      }
+      const requestRecord = item.requestRecord;
+      const failureReason = requestRecord?.last_failure_reason;
+      if (
+        requestRecord?.status === 'pending' &&
+        typeof failureReason === 'string' &&
+        failureReason.trim().length > 0
+      ) {
+        reopenedRequestIds.add(item.requestId);
+      }
+    });
+
     const nextRequestItems = visibleRequestItems.map((requestItem) => {
       const linkedDownloadId = getLinkedDownloadIdFromRequestItem(requestItem);
       if (!linkedDownloadId) {
@@ -391,6 +408,15 @@ export const ActivitySidebar = ({
         return downloadItem;
       }
       return mergedByDownloadId.get(downloadId) || downloadItem;
+    }).filter((downloadItem) => {
+      if (
+        typeof downloadItem.requestId === 'number' &&
+        reopenedRequestIds.has(downloadItem.requestId) &&
+        (downloadItem.visualStatus === 'error' || downloadItem.visualStatus === 'cancelled')
+      ) {
+        return false;
+      }
+      return true;
     });
 
     return {

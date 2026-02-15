@@ -200,6 +200,8 @@ class UserDB:
             )
         if "delivery_updated_at" not in column_names:
             conn.execute("ALTER TABLE download_requests ADD COLUMN delivery_updated_at TIMESTAMP")
+        if "last_failure_reason" not in column_names:
+            conn.execute("ALTER TABLE download_requests ADD COLUMN last_failure_reason TEXT")
 
         conn.execute(
             """
@@ -614,6 +616,7 @@ class UserDB:
         "reviewed_at",
         "delivery_state",
         "delivery_updated_at",
+        "last_failure_reason",
     }
 
     def update_request(

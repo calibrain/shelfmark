@@ -66,6 +66,13 @@ const getDownloadProgress = (status: ActivityVisualStatus, bookProgress: unknown
 
 export const downloadToActivityItem = (book: Book, statusKey: DownloadStatusKey): ActivityItem => {
   const visualStatus = statusKeyToVisualStatus(statusKey);
+  const requestId = (
+    typeof book.request_id === 'number' &&
+    Number.isFinite(book.request_id) &&
+    book.request_id > 0
+  )
+    ? Math.trunc(book.request_id)
+    : undefined;
   const metaLine = joinMetaParts([
     toOptionalText(book.format)?.toUpperCase(),
     toOptionalText(book.size),
@@ -92,6 +99,7 @@ export const downloadToActivityItem = (book: Book, statusKey: DownloadStatusKey)
     downloadBookId: book.id,
     downloadPath: toOptionalText(book.download_path),
     sizeRaw: toOptionalText(book.size),
+    requestId,
   };
 };
 

@@ -16,6 +16,7 @@ export interface DisplayField {
 // Book data types
 export interface Book {
   id: string;
+  request_id?: number;
   title: string;
   author: string;
   year?: string;
@@ -199,6 +200,7 @@ export interface RequestRecord {
   status: 'pending' | 'fulfilled' | 'rejected' | 'cancelled';
   delivery_state?: 'none' | 'unknown' | 'queued' | 'resolving' | 'locating' | 'downloading' | 'complete' | 'error' | 'cancelled';
   delivery_updated_at?: string | null;
+  last_failure_reason?: string | null;
   source_hint: string | null;
   content_type: ContentType;
   request_level: 'book' | 'release';

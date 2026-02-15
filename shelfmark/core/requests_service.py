@@ -455,8 +455,11 @@ def fulfil_request(
     if requester is None:
         raise RequestServiceError("Requesting user not found", status_code=404)
 
+    queued_release_data = dict(selected_release_data)
+    queued_release_data["_request_id"] = request_id
+
     success, error = queue_release(
-        selected_release_data,
+        queued_release_data,
         0,
         user_id=request_row["user_id"],
         username=requester.get("username"),
@@ -476,9 +479,66 @@ def fulfil_request(
             release_data=selected_release_data,
             delivery_state="queued",
             delivery_updated_at=_now_timestamp(),
+            last_failure_reason=None,
             admin_note=normalized_admin_note,
             reviewed_by=admin_user_id,
             reviewed_at=_now_timestamp(),
         )
     except ValueError as exc:
         raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
+
+
+def reopen_failed_request(
+    user_db: "UserDB",
+    *,
+    request_id: int,
+    failure_reason: str | None = None,
+) -> dict[str, Any] | None:
+    """Reopen a failed fulfilled request so admins can re-approve with a new release."""
+    normalized_failure_reason = None
+    if isinstance(failure_reason, str):
+        normalized_failure_reason = failure_reason.strip() or None
+
+    with user_db._lock:
+        conn = user_db._connect()
+        try:
+            current_row = conn.execute(
+                "SELECT * FROM download_requests WHERE id = ?",
+                (request_id,),
+            ).fetchone()
+            current_request = user_db._parse_request_row(current_row)
+            if current_request is None:
+                return None
+
+            if current_request.get("status") != "fulfilled":
+                return None
+            current_delivery_state = _existing_delivery_state(current_request)
+            # Terminal hook callbacks can run before delivery-state sync persists "error".
+            # Allow reopening fulfilled requests unless they are already complete.
+            if current_delivery_state == "complete":
+                return None
+            if current_delivery_state not in {"error", "cancelled"} and normalized_failure_reason is None:
+                return None
+
+            conn.execute(
+                """
+                UPDATE download_requests
+                SET status = 'pending',
+                    delivery_state = 'none',
+                    delivery_updated_at = NULL,
+                    release_data = NULL,
+                    last_failure_reason = ?,
+                    reviewed_by = NULL,
+                    reviewed_at = NULL
+                WHERE id = ?
+                """,
+                (normalized_failure_reason, request_id),
+            )
+            updated_row = conn.execute(
+                "SELECT * FROM download_requests WHERE id = ?",
+                (request_id,),
+            ).fetchone()
+            conn.commit()
+            return user_db._parse_request_row(updated_row)
+        finally:
+            conn.close()

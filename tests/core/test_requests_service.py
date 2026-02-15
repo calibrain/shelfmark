@@ -17,6 +17,7 @@ from shelfmark.core.requests_service import (
     normalize_delivery_state,
     normalize_request_level,
     normalize_request_status,
+    reopen_failed_request,
     reject_request,
     sync_delivery_states_from_queue_status,
     validate_request_level_payload,
@@ -389,6 +390,8 @@ def test_fulfil_request_queues_as_requesting_user(user_db):
     assert captured["user_id"] == alice["id"]
     assert captured["username"] == "alice"
     assert isinstance(captured["release_data"], dict)
+    assert captured["release_data"]["_request_id"] == created["id"]
+    assert "_request_id" not in (fulfilled["release_data"] or {})
 
 
 def test_fulfil_request_rejects_when_state_changes_after_queue_dispatch(user_db):
@@ -474,6 +477,93 @@ def test_fulfil_book_level_request_stores_selected_release_data(user_db):
     assert captured["release_data"]["source_id"] == "admin-picked-book-release"
     assert captured["user_id"] == alice["id"]
     assert captured["username"] == "alice"
+
+
+def test_reopen_failed_request_reverts_to_pending_from_queued_and_clears_on_refulfil(user_db):
+    alice = user_db.create_user(username="alice")
+    admin = user_db.create_user(username="admin", role="admin")
+    created = create_request(
+        user_db,
+        user_id=alice["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data=_release_data(),
+    )
+
+    fulfilled = fulfil_request(
+        user_db,
+        request_id=created["id"],
+        admin_user_id=admin["id"],
+        queue_release=lambda *_args, **_kwargs: (True, None),
+    )
+    assert fulfilled["status"] == "fulfilled"
+    assert fulfilled["delivery_state"] == "queued"
+    assert fulfilled["reviewed_by"] == admin["id"]
+
+    reopened = reopen_failed_request(
+        user_db,
+        request_id=created["id"],
+        failure_reason="Download failed: Timeout",
+    )
+    assert reopened is not None
+    assert reopened["status"] == "pending"
+    assert reopened["delivery_state"] == "none"
+    assert reopened["release_data"] is None
+    assert reopened["last_failure_reason"] == "Download failed: Timeout"
+    assert reopened["reviewed_by"] is None
+    assert reopened["reviewed_at"] is None
+
+    replacement_release = _release_data()
+    replacement_release["source_id"] = "release-456"
+    refulfilled = fulfil_request(
+        user_db,
+        request_id=created["id"],
+        admin_user_id=admin["id"],
+        queue_release=lambda *_args, **_kwargs: (True, None),
+        release_data=replacement_release,
+    )
+    assert refulfilled["status"] == "fulfilled"
+    assert refulfilled["release_data"]["source_id"] == "release-456"
+    assert refulfilled["last_failure_reason"] is None
+
+
+def test_reopen_failed_request_does_not_reopen_completed_delivery(user_db):
+    alice = user_db.create_user(username="alice")
+    admin = user_db.create_user(username="admin", role="admin")
+    created = create_request(
+        user_db,
+        user_id=alice["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data=_release_data(),
+    )
+
+    fulfilled = fulfil_request(
+        user_db,
+        request_id=created["id"],
+        admin_user_id=admin["id"],
+        queue_release=lambda *_args, **_kwargs: (True, None),
+    )
+    assert fulfilled["status"] == "fulfilled"
+
+    user_db.update_request(
+        created["id"],
+        delivery_state="complete",
+        delivery_updated_at="2026-01-01T00:00:00+00:00",
+    )
+
+    reopened = reopen_failed_request(
+        user_db,
+        request_id=created["id"],
+        failure_reason="Download failed: Timeout",
+    )
+    assert reopened is None
 
 
 def test_sync_delivery_states_from_queue_status_updates_matching_fulfilled_requests(user_db):

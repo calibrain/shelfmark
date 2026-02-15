@@ -46,6 +46,7 @@ from shelfmark.core.request_policy import (
     resolve_policy_mode,
 )
 from shelfmark.core.requests_service import (
+    reopen_failed_request,
     sync_delivery_states_from_queue_status,
 )
 from shelfmark.core.activity_service import ActivityService, build_download_item_key
@@ -1080,9 +1081,6 @@ def _notify_admin_for_terminal_download_status(*, task_id: str, status: QueueSta
 def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: Any) -> None:
     _notify_admin_for_terminal_download_status(task_id=task_id, status=status, task=task)
 
-    if activity_service is None:
-        return
-
     final_status = _queue_status_to_final_activity_status(status)
     if final_status is None:
         return
@@ -1129,19 +1127,45 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
     if linked_request is not None:
         snapshot["request"] = linked_request
 
+    if activity_service is not None:
+        try:
+            activity_service.record_terminal_snapshot(
+                user_id=owner_user_id,
+                item_type="download",
+                item_key=build_download_item_key(task_id),
+                origin=origin,
+                final_status=final_status,
+                snapshot=snapshot,
+                request_id=request_id,
+                source_id=task_id,
+            )
+        except Exception as exc:
+            logger.warning("Failed to record terminal download snapshot for task %s: %s", task_id, exc)
+
+    if user_db is None or linked_request is None or request_id is None or status != QueueStatus.ERROR:
+        return
+
+    raw_error_message = getattr(task, "status_message", None)
+    fallback_reason = (
+        raw_error_message.strip()
+        if isinstance(raw_error_message, str) and raw_error_message.strip()
+        else "Download failed"
+    )
     try:
-        activity_service.record_terminal_snapshot(
-            user_id=owner_user_id,
-            item_type="download",
-            item_key=build_download_item_key(task_id),
-            origin=origin,
-            final_status=final_status,
-            snapshot=snapshot,
+        reopened_request = reopen_failed_request(
+            user_db,
             request_id=request_id,
-            source_id=task_id,
+            failure_reason=fallback_reason,
         )
+        if reopened_request is not None:
+            _emit_request_update_events([reopened_request])
     except Exception as exc:
-        logger.warning("Failed to record terminal download snapshot for task %s: %s", task_id, exc)
+        logger.warning(
+            "Failed to reopen request %s after terminal download error %s: %s",
+            request_id,
+            task_id,
+            exc,
+        )
 
 
 def _task_owned_by_actor(task: Any, *, actor_user_id: int | None, actor_username: str | None) -> bool:

@@ -86,7 +86,7 @@ const actionKey = (action: ActivityCardAction): string => {
 
 const actionUiConfig = (
   action: ActivityCardAction
-): { title: string; className: string; icon: 'cross' | 'check' | 'stop' } => {
+): { title: string; className: string; icon: 'cross' | 'check' | 'stop' | 'retry' } => {
   switch (action.kind) {
     case 'download-remove':
       return {
@@ -139,7 +139,7 @@ const actionUiConfig = (
   }
 };
 
-const ActionIcon = ({ icon }: { icon: 'cross' | 'check' | 'stop' }) => {
+const ActionIcon = ({ icon }: { icon: 'cross' | 'check' | 'stop' | 'retry' }) => {
   if (icon === 'stop') {
     return (
       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -151,6 +151,13 @@ const ActionIcon = ({ icon }: { icon: 'cross' | 'check' | 'stop' }) => {
     return (
       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" aria-hidden="true">
         <path strokeLinecap="round" strokeLinejoin="round" d="m5 13 4 4L19 7" />
+      </svg>
+    );
+  }
+  if (icon === 'retry') {
+    return (
+      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M18.363 5.634A8.997 9.002 29.494 0 0 7.5 4.206 8.997 9.002 29.494 0 0 3.306 14.33 8.997 9.002 29.494 0 0 11.996 21a8.997 9.002 29.494 0 0 8.694-6.673m-2.327-8.693L20.87 8.14m.017-4.994v5.015m0 0h-5.013" />
       </svg>
     );
   }
@@ -416,10 +423,13 @@ export const ActivityCard = ({
   const requiresBrowseBeforeApprove =
     reviewRecord?.request_level === 'book' || !hasAttachedRelease;
   const showSourceField = reviewRecord?.request_level === 'release';
+  const isRetryAfterFailure = Boolean(toOptionalText(reviewRecord?.last_failure_reason));
 
   const approveLabel =
     requiresBrowseBeforeApprove
-      ? 'Browse Releases To Approve'
+      ? isRetryAfterFailure
+        ? 'Browse Releases To Retry'
+        : 'Browse Releases To Approve'
       : 'Approve Attached File';
 
   const provider = toOptionalText(bookData.provider)?.toLowerCase();
@@ -544,19 +554,27 @@ export const ActivityCard = ({
             <div className="flex-shrink-0 inline-flex items-center gap-1 -my-1">
               {actions.map((action) => {
                 const config = actionUiConfig(action);
+                const icon =
+                  action.kind === 'request-approve' && isRetryAfterFailure
+                    ? 'retry'
+                    : config.icon;
+                const actionTitle =
+                  action.kind === 'request-approve' && isRetryAfterFailure
+                    ? 'Retry'
+                    : config.title;
                 return (
                   <Tooltip
                     key={actionKey(action)}
-                    content={config.title}
+                    content={actionTitle}
                     delay={0}
                     position="bottom"
                   >
                     <IconButton
-                      title={config.title}
+                      title={actionTitle}
                       className={config.className}
                       onClick={() => runAction(action)}
                     >
-                      <ActionIcon icon={config.icon} />
+                      <ActionIcon icon={icon} />
                     </IconButton>
                   </Tooltip>
                 );
@@ -666,8 +684,12 @@ export const ActivityCard = ({
               ) : (
                 <p className="text-xs opacity-70">
                   {reviewRecord?.request_level === 'book'
-                    ? 'This is a book-level request without an attached file. Choose a release before approval.'
-                    : 'No attached release data is available. Choose a release before approval.'}
+                    ? isRetryAfterFailure
+                      ? 'Previous download failed. Choose a release before re-approving.'
+                      : 'This is a book-level request without an attached file. Choose a release before approval.'
+                    : isRetryAfterFailure
+                      ? 'Previous download failed and the attached release was cleared. Choose a release before re-approving.'
+                      : 'No attached release data is available. Choose a release before approval.'}
                 </p>
               )}
 

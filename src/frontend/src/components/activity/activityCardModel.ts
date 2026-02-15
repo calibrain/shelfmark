@@ -63,16 +63,23 @@ const getRequestBadge = (item: ActivityItem, isAdmin: boolean): ActivityCardBadg
   const requestVisualStatus = item.requestRecord
     ? toRequestVisualStatus(item.requestRecord.status)
     : item.visualStatus;
+  const failureReason = item.requestRecord?.last_failure_reason?.trim() || null;
+  const hasFailureReason = requestVisualStatus === 'pending' && Boolean(failureReason);
   const hasInFlightLinkedDownload = (
     item.kind === 'download' &&
     requestVisualStatus === 'fulfilled' &&
     isActiveDownloadStatus(item.visualStatus)
   );
-  const visualStatus = hasInFlightLinkedDownload ? 'resolving' : requestVisualStatus;
+  let visualStatus: ActivityVisualStatus = hasInFlightLinkedDownload ? 'resolving' : requestVisualStatus;
+  if (hasFailureReason) {
+    visualStatus = 'error';
+  }
 
   let text = item.statusLabel;
   if (hasInFlightLinkedDownload) {
     text = 'Approved';
+  } else if (hasFailureReason) {
+    text = failureReason as string;
   } else if (requestVisualStatus === 'pending') {
     text = getPendingRequestText(item, isAdmin);
   } else if (requestVisualStatus === 'fulfilled') {
