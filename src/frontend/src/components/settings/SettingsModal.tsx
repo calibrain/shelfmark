@@ -44,6 +44,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
 
   // Track previous isOpen state to detect modal open transition
   const prevIsOpenRef = useRef(false);
+  const overrideSummaryRequestIdRef = useRef(0);
 
   // Check for mobile viewport
   useEffect(() => {
@@ -129,32 +130,34 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
     };
   }, [isOpen, selectedTab]);
 
+  const refreshOverrideSummaryForTab = useCallback(async (tabName: string) => {
+    const requestId = ++overrideSummaryRequestIdRef.current;
+    try {
+      const data = await getAdminSettingsOverridesSummary(tabName);
+      if (overrideSummaryRequestIdRef.current !== requestId) {
+        return;
+      }
+      setTabOverrideSummaries((prev) => ({
+        ...prev,
+        [tabName]: data.keys || {},
+      }));
+    } catch {
+      if (overrideSummaryRequestIdRef.current !== requestId) {
+        return;
+      }
+      setTabOverrideSummaries((prev) => ({
+        ...prev,
+        [tabName]: {},
+      }));
+    }
+  }, []);
+
   useEffect(() => {
     if (!isOpen || !selectedTab) {
       return;
     }
-
-    let cancelled = false;
-    getAdminSettingsOverridesSummary(selectedTab)
-      .then((data) => {
-        if (cancelled) return;
-        setTabOverrideSummaries((prev) => ({
-          ...prev,
-          [selectedTab]: data.keys || {},
-        }));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setTabOverrideSummaries((prev) => ({
-          ...prev,
-          [selectedTab]: {},
-        }));
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, selectedTab]);
+    void refreshOverrideSummaryForTab(selectedTab);
+  }, [isOpen, selectedTab, refreshOverrideSummaryForTab]);
 
   // Reset to first tab when modal transitions from closed to open
   useEffect(() => {
@@ -181,10 +184,18 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
     setShowMobileDetail(false);
   }, []);
 
+  const handleRefreshCurrentTabOverrideSummary = useCallback(() => {
+    if (!selectedTab) {
+      return;
+    }
+    void refreshOverrideSummaryForTab(selectedTab);
+  }, [selectedTab, refreshOverrideSummaryForTab]);
+
   const handleSave = useCallback(async () => {
     if (!selectedTab) return;
     const result = await saveTab(selectedTab);
     if (result.success) {
+      void refreshOverrideSummaryForTab(selectedTab);
       onShowToast?.(result.message, 'success');
       // Notify parent that settings were saved so it can refresh config
       onSettingsSaved?.();
@@ -197,7 +208,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
     } else {
       onShowToast?.(result.message, 'error');
     }
-  }, [selectedTab, saveTab, onShowToast, onSettingsSaved]);
+  }, [selectedTab, saveTab, onShowToast, onSettingsSaved, refreshOverrideSummaryForTab]);
 
   const handleAction = useCallback(
     async (actionKey: string) => {
@@ -212,9 +223,13 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
         }
         return { success: true, message: 'Opening Users tab...' };
       }
-      return executeAction(selectedTab, actionKey);
+      const result = await executeAction(selectedTab, actionKey);
+      if (result.success) {
+        void refreshOverrideSummaryForTab(selectedTab);
+      }
+      return result;
     },
-    [selectedTab, executeAction, isMobile, setSelectedTab]
+    [selectedTab, executeAction, isMobile, setSelectedTab, refreshOverrideSummaryForTab]
   );
 
   // Memoize the field change handler to prevent creating new functions on every render
@@ -285,6 +300,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
         customFieldContext={{
           authMode: usersAuthMode,
           onShowToast,
+          onRefreshOverrideSummary: handleRefreshCurrentTabOverrideSummary,
         }}
       />
     ))

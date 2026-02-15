@@ -13,7 +13,7 @@ import { buildUserSettingsPayload } from './settingsPayload';
 const MIN_PASSWORD_LENGTH = 4;
 interface UseUserMutationsParams {
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
-  fetchUsers: () => Promise<AdminUser[]>;
+  fetchUsers: (options?: { force?: boolean }) => Promise<AdminUser[]>;
   users: AdminUser[];
   createForm: CreateUserFormState;
   resetCreateForm: () => void;
@@ -86,7 +86,7 @@ export const useUserMutations = ({
       });
       resetCreateForm();
       onShowToast?.(`Local user ${created.username} created`, 'success');
-      await fetchUsers();
+      await fetchUsers({ force: true });
       return true;
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Failed to create user');
@@ -144,7 +144,7 @@ export const useUserMutations = ({
         includeSettings && !includeProfile && !includePassword ? 'User preferences updated' : 'User updated',
         'success',
       );
-      const refreshedUsers = await fetchUsers();
+      const refreshedUsers = await fetchUsers({ force: true });
       if (includeProfile && localAdminsBeforeSave > 0 && countLocalPasswordAdmins(refreshedUsers) === 0) {
         onShowToast?.(
           "No local admin accounts remain. Authentication will fall back to 'No Authentication' until a local admin is created.",
@@ -167,7 +167,7 @@ export const useUserMutations = ({
     try {
       await deleteAdminUser(userId);
       onShowToast?.('User deleted', 'success');
-      const refreshedUsers = await fetchUsers();
+      const refreshedUsers = await fetchUsers({ force: true });
       if (deletedUser && deletedUser.auth_source !== 'builtin') {
         onShowToast?.(
           `${authSourceLabel[deletedUser.auth_source]} users may be re-provisioned by your authentication source on a future login or sync.`,
@@ -194,7 +194,7 @@ export const useUserMutations = ({
     try {
       const result = await syncAdminCwaUsers();
       onShowToast?.(result.message || 'Users synced from CWA', 'success');
-      await fetchUsers();
+      await fetchUsers({ force: true });
       return true;
     } catch (err) {
       return fail(err instanceof Error ? err.message : 'Failed to sync users from CWA');

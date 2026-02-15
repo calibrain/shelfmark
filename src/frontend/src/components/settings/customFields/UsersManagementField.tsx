@@ -20,8 +20,10 @@ export const UsersManagementField = ({
   onUiStateChange,
   authMode,
   onShowToast,
+  onRefreshOverrideSummary,
 }: CustomSettingsFieldRendererProps) => {
   const { route, openCreate, openEdit, openEditOverrides, backToList } = useUsersPanelState();
+  const activeEditRequestIdRef = useRef(0);
 
   const {
     users,
@@ -80,12 +82,30 @@ export const UsersManagementField = ({
     onEditSaveSuccess: clearEditState,
   });
 
+  const invalidateEditContextRequest = useCallback(() => {
+    activeEditRequestIdRef.current += 1;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      invalidateEditContextRequest();
+    };
+  }, [invalidateEditContextRequest]);
+
   const startEditing = async (user: AdminUser) => {
+    const requestId = activeEditRequestIdRef.current + 1;
+    activeEditRequestIdRef.current = requestId;
     beginEditing(user);
     try {
       const context = await fetchUserEditContext(user.id);
+      if (activeEditRequestIdRef.current !== requestId) {
+        return;
+      }
       applyUserEditContext(context);
     } catch {
+      if (activeEditRequestIdRef.current !== requestId) {
+        return;
+      }
       resetEditContext();
     }
   };
@@ -94,6 +114,7 @@ export const UsersManagementField = ({
 
   const handleBackToList = () => {
     onUiStateChange('routeKind', 'list');
+    invalidateEditContextRequest();
     clearEditState();
     backToList();
   };
@@ -107,6 +128,7 @@ export const UsersManagementField = ({
   const handleCreate = async () => {
     const ok = await createUser();
     if (ok) {
+      onRefreshOverrideSummary?.();
       backToList();
     }
   };
@@ -125,7 +147,10 @@ export const UsersManagementField = ({
   };
 
   const handleSyncCwa = async () => {
-    await syncCwaUsers();
+    const ok = await syncCwaUsers();
+    if (ok) {
+      onRefreshOverrideSummary?.();
+    }
   };
 
   const handleBackToEdit = () => {
@@ -151,9 +176,10 @@ export const UsersManagementField = ({
   const handleSaveUserEdit = useCallback(async () => {
     const ok = await saveEditedUser({ includeSettings: false });
     if (ok) {
+      onRefreshOverrideSummary?.();
       backToList();
     }
-  }, [backToList, saveEditedUser]);
+  }, [backToList, onRefreshOverrideSummary, saveEditedUser]);
 
   const handleSaveUserOverrides = useCallback(async () => {
     const ok = await saveEditedUser({
@@ -162,9 +188,10 @@ export const UsersManagementField = ({
       includeSettings: true,
     });
     if (ok) {
+      onRefreshOverrideSummary?.();
       backToList();
     }
-  }, [backToList, saveEditedUser]);
+  }, [backToList, onRefreshOverrideSummary, saveEditedUser]);
 
   const handleSaveUserOverridesRef = useRef(handleSaveUserOverrides);
   useEffect(() => {
@@ -181,6 +208,14 @@ export const UsersManagementField = ({
     }
     return testAdminUserNotificationPreferences(editingUser.id, routes);
   }, [editingUser]);
+
+  const handleDeleteUser = useCallback(async (userId: number) => {
+    const ok = await deleteUser(userId);
+    if (ok) {
+      onRefreshOverrideSummary?.();
+    }
+    return ok;
+  }, [deleteUser, onRefreshOverrideSummary]);
 
   useEffect(() => {
     if (route.kind !== 'edit-overrides') {
@@ -227,7 +262,7 @@ export const UsersManagementField = ({
       users={users}
       loadingUsers={loading}
       loadError={loadError}
-      onRetryLoadUsers={() => void fetchUsers()}
+      onRetryLoadUsers={() => void fetchUsers({ force: true })}
       onCreate={openCreate}
       showCreateForm={route.kind === 'create'}
       createForm={createForm}
@@ -250,7 +285,7 @@ export const UsersManagementField = ({
       downloadDefaults={downloadDefaults}
       onOpenOverrides={handleOpenOverrides}
       onEdit={handleEdit}
-      onDelete={deleteUser}
+      onDelete={handleDeleteUser}
       deletingUserId={deletingUserId}
       onSyncCwa={handleSyncCwa}
       syncingCwa={syncingCwa}

@@ -564,7 +564,7 @@ export const ActivityCard = ({
               {showRequestDetailsToggle && onRequestDetailsToggle && (
                 <IconButton
                   title={isDetailsExpanded ? 'Hide details' : 'Show details'}
-                  className="text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="text-gray-500 hover-action"
                   onClick={onRequestDetailsToggle}
                 >
                   <svg

@@ -52,6 +52,7 @@ interface SettingsContentProps {
   customFieldContext?: {
     authMode?: string;
     onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+    onRefreshOverrideSummary?: () => void;
   };
 }
 
@@ -405,6 +406,7 @@ export const SettingsContent = ({
               disabledReason: disabledState.reason,
               authMode: customFieldContext?.authMode,
               onShowToast: customFieldContext?.onShowToast,
+              onRefreshOverrideSummary: customFieldContext?.onRefreshOverrideSummary,
             })
           : renderField(
               field,

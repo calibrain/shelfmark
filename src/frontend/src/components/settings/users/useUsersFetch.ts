@@ -27,8 +27,12 @@ const shouldSuppressAccessToast = (message: string): boolean =>
 const toLoadErrorMessage = (err: unknown): string =>
   err instanceof Error ? err.message : 'Failed to load users';
 
-const loadUsersIntoCache = async (): Promise<AdminUser[]> => {
-  if (cachedUsers !== null) {
+interface LoadUsersOptions {
+  force?: boolean;
+}
+
+const loadUsersIntoCache = async ({ force = false }: LoadUsersOptions = {}): Promise<AdminUser[]> => {
+  if (!force && cachedUsers !== null) {
     return cachedUsers;
   }
   if (usersCacheLoadPromise) {
@@ -98,14 +102,14 @@ export const useUsersFetch = ({ onShowToast }: UseUsersFetchParams) => {
   const [loading, setLoading] = useState<boolean>(() => cachedUsers === null);
   const [loadError, setLoadError] = useState<string | null>(() => cachedLoadError);
 
-  const fetchUsers = useCallback(async (): Promise<AdminUser[]> => {
-    const hasCachedResult = cachedUsers !== null;
+  const fetchUsers = useCallback(async ({ force = false }: LoadUsersOptions = {}): Promise<AdminUser[]> => {
+    const hasCachedResult = !force && cachedUsers !== null;
     try {
       if (!hasCachedResult) {
         setLoading(true);
       }
       setLoadError(null);
-      const data = await loadUsersIntoCache();
+      const data = await loadUsersIntoCache({ force });
       setUsers(data);
       return data;
     } catch (err) {
