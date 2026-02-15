@@ -6,6 +6,7 @@ Business logic remains in oidc_auth.py.
 
 from typing import Any
 
+from authlib.jose.errors import InvalidClaimError
 from authlib.integrations.flask_client import OAuth
 from flask import Flask, jsonify, redirect, request, session
 
@@ -119,7 +120,40 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
                 return jsonify({"error": "Authentication failed"}), 400
 
             client, config = _get_oidc_client()
-            token = client.authorize_access_token()
+            try:
+                token = client.authorize_access_token()
+            except InvalidClaimError as e:
+                claim_name = getattr(e, "claim_name", "unknown")
+                discovery_url = str(config.get("OIDC_DISCOVERY_URL", ""))
+                provider_issuer = ""
+                try:
+                    metadata = client.load_server_metadata()
+                    if isinstance(metadata, dict):
+                        provider_issuer = str(metadata.get("issuer", ""))
+                except Exception as metadata_error:
+                    logger.debug(f"OIDC metadata lookup failed during claim diagnostics: {metadata_error}")
+
+                logger.error(
+                    "OIDC callback claim validation failed: claim=%s error=%s discovery_url=%s provider_issuer=%s",
+                    claim_name,
+                    e,
+                    discovery_url or "<unset>",
+                    provider_issuer or "<unknown>",
+                )
+                if claim_name == "iss":
+                    return (
+                        jsonify(
+                            {
+                                "error": (
+                                    "OIDC issuer validation failed. Verify your discovery URL and IdP issuer/"
+                                    "external URL configuration."
+                                )
+                            }
+                        ),
+                        400,
+                    )
+
+                return jsonify({"error": f"OIDC token claim validation failed: {claim_name}"}), 400
             claims = _normalize_claims(token.get("userinfo"))
 
             # If userinfo isn't present in token payload, request it explicitly.

@@ -5,6 +5,7 @@ import tempfile
 from unittest.mock import Mock, patch
 
 import pytest
+from authlib.jose.errors import InvalidClaimError
 from flask import Flask, redirect
 
 from shelfmark.core.user_db import UserDB
@@ -189,6 +190,19 @@ class TestOIDCCallbackEndpoint:
         resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
         assert resp.status_code == 400
         assert "missing user claims" in resp.get_json()["error"]
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_returns_400_with_issuer_guidance_on_invalid_issuer_claim(
+        self, mock_get_client, client
+    ):
+        fake_client = Mock()
+        fake_client.authorize_access_token.side_effect = InvalidClaimError("iss")
+        fake_client.load_server_metadata.return_value = {"issuer": "https://auth.example.com/application/o/shelfmark/"}
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        assert resp.status_code == 400
+        assert "issuer validation failed" in resp.get_json()["error"]
 
     @patch("shelfmark.core.oidc_routes._get_oidc_client")
     def test_callback_rejects_when_auto_provision_disabled(self, mock_get_client, client):

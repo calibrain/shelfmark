@@ -30,6 +30,15 @@ _ROUTE_EVENT_OPTIONS = [
     {"value": _ROUTE_EVENT_ALL, "label": "All"},
     *_ADMIN_EVENT_OPTIONS,
 ]
+_USER_EVENT_OPTIONS = [
+    option
+    for option in _ADMIN_EVENT_OPTIONS
+    if option["value"] != NotificationEvent.REQUEST_CREATED.value
+]
+_USER_ROUTE_EVENT_OPTIONS = [
+    {"value": _ROUTE_EVENT_ALL, "label": "All"},
+    *_USER_EVENT_OPTIONS,
+]
 _ROUTE_EVENT_ORDER = [option["value"] for option in _ROUTE_EVENT_OPTIONS]
 _ALLOWED_ROUTE_EVENTS = set(_ROUTE_EVENT_ORDER)
 
@@ -279,7 +288,7 @@ def notifications_settings():
                     "key": "event",
                     "label": "Event",
                     "type": "select",
-                    "options": _ROUTE_EVENT_OPTIONS,
+                    "options": _USER_ROUTE_EVENT_OPTIONS,
                     "defaultValue": _ROUTE_EVENT_ALL,
                 },
                 {

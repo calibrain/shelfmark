@@ -18,15 +18,14 @@ interface UserNotificationOverridesSectionProps {
 type NotificationSettingKey = 'USER_NOTIFICATION_ROUTES';
 
 const ROUTE_EVENT_ALL = 'all';
-const ROUTE_EVENT_OPTIONS = [
+const USER_ROUTE_EVENT_OPTIONS = [
   { value: ROUTE_EVENT_ALL, label: 'All' },
-  { value: 'request_created', label: 'New request submitted' },
   { value: 'request_fulfilled', label: 'Request fulfilled' },
   { value: 'request_rejected', label: 'Request rejected' },
   { value: 'download_complete', label: 'Download complete' },
   { value: 'download_failed', label: 'Download failed' },
 ];
-const ALLOWED_ROUTE_EVENTS = new Set(ROUTE_EVENT_OPTIONS.map((option) => option.value));
+const ALLOWED_ROUTE_EVENTS = new Set(USER_ROUTE_EVENT_OPTIONS.map((option) => option.value));
 
 const fallbackRoutesField: TableFieldConfig = {
   type: 'TableField',
@@ -43,7 +42,7 @@ const fallbackRoutesField: TableFieldConfig = {
       key: 'event',
       label: 'Event',
       type: 'select',
-      options: ROUTE_EVENT_OPTIONS,
+      options: USER_ROUTE_EVENT_OPTIONS,
       defaultValue: ROUTE_EVENT_ALL,
     },
     {

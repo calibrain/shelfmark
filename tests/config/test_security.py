@@ -348,3 +348,28 @@ class TestSecurityOnSave:
         result = _on_save_security({"AUTH_METHOD": "oidc"})
 
         assert result["error"] is False
+
+    def test_on_save_normalizes_oidc_discovery_url(self, tmp_path, monkeypatch):
+        from shelfmark.config.security import _on_save_security
+
+        monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+        values = {"OIDC_DISCOVERY_URL": " 'auth.example.com/.well-known/openid-configuration/' "}
+
+        result = _on_save_security(values)
+
+        assert result["error"] is False
+        assert (
+            result["values"]["OIDC_DISCOVERY_URL"]
+            == "https://auth.example.com/.well-known/openid-configuration"
+        )
+
+    def test_on_save_normalizes_proxy_logout_url(self, tmp_path, monkeypatch):
+        from shelfmark.config.security import _on_save_security
+
+        monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+        values = {"PROXY_AUTH_LOGOUT_URL": "auth.example.com/logout"}
+
+        result = _on_save_security(values)
+
+        assert result["error"] is False
+        assert result["values"]["PROXY_AUTH_LOGOUT_URL"] == "https://auth.example.com/logout"

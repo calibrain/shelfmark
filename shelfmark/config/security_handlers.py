@@ -3,6 +3,7 @@
 import os
 from typing import Any, Callable
 
+from shelfmark.core.utils import normalize_http_url
 from shelfmark.core.user_db import UserDB
 
 
@@ -20,10 +21,27 @@ def on_save_security(
     values: dict[str, Any],
 ) -> dict[str, Any]:
     """Validate security values before persistence."""
-    if values.get("AUTH_METHOD") == "oidc" and not _has_local_password_admin():
-        return {"error": True, "message": _OIDC_LOCKOUT_MESSAGE, "values": values}
+    normalized_values = values.copy()
 
-    return {"error": False, "values": values}
+    discovery_url = normalized_values.get("OIDC_DISCOVERY_URL")
+    if discovery_url is not None:
+        normalized_values["OIDC_DISCOVERY_URL"] = normalize_http_url(
+            str(discovery_url),
+            default_scheme="https",
+        )
+
+    proxy_logout_url = normalized_values.get("PROXY_AUTH_LOGOUT_URL")
+    if proxy_logout_url is not None:
+        normalized_values["PROXY_AUTH_LOGOUT_URL"] = normalize_http_url(
+            str(proxy_logout_url),
+            default_scheme="https",
+            strip_trailing_slash=False,
+        )
+
+    if normalized_values.get("AUTH_METHOD") == "oidc" and not _has_local_password_admin():
+        return {"error": True, "message": _OIDC_LOCKOUT_MESSAGE, "values": normalized_values}
+
+    return {"error": False, "values": normalized_values}
 
 
 def test_oidc_connection(
