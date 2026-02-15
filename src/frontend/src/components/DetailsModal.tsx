@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Book, ButtonStateInfo, isMetadataBook } from '../types';
 import { isUserCancelledError } from '../utils/errors';
 
@@ -122,7 +123,7 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
   const infoLabelClass = 'text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400';
   const infoValueClass = 'text-gray-900 dark:text-gray-100';
 
-  return (
+  const modal = (
     <div
       className="modal-overlay active sm:px-6 sm:py-6"
       onClick={e => {
@@ -355,4 +356,10 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return modal;
+  }
+
+  return createPortal(modal, document.body);
 };

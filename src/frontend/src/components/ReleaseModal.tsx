@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Book,
   Release,
@@ -1319,7 +1320,7 @@ export const ReleaseModal = ({
   const currentTabError = errorBySource[activeTab] ?? null;
   const isInitialLoading = currentTabLoading || (releasesBySource[activeTab] === undefined && !currentTabError);
 
-  return (
+  const modal = (
     <div
       className="modal-overlay active sm:px-6 sm:py-6"
       onClick={(e) => {
@@ -1971,4 +1972,10 @@ export const ReleaseModal = ({
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return modal;
+  }
+
+  return createPortal(modal, document.body);
 };

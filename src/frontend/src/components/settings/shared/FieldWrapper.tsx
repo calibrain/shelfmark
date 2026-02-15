@@ -29,7 +29,7 @@ const renderDescriptionWithLinks = (description: string): ReactNode => {
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className="underline text-sky-600 dark:text-sky-400 hover:text-sky-500 dark:hover:text-sky-300 hover:no-underline"
+        className="underline text-sky-600 dark:text-sky-400"
       >
         {label}
       </a>

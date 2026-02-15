@@ -145,7 +145,7 @@ export interface TableFieldColumnOption {
   childOf?: string;
 }
 
-export type TableFieldColumnType = 'text' | 'select' | 'checkbox' | 'path';
+export type TableFieldColumnType = 'text' | 'select' | 'multiselect' | 'checkbox' | 'path';
 
 export interface TableFieldColumn {
   key: string;
@@ -153,7 +153,7 @@ export interface TableFieldColumn {
   type: TableFieldColumnType;
   placeholder?: string;
   options?: TableFieldColumnOption[];
-  defaultValue?: string | boolean;
+  defaultValue?: string | string[] | boolean;
   filterByField?: string;
 }
 

@@ -1,7 +1,7 @@
 import { DeliveryPreferencesResponse } from '../../../services/api';
 import { PerUserSettings } from './types';
 import { SettingsSubpage } from '../shared';
-import { SettingsTab } from '../../../types/settings';
+import { ActionResult, SettingsTab } from '../../../types/settings';
 import { UserOverridesSections } from './UserOverridesSections';
 
 interface UserOverridesViewProps {
@@ -15,6 +15,7 @@ interface UserOverridesViewProps {
   setUserSettings: (updater: (prev: PerUserSettings) => PerUserSettings) => void;
   usersTab: SettingsTab;
   globalUsersSettingsValues: Record<string, unknown>;
+  onTestNotificationRoutes?: (routes: Array<Record<string, unknown>>) => Promise<ActionResult>;
 }
 
 export const UserOverridesView = ({
@@ -28,6 +29,7 @@ export const UserOverridesView = ({
   setUserSettings,
   usersTab,
   globalUsersSettingsValues,
+  onTestNotificationRoutes,
 }: UserOverridesViewProps) => {
   const content = (
     <div className="space-y-5">
@@ -60,6 +62,7 @@ export const UserOverridesView = ({
         setUserSettings={setUserSettings}
         usersTab={usersTab}
         globalUsersSettingsValues={globalUsersSettingsValues}
+        onTestNotificationRoutes={onTestNotificationRoutes}
       />
     </div>
   );

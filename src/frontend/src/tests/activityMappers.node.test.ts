@@ -138,6 +138,20 @@ describe('activityMappers.requestToActivityItem', () => {
     assert.equal(item.metaLine, 'Book request');
   });
 
+  it('maps audiobook book-level request with audiobook label', () => {
+    const item = requestToActivityItem(
+      makeRequest({
+        request_level: 'book',
+        content_type: 'audiobook',
+        release_data: null,
+        source_hint: '*',
+      }),
+      'admin'
+    );
+
+    assert.equal(item.metaLine, 'Audiobook request · alice');
+  });
+
   it('maps rejected requests with admin note', () => {
     const item = requestToActivityItem(
       makeRequest({

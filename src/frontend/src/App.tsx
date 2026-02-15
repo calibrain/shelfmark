@@ -978,12 +978,20 @@ function App() {
   );
 
   const handleRequestApprove = useCallback(
-    async (requestId: number, record: RequestRecord) => {
+    async (
+      requestId: number,
+      record: RequestRecord,
+      options?: {
+        browseOnly?: boolean;
+      }
+    ) => {
       if (!requestRoleIsAdmin) {
         return;
       }
 
-      if (record.request_level === 'release') {
+      const shouldBrowse = Boolean(options?.browseOnly) || record.request_level === 'book';
+
+      if (!shouldBrowse && record.request_level === 'release') {
         try {
           await fulfilSidebarRequest(requestId, record.release_data || undefined);
           await refreshActivitySnapshot();

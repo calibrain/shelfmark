@@ -1,4 +1,4 @@
-import { ReactNode, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { RequestRecord } from '../../types';
 import { withBasePath } from '../../utils/basePath';
 import { Tooltip } from '../shared/Tooltip';
@@ -10,15 +10,34 @@ import {
   getProgressConfig,
 } from './activityStyles';
 
+interface RequestApproveOptions {
+  browseOnly?: boolean;
+}
+
+type RequestApproveHandler = (
+  requestId: number,
+  record: RequestRecord,
+  options?: RequestApproveOptions
+) => Promise<void> | void;
+
 interface ActivityCardProps {
   item: ActivityItem;
   isAdmin: boolean;
   onDownloadCancel?: (bookId: string) => void;
   onDownloadDismiss?: (bookId: string, linkedRequestId?: number) => void;
   onRequestCancel?: (requestId: number) => void;
-  onRequestApprove?: (requestId: number, record: RequestRecord) => void;
-  onRequestReject?: (requestId: number) => void;
+  onRequestApprove?: RequestApproveHandler;
+  onRequestReviewApprove?: RequestApproveHandler;
+  onRequestReject?: (requestId: number, adminNote?: string) => Promise<void> | void;
+  onRequestRejectConfirm?: (requestId: number, adminNote?: string) => Promise<void> | void;
   onRequestDismiss?: (requestId: number) => void;
+  showRequestDetailsToggle?: boolean;
+  isRequestDetailsOpen?: boolean;
+  onRequestDetailsToggle?: () => void;
+  onRequestDetailsOpen?: () => void;
+  isRequestRejectOpen?: boolean;
+  onRequestRejectClose?: () => void;
+  isSelected?: boolean;
 }
 
 const BookFallback = () => (
@@ -142,6 +161,68 @@ const ActionIcon = ({ icon }: { icon: 'cross' | 'check' | 'stop' }) => {
   );
 };
 
+const asRecord = (value: unknown): Record<string, unknown> => {
+  if (value && typeof value === 'object') {
+    return value as Record<string, unknown>;
+  }
+  return {};
+};
+
+const toOptionalText = (value: unknown): string | undefined => {
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  return undefined;
+};
+
+const toSourceLabel = (value: unknown): string => {
+  const text = toOptionalText(value);
+  if (!text) {
+    return 'Any Source';
+  }
+  const normalized = text.trim().toLowerCase();
+  if (normalized === '*' || normalized === 'any' || normalized === 'all') {
+    return 'Any Source';
+  }
+  return text
+    .split(/[_\s-]+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
+
+const formatDateTime = (isoDate: string): string => {
+  const parsed = Date.parse(isoDate);
+  if (!Number.isFinite(parsed)) {
+    return isoDate;
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(parsed);
+};
+
+const hasAttachedReleaseData = (record: RequestRecord): boolean => {
+  if (record.request_level !== 'release') {
+    return false;
+  }
+  if (!record.release_data || typeof record.release_data !== 'object') {
+    return false;
+  }
+  return Object.keys(record.release_data).length > 0;
+};
+
+const DetailField = ({ label, value }: { label: string; value: string }) => (
+  <div className="py-1">
+    <p className="text-[10px] uppercase tracking-wide opacity-60">{label}</p>
+    <p className="text-xs font-medium break-words mt-0.5">{value}</p>
+  </div>
+);
+
+const MAX_ADMIN_NOTE_LENGTH = 1000;
+
 export const ActivityCard = ({
   item,
   isAdmin,
@@ -149,13 +230,27 @@ export const ActivityCard = ({
   onDownloadDismiss,
   onRequestCancel,
   onRequestApprove,
+  onRequestReviewApprove,
   onRequestReject,
+  onRequestRejectConfirm,
   onRequestDismiss,
+  showRequestDetailsToggle = false,
+  isRequestDetailsOpen = false,
+  onRequestDetailsToggle,
+  onRequestDetailsOpen,
+  isRequestRejectOpen = false,
+  onRequestRejectClose,
+  isSelected = false,
 }: ActivityCardProps) => {
   const model = useMemo(() => buildActivityCardModel(item, isAdmin), [item, isAdmin]);
   const noteLine = model.noteLine;
   const badgeRefs = useRef<Record<string, HTMLSpanElement | null>>({});
+  const titleLineRef = useRef<HTMLParagraphElement | null>(null);
   const [badgeOverflow, setBadgeOverflow] = useState<Record<string, boolean>>({});
+  const [titleOverflow, setTitleOverflow] = useState(false);
+  const [isReviewSubmitting, setIsReviewSubmitting] = useState(false);
+  const [rejectNote, setRejectNote] = useState('');
+  const [isRejectSubmitting, setIsRejectSubmitting] = useState(false);
 
   useLayoutEffect(() => {
     const measureBadgeOverflow = () => {
@@ -200,6 +295,50 @@ export const ActivityCard = ({
     return () => observer.disconnect();
   }, [model.badges]);
 
+  useLayoutEffect(() => {
+    const measureTitleOverflow = () => {
+      const element = titleLineRef.current;
+      const nextOverflow = Boolean(
+        element && element.scrollWidth - element.clientWidth > 1
+      );
+      setTitleOverflow((current) => (current === nextOverflow ? current : nextOverflow));
+    };
+
+    measureTitleOverflow();
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measureTitleOverflow);
+      return () => window.removeEventListener('resize', measureTitleOverflow);
+    }
+
+    const observer = new ResizeObserver(measureTitleOverflow);
+    if (titleLineRef.current) {
+      observer.observe(titleLineRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [item.title, item.author]);
+
+  const reviewRecord = item.requestRecord;
+  const reviewApproveHandler = onRequestReviewApprove || onRequestApprove;
+  const isDetailsExpanded = isRequestDetailsOpen || isRequestRejectOpen;
+
+  useEffect(() => {
+    if (!isRequestDetailsOpen) {
+      setIsReviewSubmitting(false);
+      return;
+    }
+  }, [isRequestDetailsOpen, reviewRecord?.id, reviewRecord?.updated_at]);
+
+  useEffect(() => {
+    if (!isRequestRejectOpen) {
+      setRejectNote('');
+      setIsRejectSubmitting(false);
+      return;
+    }
+    setRejectNote('');
+  }, [isRequestRejectOpen, reviewRecord?.id, reviewRecord?.updated_at]);
+
   const runAction = (action: ActivityCardAction) => {
     switch (action.kind) {
       case 'download-remove':
@@ -210,6 +349,16 @@ export const ActivityCard = ({
         onDownloadDismiss?.(action.bookId, action.linkedRequestId);
         break;
       case 'request-approve':
+        if (showRequestDetailsToggle && hasAttachedReleaseData(action.record)) {
+          if (!isRequestDetailsOpen) {
+            if (onRequestDetailsOpen) {
+              onRequestDetailsOpen();
+            } else if (onRequestDetailsToggle) {
+              onRequestDetailsToggle();
+            }
+          }
+          break;
+        }
         onRequestApprove?.(action.requestId, action.record);
         break;
       case 'request-reject':
@@ -248,6 +397,80 @@ export const ActivityCard = ({
 
   const actions = model.actions.filter(hasActionHandler);
 
+  const bookData = asRecord(reviewRecord?.book_data);
+  const releaseData = asRecord(reviewRecord?.release_data);
+  const bookTitle = toOptionalText(bookData.title) || 'Unknown title';
+  const fileTitle = toOptionalText(releaseData.title) || bookTitle;
+  const fileFormat =
+    toOptionalText(releaseData.format) ||
+    toOptionalText(releaseData.filetype) ||
+    toOptionalText(releaseData.extension) ||
+    'Unknown';
+  const fileSize = toOptionalText(releaseData.size) || 'Unknown';
+  const sourceLabel = toSourceLabel(
+    releaseData.source_display_name || releaseData.source || reviewRecord?.source_hint
+  );
+
+  const hasAttachedRelease =
+    reviewRecord?.request_level === 'release' && Object.keys(releaseData).length > 0;
+  const requiresBrowseBeforeApprove =
+    reviewRecord?.request_level === 'book' || !hasAttachedRelease;
+  const showSourceField = reviewRecord?.request_level === 'release';
+
+  const approveLabel =
+    requiresBrowseBeforeApprove
+      ? 'Browse Releases To Approve'
+      : 'Approve Attached File';
+
+  const provider = toOptionalText(bookData.provider)?.toLowerCase();
+  const providerId = toOptionalText(bookData.provider_id);
+  const canBrowseAlternatives = Boolean(provider && providerId && provider !== 'direct_download');
+
+  const handleReviewApprove = async () => {
+    if (!reviewRecord || !reviewApproveHandler || isReviewSubmitting) {
+      return;
+    }
+
+    setIsReviewSubmitting(true);
+    try {
+      if (requiresBrowseBeforeApprove) {
+        await reviewApproveHandler(reviewRecord.id, reviewRecord, { browseOnly: true });
+        return;
+      }
+
+      await reviewApproveHandler(reviewRecord.id, reviewRecord);
+    } finally {
+      setIsReviewSubmitting(false);
+    }
+  };
+
+  const handleReviewBrowseAlternatives = async () => {
+    if (!reviewRecord || !reviewApproveHandler || isReviewSubmitting) {
+      return;
+    }
+
+    setIsReviewSubmitting(true);
+    try {
+      await reviewApproveHandler(reviewRecord.id, reviewRecord, { browseOnly: true });
+    } finally {
+      setIsReviewSubmitting(false);
+    }
+  };
+
+  const canShowInlineReview = Boolean(isRequestDetailsOpen && reviewRecord && reviewApproveHandler);
+  const rejectConfirmHandler = onRequestRejectConfirm || onRequestReject;
+  const canShowInlineReject = Boolean(
+    isRequestRejectOpen &&
+    item.requestId &&
+    rejectConfirmHandler
+  );
+  const requestedAt = reviewRecord ? formatDateTime(reviewRecord.created_at) : '';
+  const requestType = reviewRecord?.content_type === 'audiobook' ? 'Audiobook' : 'Book';
+  const titleAuthorLine = item.author ? `${item.title} — ${item.author}` : item.title;
+  const titleLineClassName = isDetailsExpanded
+    ? 'text-sm leading-tight min-w-0 whitespace-normal break-words'
+    : 'text-sm truncate leading-tight min-w-0';
+
   const titleNode =
     item.kind === 'download' &&
     item.visualStatus === 'complete' &&
@@ -263,8 +486,32 @@ export const ActivityCard = ({
       item.title
     );
 
+  const handleInlineRejectConfirm = async () => {
+    if (!item.requestId || !rejectConfirmHandler || isRejectSubmitting) {
+      return;
+    }
+
+    setIsRejectSubmitting(true);
+    try {
+      const trimmed = rejectNote.trim();
+      await rejectConfirmHandler(item.requestId, trimmed || undefined);
+    } finally {
+      setIsRejectSubmitting(false);
+    }
+  };
+
   return (
-    <div className="px-4 py-2 -mx-4 hover-row cursor-default">
+    <div
+      className={`px-4 py-2 -mx-4 cursor-default ${
+        isSelected ? 'relative' : 'hover-row'
+      }`}
+    >
+      {isSelected && (
+        <span
+          aria-hidden="true"
+          className="absolute left-0 top-2 bottom-2 w-1 bg-sky-500/80"
+        />
+      )}
       <div className="flex gap-3 items-start">
         {/* Artwork */}
         <div className="w-12 h-[4.5rem] rounded flex-shrink-0 overflow-hidden bg-gray-200 dark:bg-gray-700">
@@ -282,10 +529,18 @@ export const ActivityCard = ({
         {/* Content */}
         <div className="flex-1 min-w-0 py-0.5">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-sm truncate leading-tight min-w-0" title={`${item.title} — ${item.author}`}>
-              <span className="font-semibold">{titleNode}</span>
-              {item.author && <span className="opacity-60 text-xs"> — {item.author}</span>}
-            </p>
+            <div className="flex-1 min-w-0">
+              <Tooltip
+                content={!isDetailsExpanded && titleOverflow ? titleAuthorLine : undefined}
+                delay={0}
+                position="bottom"
+              >
+                <p ref={titleLineRef} className={titleLineClassName}>
+                  <span className="font-semibold">{titleNode}</span>
+                  {item.author && <span className="opacity-60 text-xs"> — {item.author}</span>}
+                </p>
+              </Tooltip>
+            </div>
             <div className="flex-shrink-0 inline-flex items-center gap-1 -my-1">
               {actions.map((action) => {
                 const config = actionUiConfig(action);
@@ -306,6 +561,24 @@ export const ActivityCard = ({
                   </Tooltip>
                 );
               })}
+              {showRequestDetailsToggle && onRequestDetailsToggle && (
+                <IconButton
+                  title={isDetailsExpanded ? 'Hide details' : 'Show details'}
+                  className="text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  onClick={onRequestDetailsToggle}
+                >
+                  <svg
+                    className={`w-4 h-4 transition-transform ${isDetailsExpanded ? 'rotate-180' : ''}`}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    aria-hidden="true"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6" />
+                  </svg>
+                </IconButton>
+              )}
             </div>
           </div>
 
@@ -370,6 +643,94 @@ export const ActivityCard = ({
               );
             })}
           </div>
+
+          {canShowInlineReview && (
+            <div className="-mx-4 mt-2 px-4 pb-2 space-y-3 animate-fade-in">
+              <div className={`grid grid-cols-1 ${showSourceField ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-x-3 gap-y-1`}>
+                <DetailField label="Requested" value={requestedAt} />
+                <DetailField label="Type" value={requestType} />
+                {showSourceField && <DetailField label="Source" value={sourceLabel} />}
+              </div>
+
+              {hasAttachedRelease ? (
+                <div className="space-y-2">
+                  <p className="text-[11px] font-medium uppercase tracking-wide opacity-70">Attached File</p>
+                  <div className="grid grid-cols-1 gap-x-3 gap-y-1">
+                    <DetailField label="Title" value={fileTitle} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                    <DetailField label="Size" value={fileSize} />
+                    <DetailField label="Format" value={String(fileFormat).toUpperCase()} />
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs opacity-70">
+                  {reviewRecord?.request_level === 'book'
+                    ? 'This is a book-level request without an attached file. Choose a release before approval.'
+                    : 'No attached release data is available. Choose a release before approval.'}
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleReviewApprove}
+                  disabled={isReviewSubmitting}
+                  className="px-2.5 py-1.5 rounded-md text-xs font-medium text-white bg-green-600 hover:bg-green-700 transition-colors disabled:opacity-60"
+                >
+                  {isReviewSubmitting ? 'Working...' : approveLabel}
+                </button>
+                {canBrowseAlternatives && hasAttachedRelease && (
+                  <button
+                    type="button"
+                    onClick={handleReviewBrowseAlternatives}
+                    disabled={isReviewSubmitting}
+                    className="px-2.5 py-1.5 rounded-md text-xs border border-[var(--border-muted)] hover:bg-[var(--hover-surface)] transition-colors disabled:opacity-50"
+                  >
+                    Browse Alternatives
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {canShowInlineReject && (
+            <div className="-mx-4 mt-2 px-4 pb-2 space-y-3 animate-fade-in">
+              <p className="text-xs font-medium">
+                Reject request for <span className="opacity-80">{item.title || 'Untitled request'}</span>
+              </p>
+              <textarea
+                value={rejectNote}
+                onChange={(event) => setRejectNote(event.target.value.slice(0, MAX_ADMIN_NOTE_LENGTH))}
+                rows={3}
+                maxLength={MAX_ADMIN_NOTE_LENGTH}
+                placeholder="Optional note shown to the user"
+                className="w-full px-2.5 py-2 rounded-md border border-[var(--border-muted)] bg-[var(--bg)] text-xs resize-y min-h-[72px] focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-500"
+                disabled={isRejectSubmitting}
+              />
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] opacity-60">{rejectNote.length}/{MAX_ADMIN_NOTE_LENGTH}</span>
+                <div className="inline-flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={onRequestRejectClose}
+                    disabled={isRejectSubmitting}
+                    className="px-2.5 py-1.5 rounded-md text-xs hover:bg-[var(--hover-surface)] transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleInlineRejectConfirm}
+                    disabled={isRejectSubmitting}
+                    className="px-2.5 py-1.5 rounded-md text-xs font-medium text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-60"
+                  >
+                    {isRejectSubmitting ? 'Rejecting...' : 'Reject'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

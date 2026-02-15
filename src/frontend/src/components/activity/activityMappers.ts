@@ -111,12 +111,15 @@ const requestStatusToVisualStatus = (status: RequestRecord['status']): ActivityV
 
 const buildRequestMetaLine = (
   record: RequestRecord,
+  bookData: Record<string, unknown>,
   releaseData: Record<string, unknown>,
   viewerRole: 'user' | 'admin'
 ): string => {
   if (record.request_level === 'book') {
+    const contentType = toOptionalText(record.content_type || bookData.content_type)?.toLowerCase();
+    const requestTypeLabel = contentType === 'audiobook' ? 'Audiobook request' : 'Book request';
     const username = viewerRole === 'admin' ? toOptionalText(record.username) : undefined;
-    return joinMetaParts(['Book request', username]);
+    return joinMetaParts([requestTypeLabel, username]);
   }
 
   const format = toOptionalText(releaseData.format)?.toUpperCase();
@@ -147,7 +150,7 @@ export const requestToActivityItem = (
     title: toText(bookData.title ?? releaseData.title, 'Unknown title'),
     author: toText(bookData.author ?? releaseData.author, 'Unknown author'),
     preview: toOptionalText(bookData.preview) || toOptionalText(releaseData.preview),
-    metaLine: buildRequestMetaLine(record, releaseData, viewerRole),
+    metaLine: buildRequestMetaLine(record, bookData, releaseData, viewerRole),
     statusLabel: STATUS_LABELS[visualStatus],
     adminNote: toOptionalText(record.admin_note),
     timestamp,

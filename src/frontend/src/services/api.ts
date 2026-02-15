@@ -704,6 +704,31 @@ export const getAdminNotificationPreferences = async (
   return fetchJSON<DeliveryPreferencesResponse>(`${API_BASE}/admin/users/${userId}/notification-preferences`);
 };
 
+export const testAdminUserNotificationPreferences = async (
+  userId: number,
+  routes: Array<Record<string, unknown>>
+): Promise<import('../types/settings').ActionResult> => {
+  return fetchJSON<import('../types/settings').ActionResult>(
+    `${API_BASE}/admin/users/${userId}/notification-preferences/test`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
+    }
+  );
+};
+
+export const testSelfNotificationPreferences = async (
+  routes: Array<Record<string, unknown>>
+): Promise<import('../types/settings').ActionResult> => {
+  return fetchJSON<import('../types/settings').ActionResult>(
+    `${API_BASE}/users/me/notification-preferences/test`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
+    }
+  );
+};
+
 export interface SettingsOverrideUserDetail {
   userId: number;
   username: string;

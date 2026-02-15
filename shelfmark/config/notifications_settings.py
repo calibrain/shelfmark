@@ -21,7 +21,7 @@ _URL_SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*$")
 _ROUTE_EVENT_ALL = "all"
 _ADMIN_EVENT_OPTIONS = [
     {"value": NotificationEvent.REQUEST_CREATED.value, "label": "New request submitted"},
-    {"value": NotificationEvent.REQUEST_FULFILLED.value, "label": "Request fulfilled"},
+    {"value": NotificationEvent.REQUEST_FULFILLED.value, "label": "Request approved"},
     {"value": NotificationEvent.REQUEST_REJECTED.value, "label": "Request rejected"},
     {"value": NotificationEvent.DOWNLOAD_COMPLETE.value, "label": "Download complete"},
     {"value": NotificationEvent.DOWNLOAD_FAILED.value, "label": "Download failed"},
@@ -30,19 +30,11 @@ _ROUTE_EVENT_OPTIONS = [
     {"value": _ROUTE_EVENT_ALL, "label": "All"},
     *_ADMIN_EVENT_OPTIONS,
 ]
-_USER_EVENT_OPTIONS = [
-    option
-    for option in _ADMIN_EVENT_OPTIONS
-    if option["value"] != NotificationEvent.REQUEST_CREATED.value
-]
-_USER_ROUTE_EVENT_OPTIONS = [
-    {"value": _ROUTE_EVENT_ALL, "label": "All"},
-    *_USER_EVENT_OPTIONS,
-]
 _ROUTE_EVENT_ORDER = [option["value"] for option in _ROUTE_EVENT_OPTIONS]
+_ROUTE_EVENT_INDEX = {event: index for index, event in enumerate(_ROUTE_EVENT_ORDER)}
 _ALLOWED_ROUTE_EVENTS = set(_ROUTE_EVENT_ORDER)
 
-_DEFAULT_ROUTE_ROWS = [{"event": _ROUTE_EVENT_ALL, "url": ""}]
+_DEFAULT_ROUTE_ROWS = [{"event": [_ROUTE_EVENT_ALL], "url": ""}]
 
 
 def _looks_like_apprise_url(url: str) -> bool:
@@ -64,22 +56,49 @@ def _coerce_route_rows(value: Any) -> list[dict[str, Any]]:
     return []
 
 
-def _normalize_routes(value: Any) -> list[dict[str, str]]:
-    normalized: list[dict[str, str]] = []
-    seen: set[tuple[str, str]] = set()
+def _coerce_route_event_values(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, (tuple, set)):
+        return list(value)
+    return [value]
+
+
+def _normalize_route_events(value: Any) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+
+    for raw_event in _coerce_route_event_values(value):
+        event = str(raw_event or "").strip().lower()
+        if not event or event not in _ALLOWED_ROUTE_EVENTS:
+            continue
+        if event in seen:
+            continue
+        seen.add(event)
+        normalized.append(event)
+
+    if _ROUTE_EVENT_ALL in seen:
+        return [_ROUTE_EVENT_ALL]
+
+    return sorted(normalized, key=lambda event: _ROUTE_EVENT_INDEX[event])
+
+
+def _normalize_routes(value: Any) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    seen: set[tuple[tuple[str, ...], str]] = set()
 
     for row in _coerce_route_rows(value):
-        event = str(row.get("event") or "").strip().lower()
-        if event not in _ALLOWED_ROUTE_EVENTS:
+        events = _normalize_route_events(row.get("event"))
+        if not events:
             continue
 
         url = str(row.get("url") or "").strip()
-        key = (event, url)
+        key = (tuple(events), url)
         if key in seen:
             continue
         seen.add(key)
 
-        normalized.append({"event": event, "url": url})
+        normalized.append({"event": events, "url": url})
 
     return normalized
 
@@ -87,21 +106,27 @@ def _normalize_routes(value: Any) -> list[dict[str, str]]:
 def _count_invalid_route_events(value: Any) -> int:
     invalid = 0
     for row in _coerce_route_rows(value):
-        event = str(row.get("event") or "").strip().lower()
-        if event not in _ALLOWED_ROUTE_EVENTS:
+        raw_events = _coerce_route_event_values(row.get("event"))
+        if not raw_events:
             invalid += 1
+            continue
+
+        for raw_event in raw_events:
+            event = str(raw_event or "").strip().lower()
+            if not event or event not in _ALLOWED_ROUTE_EVENTS:
+                invalid += 1
     return invalid
 
 
-def _count_invalid_route_urls(routes: list[dict[str, str]]) -> int:
+def _count_invalid_route_urls(routes: list[dict[str, Any]]) -> int:
     return sum(1 for row in routes if row["url"] and not _looks_like_apprise_url(row["url"]))
 
 
-def _ensure_default_route_row(routes: list[dict[str, str]]) -> list[dict[str, str]]:
+def _ensure_default_route_row(routes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return routes if routes else [dict(row) for row in _DEFAULT_ROUTE_ROWS]
 
 
-def _extract_unique_route_urls(routes: list[dict[str, str]]) -> list[str]:
+def _extract_unique_route_urls(routes: list[dict[str, Any]]) -> list[str]:
     urls: list[str] = []
     seen: set[str] = set()
     for row in routes:
@@ -115,7 +140,39 @@ def _extract_unique_route_urls(routes: list[dict[str, str]]) -> list[str]:
     return urls
 
 
-def normalize_notification_routes(value: Any) -> list[dict[str, str]]:
+def build_notification_test_result(routes_input: Any, *, scope_label: str) -> dict[str, Any]:
+    invalid_event_count = _count_invalid_route_events(routes_input)
+    if invalid_event_count:
+        return {
+            "success": False,
+            "message": (
+                f"Found {invalid_event_count} invalid {scope_label} notification route event value(s). "
+                "Fix route events before running a test."
+            ),
+        }
+
+    normalized_routes = _normalize_routes(routes_input)
+    invalid_url_count = _count_invalid_route_urls(normalized_routes)
+    if invalid_url_count:
+        return {
+            "success": False,
+            "message": (
+                f"Found {invalid_url_count} invalid {scope_label} notification URL(s). "
+                "Fix route URLs before running a test."
+            ),
+        }
+
+    urls = _extract_unique_route_urls(normalized_routes)
+    if not urls:
+        return {
+            "success": False,
+            "message": f"Add at least one {scope_label} notification URL route first.",
+        }
+
+    return send_test_notification(urls)
+
+
+def normalize_notification_routes(value: Any) -> list[dict[str, Any]]:
     """Normalize route table rows for notification preferences."""
     return _normalize_routes(value)
 
@@ -194,36 +251,7 @@ def _test_admin_notification_action(current_values: dict[str, Any]) -> dict[str,
         effective.update(current_values)
 
     routes_input = effective.get("ADMIN_NOTIFICATION_ROUTES", [])
-
-    invalid_event_count = _count_invalid_route_events(routes_input)
-    if invalid_event_count:
-        return {
-            "success": False,
-            "message": (
-                f"Found {invalid_event_count} invalid global notification route event value(s). "
-                "Fix route events before running a test."
-            ),
-        }
-
-    normalized_routes = _normalize_routes(routes_input)
-    invalid_url_count = _count_invalid_route_urls(normalized_routes)
-    if invalid_url_count:
-        return {
-            "success": False,
-            "message": (
-                f"Found {invalid_url_count} invalid global notification URL(s). "
-                "Fix route URLs before running a test."
-            ),
-        }
-
-    urls = _extract_unique_route_urls(normalized_routes)
-    if not urls:
-        return {
-            "success": False,
-            "message": "Add at least one global notification URL route first.",
-        }
-
-    return send_test_notification(urls)
+    return build_notification_test_result(routes_input, scope_label="global")
 
 
 register_on_save("notifications", _on_save_notifications)
@@ -253,9 +281,10 @@ def notifications_settings():
                 {
                     "key": "event",
                     "label": "Event",
-                    "type": "select",
+                    "type": "multiselect",
                     "options": _ROUTE_EVENT_OPTIONS,
-                    "defaultValue": _ROUTE_EVENT_ALL,
+                    "defaultValue": [_ROUTE_EVENT_ALL],
+                    "placeholder": "Select events...",
                 },
                 {
                     "key": "url",
@@ -287,9 +316,10 @@ def notifications_settings():
                 {
                     "key": "event",
                     "label": "Event",
-                    "type": "select",
-                    "options": _USER_ROUTE_EVENT_OPTIONS,
-                    "defaultValue": _ROUTE_EVENT_ALL,
+                    "type": "multiselect",
+                    "options": _ROUTE_EVENT_OPTIONS,
+                    "defaultValue": [_ROUTE_EVENT_ALL],
+                    "placeholder": "Select events...",
                 },
                 {
                     "key": "url",

@@ -5,6 +5,7 @@ from typing import Any, Callable
 from flask import Flask, jsonify, request
 
 from shelfmark.config.notifications_settings import (
+    build_notification_test_result,
     is_valid_notification_url,
     normalize_notification_routes,
 )
@@ -72,6 +73,25 @@ def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], li
     return valid, errors
 
 
+def build_user_notification_test_response(
+    *,
+    user_id: int,
+    payload: Any,
+) -> tuple[dict[str, Any], int]:
+    from shelfmark.core.config import config as app_config
+
+    routes_input = app_config.get("USER_NOTIFICATION_ROUTES", [], user_id=user_id)
+    if isinstance(payload, dict):
+        if "USER_NOTIFICATION_ROUTES" in payload:
+            routes_input = payload.get("USER_NOTIFICATION_ROUTES")
+        elif "routes" in payload:
+            routes_input = payload.get("routes")
+
+    result = build_notification_test_result(routes_input, scope_label="personal")
+    status_code = 200 if result.get("success", False) else 400
+    return result, status_code
+
+
 def register_admin_settings_routes(
     app: Flask,
     user_db: UserDB,
@@ -129,6 +149,20 @@ def register_admin_settings_routes(
             return jsonify({"error": "Notifications settings tab not found"}), 500
 
         return jsonify(payload)
+
+    @app.route("/api/admin/users/<int:user_id>/notification-preferences/test", methods=["POST"])
+    @require_admin
+    def admin_test_notification_preferences(user_id):
+        user = user_db.get_user(user_id=user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        payload = request.get_json(silent=True)
+        result, status_code = build_user_notification_test_response(
+            user_id=user_id,
+            payload=payload,
+        )
+        return jsonify(result), status_code
 
     @app.route("/api/admin/settings/overrides-summary", methods=["GET"])
     @require_admin

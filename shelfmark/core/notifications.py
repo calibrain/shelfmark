@@ -85,20 +85,37 @@ def _normalize_routes(value: Any) -> list[dict[str, str]]:
         if not isinstance(row, dict):
             continue
 
-        event = str(row.get("event") or "").strip().lower()
-        if event not in allowed_events:
-            continue
+        raw_events = row.get("event")
+        if isinstance(raw_events, list):
+            event_values = raw_events
+        elif isinstance(raw_events, (tuple, set)):
+            event_values = list(raw_events)
+        else:
+            event_values = [raw_events]
 
         url = str(row.get("url") or "").strip()
         if not url:
             continue
 
-        key = (event, url)
-        if key in seen:
-            continue
-        seen.add(key)
+        row_events: list[str] = []
+        for raw_event in event_values:
+            event = str(raw_event or "").strip().lower()
+            if event not in allowed_events:
+                continue
+            if event in row_events:
+                continue
+            row_events.append(event)
 
-        normalized.append({"event": event, "url": url})
+        if _ROUTE_EVENT_ALL in row_events:
+            row_events = [_ROUTE_EVENT_ALL]
+
+        for event in row_events:
+            key = (event, url)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            normalized.append({"event": event, "url": url})
 
     return normalized
 
@@ -185,7 +202,7 @@ def _render_message(context: NotificationContext) -> tuple[str, str]:
     if event == NotificationEvent.REQUEST_CREATED:
         return "New Request", f'{username} requested "{title}" by {author}'
     if event == NotificationEvent.REQUEST_FULFILLED:
-        return "Request Fulfilled", f'Request for "{title}" by {author} was fulfilled.'
+        return "Request Approved", f'Request for "{title}" by {author} was approved.'
     if event == NotificationEvent.REQUEST_REJECTED:
         note = _clean_text(context.admin_note, "")
         note_line = f"\nNote: {note}" if note else ""

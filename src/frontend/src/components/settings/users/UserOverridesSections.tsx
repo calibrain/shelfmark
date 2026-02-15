@@ -1,5 +1,6 @@
 import { Fragment, ReactElement } from 'react';
 import { DeliveryPreferencesResponse } from '../../../services/api';
+import { ActionResult } from '../../../types/settings';
 import { SettingsTab } from '../../../types/settings';
 import { UserNotificationOverridesSection } from './UserNotificationOverridesSection';
 import { UserOverridesSection } from './UserOverridesSection';
@@ -19,6 +20,7 @@ interface UserOverridesSectionsProps {
   setUserSettings: (updater: (prev: PerUserSettings) => PerUserSettings) => void;
   usersTab?: SettingsTab;
   globalUsersSettingsValues?: Record<string, unknown>;
+  onTestNotificationRoutes?: (routes: Array<Record<string, unknown>>) => Promise<ActionResult>;
 }
 
 interface UserOverrideSectionDefinition {
@@ -56,6 +58,7 @@ export const UserOverridesSections = ({
   setUserSettings,
   usersTab,
   globalUsersSettingsValues,
+  onTestNotificationRoutes,
 }: UserOverridesSectionsProps) => {
   const requestedSections = sections ?? USER_OVERRIDE_SECTION_ORDER;
   const activeSections = requestedSections.filter((sectionId) => {
@@ -98,6 +101,7 @@ export const UserOverridesSections = ({
             isUserOverridable={isUserOverridable}
             userSettings={userSettings}
             setUserSettings={setUserSettings}
+            onTestNotificationRoutes={onTestNotificationRoutes}
           />
         ),
       });

@@ -61,9 +61,32 @@ def test_on_save_notifications_normalizes_routes(monkeypatch):
 
     assert result["error"] is False
     assert result["values"]["ADMIN_NOTIFICATION_ROUTES"] == [
-        {"event": "all", "url": "ntfys://ntfy.sh/shelfmark"},
-        {"event": "request_created", "url": ""},
-        {"event": "request_created", "url": "ntfys://ntfy.sh/requests"},
+        {"event": ["all"], "url": "ntfys://ntfy.sh/shelfmark"},
+        {"event": ["request_created"], "url": ""},
+        {"event": ["request_created"], "url": "ntfys://ntfy.sh/requests"},
+    ]
+
+
+def test_on_save_notifications_normalizes_multiselect_event_rows(monkeypatch):
+    monkeypatch.setattr(
+        "shelfmark.config.notifications_settings.load_config_file",
+        lambda _tab: {},
+    )
+
+    values = {
+        "ADMIN_NOTIFICATION_ROUTES": [
+            {"event": ["download_complete", "request_created"], "url": "ntfys://ntfy.sh/mixed"},
+            {"event": ["request_created", "download_complete"], "url": "ntfys://ntfy.sh/mixed"},
+            {"event": ["all", "download_failed"], "url": "ntfys://ntfy.sh/all"},
+        ],
+    }
+
+    result = notifications_settings_module._on_save_notifications(values)
+
+    assert result["error"] is False
+    assert result["values"]["ADMIN_NOTIFICATION_ROUTES"] == [
+        {"event": ["request_created", "download_complete"], "url": "ntfys://ntfy.sh/mixed"},
+        {"event": ["all"], "url": "ntfys://ntfy.sh/all"},
     ]
 
 
@@ -80,7 +103,7 @@ def test_on_save_notifications_allows_empty_routes(monkeypatch):
     )
 
     assert result["error"] is False
-    assert result["values"]["ADMIN_NOTIFICATION_ROUTES"] == [{"event": "all", "url": ""}]
+    assert result["values"]["ADMIN_NOTIFICATION_ROUTES"] == [{"event": ["all"], "url": ""}]
 
 
 def test_test_admin_notification_action_uses_current_unsaved_values(monkeypatch):

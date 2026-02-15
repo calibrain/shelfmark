@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import { AdminUser } from '../../../services/api';
+import {
+  AdminUser,
+  testAdminUserNotificationPreferences,
+} from '../../../services/api';
 import { CustomSettingsFieldRendererProps } from './types';
 import {
   canCreateLocalUsersForAuthMode,
@@ -172,6 +175,13 @@ export const UsersManagementField = ({
     await handleSaveUserOverridesRef.current();
   }, []);
 
+  const handleTestNotificationRoutes = useCallback(async (routes: Array<Record<string, unknown>>) => {
+    if (!editingUser) {
+      return { success: false, message: 'No user selected for notification test.' };
+    }
+    return testAdminUserNotificationPreferences(editingUser.id, routes);
+  }, [editingUser]);
+
   useEffect(() => {
     if (route.kind !== 'edit-overrides') {
       onUiStateChange('hasChanges', false);
@@ -206,6 +216,7 @@ export const UsersManagementField = ({
         setUserSettings={(updater) => setUserSettings(updater)}
         usersTab={usersTab}
         globalUsersSettingsValues={values}
+        onTestNotificationRoutes={handleTestNotificationRoutes}
       />
     );
   }

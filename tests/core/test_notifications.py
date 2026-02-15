@@ -71,6 +71,19 @@ def test_render_message_includes_error_line_for_download_failure():
     assert "Connection timeout" in body
 
 
+def test_render_message_uses_request_approved_copy():
+    context = notifications_module.NotificationContext(
+        event=notifications_module.NotificationEvent.REQUEST_FULFILLED,
+        title="Example Book",
+        author="Example Author",
+    )
+
+    title, body = notifications_module._render_message(context)
+
+    assert title == "Request Approved"
+    assert "was approved." in body
+
+
 def test_notify_admin_submits_non_blocking_when_route_matches_event(monkeypatch):
     fake_executor = _FakeExecutor()
     monkeypatch.setattr(notifications_module, "_executor", fake_executor)
@@ -238,4 +251,44 @@ def test_resolve_route_urls_for_event_includes_all_and_specific_rows():
     assert urls == [
         "ntfys://ntfy.sh/all",
         "ntfys://ntfy.sh/errors",
+    ]
+
+
+def test_resolve_admin_routes_expands_multiselect_event_rows(monkeypatch):
+    def _fake_get(key, default=None):
+        if key == "ADMIN_NOTIFICATION_ROUTES":
+            return [
+                {"event": ["request_created", "download_failed"], "url": "ntfys://ntfy.sh/multi"},
+                {"event": ["all", "download_complete"], "url": "ntfys://ntfy.sh/all"},
+            ]
+        return default
+
+    monkeypatch.setattr(notifications_module.app_config, "get", _fake_get)
+
+    routes = notifications_module._resolve_admin_routes()
+
+    assert routes == [
+        {"event": "request_created", "url": "ntfys://ntfy.sh/multi"},
+        {"event": "download_failed", "url": "ntfys://ntfy.sh/multi"},
+        {"event": "all", "url": "ntfys://ntfy.sh/all"},
+    ]
+
+
+def test_resolve_user_routes_expands_multiselect_event_rows(monkeypatch):
+    def _fake_get(key, default=None, user_id=None):
+        if key != "USER_NOTIFICATION_ROUTES" or user_id != 7:
+            return default
+        return [
+            {"event": ["download_complete", "request_fulfilled"], "url": "ntfys://ntfy.sh/user-main"},
+            {"event": ["all", "download_failed"], "url": "ntfys://ntfy.sh/user-all"},
+        ]
+
+    monkeypatch.setattr(notifications_module.app_config, "get", _fake_get)
+
+    routes = notifications_module._resolve_user_routes(7)
+
+    assert routes == [
+        {"event": "download_complete", "url": "ntfys://ntfy.sh/user-main"},
+        {"event": "request_fulfilled", "url": "ntfys://ntfy.sh/user-main"},
+        {"event": "all", "url": "ntfys://ntfy.sh/user-all"},
     ]

@@ -3,7 +3,6 @@ import { RequestRecord, StatusData } from '../../types';
 import { downloadToActivityItem, DownloadStatusKey } from './activityMappers';
 import { ActivityItem } from './activityTypes';
 import { ActivityCard } from './ActivityCard';
-import { RejectDialog } from './RejectDialog';
 import { Dropdown } from '../Dropdown';
 
 interface ActivitySidebarProps {
@@ -26,7 +25,13 @@ interface ActivitySidebarProps {
   showRequestsTab: boolean;
   isRequestsLoading?: boolean;
   onRequestCancel?: (requestId: number) => Promise<void> | void;
-  onRequestApprove?: (requestId: number, record: RequestRecord) => Promise<void> | void;
+  onRequestApprove?: (
+    requestId: number,
+    record: RequestRecord,
+    options?: {
+      browseOnly?: boolean;
+    }
+  ) => Promise<void> | void;
   onRequestReject?: (requestId: number, adminNote?: string) => Promise<void> | void;
   onRequestDismiss?: (requestId: number) => void;
   onPinnedOpenChange?: (pinnedOpen: boolean) => void;
@@ -258,7 +263,8 @@ export const ActivitySidebar = ({
   const [isDesktop, setIsDesktop] = useState<boolean>(() => getInitialDesktopState());
   const [activeTab, setActiveTab] = useState<ActivityTabKey>('all');
   const [selectedUser, setSelectedUser] = useState<string>(ALL_USERS_FILTER);
-  const [rejectingRequest, setRejectingRequest] = useState<{ requestId: number; bookTitle: string } | null>(null);
+  const [rejectingRequest, setRejectingRequest] = useState<{ requestId: number } | null>(null);
+  const [reviewingRequestId, setReviewingRequestId] = useState<number | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const dismissedKeySet = useMemo(
@@ -294,6 +300,7 @@ export const ActivitySidebar = ({
   useEffect(() => {
     if (activeTab === 'downloads') {
       setRejectingRequest(null);
+      setReviewingRequestId(null);
     }
   }, [activeTab]);
 
@@ -451,6 +458,42 @@ export const ActivitySidebar = ({
     }
     return baseVisibleItems.filter((item) => getItemUsername(item) === selectedUser);
   }, [baseVisibleItems, selectedUser]);
+
+  useEffect(() => {
+    if (reviewingRequestId === null) {
+      return;
+    }
+
+    const hasMatchingPendingRequest = visibleItems.some((item) => {
+      return (
+        item.kind === 'request' &&
+        item.requestId === reviewingRequestId &&
+        item.requestRecord?.status === 'pending'
+      );
+    });
+
+    if (!hasMatchingPendingRequest) {
+      setReviewingRequestId(null);
+    }
+  }, [reviewingRequestId, visibleItems]);
+
+  useEffect(() => {
+    if (rejectingRequest === null) {
+      return;
+    }
+
+    const hasMatchingPendingRequest = visibleItems.some((item) => {
+      return (
+        item.kind === 'request' &&
+        item.requestId === rejectingRequest.requestId &&
+        item.requestRecord?.status === 'pending'
+      );
+    });
+
+    if (!hasMatchingPendingRequest) {
+      setRejectingRequest(null);
+    }
+  }, [rejectingRequest, visibleItems]);
 
   const hasUserFilter = isAdmin && availableUsers.length > 1;
 
@@ -792,10 +835,23 @@ export const ActivitySidebar = ({
               <div className="divide-y divide-[color-mix(in_srgb,var(--border-muted)_60%,transparent)]">
                 {group.items.map((item) => {
                   const showRequestActions = activeTab === 'requests' || activeTab === 'all';
+                  const requestId = item.requestId;
                   const shouldShowRejectDialog =
                     showRequestActions &&
                     rejectingRequest !== null &&
-                    item.requestId === rejectingRequest.requestId;
+                    requestId === rejectingRequest.requestId;
+                  const requestRecord = item.requestRecord;
+                  const canShowRequestReview =
+                    showRequestActions &&
+                    isAdmin &&
+                    item.kind === 'request' &&
+                    typeof requestId === 'number' &&
+                    requestRecord?.status === 'pending';
+                  const shouldShowRequestReview =
+                    canShowRequestReview &&
+                    reviewingRequestId !== null &&
+                    requestId === reviewingRequestId &&
+                    requestRecord !== undefined;
 
                   return (
                     <div key={item.id}>
@@ -810,20 +866,55 @@ export const ActivitySidebar = ({
                         onRequestReject={
                           showRequestActions && onRequestReject
                             ? (requestId) => {
-                                const title = item.title || 'Untitled request';
-                                setRejectingRequest({ requestId, bookTitle: title });
+                                setReviewingRequestId(null);
+                                setRejectingRequest({ requestId });
+                              }
+                            : undefined
+                        }
+                        showRequestDetailsToggle={canShowRequestReview}
+                        isRequestDetailsOpen={shouldShowRequestReview}
+                        isSelected={shouldShowRequestReview || shouldShowRejectDialog}
+                        onRequestReviewApprove={
+                          onRequestApprove
+                            ? async (requestId, record, options) => {
+                                await onRequestApprove(requestId, record, options);
+                                setReviewingRequestId(null);
+                              }
+                            : undefined
+                        }
+                        isRequestRejectOpen={shouldShowRejectDialog}
+                        onRequestRejectClose={() => setRejectingRequest(null)}
+                        onRequestRejectConfirm={
+                          onRequestReject
+                            ? async (requestId, adminNote) => {
+                                await onRequestReject(requestId, adminNote);
+                                setRejectingRequest(null);
+                              }
+                            : undefined
+                        }
+                        onRequestDetailsToggle={
+                          canShowRequestReview && typeof requestId === 'number'
+                            ? () => {
+                                if (shouldShowRejectDialog) {
+                                  setRejectingRequest(null);
+                                  return;
+                                }
+                                setRejectingRequest(null);
+                                setReviewingRequestId((current) => (
+                                  current === requestId ? null : requestId
+                                ));
+                              }
+                            : undefined
+                        }
+                        onRequestDetailsOpen={
+                          canShowRequestReview && typeof requestId === 'number'
+                            ? () => {
+                                setRejectingRequest(null);
+                                setReviewingRequestId(requestId);
                               }
                             : undefined
                         }
                       />
-                      {shouldShowRejectDialog && onRequestReject && (
-                        <RejectDialog
-                          requestId={rejectingRequest.requestId}
-                          bookTitle={rejectingRequest.bookTitle}
-                          onConfirm={onRequestReject}
-                          onCancel={() => setRejectingRequest(null)}
-                        />
-                      )}
                     </div>
                   );
                 })}

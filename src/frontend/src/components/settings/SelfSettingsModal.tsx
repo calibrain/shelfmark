@@ -3,6 +3,7 @@ import {
   AdminUser,
   DeliveryPreferencesResponse,
   getSelfUserEditContext,
+  testSelfNotificationPreferences,
   updateSelfUser,
 } from '../../services/api';
 import { SelectField } from './fields';
@@ -148,6 +149,10 @@ export const SelfSettingsModal = ({ isOpen, onClose, onShowToast }: SelfSettings
   const hasPasswordChanges = editPassword.length > 0 || editPasswordConfirm.length > 0;
   const passwordError = getPasswordError(editPassword, editPasswordConfirm);
   const hasChanges = hasSettingsChanges || hasProfileChanges || hasPasswordChanges;
+
+  const handleTestNotificationRoutes = useCallback((routes: Array<Record<string, unknown>>) => {
+    return testSelfNotificationPreferences(routes);
+  }, []);
 
   const handleSave = useCallback(async () => {
     if (!editingUser || !originalUser) {
@@ -309,6 +314,7 @@ export const SelfSettingsModal = ({ isOpen, onClose, onShowToast }: SelfSettings
                       isUserOverridable={isUserOverridable}
                       userSettings={userSettings}
                       setUserSettings={setUserSettings}
+                      onTestNotificationRoutes={handleTestNotificationRoutes}
                     />
                   ),
                 }}

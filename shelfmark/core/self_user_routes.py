@@ -7,7 +7,10 @@ from flask import Flask, jsonify, request, session
 from werkzeug.security import generate_password_hash
 
 from shelfmark.config.env import CWA_DB_PATH
-from shelfmark.core.admin_settings_routes import validate_user_settings
+from shelfmark.core.admin_settings_routes import (
+    build_user_notification_test_response,
+    validate_user_settings,
+)
 from shelfmark.core.auth_modes import (
     AUTH_SOURCE_BUILTIN,
     AUTH_SOURCE_CWA,
@@ -148,6 +151,22 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
                 "userOverridableKeys": user_overridable_keys,
             }
         )
+
+    @app.route("/api/users/me/notification-preferences/test", methods=["POST"])
+    @_require_authenticated_user
+    def users_me_test_notification_preferences():
+        user_id, _user, user_error = _get_current_user(user_db)
+        if user_error:
+            return user_error
+        if user_id is None:
+            return jsonify({"error": "User not found"}), 404
+
+        payload = request.get_json(silent=True)
+        result, status_code = build_user_notification_test_response(
+            user_id=user_id,
+            payload=payload,
+        )
+        return jsonify(result), status_code
 
     @app.route("/api/users/me", methods=["PUT"])
     @_require_authenticated_user

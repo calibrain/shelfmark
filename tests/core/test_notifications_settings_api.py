@@ -119,7 +119,7 @@ class TestNotificationsSettingsApi:
 
         fields = {field["key"]: field for field in get_resp.json["fields"] if "key" in field}
         assert fields["ADMIN_NOTIFICATION_ROUTES"]["value"] == [
-            {"event": "all", "url": "ntfys://ntfy.sh/shelfmark"},
-            {"event": "request_created", "url": ""},
-            {"event": "download_failed", "url": "ntfys://ntfy.sh/errors"},
+            {"event": ["all"], "url": "ntfys://ntfy.sh/shelfmark"},
+            {"event": ["request_created"], "url": ""},
+            {"event": ["download_failed"], "url": "ntfys://ntfy.sh/errors"},
         ]

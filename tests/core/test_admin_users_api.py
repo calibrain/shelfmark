@@ -509,8 +509,8 @@ class TestAdminUserUpdateEndpoint:
         assert resp.status_code == 200
         settings = user_db.get_user_settings(user["id"])
         assert settings["USER_NOTIFICATION_ROUTES"] == [
-            {"event": "all", "url": "ntfys://ntfy.sh/alice"},
-            {"event": "download_failed", "url": "ntfys://ntfy.sh/errors"},
+            {"event": ["all"], "url": "ntfys://ntfy.sh/alice"},
+            {"event": ["download_failed"], "url": "ntfys://ntfy.sh/errors"},
         ]
 
     def test_update_user_settings_rejects_invalid_notification_url(self, admin_client, user_db):
@@ -1223,6 +1223,112 @@ class TestAdminNotificationPreferences:
         user = user_db.create_user(username="alice")
         resp = regular_client.get(f"/api/admin/users/{user['id']}/notification-preferences")
         assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# POST /api/admin/users/<id>/notification-preferences/test
+# ---------------------------------------------------------------------------
+
+
+class TestAdminNotificationPreferencesTestAction:
+    """Tests for POST /api/admin/users/<id>/notification-preferences/test."""
+
+    @pytest.fixture(autouse=True)
+    def setup_config(self, tmp_path, monkeypatch):
+        import json
+        from pathlib import Path
+
+        config_dir = str(tmp_path)
+        monkeypatch.setenv("CONFIG_DIR", config_dir)
+        monkeypatch.setattr("shelfmark.config.env.CONFIG_DIR", Path(config_dir))
+
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+        notifications_config = {
+            "ADMIN_NOTIFICATION_ROUTES": [
+                {"event": "all", "url": "ntfys://ntfy.sh/admin"},
+            ],
+            "USER_NOTIFICATION_ROUTES": [
+                {"event": "all", "url": "ntfys://ntfy.sh/default-user"},
+            ],
+        }
+        (plugins_dir / "notifications.json").write_text(json.dumps(notifications_config))
+
+        from shelfmark.core.config import config as app_config
+        app_config.refresh()
+
+    def test_requires_admin(self, regular_client, user_db):
+        user = user_db.create_user(username="alice")
+        resp = regular_client.post(
+            f"/api/admin/users/{user['id']}/notification-preferences/test",
+            json={"USER_NOTIFICATION_ROUTES": [{"event": "all", "url": "ntfys://ntfy.sh/alice"}]},
+        )
+        assert resp.status_code == 403
+
+    def test_returns_404_for_unknown_user(self, admin_client):
+        resp = admin_client.post("/api/admin/users/9999/notification-preferences/test", json={})
+        assert resp.status_code == 404
+
+    def test_uses_payload_routes_when_provided(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+
+        with patch(
+            "shelfmark.config.notifications_settings.send_test_notification",
+            return_value={"success": True, "message": "ok"},
+        ) as mock_send:
+            resp = admin_client.post(
+                f"/api/admin/users/{user['id']}/notification-preferences/test",
+                json={
+                    "USER_NOTIFICATION_ROUTES": [
+                        {"event": "all", "url": " ntfys://ntfy.sh/alice "},
+                        {"event": "download_failed", "url": "ntfys://ntfy.sh/alice-errors"},
+                        {"event": "download_failed", "url": "ntfys://ntfy.sh/alice-errors"},
+                    ]
+                },
+            )
+
+        assert resp.status_code == 200
+        assert resp.json["success"] is True
+        mock_send.assert_called_once_with(
+            ["ntfys://ntfy.sh/alice", "ntfys://ntfy.sh/alice-errors"]
+        )
+
+    def test_uses_effective_routes_when_payload_missing(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+
+        with patch(
+            "shelfmark.config.notifications_settings.send_test_notification",
+            return_value={"success": True, "message": "ok"},
+        ) as mock_send:
+            resp = admin_client.post(
+                f"/api/admin/users/{user['id']}/notification-preferences/test",
+            )
+
+        assert resp.status_code == 200
+        assert resp.json["success"] is True
+        mock_send.assert_called_once_with(["ntfys://ntfy.sh/default-user"])
+
+    def test_rejects_invalid_urls(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+
+        resp = admin_client.post(
+            f"/api/admin/users/{user['id']}/notification-preferences/test",
+            json={"USER_NOTIFICATION_ROUTES": [{"event": "all", "url": "not-a-valid-url"}]},
+        )
+
+        assert resp.status_code == 400
+        assert "invalid personal notification URL" in resp.json["message"]
+
+    def test_requires_at_least_one_url(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+
+        resp = admin_client.post(
+            f"/api/admin/users/{user['id']}/notification-preferences/test",
+            json={"USER_NOTIFICATION_ROUTES": [{"event": "all", "url": ""}]},
+        )
+
+        assert resp.status_code == 400
+        assert "Add at least one personal notification URL route first." in resp.json["message"]
 
 
 # ---------------------------------------------------------------------------

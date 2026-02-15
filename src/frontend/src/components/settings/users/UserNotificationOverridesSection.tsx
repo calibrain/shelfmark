@@ -1,9 +1,11 @@
 import { DeliveryPreferencesResponse } from '../../../services/api';
 import {
+  ActionButtonConfig,
+  ActionResult,
   HeadingFieldConfig,
   TableFieldConfig,
 } from '../../../types/settings';
-import { HeadingField, TableField } from '../fields';
+import { ActionButton, HeadingField, TableField } from '../fields';
 import { FieldWrapper } from '../shared';
 import { getFieldByKey } from './fieldHelpers';
 import { PerUserSettings } from './types';
@@ -13,6 +15,7 @@ interface UserNotificationOverridesSectionProps {
   isUserOverridable: (key: keyof PerUserSettings) => boolean;
   userSettings: PerUserSettings;
   setUserSettings: (updater: (prev: PerUserSettings) => PerUserSettings) => void;
+  onTestNotificationRoutes?: (routes: Array<Record<string, unknown>>) => Promise<ActionResult>;
 }
 
 type NotificationSettingKey = 'USER_NOTIFICATION_ROUTES';
@@ -20,12 +23,14 @@ type NotificationSettingKey = 'USER_NOTIFICATION_ROUTES';
 const ROUTE_EVENT_ALL = 'all';
 const USER_ROUTE_EVENT_OPTIONS = [
   { value: ROUTE_EVENT_ALL, label: 'All' },
-  { value: 'request_fulfilled', label: 'Request fulfilled' },
+  { value: 'request_created', label: 'New request submitted' },
+  { value: 'request_fulfilled', label: 'Request approved' },
   { value: 'request_rejected', label: 'Request rejected' },
   { value: 'download_complete', label: 'Download complete' },
   { value: 'download_failed', label: 'Download failed' },
 ];
 const ALLOWED_ROUTE_EVENTS = new Set(USER_ROUTE_EVENT_OPTIONS.map((option) => option.value));
+const ROUTE_EVENT_ORDER = new Map(USER_ROUTE_EVENT_OPTIONS.map((option, index) => [option.value, index]));
 
 const fallbackRoutesField: TableFieldConfig = {
   type: 'TableField',
@@ -36,14 +41,15 @@ const fallbackRoutesField: TableFieldConfig = {
     + 'for targeted delivery. Need format examples? '
     + '[View Apprise URL formats](https://appriseit.com/services/).'
   ),
-  value: [{ event: ROUTE_EVENT_ALL, url: '' }],
+  value: [{ event: [ROUTE_EVENT_ALL], url: '' }],
   columns: [
     {
       key: 'event',
       label: 'Event',
-      type: 'select',
+      type: 'multiselect',
       options: USER_ROUTE_EVENT_OPTIONS,
-      defaultValue: ROUTE_EVENT_ALL,
+      defaultValue: [ROUTE_EVENT_ALL],
+      placeholder: 'Select events...',
     },
     {
       key: 'url',
@@ -63,36 +69,67 @@ const notificationHeading: HeadingFieldConfig = {
   description: 'Personal notification preferences for this user. Reset to inherit global defaults from the Notifications tab.',
 };
 
+const testNotificationActionField: ActionButtonConfig = {
+  type: 'ActionButton',
+  key: 'test_user_notification',
+  label: 'Test Notification',
+  description: 'Send a test notification to the configured personal route URLs.',
+  style: 'primary',
+};
+
 function normalizeRoutesValue(value: unknown): Array<Record<string, unknown>> {
   if (!Array.isArray(value)) {
-    return [{ event: ROUTE_EVENT_ALL, url: '' }];
+    return [{ event: [ROUTE_EVENT_ALL], url: '' }];
   }
 
   const normalized: Array<Record<string, unknown>> = [];
   const seen = new Set<string>();
+
+  const normalizeRouteEvents = (rawEventValue: unknown): string[] => {
+    const rawValues = Array.isArray(rawEventValue)
+      ? rawEventValue
+      : (rawEventValue === undefined || rawEventValue === null ? [] : [rawEventValue]);
+
+    const deduped = new Set<string>();
+    rawValues.forEach((rawEvent) => {
+      const event = String(rawEvent ?? '').trim().toLowerCase();
+      if (!ALLOWED_ROUTE_EVENTS.has(event)) {
+        return;
+      }
+      deduped.add(event);
+    });
+
+    if (deduped.has(ROUTE_EVENT_ALL)) {
+      return [ROUTE_EVENT_ALL];
+    }
+
+    return Array.from(deduped).sort((a, b) => {
+      return (ROUTE_EVENT_ORDER.get(a) ?? Number.MAX_SAFE_INTEGER)
+        - (ROUTE_EVENT_ORDER.get(b) ?? Number.MAX_SAFE_INTEGER);
+    });
+  };
 
   value.forEach((row) => {
     if (!row || typeof row !== 'object') {
       return;
     }
 
-    const eventRaw = (row as Record<string, unknown>).event;
-    const event = String(eventRaw ?? '').trim().toLowerCase();
-    if (!ALLOWED_ROUTE_EVENTS.has(event)) {
+    const events = normalizeRouteEvents((row as Record<string, unknown>).event);
+    if (events.length === 0) {
       return;
     }
 
     const url = String((row as Record<string, unknown>).url ?? '').trim();
-    const key = `${event}::${url}`;
+    const key = `${events.join('|')}::${url}`;
     if (seen.has(key)) {
       return;
     }
     seen.add(key);
 
-    normalized.push({ event, url });
+    normalized.push({ event: events, url });
   });
 
-  return normalized.length > 0 ? normalized : [{ event: ROUTE_EVENT_ALL, url: '' }];
+  return normalized.length > 0 ? normalized : [{ event: [ROUTE_EVENT_ALL], url: '' }];
 }
 
 export const UserNotificationOverridesSection = ({
@@ -100,6 +137,7 @@ export const UserNotificationOverridesSection = ({
   isUserOverridable,
   userSettings,
   setUserSettings,
+  onTestNotificationRoutes,
 }: UserNotificationOverridesSectionProps) => {
   if (!notificationPreferences) {
     return null;
@@ -177,6 +215,14 @@ export const UserNotificationOverridesSection = ({
           disabled={Boolean(routesField.fromEnv)}
         />
       </FieldWrapper>
+
+      {onTestNotificationRoutes && (
+        <ActionButton
+          field={testNotificationActionField}
+          onAction={() => onTestNotificationRoutes(routesValue)}
+          disabled={Boolean(routesField.fromEnv)}
+        />
+      )}
     </div>
   );
 };
