@@ -294,6 +294,44 @@ class TestRequestRoutes:
         assert user_event == NotificationEvent.REQUEST_CREATED
         assert user_context.title == "Notify Create Book"
 
+    def test_create_request_succeeds_when_notification_dispatch_raises(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(default_ebook="request_book")
+
+        payload = {
+            "book_data": {
+                "title": "Resilient Notify Create Book",
+                "author": "Resilient Notify Create Author",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "ol-notify-resilience",
+            },
+            "context": {
+                "source": "direct_download",
+                "content_type": "ebook",
+                "request_level": "book",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+                    with patch(
+                        "shelfmark.core.request_routes.notify_admin",
+                        side_effect=RuntimeError("admin notification unavailable"),
+                    ) as mock_notify_admin:
+                        with patch(
+                            "shelfmark.core.request_routes.notify_user",
+                            side_effect=RuntimeError("user notification unavailable"),
+                        ) as mock_notify_user:
+                            resp = client.post("/api/requests", json=payload)
+
+        assert resp.status_code == 201
+        assert resp.json["status"] == "pending"
+        mock_notify_admin.assert_called_once()
+        mock_notify_user.assert_called_once()
+
     def test_cancel_request_emits_to_user_and_admin_rooms(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)

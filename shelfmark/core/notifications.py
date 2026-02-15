@@ -20,6 +20,11 @@ logger = setup_logger(__name__)
 # Small pool for non-blocking dispatch. Notification sends are I/O bound and infrequent.
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="Notify")
 _ROUTE_EVENT_ALL = "all"
+_APPRISE_APP_ID = "Shelfmark"
+_APPRISE_APP_DESC = "Shelfmark notifications"
+_APPRISE_LOGO_URL = (
+    "https://raw.githubusercontent.com/calibrain/shelfmark/main/src/frontend/public/logo.png"
+)
 
 
 class NotificationEvent(str, Enum):
@@ -229,7 +234,9 @@ def _dispatch_to_apprise(
     if apprise is None:
         return {"success": False, "message": "Apprise is not installed"}
 
-    apobj = apprise.Apprise()
+    apobj = _create_apprise_client()
+    if apobj is None:
+        return {"success": False, "message": "Apprise is not installed"}
     valid_urls = 0
     invalid_urls = 0
     for url in normalized_urls:
@@ -260,6 +267,39 @@ def _dispatch_to_apprise(
     if invalid_urls:
         message += f" ({invalid_urls} invalid URL(s) skipped)"
     return {"success": True, "message": message}
+
+
+def _create_apprise_client() -> Any:
+    if apprise is None:
+        return None
+
+    apprise_cls = getattr(apprise, "Apprise", None)
+    if apprise_cls is None:
+        return None
+
+    apprise_asset_cls = getattr(apprise, "AppriseAsset", None)
+    if apprise_asset_cls is None:
+        return apprise_cls()
+
+    try:
+        asset = apprise_asset_cls(
+            app_id=_APPRISE_APP_ID,
+            app_desc=_APPRISE_APP_DESC,
+            image_url_logo=_APPRISE_LOGO_URL,
+        )
+    except TypeError:
+        # Support older Apprise versions that do not expose image_url_logo.
+        asset = apprise_asset_cls(
+            app_id=_APPRISE_APP_ID,
+            app_desc=_APPRISE_APP_DESC,
+        )
+    except Exception:
+        return apprise_cls()
+
+    try:
+        return apprise_cls(asset=asset)
+    except Exception:
+        return apprise_cls()
 
 
 def _send_admin_event(event: NotificationEvent, context: NotificationContext, urls: list[str]) -> dict[str, Any]:

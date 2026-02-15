@@ -35,11 +35,20 @@ class _FakeAppriseClient:
 
 class _FakeAppriseModule:
     NotifyType = _FakeNotifyType
+    asset_kwargs: dict[str, str] | None = None
 
     def __init__(self):
         self.client = _FakeAppriseClient()
+        self.apprise_kwargs = {}
 
-    def Apprise(self):
+    class AppriseAsset:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    def Apprise(self, *args, **kwargs):
+        self.apprise_kwargs = kwargs
+        asset = kwargs.get("asset")
+        self.asset_kwargs = getattr(asset, "kwargs", None)
         return self.client
 
 
@@ -156,6 +165,23 @@ def test_send_admin_event_passes_expected_title_body_and_notify_type(monkeypatch
     assert notify_kwargs["notify_type"] == _FakeNotifyType.WARNING
 
 
+def test_dispatch_to_apprise_uses_shelfmark_asset_defaults(monkeypatch):
+    fake_apprise = _FakeAppriseModule()
+    monkeypatch.setattr(notifications_module, "apprise", fake_apprise)
+
+    result = notifications_module._dispatch_to_apprise(
+        ["ntfys://ntfy.sh/shelfmark"],
+        title="Test",
+        body="Body",
+        notify_type=_FakeNotifyType.INFO,
+    )
+
+    assert result["success"] is True
+    assert fake_apprise.asset_kwargs is not None
+    assert fake_apprise.asset_kwargs["app_id"] == "Shelfmark"
+    assert "logo.png" in fake_apprise.asset_kwargs["image_url_logo"]
+
+
 def test_resolve_admin_routes_returns_empty_when_no_routes(monkeypatch):
     def _fake_get(key, default=None):
         if key == "ADMIN_NOTIFICATION_ROUTES":
@@ -250,6 +276,24 @@ def test_resolve_route_urls_for_event_includes_all_and_specific_rows():
 
     assert urls == [
         "ntfys://ntfy.sh/all",
+        "ntfys://ntfy.sh/errors",
+    ]
+
+
+def test_resolve_route_urls_for_event_deduplicates_matching_urls():
+    routes = [
+        {"event": "all", "url": "ntfys://ntfy.sh/shared"},
+        {"event": "download_failed", "url": "ntfys://ntfy.sh/shared"},
+        {"event": "download_failed", "url": "ntfys://ntfy.sh/errors"},
+    ]
+
+    urls = notifications_module._resolve_route_urls_for_event(
+        routes,
+        notifications_module.NotificationEvent.DOWNLOAD_FAILED,
+    )
+
+    assert urls == [
+        "ntfys://ntfy.sh/shared",
         "ntfys://ntfy.sh/errors",
     ]
 
