@@ -1,20 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AdminUser, DeliveryPreferencesResponse, DownloadDefaults } from '../../../services/api';
-import { CreateUserFormState, INITIAL_CREATE_FORM, PerUserSettings } from './types';
+import { CreateUserFormState, INITIAL_CREATE_FORM } from './types';
 import { UserEditContext } from './useUsersFetch';
-import { buildUserSettingsPayload } from './settingsPayload';
-
-const normalizeUserSettings = (settings: PerUserSettings): PerUserSettings => {
-  const normalized: PerUserSettings = {};
-  Object.keys(settings).sort().forEach((key) => {
-    const typedKey = key as keyof PerUserSettings;
-    const value = settings[typedKey];
-    if (value !== null && value !== undefined) {
-      normalized[typedKey] = value;
-    }
-  });
-  return normalized;
-};
+import { useUserOverridesState } from './useUserOverridesState';
 
 export const useUserForm = () => {
   const [createForm, setCreateForm] = useState<CreateUserFormState>({ ...INITIAL_CREATE_FORM });
@@ -24,9 +12,19 @@ export const useUserForm = () => {
   const [downloadDefaults, setDownloadDefaults] = useState<DownloadDefaults | null>(null);
   const [deliveryPreferences, setDeliveryPreferences] = useState<DeliveryPreferencesResponse | null>(null);
   const [notificationPreferences, setNotificationPreferences] = useState<DeliveryPreferencesResponse | null>(null);
-  const [userSettings, setUserSettings] = useState<PerUserSettings>({});
-  const [originalUserSettings, setOriginalUserSettings] = useState<PerUserSettings>({});
-  const [userOverridableSettings, setUserOverridableSettings] = useState<Set<string>>(new Set());
+  const preferenceGroups = useMemo(
+    () => [deliveryPreferences, notificationPreferences],
+    [deliveryPreferences, notificationPreferences]
+  );
+  const {
+    userSettings,
+    setUserSettings,
+    userOverridableSettings,
+    isUserOverridable,
+    hasUserSettingsChanges,
+    applyUserOverridesContext,
+    resetUserOverridesState,
+  } = useUserOverridesState({ preferenceGroups });
 
   const resetCreateForm = () => setCreateForm({ ...INITIAL_CREATE_FORM });
 
@@ -34,9 +32,7 @@ export const useUserForm = () => {
     setDownloadDefaults(null);
     setDeliveryPreferences(null);
     setNotificationPreferences(null);
-    setUserSettings({});
-    setOriginalUserSettings({});
-    setUserOverridableSettings(new Set());
+    resetUserOverridesState();
   };
 
   const beginEditing = (user: AdminUser) => {
@@ -46,14 +42,14 @@ export const useUserForm = () => {
   };
 
   const applyUserEditContext = (context: UserEditContext) => {
-    const normalizedSettings = normalizeUserSettings(context.userSettings);
     setEditingUser({ ...context.user });
     setDownloadDefaults(context.downloadDefaults);
     setDeliveryPreferences(context.deliveryPreferences);
     setNotificationPreferences(context.notificationPreferences);
-    setUserSettings(normalizedSettings);
-    setOriginalUserSettings(normalizedSettings);
-    setUserOverridableSettings(new Set(context.userOverridableSettings));
+    applyUserOverridesContext({
+      settings: context.userSettings,
+      userOverridableKeys: context.userOverridableSettings,
+    });
   };
 
   const clearEditState = () => {
@@ -62,23 +58,6 @@ export const useUserForm = () => {
     setEditPasswordConfirm('');
     resetEditContext();
   };
-
-  const isUserOverridable = (key: keyof PerUserSettings) => userOverridableSettings.has(String(key));
-  const hasUserSettingsChanges =
-    JSON.stringify(
-      buildUserSettingsPayload(
-        userSettings,
-        userOverridableSettings,
-        [deliveryPreferences, notificationPreferences]
-      )
-    )
-    !== JSON.stringify(
-      buildUserSettingsPayload(
-        originalUserSettings,
-        userOverridableSettings,
-        [deliveryPreferences, notificationPreferences]
-      )
-    );
 
   return {
     createForm,

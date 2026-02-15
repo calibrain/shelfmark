@@ -47,20 +47,6 @@ class NotificationContext:
     error_message: str | None = None
 
 
-def _as_bool(value: Any, default: bool = False) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"1", "true", "yes", "on"}:
-            return True
-        if normalized in {"0", "false", "no", "off", ""}:
-            return False
-    return bool(value)
-
-
 def _normalize_urls(value: Any) -> list[str]:
     if value is None:
         return []
@@ -118,8 +104,6 @@ def _normalize_routes(value: Any) -> list[dict[str, str]]:
 
 
 def _resolve_admin_routes() -> list[dict[str, str]]:
-    if not _as_bool(app_config.get("NOTIFICATIONS_ENABLED", False)):
-        return []
     return _normalize_routes(app_config.get("ADMIN_NOTIFICATION_ROUTES", []))
 
 
@@ -138,8 +122,6 @@ def _resolve_user_routes(user_id: int | None) -> list[dict[str, str]]:
     if normalized_user_id is None:
         return []
 
-    if not _as_bool(app_config.get("USER_NOTIFICATIONS_ENABLED", False, user_id=normalized_user_id)):
-        return []
     return _normalize_routes(
         app_config.get("USER_NOTIFICATION_ROUTES", [], user_id=normalized_user_id)
     )

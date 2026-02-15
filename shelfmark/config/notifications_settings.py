@@ -9,7 +9,6 @@ from urllib.parse import urlsplit
 from shelfmark.core.notifications import NotificationEvent, send_test_notification
 from shelfmark.core.settings_registry import (
     ActionButton,
-    CheckboxField,
     HeadingField,
     TableField,
     load_config_file,
@@ -35,20 +34,6 @@ _ROUTE_EVENT_ORDER = [option["value"] for option in _ROUTE_EVENT_OPTIONS]
 _ALLOWED_ROUTE_EVENTS = set(_ROUTE_EVENT_ORDER)
 
 _DEFAULT_ROUTE_ROWS = [{"event": _ROUTE_EVENT_ALL, "url": ""}]
-
-
-def _as_bool(value: Any, default: bool = False) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"1", "true", "yes", "on"}:
-            return True
-        if normalized in {"0", "false", "no", "off", ""}:
-            return False
-    return bool(value)
 
 
 def _looks_like_apprise_url(url: str) -> bool:
@@ -107,10 +92,6 @@ def _ensure_default_route_row(routes: list[dict[str, str]]) -> list[dict[str, st
     return routes if routes else [dict(row) for row in _DEFAULT_ROUTE_ROWS]
 
 
-def _has_at_least_one_valid_route_url(routes: list[dict[str, str]]) -> bool:
-    return any(row["url"] and _looks_like_apprise_url(row["url"]) for row in routes)
-
-
 def _extract_unique_route_urls(routes: list[dict[str, str]]) -> list[str]:
     urls: list[str] = []
     seen: set[str] = set()
@@ -123,11 +104,6 @@ def _extract_unique_route_urls(routes: list[dict[str, str]]) -> list[str]:
         seen.add(url)
         urls.append(url)
     return urls
-
-
-def coerce_notifications_bool(value: Any, default: bool = False) -> bool:
-    """Shared bool coercion for notifications preferences."""
-    return _as_bool(value, default=default)
 
 
 def normalize_notification_routes(value: Any) -> list[dict[str, str]]:
@@ -144,9 +120,6 @@ def _on_save_notifications(values: dict[str, Any]) -> dict[str, Any]:
     existing = load_config_file("notifications")
     effective: dict[str, Any] = dict(existing)
     effective.update(values)
-
-    enabled = _as_bool(effective.get("NOTIFICATIONS_ENABLED", False))
-    user_enabled = _as_bool(effective.get("USER_NOTIFICATIONS_ENABLED", False))
 
     admin_routes_input = effective.get("ADMIN_NOTIFICATION_ROUTES", [])
     invalid_admin_event_count = _count_invalid_route_events(admin_routes_input)
@@ -168,13 +141,6 @@ def _on_save_notifications(values: dict[str, Any]) -> dict[str, Any]:
                 f"Found {invalid_admin_url_count} invalid global notification URL(s). "
                 "Use URL values with a valid scheme, e.g. discord://... or ntfys://..."
             ),
-            "values": values,
-        }
-
-    if enabled and not _has_at_least_one_valid_route_url(normalized_admin_routes):
-        return {
-            "error": True,
-            "message": "Add at least one global notification URL route when notifications are enabled.",
             "values": values,
         }
 
@@ -201,20 +167,6 @@ def _on_save_notifications(values: dict[str, Any]) -> dict[str, Any]:
             "values": values,
         }
 
-    if user_enabled and not _has_at_least_one_valid_route_url(normalized_user_routes):
-        return {
-            "error": True,
-            "message": (
-                "Add at least one personal notification URL route when personal notifications are enabled."
-            ),
-            "values": values,
-        }
-
-    if "NOTIFICATIONS_ENABLED" in values:
-        values["NOTIFICATIONS_ENABLED"] = enabled
-    if "USER_NOTIFICATIONS_ENABLED" in values:
-        values["USER_NOTIFICATIONS_ENABLED"] = user_enabled
-
     admin_routes_touched = "ADMIN_NOTIFICATION_ROUTES" in values
     if admin_routes_touched:
         values["ADMIN_NOTIFICATION_ROUTES"] = _ensure_default_route_row(normalized_admin_routes)
@@ -231,9 +183,6 @@ def _test_admin_notification_action(current_values: dict[str, Any]) -> dict[str,
     effective: dict[str, Any] = dict(persisted)
     if isinstance(current_values, dict):
         effective.update(current_values)
-
-    if not _as_bool(effective.get("NOTIFICATIONS_ENABLED", False)):
-        return {"success": False, "message": "Enable notifications first."}
 
     routes_input = effective.get("ADMIN_NOTIFICATION_ROUTES", [])
 
@@ -283,12 +232,6 @@ def notifications_settings():
                 "Users can manage personal notifications in User Preferences."
             ),
         ),
-        CheckboxField(
-            key="NOTIFICATIONS_ENABLED",
-            label="Enable Global Notifications",
-            description="Master toggle for global notifications across all users.",
-            default=False,
-        ),
         TableField(
             key="ADMIN_NOTIFICATION_ROUTES",
             label="",
@@ -315,7 +258,6 @@ def notifications_settings():
             default=[dict(row) for row in _DEFAULT_ROUTE_ROWS],
             add_label="Add Route",
             empty_message="No routes configured.",
-            show_when={"field": "NOTIFICATIONS_ENABLED", "value": True},
         ),
         ActionButton(
             key="test_admin_notification",
@@ -323,15 +265,6 @@ def notifications_settings():
             description="Send a test notification to all configured global route URLs.",
             style="primary",
             callback=_test_admin_notification_action,
-            show_when={"field": "NOTIFICATIONS_ENABLED", "value": True},
-        ),
-        CheckboxField(
-            key="USER_NOTIFICATIONS_ENABLED",
-            label="Enable Personal Notifications",
-            description="Per-user master toggle for personal notifications.",
-            default=False,
-            user_overridable=True,
-            hidden_in_ui=True,
         ),
         TableField(
             key="USER_NOTIFICATION_ROUTES",
@@ -361,6 +294,5 @@ def notifications_settings():
             empty_message="No routes configured.",
             user_overridable=True,
             hidden_in_ui=True,
-            show_when={"field": "USER_NOTIFICATIONS_ENABLED", "value": True},
         ),
     ]

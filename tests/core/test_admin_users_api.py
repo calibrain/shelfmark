@@ -498,7 +498,6 @@ class TestAdminUserUpdateEndpoint:
             f"/api/admin/users/{user['id']}",
             json={
                 "settings": {
-                    "USER_NOTIFICATIONS_ENABLED": True,
                     "USER_NOTIFICATION_ROUTES": [
                         {"event": "all", "url": " ntfys://ntfy.sh/alice "},
                         {"event": "download_failed", "url": "ntfys://ntfy.sh/errors"},
@@ -509,7 +508,6 @@ class TestAdminUserUpdateEndpoint:
         )
         assert resp.status_code == 200
         settings = user_db.get_user_settings(user["id"])
-        assert settings["USER_NOTIFICATIONS_ENABLED"] is True
         assert settings["USER_NOTIFICATION_ROUTES"] == [
             {"event": "all", "url": "ntfys://ntfy.sh/alice"},
             {"event": "download_failed", "url": "ntfys://ntfy.sh/errors"},
@@ -1173,12 +1171,10 @@ class TestAdminNotificationPreferences:
         plugins_dir = tmp_path / "plugins"
         plugins_dir.mkdir()
         notifications_config = {
-            "NOTIFICATIONS_ENABLED": True,
             "ADMIN_NOTIFICATION_ROUTES": [
                 {"event": "all", "url": "ntfys://ntfy.sh/admin"},
                 {"event": "download_failed", "url": "ntfys://ntfy.sh/admin-errors"},
             ],
-            "USER_NOTIFICATIONS_ENABLED": False,
             "USER_NOTIFICATION_ROUTES": [
                 {"event": "all", "url": "ntfys://ntfy.sh/default-user"},
             ],
@@ -1193,7 +1189,6 @@ class TestAdminNotificationPreferences:
         user_db.set_user_settings(
             user["id"],
             {
-                "USER_NOTIFICATIONS_ENABLED": True,
                 "USER_NOTIFICATION_ROUTES": [
                     {"event": "all", "url": "ntfys://ntfy.sh/alice"},
                     {"event": "download_failed", "url": "ntfys://ntfy.sh/alice-errors"},
@@ -1207,21 +1202,17 @@ class TestAdminNotificationPreferences:
         data = resp.json
         assert data["tab"] == "notifications"
         assert data["keys"] == [
-            "USER_NOTIFICATIONS_ENABLED",
             "USER_NOTIFICATION_ROUTES",
         ]
 
         field_keys = [field["key"] for field in data["fields"]]
         assert set(field_keys) == set(data["keys"])
 
-        assert data["userOverrides"]["USER_NOTIFICATIONS_ENABLED"] is True
         assert data["userOverrides"]["USER_NOTIFICATION_ROUTES"] == [
             {"event": "all", "url": "ntfys://ntfy.sh/alice"},
             {"event": "download_failed", "url": "ntfys://ntfy.sh/alice-errors"},
         ]
 
-        assert data["effective"]["USER_NOTIFICATIONS_ENABLED"]["source"] == "user_override"
-        assert data["effective"]["USER_NOTIFICATIONS_ENABLED"]["value"] is True
         assert data["effective"]["USER_NOTIFICATION_ROUTES"]["source"] == "user_override"
 
     def test_returns_404_for_unknown_user(self, admin_client):

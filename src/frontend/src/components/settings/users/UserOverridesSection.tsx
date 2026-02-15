@@ -2,11 +2,11 @@ import { DeliveryPreferencesResponse } from '../../../services/api';
 import {
   HeadingFieldConfig,
   SelectFieldConfig,
-  SettingsField,
   TextFieldConfig,
 } from '../../../types/settings';
 import { HeadingField, SelectField, TextField } from '../fields';
 import { FieldWrapper } from '../shared';
+import { getFieldByKey } from './fieldHelpers';
 import { PerUserSettings } from './types';
 
 interface UserOverridesSectionProps {
@@ -90,36 +90,6 @@ function toStringValue(value: unknown): string {
   if (value === undefined || value === null) return '';
   return String(value);
 }
-
-function getFieldByKey<T extends SettingsField>(
-  fields: SettingsField[] | undefined,
-  key: string,
-  fallback: T
-): T {
-  const found = fields?.find((field) => field.key === key);
-  if (!found) {
-    return fallback;
-  }
-  return found as T;
-}
-
-interface ResetOverrideButtonProps {
-  disabled?: boolean;
-  label?: string;
-  onClick: () => void;
-}
-
-const ResetOverrideButton = ({ disabled = false, label = 'Reset', onClick }: ResetOverrideButtonProps) => (
-  <button
-    type="button"
-    onClick={onClick}
-    disabled={disabled}
-    className="text-xs font-medium text-sky-500 hover:text-sky-400 transition-colors shrink-0
-               disabled:opacity-50 disabled:cursor-not-allowed"
-  >
-    {label}
-  </button>
-);
 
 const deliveryHeading: HeadingFieldConfig = {
   type: 'HeadingField',
@@ -242,12 +212,12 @@ export const UserOverridesSection = ({
       {canOverrideOutputMode && (
         <FieldWrapper
           field={outputModeField}
-          headerRight={
+          resetAction={
             hasBookDeliveryOverride ? (
-              <ResetOverrideButton
-                label="Reset all"
-                onClick={() => resetKeys(availableBookPreferenceKeys)}
-              />
+              {
+                label: 'Reset all',
+                onClick: () => resetKeys(availableBookPreferenceKeys),
+              }
             ) : undefined
           }
         >
@@ -263,13 +233,13 @@ export const UserOverridesSection = ({
       {effectiveOutputMode === 'folder' && canOverrideDestination && (
         <FieldWrapper
           field={destinationField}
-          headerRight={
-            isOverridden('DESTINATION') ? (
-              <ResetOverrideButton
-                disabled={Boolean(destinationField.fromEnv)}
-                onClick={() => resetKeys(['DESTINATION'])}
-              />
-            ) : undefined
+          resetAction={
+            isOverridden('DESTINATION')
+              ? {
+                  disabled: Boolean(destinationField.fromEnv),
+                  onClick: () => resetKeys(['DESTINATION']),
+                }
+              : undefined
           }
         >
           <TextField
@@ -284,13 +254,13 @@ export const UserOverridesSection = ({
       {effectiveOutputMode === 'booklore' && canOverrideBookloreLibrary && (
         <FieldWrapper
           field={bookloreLibraryField}
-          headerRight={
-            isOverridden('BOOKLORE_LIBRARY_ID') ? (
-              <ResetOverrideButton
-                disabled={Boolean(bookloreLibraryField.fromEnv)}
-                onClick={() => resetKeys(['BOOKLORE_LIBRARY_ID'])}
-              />
-            ) : undefined
+          resetAction={
+            isOverridden('BOOKLORE_LIBRARY_ID')
+              ? {
+                  disabled: Boolean(bookloreLibraryField.fromEnv),
+                  onClick: () => resetKeys(['BOOKLORE_LIBRARY_ID']),
+                }
+              : undefined
           }
         >
           <SelectField
@@ -311,13 +281,13 @@ export const UserOverridesSection = ({
       {effectiveOutputMode === 'booklore' && canOverrideBooklorePath && (
         <FieldWrapper
           field={booklorePathField}
-          headerRight={
-            isOverridden('BOOKLORE_PATH_ID') ? (
-              <ResetOverrideButton
-                disabled={Boolean(booklorePathField.fromEnv)}
-                onClick={() => resetKeys(['BOOKLORE_PATH_ID'])}
-              />
-            ) : undefined
+          resetAction={
+            isOverridden('BOOKLORE_PATH_ID')
+              ? {
+                  disabled: Boolean(booklorePathField.fromEnv),
+                  onClick: () => resetKeys(['BOOKLORE_PATH_ID']),
+                }
+              : undefined
           }
         >
           <SelectField
@@ -333,13 +303,13 @@ export const UserOverridesSection = ({
       {effectiveOutputMode === 'email' && canOverrideEmailRecipient && (
         <FieldWrapper
           field={emailRecipientField}
-          headerRight={
-            isOverridden('EMAIL_RECIPIENT') ? (
-              <ResetOverrideButton
-                disabled={Boolean(emailRecipientField.fromEnv)}
-                onClick={() => resetKeys(['EMAIL_RECIPIENT'])}
-              />
-            ) : undefined
+          resetAction={
+            isOverridden('EMAIL_RECIPIENT')
+              ? {
+                  disabled: Boolean(emailRecipientField.fromEnv),
+                  onClick: () => resetKeys(['EMAIL_RECIPIENT']),
+                }
+              : undefined
           }
         >
           <TextField
@@ -356,13 +326,13 @@ export const UserOverridesSection = ({
           <HeadingField field={audiobooksHeading} />
           <FieldWrapper
             field={destinationAudiobookField}
-            headerRight={
-              hasAudiobookDeliveryOverride ? (
-                <ResetOverrideButton
-                  disabled={Boolean(destinationAudiobookField.fromEnv)}
-                  onClick={() => resetKeys(availableAudiobookPreferenceKeys)}
-                />
-              ) : undefined
+            resetAction={
+              hasAudiobookDeliveryOverride
+                ? {
+                    disabled: Boolean(destinationAudiobookField.fromEnv),
+                    onClick: () => resetKeys(availableAudiobookPreferenceKeys),
+                  }
+                : undefined
             }
           >
           <TextField

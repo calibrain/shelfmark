@@ -1,10 +1,8 @@
 import { DeliveryPreferencesResponse } from '../../../services/api';
 import { PerUserSettings } from './types';
 import { SettingsSubpage } from '../shared';
-import { UserOverridesSection } from './UserOverridesSection';
 import { SettingsTab } from '../../../types/settings';
-import { UserRequestPolicyOverridesSection } from './UserRequestPolicyOverridesSection';
-import { UserNotificationOverridesSection } from './UserNotificationOverridesSection';
+import { UserOverridesSections } from './UserOverridesSections';
 
 interface UserOverridesViewProps {
   embedded?: boolean;
@@ -53,28 +51,15 @@ export const UserOverridesView = ({
         </button>
       </div>
 
-      <UserOverridesSection
+      <UserOverridesSections
+        scope="admin"
         deliveryPreferences={deliveryPreferences}
-        isUserOverridable={isUserOverridable}
-        userSettings={userSettings}
-        setUserSettings={setUserSettings}
-      />
-
-      <div className="border-t border-[var(--border-muted)]" />
-      <UserNotificationOverridesSection
         notificationPreferences={notificationPreferences}
         isUserOverridable={isUserOverridable}
         userSettings={userSettings}
         setUserSettings={setUserSettings}
-      />
-      <div className="border-t border-[var(--border-muted)]" />
-
-      <UserRequestPolicyOverridesSection
         usersTab={usersTab}
         globalUsersSettingsValues={globalUsersSettingsValues}
-        isUserOverridable={isUserOverridable}
-        userSettings={userSettings}
-        setUserSettings={setUserSettings}
       />
     </div>
   );

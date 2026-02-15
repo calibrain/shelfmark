@@ -44,13 +44,13 @@ class TestNotificationsSettingsApi:
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             resp = client.post(
                 "/api/settings/notifications/action/test_admin_notification",
-                json={"NOTIFICATIONS_ENABLED": True},
+                json={"ADMIN_NOTIFICATION_ROUTES": [{"event": "all", "url": "ntfys://ntfy.sh/demo"}]},
             )
 
         assert resp.status_code == 403
         assert resp.json["error"] == "Admin access required"
 
-    def test_notifications_action_returns_400_when_disabled(self, main_module, client):
+    def test_notifications_action_returns_400_when_no_routes(self, main_module, client):
         admin = _create_user(main_module, prefix="admin", role="admin")
         _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
 
@@ -58,12 +58,12 @@ class TestNotificationsSettingsApi:
             with patch("shelfmark.config.notifications_settings.load_config_file", return_value={}):
                 resp = client.post(
                     "/api/settings/notifications/action/test_admin_notification",
-                    json={"NOTIFICATIONS_ENABLED": False, "ADMIN_NOTIFICATION_ROUTES": []},
+                    json={"ADMIN_NOTIFICATION_ROUTES": []},
                 )
 
         assert resp.status_code == 400
         assert resp.json["success"] is False
-        assert "Enable notifications first" in resp.json["message"]
+        assert "Add at least one global notification URL route" in resp.json["message"]
 
     def test_notifications_action_uses_unsaved_values(self, main_module, client):
         admin = _create_user(main_module, prefix="admin", role="admin")
@@ -84,7 +84,6 @@ class TestNotificationsSettingsApi:
                     resp = client.post(
                         "/api/settings/notifications/action/test_admin_notification",
                         json={
-                            "NOTIFICATIONS_ENABLED": True,
                             "ADMIN_NOTIFICATION_ROUTES": [
                                 {"event": "all", "url": " ntfys://ntfy.sh/shelfmark "},
                                 {"event": "download_failed", "url": "ntfys://ntfy.sh/errors"},
@@ -102,7 +101,6 @@ class TestNotificationsSettingsApi:
         _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
 
         payload = {
-            "NOTIFICATIONS_ENABLED": True,
             "ADMIN_NOTIFICATION_ROUTES": [
                 {"event": "all", "url": " ntfys://ntfy.sh/shelfmark "},
                 {"event": "request_created", "url": ""},
@@ -120,7 +118,6 @@ class TestNotificationsSettingsApi:
         assert get_resp.status_code == 200
 
         fields = {field["key"]: field for field in get_resp.json["fields"] if "key" in field}
-        assert fields["NOTIFICATIONS_ENABLED"]["value"] is True
         assert fields["ADMIN_NOTIFICATION_ROUTES"]["value"] == [
             {"event": "all", "url": "ntfys://ntfy.sh/shelfmark"},
             {"event": "request_created", "url": ""},

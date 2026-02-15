@@ -143,10 +143,10 @@ def test_send_admin_event_passes_expected_title_body_and_notify_type(monkeypatch
     assert notify_kwargs["notify_type"] == _FakeNotifyType.WARNING
 
 
-def test_resolve_admin_routes_returns_empty_when_disabled(monkeypatch):
+def test_resolve_admin_routes_returns_empty_when_no_routes(monkeypatch):
     def _fake_get(key, default=None):
-        if key == "NOTIFICATIONS_ENABLED":
-            return False
+        if key == "ADMIN_NOTIFICATION_ROUTES":
+            return []
         return default
 
     monkeypatch.setattr(notifications_module.app_config, "get", _fake_get)
@@ -161,7 +161,6 @@ def test_resolve_user_routes_uses_user_overrides(monkeypatch):
         if user_id != 42:
             return default
         values = {
-            "USER_NOTIFICATIONS_ENABLED": True,
             "USER_NOTIFICATION_ROUTES": [
                 {"event": "all", "url": " ntfys://ntfy.sh/alice "},
                 {"event": "download_failed", "url": "ntfys://ntfy.sh/errors"},

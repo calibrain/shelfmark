@@ -76,8 +76,6 @@ export const UserListView = ({
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode);
   const isCwaMode = String(authMode || 'none').toLowerCase() === 'cwa';
-  const toggleButtonClasses = 'p-2 rounded-full hover-action transition-colors text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100';
-
   const handleDelete = async (userId: number) => {
     const ok = await onDelete(userId);
     if (ok) {
@@ -121,7 +119,32 @@ export const UserListView = ({
                 className={`rounded-lg border border-[var(--border-muted)] bg-[var(--bg-soft)] transition-colors ${active ? '' : 'opacity-60'}`}
               >
                 <div
-                  className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 ${isEditingRow ? 'border-b border-[var(--border-muted)]' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    // Don't toggle when clicking interactive elements inside the header (e.g. role dropdown)
+                    if ((e.target as HTMLElement).closest('button:not([data-card-toggle]), [role="listbox"], [data-dropdown]')) return;
+                    setConfirmDelete(null);
+                    if (isEditingRow) {
+                      onCancelEdit();
+                    } else {
+                      onEdit(user);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setConfirmDelete(null);
+                      if (isEditingRow) {
+                        onCancelEdit();
+                      } else {
+                        onEdit(user);
+                      }
+                    }
+                  }}
+                  className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 cursor-pointer hover-surface rounded-t-lg ${isEditingRow ? 'border-b border-[var(--border-muted)]' : 'rounded-b-lg'}`}
+                  aria-expanded={isEditingRow}
+                  aria-label={isEditingRow ? 'Collapse user editor' : `Expand ${user.username} editor`}
                 >
                   <UserIdentityHeader user={user} />
 
@@ -137,18 +160,9 @@ export const UserListView = ({
                       <UserRoleControl user={user} />
                     )}
 
-                    <button
-                      onClick={() => {
-                        setConfirmDelete(null);
-                        if (isEditingRow) {
-                          onCancelEdit();
-                        } else {
-                          onEdit(user);
-                        }
-                      }}
-                      className={toggleButtonClasses}
-                      aria-label={isEditingRow ? 'Collapse user editor' : `Expand ${user.username} editor`}
-                      title={isEditingRow ? 'Collapse editor' : 'Expand editor'}
+                    <div
+                      className="p-2 rounded-full text-gray-500 dark:text-gray-400"
+                      aria-hidden="true"
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -164,7 +178,7 @@ export const UserListView = ({
                           d="m19.5 8.25-7.5 7.5-7.5-7.5"
                         />
                       </svg>
-                    </button>
+                    </div>
                   </div>
                 </div>
 

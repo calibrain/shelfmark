@@ -60,6 +60,11 @@ interface FieldWrapperProps {
   // Optional overrides for dynamic disabled state (from disabledWhen)
   disabledOverride?: boolean;
   disabledReasonOverride?: string;
+  resetAction?: {
+    label?: string;
+    disabled?: boolean;
+    onClick: () => void;
+  };
   headerRight?: ReactNode;
   userOverrideCount?: number;
   userOverrideDetails?: Array<{
@@ -165,11 +170,32 @@ const UserOverriddenBadge = ({
   );
 };
 
+const ResetActionButton = ({
+  label = 'Reset',
+  disabled = false,
+  onClick,
+}: {
+  label?: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={disabled}
+    className="text-xs font-medium text-sky-500 hover:text-sky-400 transition-colors shrink-0
+               disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+    {label}
+  </button>
+);
+
 export const FieldWrapper = ({
   field,
   children,
   disabledOverride,
   disabledReasonOverride,
+  resetAction,
   headerRight,
   userOverrideCount,
   userOverrideDetails,
@@ -186,9 +212,10 @@ export const FieldWrapper = ({
   const requiresRestart = field.requiresRestart;
   const hasUserOverrides = Boolean(userOverrideCount) && (userOverrideCount || 0) > 0;
   const hasLabel = Boolean(field.label && field.label.trim().length > 0);
+  const hasResetAction = Boolean(resetAction);
   const showHeaderLeft = hasLabel || field.fromEnv || (requiresRestart && !isDisabled && !field.fromEnv)
     || (isDisabled && !field.fromEnv) || hasUserOverrides;
-  const showHeader = showHeaderLeft || Boolean(headerRight);
+  const showHeader = showHeaderLeft || hasResetAction || Boolean(headerRight);
 
   // ENV-locked fields should only dim the control, not the label/description
   const isFullyDimmed = isDisabled && !field.fromEnv;
@@ -213,8 +240,17 @@ export const FieldWrapper = ({
               />
             )}
           </div>
-          {headerRight && (
-            <div className="flex items-center gap-2 shrink-0">{headerRight}</div>
+          {(hasResetAction || headerRight) && (
+            <div className="flex items-center gap-2 shrink-0">
+              {hasResetAction && resetAction && (
+                <ResetActionButton
+                  label={resetAction.label}
+                  disabled={resetAction.disabled}
+                  onClick={resetAction.onClick}
+                />
+              )}
+              {headerRight}
+            </div>
           )}
         </div>
       )}
