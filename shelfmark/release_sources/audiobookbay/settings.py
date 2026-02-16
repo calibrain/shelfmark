@@ -6,7 +6,6 @@ from shelfmark.core.settings_registry import (
     CheckboxField,
     TextField,
     NumberField,
-    HeadingField,
 )
 
 
@@ -57,19 +56,5 @@ def audiobookbay_config_settings():
             min_value=0.0,
             max_value=10.0,
             show_when={"field": "ABB_ENABLED", "value": True},
-        ),
-    ]
-
-
-# ==================== Download Clients Tab ====================
-
-@register_settings("audiobookbay_clients", "Download Clients", group="audiobookbay", order=2)
-def audiobookbay_clients_settings():
-    """AudiobookBay download client settings."""
-    return [
-        HeadingField(
-            key="abb_torrent_heading",
-            title="Torrent Client",
-            description="The AudiobookBay integration uses the torrent client that is configured under 'Prowlarr' > 'Download Clients'.",
         ),
     ]

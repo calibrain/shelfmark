@@ -2,13 +2,14 @@
 Tests for AudiobookBay download handler.
 """
 
+from pathlib import Path
 from threading import Event
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 import pytest
 
 from shelfmark.core.models import DownloadTask
 from shelfmark.release_sources.audiobookbay.handler import AudiobookBayHandler
-from shelfmark.release_sources.prowlarr.clients import (
+from shelfmark.download.clients import (
     DownloadStatus,
     DownloadState,
 )
@@ -64,21 +65,22 @@ class TestAudiobookBayHandlerDownload:
         )
         cancel_flag = Event()
         recorder = ProgressRecorder()
-        
-        result = handler.download(
-            task=task,
-            cancel_flag=cancel_flag,
-            progress_callback=recorder.progress_callback,
-            status_callback=recorder.status_callback,
-        )
-        
-        assert result is None  # Torrents don't return path immediately
+        with patch.object(AudiobookBayHandler, "_poll_and_complete", return_value=None) as mock_poll:
+            result = handler.download(
+                task=task,
+                cancel_flag=cancel_flag,
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
+
+        assert result is None
         mock_extract_magnet.assert_called_once_with(
             "https://audiobookbay.lu/abss/test-book/",
             "audiobookbay.lu"
         )
         mock_client.add_download.assert_called_once()
-        assert "downloading" in recorder.statuses
+        mock_poll.assert_called_once()
+        assert "resolving" in recorder.statuses
 
     @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
     @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
@@ -111,12 +113,17 @@ class TestAudiobookBayHandlerDownload:
         cancel_flag = Event()
         recorder = ProgressRecorder()
         
-        result = handler.download(
-            task=task,
-            cancel_flag=cancel_flag,
-            progress_callback=recorder.progress_callback,
-            status_callback=recorder.status_callback,
-        )
+        with patch.object(
+            AudiobookBayHandler,
+            "_wait_for_completed_path",
+            return_value=(Path("/path/to/book.m4b"), None),
+        ):
+            result = handler.download(
+                task=task,
+                cancel_flag=cancel_flag,
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
         
         assert result == "/path/to/book.m4b"
         mock_client.add_download.assert_not_called()
@@ -151,16 +158,18 @@ class TestAudiobookBayHandlerDownload:
         cancel_flag = Event()
         recorder = ProgressRecorder()
         
-        result = handler.download(
-            task=task,
-            cancel_flag=cancel_flag,
-            progress_callback=recorder.progress_callback,
-            status_callback=recorder.status_callback,
-        )
-        
+        with patch.object(AudiobookBayHandler, "_poll_and_complete", return_value=None) as mock_poll:
+            result = handler.download(
+                task=task,
+                cancel_flag=cancel_flag,
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
+
         assert result is None
         assert "downloading" in recorder.statuses
         mock_client.add_download.assert_not_called()
+        mock_poll.assert_called_once()
 
     @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
     @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
@@ -203,13 +212,18 @@ class TestAudiobookBayHandlerDownload:
         )
         cancel_flag = Event()
         recorder = ProgressRecorder()
-        
-        result = handler.download(
-            task=task,
-            cancel_flag=cancel_flag,
-            progress_callback=recorder.progress_callback,
-            status_callback=recorder.status_callback,
-        )
+
+        with patch.object(
+            AudiobookBayHandler,
+            "_wait_for_completed_path",
+            return_value=(None, "Could not locate existing download path"),
+        ):
+            result = handler.download(
+                task=task,
+                cancel_flag=cancel_flag,
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
         
         assert result is None
         assert recorder.last_status == "error"
@@ -353,12 +367,13 @@ class TestAudiobookBayHandlerCategory:
         cancel_flag = Event()
         recorder = ProgressRecorder()
         
-        handler.download(
-            task=task,
-            cancel_flag=cancel_flag,
-            progress_callback=recorder.progress_callback,
-            status_callback=recorder.status_callback,
-        )
+        with patch.object(AudiobookBayHandler, "_poll_and_complete", return_value=None):
+            handler.download(
+                task=task,
+                cancel_flag=cancel_flag,
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
         
         # Verify category was passed
         call_kwargs = mock_client.add_download.call_args.kwargs
@@ -368,7 +383,7 @@ class TestAudiobookBayHandlerCategory:
     @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
     @patch('shelfmark.release_sources.audiobookbay.handler.config.get')
     def test_category_selection_transmission_general(self, mock_config_get, mock_get_client, mock_extract_magnet):
-        """Test fallback to general category for Transmission."""
+        """Test Transmission audiobook category does not fall back to general category."""
         mock_extract_magnet.return_value = "magnet:?xt=urn:btih:abc123"
         
         def config_get(key, default=""):
@@ -394,16 +409,17 @@ class TestAudiobookBayHandlerCategory:
         cancel_flag = Event()
         recorder = ProgressRecorder()
         
-        handler.download(
-            task=task,
-            cancel_flag=cancel_flag,
-            progress_callback=recorder.progress_callback,
-            status_callback=recorder.status_callback,
-        )
+        with patch.object(AudiobookBayHandler, "_poll_and_complete", return_value=None):
+            handler.download(
+                task=task,
+                cancel_flag=cancel_flag,
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
         
-        # Verify general category was used
+        # Transmission audiobook downloads use only the audiobook category key.
         call_kwargs = mock_client.add_download.call_args.kwargs
-        assert call_kwargs['category'] == "books"
+        assert call_kwargs['category'] is None
 
     @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
     @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
@@ -430,12 +446,13 @@ class TestAudiobookBayHandlerCategory:
         cancel_flag = Event()
         recorder = ProgressRecorder()
         
-        handler.download(
-            task=task,
-            cancel_flag=cancel_flag,
-            progress_callback=recorder.progress_callback,
-            status_callback=recorder.status_callback,
-        )
+        with patch.object(AudiobookBayHandler, "_poll_and_complete", return_value=None):
+            handler.download(
+                task=task,
+                cancel_flag=cancel_flag,
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
         
         # Verify no category was passed
         call_kwargs = mock_client.add_download.call_args.kwargs

@@ -13,7 +13,7 @@ import hashlib
 
 import pytest
 
-from shelfmark.release_sources.prowlarr.clients.torrent_utils import (
+from shelfmark.download.clients.torrent_utils import (
     parse_transmission_url,
     bencode_decode,
     bencode_encode,

@@ -9,7 +9,7 @@ from threading import Event
 from unittest.mock import MagicMock, patch
 
 from shelfmark.core.models import DownloadTask
-from shelfmark.release_sources.prowlarr.clients import DownloadState, DownloadStatus
+from shelfmark.download.clients import DownloadState, DownloadStatus
 from shelfmark.release_sources.prowlarr.handler import ProwlarrHandler
 
 

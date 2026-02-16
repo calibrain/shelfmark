@@ -18,7 +18,7 @@ import pytest
 
 from shelfmark.core.config import config
 from shelfmark.core.settings_registry import save_config_file
-from shelfmark.release_sources.prowlarr.clients import DownloadStatus, DownloadState
+from shelfmark.download.clients import DownloadStatus, DownloadState
 
 
 # Invalid magnet - valid format but non-existent torrent
@@ -74,7 +74,7 @@ def _setup_deluge_config():
 def _try_get_transmission_client():
     _setup_transmission_config()
     try:
-        from shelfmark.release_sources.prowlarr.clients.transmission import TransmissionClient
+        from shelfmark.download.clients.transmission import TransmissionClient
         client = TransmissionClient()
         client.test_connection()
         return client
@@ -85,7 +85,7 @@ def _try_get_transmission_client():
 def _try_get_qbittorrent_client():
     _setup_qbittorrent_config()
     try:
-        from shelfmark.release_sources.prowlarr.clients.qbittorrent import QBittorrentClient
+        from shelfmark.download.clients.qbittorrent import QBittorrentClient
         client = QBittorrentClient()
         success, _ = client.test_connection()
         if success:
@@ -98,7 +98,7 @@ def _try_get_qbittorrent_client():
 def _try_get_deluge_client():
     _setup_deluge_config()
     try:
-        from shelfmark.release_sources.prowlarr.clients.deluge import DelugeClient
+        from shelfmark.download.clients.deluge import DelugeClient
         client = DelugeClient()
         success, _ = client.test_connection()
         if success:

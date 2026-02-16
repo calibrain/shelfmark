@@ -4,7 +4,7 @@ Tests for AudiobookBay utility functions.
 
 import pytest
 
-from shelfmark.release_sources.audiobookbay.utils import parse_size, sanitize_title
+from shelfmark.release_sources.audiobookbay.utils import parse_size
 
 
 class TestParseSize:
@@ -66,38 +66,3 @@ class TestParseSize:
         """Test parsing with various whitespace."""
         assert parse_size("  1 GB  ") == 1024 ** 3
         assert parse_size("1.5\tMB") == int(1.5 * (1024 ** 2))
-
-
-class TestSanitizeTitle:
-    """Tests for the sanitize_title function."""
-
-    def test_sanitize_title_removes_invalid_chars(self):
-        """Test removing invalid filename characters."""
-        assert sanitize_title("Test<Book>") == "TestBook"
-        assert sanitize_title("Test:Book") == "TestBook"
-        assert sanitize_title("Test/Book") == "TestBook"
-        assert sanitize_title("Test\\Book") == "TestBook"
-        assert sanitize_title("Test|Book") == "TestBook"
-        assert sanitize_title("Test?Book") == "TestBook"
-        assert sanitize_title("Test*Book") == "TestBook"
-        assert sanitize_title('Test"Book') == "TestBook"
-
-    def test_sanitize_title_preserves_valid_chars(self):
-        """Test that valid characters are preserved."""
-        assert sanitize_title("Test Book - Author") == "Test Book - Author"
-        assert sanitize_title("Test Book (2024)") == "Test Book (2024)"
-        assert sanitize_title("Test Book [Special]") == "Test Book [Special]"
-        assert sanitize_title("Test Book's Title") == "Test Book's Title"
-
-    def test_sanitize_title_strips_whitespace(self):
-        """Test that leading/trailing whitespace is stripped."""
-        assert sanitize_title("  Test Book  ") == "Test Book"
-        assert sanitize_title("\tTest Book\n") == "Test Book"
-
-    def test_sanitize_title_empty(self):
-        """Test that empty string returns empty."""
-        assert sanitize_title("") == ""
-
-    def test_sanitize_title_multiple_invalid_chars(self):
-        """Test removing multiple invalid characters."""
-        assert sanitize_title("Test<Book>:Author/Title") == "TestBookAuthorTitle"

@@ -16,7 +16,7 @@ import pytest
 from shelfmark.core.models import DownloadTask
 from shelfmark.release_sources.prowlarr.handler import ProwlarrHandler
 from shelfmark.release_sources.prowlarr.utils import get_protocol
-from shelfmark.release_sources.prowlarr.clients import (
+from shelfmark.download.clients import (
     DownloadStatus,
     DownloadState,
 )

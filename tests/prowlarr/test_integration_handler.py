@@ -39,7 +39,7 @@ def _is_transmission_available():
     """Check if Transmission is available."""
     _setup_transmission_config()
     try:
-        from shelfmark.release_sources.prowlarr.clients.transmission import TransmissionClient
+        from shelfmark.download.clients.transmission import TransmissionClient
         client = TransmissionClient()
         success, _ = client.test_connection()
         return success

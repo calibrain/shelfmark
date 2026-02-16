@@ -72,6 +72,7 @@ def extract_torrent_info(
         return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
 
     headers: dict[str, str] = {"Accept": "application/x-bittorrent"}
+    # TODO: Move this source-specific Prowlarr auth handling into a source hook.
     api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()
     if api_key:
         headers["X-Api-Key"] = api_key

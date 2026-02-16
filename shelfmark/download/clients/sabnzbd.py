@@ -12,7 +12,7 @@ import requests
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
-from shelfmark.release_sources.prowlarr.clients import (
+from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
     register_client,
@@ -195,6 +195,7 @@ class SABnzbdClient(DownloadClient):
         return response.content
 
     def _get_prowlarr_headers(self, url: str) -> dict:
+        # TODO: Move this source-specific Prowlarr auth handling into a source hook.
         api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()
         if not api_key:
             return {}

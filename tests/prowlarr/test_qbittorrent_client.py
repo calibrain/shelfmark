@@ -9,8 +9,8 @@ import sys
 from unittest.mock import MagicMock, patch
 import pytest
 
-from shelfmark.release_sources.prowlarr.clients import DownloadStatus
-from shelfmark.release_sources.prowlarr.clients.torrent_utils import TorrentInfo
+from shelfmark.download.clients import DownloadStatus
+from shelfmark.download.clients.torrent_utils import TorrentInfo
 
 
 class MockTorrent:
@@ -66,11 +66,11 @@ class TestQBittorrentClientIsConfigured:
             "QBITTORRENT_URL": "http://localhost:8080",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
-        from shelfmark.release_sources.prowlarr.clients.qbittorrent import (
+        from shelfmark.download.clients.qbittorrent import (
             QBittorrentClient,
         )
 
@@ -83,11 +83,11 @@ class TestQBittorrentClientIsConfigured:
             "QBITTORRENT_URL": "http://localhost:8080",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
-        from shelfmark.release_sources.prowlarr.clients.qbittorrent import (
+        from shelfmark.download.clients.qbittorrent import (
             QBittorrentClient,
         )
 
@@ -100,11 +100,11 @@ class TestQBittorrentClientIsConfigured:
             "QBITTORRENT_URL": "",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
-        from shelfmark.release_sources.prowlarr.clients.qbittorrent import (
+        from shelfmark.download.clients.qbittorrent import (
             QBittorrentClient,
         )
 
@@ -123,7 +123,7 @@ class TestQBittorrentClientTestConnection:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -135,7 +135,7 @@ class TestQBittorrentClientTestConnection:
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             # Need to reimport after patching
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -153,7 +153,7 @@ class TestQBittorrentClientTestConnection:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -163,7 +163,7 @@ class TestQBittorrentClientTestConnection:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -185,7 +185,7 @@ class TestQBittorrentClientGetStatus:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -197,7 +197,7 @@ class TestQBittorrentClientGetStatus:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -218,7 +218,7 @@ class TestQBittorrentClientGetStatus:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -234,7 +234,7 @@ class TestQBittorrentClientGetStatus:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -253,7 +253,7 @@ class TestQBittorrentClientGetStatus:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -272,7 +272,7 @@ class TestQBittorrentClientGetStatus:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -290,7 +290,7 @@ class TestQBittorrentClientGetStatus:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -335,7 +335,7 @@ class TestQBittorrentClientGetStatus:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -352,7 +352,7 @@ class TestQBittorrentClientGetStatus:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -367,7 +367,7 @@ class TestQBittorrentClientGetStatus:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -386,7 +386,7 @@ class TestQBittorrentClientGetStatus:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -398,7 +398,7 @@ class TestQBittorrentClientGetStatus:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -417,7 +417,7 @@ class TestQBittorrentClientGetStatus:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -429,7 +429,7 @@ class TestQBittorrentClientGetStatus:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -446,7 +446,7 @@ class TestQBittorrentClientGetStatus:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -458,7 +458,7 @@ class TestQBittorrentClientGetStatus:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -479,7 +479,7 @@ class TestQBittorrentClientAddDownload:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -493,7 +493,7 @@ class TestQBittorrentClientAddDownload:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -512,7 +512,7 @@ class TestQBittorrentClientAddDownload:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -526,11 +526,11 @@ class TestQBittorrentClientAddDownload:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             with patch(
-                "shelfmark.release_sources.prowlarr.clients.qbittorrent.extract_torrent_info",
+                "shelfmark.download.clients.qbittorrent.extract_torrent_info",
                 autospec=True,
             ) as mock_extract:
                 mock_extract.return_value = TorrentInfo(
@@ -562,7 +562,7 @@ class TestQBittorrentClientAddDownload:
             "QBITTORRENT_CATEGORY": "books",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -578,7 +578,7 @@ class TestQBittorrentClientAddDownload:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -600,7 +600,7 @@ class TestQBittorrentClientRemove:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -609,7 +609,7 @@ class TestQBittorrentClientRemove:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -629,7 +629,7 @@ class TestQBittorrentClientRemove:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -639,7 +639,7 @@ class TestQBittorrentClientRemove:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -659,7 +659,7 @@ class TestQBittorrentClientGetDownloadPath:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -673,7 +673,7 @@ class TestQBittorrentClientGetDownloadPath:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -690,7 +690,7 @@ class TestQBittorrentClientGetDownloadPath:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -708,7 +708,7 @@ class TestQBittorrentClientGetDownloadPath:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -725,7 +725,7 @@ class TestQBittorrentClientGetDownloadPath:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -766,7 +766,7 @@ class TestQBittorrentClientGetDownloadPath:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -782,7 +782,7 @@ class TestQBittorrentClientGetDownloadPath:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -825,7 +825,7 @@ class TestQBittorrentClientGetDownloadPath:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -846,7 +846,7 @@ class TestQBittorrentClientFindExisting:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -862,7 +862,7 @@ class TestQBittorrentClientFindExisting:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -883,7 +883,7 @@ class TestQBittorrentClientFindExisting:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -898,7 +898,7 @@ class TestQBittorrentClientFindExisting:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -916,7 +916,7 @@ class TestQBittorrentClientFindExisting:
             "QBITTORRENT_CATEGORY": "test",
         }
         monkeypatch.setattr(
-            "shelfmark.release_sources.prowlarr.clients.qbittorrent.config.get",
+            "shelfmark.download.clients.qbittorrent.config.get",
             lambda key, default="": config_values.get(key, default),
         )
 
@@ -925,7 +925,7 @@ class TestQBittorrentClientFindExisting:
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
             import importlib
-            import shelfmark.release_sources.prowlarr.clients.qbittorrent as qb_module
+            import shelfmark.download.clients.qbittorrent as qb_module
             importlib.reload(qb_module)
 
             client = qb_module.QBittorrentClient()
@@ -938,34 +938,34 @@ class TestHashesMatch:
     """Tests for _hashes_match() - Amarr compatibility."""
 
     def test_identical_hashes_match(self):
-        from shelfmark.release_sources.prowlarr.clients.qbittorrent import _hashes_match
+        from shelfmark.download.clients.qbittorrent import _hashes_match
         assert _hashes_match("abc123", "abc123") is True
         assert _hashes_match("ABC123", "abc123") is True
 
     def test_different_hashes_dont_match(self):
-        from shelfmark.release_sources.prowlarr.clients.qbittorrent import _hashes_match
+        from shelfmark.download.clients.qbittorrent import _hashes_match
         assert _hashes_match("abc123", "def456") is False
 
     def test_amarr_padded_hash_matches_ed2k_hash(self):
-        from shelfmark.release_sources.prowlarr.clients.qbittorrent import _hashes_match
+        from shelfmark.download.clients.qbittorrent import _hashes_match
         ed2k_hash = "0320c47b3baa01f8d5f42cd7c05ce28d"  # 32 chars
         padded_hash = "0320c47b3baa01f8d5f42cd7c05ce28d00000000"  # 40 chars
         assert _hashes_match(padded_hash, ed2k_hash) is True
         assert _hashes_match(ed2k_hash, padded_hash) is True
 
     def test_non_zero_padded_40_char_hash_doesnt_match(self):
-        from shelfmark.release_sources.prowlarr.clients.qbittorrent import _hashes_match
+        from shelfmark.download.clients.qbittorrent import _hashes_match
         bittorrent_hash = "3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0"
         partial_hash = "3b245504cf5f11bbdbe1201cea6a6bf4"
         assert _hashes_match(bittorrent_hash, partial_hash) is False
 
     def test_matching_is_case_insensitive(self):
-        from shelfmark.release_sources.prowlarr.clients.qbittorrent import _hashes_match
+        from shelfmark.download.clients.qbittorrent import _hashes_match
         ed2k_hash = "0320C47B3BAA01F8D5F42CD7C05CE28D"
         padded_hash = "0320c47b3baa01f8d5f42cd7c05ce28d00000000"
         assert _hashes_match(padded_hash, ed2k_hash) is True
 
     def test_wrong_length_hashes_dont_match(self):
-        from shelfmark.release_sources.prowlarr.clients.qbittorrent import _hashes_match
+        from shelfmark.download.clients.qbittorrent import _hashes_match
         assert _hashes_match("a" * 40, "b" * 30) is False
         assert _hashes_match("a" * 38, "b" * 32) is False

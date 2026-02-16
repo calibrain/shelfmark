@@ -1,5 +1,5 @@
 """
-Download client infrastructure for Prowlarr integration.
+Shared download client infrastructure for external release sources.
 
 This module provides:
 - DownloadState: Enum of valid download states
@@ -423,9 +423,9 @@ def get_all_clients() -> Dict[str, List[Type[DownloadClient]]]:
 
 # Import client implementations to trigger registration
 # These imports are at the bottom to avoid circular imports
-from shelfmark.release_sources.prowlarr.clients import qbittorrent  # noqa: F401, E402
-from shelfmark.release_sources.prowlarr.clients import nzbget  # noqa: F401, E402
-from shelfmark.release_sources.prowlarr.clients import sabnzbd  # noqa: F401, E402
-from shelfmark.release_sources.prowlarr.clients import transmission  # noqa: F401, E402
-from shelfmark.release_sources.prowlarr.clients import deluge  # noqa: F401, E402
-from shelfmark.release_sources.prowlarr.clients import rtorrent  # noqa: F401, E402
+from shelfmark.download.clients import qbittorrent  # noqa: F401, E402
+from shelfmark.download.clients import nzbget  # noqa: F401, E402
+from shelfmark.download.clients import sabnzbd  # noqa: F401, E402
+from shelfmark.download.clients import transmission  # noqa: F401, E402
+from shelfmark.download.clients import deluge  # noqa: F401, E402
+from shelfmark.download.clients import rtorrent  # noqa: F401, E402

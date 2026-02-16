@@ -12,7 +12,7 @@ import requests
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
-from shelfmark.release_sources.prowlarr.clients import (
+from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
     register_client,

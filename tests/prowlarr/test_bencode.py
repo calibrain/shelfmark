@@ -4,7 +4,7 @@ Tests for bencode encoding/decoding in the torrent utilities.
 
 import pytest
 
-from shelfmark.release_sources.prowlarr.clients.torrent_utils import (
+from shelfmark.download.clients.torrent_utils import (
     bencode_encode as _bencode_encode,
     bencode_decode as _bencode_decode,
     extract_info_hash_from_torrent as _extract_info_hash_from_torrent,

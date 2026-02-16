@@ -4,7 +4,7 @@ Tests for the download client infrastructure.
 
 import pytest
 
-from shelfmark.release_sources.prowlarr.clients import (
+from shelfmark.download.clients import (
     DownloadStatus,
     DownloadState,
     DownloadClient,
