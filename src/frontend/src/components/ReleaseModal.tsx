@@ -197,15 +197,13 @@ function getBookTitleCandidates(
   uiBook: Book | null,
   responseBook: ReleasesResponse['book'] | undefined
 ): string[] {
-  const responseBookRecord = responseBook as Record<string, unknown> | undefined;
-  const uiBookRecord = uiBook as Record<string, unknown> | undefined;
   return collectNormalizedStrings([
     responseBook?.search_title,
     responseBook?.title,
-    ...getLocalizedTitleValues(responseBookRecord?.titles_by_language),
+    ...getLocalizedTitleValues(responseBook?.titles_by_language),
     uiBook?.search_title,
     uiBook?.title,
-    ...getLocalizedTitleValues(uiBookRecord?.titles_by_language),
+    ...getLocalizedTitleValues(uiBook?.titles_by_language),
   ]);
 }
 
