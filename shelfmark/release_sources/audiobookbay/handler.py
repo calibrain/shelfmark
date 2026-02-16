@@ -19,6 +19,19 @@ logger = setup_logger(__name__)
 class AudiobookBayHandler(ExternalClientHandler):
     """Handler for AudiobookBay downloads via configured torrent client."""
 
+    @staticmethod
+    def _resolve_detail_url(task: DownloadTask) -> Optional[str]:
+        """Resolve ABB detail URL from queued task metadata."""
+        source_url = (task.source_url or "").strip()
+        if source_url:
+            return source_url
+
+        # Backward-compat: older tests and some legacy flows used task_id as URL.
+        task_id = (task.task_id or "").strip()
+        if task_id.startswith(("http://", "https://")):
+            return task_id
+        return None
+
     def _get_client(self, protocol: str) -> Optional[DownloadClient]:
         """Compatibility shim so module-level patching still works in tests."""
         return get_client(protocol)
@@ -33,7 +46,12 @@ class AudiobookBayHandler(ExternalClientHandler):
         status_callback: Callable[[str, Optional[str]], None],
     ) -> Optional[DownloadRequest]:
         """Resolve ABB detail page into a magnet-link download request."""
-        detail_url = task.task_id
+        detail_url = self._resolve_detail_url(task)
+        if not detail_url:
+            status_callback("error", "Missing AudiobookBay details URL")
+            logger.warning(f"Missing details URL for AudiobookBay task: {task.task_id}")
+            return None
+
         hostname = normalize_hostname(config.get("ABB_HOSTNAME", ""))
         if not hostname:
             hostname = normalize_hostname(urlparse(detail_url).hostname)

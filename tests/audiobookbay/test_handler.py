@@ -84,6 +84,43 @@ class TestAudiobookBayHandlerDownload:
 
     @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
     @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
+    def test_download_uses_source_url_for_hashed_task_id(self, mock_get_client, mock_extract_magnet):
+        """Test release queue flow where task_id is source hash and source_url has detail URL."""
+        mock_extract_magnet.return_value = "magnet:?xt=urn:btih:abc123"
+
+        mock_client = MagicMock()
+        mock_client.name = "qbittorrent"
+        mock_client.find_existing.return_value = None
+        mock_client.add_download.return_value = "download_id_123"
+        mock_get_client.return_value = mock_client
+
+        handler = AudiobookBayHandler()
+        task = DownloadTask(
+            task_id="35f56a3e5734bfa69c3169ee8e605a60",
+            source="audiobookbay",
+            title="Test Book",
+            content_type="audiobook",
+            source_url="https://audiobookbay.lu/abss/test-book/",
+        )
+        cancel_flag = Event()
+        recorder = ProgressRecorder()
+        with patch.object(AudiobookBayHandler, "_poll_and_complete", return_value=None):
+            result = handler.download(
+                task=task,
+                cancel_flag=cancel_flag,
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
+
+        assert result is None
+        mock_extract_magnet.assert_called_once_with(
+            "https://audiobookbay.lu/abss/test-book/",
+            "audiobookbay.lu"
+        )
+        assert "resolving" in recorder.statuses
+
+    @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
+    @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
     def test_download_existing_complete(self, mock_get_client, mock_extract_magnet):
         """Test handling existing complete download."""
         mock_extract_magnet.return_value = "magnet:?xt=urn:btih:abc123"

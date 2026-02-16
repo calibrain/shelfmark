@@ -74,6 +74,7 @@ def test_queue_release_uses_user_specific_books_output_mode(monkeypatch):
         "content_type": "book (fiction)",
         "format": "epub",
         "size": "1 MB",
+        "download_url": "https://audiobookbay.lu/abss/release-title/",
     }
 
     success, error = orchestrator.queue_release(release_data, user_id=42, username="alice")
@@ -83,6 +84,7 @@ def test_queue_release_uses_user_specific_books_output_mode(monkeypatch):
     task = captured["task"]
     assert task.output_mode == "email"
     assert task.output_args == {"to": "alice@example.com"}
+    assert task.source_url == "https://audiobookbay.lu/abss/release-title/"
     assert ("BOOKS_OUTPUT_MODE", 42) in config_calls
 
 

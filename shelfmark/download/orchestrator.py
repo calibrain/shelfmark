@@ -188,6 +188,16 @@ def queue_release(
         year = release_data.get('year') or extra.get('year')
         preview = release_data.get('preview') or extra.get('preview')
         content_type = release_data.get('content_type') or extra.get('content_type')
+        source_url_raw = (
+            release_data.get('download_url')
+            or release_data.get('source_url')
+            or release_data.get('info_url')
+            or extra.get('detail_url')
+            or extra.get('source_url')
+        )
+        source_url = source_url_raw.strip() if isinstance(source_url_raw, str) else None
+        if source_url == "":
+            source_url = None
 
         # Get series info for library naming templates
         series_name = release_data.get('series_name') or extra.get('series_name')
@@ -220,6 +230,7 @@ def queue_release(
             size=release_data.get('size'),
             preview=preview,
             content_type=content_type,
+            source_url=source_url,
             series_name=series_name,
             series_position=series_position,
             subtitle=subtitle,

@@ -76,6 +76,7 @@ class DownloadTask:
     size: Optional[str] = None
     preview: Optional[str] = None
     content_type: Optional[str] = None  # "book (fiction)", "audiobook", "magazine", etc.
+    source_url: Optional[str] = None  # Original release URL used by source-specific handlers
 
     # Series info (for library naming templates)
     series_name: Optional[str] = None
