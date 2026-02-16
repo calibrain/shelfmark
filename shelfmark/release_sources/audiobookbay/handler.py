@@ -1,6 +1,7 @@
 """AudiobookBay download handler - resolves magnet links and uses shared client lifecycle."""
 
 from typing import Callable, Optional
+from urllib.parse import urlparse
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -9,6 +10,7 @@ from shelfmark.download.clients import DownloadClient, get_client, list_configur
 from shelfmark.download.clients.base_handler import DownloadRequest, ExternalClientHandler
 from shelfmark.release_sources import register_handler
 from shelfmark.release_sources.audiobookbay import scraper
+from shelfmark.release_sources.audiobookbay.utils import normalize_hostname
 
 logger = setup_logger(__name__)
 
@@ -32,7 +34,9 @@ class AudiobookBayHandler(ExternalClientHandler):
     ) -> Optional[DownloadRequest]:
         """Resolve ABB detail page into a magnet-link download request."""
         detail_url = task.task_id
-        hostname = config.get("ABB_HOSTNAME", "audiobookbay.lu")
+        hostname = normalize_hostname(config.get("ABB_HOSTNAME", ""))
+        if not hostname:
+            hostname = normalize_hostname(urlparse(detail_url).hostname)
 
         status_callback("resolving", "Extracting magnet link")
         magnet_link = scraper.extract_magnet_link(detail_url, hostname)
@@ -51,6 +55,11 @@ class AudiobookBayHandler(ExternalClientHandler):
         )
 
     def cancel(self, task_id: str) -> bool:
-        """Cancel an in-progress download (handled by cancel_flag in polling loop)."""
+        """Cancel an in-progress download.
+
+        Shelfmark can stop waiting via the queue cancel flag, but once a magnet has
+        been sent to the torrent client we do not remove it client-side. Users must
+        cancel/remove it in their torrent client UI.
+        """
         logger.debug(f"Cancel requested for AudiobookBay task: {task_id}")
         return False

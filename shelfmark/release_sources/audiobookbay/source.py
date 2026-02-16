@@ -1,6 +1,7 @@
 """AudiobookBay release source - searches AudiobookBay for audiobook torrents."""
 
 import hashlib
+import re
 from typing import List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -21,7 +22,7 @@ from shelfmark.release_sources import (
     ColumnColorHint,
 )
 from shelfmark.release_sources.audiobookbay import scraper
-from shelfmark.release_sources.audiobookbay.utils import parse_size
+from shelfmark.release_sources.audiobookbay.utils import normalize_hostname, parse_size
 
 logger = setup_logger(__name__)
 
@@ -64,6 +65,31 @@ LANGUAGE_MAP = {
 }
 
 
+def _split_title_and_author(raw_title: str) -> tuple[str, Optional[str]]:
+    """Split titles in the form 'Title - Author' into title and author.
+
+    Args:
+        raw_title: The raw title string from the scrape.
+
+    Returns:
+        (title, author) where author is None if split is unavailable.
+    """
+    if not raw_title:
+        return "", None
+
+    cleaned_title = raw_title.strip()
+    if " - " not in cleaned_title:
+        return cleaned_title, None
+
+    title_part, author_part = cleaned_title.rsplit(" - ", 1)
+    title_part = title_part.strip()
+    author_part = author_part.strip()
+    if not title_part or not author_part:
+        return cleaned_title, None
+
+    return title_part, author_part
+
+
 def _map_language(language: str) -> Optional[str]:
     """Map language name to ISO 639-1 code.
     
@@ -78,6 +104,28 @@ def _map_language(language: str) -> Optional[str]:
     
     lang_lower = language.lower().strip()
     return LANGUAGE_MAP.get(lang_lower, lang_lower)
+
+
+def _parse_bitrate_to_kbps(bitrate: Optional[str]) -> Optional[int]:
+    """Parse bitrate string to an integer Kbps value.
+
+    Args:
+        bitrate: Human-readable bitrate (e.g., "128 Kbps")
+
+    Returns:
+        Bitrate value in Kbps as integer, or None if parsing fails.
+    """
+    if not bitrate:
+        return None
+
+    match = re.search(r"(\d+(?:\.\d+)?)\s*kbps", bitrate, re.IGNORECASE)
+    if not match:
+        return None
+
+    try:
+        return int(float(match.group(1)))
+    except ValueError:
+        return None
 
 
 def _generate_source_id(detail_url: str) -> str:
@@ -115,8 +163,12 @@ class AudiobookBaySource(ReleaseSource):
         if content_type != "audiobook":
             return []
         
-        hostname = config.get("ABB_HOSTNAME", "audiobookbay.lu")
-        max_pages = config.get("ABB_PAGE_LIMIT", 5)
+        hostname = normalize_hostname(config.get("ABB_HOSTNAME", ""))
+        if not hostname:
+            logger.debug("AudiobookBay hostname is not configured")
+            return []
+        max_pages = config.get("ABB_PAGE_LIMIT", 1)
+        exact_phrase = bool(config.get("ABB_EXACT_PHRASE", False))
         
         # Build search query from plan
         if plan.manual_query:
@@ -141,8 +193,19 @@ class AudiobookBaySource(ReleaseSource):
             results = scraper.search_audiobookbay(
                 query=query_lower,
                 max_pages=max_pages,
-                hostname=hostname
+                hostname=hostname,
+                exact_phrase=exact_phrase,
             )
+
+            # For auto-generated queries, fallback to broad matching if exact phrase returns nothing.
+            if exact_phrase and not results and not plan.manual_query:
+                logger.info("No exact phrase results, retrying AudiobookBay search without quotes")
+                results = scraper.search_audiobookbay(
+                    query=query_lower,
+                    max_pages=max_pages,
+                    hostname=hostname,
+                    exact_phrase=False,
+                )
             
             # Extract query words for relevance checking
             query_words = set(word.lower() for word in query_lower.split() if len(word) > 2)
@@ -150,13 +213,14 @@ class AudiobookBaySource(ReleaseSource):
             releases = []
             for result in results:
                 try:
-                    title = result['title']
+                    raw_title = result['title']
+                    title, author = _split_title_and_author(raw_title)
+                    title_for_filter = raw_title.lower()
                     
                     # Basic relevance check: ensure title contains at least one query word
                     # This filters out homepage "Latest" feed items that may leak through
                     if query_words:
-                        title_lower = title.lower()
-                        if not any(word in title_lower for word in query_words):
+                        if not any(word in title_for_filter for word in query_words):
                             logger.debug(f"Filtering out irrelevant result: {title}")
                             continue
                     
@@ -169,6 +233,8 @@ class AudiobookBaySource(ReleaseSource):
                     size_bytes = parse_size(size_str) if size_str else None
                     language_raw = result.get('language')
                     language_code = _map_language(language_raw) if language_raw else None
+                    bitrate = result.get('bitrate')
+                    bitrate_kbps = _parse_bitrate_to_kbps(bitrate)
                     
                     # Create Release object
                     release = Release(
@@ -189,9 +255,12 @@ class AudiobookBaySource(ReleaseSource):
                         extra={
                             "preview": result.get('cover'),
                             "detail_url": result['link'],
-                            "bitrate": result.get('bitrate'),
+                            "bitrate": bitrate,
+                            "bitrate_value": bitrate_kbps,
                             "posted_date": result.get('posted_date'),
+                            "title_raw": raw_title,
                             "language_raw": language_raw,  # Keep original for reference
+                            "author": author,  # Parsed author from title pattern
                         }
                     )
                     releases.append(release)
@@ -207,13 +276,13 @@ class AudiobookBaySource(ReleaseSource):
             return []
     
     def is_available(self) -> bool:
-        """Check if AudiobookBay source is enabled."""
-        return config.get("ABB_ENABLED", False) is True
+        """Check if AudiobookBay source is enabled and configured."""
+        return config.get("ABB_ENABLED", False) is True and bool(normalize_hostname(config.get("ABB_HOSTNAME", "")))
     
     def get_column_config(self) -> ReleaseColumnConfig:
         """Get column configuration for AudiobookBay releases.
         
-        Shows title, language, format, and size columns.
+        Shows title, language, format, bitrate, and size columns.
         No seeders/peers since ABB doesn't show this on search page.
         """
         return ReleaseColumnConfig(
@@ -240,14 +309,27 @@ class AudiobookBaySource(ReleaseSource):
                     uppercase=True,
                 ),
                 ColumnSchema(
+                    key="extra.bitrate",
+                    label="Bitrate",
+                    render_type=ColumnRenderType.NUMBER,
+                    align=ColumnAlign.CENTER,
+                    width="72px",
+                    hide_mobile=False,
+                    fallback="",
+                    sortable=True,
+                    sort_key="extra.bitrate_value",
+                ),
+                ColumnSchema(
                     key="size",
                     label="Size",
                     render_type=ColumnRenderType.SIZE,
                     align=ColumnAlign.CENTER,
                     width="80px",
                     hide_mobile=False,
+                    sortable=True,
+                    sort_key="size_bytes",
                 ),
             ],
-            grid_template="minmax(0,2fr) 60px 80px 80px",
+            grid_template="minmax(0,2fr) 60px 80px 72px 80px",
             supported_filters=["format", "language"],  # Enable format and language filters
         )

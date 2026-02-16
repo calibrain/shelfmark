@@ -3,7 +3,6 @@
 from typing import Any, Dict, List, Optional
 
 from shelfmark.core.settings_registry import (
-    register_group,
     register_settings,
     CheckboxField,
     HeadingField,
@@ -99,25 +98,14 @@ def _test_prowlarr_connection(current_values: Optional[Dict[str, Any]] = None) -
         return {"success": False, "message": f"Connection failed: {str(e)}"}
 
 
-# ==================== Register Group ====================
-
-
-register_group(
-    name="prowlarr",
-    display_name="Prowlarr",
-    icon="download",
-    order=40,
-)
-
-
 # ==================== Configuration Tab ====================
 
 
 @register_settings(
     name="prowlarr_config",
-    display_name="Configuration",
+    display_name="Prowlarr",
+    icon="download",
     order=41,
-    group="prowlarr",
 )
 def prowlarr_config_settings():
     """Prowlarr connection and indexer settings."""

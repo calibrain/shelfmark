@@ -164,6 +164,8 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
       const extra = release.extra as Record<string, unknown> | undefined;
       const torznabAttrs = extra?.torznab_attrs as Record<string, string> | undefined;
       const publishDate = extra?.publish_date as string | undefined;
+      const postedDate = extra?.posted_date as string | undefined;
+      const bitrate = extra?.bitrate as string | undefined;
 
       // Helper to format age in days
       const formatRelativeTime = (dateStr: string): string | null => {
@@ -188,6 +190,19 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
         const relativeTime = formatRelativeTime(publishDate);
         if (relativeTime) {
           rows.push({ label: 'Added', value: relativeTime });
+        }
+      }
+
+      if (postedDate) {
+        const value = postedDate.trim();
+        const relativeTime = formatRelativeTime(value);
+        rows.push({ label: 'Posted', value: relativeTime ?? value });
+      }
+
+      if (bitrate) {
+        const bitrateValue = bitrate.trim();
+        if (bitrateValue) {
+          rows.push({ label: 'Bitrate', value: bitrateValue });
         }
       }
 

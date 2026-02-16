@@ -3,7 +3,6 @@
 from typing import Any, Dict, Optional
 
 from shelfmark.core.settings_registry import (
-    register_group,
     register_settings,
     HeadingField,
     TextField,
@@ -315,23 +314,13 @@ def _test_sabnzbd_connection(current_values: Optional[Dict[str, Any]] = None) ->
         return {"success": False, "message": f"Connection failed: {str(e)}"}
 
 
-# ==================== Register Group ====================
-
-register_group(
-    name="download_clients",
-    display_name="Download Clients",
-    icon="download",
-    order=35,
-)
-
-
 # ==================== Download Clients Tab ====================
 
 @register_settings(
     name="prowlarr_clients",
     display_name="Download Clients",
-    order=42,
-    group="download_clients",
+    icon="cog",
+    order=110,
 )
 def prowlarr_clients_settings():
     """Download client settings shared by external release sources."""

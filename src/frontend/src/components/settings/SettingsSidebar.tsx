@@ -115,6 +115,7 @@ type SidebarItem =
 const SECTION_HEADERS: { beforeGroup?: string; beforeTab?: string; label: string }[] = [
   { beforeGroup: 'direct_download', label: 'Release Sources' },
   { beforeTab: 'hardcover', label: 'Metadata Providers' },
+  { beforeTab: 'prowlarr_clients', label: 'Download Clients' },
 ];
 
 export const SettingsSidebar = ({

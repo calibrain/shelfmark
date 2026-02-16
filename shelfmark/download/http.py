@@ -177,13 +177,23 @@ def html_get_page(
     cancel_flag: Optional[Event] = None,
     status_callback: Optional[Callable[[str, Optional[str]], None]] = None,
     allow_bypasser_fallback: bool = True,
-) -> str:
+    include_response_url: bool = False,
+    success_delay: float = 1.0,
+) -> str | tuple[str, str]:
     """Fetch HTML content from a URL with retry mechanism.
 
     Args:
         allow_bypasser_fallback: If False, 403 errors will trigger mirror rotation
             instead of switching to the bypasser. Use for search operations.
+        include_response_url: If True, return `(html, final_url)` to expose the
+            resolved response URL after redirects.
+        success_delay: Optional delay (seconds) after successful fetch.
     """
+    def _result(html: str, response_url: str) -> str | tuple[str, str]:
+        if include_response_url:
+            return html, response_url
+        return html
+
     retry = retry if retry is not None else app_config.MAX_RETRY
     selector = selector or network.AAMirrorSelector()
     original_url = url
@@ -194,7 +204,7 @@ def html_get_page(
         # Check for cancellation before each attempt
         if cancel_flag and cancel_flag.is_set():
             logger.info(f"html_get_page cancelled before attempt {attempt}")
-            return ""
+            return _result("", current_url)
 
         try:
             if use_bypasser_now and _is_cf_bypass_enabled():
@@ -218,10 +228,10 @@ def html_get_page(
                     heartbeat_thread.start()
                 try:
                     result = get_bypassed_page(current_url, selector, cancel_flag)
-                    return result or ""
+                    return _result(result or "", current_url)
                 except Exception as e:
                     logger.warning(f"Bypasser error: {type(e).__name__}: {e}")
-                    return ""
+                    return _result("", current_url)
                 finally:
                     heartbeat_stop.set()
                     if heartbeat_thread:
@@ -270,7 +280,7 @@ def html_get_page(
                                 redirect_host,
                                 current_url,
                             )
-                            return ""
+                            return _result("", current_url)
 
                         new_url = _try_rotation(original_url, current_url, selector)
                         if new_url:
@@ -288,7 +298,7 @@ def html_get_page(
                             redirect_host,
                             current_url,
                         )
-                        return ""
+                        return _result("", current_url)
 
                     # Same-host redirect (relative or absolute) - follow manually.
                     redirects_followed += 1
@@ -298,8 +308,9 @@ def html_get_page(
                     continue
 
                 response.raise_for_status()
-                time.sleep(1)
-                return response.text
+                if success_delay > 0:
+                    time.sleep(success_delay)
+                return _result(response.text, response.url)
 
         except Exception as e:
             status = _get_status_code(e)
@@ -313,7 +324,7 @@ def html_get_page(
                         current_url = new_url
                         continue
                     logger.warning(f"403 error, mirrors exhausted: {current_url}")
-                    return ""
+                    return _result("", current_url)
 
                 if _is_cf_bypass_enabled() and not use_bypasser_now:
                     # Before switching to bypasser, check if cookies have become available
@@ -330,12 +341,12 @@ def html_get_page(
                     use_bypasser_now = True
                     continue
                 logger.warning(f"403 error, giving up: {current_url}")
-                return ""
+                return _result("", current_url)
 
             # 404 = Not found
             if status == 404:
                 logger.warning(f"404 error: {current_url}")
-                return ""
+                return _result("", current_url)
 
             # Try mirror/DNS rotation on retryable errors
             if _is_retryable_error(e):
@@ -351,7 +362,7 @@ def html_get_page(
             else:
                 logger.error(f"Giving up after {retry} attempts: {current_url}")
 
-    return ""
+    return _result("", current_url)
 
 
 def download_url(

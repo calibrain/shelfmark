@@ -4,7 +4,6 @@ Tests for AudiobookBay scraper functions.
 
 from unittest.mock import Mock, patch
 import pytest
-import requests
 
 from shelfmark.release_sources.audiobookbay import scraper
 
@@ -97,20 +96,15 @@ DETAIL_HTML_NO_TRACKERS = """
 class TestSearchAudiobookbay:
     """Tests for the search_audiobookbay function."""
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.requests.get')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.network.get_proxies')
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
     @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
-    def test_search_audiobookbay_success(self, mock_config_get, mock_get_proxies, mock_get):
+    def test_search_audiobookbay_success(self, mock_config_get, mock_html_get):
         """Test successful search with results."""
         mock_config_get.return_value = 1.0  # rate_limit_delay
-        mock_get_proxies.return_value = {}
-        
-        # Mock response
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.url = "https://audiobookbay.lu/page/1/?s=test+query&cat=undefined%2Cundefined"
-        mock_response.text = SAMPLE_SEARCH_HTML
-        mock_get.return_value = mock_response
+        mock_html_get.return_value = (
+            SAMPLE_SEARCH_HTML,
+            "https://audiobookbay.lu/page/1/?s=test+query&cat=undefined%2Cundefined",
+        )
         
         results = scraper.search_audiobookbay("test query", max_pages=1, hostname="audiobookbay.lu")
         
@@ -120,115 +114,85 @@ class TestSearchAudiobookbay:
         assert results[0]['language'] == "English"
         assert results[0]['format'] == "M4B"
         assert results[0]['bitrate'] == "128 Kbps"
-        assert results[0]['size'] == "500.00 MBs"
+        assert results[0]['size'] == "500.00 MB"
         assert results[0]['posted_date'] == "01 Jan 2024"
         assert results[0]['cover'] == "https://example.com/cover.jpg"
         
         assert results[1]['title'] == "Another Test Book - Another Author"
         assert results[1]['language'] == "Spanish"
         assert results[1]['format'] == "MP3"
-        assert results[1]['size'] == "1.01 GBs"
+        assert results[1]['size'] == "1.01 GB"
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.requests.get')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.network.get_proxies')
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
     @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
-    def test_search_audiobookbay_pagination(self, mock_config_get, mock_get_proxies, mock_get):
+    def test_search_audiobookbay_pagination(self, mock_config_get, mock_html_get):
         """Test pagination through multiple pages."""
         mock_config_get.return_value = 0.0  # No delay for faster tests
-        mock_get_proxies.return_value = {}
-        
-        # First page response
-        mock_response_page1 = Mock()
-        mock_response_page1.status_code = 200
-        mock_response_page1.url = "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined"
-        mock_response_page1.text = SAMPLE_SEARCH_HTML
-        
-        # Second page response (empty)
-        mock_response_page2 = Mock()
-        mock_response_page2.status_code = 200
-        mock_response_page2.url = "https://audiobookbay.lu/page/2/?s=test&cat=undefined%2Cundefined"
-        mock_response_page2.text = EMPTY_SEARCH_HTML
-        
-        mock_get.side_effect = [mock_response_page1, mock_response_page2]
+        mock_html_get.side_effect = [
+            (SAMPLE_SEARCH_HTML, "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined"),
+            (EMPTY_SEARCH_HTML, "https://audiobookbay.lu/page/2/?s=test&cat=undefined%2Cundefined"),
+        ]
         
         results = scraper.search_audiobookbay("test", max_pages=2, hostname="audiobookbay.lu")
         
         assert len(results) == 2  # Only from first page
-        assert mock_get.call_count == 2
+        assert mock_html_get.call_count == 2
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.requests.get')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.network.get_proxies')
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
     @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
-    def test_search_audiobookbay_empty(self, mock_config_get, mock_get_proxies, mock_get):
+    def test_search_audiobookbay_empty(self, mock_config_get, mock_html_get):
         """Test search with no results."""
         mock_config_get.return_value = 1.0
-        mock_get_proxies.return_value = {}
-        
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.url = "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined"
-        mock_response.text = EMPTY_SEARCH_HTML
-        mock_get.return_value = mock_response
+        mock_html_get.return_value = (
+            EMPTY_SEARCH_HTML,
+            "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined",
+        )
         
         results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
         
         assert len(results) == 0
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.requests.get')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.network.get_proxies')
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
     @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
-    def test_search_audiobookbay_error_non_200(self, mock_config_get, mock_get_proxies, mock_get):
+    def test_search_audiobookbay_error_non_200(self, mock_config_get, mock_html_get):
         """Test error handling for non-200 status code."""
         mock_config_get.return_value = 1.0
-        mock_get_proxies.return_value = {}
-        
-        mock_response = Mock()
-        mock_response.status_code = 404
-        mock_get.return_value = mock_response
+        mock_html_get.return_value = ("", "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined")
         
         results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
         
         assert len(results) == 0
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.requests.get')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.network.get_proxies')
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
     @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
-    def test_search_audiobookbay_redirect_to_homepage(self, mock_config_get, mock_get_proxies, mock_get):
+    def test_search_audiobookbay_redirect_to_homepage(self, mock_config_get, mock_html_get):
         """Test handling redirect to homepage (blocked/invalid search)."""
         mock_config_get.return_value = 1.0
-        mock_get_proxies.return_value = {}
-        
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.url = "https://audiobookbay.lu"  # Redirected to homepage
-        mock_response.text = EMPTY_SEARCH_HTML
-        mock_get.return_value = mock_response
+        mock_html_get.return_value = (
+            EMPTY_SEARCH_HTML,
+            "https://audiobookbay.lu",  # Redirected to homepage
+        )
         
         results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
         
         assert len(results) == 0
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.requests.get')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.network.get_proxies')
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
     @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
-    def test_search_audiobookbay_request_exception(self, mock_config_get, mock_get_proxies, mock_get):
+    def test_search_audiobookbay_request_exception(self, mock_config_get, mock_html_get):
         """Test handling request exceptions."""
         mock_config_get.return_value = 1.0
-        mock_get_proxies.return_value = {}
-        
-        mock_get.side_effect = requests.exceptions.RequestException("Connection error")
+        mock_html_get.return_value = ("", "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined")
         
         results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
         
         assert len(results) == 0
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.requests.get')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.network.get_proxies')
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
     @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
-    def test_search_audiobookbay_relative_link(self, mock_config_get, mock_get_proxies, mock_get):
+    def test_search_audiobookbay_relative_link(self, mock_config_get, mock_html_get):
         """Test handling relative links in results."""
         mock_config_get.return_value = 1.0
-        mock_get_proxies.return_value = {}
         
         html_with_relative_link = """
         <div class="post">
@@ -240,31 +204,65 @@ class TestSearchAudiobookbay:
         </div>
         """
         
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.url = "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined"
-        mock_response.text = html_with_relative_link
-        mock_get.return_value = mock_response
+        mock_html_get.return_value = (
+            html_with_relative_link,
+            "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined",
+        )
         
         results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
         
         assert len(results) == 1
         assert results[0]['link'] == "https://audiobookbay.lu/abss/relative-link/"
 
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
+    def test_search_audiobookbay_exact_phrase_query(self, mock_config_get, mock_html_get):
+        """Test exact phrase wrapping and encoding in search URL."""
+        mock_config_get.return_value = 0.0
+        mock_html_get.return_value = (
+            SAMPLE_SEARCH_HTML,
+            "https://audiobookbay.lu/page/1/?s=%22test+query%22",
+        )
+
+        results = scraper.search_audiobookbay(
+            "test query",
+            max_pages=1,
+            hostname="audiobookbay.lu",
+            exact_phrase=True,
+        )
+
+        assert len(results) == 2
+        requested_url = mock_html_get.call_args.args[0]
+        assert "s=%22test+query%22" in requested_url
+        assert "cat=undefined%2Cundefined" not in requested_url
+
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
+    def test_search_audiobookbay_legacy_category_fallback(self, mock_config_get, mock_html_get):
+        """Test fallback to legacy category query when primary search request fails."""
+        mock_config_get.return_value = 0.0
+        mock_html_get.side_effect = [
+            ("", "https://audiobookbay.lu/page/1/?s=test"),  # Primary fetch failed
+            (SAMPLE_SEARCH_HTML, "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined"),
+        ]
+
+        results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
+
+        assert len(results) == 2
+        assert mock_html_get.call_count == 2
+        first_url = mock_html_get.call_args_list[0].args[0]
+        second_url = mock_html_get.call_args_list[1].args[0]
+        assert "cat=undefined%2Cundefined" not in first_url
+        assert "cat=undefined%2Cundefined" in second_url
+
 
 class TestExtractMagnetLink:
     """Tests for the extract_magnet_link function."""
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.requests.get')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.network.get_proxies')
-    def test_extract_magnet_link_success(self, mock_get_proxies, mock_get):
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    def test_extract_magnet_link_success(self, mock_html_get):
         """Test successful magnet link extraction."""
-        mock_get_proxies.return_value = {}
-        
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.text = SAMPLE_DETAIL_HTML
-        mock_get.return_value = mock_response
+        mock_html_get.return_value = SAMPLE_DETAIL_HTML
         
         magnet_link = scraper.extract_magnet_link(
             "https://audiobookbay.lu/abss/test-book/",
@@ -277,16 +275,10 @@ class TestExtractMagnetLink:
         assert "udp%3A//tracker.openbittorrent.com%3A80" in magnet_link
         assert "http%3A//tracker.example.com%3A8080" in magnet_link
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.requests.get')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.network.get_proxies')
-    def test_extract_magnet_link_fallback(self, mock_get_proxies, mock_get):
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    def test_extract_magnet_link_fallback(self, mock_html_get):
         """Test fallback to default trackers when none found."""
-        mock_get_proxies.return_value = {}
-        
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.text = DETAIL_HTML_NO_TRACKERS
-        mock_get.return_value = mock_response
+        mock_html_get.return_value = DETAIL_HTML_NO_TRACKERS
         
         magnet_link = scraper.extract_magnet_link(
             "https://audiobookbay.lu/abss/test-book/",
@@ -299,16 +291,10 @@ class TestExtractMagnetLink:
         # Should contain default trackers
         assert "udp%3A//tracker.openbittorrent.com%3A80" in magnet_link
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.requests.get')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.network.get_proxies')
-    def test_extract_magnet_link_no_info_hash(self, mock_get_proxies, mock_get):
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    def test_extract_magnet_link_no_info_hash(self, mock_html_get):
         """Test handling missing info hash."""
-        mock_get_proxies.return_value = {}
-        
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.text = "<html><body></body></html>"
-        mock_get.return_value = mock_response
+        mock_html_get.return_value = "<html><body></body></html>"
         
         magnet_link = scraper.extract_magnet_link(
             "https://audiobookbay.lu/abss/test-book/",
@@ -317,15 +303,10 @@ class TestExtractMagnetLink:
         
         assert magnet_link is None
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.requests.get')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.network.get_proxies')
-    def test_extract_magnet_link_non_200(self, mock_get_proxies, mock_get):
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    def test_extract_magnet_link_non_200(self, mock_html_get):
         """Test handling non-200 status code."""
-        mock_get_proxies.return_value = {}
-        
-        mock_response = Mock()
-        mock_response.status_code = 404
-        mock_get.return_value = mock_response
+        mock_html_get.return_value = ""
         
         magnet_link = scraper.extract_magnet_link(
             "https://audiobookbay.lu/abss/test-book/",
@@ -334,13 +315,10 @@ class TestExtractMagnetLink:
         
         assert magnet_link is None
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.requests.get')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.network.get_proxies')
-    def test_extract_magnet_link_request_exception(self, mock_get_proxies, mock_get):
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    def test_extract_magnet_link_request_exception(self, mock_html_get):
         """Test handling request exceptions."""
-        mock_get_proxies.return_value = {}
-        
-        mock_get.side_effect = requests.exceptions.RequestException("Connection error")
+        mock_html_get.return_value = ""
         
         magnet_link = scraper.extract_magnet_link(
             "https://audiobookbay.lu/abss/test-book/",
@@ -349,12 +327,9 @@ class TestExtractMagnetLink:
         
         assert magnet_link is None
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.requests.get')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.network.get_proxies')
-    def test_extract_magnet_link_cleans_info_hash(self, mock_get_proxies, mock_get):
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    def test_extract_magnet_link_cleans_info_hash(self, mock_html_get):
         """Test that info hash whitespace is cleaned."""
-        mock_get_proxies.return_value = {}
-        
         html_with_whitespace = """
         <html>
         <body>
@@ -368,10 +343,7 @@ class TestExtractMagnetLink:
         </html>
         """
         
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.text = html_with_whitespace
-        mock_get.return_value = mock_response
+        mock_html_get.return_value = html_with_whitespace
         
         magnet_link = scraper.extract_magnet_link(
             "https://audiobookbay.lu/abss/test-book/",

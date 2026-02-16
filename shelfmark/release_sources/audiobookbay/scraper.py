@@ -5,12 +5,11 @@ import time
 from typing import List, Optional, Dict
 from urllib.parse import quote
 
-import requests
 from bs4 import BeautifulSoup
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.download import network
+from shelfmark.download import http as downloader
 
 logger = setup_logger(__name__)
 
@@ -24,16 +23,57 @@ DEFAULT_TRACKERS = [
     "udp://tracker.leechers-paradise.org:6969",
 ]
 
-# Required headers to avoid blocking
-REQUEST_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
-}
+# ABB request behavior tuning
+SEARCH_PAGE_RETRY_ATTEMPTS = 2
+DETAIL_PAGE_RETRY_ATTEMPTS = 2
+
+# Legacy search parameter used by older ABB flows
+LEGACY_CATEGORY_QUERY = "undefined%2Cundefined"
+
+# Precompiled patterns used while parsing result cards
+LANGUAGE_PATTERN = re.compile(r"Language:\s*([A-Za-z]+)")
+POSTED_PATTERN = re.compile(r"Posted:\s*(\d+\s+[A-Za-z]+\s+\d{4})")
+FORMAT_PATTERN = re.compile(r"Format:\s*([A-Za-z0-9]+)")
+BITRATE_PATTERN = re.compile(r"Bitrate:\s*([\d]+\s*[A-Za-z/]+)")
+SIZE_PATTERN = re.compile(r"File Size:\s*([\d.]+)\s*([A-Za-z]+)")
+INFO_HASH_LABEL_PATTERN = re.compile(r"Info Hash", re.IGNORECASE)
+
+
+def _build_search_url(
+    hostname: str,
+    page: int,
+    query_encoded: str,
+    *,
+    include_legacy_category: bool = False,
+) -> str:
+    """Build an ABB search URL, optionally including legacy category params."""
+    url = f"https://{hostname}/page/{page}/?s={query_encoded}"
+    if include_legacy_category:
+        return f"{url}&cat={LEGACY_CATEGORY_QUERY}"
+    return url
+
+
+def _is_homepage_redirect(final_url: str, hostname: str) -> bool:
+    """Detect whether ABB redirected a search request to its homepage."""
+    normalized_final = (final_url or "").rstrip("/")
+    normalized_home = f"https://{hostname}".rstrip("/")
+    return normalized_final in {normalized_home, f"{normalized_home}/"}
+
+
+def _encode_search_query(query: str, exact_phrase: bool) -> str:
+    """Encode search query using ABB's space-plus style and optional exact phrase wrapping."""
+    search_query = query.strip()
+    if exact_phrase and search_query and not (search_query.startswith('"') and search_query.endswith('"')):
+        search_query = f"\"{search_query}\""
+    # Keep ABB-friendly encoding style (spaces as '+') while percent-encoding quotes.
+    return search_query.replace('"', "%22").replace(" ", "+")
 
 
 def search_audiobookbay(
     query: str,
-    max_pages: int = 5,
-    hostname: str = "audiobookbay.lu"
+    max_pages: int = 1,
+    hostname: str = "audiobookbay.lu",
+    exact_phrase: bool = False,
 ) -> List[Dict[str, str]]:
     """Search AudiobookBay for audiobooks matching the query.
     
@@ -41,6 +81,7 @@ def search_audiobookbay(
         query: Search query string
         max_pages: Maximum number of pages to fetch
         hostname: AudiobookBay hostname (e.g., "audiobookbay.lu")
+        exact_phrase: Wrap query in quotes for exact phrase matching
         
     Returns:
         List of dicts with keys: title, link, cover, language, format, bitrate, size, posted_date
@@ -51,28 +92,48 @@ def search_audiobookbay(
     # Iterate through pages
     for page in range(1, max_pages + 1):
         # Construct URL - use + for spaces (matching audiobookbay-automated implementation)
-        # This avoids aggressive encoding that PHP-based sites may reject
-        query_encoded = query.replace(' ', '+')
-        url = f"https://{hostname}/page/{page}/?s={query_encoded}&cat=undefined%2Cundefined"
+        # This avoids aggressive encoding that PHP-based sites may reject.
+        query_encoded = _encode_search_query(query, exact_phrase)
+        primary_url = _build_search_url(hostname, page, query_encoded)
         
         try:
-            # Make request with proxy support
-            response = requests.get(
-                url,
-                headers=REQUEST_HEADERS,
-                proxies=network.get_proxies(url),
-                timeout=30,
-                allow_redirects=True
+            # Reuse shared HTTP fetch logic (without bypasser)
+            page_html, final_url = downloader.html_get_page(
+                primary_url,
+                retry=SEARCH_PAGE_RETRY_ATTEMPTS,
+                use_bypasser=False,
+                allow_bypasser_fallback=False,
+                include_response_url=True,
+                success_delay=0,
             )
+
+            # Legacy compatibility fallback: retry once with legacy category param if the
+            # first request fails/redirects unexpectedly.
+            if not page_html or _is_homepage_redirect(final_url, hostname):
+                legacy_url = _build_search_url(
+                    hostname,
+                    page,
+                    query_encoded,
+                    include_legacy_category=True,
+                )
+                legacy_html, legacy_final_url = downloader.html_get_page(
+                    legacy_url,
+                    retry=SEARCH_PAGE_RETRY_ATTEMPTS,
+                    use_bypasser=False,
+                    allow_bypasser_fallback=False,
+                    include_response_url=True,
+                    success_delay=0,
+                )
+                if legacy_html:
+                    page_html = legacy_html
+                    final_url = legacy_final_url
             
-            if response.status_code != 200:
-                logger.warning(f"Failed to fetch page {page}. Status Code: {response.status_code}")
+            if not page_html:
+                logger.warning(f"Failed to fetch page {page}")
                 break
             
             # Check if we were redirected to the homepage (search was rejected/blocked)
-            final_url = response.url.rstrip('/')
-            base_url = f"https://{hostname}".rstrip('/')
-            if final_url == base_url or final_url == f"{base_url}/":
+            if _is_homepage_redirect(final_url, hostname):
                 # Search was redirected to homepage - this means the search failed
                 # This can happen due to geo-blocking, rate limiting, or invalid query format
                 if page == 1:
@@ -80,7 +141,7 @@ def search_audiobookbay(
                 break
             
             # Parse HTML
-            soup = BeautifulSoup(response.text, 'html.parser')
+            soup = BeautifulSoup(page_html, 'html.parser')
             
             # Extract book entries
             posts = soup.select('.post')
@@ -120,7 +181,7 @@ def search_audiobookbay(
                     post_info = post.select_one('.postInfo')
                     if post_info:
                         info_text = post_info.get_text(separator=' ', strip=True).replace('\xa0', ' ')
-                        lang_match = re.search(r'Language:\s*([A-Za-z]+)', info_text)
+                        lang_match = LANGUAGE_PATTERN.search(info_text)
                         if lang_match:
                             language = lang_match.group(1).strip()
                     
@@ -135,24 +196,29 @@ def search_audiobookbay(
                         content_text = post_content.get_text(separator=' ', strip=True).replace('\xa0', ' ')
                         
                         # Extract posted date
-                        posted_match = re.search(r'Posted:\s*(\d+\s+[A-Za-z]+\s+\d{4})', content_text)
+                        posted_match = POSTED_PATTERN.search(content_text)
                         if posted_match:
                             posted_date = posted_match.group(1).strip()
                         
                         # Extract format (e.g., "M4B", "MP3")
-                        format_match = re.search(r'Format:\s*([A-Za-z0-9]+)', content_text)
+                        format_match = FORMAT_PATTERN.search(content_text)
                         if format_match:
                             format_type = format_match.group(1).strip()
                         
                         # Extract bitrate (e.g., "256 Kbps")
-                        bitrate_match = re.search(r'Bitrate:\s*([\d]+\s*[A-Za-z/]+)', content_text)
+                        bitrate_match = BITRATE_PATTERN.search(content_text)
                         if bitrate_match:
                             bitrate = bitrate_match.group(1).strip()
                         
-                        # Extract file size (e.g., "11.68 GBs")
-                        size_match = re.search(r'File Size:\s*([\d.]+)\s*([A-Za-z]+)', content_text)
+                        # Extract file size (e.g., "11.68 GBs" -> normalized to "11.68 GB")
+                        size_match = SIZE_PATTERN.search(content_text)
                         if size_match:
-                            size_str = f"{size_match.group(1)} {size_match.group(2)}"
+                            size_value = size_match.group(1)
+                            size_unit = size_match.group(2).strip()
+                            if size_unit.lower().endswith("s"):
+                                size_unit = size_unit[:-1]
+                            size_unit = size_unit.upper()
+                            size_str = f"{size_value} {size_unit}"
                     
                     results.append({
                         'title': title,
@@ -171,10 +237,6 @@ def search_audiobookbay(
             # Rate limiting delay between pages
             if page < max_pages and rate_limit_delay > 0:
                 time.sleep(rate_limit_delay)
-                
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"Request error on page {page}: {e}")
-            break
         except Exception as e:
             logger.error(f"Unexpected error on page {page}: {e}")
             break
@@ -198,18 +260,19 @@ def extract_magnet_link(
     """
     try:
         # Fetch detail page
-        response = requests.get(
+        detail_html = downloader.html_get_page(
             details_url,
-            headers=REQUEST_HEADERS,
-            proxies=network.get_proxies(details_url),
-            timeout=30
+            retry=DETAIL_PAGE_RETRY_ATTEMPTS,
+            use_bypasser=False,
+            allow_bypasser_fallback=False,
+            success_delay=0,
         )
         
-        if response.status_code != 200:
-            logger.warning(f"Failed to fetch details page. Status Code: {response.status_code}")
+        if not detail_html:
+            logger.warning("Failed to fetch details page")
             return None
         
-        soup = BeautifulSoup(response.text, 'html.parser')
+        soup = BeautifulSoup(detail_html, 'html.parser')
         
         # 1. Extract Info Hash
         # Look for <td>Info Hash</td> and get next sibling value
@@ -224,7 +287,7 @@ def extract_magnet_link(
         
         # Alternative: search for text containing "Info Hash" and get next element
         if not info_hash:
-            for elem in soup.find_all(string=re.compile(r'Info Hash', re.IGNORECASE)):
+            for elem in soup.find_all(string=INFO_HASH_LABEL_PATTERN):
                 parent = elem.parent
                 if parent and parent.name == 'td':
                     next_td = parent.find_next_sibling('td')
@@ -263,9 +326,6 @@ def extract_magnet_link(
         logger.debug(f"Generated Magnet Link: {magnet_link[:100]}...")
         return magnet_link
         
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Request error extracting magnet link: {e}")
-        return None
     except Exception as e:
         logger.error(f"Failed to extract magnet link: {e}")
         return None

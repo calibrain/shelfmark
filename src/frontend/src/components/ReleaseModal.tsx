@@ -149,6 +149,167 @@ function sortReleases(
   });
 }
 
+function normalizeMatchText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function collectNormalizedStrings(values: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const normalizedValues: string[] = [];
+
+  for (const value of values) {
+    if (!value) continue;
+    const normalized = normalizeMatchText(value);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    normalizedValues.push(normalized);
+  }
+
+  return normalizedValues;
+}
+
+function getLocalizedTitleValues(raw: unknown): string[] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return [];
+  }
+
+  const values: string[] = [];
+  for (const value of Object.values(raw as Record<string, unknown>)) {
+    if (typeof value === 'string' && value.trim()) {
+      values.push(value);
+    }
+  }
+  return values;
+}
+
+function splitAuthorString(author: string): string[] {
+  return author
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function getBookTitleCandidates(
+  uiBook: Book | null,
+  responseBook: ReleasesResponse['book'] | undefined
+): string[] {
+  const responseBookRecord = responseBook as Record<string, unknown> | undefined;
+  const uiBookRecord = uiBook as Record<string, unknown> | undefined;
+  return collectNormalizedStrings([
+    responseBook?.search_title,
+    responseBook?.title,
+    ...getLocalizedTitleValues(responseBookRecord?.titles_by_language),
+    uiBook?.search_title,
+    uiBook?.title,
+    ...getLocalizedTitleValues(uiBookRecord?.titles_by_language),
+  ]);
+}
+
+function getBookAuthorCandidates(
+  uiBook: Book | null,
+  responseBook: ReleasesResponse['book'] | undefined
+): string[] {
+  const responseAuthors = responseBook?.authors ?? [];
+  const uiAuthors = uiBook?.authors ?? [];
+  const uiAuthorParts = uiBook?.author ? splitAuthorString(uiBook.author) : [];
+  return collectNormalizedStrings([
+    responseBook?.search_author,
+    ...responseAuthors,
+    uiBook?.search_author,
+    ...uiAuthors,
+    ...uiAuthorParts,
+  ]);
+}
+
+function getReleaseAuthorForMatch(release: Release): string | null {
+  const rawAuthor = release.extra?.author;
+  if (typeof rawAuthor !== 'string') {
+    return null;
+  }
+
+  const normalized = normalizeMatchText(rawAuthor);
+  return normalized || null;
+}
+
+function hasExactAuthorMatch(release: Release, authorCandidates: string[]): boolean {
+  if (authorCandidates.length === 0) {
+    return false;
+  }
+
+  const releaseAuthor = getReleaseAuthorForMatch(release);
+  if (!releaseAuthor) {
+    return false;
+  }
+
+  return authorCandidates.includes(releaseAuthor);
+}
+
+function getTitleMatchScore(title: string, titleCandidate: string): number {
+  const normalizedTitle = normalizeMatchText(title);
+  if (!normalizedTitle || !titleCandidate) {
+    return 0;
+  }
+
+  if (normalizedTitle === titleCandidate) {
+    return 10000;
+  }
+
+  let score = 0;
+
+  if (normalizedTitle.startsWith(titleCandidate)) {
+    score += 6000;
+  }
+
+  if (normalizedTitle.includes(titleCandidate)) {
+    score += 3000;
+  }
+
+  const candidateTokens = titleCandidate.split(' ').filter((token) => token.length > 1);
+  if (candidateTokens.length > 0) {
+    const titleTokens = new Set(normalizedTitle.split(' '));
+    const matchedTokens = candidateTokens.filter((token) => (
+      titleTokens.has(token) || normalizedTitle.includes(token)
+    )).length;
+    score += Math.round((matchedTokens / candidateTokens.length) * 2500);
+  }
+
+  // Prefer closer-length titles when match quality is otherwise similar.
+  score -= Math.abs(normalizedTitle.length - titleCandidate.length);
+
+  return score;
+}
+
+function sortReleasesByBookMatch(
+  releases: Release[],
+  titleCandidates: string[],
+  authorCandidates: string[]
+): Release[] {
+  if (titleCandidates.length === 0) {
+    return releases;
+  }
+
+  return releases
+    .map((release, index) => ({
+      release,
+      index,
+      score: titleCandidates.reduce((best, candidate) => (
+        Math.max(best, getTitleMatchScore(release.title, candidate))
+      ), 0) + (hasExactAuthorMatch(release, authorCandidates) ? 1500 : 0),
+    }))
+    .sort((a, b) => {
+      const scoreDiff = b.score - a.score;
+      if (scoreDiff !== 0) {
+        return scoreDiff;
+      }
+      return a.index - b.index;
+    })
+    .map(({ release }) => release);
+}
+
 // Default column configuration (fallback when backend doesn't provide one)
 const DEFAULT_COLUMN_CONFIG: ReleaseColumnConfig = {
   columns: [
@@ -680,7 +841,7 @@ export const ReleaseModal = ({
   const [showManualQuery, setShowManualQuery] = useState<boolean>(false);
 
   // Sort state - keyed by source name, persisted to localStorage
-  // null means "Default" (backend order), undefined means "not set yet"
+  // null means "Default" (best title match), undefined means "not set yet"
   const [sortBySource, setSortBySource] = useState<Record<string, SortState | null>>({});
 
   // Description expansion
@@ -1130,7 +1291,7 @@ export const ReleaseModal = ({
     return columnConfig.columns.filter(col => col.sortable) || [];
   }, [columnConfig]);
 
-  // Get current sort state for active tab (from state, localStorage, or default to null = backend order)
+  // Get current sort state for active tab (from state, localStorage, or default to null = best match)
   const currentSort = useMemo((): SortState | null => {
     // Check state first - explicit null means "Default" was selected
     if (activeTab in sortBySource) {
@@ -1145,14 +1306,14 @@ export const ReleaseModal = ({
         return saved;
       }
     }
-    // Default to null (backend order / no client-side sorting)
+    // Default to null (best-match sorting)
     return null;
   }, [activeTab, sortBySource, sortableColumns]);
 
-  // Handle sort change - null means "Default" (backend order), otherwise toggle direction or set new column
+  // Handle sort change - null means "Default" (best title match), otherwise toggle direction or set new column
   const handleSortChange = useCallback((sortKey: string | null, column: ColumnSchema | null) => {
     if (sortKey === null) {
-      // "Default" selected - clear client-side sorting
+      // "Default" selected - use best-match sorting
       setSortBySource(prev => {
         const next = { ...prev };
         delete next[activeTab];
@@ -1225,13 +1386,18 @@ export const ReleaseModal = ({
       return true;
     });
 
-    // Then, sort if we have a current sort and sortable columns
+    // Then, sort by explicit column, or default to book-title relevance with exact author boost
     if (currentSort && sortableColumns.length > 0) {
       filtered = sortReleases(filtered, currentSort.key, currentSort.direction);
+    } else {
+      const responseBook = releasesBySource[activeTab]?.book;
+      const titleCandidates = getBookTitleCandidates(book, responseBook);
+      const authorCandidates = getBookAuthorCandidates(book, responseBook);
+      filtered = sortReleasesByBookMatch(filtered, titleCandidates, authorCandidates);
     }
 
     return filtered;
-  }, [releasesBySource, activeTab, formatFilter, resolvedLanguageCodes, effectiveFormats, defaultLanguages, languageNormalizer, indexerFilter, currentSort, sortableColumns, columnConfig]);
+  }, [releasesBySource, activeTab, formatFilter, resolvedLanguageCodes, effectiveFormats, defaultLanguages, languageNormalizer, indexerFilter, currentSort, sortableColumns, columnConfig, book]);
 
   // Pre-compute display field lookups to avoid repeated .find() calls in JSX
   const displayFields = useMemo(() => {
@@ -1632,7 +1798,7 @@ export const ReleaseModal = ({
                       >
                         {({ close }) => (
                           <div className="py-1">
-                            {/* Default option - no client-side sorting */}
+                            {/* Default option - book-title best match */}
                             <button
                               type="button"
                               onClick={() => {
@@ -1644,7 +1810,7 @@ export const ReleaseModal = ({
                                   : 'text-gray-700 dark:text-gray-300'
                                 }`}
                             >
-                              <span>Default</span>
+                              <span>Best Match (Default)</span>
                               {!currentSort && (
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                                   <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />

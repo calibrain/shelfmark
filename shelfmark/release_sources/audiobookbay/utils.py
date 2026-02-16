@@ -4,6 +4,26 @@ import re
 from typing import Optional
 
 
+def normalize_hostname(raw: Optional[str]) -> str:
+    """Normalize a user-supplied hostname for URL construction.
+
+    Strips whitespace, scheme prefixes, trailing slashes, and paths so that
+    values like "https://audiobookbay.lu/" or " audiobookbay.lu/ " all
+    resolve to "audiobookbay.lu".
+    """
+    if not raw or not isinstance(raw, str):
+        return ""
+    cleaned = raw.strip()
+    # Strip scheme
+    for prefix in ("https://", "http://"):
+        if cleaned.lower().startswith(prefix):
+            cleaned = cleaned[len(prefix):]
+            break
+    # Strip path and trailing slashes
+    cleaned = cleaned.split("/")[0].strip()
+    return cleaned
+
+
 def parse_size(size_str: Optional[str]) -> Optional[int]:
     """Parse size string to bytes.
 

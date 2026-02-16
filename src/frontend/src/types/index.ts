@@ -49,6 +49,8 @@ export interface Book {
   subtitle?: string;
   search_title?: string;
   search_author?: string;
+  authors?: string[];
+  titles_by_language?: Record<string, string>;
   username?: string;
 }
 
@@ -363,6 +365,7 @@ export interface ReleasesResponse {
     search_author?: string;
     search_title?: string;
     authors?: string[];
+    titles_by_language?: Record<string, string>;
     isbn_10?: string;
     isbn_13?: string;
     cover_url?: string;
