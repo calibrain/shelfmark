@@ -8,6 +8,8 @@ interface TooltipProps {
   delay?: number;
   className?: string;
   unstyled?: boolean;
+  triggerClassName?: string;
+  alwaysWrap?: boolean;
 }
 
 export function Tooltip({
@@ -17,16 +19,22 @@ export function Tooltip({
   delay = 200,
   className = '',
   unstyled = false,
+  triggerClassName = 'inline-flex max-w-full',
+  alwaysWrap = false,
 }: TooltipProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasContent = Boolean(content);
   const isPlainTextContent = typeof content === 'string' || typeof content === 'number';
   const spacing = 6;
 
   const showTooltip = () => {
+    if (!hasContent) {
+      return;
+    }
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => {
       if (triggerRef.current) {
@@ -113,12 +121,19 @@ export function Tooltip({
   }, [coords, isVisible]);
 
   useEffect(() => {
+    if (!hasContent) {
+      setIsVisible(false);
+      setCoords(null);
+    }
+  }, [hasContent]);
+
+  useEffect(() => {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, []);
 
-  if (!content) {
+  if (!hasContent && !alwaysWrap) {
     return <>{children}</>;
   }
 
@@ -141,11 +156,11 @@ export function Tooltip({
         onMouseLeave={hideTooltip}
         onFocusCapture={showTooltip}
         onBlurCapture={hideTooltip}
-        className="inline-flex max-w-full"
+        className={triggerClassName}
       >
         {children}
       </div>
-      {isVisible && coords && createPortal(
+      {hasContent && isVisible && coords && createPortal(
         <div
           ref={tooltipRef}
           role="tooltip"

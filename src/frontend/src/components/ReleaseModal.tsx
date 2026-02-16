@@ -194,6 +194,7 @@ interface ReleaseModalProps {
   onClose: () => void;
   onDownload: (book: Book, release: Release, contentType: ContentType) => Promise<void>;
   onRequestRelease?: (book: Book, release: Release, contentType: ContentType) => Promise<void>;
+  onRequestBook?: (book: Book, contentType: ContentType) => Promise<void>;
   getPolicyModeForSource?: (source: string, contentType: ContentType) => RequestPolicyMode;
   onPolicyRefresh?: () => Promise<unknown>;
   supportedFormats: string[];
@@ -622,6 +623,7 @@ export const ReleaseModal = ({
   onClose,
   onDownload,
   onRequestRelease,
+  onRequestBook,
   getPolicyModeForSource,
   onPolicyRefresh,
   supportedFormats,
@@ -638,6 +640,7 @@ export const ReleaseModal = ({
     ? supportedAudiobookFormats
     : supportedFormats;
   const [isClosing, setIsClosing] = useState(false);
+  const [isRequestingBook, setIsRequestingBook] = useState(false);
 
   // Available sources from plugin registry
   const [availableSources, setAvailableSources] = useState<ReleaseSource[]>([]);
@@ -698,6 +701,19 @@ export const ReleaseModal = ({
       setIsClosing(false);
     }, 150);
   }, [onClose]);
+
+  const handleRequestBook = useCallback(async (): Promise<void> => {
+    if (!book || !onRequestBook || isRequestingBook) {
+      return;
+    }
+    setIsRequestingBook(true);
+    try {
+      await onRequestBook(book, contentType);
+      handleClose();
+    } finally {
+      setIsRequestingBook(false);
+    }
+  }, [book, onRequestBook, isRequestingBook, contentType, handleClose]);
 
   // Handle ESC key
   useEffect(() => {
@@ -1510,6 +1526,21 @@ export const ReleaseModal = ({
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                       </svg>
                     </a>
+                  )}
+                  {onRequestBook && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleRequestBook();
+                      }}
+                      disabled={isRequestingBook}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                      </svg>
+                      {isRequestingBook ? 'Adding...' : 'Add to requests'}
+                    </button>
                   )}
                 </div>
               </div>

@@ -324,7 +324,7 @@ export const ActivityCard = ({
     }
 
     return () => observer.disconnect();
-  }, [item.title, item.author]);
+  }, [item.title, item.author, isRequestDetailsOpen, isRequestRejectOpen]);
 
   const reviewRecord = item.requestRecord;
   const reviewApproveHandler = onRequestReviewApprove || onRequestApprove;
@@ -519,7 +519,7 @@ export const ActivityCard = ({
       {isSelected && (
         <span
           aria-hidden="true"
-          className="absolute left-0 top-2 bottom-2 w-1 bg-sky-500/80"
+          className="absolute left-0 top-2 bottom-2 w-1 bg-gray-400/80 dark:bg-gray-500/80"
         />
       )}
       <div className="flex gap-3 items-start">
@@ -544,6 +544,8 @@ export const ActivityCard = ({
                 content={!isDetailsExpanded && titleOverflow ? titleAuthorLine : undefined}
                 delay={0}
                 position="bottom"
+                triggerClassName="block max-w-full"
+                alwaysWrap
               >
                 <p ref={titleLineRef} className={titleLineClassName}>
                   <span className="font-semibold">{titleNode}</span>

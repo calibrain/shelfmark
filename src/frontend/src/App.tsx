@@ -984,6 +984,23 @@ function App() {
     [openRequestConfirmation, refreshRequestPolicy]
   );
 
+  const handleReleaseBookRequest = useCallback(
+    async (book: Book, modalContentType: ContentType): Promise<void> => {
+      void refreshRequestPolicy();
+      const normalizedContentType = toContentType(modalContentType);
+      openRequestConfirmation({
+        book_data: buildMetadataBookRequestData(book, normalizedContentType),
+        release_data: null,
+        context: {
+          source: '*',
+          content_type: normalizedContentType,
+          request_level: 'book',
+        },
+      });
+    },
+    [openRequestConfirmation, refreshRequestPolicy]
+  );
+
   const handleReleaseModalPolicyRefresh = useCallback(() => {
     return refreshRequestPolicy({ force: true });
   }, [refreshRequestPolicy]);
@@ -1319,6 +1336,11 @@ function App() {
             onClose={handleReleaseModalClose}
             onDownload={isBrowseFulfilMode ? handleBrowseFulfilDownload : handleReleaseDownload}
             onRequestRelease={isBrowseFulfilMode ? undefined : handleReleaseRequest}
+            onRequestBook={
+              isBrowseFulfilMode || !requestRoleIsAdmin
+                ? undefined
+                : handleReleaseBookRequest
+            }
             getPolicyModeForSource={isBrowseFulfilMode ? () => 'download' : (source, ct) => getSourceMode(source, ct)}
             onPolicyRefresh={handleReleaseModalPolicyRefresh}
             supportedFormats={supportedFormats}
