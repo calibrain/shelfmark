@@ -24,7 +24,7 @@ def audiobookbay_config_settings():
             key="ABB_HOSTNAME",
             label="Hostname",
             description="AudiobookBay domain (e.g., audiobookbay.lu, audiobookbay.is). Required to enable searches.",
-            placeholder="audiobookbay.lu",
+            placeholder="",
             default="",
             required=True,
             show_when={"field": "ABB_ENABLED", "value": True},
