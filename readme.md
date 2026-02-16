@@ -106,6 +106,7 @@ See the full [Environment Variables Reference](docs/environment-variables.md) fo
 Some of the additional options available in Settings:
 - **Fast Download Key** - Use your paid account to skip Cloudflare challenges entirely and use faster, direct downloads
 - **Prowlarr** - Configure indexers and download clients to download books and audiobooks
+- **AudiobookBay** - Web scraping source for audiobook torrents (audiobooks only)
 - **IRC** - Add details for IRC book sources and download directly from the UI
 - **Library Link** - Add a link to your Calibre-Web or Booklore instance in the UI header
 - **File processing** - Customiseable download paths, file renaming and directory creation with template-based renaming
@@ -139,7 +140,7 @@ A smaller image without the built-in Cloudflare bypasser. Ideal for:
 
 - **External bypassers** - Already running FlareSolverr or ByParr for other services
 - **Fast downloads** - Using fast download sources
-- **Alternative sources only** - Exclusively using Prowlarr, IRC, or other sources
+- **Alternative sources only** - Exclusively using Prowlarr, AudiobookBay, IRC, or other sources
 - **Audiobooks** - Using Shelfmark exclusively for audiobooks
 
 ```bash

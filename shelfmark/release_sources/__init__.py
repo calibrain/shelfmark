@@ -366,3 +366,4 @@ def get_source_display_name(name: str) -> str:
 from shelfmark.release_sources import direct_download  # noqa: F401, E402
 from shelfmark.release_sources import prowlarr  # noqa: F401, E402
 from shelfmark.release_sources import irc  # noqa: F401, E402
+from shelfmark.release_sources import audiobookbay  # noqa: F401, E402
