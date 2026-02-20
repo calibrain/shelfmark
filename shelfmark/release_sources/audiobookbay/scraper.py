@@ -5,6 +5,7 @@ import time
 from typing import List, Optional, Dict
 from urllib.parse import quote
 
+import requests
 from bs4 import BeautifulSoup
 
 from shelfmark.core.config import config
@@ -26,6 +27,7 @@ DEFAULT_TRACKERS = [
 # ABB request behavior tuning
 SEARCH_PAGE_RETRY_ATTEMPTS = 2
 DETAIL_PAGE_RETRY_ATTEMPTS = 2
+FIRST_PAGE_SESSION_REFRESH_ATTEMPTS = 2
 
 # Legacy search parameter used by older ABB flows
 LEGACY_CATEGORY_QUERY = "undefined%2Cundefined"
@@ -47,7 +49,11 @@ def _build_search_url(
     include_legacy_category: bool = False,
 ) -> str:
     """Build an ABB search URL, optionally including legacy category params."""
-    url = f"https://{hostname}/page/{page}/?s={query_encoded}"
+    # Page 1 uses ABB's root search endpoint; pagination continues via /page/{n}/.
+    if page <= 1:
+        url = f"https://{hostname}/?s={query_encoded}"
+    else:
+        url = f"https://{hostname}/page/{page}/?s={query_encoded}"
     if include_legacy_category:
         return f"{url}&cat={LEGACY_CATEGORY_QUERY}"
     return url
@@ -69,6 +75,37 @@ def _encode_search_query(query: str, exact_phrase: bool) -> str:
     return search_query.replace('"', "%22").replace(" ", "+")
 
 
+def _normalize_result_url(url: str, hostname: str) -> str:
+    """Normalize ABB result URLs to absolute HTTPS URLs."""
+    normalized_url = (url or "").strip()
+    if not normalized_url:
+        return ""
+    if normalized_url.startswith(("http://", "https://")):
+        return normalized_url
+    if normalized_url.startswith("//"):
+        return f"https:{normalized_url}"
+    if normalized_url.startswith("/"):
+        return f"https://{hostname}{normalized_url}"
+    return f"https://{hostname}/{normalized_url.lstrip('/')}"
+
+
+def _bootstrap_abb_session(
+    hostname: str,
+    session: requests.Session,
+    retry_attempts: int,
+) -> None:
+    """Warm up ABB session cookies (best effort)."""
+    downloader.html_get_page(
+        f"https://{hostname}/",
+        retry=retry_attempts,
+        use_bypasser=False,
+        allow_bypasser_fallback=False,
+        include_response_url=True,
+        success_delay=0,
+        session=session,
+    )
+
+
 def search_audiobookbay(
     query: str,
     max_pages: int = 1,
@@ -88,13 +125,24 @@ def search_audiobookbay(
     """
     results = []
     rate_limit_delay = config.get("ABB_RATE_LIMIT_DELAY", 1.0)
+    session = requests.Session()
+
+    # Bootstrap ABB session cookie (PHPSESSID). ABB increasingly serves reliable
+    # search/detail pages only after session initialization, similar to browsers.
+    _bootstrap_abb_session(hostname, session, SEARCH_PAGE_RETRY_ATTEMPTS)
     
     # Iterate through pages
     for page in range(1, max_pages + 1):
         # Construct URL - use + for spaces (matching audiobookbay-automated implementation)
         # This avoids aggressive encoding that PHP-based sites may reject.
         query_encoded = _encode_search_query(query, exact_phrase)
-        primary_url = _build_search_url(hostname, page, query_encoded)
+        # ABB search expects the legacy category query parameter.
+        primary_url = _build_search_url(
+            hostname,
+            page,
+            query_encoded,
+            include_legacy_category=True,
+        )
         
         try:
             # Reuse shared HTTP fetch logic (without bypasser)
@@ -105,35 +153,41 @@ def search_audiobookbay(
                 allow_bypasser_fallback=False,
                 include_response_url=True,
                 success_delay=0,
+                session=session,
             )
 
-            # Legacy compatibility fallback: retry once with legacy category param if the
-            # first request fails/redirects unexpectedly.
-            if not page_html or _is_homepage_redirect(final_url, hostname):
-                legacy_url = _build_search_url(
-                    hostname,
-                    page,
-                    query_encoded,
-                    include_legacy_category=True,
-                )
-                legacy_html, legacy_final_url = downloader.html_get_page(
-                    legacy_url,
-                    retry=SEARCH_PAGE_RETRY_ATTEMPTS,
-                    use_bypasser=False,
-                    allow_bypasser_fallback=False,
-                    include_response_url=True,
-                    success_delay=0,
-                )
-                if legacy_html:
-                    page_html = legacy_html
-                    final_url = legacy_final_url
-            
+            was_home_redirect = _is_homepage_redirect(final_url, hostname)
+
+            # ABB can intermittently fail even with a valid URL.
+            # If page 1 fails, refresh the session and retry the exact same URL.
+            if page == 1 and (not page_html or was_home_redirect):
+                for refresh_attempt in range(1, FIRST_PAGE_SESSION_REFRESH_ATTEMPTS + 1):
+                    session = requests.Session()
+                    _bootstrap_abb_session(hostname, session, SEARCH_PAGE_RETRY_ATTEMPTS)
+                    page_html, final_url = downloader.html_get_page(
+                        primary_url,
+                        retry=SEARCH_PAGE_RETRY_ATTEMPTS,
+                        use_bypasser=False,
+                        allow_bypasser_fallback=False,
+                        include_response_url=True,
+                        success_delay=0,
+                        session=session,
+                    )
+                    was_home_redirect = _is_homepage_redirect(final_url, hostname)
+                    if page_html and not was_home_redirect:
+                        break
+                    logger.debug(
+                        "ABB page 1 session refresh %d/%d failed",
+                        refresh_attempt,
+                        FIRST_PAGE_SESSION_REFRESH_ATTEMPTS,
+                    )
+
             if not page_html:
                 logger.warning(f"Failed to fetch page {page}")
                 break
             
             # Check if we were redirected to the homepage (search was rejected/blocked)
-            if _is_homepage_redirect(final_url, hostname):
+            if was_home_redirect:
                 # Search was redirected to homepage - this means the search failed
                 # This can happen due to geo-blocking, rate limiting, or invalid query format
                 if page == 1:
@@ -163,18 +217,15 @@ def search_audiobookbay(
                     if not href:
                         continue
                     
-                    if href.startswith('http'):
-                        link = href
-                    else:
-                        link = f"https://{hostname}{href}"
+                    link = _normalize_result_url(href, hostname)
+                    if not link:
+                        continue
                     
                     # Extract cover image (try .postContent .center img first, then fallback to any img)
                     cover = None
                     cover_elem = post.select_one('.postContent .center img') or post.select_one('img')
                     if cover_elem:
-                        cover = cover_elem.get('src', '')
-                        if cover and not cover.startswith('http'):
-                            cover = f"https://{hostname}{cover}"
+                        cover = _normalize_result_url(cover_elem.get('src', ''), hostname) or None
                     
                     # Extract language from .postInfo
                     language = None
@@ -259,6 +310,9 @@ def extract_magnet_link(
         Magnet link, or None if extraction fails
     """
     try:
+        session = requests.Session()
+        _bootstrap_abb_session(hostname, session, DETAIL_PAGE_RETRY_ATTEMPTS)
+
         # Fetch detail page
         detail_html = downloader.html_get_page(
             details_url,
@@ -266,7 +320,20 @@ def extract_magnet_link(
             use_bypasser=False,
             allow_bypasser_fallback=False,
             success_delay=0,
+            session=session,
         )
+
+        if not detail_html:
+            session = requests.Session()
+            _bootstrap_abb_session(hostname, session, DETAIL_PAGE_RETRY_ATTEMPTS)
+            detail_html = downloader.html_get_page(
+                details_url,
+                retry=DETAIL_PAGE_RETRY_ATTEMPTS,
+                use_bypasser=False,
+                allow_bypasser_fallback=False,
+                success_delay=0,
+                session=session,
+            )
         
         if not detail_html:
             logger.warning("Failed to fetch details page")

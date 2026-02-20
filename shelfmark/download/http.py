@@ -179,6 +179,7 @@ def html_get_page(
     allow_bypasser_fallback: bool = True,
     include_response_url: bool = False,
     success_delay: float = 1.0,
+    session: Optional[requests.Session] = None,
 ) -> str | tuple[str, str]:
     """Fetch HTML content from a URL with retry mechanism.
 
@@ -252,7 +253,8 @@ def html_get_page(
             while True:
                 # Try with CF cookies/UA if available (from previous bypass)
                 cookies = _apply_cf_bypass(current_url, headers)
-                response = requests.get(
+                request_client = session or requests
+                response = request_client.get(
                     current_url,
                     proxies=get_proxies(current_url),
                     timeout=REQUEST_TIMEOUT,

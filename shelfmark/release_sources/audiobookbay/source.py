@@ -170,42 +170,73 @@ class AudiobookBaySource(ReleaseSource):
         max_pages = config.get("ABB_PAGE_LIMIT", 1)
         exact_phrase = bool(config.get("ABB_EXACT_PHRASE", False))
         
-        # Build search query from plan
+        # Build search query candidates from plan.
+        query_candidates: list[str] = []
         if plan.manual_query:
-            query = plan.manual_query
+            query_candidates.append(plan.manual_query.strip())
         elif plan.title_variants:
-            # Use first title variant with author
             variant = plan.title_variants[0]
-            query = f"{variant.title} {variant.author}".strip()
-        else:
-            query = book.title or ""
-        
-        if not query:
+            combined_query = f"{variant.title} {variant.author}".strip()
+            title_only_query = (variant.title or "").strip()
+            if combined_query:
+                query_candidates.append(combined_query)
+            if title_only_query and title_only_query.lower() != combined_query.lower():
+                query_candidates.append(title_only_query)
+        elif book.title:
+            query_candidates.append(book.title.strip())
+
+        # Remove empty and duplicate queries while preserving order.
+        deduped_queries: list[str] = []
+        seen_queries: set[str] = set()
+        for candidate in query_candidates:
+            normalized = candidate.strip()
+            if not normalized:
+                continue
+            key = normalized.lower()
+            if key in seen_queries:
+                continue
+            seen_queries.add(key)
+            deduped_queries.append(normalized)
+
+        if not deduped_queries:
             logger.debug("No search query available")
             return []
-        
-        # Convert to lowercase (matching audiobookbay-automated implementation)
-        query_lower = query.lower()
-        logger.info(f"Searching AudiobookBay for: {query_lower}")
+
+        results = []
+        query_lower = deduped_queries[0].lower()
         
         try:
-            # Search AudiobookBay
-            results = scraper.search_audiobookbay(
-                query=query_lower,
-                max_pages=max_pages,
-                hostname=hostname,
-                exact_phrase=exact_phrase,
-            )
+            for index, query in enumerate(deduped_queries):
+                query_lower = query.lower()
+                logger.info(f"Searching AudiobookBay for: {query_lower}")
 
-            # For auto-generated queries, fallback to broad matching if exact phrase returns nothing.
-            if exact_phrase and not results and not plan.manual_query:
-                logger.info("No exact phrase results, retrying AudiobookBay search without quotes")
+                # Search AudiobookBay
                 results = scraper.search_audiobookbay(
                     query=query_lower,
                     max_pages=max_pages,
                     hostname=hostname,
-                    exact_phrase=False,
+                    exact_phrase=exact_phrase,
                 )
+
+                # For auto-generated queries, fallback to broad matching if exact phrase returns nothing.
+                if exact_phrase and not results and not plan.manual_query:
+                    logger.info("No exact phrase results, retrying AudiobookBay search without quotes")
+                    results = scraper.search_audiobookbay(
+                        query=query_lower,
+                        max_pages=max_pages,
+                        hostname=hostname,
+                        exact_phrase=False,
+                    )
+
+                if results:
+                    break
+
+                if index < len(deduped_queries) - 1:
+                    logger.info(
+                        "No AudiobookBay results for '%s', retrying with '%s'",
+                        query_lower,
+                        deduped_queries[index + 1].lower(),
+                    )
             
             # Extract query words for relevance checking
             query_words = set(word.lower() for word in query_lower.split() if len(word) > 2)

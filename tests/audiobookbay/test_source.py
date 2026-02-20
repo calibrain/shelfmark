@@ -185,7 +185,7 @@ class TestAudiobookBaySource:
 
     @patch('shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay')
     def test_search_query_generation_from_variants(self, mock_search):
-        """Test search query generation from title variants."""
+        """Test search query generation from title variants with title-only retry."""
         mock_search.return_value = []
         
         source = AudiobookBaySource()
@@ -205,9 +205,11 @@ class TestAudiobookBaySource:
         
         source.search(book, plan, content_type="audiobook")
         
-        mock_search.assert_called_once()
-        call_args = mock_search.call_args
-        assert call_args.kwargs['query'] == "test book test author"
+        assert mock_search.call_count == 2
+        first_call = mock_search.call_args_list[0]
+        second_call = mock_search.call_args_list[1]
+        assert first_call.kwargs['query'] == "test book test author"
+        assert second_call.kwargs['query'] == "test book"
 
     @patch('shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay')
     def test_search_query_generation_from_title_only(self, mock_search):

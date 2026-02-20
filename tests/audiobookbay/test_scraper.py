@@ -129,6 +129,7 @@ class TestSearchAudiobookbay:
         """Test pagination through multiple pages."""
         mock_config_get.return_value = 0.0  # No delay for faster tests
         mock_html_get.side_effect = [
+            (EMPTY_SEARCH_HTML, "https://audiobookbay.lu/"),  # Session bootstrap
             (SAMPLE_SEARCH_HTML, "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined"),
             (EMPTY_SEARCH_HTML, "https://audiobookbay.lu/page/2/?s=test&cat=undefined%2Cundefined"),
         ]
@@ -136,7 +137,46 @@ class TestSearchAudiobookbay:
         results = scraper.search_audiobookbay("test", max_pages=2, hostname="audiobookbay.lu")
         
         assert len(results) == 2  # Only from first page
+        assert mock_html_get.call_count == 3
+
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
+    def test_search_audiobookbay_page_one_uses_root_search_endpoint(self, mock_config_get, mock_html_get):
+        """Test page 1 search uses ABB root endpoint instead of /page/1/."""
+        mock_config_get.return_value = 0.0
+        mock_html_get.return_value = (
+            SAMPLE_SEARCH_HTML,
+            "https://audiobookbay.lu/?s=test",
+        )
+
+        results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
+
+        assert len(results) == 2
+        requested_url = mock_html_get.call_args.args[0]
+        assert requested_url.startswith("https://audiobookbay.lu/?s=test")
+        assert "/page/1/" not in requested_url
+        assert "cat=undefined%2Cundefined" in requested_url
+
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
+    def test_search_audiobookbay_bootstraps_and_reuses_session(self, mock_config_get, mock_html_get):
+        """Test ABB search initializes and reuses a request session for cookie continuity."""
+        mock_config_get.return_value = 0.0
+        mock_html_get.side_effect = [
+            ("", "https://audiobookbay.lu/"),  # Bootstrap attempt
+            (SAMPLE_SEARCH_HTML, "https://audiobookbay.lu/?s=test&cat=undefined%2Cundefined"),
+        ]
+
+        results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
+
+        assert len(results) == 2
         assert mock_html_get.call_count == 2
+        bootstrap_call = mock_html_get.call_args_list[0]
+        search_call = mock_html_get.call_args_list[1]
+        assert bootstrap_call.args[0] == "https://audiobookbay.lu/"
+        assert search_call.args[0].startswith("https://audiobookbay.lu/?s=test")
+        assert bootstrap_call.kwargs["session"] is not None
+        assert search_call.kwargs["session"] is bootstrap_call.kwargs["session"]
 
     @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
     @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
@@ -216,6 +256,36 @@ class TestSearchAudiobookbay:
 
     @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
     @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
+    def test_search_audiobookbay_protocol_relative_links(self, mock_config_get, mock_html_get):
+        """Test protocol-relative links are normalized without duplicating hostname."""
+        mock_config_get.return_value = 0.0
+
+        html_with_protocol_relative_links = """
+        <div class="post">
+            <div class="postTitle"><h2><a href="//audiobookbay.lu/abss/protocol-relative/">Protocol Relative Book</a></h2></div>
+            <div class="postInfo">Language: English</div>
+            <div class="postContent">
+                <div class="center">
+                    <img src="//audiobookbay.lu/wp-content/uploads/cover.jpg" alt="Cover" />
+                </div>
+                <p style="text-align:center;">Posted: 01 Jan 2024<br>Format: M4B<br>File Size: 100 MBs</p>
+            </div>
+        </div>
+        """
+
+        mock_html_get.return_value = (
+            html_with_protocol_relative_links,
+            "https://audiobookbay.lu/?s=test",
+        )
+
+        results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
+
+        assert len(results) == 1
+        assert results[0]["link"] == "https://audiobookbay.lu/abss/protocol-relative/"
+        assert results[0]["cover"] == "https://audiobookbay.lu/wp-content/uploads/cover.jpg"
+
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
     def test_search_audiobookbay_exact_phrase_query(self, mock_config_get, mock_html_get):
         """Test exact phrase wrapping and encoding in search URL."""
         mock_config_get.return_value = 0.0
@@ -234,26 +304,26 @@ class TestSearchAudiobookbay:
         assert len(results) == 2
         requested_url = mock_html_get.call_args.args[0]
         assert "s=%22test+query%22" in requested_url
-        assert "cat=undefined%2Cundefined" not in requested_url
+        assert "cat=undefined%2Cundefined" in requested_url
 
     @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
     @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
-    def test_search_audiobookbay_legacy_category_fallback(self, mock_config_get, mock_html_get):
-        """Test fallback to legacy category query when primary search request fails."""
+    def test_search_audiobookbay_always_uses_legacy_category_query(self, mock_config_get, mock_html_get):
+        """Test ABB search always includes legacy category query and does not fallback."""
         mock_config_get.return_value = 0.0
-        mock_html_get.side_effect = [
-            ("", "https://audiobookbay.lu/page/1/?s=test"),  # Primary fetch failed
-            (SAMPLE_SEARCH_HTML, "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined"),
-        ]
+        mock_html_get.return_value = ("", "https://audiobookbay.lu/?s=test&cat=undefined%2Cundefined")
 
         results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
 
-        assert len(results) == 2
-        assert mock_html_get.call_count == 2
-        first_url = mock_html_get.call_args_list[0].args[0]
-        second_url = mock_html_get.call_args_list[1].args[0]
-        assert "cat=undefined%2Cundefined" not in first_url
-        assert "cat=undefined%2Cundefined" in second_url
+        assert len(results) == 0
+        assert mock_html_get.call_count >= 2
+        search_urls = [
+            call.args[0]
+            for call in mock_html_get.call_args_list
+            if "?s=test" in call.args[0]
+        ]
+        assert search_urls
+        assert all(url == "https://audiobookbay.lu/?s=test&cat=undefined%2Cundefined" for url in search_urls)
 
 
 class TestExtractMagnetLink:
@@ -262,7 +332,10 @@ class TestExtractMagnetLink:
     @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
     def test_extract_magnet_link_success(self, mock_html_get):
         """Test successful magnet link extraction."""
-        mock_html_get.return_value = SAMPLE_DETAIL_HTML
+        mock_html_get.side_effect = [
+            ("", "https://audiobookbay.lu/"),  # Bootstrap attempt
+            SAMPLE_DETAIL_HTML,
+        ]
         
         magnet_link = scraper.extract_magnet_link(
             "https://audiobookbay.lu/abss/test-book/",
@@ -274,6 +347,27 @@ class TestExtractMagnetLink:
         assert "ABC123DEF456GHI789JKL012MNO345PQR678STU" in magnet_link
         assert "udp%3A//tracker.openbittorrent.com%3A80" in magnet_link
         assert "http%3A//tracker.example.com%3A8080" in magnet_link
+        assert mock_html_get.call_count == 2
+
+    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    def test_extract_magnet_link_reuses_bootstrap_session(self, mock_html_get):
+        """Test detail page fetch reuses the bootstrap session for ABB cookies."""
+        mock_html_get.side_effect = [
+            ("", "https://audiobookbay.lu/"),
+            SAMPLE_DETAIL_HTML,
+        ]
+
+        scraper.extract_magnet_link(
+            "https://audiobookbay.lu/abss/test-book/",
+            hostname="audiobookbay.lu"
+        )
+
+        assert mock_html_get.call_count == 2
+        bootstrap_call = mock_html_get.call_args_list[0]
+        detail_call = mock_html_get.call_args_list[1]
+        assert bootstrap_call.args[0] == "https://audiobookbay.lu/"
+        assert detail_call.args[0] == "https://audiobookbay.lu/abss/test-book/"
+        assert detail_call.kwargs["session"] is bootstrap_call.kwargs["session"]
 
     @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
     def test_extract_magnet_link_fallback(self, mock_html_get):
