@@ -47,6 +47,15 @@ def _is_email_verified(claims: dict[str, Any]) -> bool:
     return False
 
 
+def _has_username_or_email(claims: dict[str, Any]) -> bool:
+    """Return True when claims include a usable username or email."""
+    for key in ("preferred_username", "email"):
+        value = claims.get(key)
+        if isinstance(value, str) and value.strip():
+            return True
+    return False
+
+
 def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
     """Register and return an OIDC client from the current security config."""
     config = load_config_file("security")
@@ -156,14 +165,17 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
                 return jsonify({"error": f"OIDC token claim validation failed: {claim_name}"}), 400
             claims = _normalize_claims(token.get("userinfo"))
 
-            # If userinfo isn't present in token payload, request it explicitly.
-            if not claims:
+            # If userinfo is missing or claims are too sparse, request it explicitly.
+            if not claims or not _has_username_or_email(claims):
+                fetched_claims: dict[str, Any] = {}
                 try:
-                    claims = _normalize_claims(client.userinfo(token=token))
+                    fetched_claims = _normalize_claims(client.userinfo(token=token))
                 except TypeError:
-                    claims = _normalize_claims(client.userinfo())
+                    fetched_claims = _normalize_claims(client.userinfo())
                 except Exception as e:
                     logger.error(f"Failed to fetch OIDC userinfo: {e}")
+                if fetched_claims:
+                    claims = {**claims, **fetched_claims}
 
             if not claims:
                 raise ValueError("OIDC authentication failed: missing user claims")
