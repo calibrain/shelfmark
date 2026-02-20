@@ -159,7 +159,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             # If userinfo isn't present in token payload, request it explicitly.
             if not claims:
                 try:
-                    claims = _normalize_claims(client.userinfo(token=token))
+                    claims = _normalize_claims(client.userinfo(access_token=token))
                 except TypeError:
                     claims = _normalize_claims(client.userinfo())
                 except Exception as e:
