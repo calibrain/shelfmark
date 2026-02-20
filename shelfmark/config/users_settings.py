@@ -9,6 +9,7 @@ from shelfmark.core.settings_registry import (
     CheckboxField,
     CustomComponentField,
     HeadingField,
+    MultiSelectField,
     NumberField,
     SelectField,
     TableField,
@@ -48,6 +49,21 @@ _REQUEST_DEFAULT_MODE_OPTIONS = [
 _REQUEST_MATRIX_MODE_OPTIONS = [
     option for option in _REQUEST_DEFAULT_MODE_OPTIONS if option["value"] != "request_book"
 ]
+
+_SELF_SETTINGS_SECTION_OPTIONS = [
+    {
+        "value": "delivery",
+        "label": "Delivery Preferences",
+        "description": "Show personal delivery output and destination settings.",
+    },
+    {
+        "value": "notifications",
+        "label": "Notifications",
+        "description": "Show personal notification route settings.",
+    },
+]
+_SELF_SETTINGS_SECTION_VALUES = {option["value"] for option in _SELF_SETTINGS_SECTION_OPTIONS}
+_SELF_SETTINGS_SECTION_DEFAULTS = [option["value"] for option in _SELF_SETTINGS_SECTION_OPTIONS]
 
 _USERS_HEADING_DESCRIPTION_BY_AUTH_MODE = {
     "builtin": (
@@ -133,6 +149,38 @@ def _get_request_policy_rule_columns():
 
 def _on_save_users(values):
     """Validate users/request-policy settings before persistence."""
+    if "VISIBLE_SELF_SETTINGS_SECTIONS" in values:
+        raw_sections = values["VISIBLE_SELF_SETTINGS_SECTIONS"]
+        if raw_sections is None:
+            candidate_sections: list[str] = []
+        elif isinstance(raw_sections, str):
+            candidate_sections = [s.strip() for s in raw_sections.split(",") if s.strip()]
+        elif isinstance(raw_sections, (list, tuple, set)):
+            candidate_sections = [str(section).strip() for section in raw_sections if str(section).strip()]
+        else:
+            return {
+                "error": True,
+                "message": "VISIBLE_SELF_SETTINGS_SECTIONS must be a list of section identifiers",
+                "values": values,
+            }
+
+        normalized_sections: list[str] = []
+        for section in candidate_sections:
+            if section not in _SELF_SETTINGS_SECTION_VALUES:
+                allowed = ", ".join(sorted(_SELF_SETTINGS_SECTION_VALUES))
+                return {
+                    "error": True,
+                    "message": (
+                        "VISIBLE_SELF_SETTINGS_SECTIONS contains an unsupported section "
+                        f"'{section}'. Supported values: {allowed}"
+                    ),
+                    "values": values,
+                }
+            if section not in normalized_sections:
+                normalized_sections.append(section)
+
+        values["VISIBLE_SELF_SETTINGS_SECTIONS"] = normalized_sections
+
     if "REQUEST_POLICY_DEFAULT_EBOOK" in values:
         if parse_policy_mode(values["REQUEST_POLICY_DEFAULT_EBOOK"]) is None:
             return {
@@ -178,6 +226,17 @@ def users_settings():
         CustomComponentField(
             key="users_management",
             component="users_management",
+        ),
+        MultiSelectField(
+            key="VISIBLE_SELF_SETTINGS_SECTIONS",
+            label="Visible Self-Settings Sections",
+            description=(
+                "Choose which personal settings sections are shown in My Account for non-admin users."
+            ),
+            options=_SELF_SETTINGS_SECTION_OPTIONS,
+            default=_SELF_SETTINGS_SECTION_DEFAULTS,
+            variant="dropdown",
+            env_supported=False,
         ),
         HeadingField(
             key="requests_heading",

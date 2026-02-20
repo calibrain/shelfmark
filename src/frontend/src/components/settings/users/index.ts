@@ -11,7 +11,11 @@ export { UserListView } from './UserListView';
 export { RequestPolicyGrid } from './RequestPolicyGrid';
 export { UserNotificationOverridesSection } from './UserNotificationOverridesSection';
 export { UserOverridesSection } from './UserOverridesSection';
-export { UserOverridesSections } from './UserOverridesSections';
+export {
+  UserOverridesSections,
+  DEFAULT_SELF_USER_OVERRIDE_SECTIONS,
+  normalizeUserOverrideSections,
+} from './UserOverridesSections';
 export { UserOverridesView } from './UserOverridesView';
 export { useUserForm } from './useUserForm';
 export { useUserMutations } from './useUserMutations';
@@ -27,4 +31,5 @@ export {
 export type {
   RequestPolicyContentType,
 } from './requestPolicyGridUtils';
+export type { UserOverrideSectionId } from './UserOverridesSections';
 export type { RequestPolicyMode } from '../../../types';

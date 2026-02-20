@@ -41,11 +41,59 @@ const USER_OVERRIDE_SECTION_DEFINITIONS: UserOverrideSectionDefinition[] = [
 
 const USER_OVERRIDE_SECTION_ORDER: UserOverrideSectionId[] =
   USER_OVERRIDE_SECTION_DEFINITIONS.map((section) => section.id);
+const USER_OVERRIDE_SECTION_ID_SET = new Set<UserOverrideSectionId>(USER_OVERRIDE_SECTION_ORDER);
 
 const USER_OVERRIDE_SECTION_META: Record<UserOverrideSectionId, UserOverrideSectionDefinition> = {
   delivery: { id: 'delivery', adminOnly: false },
   notifications: { id: 'notifications', adminOnly: false },
   requestPolicy: { id: 'requestPolicy', adminOnly: true },
+};
+
+export const DEFAULT_SELF_USER_OVERRIDE_SECTIONS: UserOverrideSectionId[] =
+  USER_OVERRIDE_SECTION_ORDER.filter((sectionId) => !USER_OVERRIDE_SECTION_META[sectionId].adminOnly);
+
+const isUserOverrideSectionId = (value: string): value is UserOverrideSectionId => (
+  USER_OVERRIDE_SECTION_ID_SET.has(value as UserOverrideSectionId)
+);
+
+export const normalizeUserOverrideSections = (
+  sections: Iterable<unknown> | null | undefined,
+  scope: UserOverrideScope,
+): UserOverrideSectionId[] => {
+  const fallbackSections = scope === 'self'
+    ? DEFAULT_SELF_USER_OVERRIDE_SECTIONS
+    : USER_OVERRIDE_SECTION_ORDER;
+
+  if (!sections) {
+    return fallbackSections;
+  }
+
+  const requestedValues = Array.from(sections);
+  if (requestedValues.length === 0) {
+    return [];
+  }
+
+  const requestedIds = new Set<UserOverrideSectionId>();
+  requestedValues.forEach((value) => {
+    const normalizedValue = String(value ?? '').trim();
+    if (isUserOverrideSectionId(normalizedValue)) {
+      requestedIds.add(normalizedValue);
+    }
+  });
+
+  if (requestedIds.size === 0) {
+    return fallbackSections;
+  }
+
+  return USER_OVERRIDE_SECTION_ORDER.filter((sectionId) => {
+    if (!requestedIds.has(sectionId)) {
+      return false;
+    }
+    if (scope === 'self' && USER_OVERRIDE_SECTION_META[sectionId].adminOnly) {
+      return false;
+    }
+    return true;
+  });
 };
 
 export const UserOverridesSections = ({
@@ -60,13 +108,7 @@ export const UserOverridesSections = ({
   globalUsersSettingsValues,
   onTestNotificationRoutes,
 }: UserOverridesSectionsProps) => {
-  const requestedSections = sections ?? USER_OVERRIDE_SECTION_ORDER;
-  const activeSections = requestedSections.filter((sectionId) => {
-    if (scope === 'self' && USER_OVERRIDE_SECTION_META[sectionId].adminOnly) {
-      return false;
-    }
-    return true;
-  });
+  const activeSections = normalizeUserOverrideSections(sections, scope);
 
   const sectionNodes: UserOverrideSectionNode[] = [];
 

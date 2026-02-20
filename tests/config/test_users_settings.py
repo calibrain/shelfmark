@@ -21,6 +21,7 @@ def test_users_tab_registers_request_policy_fields():
     fields = _field_map("users")
     expected_keys = {
         "users_management",
+        "VISIBLE_SELF_SETTINGS_SECTIONS",
         "REQUESTS_ENABLED",
         "request_policy_editor",
         "MAX_PENDING_REQUESTS_PER_USER",
@@ -70,6 +71,28 @@ def test_request_policy_fields_are_user_overridable():
     }
     assert expected_keys.issubset(set(overridable_map))
     assert "RESTRICT_SETTINGS_TO_ADMIN" not in overridable_map
+    assert "VISIBLE_SELF_SETTINGS_SECTIONS" not in overridable_map
+
+
+def test_visible_self_settings_sections_field_defaults_and_options():
+    fields = _field_map("users")
+    field = fields["VISIBLE_SELF_SETTINGS_SECTIONS"]
+
+    assert field.default == ["delivery", "notifications"]
+    assert field.variant == "dropdown"
+    assert field.env_supported is False
+    assert field.options == [
+        {
+            "value": "delivery",
+            "label": "Delivery Preferences",
+            "description": "Show personal delivery output and destination settings.",
+        },
+        {
+            "value": "notifications",
+            "label": "Notifications",
+            "description": "Show personal notification route settings.",
+        },
+    ]
 
 
 def test_users_tab_registers_custom_components():

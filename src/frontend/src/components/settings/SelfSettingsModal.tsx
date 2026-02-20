@@ -9,7 +9,12 @@ import {
 import { SelectField } from './fields';
 import { FieldWrapper } from './shared';
 import { UserAccountCardContent, UserEditActions, UserIdentityHeader } from './users/UserCard';
-import { UserOverridesSections } from './users/UserOverridesSections';
+import {
+  DEFAULT_SELF_USER_OVERRIDE_SECTIONS,
+  normalizeUserOverrideSections,
+  UserOverridesSections,
+  type UserOverrideSectionId,
+} from './users';
 import { PerUserSettings } from './users/types';
 import { useUserOverridesState } from './users/useUserOverridesState';
 import { getStoredThemePreference, setThemePreference, THEME_FIELD } from '../../utils/themePreference';
@@ -52,6 +57,9 @@ export const SelfSettingsModal = ({ isOpen, onClose, onShowToast }: SelfSettings
   const [originalUser, setOriginalUser] = useState<AdminUser | null>(null);
   const [deliveryPreferences, setDeliveryPreferences] = useState<DeliveryPreferencesResponse | null>(null);
   const [notificationPreferences, setNotificationPreferences] = useState<DeliveryPreferencesResponse | null>(null);
+  const [visibleSections, setVisibleSections] = useState<UserOverrideSectionId[]>(
+    DEFAULT_SELF_USER_OVERRIDE_SECTIONS
+  );
 
   const [editPassword, setEditPassword] = useState('');
   const [editPasswordConfirm, setEditPasswordConfirm] = useState('');
@@ -81,6 +89,9 @@ export const SelfSettingsModal = ({ isOpen, onClose, onShowToast }: SelfSettings
       setOriginalUser(context.user);
       setDeliveryPreferences(context.deliveryPreferences || null);
       setNotificationPreferences(context.notificationPreferences || null);
+      setVisibleSections(
+        normalizeUserOverrideSections(context.visibleUserSettingsSections, 'self')
+      );
       applyUserOverridesContext({
         settings: (context.user.settings || {}) as PerUserSettings,
         userOverridableKeys: context.userOverridableKeys || [],
@@ -309,6 +320,7 @@ export const SelfSettingsModal = ({ isOpen, onClose, onShowToast }: SelfSettings
                   children: (
                     <UserOverridesSections
                       scope="self"
+                      sections={visibleSections}
                       deliveryPreferences={deliveryPreferences}
                       notificationPreferences={notificationPreferences}
                       isUserOverridable={isUserOverridable}
