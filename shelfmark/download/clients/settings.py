@@ -390,6 +390,13 @@ def prowlarr_clients_settings():
             default="",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "qbittorrent"},
         ),
+        TextField(
+            key="QBITTORRENT_DOWNLOAD_DIR",
+            label="Download Directory",
+            description="Server-side directory where torrents are downloaded (optional, uses qBittorrent default if not specified)",
+            placeholder="/downloads",
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "qbittorrent"},
+        ),
         TagListField(
             key="QBITTORRENT_TAG",
             label="Tags",
@@ -444,6 +451,13 @@ def prowlarr_clients_settings():
             default="",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "transmission"},
         ),
+        TextField(
+            key="TRANSMISSION_DOWNLOAD_DIR",
+            label="Download Directory",
+            description="Server-side directory where torrents are downloaded (optional, uses Transmission default if not specified)",
+            placeholder="/downloads",
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "transmission"},
+        ),
 
         # --- Deluge Settings ---
         TextField(
@@ -490,6 +504,13 @@ def prowlarr_clients_settings():
             description="Label for audiobook downloads. Leave empty to use the book label.",
             placeholder="",
             default="",
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "deluge"},
+        ),
+        TextField(
+            key="DELUGE_DOWNLOAD_DIR",
+            label="Download Directory",
+            description="Server-side directory where torrents are downloaded (optional, uses Deluge default if not specified)",
+            placeholder="/downloads",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "deluge"},
         ),
 

@@ -139,6 +139,7 @@ class QBittorrentClient(DownloadClient):
             password=config.get("QBITTORRENT_PASSWORD", ""),
         )
         self._category = config.get("QBITTORRENT_CATEGORY", "books")
+        self._download_dir = config.get("QBITTORRENT_DOWNLOAD_DIR", "")
         self._tags = _normalize_tags(config.get("QBITTORRENT_TAG", []))
 
 
@@ -306,6 +307,8 @@ class QBittorrentClient(DownloadClient):
                 "category": category,
                 "rename": name,
             }
+            if self._download_dir:
+                add_kwargs["save_path"] = self._download_dir
             if tags:
                 add_kwargs["tags"] = ",".join(tags)
 

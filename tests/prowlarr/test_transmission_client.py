@@ -474,6 +474,43 @@ class TestTransmissionClientAddDownload:
             call_kwargs = mock_client_instance.add_torrent.call_args
             assert call_kwargs.kwargs.get("labels") == ["mybooks"]
 
+    def test_add_download_uses_configured_download_dir(self, monkeypatch):
+        """Test that add_download passes configured download directory."""
+        config_values = {
+            "TRANSMISSION_URL": "http://localhost:9091",
+            "TRANSMISSION_USERNAME": "admin",
+            "TRANSMISSION_PASSWORD": "password",
+            "TRANSMISSION_CATEGORY": "mybooks",
+            "TRANSMISSION_DOWNLOAD_DIR": "/downloads/books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.transmission.config.get",
+            make_config_getter(config_values),
+        )
+
+        mock_torrent = MockTorrent(hash_string="abc123")
+        mock_client_instance = MagicMock()
+        mock_client_instance.add_torrent.return_value = mock_torrent
+
+        mock_transmission_rpc = create_mock_transmission_rpc_module()
+        mock_transmission_rpc.Client.return_value = mock_client_instance
+
+        with patch.dict("sys.modules", {"transmission_rpc": mock_transmission_rpc}):
+            if "shelfmark.download.clients.transmission" in sys.modules:
+                del sys.modules["shelfmark.download.clients.transmission"]
+
+            from shelfmark.download.clients.transmission import (
+                TransmissionClient,
+            )
+
+            client = TransmissionClient()
+            magnet = "magnet:?xt=urn:btih:abc123&dn=test"
+            client.add_download(magnet, "Test")
+
+            call_kwargs = mock_client_instance.add_torrent.call_args
+            assert call_kwargs.kwargs.get("labels") == ["mybooks"]
+            assert call_kwargs.kwargs.get("download_dir") == "/downloads/books"
+
 
 class TestTransmissionClientRemove:
     """Tests for TransmissionClient.remove()."""

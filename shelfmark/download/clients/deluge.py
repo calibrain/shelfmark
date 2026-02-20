@@ -97,6 +97,7 @@ class DelugeClient(DownloadClient):
         self._rpc_id = 0
 
         self._category = str(config.get("DELUGE_CATEGORY", "books") or "books")
+        self._download_dir = str(config.get("DELUGE_DOWNLOAD_DIR", "") or "")
 
     def _next_rpc_id(self) -> int:
         self._rpc_id += 1
@@ -232,6 +233,8 @@ class DelugeClient(DownloadClient):
                 raise Exception("Failed to fetch torrent file")
 
             options: dict[str, Any] = {}
+            if self._download_dir:
+                options["download_location"] = self._download_dir
 
             if torrent_info.is_magnet:
                 magnet_url = torrent_info.magnet_url or url

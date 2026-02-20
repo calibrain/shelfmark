@@ -12,7 +12,10 @@ This document lists all configuration options that can be set via environment va
 - [Downloads](#downloads)
 - [Network](#network)
 - [Advanced](#advanced)
+- [Prowlarr](#prowlarr)
+- [AudiobookBay](#audiobookbay)
 - [IRC](#irc)
+- [Download Clients](#download-clients)
 - [Metadata Providers](#metadata-providers)
   - [Hardcover](#metadata-providers-hardcover)
   - [Open Library](#metadata-providers-open-library)
@@ -21,9 +24,6 @@ This document lists all configuration options that can be set via environment va
   - [Download Sources](#direct-download-download-sources)
   - [Cloudflare Bypass](#direct-download-cloudflare-bypass)
   - [Mirrors](#direct-download-mirrors)
-- [Prowlarr](#prowlarr)
-  - [Configuration](#prowlarr-configuration)
-  - [Download Clients](#prowlarr-download-clients)
 
 ---
 
@@ -240,7 +240,7 @@ The release source tab to open by default in the release modal.
 
 - **Type:** string (choice)
 - **Default:** `direct_download`
-- **Options:** `direct_download` (Direct Download), `prowlarr` (Prowlarr)
+- **Options:** `direct_download` (Direct Download), `prowlarr` (Prowlarr), `audiobookbay` (AudiobookBay)
 
 </details>
 
@@ -249,20 +249,32 @@ The release source tab to open by default in the release modal.
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `BOOKS_OUTPUT_MODE` | Choose where completed book files are sent. | string (choice) | `folder` |
-| `INGEST_DIR` | Directory where downloaded files are saved. | string | `/books` |
+| `INGEST_DIR` | Directory where downloaded files are saved. Use {User} for per-user folders (e.g. /books/{User}). | string | `/books` |
 | `FILE_ORGANIZATION` | Choose how downloaded book files are named and organized. | string (choice) | `rename` |
-| `TEMPLATE_RENAME` | Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. | string | `{Author} - {Title} ({Year})` |
-| `TEMPLATE_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title} ({Year})` |
+| `TEMPLATE_RENAME` | Variables: {Author}, {Title}, {Year}, {User}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. | string | `{Author} - {Title} ({Year})` |
+| `TEMPLATE_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title} ({Year})` |
 | `HARDLINK_TORRENTS` | Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder. | boolean | `false` |
 | `BOOKLORE_HOST` | Base URL of your Booklore instance | string | _none_ |
 | `BOOKLORE_USERNAME` | Booklore account username | string | _none_ |
 | `BOOKLORE_PASSWORD` | Booklore account password | string (secret) | _none_ |
+| `BOOKLORE_DESTINATION` | Choose whether uploads go directly to a specific library path or to Bookdrop for review. | string (choice) | `library` |
 | `BOOKLORE_LIBRARY_ID` | Booklore library to upload into. | string (choice) | _none_ |
 | `BOOKLORE_PATH_ID` | Booklore library path for uploads. | string (choice) | _none_ |
-| `DESTINATION_AUDIOBOOK` | Leave empty to use Books destination. | string | _none_ |
+| `EMAIL_RECIPIENT` | Optional fallback email address when no per-user email recipient override is configured. | string | _none_ |
+| `EMAIL_ATTACHMENT_SIZE_LIMIT_MB` | Maximum total attachment size per email. Email encoding adds overhead; keep this below your provider's limit. | number | `25` |
+| `EMAIL_SMTP_HOST` | SMTP server hostname or IP (e.g., smtp.gmail.com). | string | _none_ |
+| `EMAIL_SMTP_PORT` | SMTP server port (587 is typical for STARTTLS, 465 for SSL). | number | `587` |
+| `EMAIL_SMTP_SECURITY` | Transport security mode for SMTP. | string (choice) | `starttls` |
+| `EMAIL_SMTP_USERNAME` | SMTP username (leave empty for no authentication). | string | _none_ |
+| `EMAIL_SMTP_PASSWORD` | SMTP password (required if Username is set). | string (secret) | _none_ |
+| `EMAIL_FROM` | From address used for the email. You can include a display name (e.g., Shelfmark <mail@example.com>). Leave blank to default to the SMTP username (when it is an email address). | string | _none_ |
+| `EMAIL_SUBJECT_TEMPLATE` | Email subject. Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {Format}. | string | `{Title}` |
+| `EMAIL_SMTP_TIMEOUT_SECONDS` | How long to wait for SMTP operations before failing. | number | `60` |
+| `EMAIL_ALLOW_UNVERIFIED_TLS` | Disable TLS certificate verification (not recommended). | boolean | `false` |
+| `DESTINATION_AUDIOBOOK` | Directory where downloaded audiobook files are saved. Leave empty to use the Books destination. | string | _none_ |
 | `FILE_ORGANIZATION_AUDIOBOOK` | Choose how downloaded audiobook files are named and organized. | string (choice) | `rename` |
-| `TEMPLATE_AUDIOBOOK_RENAME` | Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. | string | `{Author} - {Title}` |
-| `TEMPLATE_AUDIOBOOK_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title}` |
+| `TEMPLATE_AUDIOBOOK_RENAME` | Variables: {Author}, {Title}, {Year}, {User}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. | string | `{Author} - {Title}` |
+| `TEMPLATE_AUDIOBOOK_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title}` |
 | `HARDLINK_TORRENTS_AUDIOBOOK` | Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder. | boolean | `true` |
 | `AUTO_OPEN_DOWNLOADS_SIDEBAR` | Automatically open the downloads sidebar when a new download is queued. | boolean | `false` |
 | `DOWNLOAD_TO_BROWSER` | Automatically download completed files to your browser. | boolean | `false` |
@@ -280,13 +292,13 @@ Choose where completed book files are sent.
 
 - **Type:** string (choice)
 - **Default:** `folder`
-- **Options:** `folder` (Folder), `booklore` (Booklore (API))
+- **Options:** `folder` (Folder), `email` (Email (SMTP)), `booklore` (Booklore (API))
 
 #### `INGEST_DIR`
 
 **Destination**
 
-Directory where downloaded files are saved.
+Directory where downloaded files are saved. Use {User} for per-user folders (e.g. /books/{User}).
 
 - **Type:** string
 - **Default:** `/books`
@@ -306,7 +318,7 @@ Choose how downloaded book files are named and organized.
 
 **Naming Template**
 
-Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders.
+Variables: {Author}, {Title}, {Year}, {User}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders.
 
 - **Type:** string
 - **Default:** `{Author} - {Title} ({Year})`
@@ -315,7 +327,7 @@ Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}
 
 **Path Template**
 
-Use / to create folders. Variables: {Author}, {Title}, {Year}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty.
+Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty.
 
 - **Type:** string
 - **Default:** `{Author}/{Title} ({Year})`
@@ -359,6 +371,16 @@ Booklore account password
 - **Default:** _none_
 - **Required:** Yes
 
+#### `BOOKLORE_DESTINATION`
+
+**Upload Destination**
+
+Choose whether uploads go directly to a specific library path or to Bookdrop for review.
+
+- **Type:** string (choice)
+- **Default:** `library`
+- **Options:** `library` (Specific Library), `bookdrop` (Bookdrop)
+
 #### `BOOKLORE_LIBRARY_ID`
 
 **Library**
@@ -379,11 +401,115 @@ Booklore library path for uploads.
 - **Default:** _none_
 - **Required:** Yes
 
+#### `EMAIL_RECIPIENT`
+
+**Default Email Recipient**
+
+Optional fallback email address when no per-user email recipient override is configured.
+
+- **Type:** string
+- **Default:** _none_
+
+#### `EMAIL_ATTACHMENT_SIZE_LIMIT_MB`
+
+**Attachment Size Limit (MB)**
+
+Maximum total attachment size per email. Email encoding adds overhead; keep this below your provider's limit.
+
+- **Type:** number
+- **Default:** `25`
+- **Constraints:** min: 1, max: 600
+
+#### `EMAIL_SMTP_HOST`
+
+**SMTP Host**
+
+SMTP server hostname or IP (e.g., smtp.gmail.com).
+
+- **Type:** string
+- **Default:** _none_
+- **Required:** Yes
+
+#### `EMAIL_SMTP_PORT`
+
+**SMTP Port**
+
+SMTP server port (587 is typical for STARTTLS, 465 for SSL).
+
+- **Type:** number
+- **Default:** `587`
+- **Constraints:** min: 1, max: 65535
+
+#### `EMAIL_SMTP_SECURITY`
+
+**SMTP Security**
+
+Transport security mode for SMTP.
+
+- **Type:** string (choice)
+- **Default:** `starttls`
+- **Options:** `none` (None), `starttls` (STARTTLS), `ssl` (SSL/TLS)
+
+#### `EMAIL_SMTP_USERNAME`
+
+**Username**
+
+SMTP username (leave empty for no authentication).
+
+- **Type:** string
+- **Default:** _none_
+
+#### `EMAIL_SMTP_PASSWORD`
+
+**Password**
+
+SMTP password (required if Username is set).
+
+- **Type:** string (secret)
+- **Default:** _none_
+
+#### `EMAIL_FROM`
+
+**From Address**
+
+From address used for the email. You can include a display name (e.g., Shelfmark <mail@example.com>). Leave blank to default to the SMTP username (when it is an email address).
+
+- **Type:** string
+- **Default:** _none_
+
+#### `EMAIL_SUBJECT_TEMPLATE`
+
+**Subject Template**
+
+Email subject. Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {Format}.
+
+- **Type:** string
+- **Default:** `{Title}`
+
+#### `EMAIL_SMTP_TIMEOUT_SECONDS`
+
+**SMTP Timeout (seconds)**
+
+How long to wait for SMTP operations before failing.
+
+- **Type:** number
+- **Default:** `60`
+- **Constraints:** min: 1, max: 600
+
+#### `EMAIL_ALLOW_UNVERIFIED_TLS`
+
+**Allow Unverified TLS**
+
+Disable TLS certificate verification (not recommended).
+
+- **Type:** boolean
+- **Default:** `false`
+
 #### `DESTINATION_AUDIOBOOK`
 
 **Destination**
 
-Leave empty to use Books destination.
+Directory where downloaded audiobook files are saved. Leave empty to use the Books destination.
 
 - **Type:** string
 - **Default:** _none_
@@ -402,7 +528,7 @@ Choose how downloaded audiobook files are named and organized.
 
 **Naming Template**
 
-Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders.
+Variables: {Author}, {Title}, {Year}, {User}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders.
 
 - **Type:** string
 - **Default:** `{Author} - {Title}`
@@ -411,7 +537,7 @@ Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {P
 
 **Path Template**
 
-Use / to create folders. Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty.
+Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty.
 
 - **Type:** string
 - **Default:** `{Author}/{Title}`
@@ -578,7 +704,7 @@ Comma-separated hosts to bypass proxy (e.g., localhost,127.0.0.1,10.*,*.local)
 | `DOWNLOAD_PROGRESS_UPDATE_INTERVAL` | How often download progress is broadcast to the UI. | number | `1` |
 | `CUSTOM_SCRIPT` | Path to a script to run after each successful download. Must be executable. | string | _none_ |
 | `CUSTOM_SCRIPT_PATH_MODE` | Pass the path to the custom script as an absolute path or relative to the destination folder. | string (choice) | `absolute` |
-| `CUSTOM_SCRIPT_JSON_PAYLOAD` | Send a JSON payload to the custom script via stdin. | boolean | `false` |
+| `CUSTOM_SCRIPT_JSON_PAYLOAD` | Send a JSON payload to the script via stdin. Useful for multi-file imports (audiobooks) or richer metadata without relying on path parsing. | boolean | `false` |
 | `COVERS_CACHE_ENABLED` | Cache book covers on the server for faster loading. | boolean | `true` |
 | `COVERS_CACHE_TTL` | How long to keep cached covers. Set to 0 to keep forever (recommended for static artwork). | number | `0` |
 | `COVERS_CACHE_MAX_SIZE_MB` | Maximum disk space for cached covers. Oldest images are removed when limit is reached. | number | `500` |
@@ -637,8 +763,6 @@ How often download progress is broadcast to the UI.
 
 Path to a script to run after each successful download. Must be executable.
 
-See `docs/custom-scripts.md` for the user guide, including how the target path argument (`$1`) and optional JSON payload work.
-
 - **Type:** string
 - **Default:** _none_
 
@@ -656,9 +780,7 @@ Pass the path to the custom script as an absolute path or relative to the destin
 
 **Custom Script JSON Payload**
 
-Send a JSON payload to the custom script via stdin (in addition to the target path argument).
-
-See `docs/custom-scripts.md` for an example payload and usage patterns.
+Send a JSON payload to the script via stdin. Useful for multi-file imports (audiobooks) or richer metadata without relying on path parsing.
 
 - **Type:** boolean
 - **Default:** `false`
@@ -720,6 +842,131 @@ How long to cache individual book details. Default: 600 (10 minutes). Max: 60480
 - **Type:** number
 - **Default:** `600`
 - **Constraints:** min: 60, max: 604800
+
+</details>
+
+## Prowlarr
+
+| Variable | Description | Type | Default |
+|----------|-------------|------|---------|
+| `PROWLARR_ENABLED` | Enable searching for books via Prowlarr indexers | boolean | `false` |
+| `PROWLARR_URL` | Base URL of your Prowlarr instance | string | _none_ |
+| `PROWLARR_API_KEY` | Found in Prowlarr: Settings > General > API Key | string (secret) | _none_ |
+| `PROWLARR_INDEXERS` | Select which indexers to search. 📚 = has book categories. Leave empty to search all. | string (comma-separated) | _empty list_ |
+| `PROWLARR_AUTO_EXPAND` | Automatically retry search without category filtering if no results are found | boolean | `false` |
+
+<details>
+<summary>Detailed descriptions</summary>
+
+#### `PROWLARR_ENABLED`
+
+**Enable Prowlarr source**
+
+Enable searching for books via Prowlarr indexers
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `PROWLARR_URL`
+
+**Prowlarr URL**
+
+Base URL of your Prowlarr instance
+
+- **Type:** string
+- **Default:** _none_
+- **Required:** Yes
+
+#### `PROWLARR_API_KEY`
+
+**API Key**
+
+Found in Prowlarr: Settings > General > API Key
+
+- **Type:** string (secret)
+- **Default:** _none_
+- **Required:** Yes
+
+#### `PROWLARR_INDEXERS`
+
+**Indexers to Search**
+
+Select which indexers to search. 📚 = has book categories. Leave empty to search all.
+
+- **Type:** string (comma-separated)
+- **Default:** _empty list_
+
+#### `PROWLARR_AUTO_EXPAND`
+
+**Auto-expand search on no results**
+
+Automatically retry search without category filtering if no results are found
+
+- **Type:** boolean
+- **Default:** `false`
+
+</details>
+
+## AudiobookBay
+
+| Variable | Description | Type | Default |
+|----------|-------------|------|---------|
+| `ABB_ENABLED` | Enable AudiobookBay as a release source for audiobooks. | boolean | `false` |
+| `ABB_HOSTNAME` | AudiobookBay domain (e.g., audiobookbay.lu, audiobookbay.is). Required to enable searches. | string | _empty string_ |
+| `ABB_PAGE_LIMIT` | Maximum number of search result pages to fetch (1-10). | number | `1` |
+| `ABB_EXACT_PHRASE` | Wrap generated queries in quotes for stricter matching. If no results are found, Shelfmark retries without quotes. | boolean | `false` |
+| `ABB_RATE_LIMIT_DELAY` | Delay between requests in seconds to avoid rate limiting (0-10). | number | `1.0` |
+
+<details>
+<summary>Detailed descriptions</summary>
+
+#### `ABB_ENABLED`
+
+**Enable AudiobookBay**
+
+Enable AudiobookBay as a release source for audiobooks.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `ABB_HOSTNAME`
+
+**Hostname**
+
+AudiobookBay domain (e.g., audiobookbay.lu, audiobookbay.is). Required to enable searches.
+
+- **Type:** string
+- **Default:** _empty string_
+- **Required:** Yes
+
+#### `ABB_PAGE_LIMIT`
+
+**Max Pages to Search**
+
+Maximum number of search result pages to fetch (1-10).
+
+- **Type:** number
+- **Default:** `1`
+- **Constraints:** min: 1, max: 10
+
+#### `ABB_EXACT_PHRASE`
+
+**Prefer Exact-Phrase Search**
+
+Wrap generated queries in quotes for stricter matching. If no results are found, Shelfmark retries without quotes.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `ABB_RATE_LIMIT_DELAY`
+
+**Rate Limit Delay (seconds)**
+
+Delay between requests in seconds to avoid rate limiting (0-10).
+
+- **Type:** number
+- **Default:** `1.0`
+- **Constraints:** min: 0.0, max: 10.0
 
 </details>
 
@@ -804,6 +1051,379 @@ How long to keep cached search results before they expire.
 - **Type:** string (choice)
 - **Default:** `2592000`
 - **Options:** `2592000` (30 days), `0` (Forever (until manually cleared))
+
+</details>
+
+## Download Clients
+
+| Variable | Description | Type | Default |
+|----------|-------------|------|---------|
+| `PROWLARR_TORRENT_CLIENT` | Choose which torrent client to use | string (choice) | _empty string_ |
+| `QBITTORRENT_URL` | Web UI URL of your qBittorrent instance | string | _none_ |
+| `QBITTORRENT_USERNAME` | qBittorrent Web UI username | string | _none_ |
+| `QBITTORRENT_PASSWORD` | qBittorrent Web UI password | string (secret) | _none_ |
+| `QBITTORRENT_CATEGORY` | Category to assign to book downloads in qBittorrent | string | `books` |
+| `QBITTORRENT_CATEGORY_AUDIOBOOK` | Category for audiobook downloads. Leave empty to use the book category. | string | _empty string_ |
+| `QBITTORRENT_DOWNLOAD_DIR` | Server-side directory where torrents are downloaded (optional, uses qBittorrent default if not specified) | string | _none_ |
+| `QBITTORRENT_TAG` | Tag(s) to assign to qBittorrent downloads. Leave empty for no tags. | string | _empty list_ |
+| `TRANSMISSION_URL` | URL of your Transmission instance (use https:// for TLS) | string | _none_ |
+| `TRANSMISSION_USERNAME` | Transmission RPC username (if authentication enabled) | string | _none_ |
+| `TRANSMISSION_PASSWORD` | Transmission RPC password | string (secret) | _none_ |
+| `TRANSMISSION_CATEGORY` | Label to assign to book downloads in Transmission | string | `books` |
+| `TRANSMISSION_CATEGORY_AUDIOBOOK` | Label for audiobook downloads. Leave empty to use the book label. | string | _empty string_ |
+| `TRANSMISSION_DOWNLOAD_DIR` | Server-side directory where torrents are downloaded (optional, uses Transmission default if not specified) | string | _none_ |
+| `DELUGE_HOST` | Hostname/IP or full URL of your Deluge Web UI (deluge-web) | string | `localhost` |
+| `DELUGE_PORT` | Deluge Web UI port (default: 8112) | string | `8112` |
+| `DELUGE_PASSWORD` | Deluge Web UI password (default: deluge) | string (secret) | _none_ |
+| `DELUGE_CATEGORY` | Label to assign to book downloads in Deluge | string | `books` |
+| `DELUGE_CATEGORY_AUDIOBOOK` | Label for audiobook downloads. Leave empty to use the book label. | string | _empty string_ |
+| `DELUGE_DOWNLOAD_DIR` | Server-side directory where torrents are downloaded (optional, uses Deluge default if not specified) | string | _none_ |
+| `RTORRENT_URL` | XML-RPC URL of your rTorrent instance | string | _none_ |
+| `RTORRENT_USERNAME` | HTTP Basic auth username (if authentication enabled) | string | _none_ |
+| `RTORRENT_PASSWORD` | HTTP Basic auth password | string (secret) | _none_ |
+| `RTORRENT_LABEL` | Label to assign to book downloads in rTorrent | string | `cwabd` |
+| `RTORRENT_DOWNLOAD_DIR` | Server-side directory where torrents are downloaded (optional, uses rTorrent default if not specified) | string | _none_ |
+| `PROWLARR_USENET_CLIENT` | Choose which usenet client to use | string (choice) | _empty string_ |
+| `NZBGET_URL` | URL of your NZBGet instance | string | _none_ |
+| `NZBGET_USERNAME` | NZBGet control username | string | `nzbget` |
+| `NZBGET_PASSWORD` | NZBGet control password | string (secret) | _none_ |
+| `NZBGET_CATEGORY` | Category to assign to book downloads in NZBGet | string | `Books` |
+| `NZBGET_CATEGORY_AUDIOBOOK` | Category for audiobook downloads. Leave empty to use the book category. | string | _empty string_ |
+| `SABNZBD_URL` | URL of your SABnzbd instance | string | _none_ |
+| `SABNZBD_API_KEY` | Found in SABnzbd: Config > General > API Key | string (secret) | _none_ |
+| `SABNZBD_CATEGORY` | Category to assign to book downloads in SABnzbd | string | `books` |
+| `SABNZBD_CATEGORY_AUDIOBOOK` | Category for audiobook downloads. Leave empty to use the book category. | string | _empty string_ |
+| `PROWLARR_USENET_ACTION` | Move deletes the job from your usenet client after import; Copy keeps it in the client | string (choice) | `move` |
+
+<details>
+<summary>Detailed descriptions</summary>
+
+#### `PROWLARR_TORRENT_CLIENT`
+
+**Torrent Client**
+
+Choose which torrent client to use
+
+- **Type:** string (choice)
+- **Default:** _empty string_
+- **Options:** `""` (None), `qbittorrent` (qBittorrent), `transmission` (Transmission), `deluge` (Deluge), `rtorrent` (rTorrent)
+
+#### `QBITTORRENT_URL`
+
+**qBittorrent URL**
+
+Web UI URL of your qBittorrent instance
+
+- **Type:** string
+- **Default:** _none_
+
+#### `QBITTORRENT_USERNAME`
+
+**Username**
+
+qBittorrent Web UI username
+
+- **Type:** string
+- **Default:** _none_
+
+#### `QBITTORRENT_PASSWORD`
+
+**Password**
+
+qBittorrent Web UI password
+
+- **Type:** string (secret)
+- **Default:** _none_
+
+#### `QBITTORRENT_CATEGORY`
+
+**Book Category**
+
+Category to assign to book downloads in qBittorrent
+
+- **Type:** string
+- **Default:** `books`
+
+#### `QBITTORRENT_CATEGORY_AUDIOBOOK`
+
+**Audiobook Category**
+
+Category for audiobook downloads. Leave empty to use the book category.
+
+- **Type:** string
+- **Default:** _empty string_
+
+#### `QBITTORRENT_DOWNLOAD_DIR`
+
+**Download Directory**
+
+Server-side directory where torrents are downloaded (optional, uses qBittorrent default if not specified)
+
+- **Type:** string
+- **Default:** _none_
+
+#### `QBITTORRENT_TAG`
+
+**Tags**
+
+Tag(s) to assign to qBittorrent downloads. Leave empty for no tags.
+
+- **Type:** string
+- **Default:** _empty list_
+
+#### `TRANSMISSION_URL`
+
+**Transmission URL**
+
+URL of your Transmission instance (use https:// for TLS)
+
+- **Type:** string
+- **Default:** _none_
+
+#### `TRANSMISSION_USERNAME`
+
+**Username**
+
+Transmission RPC username (if authentication enabled)
+
+- **Type:** string
+- **Default:** _none_
+
+#### `TRANSMISSION_PASSWORD`
+
+**Password**
+
+Transmission RPC password
+
+- **Type:** string (secret)
+- **Default:** _none_
+
+#### `TRANSMISSION_CATEGORY`
+
+**Book Label**
+
+Label to assign to book downloads in Transmission
+
+- **Type:** string
+- **Default:** `books`
+
+#### `TRANSMISSION_CATEGORY_AUDIOBOOK`
+
+**Audiobook Label**
+
+Label for audiobook downloads. Leave empty to use the book label.
+
+- **Type:** string
+- **Default:** _empty string_
+
+#### `TRANSMISSION_DOWNLOAD_DIR`
+
+**Download Directory**
+
+Server-side directory where torrents are downloaded (optional, uses Transmission default if not specified)
+
+- **Type:** string
+- **Default:** _none_
+
+#### `DELUGE_HOST`
+
+**Deluge Web UI Host/URL**
+
+Hostname/IP or full URL of your Deluge Web UI (deluge-web)
+
+- **Type:** string
+- **Default:** `localhost`
+
+#### `DELUGE_PORT`
+
+**Deluge Web UI Port**
+
+Deluge Web UI port (default: 8112)
+
+- **Type:** string
+- **Default:** `8112`
+
+#### `DELUGE_PASSWORD`
+
+**Password**
+
+Deluge Web UI password (default: deluge)
+
+- **Type:** string (secret)
+- **Default:** _none_
+
+#### `DELUGE_CATEGORY`
+
+**Book Label**
+
+Label to assign to book downloads in Deluge
+
+- **Type:** string
+- **Default:** `books`
+
+#### `DELUGE_CATEGORY_AUDIOBOOK`
+
+**Audiobook Label**
+
+Label for audiobook downloads. Leave empty to use the book label.
+
+- **Type:** string
+- **Default:** _empty string_
+
+#### `DELUGE_DOWNLOAD_DIR`
+
+**Download Directory**
+
+Server-side directory where torrents are downloaded (optional, uses Deluge default if not specified)
+
+- **Type:** string
+- **Default:** _none_
+
+#### `RTORRENT_URL`
+
+**rTorrent URL**
+
+XML-RPC URL of your rTorrent instance
+
+- **Type:** string
+- **Default:** _none_
+
+#### `RTORRENT_USERNAME`
+
+**Username**
+
+HTTP Basic auth username (if authentication enabled)
+
+- **Type:** string
+- **Default:** _none_
+
+#### `RTORRENT_PASSWORD`
+
+**Password**
+
+HTTP Basic auth password
+
+- **Type:** string (secret)
+- **Default:** _none_
+
+#### `RTORRENT_LABEL`
+
+**Book Label**
+
+Label to assign to book downloads in rTorrent
+
+- **Type:** string
+- **Default:** `cwabd`
+
+#### `RTORRENT_DOWNLOAD_DIR`
+
+**Download Directory**
+
+Server-side directory where torrents are downloaded (optional, uses rTorrent default if not specified)
+
+- **Type:** string
+- **Default:** _none_
+
+#### `PROWLARR_USENET_CLIENT`
+
+**Usenet Client**
+
+Choose which usenet client to use
+
+- **Type:** string (choice)
+- **Default:** _empty string_
+- **Options:** `""` (None), `nzbget` (NZBGet), `sabnzbd` (SABnzbd)
+
+#### `NZBGET_URL`
+
+**NZBGet URL**
+
+URL of your NZBGet instance
+
+- **Type:** string
+- **Default:** _none_
+
+#### `NZBGET_USERNAME`
+
+**Username**
+
+NZBGet control username
+
+- **Type:** string
+- **Default:** `nzbget`
+
+#### `NZBGET_PASSWORD`
+
+**Password**
+
+NZBGet control password
+
+- **Type:** string (secret)
+- **Default:** _none_
+
+#### `NZBGET_CATEGORY`
+
+**Book Category**
+
+Category to assign to book downloads in NZBGet
+
+- **Type:** string
+- **Default:** `Books`
+
+#### `NZBGET_CATEGORY_AUDIOBOOK`
+
+**Audiobook Category**
+
+Category for audiobook downloads. Leave empty to use the book category.
+
+- **Type:** string
+- **Default:** _empty string_
+
+#### `SABNZBD_URL`
+
+**SABnzbd URL**
+
+URL of your SABnzbd instance
+
+- **Type:** string
+- **Default:** _none_
+
+#### `SABNZBD_API_KEY`
+
+**API Key**
+
+Found in SABnzbd: Config > General > API Key
+
+- **Type:** string (secret)
+- **Default:** _none_
+
+#### `SABNZBD_CATEGORY`
+
+**Book Category**
+
+Category to assign to book downloads in SABnzbd
+
+- **Type:** string
+- **Default:** `books`
+
+#### `SABNZBD_CATEGORY_AUDIOBOOK`
+
+**Audiobook Category**
+
+Category for audiobook downloads. Leave empty to use the book category.
+
+- **Type:** string
+- **Default:** _empty string_
+
+#### `PROWLARR_USENET_ACTION`
+
+**NZB Completion Action**
+
+Move deletes the job from your usenet client after import; Copy keeps it in the client
+
+- **Type:** string (choice)
+- **Default:** `move`
+- **Options:** `move` (Move), `copy` (Copy)
 
 </details>
 
@@ -1238,412 +1858,5 @@ Comma-separated list of custom Welib mirror URLs.
 
 - **Type:** string
 - **Default:** _none_
-
-</details>
-
-## Prowlarr
-
-### Prowlarr: Configuration
-
-| Variable | Description | Type | Default |
-|----------|-------------|------|---------|
-| `PROWLARR_ENABLED` | Enable searching for books via Prowlarr indexers | boolean | `false` |
-| `PROWLARR_URL` | Base URL of your Prowlarr instance | string | _none_ |
-| `PROWLARR_API_KEY` | Found in Prowlarr: Settings > General > API Key | string (secret) | _none_ |
-| `PROWLARR_INDEXERS` | Select which indexers to search. 📚 = has book categories. Leave empty to search all. | string (comma-separated) | _empty list_ |
-| `PROWLARR_AUTO_EXPAND` | Automatically retry search without category filtering if no results are found | boolean | `false` |
-
-<details>
-<summary>Detailed descriptions</summary>
-
-#### `PROWLARR_ENABLED`
-
-**Enable Prowlarr source**
-
-Enable searching for books via Prowlarr indexers
-
-- **Type:** boolean
-- **Default:** `false`
-
-#### `PROWLARR_URL`
-
-**Prowlarr URL**
-
-Base URL of your Prowlarr instance
-
-- **Type:** string
-- **Default:** _none_
-- **Required:** Yes
-
-#### `PROWLARR_API_KEY`
-
-**API Key**
-
-Found in Prowlarr: Settings > General > API Key
-
-- **Type:** string (secret)
-- **Default:** _none_
-- **Required:** Yes
-
-#### `PROWLARR_INDEXERS`
-
-**Indexers to Search**
-
-Select which indexers to search. 📚 = has book categories. Leave empty to search all.
-
-- **Type:** string (comma-separated)
-- **Default:** _empty list_
-
-#### `PROWLARR_AUTO_EXPAND`
-
-**Auto-expand search on no results**
-
-Automatically retry search without category filtering if no results are found
-
-- **Type:** boolean
-- **Default:** `false`
-
-</details>
-
-### Prowlarr: Download Clients
-
-| Variable | Description | Type | Default |
-|----------|-------------|------|---------|
-| `PROWLARR_TORRENT_CLIENT` | Choose which torrent client to use | string (choice) | _empty string_ |
-| `QBITTORRENT_URL` | Web UI URL of your qBittorrent instance | string | _none_ |
-| `QBITTORRENT_USERNAME` | qBittorrent Web UI username | string | _none_ |
-| `QBITTORRENT_PASSWORD` | qBittorrent Web UI password | string (secret) | _none_ |
-| `QBITTORRENT_CATEGORY` | Category to assign to book downloads in qBittorrent | string | `books` |
-| `QBITTORRENT_CATEGORY_AUDIOBOOK` | Category for audiobook downloads. Leave empty to use the book category. | string | _empty string_ |
-| `QBITTORRENT_TAG` | Comma-separated list of tags to assign to qBittorrent downloads. Leave empty for no tags. | string | _empty string_ |
-| `TRANSMISSION_URL` | URL of your Transmission instance | string | _none_ |
-| `TRANSMISSION_USERNAME` | Transmission RPC username (if authentication enabled) | string | _none_ |
-| `TRANSMISSION_PASSWORD` | Transmission RPC password | string (secret) | _none_ |
-| `TRANSMISSION_CATEGORY` | Label to assign to book downloads in Transmission | string | `books` |
-| `TRANSMISSION_CATEGORY_AUDIOBOOK` | Label for audiobook downloads. Leave empty to use the book label. | string | _empty string_ |
-| `DELUGE_HOST` | Hostname/IP or full URL of your Deluge Web UI (deluge-web) | string | `localhost` |
-| `DELUGE_PORT` | Deluge Web UI port (default: 8112) | string | `8112` |
-| `DELUGE_PASSWORD` | Deluge Web UI password (default: deluge) | string (secret) | _none_ |
-| `DELUGE_CATEGORY` | Label to assign to book downloads in Deluge | string | `books` |
-| `DELUGE_CATEGORY_AUDIOBOOK` | Label for audiobook downloads. Leave empty to use the book label. | string | _empty string_ |
-| `RTORRENT_URL` | XML-RPC URL of your rTorrent instance | string | _none_ |
-| `RTORRENT_USERNAME` | HTTP Basic auth username (if authentication enabled) | string | _none_ |
-| `RTORRENT_PASSWORD` | HTTP Basic auth password | string (secret) | _none_ |
-| `RTORRENT_LABEL` | Label to assign to book downloads in rTorrent | string | `cwabd` |
-| `RTORRENT_DOWNLOAD_DIR` | Server-side directory where torrents are downloaded (optional, uses rTorrent default if not specified) | string | _none_ |
-| `PROWLARR_USENET_CLIENT` | Choose which usenet client to use | string (choice) | _empty string_ |
-| `NZBGET_URL` | URL of your NZBGet instance | string | _none_ |
-| `NZBGET_USERNAME` | NZBGet control username | string | `nzbget` |
-| `NZBGET_PASSWORD` | NZBGet control password | string (secret) | _none_ |
-| `NZBGET_CATEGORY` | Category to assign to book downloads in NZBGet | string | `Books` |
-| `NZBGET_CATEGORY_AUDIOBOOK` | Category for audiobook downloads. Leave empty to use the book category. | string | _empty string_ |
-| `SABNZBD_URL` | URL of your SABnzbd instance | string | _none_ |
-| `SABNZBD_API_KEY` | Found in SABnzbd: Config > General > API Key | string (secret) | _none_ |
-| `SABNZBD_CATEGORY` | Category to assign to book downloads in SABnzbd | string | `books` |
-| `SABNZBD_CATEGORY_AUDIOBOOK` | Category for audiobook downloads. Leave empty to use the book category. | string | _empty string_ |
-| `PROWLARR_USENET_ACTION` | Move deletes the job from your usenet client after import; Copy keeps it in the client | string (choice) | `move` |
-
-<details>
-<summary>Detailed descriptions</summary>
-
-#### `PROWLARR_TORRENT_CLIENT`
-
-**Torrent Client**
-
-Choose which torrent client to use
-
-- **Type:** string (choice)
-- **Default:** _empty string_
-- **Options:** `""` (None), `qbittorrent` (qBittorrent), `transmission` (Transmission), `deluge` (Deluge), `rtorrent` (rTorrent)
-
-#### `QBITTORRENT_URL`
-
-**qBittorrent URL**
-
-Web UI URL of your qBittorrent instance
-
-- **Type:** string
-- **Default:** _none_
-
-#### `QBITTORRENT_USERNAME`
-
-**Username**
-
-qBittorrent Web UI username
-
-- **Type:** string
-- **Default:** _none_
-
-#### `QBITTORRENT_PASSWORD`
-
-**Password**
-
-qBittorrent Web UI password
-
-- **Type:** string (secret)
-- **Default:** _none_
-
-#### `QBITTORRENT_CATEGORY`
-
-**Book Category**
-
-Category to assign to book downloads in qBittorrent
-
-- **Type:** string
-- **Default:** `books`
-
-#### `QBITTORRENT_CATEGORY_AUDIOBOOK`
-
-**Audiobook Category**
-
-Category for audiobook downloads. Leave empty to use the book category.
-
-- **Type:** string
-- **Default:** _empty string_
-
-#### `QBITTORRENT_TAG`
-
-**Tags**
-
-Comma-separated list of tags to assign to qBittorrent downloads. Leave empty for no tags.
-
-- **Type:** string
-- **Default:** _empty string_
-
-#### `TRANSMISSION_URL`
-
-**Transmission URL**
-
-URL of your Transmission instance
-
-- **Type:** string
-- **Default:** _none_
-
-#### `TRANSMISSION_USERNAME`
-
-**Username**
-
-Transmission RPC username (if authentication enabled)
-
-- **Type:** string
-- **Default:** _none_
-
-#### `TRANSMISSION_PASSWORD`
-
-**Password**
-
-Transmission RPC password
-
-- **Type:** string (secret)
-- **Default:** _none_
-
-#### `TRANSMISSION_CATEGORY`
-
-**Book Label**
-
-Label to assign to book downloads in Transmission
-
-- **Type:** string
-- **Default:** `books`
-
-#### `TRANSMISSION_CATEGORY_AUDIOBOOK`
-
-**Audiobook Label**
-
-Label for audiobook downloads. Leave empty to use the book label.
-
-- **Type:** string
-- **Default:** _empty string_
-
-#### `DELUGE_HOST`
-
-**Deluge Web UI Host/URL**
-
-Hostname/IP or full URL of your Deluge Web UI (deluge-web)
-
-- **Type:** string
-- **Default:** `localhost`
-
-#### `DELUGE_PORT`
-
-**Deluge Web UI Port**
-
-Deluge Web UI port (default: 8112)
-
-- **Type:** string
-- **Default:** `8112`
-
-#### `DELUGE_PASSWORD`
-
-**Password**
-
-Deluge Web UI password (default: deluge)
-
-- **Type:** string (secret)
-- **Default:** _none_
-
-#### `DELUGE_CATEGORY`
-
-**Book Label**
-
-Label to assign to book downloads in Deluge
-
-- **Type:** string
-- **Default:** `books`
-
-#### `DELUGE_CATEGORY_AUDIOBOOK`
-
-**Audiobook Label**
-
-Label for audiobook downloads. Leave empty to use the book label.
-
-- **Type:** string
-- **Default:** _empty string_
-
-#### `RTORRENT_URL`
-
-**rTorrent URL**
-
-XML-RPC URL of your rTorrent instance
-
-- **Type:** string
-- **Default:** _none_
-
-#### `RTORRENT_USERNAME`
-
-**Username**
-
-HTTP Basic auth username (if authentication enabled)
-
-- **Type:** string
-- **Default:** _none_
-
-#### `RTORRENT_PASSWORD`
-
-**Password**
-
-HTTP Basic auth password
-
-- **Type:** string (secret)
-- **Default:** _none_
-
-#### `RTORRENT_LABEL`
-
-**Book Label**
-
-Label to assign to book downloads in rTorrent
-
-- **Type:** string
-- **Default:** `cwabd`
-
-#### `RTORRENT_DOWNLOAD_DIR`
-
-**Download Directory**
-
-Server-side directory where torrents are downloaded (optional, uses rTorrent default if not specified)
-
-- **Type:** string
-- **Default:** _none_
-
-#### `PROWLARR_USENET_CLIENT`
-
-**Usenet Client**
-
-Choose which usenet client to use
-
-- **Type:** string (choice)
-- **Default:** _empty string_
-- **Options:** `""` (None), `nzbget` (NZBGet), `sabnzbd` (SABnzbd)
-
-#### `NZBGET_URL`
-
-**NZBGet URL**
-
-URL of your NZBGet instance
-
-- **Type:** string
-- **Default:** _none_
-
-#### `NZBGET_USERNAME`
-
-**Username**
-
-NZBGet control username
-
-- **Type:** string
-- **Default:** `nzbget`
-
-#### `NZBGET_PASSWORD`
-
-**Password**
-
-NZBGet control password
-
-- **Type:** string (secret)
-- **Default:** _none_
-
-#### `NZBGET_CATEGORY`
-
-**Book Category**
-
-Category to assign to book downloads in NZBGet
-
-- **Type:** string
-- **Default:** `Books`
-
-#### `NZBGET_CATEGORY_AUDIOBOOK`
-
-**Audiobook Category**
-
-Category for audiobook downloads. Leave empty to use the book category.
-
-- **Type:** string
-- **Default:** _empty string_
-
-#### `SABNZBD_URL`
-
-**SABnzbd URL**
-
-URL of your SABnzbd instance
-
-- **Type:** string
-- **Default:** _none_
-
-#### `SABNZBD_API_KEY`
-
-**API Key**
-
-Found in SABnzbd: Config > General > API Key
-
-- **Type:** string (secret)
-- **Default:** _none_
-
-#### `SABNZBD_CATEGORY`
-
-**Book Category**
-
-Category to assign to book downloads in SABnzbd
-
-- **Type:** string
-- **Default:** `books`
-
-#### `SABNZBD_CATEGORY_AUDIOBOOK`
-
-**Audiobook Category**
-
-Category for audiobook downloads. Leave empty to use the book category.
-
-- **Type:** string
-- **Default:** _empty string_
-
-#### `PROWLARR_USENET_ACTION`
-
-**NZB Completion Action**
-
-Move deletes the job from your usenet client after import; Copy keeps it in the client
-
-- **Type:** string (choice)
-- **Default:** `move`
-- **Options:** `move` (Move), `copy` (Copy)
 
 </details>

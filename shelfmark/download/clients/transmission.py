@@ -71,6 +71,7 @@ class TransmissionClient(DownloadClient):
                 except Exception:
                     pass
         self._category = config.get("TRANSMISSION_CATEGORY", "books")
+        self._download_dir = config.get("TRANSMISSION_DOWNLOAD_DIR", "")
 
     @staticmethod
     def is_configured() -> bool:
@@ -115,18 +116,24 @@ class TransmissionClient(DownloadClient):
             resolved_category = category or self._category or ""
 
             torrent_info = extract_torrent_info(url, expected_hash=expected_hash)
+            add_kwargs = {}
+
+            if resolved_category:
+                add_kwargs["labels"] = [resolved_category]
+            if self._download_dir:
+                add_kwargs["download_dir"] = self._download_dir
 
             if torrent_info.torrent_data:
                 torrent = self._client.add_torrent(
                     torrent=torrent_info.torrent_data,
-                    labels=[resolved_category] if resolved_category else None,
+                    **add_kwargs,
                 )
             else:
                 # Use magnet URL if available, otherwise original URL
                 add_url = torrent_info.magnet_url or url
                 torrent = self._client.add_torrent(
                     torrent=add_url,
-                    labels=[resolved_category] if resolved_category else None,
+                    **add_kwargs,
                 )
 
             torrent_hash = torrent.hashString.lower()
