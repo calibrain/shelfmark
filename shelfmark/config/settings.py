@@ -869,13 +869,35 @@ def download_settings():
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
         ),
         SelectField(
+            key="BOOKLORE_DESTINATION",
+            label="Upload Destination",
+            description="Choose whether uploads go directly to a specific library path or to Bookdrop for review.",
+            options=[
+                {
+                    "value": "library",
+                    "label": "Specific Library",
+                    "description": "Upload directly into the selected library path.",
+                },
+                {
+                    "value": "bookdrop",
+                    "label": "Bookdrop",
+                    "description": "Upload into Bookdrop and review metadata before importing to a library.",
+                },
+            ],
+            default="library",
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
+        ),
+        SelectField(
             key="BOOKLORE_LIBRARY_ID",
             label="Library",
             description="Booklore library to upload into.",
             options=get_booklore_library_options,
             required=True,
             user_overridable=True,
-            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
+            show_when=[
+                {"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
+                {"field": "BOOKLORE_DESTINATION", "value": "library"},
+            ],
         ),
         SelectField(
             key="BOOKLORE_PATH_ID",
@@ -885,7 +907,10 @@ def download_settings():
             required=True,
             filter_by_field="BOOKLORE_LIBRARY_ID",
             user_overridable=True,
-            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
+            show_when=[
+                {"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
+                {"field": "BOOKLORE_DESTINATION", "value": "library"},
+            ],
         ),
         ActionButton(
             key="test_booklore",

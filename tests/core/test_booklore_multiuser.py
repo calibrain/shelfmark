@@ -10,6 +10,7 @@ class TestBuildBookloreConfigWithOverrides:
         "BOOKLORE_HOST": "http://booklore:6060",
         "BOOKLORE_USERNAME": "admin",
         "BOOKLORE_PASSWORD": "secret",
+        "BOOKLORE_DESTINATION": "library",
         "BOOKLORE_LIBRARY_ID": 1,
         "BOOKLORE_PATH_ID": 10,
     }
@@ -58,6 +59,7 @@ class TestBuildBookloreConfigWithOverrides:
         config = build_booklore_config(self.BASE_SETTINGS, user_id=None)
         assert config.library_id == 1
         assert config.path_id == 10
+        assert config.upload_to_bookdrop is False
 
     def test_auth_fields_remain_global(self, monkeypatch):
         """Only Booklore library/path should be resolved with user context."""
@@ -73,3 +75,18 @@ class TestBuildBookloreConfigWithOverrides:
         assert config.base_url == "http://booklore:6060"
         assert config.username == "admin"
         assert config.library_id == 5
+
+    def test_bookdrop_destination_ignores_library_and_path_values(self):
+        settings = {
+            "BOOKLORE_HOST": "http://booklore:6060",
+            "BOOKLORE_USERNAME": "admin",
+            "BOOKLORE_PASSWORD": "secret",
+            "BOOKLORE_DESTINATION": "bookdrop",
+        }
+
+        config = build_booklore_config(settings)
+
+        assert config.upload_to_bookdrop is True
+        assert config.library_id == 0
+        assert config.path_id == 0
+        assert config.refresh_after_upload is False

@@ -46,3 +46,31 @@ def test_download_settings_email_recipient_field_uses_default_label():
 
     assert email_field.label == "Default Email Recipient"
     assert "Optional fallback" in email_field.description
+
+
+def test_download_settings_booklore_destination_field_defaults_to_library():
+    from shelfmark.config.settings import download_settings
+
+    fields = download_settings()
+    destination_field = next(field for field in fields if getattr(field, "key", None) == "BOOKLORE_DESTINATION")
+
+    assert destination_field.default == "library"
+    option_values = {option["value"] for option in destination_field.options}
+    assert option_values == {"library", "bookdrop"}
+
+
+def test_download_settings_booklore_library_and_path_depend_on_library_destination():
+    from shelfmark.config.settings import download_settings
+
+    fields = download_settings()
+    library_field = next(field for field in fields if getattr(field, "key", None) == "BOOKLORE_LIBRARY_ID")
+    path_field = next(field for field in fields if getattr(field, "key", None) == "BOOKLORE_PATH_ID")
+
+    assert library_field.show_when == [
+        {"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
+        {"field": "BOOKLORE_DESTINATION", "value": "library"},
+    ]
+    assert path_field.show_when == [
+        {"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
+        {"field": "BOOKLORE_DESTINATION", "value": "library"},
+    ]

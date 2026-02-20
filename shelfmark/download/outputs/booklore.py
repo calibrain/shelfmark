@@ -18,6 +18,8 @@ from shelfmark.download.staging import STAGE_MOVE, STAGE_NONE, build_staging_dir
 logger = setup_logger(__name__)
 
 BOOKLORE_OUTPUT_MODE = "booklore"
+BOOKLORE_DESTINATION_LIBRARY = "library"
+BOOKLORE_DESTINATION_BOOKDROP = "bookdrop"
 BOOKLORE_SUPPORTED_EXTENSIONS = {".azw", ".azw3", ".cb7", ".cbr", ".cbz", ".epub", ".fb2", ".mobi", ".pdf"}
 BOOKLORE_SUPPORTED_FORMATS_LABEL = ", ".join(
     ext.lstrip(".").upper() for ext in sorted(BOOKLORE_SUPPORTED_EXTENSIONS)
@@ -36,6 +38,7 @@ class BookloreConfig:
     library_id: int
     path_id: int
     verify_tls: bool = True
+    upload_to_bookdrop: bool = False
     refresh_after_upload: bool = False
 
 
@@ -46,6 +49,13 @@ def _parse_int(value: Any, label: str) -> int:
         return int(value)
     except (TypeError, ValueError) as exc:
         raise BookloreError(f"{label} must be a number") from exc
+
+
+def _parse_destination(value: Any) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized == BOOKLORE_DESTINATION_BOOKDROP:
+        return BOOKLORE_DESTINATION_BOOKDROP
+    return BOOKLORE_DESTINATION_LIBRARY
 
 
 def build_booklore_config(
@@ -63,24 +73,32 @@ def build_booklore_config(
     if not password:
         raise BookloreError("Booklore password is required")
 
-    # Resolve library/path through config so user override precedence is centralized.
-    if user_id is not None:
-        library_id_val = core_config.config.get(
-            "BOOKLORE_LIBRARY_ID",
-            values.get("BOOKLORE_LIBRARY_ID"),
-            user_id=user_id,
-        )
-        path_id_val = core_config.config.get(
-            "BOOKLORE_PATH_ID",
-            values.get("BOOKLORE_PATH_ID"),
-            user_id=user_id,
-        )
-    else:
-        library_id_val = values.get("BOOKLORE_LIBRARY_ID")
-        path_id_val = values.get("BOOKLORE_PATH_ID")
+    destination = _parse_destination(
+        values.get("BOOKLORE_DESTINATION", BOOKLORE_DESTINATION_LIBRARY)
+    )
+    upload_to_bookdrop = destination == BOOKLORE_DESTINATION_BOOKDROP
 
-    library_id = _parse_int(library_id_val, "Booklore library ID")
-    path_id = _parse_int(path_id_val, "Booklore path ID")
+    # Resolve library/path through config so user override precedence is centralized.
+    library_id = 0
+    path_id = 0
+    if not upload_to_bookdrop:
+        if user_id is not None:
+            library_id_val = core_config.config.get(
+                "BOOKLORE_LIBRARY_ID",
+                values.get("BOOKLORE_LIBRARY_ID"),
+                user_id=user_id,
+            )
+            path_id_val = core_config.config.get(
+                "BOOKLORE_PATH_ID",
+                values.get("BOOKLORE_PATH_ID"),
+                user_id=user_id,
+            )
+        else:
+            library_id_val = values.get("BOOKLORE_LIBRARY_ID")
+            path_id_val = values.get("BOOKLORE_PATH_ID")
+
+        library_id = _parse_int(library_id_val, "Booklore library ID")
+        path_id = _parse_int(path_id_val, "Booklore path ID")
 
     return BookloreConfig(
         base_url=base_url.rstrip("/"),
@@ -89,7 +107,8 @@ def build_booklore_config(
         library_id=library_id,
         path_id=path_id,
         verify_tls=True,
-        refresh_after_upload=True,  # Always refresh library after upload
+        upload_to_bookdrop=upload_to_bookdrop,
+        refresh_after_upload=not upload_to_bookdrop,
     )
 
 
@@ -143,9 +162,14 @@ def booklore_list_libraries(booklore_config: BookloreConfig, token: str) -> list
 
 
 def booklore_upload_file(booklore_config: BookloreConfig, token: str, file_path: Path) -> None:
-    url = f"{booklore_config.base_url}/api/v1/files/upload"
+    if booklore_config.upload_to_bookdrop:
+        url = f"{booklore_config.base_url}/api/v1/files/upload/bookdrop"
+        params = None
+    else:
+        url = f"{booklore_config.base_url}/api/v1/files/upload"
+        params = {"libraryId": booklore_config.library_id, "pathId": booklore_config.path_id}
+
     headers = {"Authorization": f"Bearer {token}"}
-    params = {"libraryId": booklore_config.library_id, "pathId": booklore_config.path_id}
 
     response = None
 
@@ -194,6 +218,10 @@ def _get_booklore_settings() -> Dict[str, Any]:
         "BOOKLORE_HOST": core_config.config.get("BOOKLORE_HOST", ""),
         "BOOKLORE_USERNAME": core_config.config.get("BOOKLORE_USERNAME", ""),
         "BOOKLORE_PASSWORD": core_config.config.get("BOOKLORE_PASSWORD", ""),
+        "BOOKLORE_DESTINATION": core_config.config.get(
+            "BOOKLORE_DESTINATION",
+            BOOKLORE_DESTINATION_LIBRARY,
+        ),
         "BOOKLORE_LIBRARY_ID": core_config.config.get("BOOKLORE_LIBRARY_ID"),
         "BOOKLORE_PATH_ID": core_config.config.get("BOOKLORE_PATH_ID"),
     }
@@ -309,8 +337,17 @@ def _post_process_booklore(
             output_details={
                 "booklore": {
                     "base_url": booklore_config.base_url,
-                    "library_id": booklore_config.library_id,
-                    "path_id": booklore_config.path_id,
+                    "destination": (
+                        BOOKLORE_DESTINATION_BOOKDROP
+                        if booklore_config.upload_to_bookdrop
+                        else BOOKLORE_DESTINATION_LIBRARY
+                    ),
+                    "library_id": (
+                        None
+                        if booklore_config.upload_to_bookdrop
+                        else booklore_config.library_id
+                    ),
+                    "path_id": None if booklore_config.upload_to_bookdrop else booklore_config.path_id,
                     "refresh_after_upload": bool(booklore_config.refresh_after_upload),
                 }
             },
