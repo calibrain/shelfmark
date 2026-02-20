@@ -4,7 +4,7 @@ Formerly *Calibre Web Automated Book Downloader (CWABD)*
 
 <img src="src/frontend/public/logo.png" alt="Shelfmark" width="200">
 
-Shelfmark is a unified web interface for searching and aggregating books and audiobook downloads from multiple sources - all in one place. Works out of the box with popular web sources, no configuration required. Add metadata providers, additional release sources, and download clients to create a single hub for building your digital library.
+Shelfmark is a self-hosted web interface for searching and downloading books and audiobooks from multiple sources. Works out of the box with popular web sources, no configuration required. Add metadata providers, additional release sources, and download clients to build a single hub for your digital library. Supports multiple users with a built-in request system, so you can share your instance with others and let them browse and request books on their own.
 
 **Fully standalone** - no external dependencies required. Works great alongside the following library tools, with support for automatic imports:
 - [Calibre](https://calibre-ebook.com/)
@@ -16,12 +16,14 @@ Shelfmark is a unified web interface for searching and aggregating books and aud
 ## ✨ Features
 
 - **One-Stop Interface** - A clean, modern UI to search, browse, and download from multiple sources in one place
-- **Multiple sources** - Popular archive websites, Torrent, Usenet and IRC download support
-- **Audiobook support** - Full audiobook search and download with dedicated processing
-- **Real-Time Progress** - Unified download queue with live status updates across all sources
+- **Multiple Sources** - Popular archive websites, Torrent, Usenet, and IRC download support
+- **Audiobook Support** - Full audiobook search and download with dedicated processing
 - **Two Search Modes**:
   - **Direct** - Search popular web sources
   - **Universal** - Search metadata providers (Hardcover, Open Library) for richer book and audiobook discovery, with multi-source downloads
+- **Multi-User & Requests** - Share your instance with others, let users browse and request books, and manage approvals with configurable notifications
+- **Authentication** - Built-in login, OIDC single sign-on, proxy auth, and Calibre-Web database support
+- **Real-Time Progress** - Unified download queue with live status updates across all sources
 - **Cloudflare Bypass** - Built-in bypasser for reliable access to protected sources
 
 ## 🖼️ Screenshots
@@ -152,7 +154,7 @@ If you need Cloudflare bypass with the Lite image, configure an external resolve
 
 ## 🔐 Authentication
 
-Authentication is optional but recommended for shared or exposed instances. Three authentication methods are available in Settings:
+Authentication is optional but recommended for shared or exposed instances. Multiple authentication methods are available in Settings:
 
 **1. Single Username/Password**
 
@@ -160,7 +162,11 @@ Authentication is optional but recommended for shared or exposed instances. Thre
 
 Proxy auth trusts headers set by your reverse proxy (e.g. `X-Auth-User`). Ensure Shelfmark is not directly exposed, and configure your proxy to strip/overwrite these headers for all inbound requests.
 
-**3. Calibre-Web Database**
+**3. OIDC (OpenID Connect)**
+
+Integrate with your identity provider (Authelia, Authentik, Keycloak, etc.) for single sign-on. Supports PKCE flow, auto-discovery, group-based admin mapping, and auto-provisioning of new users.
+
+**4. Calibre-Web Database**
 
 If you're running Calibre-Web, you can reuse its user database by mounting it:
 
@@ -168,6 +174,10 @@ If you're running Calibre-Web, you can reuse its user database by mounting it:
 volumes:
   - /path/to/calibre-web/app.db:/auth/app.db:ro
 ```
+
+### Multi-User Support
+
+With any authentication method enabled, Shelfmark supports multi-user management with admin/user roles. Users can have per-user settings for download destinations, email recipients, and notification preferences. Non-admin users only see their own downloads and can submit book requests for admin review. Admins can configure request policies per source to control whether users can download directly, must submit a request, or are blocked entirely.
 
 ## Health Monitoring
 
@@ -238,9 +248,7 @@ The backend uses a plugin architecture. Metadata providers and release sources r
 
 ## Contributing
 
-Contributions are welcome! Please file issues or submit pull requests on GitHub.
-
-> **Note**: Additional release sources and download clients are under active development. Want to add support for your favorite source? Check out the plugin architecture above and submit a PR!
+Shelfmark's core feature set is now largely complete. Development going forward will focus on stability, bug fixes, and maintenance rather than major new features. Contributions in these areas are welcome - please file issues or submit pull requests on GitHub.
 
 ## License
 
