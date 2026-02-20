@@ -244,8 +244,8 @@ class TestQBittorrentClientGetStatus:
             assert status.complete is True
             assert status.file_path == "/downloads/completed.epub"
 
-    def test_get_status_complete_roots_content_path_at_save_path(self, monkeypatch):
-        """Prefer a save_path-rooted path when qBittorrent reports a temp/incomplete content_path."""
+    def test_get_status_complete_returns_content_path(self, monkeypatch):
+        """Completed torrents return content_path as-is."""
         config_values = {
             "QBITTORRENT_URL": "http://localhost:8080",
             "QBITTORRENT_USERNAME": "admin",
@@ -261,12 +261,11 @@ class TestQBittorrentClientGetStatus:
             hash_val="abc123",
             progress=1.0,
             state="uploading",
-            content_path="/media/incomplete/book.m4b",
+            content_path="/downloads/shelfmark/Ground State - Craig Alanson/Ground State - Craig Alanson.epub",
         )
 
         mock_client_instance = MagicMock()
-        # Include save_path in the info payload to simulate a temp/incomplete directory config.
-        info_payload = mock_torrent.to_dict() | {"save_path": "/media"}
+        info_payload = mock_torrent.to_dict() | {"save_path": "/downloads/shelfmark"}
         mock_client_instance._session.get.return_value = create_mock_session_response([info_payload], status_code=200)
         mock_client_class = MagicMock(return_value=mock_client_instance)
 
@@ -279,7 +278,7 @@ class TestQBittorrentClientGetStatus:
             status = client.get_status("abc123")
 
             assert status.complete is True
-            assert status.file_path == "/media/book.m4b"
+            assert status.file_path == "/downloads/shelfmark/Ground State - Craig Alanson/Ground State - Craig Alanson.epub"
 
     def test_get_status_complete_derives_when_content_path_equals_save_path(self, monkeypatch):
         """Keep get_status() and get_download_path() consistent."""
@@ -723,8 +722,8 @@ class TestQBittorrentClientGetDownloadPath:
 
             assert path == "/downloads/some/book.epub"
 
-    def test_get_download_path_roots_content_path_at_save_path_when_complete(self, monkeypatch):
-        """Mirror get_status(): completed torrents should return the save_path-rooted path."""
+    def test_get_download_path_returns_content_path_when_complete(self, monkeypatch):
+        """Completed torrents return content_path as-is, preserving subdirectories."""
         config_values = {
             "QBITTORRENT_URL": "http://localhost:8080",
             "QBITTORRENT_USERNAME": "admin",
@@ -740,11 +739,11 @@ class TestQBittorrentClientGetDownloadPath:
             hash_val="abc123",
             progress=1.0,
             state="uploading",
-            content_path="/media/incomplete/book.m4b",
+            content_path="/downloads/shelfmark/BookFolder/book.epub",
         )
 
         mock_client_instance = MagicMock()
-        info_payload = mock_torrent.to_dict() | {"save_path": "/media"}
+        info_payload = mock_torrent.to_dict() | {"save_path": "/downloads/shelfmark"}
         mock_client_instance._session.get.return_value = create_mock_session_response([info_payload], status_code=200)
         mock_client_class = MagicMock(return_value=mock_client_instance)
 
@@ -756,7 +755,7 @@ class TestQBittorrentClientGetDownloadPath:
             client = qb_module.QBittorrentClient()
             path = client.get_download_path("abc123")
 
-            assert path == "/media/book.m4b"
+            assert path == "/downloads/shelfmark/BookFolder/book.epub"
 
     def test_get_download_path_does_not_accept_content_path_equal_save_path(self, monkeypatch):
         """content_path == save_path indicates a path error."""
