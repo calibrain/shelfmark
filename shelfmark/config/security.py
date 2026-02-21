@@ -18,6 +18,7 @@ from shelfmark.core.settings_registry import (
     CheckboxField,
     ActionButton,
     TagListField,
+    CustomComponentField,
 )
 from shelfmark.core.user_db import sync_builtin_admin_user
 
@@ -236,6 +237,16 @@ def security_settings():
             description="Fetch the OIDC discovery document and validate configuration.",
             style="primary",
             callback=_test_oidc_connection,
+            show_when=_auth_condition("oidc"),
+        )
+    )
+    fields.append(
+        CustomComponentField(
+            key="oidc_env_info",
+            component="oidc_env_info",
+            label="Environment-Only Options",
+            description="These options can only be set via environment variables because changing them through the UI could lock you out of the application.",
+            wrap_in_field_wrapper=True,
             show_when=_auth_condition("oidc"),
         )
     )

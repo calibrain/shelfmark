@@ -1,4 +1,5 @@
 import { ComponentType, ReactNode } from 'react';
+import { OidcEnvInfo } from './OidcEnvInfo';
 import { RequestPolicyGridField } from './RequestPolicyGridField';
 import { UsersManagementField } from './UsersManagementField';
 import {
@@ -38,6 +39,9 @@ const CUSTOM_FIELD_DEFINITIONS: Record<string, CustomFieldDefinition> = {
   },
   request_policy_grid: {
     renderer: RequestPolicyGridField,
+  },
+  oidc_env_info: {
+    renderer: OidcEnvInfo,
   },
 };
 

@@ -32,6 +32,17 @@ Configure in **Settings → Security → Authentication Method → OIDC**.
 
 Use **Test Connection** to verify discovery and client configuration before attempting login.
 
+## Environment Variables
+
+These optional environment variables control login page behavior when OIDC is enabled.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HIDE_LOCAL_AUTH` | Hide the username/password login option, so only the OIDC button is shown | `false` |
+| `OIDC_AUTO_REDIRECT` | Automatically redirect to the OIDC provider instead of showing the login page | `false` |
+
+If both are enabled, users are redirected straight to the OIDC provider. On failure they return to the login page with an error message but no password fallback.
+
 ## Troubleshooting
 
 - **Issuer validation failed** — The issuer in the token doesn't match the discovery document. Check your provider's external URL / issuer configuration.
