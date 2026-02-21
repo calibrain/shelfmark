@@ -141,6 +141,16 @@ def security_settings():
         ),
     ]
 
+    fields.append(
+        CustomComponentField(
+            key="oidc_callback_url",
+            component="settings_label",
+            label="Callback URL",
+            description="{origin}/api/auth/oidc/callback",
+            show_when=_auth_condition("oidc"),
+        )
+    )
+
     oidc_specs = [
         (
             TextField,
