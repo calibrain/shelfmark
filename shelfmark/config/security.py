@@ -60,9 +60,10 @@ def _on_save_security(values: Dict[str, Any]) -> Dict[str, Any]:
     return on_save_security(values)
 
 
-def _test_oidc_connection() -> Dict[str, Any]:
+def _test_oidc_connection(current_values: Dict[str, Any] = None) -> Dict[str, Any]:
     return test_oidc_connection(
         load_security_config=lambda: load_config_file("security"),
+        current_values=current_values or {},
         logger=logger,
     )
 
@@ -96,12 +97,18 @@ def security_settings():
             default="none",
             env_supported=False,
         ),
+        CustomComponentField(
+            key="oidc_admin_requirement",
+            component="oidc_admin_hint",
+            label="A local admin account is required before OIDC can be enabled.",
+            show_when=_auth_condition("oidc"),
+        ),
         ActionButton(
             key="open_users_tab",
             label="Go to Users",
             description="Configure local users and admin access in the Users tab.",
             style="primary",
-            show_when=_auth_condition("builtin"),
+            show_when={"field": "AUTH_METHOD", "value": ["builtin", "oidc"]},
         ),
         _auth_ui_field(
             TextField,

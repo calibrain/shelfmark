@@ -380,6 +380,7 @@ class UserDB:
         with self._lock:
             conn = self._connect()
             try:
+                conn.execute("UPDATE download_requests SET reviewed_by = NULL WHERE reviewed_by = ?", (user_id,))
                 conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
                 conn.commit()
             finally:

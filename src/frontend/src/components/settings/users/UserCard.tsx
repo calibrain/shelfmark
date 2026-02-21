@@ -336,6 +336,7 @@ interface UserCreateCardProps {
   onChange: (form: CreateUserFormState) => void;
   creating: boolean;
   isFirstUser: boolean;
+  needsLocalAdmin?: boolean;
   onSubmit: () => void;
   onCancel: () => void;
 }
@@ -345,6 +346,7 @@ export const UserCreateCard = ({
   onChange,
   creating,
   isFirstUser,
+  needsLocalAdmin = false,
   onSubmit,
   onCancel,
 }: UserCreateCardProps) => {
@@ -366,6 +368,11 @@ export const UserCreateCard = ({
       {isFirstUser && (
         <p className="text-xs text-zinc-500">
           This will be the first account and will be created as admin.
+        </p>
+      )}
+      {needsLocalAdmin && !isFirstUser && (
+        <p className="text-xs text-zinc-500">
+          An admin account is required before OIDC can be enabled.
         </p>
       )}
 

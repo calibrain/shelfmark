@@ -21,6 +21,7 @@ export const UsersManagementField = ({
   authMode,
   onShowToast,
   onRefreshOverrideSummary,
+  onRefreshAuth,
 }: CustomSettingsFieldRendererProps) => {
   const { route, openCreate, openEdit, openEditOverrides, backToList } = useUsersPanelState();
   const activeEditRequestIdRef = useRef(0);
@@ -111,6 +112,7 @@ export const UsersManagementField = ({
   };
 
   const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode || 'none');
+  const needsLocalAdmin = !users.some(u => u.role === 'admin' && u.auth_source === 'builtin');
 
   const handleBackToList = () => {
     onUiStateChange('routeKind', 'list');
@@ -129,6 +131,7 @@ export const UsersManagementField = ({
     const ok = await createUser();
     if (ok) {
       onRefreshOverrideSummary?.();
+      onRefreshAuth?.();
       backToList();
     }
   };
@@ -213,9 +216,10 @@ export const UsersManagementField = ({
     const ok = await deleteUser(userId);
     if (ok) {
       onRefreshOverrideSummary?.();
+      onRefreshAuth?.();
     }
     return ok;
-  }, [deleteUser, onRefreshOverrideSummary]);
+  }, [deleteUser, onRefreshAuth, onRefreshOverrideSummary]);
 
   useEffect(() => {
     if (route.kind !== 'edit-overrides') {
@@ -263,7 +267,13 @@ export const UsersManagementField = ({
       loadingUsers={loading}
       loadError={loadError}
       onRetryLoadUsers={() => void fetchUsers({ force: true })}
-      onCreate={openCreate}
+      onCreate={() => {
+        if (needsLocalAdmin) {
+          setCreateForm({ ...createForm, role: 'admin' });
+        }
+        openCreate();
+      }}
+      needsLocalAdmin={needsLocalAdmin}
       showCreateForm={route.kind === 'create'}
       createForm={createForm}
       onCreateFormChange={setCreateForm}

@@ -13,9 +13,10 @@ interface SettingsModalProps {
   onClose: () => void;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
   onSettingsSaved?: () => void;
+  onRefreshAuth?: () => Promise<void>;
 }
 
-export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettingsSaved }: SettingsModalProps) => {
+export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettingsSaved, onRefreshAuth }: SettingsModalProps) => {
   const {
     tabs,
     groups,
@@ -301,6 +302,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
           authMode: usersAuthMode,
           onShowToast,
           onRefreshOverrideSummary: handleRefreshCurrentTabOverrideSummary,
+          onRefreshAuth,
         }}
       />
     ))

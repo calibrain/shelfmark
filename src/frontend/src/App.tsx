@@ -155,6 +155,7 @@ function App() {
     loginError,
     isLoggingIn,
     setIsAuthenticated,
+    refreshAuth,
     handleLogin,
     handleLogout,
   } = useAuth({
@@ -1411,6 +1412,7 @@ function App() {
         onClose={() => setSettingsOpen(false)}
         onShowToast={showToast}
         onSettingsSaved={handleSettingsSaved}
+        onRefreshAuth={refreshAuth}
       />
 
       <SelfSettingsModal

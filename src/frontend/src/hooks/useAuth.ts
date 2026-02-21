@@ -23,6 +23,7 @@ interface UseAuthReturn {
   loginError: string | null;
   isLoggingIn: boolean;
   setIsAuthenticated: (value: boolean) => void;
+  refreshAuth: () => Promise<void>;
   handleLogin: (credentials: LoginCredentials) => Promise<void>;
   handleLogout: () => Promise<void>;
 }
@@ -113,6 +114,14 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
     };
   }, [applyAuthResponse]);
 
+  const refreshAuth = useCallback(async () => {
+    try {
+      applyAuthResponse(await checkAuth());
+    } catch (error) {
+      console.error('Auth refresh failed:', error);
+    }
+  }, [applyAuthResponse]);
+
   const handleLogin = useCallback(async (credentials: LoginCredentials) => {
     setIsLoggingIn(true);
     setLoginError(null);
@@ -175,6 +184,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
     loginError,
     isLoggingIn,
     setIsAuthenticated,
+    refreshAuth,
     handleLogin,
     handleLogout,
   };

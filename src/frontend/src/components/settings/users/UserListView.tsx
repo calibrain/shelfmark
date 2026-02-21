@@ -12,6 +12,7 @@ interface UserListViewProps {
   loadingUsers: boolean;
   loadError: string | null;
   onRetryLoadUsers: () => void;
+  needsLocalAdmin: boolean;
   onCreate: () => void;
   showCreateForm: boolean;
   createForm: CreateUserFormState;
@@ -46,6 +47,7 @@ export const UserListView = ({
   loadingUsers,
   loadError,
   onRetryLoadUsers,
+  needsLocalAdmin,
   onCreate,
   showCreateForm,
   createForm,
@@ -225,6 +227,7 @@ export const UserListView = ({
               onChange={onCreateFormChange}
               creating={creating}
               isFirstUser={isFirstUser}
+              needsLocalAdmin={needsLocalAdmin}
               onSubmit={onCreateSubmit}
               onCancel={onCancelCreate}
             />
