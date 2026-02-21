@@ -57,6 +57,19 @@ def _has_username_or_email(claims: dict[str, Any]) -> bool:
     return False
 
 
+def _needs_userinfo_supplement(claims: dict[str, Any]) -> bool:
+    """Return True when the userinfo endpoint should be consulted for additional claims.
+
+    Fetches userinfo when claims are empty/missing username, or when email is
+    present but email_verified is missing (needed for email-based account linking).
+    """
+    if not claims or not _has_username_or_email(claims):
+        return True
+    if claims.get("email") and "email_verified" not in claims:
+        return True
+    return False
+
+
 def _login_error_url(message: str) -> str:
     """Build a login URL (with script_root) that includes an OIDC error message."""
     script_root = request.script_root.rstrip("/")
@@ -167,8 +180,9 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
                 return redirect(_login_error_url(f"OIDC token claim validation failed: {claim_name}"))
             claims = _normalize_claims(token.get("userinfo"))
 
-            # If userinfo is missing or claims are too sparse, request it explicitly.
-            if not claims or not _has_username_or_email(claims):
+            # Fetch userinfo when claims are missing, sparse, or lack email_verified
+            # (needed for email-based account linking with existing local users).
+            if _needs_userinfo_supplement(claims):
                 fetched_claims: dict[str, Any] = {}
                 try:
                     fetched_claims = _normalize_claims(client.userinfo(token=token))

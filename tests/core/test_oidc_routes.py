@@ -143,6 +143,7 @@ class TestOIDCCallbackEndpoint:
             "userinfo": {
                 "sub": "user-123",
                 "email": "john@example.com",
+                "email_verified": True,
                 "name": "John Doe",
                 "preferred_username": "john",
                 "groups": ["users"],
@@ -165,6 +166,7 @@ class TestOIDCCallbackEndpoint:
             "userinfo": {
                 "sub": "admin-123",
                 "email": "admin@example.com",
+                "email_verified": True,
                 "preferred_username": "admin",
                 "groups": ["users", "shelfmark-admins"],
             }
@@ -260,6 +262,7 @@ class TestOIDCCallbackEndpoint:
             "userinfo": {
                 "sub": "unknown-user",
                 "email": "unknown@example.com",
+                "email_verified": True,
                 "preferred_username": "unknown",
                 "groups": [],
             }
@@ -359,3 +362,125 @@ class TestOIDCCallbackEndpoint:
         error = _get_oidc_error(resp)
         assert error is not None
         assert "Authentication failed" in error
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_fetches_userinfo_when_email_verified_missing(
+        self, mock_get_client, client
+    ):
+        """When ID token has email but no email_verified, userinfo should be fetched."""
+        fake_client = Mock()
+        token = {
+            "userinfo": {
+                "sub": "user-no-ev",
+                "email": "noev@example.com",
+                "preferred_username": "noev",
+                "groups": [],
+            }
+        }
+        fake_client.authorize_access_token.return_value = token
+        fake_client.userinfo.return_value = {
+            "sub": "user-no-ev",
+            "email": "noev@example.com",
+            "email_verified": True,
+            "preferred_username": "noev",
+            "groups": [],
+        }
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        assert resp.status_code == 302
+        fake_client.userinfo.assert_called_once()
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_does_not_fetch_userinfo_when_email_verified_present(
+        self, mock_get_client, client
+    ):
+        """When ID token already has email_verified, userinfo should not be fetched."""
+        fake_client = Mock()
+        fake_client.authorize_access_token.return_value = {
+            "userinfo": {
+                "sub": "user-ev",
+                "email": "ev@example.com",
+                "email_verified": False,
+                "preferred_username": "evuser",
+                "groups": [],
+            }
+        }
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        assert resp.status_code == 302
+        fake_client.userinfo.assert_not_called()
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_links_to_existing_user_by_email_via_userinfo(
+        self, mock_get_client, client, user_db
+    ):
+        """Core bug fix: local user with matching email should be linked on OIDC login
+        when email_verified comes from the userinfo endpoint."""
+        user_db.create_user(username="localuser", email="shared@example.com", password_hash="hash")
+
+        fake_client = Mock()
+        token = {
+            "userinfo": {
+                "sub": "oidc-new-sub",
+                "email": "shared@example.com",
+                "preferred_username": "oidcuser",
+                "groups": [],
+            }
+        }
+        fake_client.authorize_access_token.return_value = token
+        fake_client.userinfo.return_value = {
+            "sub": "oidc-new-sub",
+            "email": "shared@example.com",
+            "email_verified": True,
+            "preferred_username": "oidcuser",
+            "groups": [],
+        }
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        assert resp.status_code == 302
+
+        with client.session_transaction() as sess:
+            assert sess["user_id"] == "localuser"
+
+        linked = user_db.get_user(username="localuser")
+        assert linked["oidc_subject"] == "oidc-new-sub"
+        assert linked["auth_source"] == "oidc"
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_creates_suffixed_user_when_email_not_verified(
+        self, mock_get_client, client, user_db
+    ):
+        """When email_verified is False/missing even after userinfo, don't link accounts."""
+        user_db.create_user(username="existing", email="existing@example.com", password_hash="hash")
+
+        fake_client = Mock()
+        token = {
+            "userinfo": {
+                "sub": "oidc-unverified",
+                "email": "existing@example.com",
+                "preferred_username": "existing",
+                "groups": [],
+            }
+        }
+        fake_client.authorize_access_token.return_value = token
+        # Userinfo also doesn't include email_verified
+        fake_client.userinfo.return_value = {
+            "sub": "oidc-unverified",
+            "email": "existing@example.com",
+            "preferred_username": "existing",
+            "groups": [],
+        }
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        assert resp.status_code == 302
+
+        with client.session_transaction() as sess:
+            # Should get suffixed username, not linked to existing
+            assert sess["user_id"] == "existing_1"
+
+        original = user_db.get_user(username="existing")
+        assert original["oidc_subject"] is None

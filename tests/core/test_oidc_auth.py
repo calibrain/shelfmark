@@ -259,3 +259,51 @@ class TestProvisionOIDCUser:
         assert user["username"] != "john"  # Should have a suffix
         assert user["oidc_subject"] == "sub-456"
         assert user["auth_source"] == "oidc"
+
+    def test_provision_links_to_existing_user_by_email(self, user_db):
+        """When allow_email_link=True and emails match, link to existing local user."""
+        from shelfmark.core.oidc_auth import provision_oidc_user
+        user_db.create_user(
+            username="localuser",
+            email="shared@example.com",
+            password_hash="hash",
+        )
+
+        user_info = {
+            "oidc_subject": "oidc-sub-789",
+            "username": "oidcuser",
+            "email": "shared@example.com",
+            "display_name": "OIDC User",
+        }
+        user = provision_oidc_user(
+            user_db, user_info, is_admin=False, allow_email_link=True,
+        )
+        assert user["username"] == "localuser"
+        assert user["oidc_subject"] == "oidc-sub-789"
+        assert user["auth_source"] == "oidc"
+        assert user["email"] == "shared@example.com"
+
+    def test_provision_does_not_link_by_email_when_disabled(self, user_db):
+        """When allow_email_link=False (default), don't link by email."""
+        from shelfmark.core.oidc_auth import provision_oidc_user
+        user_db.create_user(
+            username="localuser",
+            email="shared@example.com",
+            password_hash="hash",
+        )
+
+        user_info = {
+            "oidc_subject": "oidc-sub-no-link",
+            "username": "oidcuser",
+            "email": "shared@example.com",
+            "display_name": "OIDC User",
+        }
+        user = provision_oidc_user(
+            user_db, user_info, is_admin=False, allow_email_link=False,
+        )
+        # Should create a new user, not link to existing
+        assert user["username"] == "oidcuser"
+        assert user["oidc_subject"] == "oidc-sub-no-link"
+
+        original = user_db.get_user(username="localuser")
+        assert original["oidc_subject"] is None
