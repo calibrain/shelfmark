@@ -38,35 +38,12 @@ def _normalize_claims(raw_claims: Any) -> dict[str, Any]:
         return {}
 
 
-def _is_email_verified(claims: dict[str, Any]) -> bool:
-    """Normalize provider-specific email_verified values into a strict boolean."""
-    value = claims.get("email_verified", False)
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() == "true"
-    return False
-
-
 def _has_username_or_email(claims: dict[str, Any]) -> bool:
     """Return True when claims include a usable username or email."""
     for key in ("preferred_username", "email"):
         value = claims.get(key)
         if isinstance(value, str) and value.strip():
             return True
-    return False
-
-
-def _needs_userinfo_supplement(claims: dict[str, Any]) -> bool:
-    """Return True when the userinfo endpoint should be consulted for additional claims.
-
-    Fetches userinfo when claims are empty/missing username, or when email is
-    present but email_verified is missing (needed for email-based account linking).
-    """
-    if not claims or not _has_username_or_email(claims):
-        return True
-    if claims.get("email") and "email_verified" not in claims:
-        return True
     return False
 
 
@@ -180,9 +157,8 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
                 return redirect(_login_error_url(f"OIDC token claim validation failed: {claim_name}"))
             claims = _normalize_claims(token.get("userinfo"))
 
-            # Fetch userinfo when claims are missing, sparse, or lack email_verified
-            # (needed for email-based account linking with existing local users).
-            if _needs_userinfo_supplement(claims):
+            # If userinfo is missing or claims are too sparse, request it explicitly.
+            if not claims or not _has_username_or_email(claims):
                 fetched_claims: dict[str, Any] = {}
                 try:
                     fetched_claims = _normalize_claims(client.userinfo(token=token))
@@ -210,7 +186,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             if admin_group and use_admin_group:
                 is_admin = admin_group in groups
 
-            allow_email_link = bool(user_info.get("email")) and _is_email_verified(claims)
+            allow_email_link = bool(user_info.get("email"))
             user = provision_oidc_user(
                 user_db,
                 user_info,
