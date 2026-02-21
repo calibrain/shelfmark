@@ -150,6 +150,8 @@ function App() {
     username,
     displayName,
     oidcButtonLabel,
+    hideLocalAuth,
+    oidcAutoRedirect,
     loginError,
     isLoggingIn,
     setIsAuthenticated,
@@ -1497,6 +1499,8 @@ function App() {
               isLoading={isLoggingIn}
               authMode={authMode}
               oidcButtonLabel={oidcButtonLabel}
+              hideLocalAuth={hideLocalAuth}
+              oidcAutoRedirect={oidcAutoRedirect}
             />
           )
         }

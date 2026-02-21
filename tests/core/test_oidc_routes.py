@@ -3,12 +3,22 @@
 import os
 import tempfile
 from unittest.mock import Mock, patch
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from authlib.jose.errors import InvalidClaimError
 from flask import Flask, redirect
 
 from shelfmark.core.user_db import UserDB
+
+
+def _get_oidc_error(resp) -> str | None:
+    """Extract the oidc_error query param from a redirect response."""
+    assert resp.status_code == 302
+    parsed = urlparse(resp.headers["Location"])
+    params = parse_qs(parsed.query)
+    errors = params.get("oidc_error", [])
+    return errors[0] if errors else None
 
 
 @pytest.fixture
@@ -142,6 +152,7 @@ class TestOIDCCallbackEndpoint:
 
         resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
         assert resp.status_code == 302
+        fake_client.userinfo.assert_not_called()
 
         with client.session_transaction() as sess:
             assert sess["user_id"] == "john"
@@ -181,18 +192,54 @@ class TestOIDCCallbackEndpoint:
         assert resp.status_code == 302
 
     @patch("shelfmark.core.oidc_routes._get_oidc_client")
-    def test_callback_returns_400_when_claims_missing(self, mock_get_client, client):
+    def test_callback_fetches_userinfo_when_token_claims_are_sparse(self, mock_get_client, client):
+        fake_client = Mock()
+        token = {"userinfo": {"sub": "sparse-sub"}}
+        fake_client.authorize_access_token.return_value = token
+        fake_client.userinfo.return_value = {
+            "sub": "sparse-sub",
+            "email": "sparse@example.com",
+            "preferred_username": "sparse-user",
+            "groups": [],
+        }
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+
+        assert resp.status_code == 302
+        fake_client.userinfo.assert_called_once_with(token=token)
+        with client.session_transaction() as sess:
+            assert sess["user_id"] == "sparse-user"
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_uses_sparse_claims_when_userinfo_fetch_fails(self, mock_get_client, client):
+        fake_client = Mock()
+        token = {"userinfo": {"sub": "fallback-sub"}}
+        fake_client.authorize_access_token.return_value = token
+        fake_client.userinfo.side_effect = RuntimeError("userinfo failed")
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+
+        assert resp.status_code == 302
+        fake_client.userinfo.assert_called_once_with(token=token)
+        with client.session_transaction() as sess:
+            assert sess["user_id"] == "fallback-sub"
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_redirects_with_error_when_claims_missing(self, mock_get_client, client):
         fake_client = Mock()
         fake_client.authorize_access_token.return_value = {}
         fake_client.userinfo.side_effect = RuntimeError("userinfo failed")
         mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
 
         resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
-        assert resp.status_code == 400
-        assert "missing user claims" in resp.get_json()["error"]
+        error = _get_oidc_error(resp)
+        assert error is not None
+        assert "missing user claims" in error
 
     @patch("shelfmark.core.oidc_routes._get_oidc_client")
-    def test_callback_returns_400_with_issuer_guidance_on_invalid_issuer_claim(
+    def test_callback_redirects_with_issuer_guidance_on_invalid_issuer_claim(
         self, mock_get_client, client
     ):
         fake_client = Mock()
@@ -201,11 +248,12 @@ class TestOIDCCallbackEndpoint:
         mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
 
         resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
-        assert resp.status_code == 400
-        assert "issuer validation failed" in resp.get_json()["error"]
+        error = _get_oidc_error(resp)
+        assert error is not None
+        assert "issuer validation failed" in error
 
     @patch("shelfmark.core.oidc_routes._get_oidc_client")
-    def test_callback_rejects_when_auto_provision_disabled(self, mock_get_client, client):
+    def test_callback_redirects_when_auto_provision_disabled(self, mock_get_client, client):
         config = {**MOCK_OIDC_CONFIG, "OIDC_AUTO_PROVISION": False}
         fake_client = Mock()
         fake_client.authorize_access_token.return_value = {
@@ -219,7 +267,9 @@ class TestOIDCCallbackEndpoint:
         mock_get_client.return_value = (fake_client, config)
 
         resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
-        assert resp.status_code == 403
+        error = _get_oidc_error(resp)
+        assert error is not None
+        assert "Account not found" in error
 
     @patch("shelfmark.core.oidc_routes._get_oidc_client")
     def test_callback_allows_pre_created_user_by_verified_email_when_no_provision(
@@ -267,7 +317,45 @@ class TestOIDCCallbackEndpoint:
         mock_get_client.return_value = (fake_client, config)
 
         resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
-        assert resp.status_code == 403
+        error = _get_oidc_error(resp)
+        assert error is not None
+        assert "Account not found" in error
 
         updated_user = user_db.get_user(user_id=user["id"])
         assert updated_user["oidc_subject"] is None
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_redirects_on_idp_error(self, mock_get_client, client):
+        mock_get_client.return_value = (Mock(), MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/callback?error=access_denied")
+        error = _get_oidc_error(resp)
+        assert error is not None
+        assert "Authentication failed" in error
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_error_redirect_honors_script_root(self, mock_get_client, client):
+        mock_get_client.return_value = (Mock(), MOCK_OIDC_CONFIG)
+
+        resp = client.get(
+            "/api/auth/oidc/callback?error=access_denied",
+            environ_overrides={"SCRIPT_NAME": "/shelfmark"},
+        )
+
+        assert resp.status_code == 302
+        parsed = urlparse(resp.headers["Location"])
+        assert parsed.path == "/shelfmark/login"
+        error = _get_oidc_error(resp)
+        assert error is not None
+        assert "Authentication failed" in error
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_redirects_on_generic_exception(self, mock_get_client, client):
+        fake_client = Mock()
+        fake_client.authorize_access_token.side_effect = RuntimeError("unexpected")
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        error = _get_oidc_error(resp)
+        assert error is not None
+        assert "Authentication failed" in error

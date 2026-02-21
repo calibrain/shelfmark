@@ -261,6 +261,8 @@ export interface AuthResponse {
   error?: string;
   logout_url?: string;
   oidc_button_label?: string;
+  hide_local_auth?: boolean;
+  oidc_auto_redirect?: boolean;
 }
 
 // Type guard to check if a book is from a metadata provider

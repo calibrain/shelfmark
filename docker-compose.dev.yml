@@ -12,6 +12,8 @@ services:
       - SYS_PTRACE
     environment:
       DEBUG: true
+      # HIDE_LOCAL_AUTH: true
+      OIDC_AUTO_REDIRECT: true
     volumes:
       - ./.local/config:/config
       - ./.local/books:/books

@@ -115,6 +115,8 @@ FLASK_PORT = int(os.getenv("FLASK_PORT", "8084"))
 SESSION_COOKIE_SECURE_ENV = os.getenv("SESSION_COOKIE_SECURE", "false")
 SESSION_COOKIE_NAME = "shelfmark_session"
 CWA_DB_PATH = _resolve_cwa_db_path()
+HIDE_LOCAL_AUTH = string_to_bool(os.getenv("HIDE_LOCAL_AUTH", "false"))
+OIDC_AUTO_REDIRECT = string_to_bool(os.getenv("OIDC_AUTO_REDIRECT", "false"))
 
 
 # =============================================================================

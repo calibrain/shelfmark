@@ -1,4 +1,5 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { LoginCredentials } from '../types';
 import { withBasePath } from '../utils/basePath';
 
@@ -9,6 +10,8 @@ interface LoginFormProps {
   autoFocus?: boolean;
   authMode?: string;
   oidcButtonLabel?: string | null;
+  hideLocalAuth?: boolean;
+  oidcAutoRedirect?: boolean;
 }
 
 const EyeIcon = () => (
@@ -219,9 +222,13 @@ export const LoginForm = ({
   autoFocus = true,
   authMode,
   oidcButtonLabel,
+  hideLocalAuth = false,
+  oidcAutoRedirect = false,
 }: LoginFormProps) => {
   const isOidc = authMode === 'oidc';
   const [showPasswordLogin, setShowPasswordLogin] = useState(false);
+  const [searchParams] = useSearchParams();
+  const oidcError = searchParams.get('oidc_error');
 
   // Auto-expand password form if there's an error (likely from a password attempt)
   useEffect(() => {
@@ -229,6 +236,13 @@ export const LoginForm = ({
       setShowPasswordLogin(true);
     }
   }, [error, isOidc]);
+
+  // Auto-redirect to OIDC provider when enabled and no errors present
+  useEffect(() => {
+    if (oidcAutoRedirect && isOidc && !error && !oidcError) {
+      window.location.href = withBasePath('/api/auth/oidc/login');
+    }
+  }, [oidcAutoRedirect, isOidc, error, oidcError]);
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -245,11 +259,13 @@ export const LoginForm = ({
     }
   };
 
+  const displayError = oidcError || error;
+
   return (
     <div>
-      {error && (
+      {displayError && (
         <div className="mb-4 p-3 rounded-lg text-sm bg-red-600 text-white">
-          {error}
+          {displayError}
         </div>
       )}
 
@@ -262,22 +278,26 @@ export const LoginForm = ({
             {oidcButtonLabel || 'Sign in with OIDC'}
           </a>
 
-          <div className="flex items-center mt-5 mb-2">
-            <div className="flex-1 border-t" style={{ borderColor: 'var(--border-color)' }} />
-            <button
-              type="button"
-              onClick={() => setShowPasswordLogin((prev) => !prev)}
-              className="px-3 text-sm opacity-60 hover:opacity-100 transition-opacity"
-            >
-              {showPasswordLogin ? 'Hide' : 'Use password'}
-            </button>
-            <div className="flex-1 border-t" style={{ borderColor: 'var(--border-color)' }} />
-          </div>
+          {!hideLocalAuth && (
+            <>
+              <div className="flex items-center mt-5 mb-2">
+                <div className="flex-1 border-t" style={{ borderColor: 'var(--border-color)' }} />
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordLogin((prev) => !prev)}
+                  className="px-3 text-sm opacity-60 hover:opacity-100 transition-opacity"
+                >
+                  {showPasswordLogin ? 'Hide' : 'Use password'}
+                </button>
+                <div className="flex-1 border-t" style={{ borderColor: 'var(--border-color)' }} />
+              </div>
 
-          {showPasswordLogin && (
-            <div className="pt-2">
-              <PasswordLoginForm onSubmit={handleSubmit} isLoading={isLoading} autoFocus={true} />
-            </div>
+              {showPasswordLogin && (
+                <div className="pt-2">
+                  <PasswordLoginForm onSubmit={handleSubmit} isLoading={isLoading} autoFocus={true} />
+                </div>
+              )}
+            </>
           )}
         </>
       ) : (

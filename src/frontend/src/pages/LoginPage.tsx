@@ -8,9 +8,11 @@ interface LoginPageProps {
   isLoading: boolean;
   authMode?: string;
   oidcButtonLabel?: string | null;
+  hideLocalAuth?: boolean;
+  oidcAutoRedirect?: boolean;
 }
 
-export const LoginPage = ({ onLogin, error, isLoading, authMode, oidcButtonLabel }: LoginPageProps) => {
+export const LoginPage = ({ onLogin, error, isLoading, authMode, oidcButtonLabel, hideLocalAuth, oidcAutoRedirect }: LoginPageProps) => {
   const logoUrl = withBasePath('/logo.png');
 
   return (
@@ -30,7 +32,7 @@ export const LoginPage = ({ onLogin, error, isLoading, authMode, oidcButtonLabel
           <div className="text-center mb-5">
             <img src={logoUrl} alt="Logo" className="mx-auto w-12 h-12" />
           </div>
-          <LoginForm onSubmit={onLogin} error={error} isLoading={isLoading} authMode={authMode} oidcButtonLabel={oidcButtonLabel} />
+          <LoginForm onSubmit={onLogin} error={error} isLoading={isLoading} authMode={authMode} oidcButtonLabel={oidcButtonLabel} hideLocalAuth={hideLocalAuth} oidcAutoRedirect={oidcAutoRedirect} />
         </div>
       </div>
     </div>

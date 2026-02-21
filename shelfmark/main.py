@@ -21,8 +21,9 @@ from shelfmark.download import orchestrator as backend
 from shelfmark.release_sources.direct_download import SearchUnavailable
 from shelfmark.config.settings import _SUPPORTED_BOOK_LANGUAGE
 from shelfmark.config.env import (
-    BUILD_VERSION, CONFIG_DIR, CWA_DB_PATH, DEBUG, FLASK_HOST, FLASK_PORT,
-    RELEASE_VERSION, _is_config_dir_writable,
+    BUILD_VERSION, CONFIG_DIR, CWA_DB_PATH, DEBUG, HIDE_LOCAL_AUTH,
+    FLASK_HOST, FLASK_PORT, OIDC_AUTO_REDIRECT, RELEASE_VERSION,
+    _is_config_dir_writable,
 )
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
@@ -1596,6 +1597,9 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
         if auth_mode == "proxy":
             return jsonify({"error": "Proxy authentication is enabled"}), 401
 
+        if auth_mode == "oidc" and HIDE_LOCAL_AUTH:
+            return jsonify({"error": "Local authentication is disabled"}), 403
+
         username = data.get('username', '').strip()
         password = data.get('password', '')
         remember_me = data.get('remember_me', False)
@@ -1794,11 +1798,15 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
             if logout_url:
                 response_data["logout_url"] = logout_url
 
-        # Add custom OIDC button label if configured
+        # Add custom OIDC button label and SSO enforcement flags if configured
         if auth_mode == "oidc":
             oidc_button_label = security_config.get("OIDC_BUTTON_LABEL", "")
             if oidc_button_label:
                 response_data["oidc_button_label"] = oidc_button_label
+            if HIDE_LOCAL_AUTH:
+                response_data["hide_local_auth"] = True
+            if OIDC_AUTO_REDIRECT:
+                response_data["oidc_auto_redirect"] = True
         
         return jsonify(response_data)
     except Exception as e:

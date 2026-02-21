@@ -18,6 +18,8 @@ interface UseAuthReturn {
   username: string | null;
   displayName: string | null;
   oidcButtonLabel: string | null;
+  hideLocalAuth: boolean;
+  oidcAutoRedirect: boolean;
   loginError: string | null;
   isLoggingIn: boolean;
   setIsAuthenticated: (value: boolean) => void;
@@ -38,6 +40,8 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
   const [username, setUsername] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [oidcButtonLabel, setOidcButtonLabel] = useState<string | null>(null);
+  const [hideLocalAuth, setHideLocalAuth] = useState<boolean>(false);
+  const [oidcAutoRedirect, setOidcAutoRedirect] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
 
@@ -49,6 +53,8 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
     setUsername(response.username || null);
     setDisplayName(response.display_name || null);
     setOidcButtonLabel(response.oidc_button_label || null);
+    setHideLocalAuth(response.hide_local_auth || false);
+    setOidcAutoRedirect(response.oidc_auto_redirect || false);
   }, []);
 
   const refreshSocketSession = useCallback(() => {
@@ -145,6 +151,8 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
       setUsername(null);
       setDisplayName(null);
       setOidcButtonLabel(null);
+      setHideLocalAuth(false);
+      setOidcAutoRedirect(false);
       onLogoutSuccess?.();
       navigate('/login', { replace: true });
     } catch (error) {
@@ -162,6 +170,8 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
     username,
     displayName,
     oidcButtonLabel,
+    hideLocalAuth,
+    oidcAutoRedirect,
     loginError,
     isLoggingIn,
     setIsAuthenticated,
