@@ -704,6 +704,7 @@ def _extract_libgen_download_url(link: str, cancel_flag: Optional[Event] = None)
             timeout=(5, 10),
             allow_redirects=True,
             proxies=network.get_proxies(link),
+            verify=network.get_ssl_verify(link),
         )
 
         if response.status_code != 200:

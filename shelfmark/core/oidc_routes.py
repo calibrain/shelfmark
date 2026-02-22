@@ -19,6 +19,7 @@ from shelfmark.core.oidc_auth import (
 )
 from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_db import UserDB
+from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
 oauth = OAuth()
@@ -80,6 +81,11 @@ def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
     if admin_group and use_admin_group and group_claim and group_claim not in scopes:
         scopes.append(group_claim)
 
+    def _ssl_compliance_fix(session, **kwargs):
+        """Set session.verify based on the Certificate Validation setting."""
+        session.verify = get_ssl_verify(discovery_url)
+        return session
+
     oauth._clients.pop("shelfmark_idp", None)
     oauth.register(
         name="shelfmark_idp",
@@ -90,6 +96,7 @@ def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
             "scope": " ".join(scopes),
             "code_challenge_method": "S256",
         },
+        compliance_fix=_ssl_compliance_fix,
         overwrite=True,
     )
 

@@ -23,7 +23,7 @@ from shelfmark.config.settings import RECORDING_DIR
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.download import network
-from shelfmark.download.network import get_proxies
+from shelfmark.download.network import get_proxies, get_ssl_verify
 
 logger = setup_logger(__name__)
 
@@ -931,7 +931,7 @@ def _try_with_cached_cookies(url: str, hostname: str) -> Optional[str]:
             headers['User-Agent'] = stored_ua
 
         logger.debug(f"Trying request with cached cookies: {url}")
-        response = requests.get(url, cookies=cookies, headers=headers, proxies=get_proxies(url), timeout=(5, 10))
+        response = requests.get(url, cookies=cookies, headers=headers, proxies=get_proxies(url), timeout=(5, 10), verify=get_ssl_verify(url))
         if response.status_code == 200:
             logger.debug("Cached cookies worked, skipped Chrome bypass")
             return response.text

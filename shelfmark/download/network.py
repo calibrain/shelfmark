@@ -90,6 +90,59 @@ def get_proxies(url: str = "") -> dict:
 
     return {}
 
+
+def get_ssl_verify(url: str = "") -> bool:
+    """Return the ``verify`` value for outbound requests based on the
+    CERTIFICATE_VALIDATION setting.
+
+    - ``enabled``        → always ``True``
+    - ``disabled_local`` → ``False`` for local/private addresses, ``True`` otherwise
+    - ``disabled``       → always ``False``
+    """
+    mode = app_config.get("CERTIFICATE_VALIDATION", "enabled")
+
+    if mode == "disabled":
+        return False
+
+    if mode == "disabled_local" and url:
+        try:
+            parsed = urllib.parse.urlparse(url)
+            hostname = parsed.hostname or ""
+            if hostname and _is_local_address(hostname):
+                return False
+        except Exception:
+            pass
+
+    return True
+
+
+_ssl_warnings_suppressed = False
+
+
+def _apply_ssl_warning_suppression() -> None:
+    """Suppress or restore urllib3 InsecureRequestWarning based on the
+    CERTIFICATE_VALIDATION setting.
+
+    Called once at init and again whenever the setting changes via the UI.
+    Only modifies warning filters when the mode is not 'enabled', so the
+    default case is a complete no-op (zero behavioural change for users who
+    never touch the setting).
+    """
+    global _ssl_warnings_suppressed  # noqa: PLW0603
+    import urllib3
+
+    mode = app_config.get("CERTIFICATE_VALIDATION", "enabled")
+    if mode in ("disabled", "disabled_local"):
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        _ssl_warnings_suppressed = True
+        logger.debug("SSL warnings suppressed (certificate validation: %s)", mode)
+    elif _ssl_warnings_suppressed:
+        import warnings
+        warnings.simplefilter("default", urllib3.exceptions.InsecureRequestWarning)
+        _ssl_warnings_suppressed = False
+        logger.debug("SSL warnings restored (certificate validation: enabled)")
+
+
 # DNS state - authoritative values managed by this module
 # Other modules should use get_dns_config() to read these
 CUSTOM_DNS: List[str] = []
@@ -418,7 +471,8 @@ class DoHResolver:
                 self.base_url,
                 params=params,
                 proxies=get_proxies(self.base_url),
-                timeout=10  # Increased from 5s to handle slow network conditions
+                timeout=10,  # Increased from 5s to handle slow network conditions
+                verify=get_ssl_verify(self.base_url),
             )
             response.raise_for_status()
             
@@ -940,7 +994,7 @@ def _initialize_aa_state() -> None:
             logger.debug(f"AA_BASE_URL: auto, checking available urls {_aa_urls}")
             for i, url in enumerate(_aa_urls):
                 try:
-                    response = requests.get(url, proxies=get_proxies(url), timeout=3)
+                    response = requests.get(url, proxies=get_proxies(url), timeout=3, verify=get_ssl_verify(url))
                     if response.status_code == 200:
                         _current_aa_url_index = i
                         _aa_base_url = url
@@ -1036,6 +1090,7 @@ def init(force: bool = False) -> None:
         try:
             init_dns(force=force)
             init_aa(force=force)
+            _apply_ssl_warning_suppression()
             # Only set flag AFTER work completes successfully
             _initialized = True
         except Exception:

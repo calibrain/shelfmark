@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional, Tuple
 import requests
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
 
@@ -482,6 +483,7 @@ class ImageCacheService:
                 timeout=(5, 10),
                 headers=FETCH_HEADERS,
                 stream=True,
+                verify=get_ssl_verify(url),
             )
             response.raise_for_status()
 

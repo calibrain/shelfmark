@@ -16,6 +16,7 @@ from shelfmark.core.settings_registry import (
     HeadingField,
 )
 from shelfmark.core.config import config as app_config
+from shelfmark.download.network import get_ssl_verify
 from shelfmark.metadata_providers import (
     BookMetadata,
     DisplayField,
@@ -635,7 +636,8 @@ class HardcoverProvider(MetadataProvider):
             response = self.session.post(
                 HARDCOVER_API_URL,
                 json={"query": query, "variables": variables},
-                timeout=15
+                timeout=15,
+                verify=get_ssl_verify(HARDCOVER_API_URL),
             )
             response.raise_for_status()
 

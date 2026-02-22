@@ -4,12 +4,14 @@ rTorrent download client for Prowlarr integration.
 Uses xmlrpc to communicate with rTorrent's RPC interface.
 """
 
-from typing import Optional, Tuple
+import ssl
+from typing import Any, Optional, Tuple
 from urllib.parse import urlparse
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
+from shelfmark.download.network import get_ssl_verify
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
@@ -22,6 +24,21 @@ from shelfmark.download.clients.torrent_utils import (
 logger = setup_logger(__name__)
 
 
+def _create_rtorrent_server_proxy(url: str) -> Any:
+    """Create an XML-RPC ServerProxy honoring certificate validation mode."""
+    from xmlrpc.client import SafeTransport, ServerProxy
+
+    verify = get_ssl_verify(url)
+    if url.startswith("https://") and not verify:
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        transport = SafeTransport(context=ssl_context)
+        return ServerProxy(url, transport=transport)
+
+    return ServerProxy(url)
+
+
 @register_client("torrent")
 class RTorrentClient(DownloadClient):
     """rTorrent download client using xmlrpc."""
@@ -31,8 +48,6 @@ class RTorrentClient(DownloadClient):
 
     def __init__(self):
         """Initialize rTorrent client with settings from config."""
-        from xmlrpc.client import ServerProxy
-
         raw_url = config.get("RTORRENT_URL", "")
         if not raw_url:
             raise ValueError("RTORRENT_URL is required")
@@ -50,7 +65,7 @@ class RTorrentClient(DownloadClient):
                 f"{parsed.scheme}://{username}:{password}@{parsed.netloc}{parsed.path}"
             )
 
-        self._rpc = ServerProxy(self._base_url)
+        self._rpc = _create_rtorrent_server_proxy(self._base_url)
         self._download_dir = config.get("RTORRENT_DOWNLOAD_DIR", "")
         self._label = config.get("RTORRENT_LABEL", "")
 

@@ -1092,6 +1092,18 @@ def update_settings(tab_name: str, values: Dict[str, Any]) -> Dict[str, Any]:
         ):
             _apply_dns_settings(config_obj)
 
+        # Apply certificate validation changes live (network tab)
+        if (
+            config_obj is not None
+            and tab_name == "network"
+            and "CERTIFICATE_VALIDATION" in values_to_save
+        ):
+            try:
+                from shelfmark.download.network import _apply_ssl_warning_suppression
+                _apply_ssl_warning_suppression()
+            except Exception as e:
+                logger.warning(f"Failed to apply certificate validation setting: {e}")
+
         # Apply AA mirror settings changes live (mirrors tab)
         aa_keys = {"AA_BASE_URL", "AA_MIRROR_URLS", "AA_ADDITIONAL_URLS"}
         if (

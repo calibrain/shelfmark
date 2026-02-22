@@ -11,6 +11,7 @@ import requests
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
 
@@ -88,7 +89,7 @@ def extract_torrent_info(
 
         # Use allow_redirects=False to handle magnet link redirects manually
         # Some indexers redirect download URLs to magnet links
-        resp = requests.get(url, timeout=30, allow_redirects=False, headers=headers)
+        resp = requests.get(url, timeout=30, allow_redirects=False, headers=headers, verify=get_ssl_verify(url))
 
         # Check if this is a redirect to a magnet link
         if resp.status_code in (301, 302, 303, 307, 308):
@@ -103,7 +104,7 @@ def extract_torrent_info(
                 )
             # Not a magnet redirect, follow it manually
             logger.debug(f"Following redirect to: {redirect_url[:80]}...")
-            resp = requests.get(redirect_url, timeout=30, headers=headers)
+            resp = requests.get(redirect_url, timeout=30, headers=headers, verify=get_ssl_verify(redirect_url))
 
         resp.raise_for_status()
         torrent_data = resp.content

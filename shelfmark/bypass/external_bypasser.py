@@ -11,6 +11,7 @@ from shelfmark.bypass import BypassCancelledException
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
+from shelfmark.download.network import get_ssl_verify
 
 if TYPE_CHECKING:
     from shelfmark.download import network
@@ -46,7 +47,8 @@ def _fetch_via_bypasser(target_url: str) -> Optional[str]:
             f"{bypasser_url}{bypasser_path}",
             headers={"Content-Type": "application/json"},
             json={"cmd": "request.get", "url": target_url, "maxTimeout": bypasser_timeout},
-            timeout=(CONNECT_TIMEOUT, read_timeout)
+            timeout=(CONNECT_TIMEOUT, read_timeout),
+            verify=get_ssl_verify(bypasser_url),
         )
         response.raise_for_status()
         result = response.json()

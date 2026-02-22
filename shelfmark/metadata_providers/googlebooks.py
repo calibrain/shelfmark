@@ -20,6 +20,7 @@ from shelfmark.core.settings_registry import (
     HeadingField,
 )
 from shelfmark.core.config import config as app_config
+from shelfmark.download.network import get_ssl_verify
 from shelfmark.metadata_providers import (
     BookMetadata,
     DisplayField,
@@ -233,7 +234,7 @@ class GoogleBooksProvider(MetadataProvider):
         url = f"{GOOGLE_BOOKS_BASE_URL}{endpoint}"
 
         try:
-            response = self.session.get(url, params=params, timeout=15)
+            response = self.session.get(url, params=params, timeout=15, verify=get_ssl_verify(url))
             response.raise_for_status()
             return response.json()
 

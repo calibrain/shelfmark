@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
+from shelfmark.download.network import get_ssl_verify
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
@@ -136,6 +137,7 @@ class QBittorrentClient(DownloadClient):
             host=self._base_url,
             username=config.get("QBITTORRENT_USERNAME", ""),
             password=config.get("QBITTORRENT_PASSWORD", ""),
+            VERIFY_WEBUI_CERTIFICATE=get_ssl_verify(self._base_url),
         )
         self._category = config.get("QBITTORRENT_CATEGORY", "books")
         self._download_dir = config.get("QBITTORRENT_DOWNLOAD_DIR", "")

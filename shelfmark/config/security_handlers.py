@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from shelfmark.core.utils import normalize_http_url
 from shelfmark.core.user_db import UserDB
+from shelfmark.download.network import get_ssl_verify
 
 
 _OIDC_LOCKOUT_MESSAGE = "A local admin account with a password is required before enabling OIDC. Use the 'Go to Users' button above to create one. This ensures you can still sign in if your identity provider is unavailable."
@@ -59,7 +60,7 @@ def test_oidc_connection(
         if not discovery_url:
             return {"success": False, "message": "Discovery URL is not configured."}
 
-        response = requests.get(discovery_url, timeout=10)
+        response = requests.get(discovery_url, timeout=10, verify=get_ssl_verify(discovery_url))
         response.raise_for_status()
         document = response.json()
 

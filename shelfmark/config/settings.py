@@ -474,6 +474,17 @@ def network_settings():
 
     return [
         SelectField(
+            key="CERTIFICATE_VALIDATION",
+            label="Certificate Validation",
+            description="Controls SSL/TLS certificate verification for outbound connections. Disable for self-signed certificates on internal services (e.g. OIDC providers, Prowlarr).",
+            options=[
+                {"value": "enabled", "label": "Enabled (Recommended)"},
+                {"value": "disabled_local", "label": "Disabled for Local Addresses"},
+                {"value": "disabled", "label": "Disabled"},
+            ],
+            default="enabled",
+        ),
+        SelectField(
             key="CUSTOM_DNS",
             label="DNS Provider",
             description=(

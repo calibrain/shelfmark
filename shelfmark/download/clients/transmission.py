@@ -4,12 +4,14 @@ Transmission download client for Prowlarr integration.
 Uses the transmission-rpc library to communicate with Transmission's RPC API.
 """
 
-from typing import Optional, Tuple
+from contextlib import contextmanager
+from typing import Any, Iterator, Optional, Tuple
 
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
+from shelfmark.download.network import get_ssl_verify
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
@@ -21,6 +23,50 @@ from shelfmark.download.clients.torrent_utils import (
 )
 
 logger = setup_logger(__name__)
+
+
+@contextmanager
+def _transmission_session_verify_override(url: str) -> Iterator[None]:
+    """Temporarily override transmission-rpc's session factory when verify is disabled.
+
+    transmission-rpc performs an RPC call inside Client.__init__, so verify must be
+    set before the client is constructed.
+    """
+    verify = get_ssl_verify(url)
+    if verify:
+        yield
+        return
+
+    try:
+        import transmission_rpc.client as transmission_rpc_client
+    except Exception:
+        # If internals differ, gracefully fall back to default behavior.
+        yield
+        return
+
+    original_session_factory = transmission_rpc_client.requests.Session
+
+    def _session_factory(*args: Any, **kwargs: Any) -> Any:
+        session = original_session_factory(*args, **kwargs)
+        session.verify = False
+        return session
+
+    transmission_rpc_client.requests.Session = _session_factory
+    try:
+        yield
+    finally:
+        transmission_rpc_client.requests.Session = original_session_factory
+
+
+def _apply_transmission_ssl_verify(client: Any, url: str) -> None:
+    """Apply global certificate validation policy to transmission-rpc client."""
+    session = getattr(client, "_http_session", None)
+    if session is None:
+        return
+    try:
+        session.verify = get_ssl_verify(url)
+    except Exception as e:
+        logger.debug("Unable to apply Transmission TLS verify setting: %s", e)
 
 
 @register_client("torrent")
@@ -57,19 +103,22 @@ class TransmissionClient(DownloadClient):
             "protocol": protocol,
         }
         try:
-            self._client = Client(**client_kwargs)
+            with _transmission_session_verify_override(url):
+                self._client = Client(**client_kwargs)
         except TypeError as e:
             # Older transmission-rpc versions may not accept protocol as a kwarg.
             if "protocol" not in str(e):
                 raise
             client_kwargs.pop("protocol", None)
-            self._client = Client(**client_kwargs)
+            with _transmission_session_verify_override(url):
+                self._client = Client(**client_kwargs)
             # Some versions expose protocol as an attribute rather than kwarg.
             if protocol == "https" and hasattr(self._client, "protocol"):
                 try:
                     setattr(self._client, "protocol", protocol)
                 except Exception:
                     pass
+        _apply_transmission_ssl_verify(self._client, url)
         self._category = config.get("TRANSMISSION_CATEGORY", "books")
         self._download_dir = config.get("TRANSMISSION_DOWNLOAD_DIR", "")
 

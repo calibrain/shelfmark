@@ -11,7 +11,7 @@ import requests
 from tqdm import tqdm
 
 from shelfmark.download import network
-from shelfmark.download.network import get_proxies
+from shelfmark.download.network import get_proxies, get_ssl_verify
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 
@@ -261,6 +261,7 @@ def html_get_page(
                     cookies=cookies,
                     headers=headers,
                     allow_redirects=allow_redirects,
+                    verify=get_ssl_verify(current_url),
                 )
 
                 if is_aa_url and response.is_redirect:
@@ -403,7 +404,7 @@ def download_url(
             logger.info(f"Downloading: {current_url} (attempt {attempt + 1}/{MAX_DOWNLOAD_RETRIES})")
             # Try with CF cookies/UA if available
             cookies = _apply_cf_bypass(current_url, headers)
-            response = requests.get(current_url, stream=True, proxies=get_proxies(current_url), timeout=REQUEST_TIMEOUT, cookies=cookies, headers=headers)
+            response = requests.get(current_url, stream=True, proxies=get_proxies(current_url), timeout=REQUEST_TIMEOUT, cookies=cookies, headers=headers, verify=get_ssl_verify(current_url))
             response.raise_for_status()
 
             if status_callback:
@@ -514,7 +515,7 @@ def _try_resume(
             cookies = _apply_cf_bypass(url, resume_headers)
             response = requests.get(
                 url, stream=True, proxies=get_proxies(url), timeout=REQUEST_TIMEOUT,
-                headers=resume_headers, cookies=cookies
+                headers=resume_headers, cookies=cookies, verify=get_ssl_verify(url)
             )
             
             # Check resume support

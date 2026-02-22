@@ -1,5 +1,6 @@
 """Shared download client settings registration."""
 
+from contextlib import contextmanager
 from typing import Any, Dict, Optional
 
 from shelfmark.core.settings_registry import (
@@ -12,9 +13,38 @@ from shelfmark.core.settings_registry import (
     TagListField,
 )
 from shelfmark.core.utils import normalize_http_url
+from shelfmark.download.network import get_ssl_verify
 
 
 # ==================== Test Connection Callbacks ====================
+
+@contextmanager
+def _transmission_session_verify_override(url: str):
+    """Ensure transmission-rpc constructor uses the configured TLS verify mode."""
+    verify = get_ssl_verify(url)
+    if verify:
+        yield
+        return
+
+    try:
+        import transmission_rpc.client as transmission_rpc_client
+    except Exception:
+        yield
+        return
+
+    original_session_factory = transmission_rpc_client.requests.Session
+
+    def _session_factory(*args: Any, **kwargs: Any) -> Any:
+        session = original_session_factory(*args, **kwargs)
+        session.verify = False
+        return session
+
+    transmission_rpc_client.requests.Session = _session_factory
+    try:
+        yield
+    finally:
+        transmission_rpc_client.requests.Session = original_session_factory
+
 
 def _test_qbittorrent_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Test the qBittorrent connection using current form values."""
@@ -36,7 +66,7 @@ def _test_qbittorrent_connection(current_values: Optional[Dict[str, Any]] = None
         if not url:
             return {"success": False, "message": "qBittorrent URL is invalid"}
 
-        client = Client(host=url, username=username, password=password)
+        client = Client(host=url, username=username, password=password, VERIFY_WEBUI_CERTIFICATE=get_ssl_verify(url))
         client.auth_log_in()
         api_version = client.app.web_api_version
         return {"success": True, "message": f"Connected to qBittorrent (API v{api_version})"}
@@ -81,17 +111,25 @@ def _test_transmission_connection(current_values: Optional[Dict[str, Any]] = Non
             "protocol": protocol,
         }
         try:
-            client = Client(**client_kwargs)
+            with _transmission_session_verify_override(url):
+                client = Client(**client_kwargs)
         except TypeError as e:
             if "protocol" not in str(e):
                 raise
             client_kwargs.pop("protocol", None)
-            client = Client(**client_kwargs)
+            with _transmission_session_verify_override(url):
+                client = Client(**client_kwargs)
             if protocol == "https" and hasattr(client, "protocol"):
                 try:
                     setattr(client, "protocol", protocol)
                 except Exception:
                     pass
+
+        # Keep session verify aligned for subsequent calls beyond constructor bootstrap.
+        http_session = getattr(client, "_http_session", None)
+        if http_session is not None:
+            http_session.verify = get_ssl_verify(url)
+
         session = client.get_session()
         version = session.version
         return {"success": True, "message": f"Connected to Transmission {version}"}
@@ -151,7 +189,7 @@ def _test_deluge_connection(current_values: Optional[Dict[str, Any]] = None) -> 
 
     def rpc_call(session: requests.Session, rpc_id: int, method: str, *params: Any) -> Any:
         payload = {"id": rpc_id, "method": method, "params": list(params)}
-        resp = session.post(rpc_url, json=payload, timeout=15)
+        resp = session.post(rpc_url, json=payload, timeout=15, verify=get_ssl_verify(rpc_url))
         resp.raise_for_status()
         data = resp.json()
         if data.get("error"):
@@ -214,8 +252,9 @@ def _test_deluge_connection(current_values: Optional[Dict[str, Any]] = None) -> 
 def _test_rtorrent_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Test the rTorrent connection using current form values."""
     from shelfmark.core.config import config
+    import ssl
     from urllib.parse import urlparse
-    from xmlrpc.client import ServerProxy
+    from xmlrpc.client import SafeTransport, ServerProxy
 
     current_values = current_values or {}
 
@@ -236,7 +275,16 @@ def _test_rtorrent_connection(current_values: Optional[Dict[str, Any]] = None) -
             parsed = urlparse(url)
             url = f"{parsed.scheme}://{username}:{password}@{parsed.netloc}{parsed.path}"
 
-        rpc = ServerProxy(url.rstrip("/"))
+        rpc_url = url.rstrip("/")
+        verify = get_ssl_verify(rpc_url)
+        if rpc_url.startswith("https://") and not verify:
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            rpc = ServerProxy(rpc_url, transport=SafeTransport(context=ssl_context))
+        else:
+            rpc = ServerProxy(rpc_url)
+
         version = rpc.system.client_version()
         return {"success": True, "message": f"Connected to rTorrent {version}"}
     except Exception as e:
@@ -264,7 +312,7 @@ def _test_nzbget_connection(current_values: Optional[Dict[str, Any]] = None) -> 
     try:
         rpc_url = f"{url.rstrip('/')}/jsonrpc"
         payload = {"jsonrpc": "2.0", "method": "status", "params": [], "id": 1}
-        response = requests.post(rpc_url, json=payload, auth=(username, password), timeout=30)
+        response = requests.post(rpc_url, json=payload, auth=(username, password), timeout=30, verify=get_ssl_verify(rpc_url))
         response.raise_for_status()
         result = response.json()
         if "error" in result and result["error"]:
@@ -301,7 +349,7 @@ def _test_sabnzbd_connection(current_values: Optional[Dict[str, Any]] = None) ->
     try:
         api_url = f"{url.rstrip('/')}/api"
         params = {"apikey": api_key, "mode": "version", "output": "json"}
-        response = requests.get(api_url, params=params, timeout=30)
+        response = requests.get(api_url, params=params, timeout=30, verify=get_ssl_verify(api_url))
         response.raise_for_status()
         result = response.json()
         version = result.get("version", "unknown")

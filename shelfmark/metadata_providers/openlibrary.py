@@ -10,6 +10,7 @@ import requests
 
 from shelfmark.core.cache import cacheable
 from shelfmark.core.logger import setup_logger
+from shelfmark.download.network import get_ssl_verify
 from shelfmark.core.settings_registry import (
     register_settings,
     CheckboxField,
@@ -188,7 +189,8 @@ class OpenLibraryProvider(MetadataProvider):
             response = self.session.get(
                 f"{OPENLIBRARY_BASE_URL}/search.json",
                 params=params,
-                timeout=15
+                timeout=15,
+                verify=get_ssl_verify(OPENLIBRARY_BASE_URL),
             )
             response.raise_for_status()
             data = response.json()
@@ -229,7 +231,8 @@ class OpenLibraryProvider(MetadataProvider):
         try:
             response = self.session.get(
                 f"{OPENLIBRARY_BASE_URL}/works/{book_id}.json",
-                timeout=15
+                timeout=15,
+                verify=get_ssl_verify(OPENLIBRARY_BASE_URL),
             )
             response.raise_for_status()
             work = response.json()
@@ -261,7 +264,8 @@ class OpenLibraryProvider(MetadataProvider):
             # First try the ISBN API which returns edition data
             response = self.session.get(
                 f"{OPENLIBRARY_BASE_URL}/isbn/{clean_isbn}.json",
-                timeout=15
+                timeout=15,
+                verify=get_ssl_verify(OPENLIBRARY_BASE_URL),
             )
             response.raise_for_status()
             edition = response.json()
@@ -485,7 +489,8 @@ class OpenLibraryProvider(MetadataProvider):
         try:
             response = self.session.get(
                 f"{OPENLIBRARY_BASE_URL}{author_key}.json",
-                timeout=10
+                timeout=10,
+                verify=get_ssl_verify(OPENLIBRARY_BASE_URL),
             )
             response.raise_for_status()
             author = response.json()
@@ -504,7 +509,8 @@ def _test_openlibrary_connection() -> Dict[str, Any]:
         response = provider.session.get(
             f"{OPENLIBRARY_BASE_URL}/search.json",
             params={"q": "test", "limit": 1},
-            timeout=10
+            timeout=10,
+            verify=get_ssl_verify(OPENLIBRARY_BASE_URL),
         )
         response.raise_for_status()
         data = response.json()
