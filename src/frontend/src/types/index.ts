@@ -303,7 +303,6 @@ export interface ColumnSchema {
   uppercase: boolean;      // Force uppercase display
   sortable?: boolean;      // Show in sort dropdown (opt-in)
   sort_key?: string;       // Field to sort by (defaults to key if not specified)
-  sort_only?: boolean;     // Only appear in sort dropdown, not rendered as a column
 }
 
 // Leading cell config - what to show in the left-most position of each row
@@ -314,6 +313,11 @@ export interface LeadingCellConfig {
   key?: string;                      // Field path for data (e.g., 'extra.preview' or 'extra.download_type')
   color_hint?: ColumnColorHint;      // For badge type - maps values to colors
   uppercase?: boolean;               // Force uppercase for badge text
+}
+
+export interface ExtraSortOption {
+  label: string;                     // Display label in the sort dropdown
+  sort_key: string;                  // Field to sort by on the Release object
 }
 
 export interface SourceActionButton {
@@ -330,6 +334,7 @@ export interface ReleaseColumnConfig {
   default_indexers?: string[];       // For Prowlarr: indexers selected in settings (pre-selected in filter)
   cache_ttl_seconds?: number;        // How long to cache results (default: 300 = 5 min)
   supported_filters?: string[];      // Which filters this source supports: ["format", "language", "indexer"]
+  extra_sort_options?: ExtraSortOption[];  // Additional sort options not tied to a column
   action_button?: SourceActionButton; // Custom action button (replaces default expand search)
 }
 
