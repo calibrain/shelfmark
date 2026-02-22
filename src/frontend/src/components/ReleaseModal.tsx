@@ -2112,7 +2112,7 @@ export const ReleaseModal = ({
                         index={index}
                         onDownload={() => handleReleaseAction(release)}
                         buttonState={getButtonState(release)}
-                        columns={columnConfig.columns}
+                        columns={columnConfig.columns.filter(c => !c.sort_only)}
                         gridTemplate={columnConfig.grid_template}
                         leadingCell={columnConfig.leading_cell}
                         onlineServers={columnConfig.online_servers}

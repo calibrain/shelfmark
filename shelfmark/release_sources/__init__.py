@@ -95,6 +95,7 @@ class ColumnSchema:
     uppercase: bool = False                       # Force uppercase display
     sortable: bool = False                        # Show in sort dropdown (opt-in)
     sort_key: Optional[str] = None                # Field to sort by (defaults to `key` if None)
+    sort_only: bool = False                       # Only appear in sort dropdown, not rendered as a column
 
 
 class LeadingCellType(str, Enum):

@@ -466,6 +466,13 @@ class ProwlarrSource(ReleaseSource):
                     sortable=True,
                     sort_key="size_bytes",
                 ),
+                ColumnSchema(
+                    key="peers",
+                    label="Peers",
+                    sortable=True,
+                    sort_key="seeders",
+                    sort_only=True,
+                ),
             ],
             grid_template="minmax(0,2fr) minmax(140px,1fr) 50px 50px 90px 80px",
             leading_cell=LeadingCellConfig(type=LeadingCellType.NONE),  # No leading cell for Prowlarr

@@ -303,6 +303,7 @@ export interface ColumnSchema {
   uppercase: boolean;      // Force uppercase display
   sortable?: boolean;      // Show in sort dropdown (opt-in)
   sort_key?: string;       // Field to sort by (defaults to key if not specified)
+  sort_only?: boolean;     // Only appear in sort dropdown, not rendered as a column
 }
 
 // Leading cell config - what to show in the left-most position of each row
