@@ -24,7 +24,13 @@ import { ReleaseCell } from './ReleaseCell';
 import { getColorStyleFromHint } from '../utils/colorMaps';
 import { getNestedValue } from '../utils/objectHelpers';
 import { LanguageMultiSelect } from './LanguageMultiSelect';
-import { LANGUAGE_OPTION_ALL, LANGUAGE_OPTION_DEFAULT, getLanguageFilterValues, releaseLanguageMatchesFilter, buildLanguageNormalizer } from '../utils/languageFilters';
+import {
+  LANGUAGE_OPTION_DEFAULT,
+  getLanguageFilterValues,
+  getReleaseSearchLanguageParams,
+  releaseLanguageMatchesFilter,
+  buildLanguageNormalizer,
+} from '../utils/languageFilters';
 
 // Module-level cache for release search results
 // Key format: `${provider}:${provider_id}:${source}:${contentType}`
@@ -1125,10 +1131,7 @@ export const ReleaseModal = ({
 
     try {
       // Resolve language codes for the API call (same logic as Apply button)
-      const langCodes = getLanguageFilterValues(languageFilter, bookLanguages, defaultLanguages);
-      const languagesParam = (langCodes === null || langCodes?.includes(LANGUAGE_OPTION_ALL))
-        ? undefined
-        : langCodes;
+      const languagesParam = getReleaseSearchLanguageParams(languageFilter, bookLanguages, defaultLanguages);
 
       // Pass indexer filter only if the source supports it (empty array = search all)
       const supportsIndexerFilter = releasesBySource[activeTab]?.column_config?.supported_filters?.includes('indexer');
@@ -1969,11 +1972,7 @@ export const ReleaseModal = ({
                                   setLoadingBySource((prev) => ({ ...prev, [activeTab]: true }));
                                   try {
                                     // Resolve language codes for the API call
-                                    const langCodes = getLanguageFilterValues(languageFilter, bookLanguages, defaultLanguages);
-                                    // Don't pass languages if "All" is selected or null
-                                    const languagesParam = (langCodes === null || langCodes?.includes(LANGUAGE_OPTION_ALL))
-                                      ? undefined
-                                      : langCodes;
+                                    const languagesParam = getReleaseSearchLanguageParams(languageFilter, bookLanguages, defaultLanguages);
 
                                     // Pass indexer filter only if the source supports it (empty array = search all)
                                     const supportsIndexerFilter = columnConfig.supported_filters?.includes('indexer');

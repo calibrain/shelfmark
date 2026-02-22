@@ -279,6 +279,40 @@ class TestActivityRoutes:
         assert "expired-task-1" in response.json["status"]["complete"]
         assert response.json["status"]["complete"]["expired-task-1"]["id"] == "expired-task-1"
 
+    def test_admin_snapshot_backfills_terminal_downloads_across_users(self, main_module, client):
+        admin = _create_user(main_module, prefix="admin", role="admin")
+        request_owner = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
+
+        main_module.activity_service.record_terminal_snapshot(
+            user_id=request_owner["id"],
+            item_type="download",
+            item_key="download:cross-user-expired-task",
+            origin="requested",
+            final_status="complete",
+            source_id="cross-user-expired-task",
+            snapshot={
+                "kind": "download",
+                "download": {
+                    "id": "cross-user-expired-task",
+                    "title": "Cross User Task",
+                    "author": "Another User",
+                    "added_time": 123,
+                    "status_message": "Finished",
+                    "source": "direct_download",
+                    "user_id": request_owner["id"],
+                },
+            },
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+                response = client.get("/api/activity/snapshot")
+
+        assert response.status_code == 200
+        assert "cross-user-expired-task" in response.json["status"]["complete"]
+        assert response.json["status"]["complete"]["cross-user-expired-task"]["id"] == "cross-user-expired-task"
+
     def test_snapshot_clears_stale_download_dismissal_when_same_task_is_active(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
@@ -331,6 +365,29 @@ class TestActivityRoutes:
             snapshot_two = client.get("/api/activity/snapshot")
             assert snapshot_two.status_code == 200
             assert {"item_type": "download", "item_key": "download:shared-task"} not in snapshot_two.json["dismissed"]
+
+    def test_admin_request_dismissal_is_shared_across_admin_users(self, main_module, client):
+        admin_one = _create_user(main_module, prefix="admin-one", role="admin")
+        admin_two = _create_user(main_module, prefix="admin-two", role="admin")
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            _set_session(client, user_id=admin_one["username"], db_user_id=admin_one["id"], is_admin=True)
+            dismiss_response = client.post(
+                "/api/activity/dismiss",
+                json={"item_type": "request", "item_key": "request:999999"},
+            )
+            assert dismiss_response.status_code == 200
+
+            _set_session(client, user_id=admin_two["username"], db_user_id=admin_two["id"], is_admin=True)
+            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+                snapshot_response = client.get("/api/activity/snapshot")
+            history_response = client.get("/api/activity/history?limit=50&offset=0")
+
+        assert snapshot_response.status_code == 200
+        assert {"item_type": "request", "item_key": "request:999999"} in snapshot_response.json["dismissed"]
+
+        assert history_response.status_code == 200
+        assert any(row["item_key"] == "request:999999" for row in history_response.json)
 
     def test_history_paging_is_stable_and_non_overlapping(self, main_module, client):
         user = _create_user(main_module, prefix="history-user")

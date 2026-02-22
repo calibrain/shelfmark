@@ -543,9 +543,25 @@ class ActivityService:
         finally:
             conn.close()
 
-    def get_undismissed_terminal_downloads(self, user_id: int, *, limit: int = 200) -> list[dict[str, Any]]:
-        """Return latest undismissed terminal download snapshots for one user."""
-        normalized_user_id = self._coerce_positive_int(user_id, "user_id")
+    def get_undismissed_terminal_downloads(
+        self,
+        viewer_user_id: int,
+        *,
+        owner_user_id: int | None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """Return latest undismissed terminal download snapshots for a viewer.
+
+        `viewer_user_id` controls which dismissals are applied.
+        `owner_user_id` scopes activity rows to one owner when provided; when
+        omitted, rows across all owners are considered.
+        """
+        normalized_viewer_user_id = self._coerce_positive_int(viewer_user_id, "viewer_user_id")
+        normalized_owner_user_id = (
+            self._coerce_positive_int(owner_user_id, "owner_user_id")
+            if owner_user_id is not None
+            else None
+        )
         normalized_limit = max(1, min(int(limit), 500))
 
         conn = self._connect()
@@ -568,14 +584,19 @@ class ActivityService:
                     ON d.user_id = ?
                     AND d.item_type = l.item_type
                     AND d.item_key = l.item_key
-                WHERE l.user_id = ?
+                WHERE (? IS NULL OR l.user_id = ?)
                     AND l.item_type = 'download'
                     AND l.final_status IN ('complete', 'error', 'cancelled')
                     AND d.id IS NULL
                 ORDER BY l.terminal_at DESC, l.id DESC
                 LIMIT ?
                 """,
-                (normalized_user_id, normalized_user_id, normalized_limit * 2),
+                (
+                    normalized_viewer_user_id,
+                    normalized_owner_user_id,
+                    normalized_owner_user_id,
+                    normalized_limit * 2,
+                ),
             ).fetchall()
 
             payload: list[dict[str, Any]] = []

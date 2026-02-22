@@ -78,7 +78,10 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
 
   // Determine if this is a metadata book (Universal mode) vs a release (Direct Download)
   const isMetadata = isMetadataBook(book);
-
+  const metadataActionText =
+    isMetadata && buttonState.state === 'download' && buttonState.text === 'Get'
+      ? 'Find Downloads'
+      : buttonState.text;
   const publisherInfo = { label: 'Publisher', value: book.publisher || '-' };
 
   // Build metadata grid based on mode
@@ -336,19 +339,21 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
                   </svg>
                 </a>
               )}
-              {/* Action button - Find Downloads (Universal) or Download (Direct) */}
+              {/* Action button - mirrors search result action state/flow */}
               <button
                 onClick={isMetadata ? () => onFindDownloads?.(book) : handleDownload}
-                disabled={!isMetadata && buttonState.state !== 'download'}
+                disabled={isMetadata ? buttonState.state === 'blocked' : buttonState.state !== 'download'}
                 className={`ml-auto rounded-full px-6 py-2.5 text-sm font-medium text-white transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
                   isMetadata
-                    ? 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500'
+                    ? buttonState.state === 'blocked'
+                      ? 'bg-gray-500 focus:ring-gray-400'
+                      : 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500'
                     : buttonState.state === 'blocked'
                     ? 'bg-gray-500 focus:ring-gray-400'
                     : 'bg-sky-700 hover:bg-sky-800 focus:ring-sky-500'
                 }`}
               >
-                {isMetadata ? 'Find Downloads' : buttonState.text}
+                {isMetadata ? metadataActionText : buttonState.text}
               </button>
             </div>
           </footer>

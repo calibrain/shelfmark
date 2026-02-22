@@ -10,6 +10,7 @@ import {
   ButtonStateInfo,
   RequestPolicyMode,
   CreateRequestPayload,
+  isMetadataBook,
 } from './types';
 import {
   getBookInfo,
@@ -673,12 +674,6 @@ function App() {
     }
   };
 
-  // Handle "Find Downloads" from DetailsModal
-  const handleFindDownloads = (book: Book) => {
-    setSelectedBook(null);
-    setReleaseBook(book);
-  };
-
   const submitRequest = useCallback(
     async (payload: CreateRequestPayload, successMessage: string): Promise<boolean> => {
       try {
@@ -1327,9 +1322,16 @@ function App() {
             book={selectedBook}
             onClose={() => setSelectedBook(null)}
             onDownload={handleDownload}
-            onFindDownloads={handleFindDownloads}
+            onFindDownloads={(book) => {
+              setSelectedBook(null);
+              void handleGetReleases(book);
+            }}
             onSearchSeries={handleSearchSeries}
-            buttonState={getDirectActionButtonState(selectedBook.id)}
+            buttonState={
+              isMetadataBook(selectedBook)
+                ? getUniversalActionButtonState(selectedBook.id)
+                : getDirectActionButtonState(selectedBook.id)
+            }
           />
         )}
 

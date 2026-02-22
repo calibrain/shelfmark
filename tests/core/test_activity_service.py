@@ -235,7 +235,10 @@ class TestActivityService:
             item_key="download:task-2",
         )
 
-        rows = activity_service.get_undismissed_terminal_downloads(user["id"])
+        rows = activity_service.get_undismissed_terminal_downloads(
+            user["id"],
+            owner_user_id=user["id"],
+        )
         assert len(rows) == 1
         assert rows[0]["item_key"] == "download:task-1"
         assert rows[0]["final_status"] == "complete"
@@ -243,3 +246,50 @@ class TestActivityService:
             "kind": "download",
             "download": {"id": "task-1", "status_message": "done"},
         }
+
+    def test_get_undismissed_terminal_downloads_can_span_owners_for_admin_viewer(
+        self,
+        user_db,
+        activity_service,
+    ):
+        viewer = user_db.create_user(username="admin-viewer", role="admin")
+        owner_one = user_db.create_user(username="owner-one")
+        owner_two = user_db.create_user(username="owner-two")
+
+        activity_service.record_terminal_snapshot(
+            user_id=owner_one["id"],
+            item_type="download",
+            item_key="download:owner-one-task",
+            origin="direct",
+            final_status="complete",
+            source_id="owner-one-task",
+            terminal_at="2026-01-01T10:00:00+00:00",
+            snapshot={"kind": "download", "download": {"id": "owner-one-task"}},
+        )
+        activity_service.record_terminal_snapshot(
+            user_id=owner_two["id"],
+            item_type="download",
+            item_key="download:owner-two-task",
+            origin="direct",
+            final_status="complete",
+            source_id="owner-two-task",
+            terminal_at="2026-01-01T11:00:00+00:00",
+            snapshot={"kind": "download", "download": {"id": "owner-two-task"}},
+        )
+        activity_service.dismiss_item(
+            user_id=viewer["id"],
+            item_type="download",
+            item_key="download:owner-two-task",
+        )
+
+        all_owner_rows = activity_service.get_undismissed_terminal_downloads(
+            viewer["id"],
+            owner_user_id=None,
+        )
+        assert [row["item_key"] for row in all_owner_rows] == ["download:owner-one-task"]
+
+        owner_one_rows = activity_service.get_undismissed_terminal_downloads(
+            viewer["id"],
+            owner_user_id=owner_one["id"],
+        )
+        assert [row["item_key"] for row in owner_one_rows] == ["download:owner-one-task"]

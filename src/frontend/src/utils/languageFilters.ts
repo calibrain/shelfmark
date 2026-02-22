@@ -66,6 +66,21 @@ export const getLanguageFilterValues = (
   return resolved.size ? Array.from(resolved) : null;
 };
 
+/**
+ * Resolve language selection for /api/releases requests.
+ * - undefined: use backend defaults
+ * - ["all"]: disable language filtering
+ * - ["en", ...]: explicit filter list
+ */
+export const getReleaseSearchLanguageParams = (
+  selection: string[],
+  supportedLanguages: Language[],
+  defaultLanguageCodes: string[] = [],
+): string[] | undefined => {
+  const resolved = getLanguageFilterValues(selection, supportedLanguages, defaultLanguageCodes);
+  return resolved === null ? undefined : resolved;
+};
+
 export const formatDefaultLanguageLabel = (
   languageCodes: string[],
   supportedLanguages: Language[],
@@ -136,4 +151,3 @@ export const releaseLanguageMatchesFilter = (
   const selectedSet = new Set(selectedCodes.map(c => c.toLowerCase()));
   return releaseCodes.every(code => selectedSet.has(code));
 };
-

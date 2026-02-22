@@ -63,6 +63,30 @@ def _emit_activity_event(ws_manager: Any | None, *, room: str, payload: dict[str
         logger.warning("Failed to emit activity_update event: %s", exc)
 
 
+def _list_admin_user_ids(user_db: UserDB) -> list[int]:
+    admin_ids: set[int] = set()
+    try:
+        users = user_db.list_users()
+    except Exception as exc:
+        logger.warning("Failed to list users while resolving admin dismissal scope: %s", exc)
+        return []
+
+    for user in users:
+        if not isinstance(user, dict):
+            continue
+        role = str(user.get("role") or "").strip().lower()
+        if role != "admin":
+            continue
+        try:
+            user_id = int(user.get("id"))
+        except (TypeError, ValueError):
+            continue
+        if user_id > 0:
+            admin_ids.add(user_id)
+
+    return sorted(admin_ids)
+
+
 def _list_visible_requests(user_db: UserDB, *, is_admin: bool, db_user_id: int | None) -> list[dict[str, Any]]:
     if is_admin:
         request_rows = user_db.list_requests()
@@ -302,9 +326,16 @@ def register_activity_routes(
         emit_request_updates(updated_requests)
         request_rows = _list_visible_requests(user_db, is_admin=is_admin, db_user_id=db_user_id)
 
-        if not is_admin and db_user_id is not None:
+        if viewer_db_user_id is not None:
+            owner_user_scope = None if is_admin else db_user_id
+            if not is_admin and owner_user_scope is None:
+                owner_user_scope = viewer_db_user_id
             try:
-                terminal_rows = activity_service.get_undismissed_terminal_downloads(db_user_id, limit=200)
+                terminal_rows = activity_service.get_undismissed_terminal_downloads(
+                    viewer_db_user_id,
+                    owner_user_id=owner_user_scope,
+                    limit=200,
+                )
                 _merge_terminal_snapshot_backfill(status=status, terminal_rows=terminal_rows)
             except Exception as exc:
                 logger.warning("Failed to merge terminal snapshot backfill rows: %s", exc)
@@ -361,26 +392,42 @@ def register_activity_routes(
                 logger.warning("Failed to resolve activity snapshot id for dismiss payload: %s", exc)
                 activity_log_id = None
 
+        item_type = str(data.get("item_type") or "").strip().lower()
+        target_user_ids = [db_user_id]
+        if bool(session.get("is_admin")) and item_type == "request":
+            admin_ids = _list_admin_user_ids(user_db)
+            if db_user_id not in admin_ids:
+                admin_ids.append(db_user_id)
+            target_user_ids = sorted(set(admin_ids))
+
+        dismissal = None
         try:
-            dismissal = activity_service.dismiss_item(
-                user_id=db_user_id,
-                item_type=data.get("item_type"),
-                item_key=data.get("item_key"),
-                activity_log_id=activity_log_id,
-            )
+            for target_user_id in target_user_ids:
+                target_dismissal = activity_service.dismiss_item(
+                    user_id=target_user_id,
+                    item_type=data.get("item_type"),
+                    item_key=data.get("item_key"),
+                    activity_log_id=activity_log_id,
+                )
+                if target_user_id == db_user_id:
+                    dismissal = target_dismissal
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
-        _emit_activity_event(
-            ws_manager,
-            room=f"user_{db_user_id}",
-            payload={
-                "kind": "dismiss",
-                "user_id": db_user_id,
-                "item_type": dismissal["item_type"],
-                "item_key": dismissal["item_key"],
-            },
-        )
+        if dismissal is None:
+            return jsonify({"error": "Failed to persist dismissal"}), 500
+
+        for target_user_id in target_user_ids:
+            _emit_activity_event(
+                ws_manager,
+                room=f"user_{target_user_id}",
+                payload={
+                    "kind": "dismiss",
+                    "user_id": target_user_id,
+                    "item_type": dismissal["item_type"],
+                    "item_key": dismissal["item_key"],
+                },
+            )
 
         return jsonify({"status": "dismissed", "item": dismissal})
 
@@ -427,20 +474,40 @@ def register_activity_routes(
                 normalized_payload["activity_log_id"] = activity_log_id
             normalized_items.append(normalized_payload)
 
+        request_items = [
+            item
+            for item in normalized_items
+            if str(item.get("item_type") or "").strip().lower() == "request"
+        ]
+        actor_is_admin = bool(session.get("is_admin"))
+        target_user_ids = [db_user_id]
+        if actor_is_admin and request_items:
+            admin_ids = _list_admin_user_ids(user_db)
+            if db_user_id not in admin_ids:
+                admin_ids.append(db_user_id)
+            target_user_ids = sorted(set(admin_ids))
+
         try:
             dismissed_count = activity_service.dismiss_many(user_id=db_user_id, items=normalized_items)
+            if actor_is_admin and request_items:
+                for target_user_id in target_user_ids:
+                    if target_user_id == db_user_id:
+                        continue
+                    activity_service.dismiss_many(user_id=target_user_id, items=request_items)
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
-        _emit_activity_event(
-            ws_manager,
-            room=f"user_{db_user_id}",
-            payload={
-                "kind": "dismiss_many",
-                "user_id": db_user_id,
-                "count": dismissed_count,
-            },
-        )
+        for target_user_id in target_user_ids:
+            target_count = dismissed_count if target_user_id == db_user_id else len(request_items)
+            _emit_activity_event(
+                ws_manager,
+                room=f"user_{target_user_id}",
+                payload={
+                    "kind": "dismiss_many",
+                    "user_id": target_user_id,
+                    "count": target_count,
+                },
+            )
 
         return jsonify({"status": "dismissed", "count": dismissed_count})
 

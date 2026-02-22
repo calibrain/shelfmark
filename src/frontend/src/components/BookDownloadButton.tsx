@@ -69,6 +69,11 @@ export const BookDownloadButton = ({
   const displayText = isQueuing ? 'Queuing...' : buttonState.text;
   const showCircularProgress = buttonState.state === 'downloading' && buttonState.progress !== undefined;
   const showSpinner = (isInProgress && !showCircularProgress) || isQueuing;
+  const isRequestAction = buttonState.state === 'download' && buttonState.text === 'Request';
+  const iconVariantActionIconPath = isRequestAction
+    ? 'M12 4.5v15m7.5-7.5h-15'
+    : 'M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3';
+  const primaryActionIconPath = isRequestAction ? 'M12 4.5v15m7.5-7.5h-15' : 'M12 4v12m0 0l-4-4m4 4 4-4M6 20h12';
 
   const primaryStateClasses =
     isCompleted
@@ -198,10 +203,10 @@ export const BookDownloadButton = ({
       return (
         <>
           <svg className={`${iconSizes.mobile} sm:hidden`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={iconVariantActionIconPath} />
           </svg>
           <svg className={`${iconSizes.desktop} hidden sm:block`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={iconVariantActionIconPath} />
           </svg>
         </>
       );
@@ -221,7 +226,7 @@ export const BookDownloadButton = ({
     >
       {variant === 'primary' && showIcon && !isCompleted && !hasError && !showCircularProgress && !showSpinner && (
         <svg className={primaryIconSizes[size]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v12m0 0l-4-4m4 4 4-4M6 20h12" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={primaryActionIconPath} />
         </svg>
       )}
 

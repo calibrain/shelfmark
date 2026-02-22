@@ -60,7 +60,7 @@ def _normalize_languages(languages: Optional[List[str]]) -> Optional[List[str]]:
         normalized.append(s)
 
     if any(lang.lower() == "all" for lang in normalized):
-        return ["all"]
+        return None
 
     return normalized or None
 
