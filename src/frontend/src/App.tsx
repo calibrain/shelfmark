@@ -1356,6 +1356,8 @@ function App() {
             currentStatus={statusForButtonState}
             defaultReleaseSource={config?.default_release_source}
             onSearchSeries={isBrowseFulfilMode ? undefined : handleSearchSeries}
+            defaultShowManualQuery={isBrowseFulfilMode}
+            isRequestMode={isBrowseFulfilMode}
           />
         )}
 

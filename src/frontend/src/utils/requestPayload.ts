@@ -90,14 +90,18 @@ export const buildDirectRequestPayload = (
   mode: Extract<RequestPolicyMode, 'request_release' | 'request_book'>
 ): CreateRequestPayload => {
   const bookData = buildDirectBookRequestData(book);
+
+  // In direct mode, every result already represents a concrete downloadable release.
+  // Even when policy defaults resolve to request_book, attach the selected release so
+  // admins can approve immediately or browse alternatives from the same record.
   if (mode === 'request_book') {
     return {
       book_data: bookData,
-      release_data: null,
+      release_data: buildReleaseDataFromDirectBook(book),
       context: {
         source: 'direct_download',
         content_type: 'ebook',
-        request_level: 'book',
+        request_level: 'release',
       },
     };
   }

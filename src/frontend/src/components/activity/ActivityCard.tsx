@@ -434,7 +434,7 @@ export const ActivityCard = ({
 
   const provider = toOptionalText(bookData.provider)?.toLowerCase();
   const providerId = toOptionalText(bookData.provider_id);
-  const canBrowseAlternatives = Boolean(provider && providerId && provider !== 'direct_download');
+  const canBrowseAlternatives = Boolean(provider && providerId);
 
   const handleReviewApprove = async () => {
     if (!reviewRecord || !reviewApproveHandler || isReviewSubmitting) {

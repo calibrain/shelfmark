@@ -45,13 +45,14 @@ describe('requestPayload utilities', () => {
     assert.equal(payload.release_data?.source, 'direct_download');
   });
 
-  it('creates direct request payload at book level for request_book mode', () => {
+  it('creates direct request payload with attached release for request_book mode', () => {
     const payload = buildDirectRequestPayload(baseBook, 'request_book');
 
-    assert.equal(payload.context.request_level, 'book');
+    assert.equal(payload.context.request_level, 'release');
     assert.equal(payload.context.source, 'direct_download');
     assert.equal(payload.context.content_type, 'ebook');
-    assert.equal(payload.release_data, null);
+    assert.ok(payload.release_data);
+    assert.equal(payload.release_data?.source, 'direct_download');
   });
 
   it('builds metadata book + release payload fragments', () => {

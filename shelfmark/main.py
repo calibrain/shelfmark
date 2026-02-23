@@ -2043,6 +2043,7 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
     """
     try:
         from shelfmark.metadata_providers import (
+            BookMetadata,
             get_provider,
             is_provider_registered,
             get_provider_kwargs,
@@ -2072,27 +2073,70 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
         if not provider or not book_id:
             return jsonify({"error": "Parameters 'provider' and 'book_id' are required"}), 400
 
-        if not is_provider_registered(provider):
-            return jsonify({"error": f"Unknown metadata provider: {provider}"}), 400
+        # Direct mode request approvals can open ReleaseModal with provider=direct_download.
+        # In that flow, treat the direct result as release-search context instead of requiring
+        # a metadata provider registration.
+        if provider == "direct_download":
+            direct_book = backend.get_book_info(book_id)
+            if not isinstance(direct_book, dict):
+                return jsonify({"error": "Book not found in direct source"}), 404
 
-        # Get book metadata from provider
-        kwargs = get_provider_kwargs(provider)
-        prov = get_provider(provider, **kwargs)
-        book = prov.get_book(book_id)
+            resolved_title = title_param or str(direct_book.get("title") or "").strip() or "Unknown title"
+            resolved_author = author_param or str(direct_book.get("author") or "").strip()
+            authors = [part.strip() for part in resolved_author.split(",") if part.strip()]
+            if not authors and resolved_author:
+                authors = [resolved_author]
 
-        if not book:
-            return jsonify({"error": "Book not found in metadata provider"}), 404
+            raw_publish_year = direct_book.get("year")
+            publish_year = None
+            if isinstance(raw_publish_year, int):
+                publish_year = raw_publish_year
+            elif isinstance(raw_publish_year, str):
+                normalized_year = raw_publish_year.strip()
+                if normalized_year.isdigit():
+                    publish_year = int(normalized_year)
 
-        # Override title from frontend if available (search results may have better data)
-        # Note: We intentionally DON'T override authors here - get_book() now returns
-        # filtered authors (primary authors only, excluding translators/narrators),
-        # which gives better release search results than the unfiltered search data
-        if title_param:
-            book.title = title_param
+            book = BookMetadata(
+                provider="direct_download",
+                provider_id=book_id,
+                provider_display_name="Direct Download",
+                title=resolved_title,
+                search_title=resolved_title,
+                search_author=resolved_author or None,
+                authors=authors,
+                cover_url=direct_book.get("preview"),
+                description=direct_book.get("description"),
+                publisher=direct_book.get("publisher"),
+                publish_year=publish_year,
+                language=direct_book.get("language"),
+                source_url=direct_book.get("source_url"),
+            )
+        else:
+            if not is_provider_registered(provider):
+                return jsonify({"error": f"Unknown metadata provider: {provider}"}), 400
+
+            # Get book metadata from provider
+            kwargs = get_provider_kwargs(provider)
+            prov = get_provider(provider, **kwargs)
+            book = prov.get_book(book_id)
+
+            if not book:
+                return jsonify({"error": "Book not found in metadata provider"}), 404
+
+            # Override title from frontend if available (search results may have better data)
+            # Note: We intentionally DON'T override authors here - get_book() now returns
+            # filtered authors (primary authors only, excluding translators/narrators),
+            # which gives better release search results than the unfiltered search data
+            if title_param:
+                book.title = title_param
 
         # Determine which release sources to search
         if source_filter:
             sources_to_search = [source_filter]
+        elif provider == "direct_download":
+            # Direct mode has no metadata-provider fanout; keep release browsing focused
+            # on Direct Download results (same dataset as legacy direct search).
+            sources_to_search = ["direct_download"]
         else:
             # Search only enabled sources
             sources_to_search = [src["name"] for src in list_available_sources() if src["enabled"]]

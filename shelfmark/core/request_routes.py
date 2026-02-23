@@ -495,7 +495,10 @@ def register_request_routes(
 
         if resolved_mode == PolicyMode.REQUEST_BOOK:
             requested_level = str(request_level).strip().lower() if isinstance(request_level, str) else ""
-            if requested_level != "book":
+            # Direct search results are already concrete releases, so allow release-level
+            # request payloads even when the policy default is request_book.
+            allow_direct_release_payload = source == "direct_download" and requested_level == "release"
+            if requested_level != "book" and not allow_direct_release_payload:
                 logger.debug(
                     "Request not created for '%s' by %s: policy requires book-level requests",
                     request_title,

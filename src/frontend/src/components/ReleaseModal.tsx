@@ -370,6 +370,8 @@ interface ReleaseModalProps {
   currentStatus: StatusData;
   defaultReleaseSource?: string;  // Default tab to show (e.g., 'direct_download')
   onSearchSeries?: (seriesName: string) => void;  // Callback to search for series
+  defaultShowManualQuery?: boolean;
+  isRequestMode?: boolean;
 }
 
 
@@ -799,11 +801,14 @@ export const ReleaseModal = ({
   currentStatus,
   defaultReleaseSource,
   onSearchSeries,
+  defaultShowManualQuery = false,
+  isRequestMode = false,
 }: ReleaseModalProps) => {
   // Use audiobook formats when in audiobook mode
   const effectiveFormats = contentType === 'audiobook' && supportedAudiobookFormats.length > 0
     ? supportedAudiobookFormats
     : supportedFormats;
+  const isDirectProviderContext = (book?.provider || '').toLowerCase() === 'direct_download';
   const [isClosing, setIsClosing] = useState(false);
   const [isRequestingBook, setIsRequestingBook] = useState(false);
 
@@ -904,6 +909,7 @@ export const ReleaseModal = ({
   useEffect(() => {
     setDescriptionExpanded(false);
     setDescriptionOverflows(false);
+    setShowHeaderThumb(false);
     setReleasesBySource({});
     setLoadingBySource({});
     setErrorBySource({});
@@ -912,8 +918,11 @@ export const ReleaseModal = ({
     setLanguageFilter([LANGUAGE_OPTION_DEFAULT]);
     setIndexerFilter([]);
     indexerFilterInitializedRef.current = new Set();
-    setManualQuery('');
-    setShowManualQuery(false);
+    const baseTitle = book?.search_title || book?.title || '';
+    const baseAuthor = book?.search_author || book?.author || '';
+    const defaultQuery = `${baseTitle} ${baseAuthor}`.trim();
+    setManualQuery(defaultShowManualQuery ? defaultQuery : '');
+    setShowManualQuery(defaultShowManualQuery);
     setSearchStatus(null);
     lastStatusTimeRef.current = 0;
     pendingStatusRef.current = null;
@@ -921,7 +930,7 @@ export const ReleaseModal = ({
       clearTimeout(statusTimeoutRef.current);
       statusTimeoutRef.current = null;
     }
-  }, [book?.id]);
+  }, [book?.id, defaultShowManualQuery, book?.search_title, book?.title, book?.search_author, book?.author]);
 
   // Set up WebSocket listener for search status updates
   useEffect(() => {
@@ -1032,13 +1041,25 @@ export const ReleaseModal = ({
       try {
         setSourcesLoading(true);
         const sources = await getReleaseSources();
-        setAvailableSources(sources);
+        const modalSources = isDirectProviderContext
+          ? sources.filter((source) => source.name === 'direct_download')
+          : sources;
+        setAvailableSources(modalSources);
 
         // Filter sources by content type support
-        const supportedSources = sources.filter(s => {
+        const supportedSources = modalSources.filter(s => {
           const types = s.supported_content_types || ['ebook', 'audiobook'];
           return types.includes(contentType);
         });
+
+        if (isDirectProviderContext) {
+          if (supportedSources.some((source) => source.name === 'direct_download')) {
+            setActiveTab('direct_download');
+          } else {
+            setActiveTab('');
+          }
+          return;
+        }
 
         // Set active tab: prefer defaultReleaseSource if enabled and supports content type
         if (supportedSources.length > 0) {
@@ -1077,7 +1098,7 @@ export const ReleaseModal = ({
     };
 
     fetchSources();
-  }, [book, defaultReleaseSource, contentType]);
+  }, [book, defaultReleaseSource, contentType, isDirectProviderContext]);
 
   // Fetch releases when active tab changes (with caching)
   // Initial fetch always uses ISBN-first search; expansion is handled by handleExpandSearch
@@ -1178,8 +1199,9 @@ export const ReleaseModal = ({
 
     // Filter to only enabled sources that support this content type
     availableSources.forEach((src) => {
-      // Skip disabled sources entirely - they won't appear as tabs
-      if (!src.enabled) {
+      const allowDisabledDirectTab = isDirectProviderContext && src.name === 'direct_download';
+      // Skip disabled sources entirely, except direct tab in direct-provider context.
+      if (!src.enabled && !allowDisabledDirectTab) {
         return;
       }
 
@@ -1202,7 +1224,7 @@ export const ReleaseModal = ({
     }
 
     return enabledTabs;
-  }, [availableSources, defaultReleaseSource, contentType]);
+  }, [availableSources, defaultReleaseSource, contentType, isDirectProviderContext]);
 
   // Update tab indicator position when active tab changes
   useEffect(() => {
@@ -1593,140 +1615,142 @@ export const ReleaseModal = ({
           {/* Scrollable content */}
           <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto">
             {/* Book summary - scrolls with content */}
-            <div ref={bookSummaryRef} className="flex gap-4 px-5 py-4 border-b border-[var(--border-muted)]">
-              {book.preview ? (
-                <img
-                  src={book.preview}
-                  alt="Book cover"
-                  className={`rounded-lg shadow-md object-cover object-top flex-shrink-0 ${book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]'}`}
-                />
-              ) : (
-                <div className={`rounded-lg border border-dashed border-[var(--border-muted)] bg-[var(--bg)]/60 flex items-center justify-center text-[10px] text-gray-500 flex-shrink-0 ${book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]'}`}>
-                  No cover
-                </div>
-              )}
-              <div className="flex-1 min-w-0 space-y-2">
-                {/* Metadata row */}
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600 dark:text-gray-400">
-                  {book.year && <span>{book.year}</span>}
-                  {displayFields?.starField && (
-                    <span className="flex items-center gap-1.5">
-                      <StarRating rating={parseFloat(displayFields.starField.value || '0')} />
-                      <span>{displayFields.starField.value}</span>
-                      {displayFields.ratingsField && (
-                        <span className="text-gray-400 dark:text-gray-500">({displayFields.ratingsField.value})</span>
-                      )}
-                    </span>
-                  )}
-                  {displayFields?.usersField && (
-                    <span className="flex items-center gap-1">
-                      <svg className="h-3.5 w-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
-                      </svg>
-                      {displayFields.usersField.value} readers
-                    </span>
-                  )}
-                  {displayFields?.pagesField && (
-                    <span>{displayFields.pagesField.value} pages</span>
-                  )}
-                </div>
+            {!isRequestMode && (
+              <div ref={bookSummaryRef} className="flex gap-4 px-5 py-4 border-b border-[var(--border-muted)]">
+                {book.preview ? (
+                  <img
+                    src={book.preview}
+                    alt="Book cover"
+                    className={`rounded-lg shadow-md object-cover object-top flex-shrink-0 ${book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]'}`}
+                  />
+                ) : (
+                  <div className={`rounded-lg border border-dashed border-[var(--border-muted)] bg-[var(--bg)]/60 flex items-center justify-center text-[10px] text-gray-500 flex-shrink-0 ${book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]'}`}>
+                    No cover
+                  </div>
+                )}
+                <div className="flex-1 min-w-0 space-y-2">
+                  {/* Metadata row */}
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600 dark:text-gray-400">
+                    {book.year && <span>{book.year}</span>}
+                    {displayFields?.starField && (
+                      <span className="flex items-center gap-1.5">
+                        <StarRating rating={parseFloat(displayFields.starField.value || '0')} />
+                        <span>{displayFields.starField.value}</span>
+                        {displayFields.ratingsField && (
+                          <span className="text-gray-400 dark:text-gray-500">({displayFields.ratingsField.value})</span>
+                        )}
+                      </span>
+                    )}
+                    {displayFields?.usersField && (
+                      <span className="flex items-center gap-1">
+                        <svg className="h-3.5 w-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
+                        </svg>
+                        {displayFields.usersField.value} readers
+                      </span>
+                    )}
+                    {displayFields?.pagesField && (
+                      <span>{displayFields.pagesField.value} pages</span>
+                    )}
+                  </div>
 
-                {/* Series info */}
-                {book.series_name && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                    <span>
-                      {book.series_position != null ? (
-                        <>#{Number.isInteger(book.series_position) ? book.series_position : book.series_position}{book.series_count ? ` of ${book.series_count}` : ''} in {book.series_name}</>
-                      ) : (
-                        <>Part of {book.series_name}</>
+                  {/* Series info */}
+                  {book.series_name && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                      <span>
+                        {book.series_position != null ? (
+                          <>#{Number.isInteger(book.series_position) ? book.series_position : book.series_position}{book.series_count ? ` of ${book.series_count}` : ''} in {book.series_name}</>
+                        ) : (
+                          <>Part of {book.series_name}</>
+                        )}
+                      </span>
+                      {onSearchSeries && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSearchSeries(book.series_name!);
+                            handleClose();
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                          </svg>
+                          View series
+                        </button>
                       )}
-                    </span>
-                    {onSearchSeries && (
+                    </div>
+                  )}
+
+                  {/* Description */}
+                  {book.description && (
+                    <div className="text-sm text-gray-600 dark:text-gray-400 relative">
+                      <p ref={descriptionRef} className={descriptionExpanded ? '' : 'line-clamp-3'}>
+                        {book.description}
+                        {descriptionExpanded && descriptionOverflows && (
+                          <>
+                            {' '}
+                            <button
+                              type="button"
+                              onClick={() => setDescriptionExpanded(false)}
+                              className="text-emerald-600 dark:text-emerald-400 hover:underline font-medium inline"
+                            >
+                              Show less
+                            </button>
+                          </>
+                        )}
+                      </p>
+                      {!descriptionExpanded && descriptionOverflows && (
+                        <button
+                          type="button"
+                          onClick={() => setDescriptionExpanded(true)}
+                          className="absolute bottom-0 right-0 text-emerald-600 dark:text-emerald-400 hover:underline font-medium pl-8 bg-gradient-to-r from-transparent via-[var(--bg)] to-[var(--bg)] sm:via-[var(--bg-soft)] sm:to-[var(--bg-soft)]"
+                        >
+                          more
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Links row */}
+                  <div className="flex flex-wrap items-center gap-3 text-xs">
+                    {(book.isbn_13 || book.isbn_10) && (
+                      <span className="text-gray-500 dark:text-gray-400">
+                        ISBN: {book.isbn_13 || book.isbn_10}
+                      </span>
+                    )}
+                    {book.source_url && (
+                      <a
+                        href={book.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 hover:underline"
+                      >
+                        View on {providerDisplay}
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    )}
+                    {onRequestBook && (
                       <button
                         type="button"
                         onClick={() => {
-                          onSearchSeries(book.series_name!);
-                          handleClose();
+                          void handleRequestBook();
                         }}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
+                        disabled={isRequestingBook}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                         </svg>
-                        View series
+                        {isRequestingBook ? 'Adding...' : 'Add to requests'}
                       </button>
                     )}
                   </div>
-                )}
-
-                {/* Description */}
-                {book.description && (
-                  <div className="text-sm text-gray-600 dark:text-gray-400 relative">
-                    <p ref={descriptionRef} className={descriptionExpanded ? '' : 'line-clamp-3'}>
-                      {book.description}
-                      {descriptionExpanded && descriptionOverflows && (
-                        <>
-                          {' '}
-                          <button
-                            type="button"
-                            onClick={() => setDescriptionExpanded(false)}
-                            className="text-emerald-600 dark:text-emerald-400 hover:underline font-medium inline"
-                          >
-                            Show less
-                          </button>
-                        </>
-                      )}
-                    </p>
-                    {!descriptionExpanded && descriptionOverflows && (
-                      <button
-                        type="button"
-                        onClick={() => setDescriptionExpanded(true)}
-                        className="absolute bottom-0 right-0 text-emerald-600 dark:text-emerald-400 hover:underline font-medium pl-8 bg-gradient-to-r from-transparent via-[var(--bg)] to-[var(--bg)] sm:via-[var(--bg-soft)] sm:to-[var(--bg-soft)]"
-                      >
-                        more
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Links row */}
-                <div className="flex flex-wrap items-center gap-3 text-xs">
-                  {(book.isbn_13 || book.isbn_10) && (
-                    <span className="text-gray-500 dark:text-gray-400">
-                      ISBN: {book.isbn_13 || book.isbn_10}
-                    </span>
-                  )}
-                  {book.source_url && (
-                    <a
-                      href={book.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 hover:underline"
-                    >
-                      View on {providerDisplay}
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
-                    </a>
-                  )}
-                  {onRequestBook && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void handleRequestBook();
-                      }}
-                      disabled={isRequestingBook}
-                      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                      </svg>
-                      {isRequestingBook ? 'Adding...' : 'Add to requests'}
-                    </button>
-                  )}
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Source tabs + filters - sticky within scroll container */}
             <div className="sticky top-0 z-10 border-b border-[var(--border-muted)] bg-[var(--bg)] sm:bg-[var(--bg-soft)]">

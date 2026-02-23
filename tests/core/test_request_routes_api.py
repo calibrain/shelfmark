@@ -541,6 +541,44 @@ class TestRequestRoutes:
         assert resp.json["code"] == "policy_requires_request"
         assert resp.json["required_mode"] == "request_book"
 
+    def test_request_book_policy_allows_direct_release_level_request(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(default_ebook="request_book")
+
+        payload = {
+            "book_data": {
+                "title": "Direct Result",
+                "author": "Direct Author",
+                "content_type": "ebook",
+                "provider": "direct_download",
+                "provider_id": "dd-1",
+            },
+            "context": {
+                "source": "direct_download",
+                "content_type": "ebook",
+                "request_level": "release",
+            },
+            "release_data": {
+                "source": "direct_download",
+                "source_id": "dd-1",
+                "title": "Direct Result.epub",
+                "format": "epub",
+                "size": "2 MB",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+                    resp = client.post("/api/requests", json=payload)
+
+        assert resp.status_code == 201
+        assert resp.json["request_level"] == "release"
+        assert resp.json["policy_mode"] == "request_book"
+        assert resp.json["release_data"]["source"] == "direct_download"
+        assert resp.json["release_data"]["source_id"] == "dd-1"
+
     def test_non_admin_cannot_access_admin_request_routes(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
