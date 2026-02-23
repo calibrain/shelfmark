@@ -200,6 +200,28 @@ def _perform_nfs_fallback(source: Path, dest: Path, is_move: bool) -> None:
             raise
 
 
+def _is_enoent_error(error: Exception) -> bool:
+    return isinstance(error, FileNotFoundError) or (
+        isinstance(error, OSError) and error.errno == errno.ENOENT
+    )
+
+
+def _can_use_partial_copy_after_enoent(
+    temp_path: Optional[Path],
+    expected_size: int,
+    action: str,
+) -> bool:
+    """Recover when copy2 writes bytes but fails while copying source metadata."""
+    if not temp_path or not run_blocking_io(temp_path.exists):
+        return False
+
+    try:
+        _verify_transfer_size(temp_path, expected_size, action)
+        return True
+    except Exception:
+        return False
+
+
 def _claim_destination(path: Path) -> bool:
     """Atomically claim a destination path by creating a placeholder file.
 
@@ -359,6 +381,16 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                                 copy_error,
                             )
                             _perform_nfs_fallback(source_path, temp_path, is_move=False)
+                        elif _is_enoent_error(copy_error) and _can_use_partial_copy_after_enoent(
+                            temp_path,
+                            expected_size,
+                            "move",
+                        ):
+                            logger.warning(
+                                "Source vanished during move-copy metadata step; preserving copied data: %s -> %s",
+                                source_path,
+                                temp_path,
+                            )
                         else:
                             raise
 
@@ -525,6 +557,16 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                             fallback_error,
                         )
                         raise e from fallback_error
+                elif _is_enoent_error(e) and _can_use_partial_copy_after_enoent(
+                    temp_path,
+                    expected_size,
+                    "copy",
+                ):
+                    logger.warning(
+                        "Source vanished during copy2 metadata step; preserving copied data: %s -> %s",
+                        source_path,
+                        temp_path,
+                    )
                 else:
                     raise
 

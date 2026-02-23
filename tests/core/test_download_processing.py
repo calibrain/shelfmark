@@ -202,6 +202,28 @@ class TestAtomicCopy:
         # No partial file should exist
         assert not dest.exists()
 
+    def test_copy_recovers_when_metadata_step_hits_enoent(self, tmp_path):
+        """Treat ENOENT from copy2 metadata as recoverable if bytes already copied."""
+        import errno
+        from shelfmark.download.fs import atomic_copy as _atomic_copy
+
+        source = tmp_path / "source.txt"
+        source.write_text("content")
+        dest = tmp_path / "dest.txt"
+
+        real_copyfile = shutil.copyfile
+
+        def _copy_then_enoent(src, dst):
+            real_copyfile(src, dst)
+            raise FileNotFoundError(errno.ENOENT, "No such file or directory", src)
+
+        with patch("shutil.copy2", side_effect=_copy_then_enoent):
+            result = _atomic_copy(source, dest)
+
+        assert result == dest
+        assert result.exists()
+        assert result.read_text() == "content"
+
     def test_max_attempts_exceeded(self, tmp_path):
         """Raises after max collision attempts."""
         from shelfmark.download.fs import atomic_copy as _atomic_copy

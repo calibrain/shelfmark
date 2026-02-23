@@ -349,6 +349,34 @@ class TestAtomicMove:
         assert mock_copy.called
         assert mock_fallback.called
 
+    def test_cross_filesystem_move_recovers_when_metadata_step_hits_enoent(self, tmp_path, monkeypatch):
+        """Completes EXDEV fallback move when copy2 metadata fails with ENOENT."""
+        from shelfmark.download.fs import atomic_move as _atomic_move
+        import errno
+
+        source = tmp_path / "source.txt"
+        source.write_text("content")
+        dest = tmp_path / "dest.txt"
+
+        def _raise_exdev(*_args, **_kwargs):
+            raise OSError(errno.EXDEV, "Cross-device link")
+
+        real_copyfile = shutil.copyfile
+
+        def _copy_then_enoent(src, dst):
+            real_copyfile(src, dst)
+            raise FileNotFoundError(errno.ENOENT, "No such file or directory", src)
+
+        monkeypatch.setattr(os, "rename", _raise_exdev)
+
+        with patch("shelfmark.download.fs.shutil.copy2", side_effect=_copy_then_enoent):
+            result = _atomic_move(source, dest)
+
+        assert result == dest
+        assert not source.exists()
+        assert dest.exists()
+        assert dest.read_text() == "content"
+
 
 class TestHardlinkWithLibraryMode:
     """Tests for hardlinking in library mode context."""
