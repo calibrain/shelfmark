@@ -260,9 +260,9 @@ export const RequestPolicyGrid = ({
 
                 if (!isConfigurable) {
                   return (
-                    <div key={key} className="flex items-center min-h-[36px]">
+                    <div key={key} className="flex items-center justify-center min-h-[36px]">
                       {mobileLabel}
-                      <span className="text-sm opacity-50">
+                      <span className="text-xs opacity-40">
                         {REQUEST_POLICY_MODE_LABELS[effectiveMode]}
                       </span>
                     </div>
