@@ -36,6 +36,18 @@ describe('admin request API client functions', () => {
     });
   });
 
+  it('builds manual-approval fulfil payload without release data', () => {
+    const body = buildFulfilAdminRequestBody({
+      manual_approval: true,
+      admin_note: 'Handled manually',
+    });
+
+    assert.deepEqual(body, {
+      manual_approval: true,
+      admin_note: 'Handled manually',
+    });
+  });
+
   it('builds reject endpoint URL and payload shape', () => {
     const url = buildAdminRequestActionUrl('/api/admin/requests', 51, 'reject');
     const body = buildRejectAdminRequestBody({

@@ -314,6 +314,41 @@ def test_fulfil_request_requires_release_data_for_book_level(user_db):
         )
 
 
+def test_fulfil_request_manual_approval_allows_book_level_without_release(user_db):
+    alice = user_db.create_user(username="alice")
+    admin = user_db.create_user(username="admin", role="admin")
+    created = create_request(
+        user_db,
+        user_id=alice["id"],
+        source_hint="direct_download",
+        content_type="ebook",
+        request_level="book",
+        policy_mode="request_book",
+        book_data=_book_data(),
+    )
+
+    called = {"queue_called": False}
+
+    def fake_queue_release(*_args, **_kwargs):
+        called["queue_called"] = True
+        return True, None
+
+    fulfilled = fulfil_request(
+        user_db,
+        request_id=created["id"],
+        admin_user_id=admin["id"],
+        queue_release=fake_queue_release,
+        manual_approval=True,
+    )
+
+    assert fulfilled["status"] == "fulfilled"
+    assert fulfilled["delivery_state"] == "complete"
+    assert fulfilled["delivery_updated_at"] is not None
+    assert fulfilled["release_data"] is None
+    assert fulfilled["reviewed_by"] == admin["id"]
+    assert called["queue_called"] is False
+
+
 def test_fulfil_request_rejects_oversized_release_override(user_db):
     alice = user_db.create_user(username="alice")
     admin = user_db.create_user(username="admin", role="admin")
@@ -1239,6 +1274,30 @@ def test_fulfil_non_string_admin_note_returns_error(user_db):
             admin_user_id=admin["id"],
             queue_release=lambda *a, **kw: (True, None),
             admin_note=["not", "a", "string"],
+        )
+
+
+def test_fulfil_non_boolean_manual_approval_returns_error(user_db):
+    alice = user_db.create_user(username="alice")
+    admin = user_db.create_user(username="admin", role="admin")
+    created = create_request(
+        user_db,
+        user_id=alice["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data=_release_data(),
+    )
+
+    with pytest.raises(RequestServiceError, match="manual_approval must be a boolean"):
+        fulfil_request(
+            user_db,
+            request_id=created["id"],
+            admin_user_id=admin["id"],
+            queue_release=lambda *a, **kw: (True, None),
+            manual_approval="yes",
         )
 
 

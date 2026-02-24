@@ -413,6 +413,7 @@ def fulfil_request(
     queue_release: Callable[..., tuple[bool, str | None]],
     release_data: Any = None,
     admin_note: Any = None,
+    manual_approval: Any = False,
 ) -> dict[str, Any]:
     """Fulfil a pending request and queue the release under requesting-user identity."""
     request_row = ensure_request_access(
@@ -434,9 +435,29 @@ def fulfil_request(
             raise RequestServiceError("admin_note must be a string", status_code=400)
         normalized_admin_note = admin_note.strip() or None
 
+    if not isinstance(manual_approval, bool):
+        raise RequestServiceError("manual_approval must be a boolean", status_code=400)
+
     selected_release_data = release_data if release_data is not None else request_row.get("release_data")
     if selected_release_data is not None and not isinstance(selected_release_data, dict):
         raise RequestServiceError("release_data must be an object", status_code=400)
+
+    if selected_release_data is None and manual_approval:
+        try:
+            return user_db.update_request(
+                request_id,
+                expected_current_status="pending",
+                status="fulfilled",
+                release_data=None,
+                delivery_state="complete",
+                delivery_updated_at=_now_timestamp(),
+                last_failure_reason=None,
+                admin_note=normalized_admin_note,
+                reviewed_by=admin_user_id,
+                reviewed_at=_now_timestamp(),
+            )
+        except ValueError as exc:
+            raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
 
     if request_row["request_level"] == "book" and selected_release_data is None:
         raise RequestServiceError(

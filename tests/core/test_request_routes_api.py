@@ -927,6 +927,48 @@ class TestRequestRoutes:
         assert fulfil_resp.status_code == 400
         assert "release_data is required to fulfil book-level requests" in fulfil_resp.json["error"]
 
+    def test_admin_fulfil_book_level_request_manual_approval(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        admin = _create_user(main_module, prefix="admin", role="admin")
+        policy = _policy(default_ebook="request_book")
+
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        create_payload = {
+            "book_data": {
+                "title": "Manual Approval Book",
+                "author": "Manual Admin",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "ol-manual-approval",
+            },
+            "context": {
+                "source": "direct_download",
+                "content_type": "ebook",
+                "request_level": "book",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+                    create_resp = client.post("/api/requests", json=create_payload)
+                    request_id = create_resp.json["id"]
+
+                    _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
+                    with patch.object(main_module.backend, "queue_release", return_value=(True, None)) as mock_queue:
+                        fulfil_resp = client.post(
+                            f"/api/admin/requests/{request_id}/fulfil",
+                            json={"manual_approval": True, "admin_note": "Added manually"},
+                        )
+
+        assert create_resp.status_code == 201
+        assert fulfil_resp.status_code == 200
+        assert fulfil_resp.json["status"] == "fulfilled"
+        assert fulfil_resp.json["delivery_state"] == "complete"
+        assert fulfil_resp.json["release_data"] is None
+        assert fulfil_resp.json["admin_note"] == "Added manually"
+        mock_queue.assert_not_called()
+
     def test_admin_fulfil_book_level_request_with_release_data(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         admin = _create_user(main_module, prefix="admin", role="admin")
@@ -1575,6 +1617,39 @@ class TestAdminFulfilEdgeCases:
 
         assert resp.status_code == 403
         assert "Admin user identity unavailable" in resp.json["error"]
+
+    def test_fulfil_with_non_boolean_manual_approval_returns_400(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        admin = _create_user(main_module, prefix="admin", role="admin")
+        policy = _policy(default_ebook="request_release")
+
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+                    create_resp = client.post("/api/requests", json={
+                        "book_data": {
+                            "title": "Manual Flag Validation",
+                            "author": "QA",
+                            "provider": "p",
+                            "provider_id": "mf1",
+                            "content_type": "ebook",
+                        },
+                        "context": {"source": "prowlarr", "content_type": "ebook", "request_level": "release"},
+                        "release_data": {"source": "prowlarr", "source_id": "mf-r", "title": "MF.epub"},
+                    })
+                    request_id = create_resp.json["id"]
+
+                    _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
+                    fulfil_resp = client.post(
+                        f"/api/admin/requests/{request_id}/fulfil",
+                        json={"manual_approval": "yes"},
+                    )
+
+        assert create_resp.status_code == 201
+        assert fulfil_resp.status_code == 400
+        assert "manual_approval must be a boolean" in fulfil_resp.json["error"]
 
 
 class TestAdminRejectEdgeCases:

@@ -32,7 +32,8 @@ export interface UseRequestsReturn {
   fulfilRequest: (
     id: number,
     releaseData?: Record<string, unknown>,
-    adminNote?: string
+    adminNote?: string,
+    manualApproval?: boolean
   ) => Promise<void>;
   rejectRequest: (id: number, adminNote?: string) => Promise<void>;
 }
@@ -217,7 +218,12 @@ export const useRequests = ({
   }, []);
 
   const fulfilRequest = useCallback(
-    async (id: number, releaseData?: Record<string, unknown>, adminNote?: string) => {
+    async (
+      id: number,
+      releaseData?: Record<string, unknown>,
+      adminNote?: string,
+      manualApproval?: boolean
+    ) => {
       if (!isAdmin) {
         throw new Error('Admin access required');
       }
@@ -232,6 +238,7 @@ export const useRequests = ({
         const updated = await fulfilAdminRequest(id, {
           release_data: releaseData,
           admin_note: adminNote,
+          manual_approval: manualApproval,
         });
         setRequests((prev) => upsertRequestRecord(prev, updated));
         setError(null);

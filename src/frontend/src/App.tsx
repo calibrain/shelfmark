@@ -1039,9 +1039,22 @@ function App() {
       record: RequestRecord,
       options?: {
         browseOnly?: boolean;
+        manualApproval?: boolean;
       }
     ) => {
       if (!requestRoleIsAdmin) {
+        return;
+      }
+
+      if (options?.manualApproval) {
+        try {
+          await fulfilSidebarRequest(requestId, undefined, undefined, true);
+          await refreshActivitySnapshot();
+          showToast('Request approved', 'success');
+          await fetchStatus();
+        } catch (error) {
+          showToast(getErrorMessage(error, 'Failed to approve request'), 'error');
+        }
         return;
       }
 

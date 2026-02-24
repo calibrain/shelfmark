@@ -12,6 +12,7 @@ import {
 
 interface RequestApproveOptions {
   browseOnly?: boolean;
+  manualApproval?: boolean;
 }
 
 type RequestApproveHandler = (
@@ -431,6 +432,7 @@ export const ActivityCard = ({
         ? 'Browse Releases To Retry'
         : 'Browse Releases To Approve'
       : 'Approve Attached File';
+  const canMarkAsApprovedWithoutRelease = requiresBrowseBeforeApprove && !hasAttachedRelease;
 
   const provider = toOptionalText(bookData.provider)?.toLowerCase();
   const providerId = toOptionalText(bookData.provider_id);
@@ -462,6 +464,19 @@ export const ActivityCard = ({
     setIsReviewSubmitting(true);
     try {
       await reviewApproveHandler(reviewRecord.id, reviewRecord, { browseOnly: true });
+    } finally {
+      setIsReviewSubmitting(false);
+    }
+  };
+
+  const handleReviewManualApproval = async () => {
+    if (!reviewRecord || !reviewApproveHandler || isReviewSubmitting) {
+      return;
+    }
+
+    setIsReviewSubmitting(true);
+    try {
+      await reviewApproveHandler(reviewRecord.id, reviewRecord, { manualApproval: true });
     } finally {
       setIsReviewSubmitting(false);
     }
@@ -704,6 +719,16 @@ export const ActivityCard = ({
                 >
                   {isReviewSubmitting ? 'Working...' : approveLabel}
                 </button>
+                {canMarkAsApprovedWithoutRelease && (
+                  <button
+                    type="button"
+                    onClick={handleReviewManualApproval}
+                    disabled={isReviewSubmitting}
+                    className="px-2.5 py-1.5 rounded-md text-xs border border-[var(--border-muted)] hover:bg-[var(--hover-surface)] transition-colors disabled:opacity-50"
+                  >
+                    {isReviewSubmitting ? 'Working...' : 'Manually Mark as Approved'}
+                  </button>
+                )}
                 {canBrowseAlternatives && hasAttachedRelease && (
                   <button
                     type="button"

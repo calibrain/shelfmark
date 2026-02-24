@@ -30,6 +30,7 @@ interface ActivitySidebarProps {
     record: RequestRecord,
     options?: {
       browseOnly?: boolean;
+      manualApproval?: boolean;
     }
   ) => Promise<void> | void;
   onRequestReject?: (requestId: number, adminNote?: string) => Promise<void> | void;

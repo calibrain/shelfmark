@@ -708,6 +708,7 @@ def register_request_routes(
                 queue_release=queue_release,
                 release_data=data.get("release_data"),
                 admin_note=data.get("admin_note"),
+                manual_approval=data.get("manual_approval", False),
             )
         except RequestServiceError as exc:
             return _error_response(str(exc), exc.status_code, code=exc.code)
