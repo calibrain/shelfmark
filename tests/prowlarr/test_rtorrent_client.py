@@ -265,7 +265,7 @@ class TestRTorrentClientAddDownload:
                 args = mock_rpc.load.start.call_args[0]
                 assert args[1] == "magnet:?xt=urn:btih:abc123def456"
                 assert "d.custom1.set=cwabd" in args[2]
-                assert "d.directory_base.set=/downloads" in args[2]
+                assert "d.directory.set=/downloads" in args[2]
 
     def test_add_download_torrent_file(self, monkeypatch):
         """Test adding a torrent via raw torrent data."""
@@ -376,9 +376,9 @@ class TestRTorrentClientGetStatus:
         )
 
         mock_rpc = MagicMock()
-        mock_rpc.d.multicall.filtered.return_value = [
+        mock_rpc.d.multicall2.return_value = [
             [
-                "abc123def456",
+                "ABC123DEF456",
                 2,
                 524288000,
                 1048576000,
@@ -423,10 +423,11 @@ class TestRTorrentClientGetStatus:
         )
 
         mock_rpc = MagicMock()
-        mock_rpc.d.multicall.filtered.side_effect = [
+        # First call: get_status multicall2, second call: _get_torrent_path multicall2
+        mock_rpc.d.multicall2.side_effect = [
             [
                 [
-                    "abc123def456",
+                    "ABC123DEF456",
                     4,
                     1048576000,
                     1048576000,
@@ -436,7 +437,7 @@ class TestRTorrentClientGetStatus:
                     1,
                 ]
             ],
-            [["/downloads/test-torrent"]],
+            [["ABC123DEF456", "/downloads/test-torrent"]],
         ]
 
         mock_xmlrpc = create_mock_xmlrpc_module()
@@ -474,7 +475,7 @@ class TestRTorrentClientGetStatus:
         )
 
         mock_rpc = MagicMock()
-        mock_rpc.d.multicall.filtered.return_value = []
+        mock_rpc.d.multicall2.return_value = []
 
         mock_xmlrpc = create_mock_xmlrpc_module()
         mock_xmlrpc.ServerProxy.return_value = mock_rpc
@@ -508,9 +509,9 @@ class TestRTorrentClientGetStatus:
         )
 
         mock_rpc = MagicMock()
-        mock_rpc.d.multicall.filtered.return_value = [
+        mock_rpc.d.multicall2.return_value = [
             [
-                "abc123def456",
+                "ABC123DEF456",
                 2,
                 524288000,
                 1048576000,
@@ -662,7 +663,7 @@ class TestRTorrentClientGetDownloadPath:
         )
 
         mock_rpc = MagicMock()
-        mock_rpc.d.multicall.filtered.return_value = [["/downloads/test-file"]]
+        mock_rpc.d.multicall2.return_value = [["ABC123DEF456", "/downloads/test-file"]]
 
         mock_xmlrpc = create_mock_xmlrpc_module()
         mock_xmlrpc.ServerProxy.return_value = mock_rpc
@@ -695,7 +696,7 @@ class TestRTorrentClientGetDownloadPath:
         )
 
         mock_rpc = MagicMock()
-        mock_rpc.d.multicall.filtered.return_value = []
+        mock_rpc.d.multicall2.return_value = []
 
         mock_xmlrpc = create_mock_xmlrpc_module()
         mock_xmlrpc.ServerProxy.return_value = mock_rpc

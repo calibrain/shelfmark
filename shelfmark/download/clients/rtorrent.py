@@ -156,10 +156,9 @@ class RTorrentClient(DownloadClient):
         try:
             # rtorrent is somehow case sensitive and requires uppercase hashes for look
             download_id = download_id.upper()
-            torrent_list = self._rpc.d.multicall.filtered(
+            all_torrents = self._rpc.d.multicall2(
                 "",
-                "default",
-                f"equal={{d.hash=,cat={download_id}}}",
+                "",
                 "d.hash=",
                 "d.state=",
                 "d.completed_bytes=",
@@ -169,6 +168,7 @@ class RTorrentClient(DownloadClient):
                 "d.custom1=",
                 "d.complete=",
             )
+            torrent_list = [t for t in all_torrents if t and t[0] == download_id]
             logger.debug(f"Fetched torrent status from rTorrent for: {download_id} - {torrent_list}")
             if not torrent_list:
                 logger.warning(f"Torrent not found in rTorrent: {download_id}")
@@ -327,12 +327,13 @@ class RTorrentClient(DownloadClient):
         try:
             # rTorrent is case sensitive for hashes; use uppercase as in get_status()
             download_hash = download_id.upper()
-            details = self._rpc.d.multicall.filtered(
+            all_torrents = self._rpc.d.multicall2(
                 "",
-                "default",
-                f"equal={{d.hash=,cat={download_hash}}}",
+                "",
+                "d.hash=",
                 "d.base_path=",
             )
+            details = [t[1:] for t in all_torrents if t and t[0] == download_hash]
             if not details:
                 return None
             path = details[0][0]
