@@ -120,7 +120,7 @@ class RTorrentClient(DownloadClient):
             download_dir = self._download_dir or self._get_download_dir()
             if download_dir:
                 logger.debug(f"Setting rTorrent download directory: {download_dir}")
-                commands.append(f"d.directory_base.set={download_dir}")
+                commands.append(f"d.directory.set={download_dir}")
 
             if torrent_info.torrent_data:
                 logger.debug(f"Adding torrent data directly to rTorrent for: {name} with commands: {commands} with data size: {len(torrent_info.torrent_data)}")
