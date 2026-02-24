@@ -154,21 +154,24 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
         window.location.href = logout_url;
         return;
       }
+      try {
+        // Reload auth settings after session clear so /login has current auth-mode UI config.
+        applyAuthResponse(await checkAuth());
+      } catch (error) {
+        console.error('Post-logout auth refresh failed:', error);
+        setIsAuthenticated(false);
+        setIsAdmin(false);
+        setUsername(null);
+        setDisplayName(null);
+      }
       refreshSocketSession();
-      setIsAuthenticated(false);
-      setIsAdmin(false);
-      setUsername(null);
-      setDisplayName(null);
-      setOidcButtonLabel(null);
-      setHideLocalAuth(false);
-      setOidcAutoRedirect(false);
       onLogoutSuccess?.();
       navigate('/login', { replace: true });
     } catch (error) {
       console.error('Logout failed:', error);
       showToast?.('Logout failed', 'error');
     }
-  }, [navigate, onLogoutSuccess, refreshSocketSession, showToast]);
+  }, [navigate, onLogoutSuccess, refreshSocketSession, showToast, applyAuthResponse]);
 
   return {
     isAuthenticated,
