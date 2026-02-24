@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.utils import normalize_http_url
+from shelfmark.core.utils import normalize_http_url, get_hardened_xmlrpc_client
 from shelfmark.download.network import get_ssl_verify
 from shelfmark.download.clients import (
     DownloadClient,
@@ -26,17 +26,17 @@ logger = setup_logger(__name__)
 
 def _create_rtorrent_server_proxy(url: str) -> Any:
     """Create an XML-RPC ServerProxy honoring certificate validation mode."""
-    from xmlrpc.client import SafeTransport, ServerProxy
+    xmlrpc_client = get_hardened_xmlrpc_client()
 
     verify = get_ssl_verify(url)
     if url.startswith("https://") and not verify:
         ssl_context = ssl.create_default_context()
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
-        transport = SafeTransport(context=ssl_context)
-        return ServerProxy(url, transport=transport)
+        transport = xmlrpc_client.SafeTransport(context=ssl_context)
+        return xmlrpc_client.ServerProxy(url, transport=transport)
 
-    return ServerProxy(url)
+    return xmlrpc_client.ServerProxy(url)
 
 
 @register_client("torrent")

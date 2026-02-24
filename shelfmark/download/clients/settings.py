@@ -12,7 +12,7 @@ from shelfmark.core.settings_registry import (
     SelectField,
     TagListField,
 )
-from shelfmark.core.utils import normalize_http_url
+from shelfmark.core.utils import normalize_http_url, get_hardened_xmlrpc_client
 from shelfmark.download.network import get_ssl_verify
 
 
@@ -254,7 +254,6 @@ def _test_rtorrent_connection(current_values: Optional[Dict[str, Any]] = None) -
     from shelfmark.core.config import config
     import ssl
     from urllib.parse import urlparse
-    from xmlrpc.client import SafeTransport, ServerProxy
 
     current_values = current_values or {}
 
@@ -270,6 +269,8 @@ def _test_rtorrent_connection(current_values: Optional[Dict[str, Any]] = None) -
         return {"success": False, "message": "rTorrent URL is invalid"}
 
     try:
+        xmlrpc_client = get_hardened_xmlrpc_client()
+
         # Add HTTP auth to URL if credentials provided
         if username and password:
             parsed = urlparse(url)
@@ -281,9 +282,12 @@ def _test_rtorrent_connection(current_values: Optional[Dict[str, Any]] = None) -
             ssl_context = ssl.create_default_context()
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
-            rpc = ServerProxy(rpc_url, transport=SafeTransport(context=ssl_context))
+            rpc = xmlrpc_client.ServerProxy(
+                rpc_url,
+                transport=xmlrpc_client.SafeTransport(context=ssl_context),
+            )
         else:
-            rpc = ServerProxy(rpc_url)
+            rpc = xmlrpc_client.ServerProxy(rpc_url)
 
         version = rpc.system.client_version()
         return {"success": True, "message": f"Connected to rTorrent {version}"}

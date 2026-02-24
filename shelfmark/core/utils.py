@@ -1,8 +1,11 @@
 """Shared utility functions for the Shelfmark."""
 
 import base64
+import importlib
 import os
 import re
+from threading import Lock
+from types import ModuleType
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
@@ -52,6 +55,28 @@ def normalize_http_url(
         normalized = normalized.rstrip("/")
 
     return normalized
+
+
+_xmlrpc_patch_lock = Lock()
+_xmlrpc_patch_applied = False
+
+
+def get_hardened_xmlrpc_client() -> ModuleType:
+    """Return ``xmlrpc.client`` after best-effort defusedxml monkey patching."""
+    global _xmlrpc_patch_applied
+    if not _xmlrpc_patch_applied:
+        with _xmlrpc_patch_lock:
+            if not _xmlrpc_patch_applied:
+                try:
+                    from defusedxml.xmlrpc import monkey_patch
+
+                    monkey_patch()
+                    _xmlrpc_patch_applied = True
+                except Exception:
+                    # Keep runtime behavior unchanged if defusedxml is unavailable.
+                    _xmlrpc_patch_applied = False
+
+    return importlib.import_module("xmlrpc.client")
 
 
 def normalize_base_path(value: Optional[str]) -> str:

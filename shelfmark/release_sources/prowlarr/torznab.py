@@ -8,7 +8,9 @@ isn't available via Prowlarr's JSON search endpoint.
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
-from xml.etree import ElementTree as ET
+
+from defusedxml import ElementTree as DefusedElementTree
+from defusedxml.common import DefusedXmlException
 
 
 def _local_name(tag: str) -> str:
@@ -67,8 +69,8 @@ def parse_torznab_xml(xml_text: str) -> List[Dict[str, Any]]:
         return []
 
     try:
-        root = ET.fromstring(xml_text)
-    except ET.ParseError:
+        root = DefusedElementTree.fromstring(xml_text)
+    except (DefusedElementTree.ParseError, DefusedXmlException):
         return []
 
     items = root.findall(".//item")
@@ -168,4 +170,3 @@ def parse_torznab_xml(xml_text: str) -> List[Dict[str, Any]]:
         })
 
     return results
-
