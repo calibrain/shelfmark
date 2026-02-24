@@ -590,6 +590,20 @@ def proxy_auth_middleware():
         logger.error(f"Proxy auth middleware error: {e}")
         return jsonify({"error": "Authentication error"}), 500
 
+@app.after_request
+def set_security_headers(response: Response) -> Response:
+    """Add baseline security headers to every response."""
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-ancestors 'none'",
+    )
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault("Cross-Origin-Embedder-Policy", "credentialless")
+    return response
+
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
