@@ -267,9 +267,7 @@ function getTitleMatchScore(title: string, titleCandidate: string): number {
 
   if (normalizedTitle.startsWith(titleCandidate)) {
     score += 6000;
-  }
-
-  if (normalizedTitle.includes(titleCandidate)) {
+  } else if (normalizedTitle.includes(titleCandidate)) {
     score += 3000;
   }
 
