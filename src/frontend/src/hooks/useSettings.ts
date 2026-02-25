@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { getSettings, updateSettings, executeSettingsAction } from '../services/api';
 import {
   SettingsTab,
@@ -12,11 +12,21 @@ import {
   setThemePreference,
   THEME_FIELD,
 } from '../utils/themePreference';
+import {
+  cloneSettingsValues,
+  mergeFetchedSettingsWithDirtyValues,
+  type SettingsValues,
+} from '../utils/settingsValues';
 
 type ValueBearingField = Exclude<
   SettingsField,
   { type: 'ActionButton' } | { type: 'HeadingField' } | { type: 'CustomComponentField' }
 >;
+
+interface FetchSettingsOptions {
+  silent?: boolean;
+  preserveDirtyValues?: boolean;
+}
 
 // Extract value from a field based on its type
 function getFieldValue(field: SettingsField): unknown {
@@ -88,11 +98,22 @@ export function useSettings(): UseSettingsReturn {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<string | null>(null);
-  const [values, setValues] = useState<Record<string, Record<string, unknown>>>({});
-  const [originalValues, setOriginalValues] = useState<Record<string, Record<string, unknown>>>({});
+  const [values, setValues] = useState<SettingsValues>({});
+  const [originalValues, setOriginalValues] = useState<SettingsValues>({});
   const [isSaving, setIsSaving] = useState(false);
+  const valuesRef = useRef<SettingsValues>({});
+  const originalValuesRef = useRef<SettingsValues>({});
 
-  const fetchSettings = useCallback(async (silent = false) => {
+  useEffect(() => {
+    valuesRef.current = values;
+  }, [values]);
+
+  useEffect(() => {
+    originalValuesRef.current = originalValues;
+  }, [originalValues]);
+
+  const fetchSettings = useCallback(async (options: FetchSettingsOptions = {}) => {
+    const { silent = false, preserveDirtyValues = false } = options;
     if (!silent) {
       setIsLoading(true);
     }
@@ -114,7 +135,7 @@ export function useSettings(): UseSettingsReturn {
       setGroups(response.groups || []);
 
       // Initialize values from fetched data
-      const initialValues: Record<string, Record<string, unknown>> = {};
+      const initialValues: SettingsValues = {};
       tabsWithTheme.forEach((tab) => {
         initialValues[tab.name] = {};
         getValueBearingFields(tab.fields).forEach((field) => {
@@ -127,8 +148,12 @@ export function useSettings(): UseSettingsReturn {
         });
       });
 
-      setValues(initialValues);
-      setOriginalValues(JSON.parse(JSON.stringify(initialValues)));
+      const nextValues = preserveDirtyValues
+        ? mergeFetchedSettingsWithDirtyValues(initialValues, valuesRef.current, originalValuesRef.current)
+        : initialValues;
+
+      setValues(nextValues);
+      setOriginalValues(cloneSettingsValues(initialValues));
 
       // Select first tab by default if none selected
       if (tabsWithTheme.length > 0) {
@@ -231,7 +256,7 @@ export function useSettings(): UseSettingsReturn {
         if (result.success) {
           // Refetch all settings silently to pick up any backend-triggered changes
           // (e.g., enabling a metadata provider auto-updates METADATA_PROVIDER)
-          await fetchSettings(true);
+          await fetchSettings({ silent: true });
         }
 
         return result;
@@ -259,7 +284,7 @@ export function useSettings(): UseSettingsReturn {
         // Re-fetch settings after successful action to pick up updated options
         // (e.g., BookLore "Test Connection" refreshes library/path lists)
         if (result.success) {
-          fetchSettings(true);
+          await fetchSettings({ silent: true, preserveDirtyValues: true });
         }
 
         return result;
@@ -287,6 +312,6 @@ export function useSettings(): UseSettingsReturn {
     saveTab,
     executeAction,
     isSaving,
-    refetch: fetchSettings,
+    refetch: () => fetchSettings(),
   };
 }
