@@ -31,6 +31,7 @@ import {
   releaseLanguageMatchesFilter,
   buildLanguageNormalizer,
 } from '../utils/languageFilters';
+import { getReleaseFormats } from '../utils/releaseFormats';
 
 // Module-level cache for release search results
 // Key format: `${provider}:${provider_id}:${source}:${contentType}`
@@ -1247,16 +1248,16 @@ export const ReleaseModal = ({
   const availableFormats = useMemo(() => {
     const releases = releasesBySource[activeTab]?.releases || [];
     const formats = new Set<string>();
-    const effectiveLower = effectiveFormats.map((f) => f.toLowerCase());
+    const effectiveLower = new Set(effectiveFormats.map((f) => f.toLowerCase()));
 
     releases.forEach((r) => {
-      if (r.format) {
-        const fmt = r.format.toLowerCase();
+      const releaseFormats = getReleaseFormats(r);
+      releaseFormats.forEach((fmt) => {
         // Only include formats that are in the supported list
-        if (effectiveLower.includes(fmt)) {
+        if (effectiveLower.has(fmt)) {
           formats.add(fmt);
         }
-      }
+      });
     });
     return Array.from(formats).sort();
   }, [releasesBySource, activeTab, effectiveFormats]);
@@ -1390,22 +1391,23 @@ export const ReleaseModal = ({
   // Filter and sort releases based on settings and user selection
   const filteredReleases = useMemo(() => {
     const releases = releasesBySource[activeTab]?.releases || [];
-    const effectiveLower = effectiveFormats.map((f) => f.toLowerCase());
+    const effectiveLower = new Set(effectiveFormats.map((f) => f.toLowerCase()));
     const supportsIndexerFilter = columnConfig.supported_filters?.includes('indexer');
+    const selectedFormat = formatFilter.toLowerCase();
 
     // First, filter
     let filtered = releases.filter((r) => {
       // Format filtering
-      const fmt = r.format?.toLowerCase();
+      const releaseFormats = getReleaseFormats(r);
 
       if (formatFilter) {
-        // User selected a specific format - must match exactly
-        if (!fmt || fmt !== formatFilter.toLowerCase()) return false;
-      } else if (fmt) {
-        // No specific filter - show only supported formats
-        if (!effectiveLower.includes(fmt)) return false;
+        // User selected a specific format - match if any format on the release matches
+        if (!releaseFormats.includes(selectedFormat)) return false;
+      } else if (releaseFormats.length > 0) {
+        // No specific filter - show only releases that include at least one supported format
+        if (!releaseFormats.some((fmt) => effectiveLower.has(fmt))) return false;
       }
-      // Releases with no format pass through when no filter is set (show all)
+      // Releases with no format info pass through when no filter is set (show all)
 
       // Language filtering - use r.language when provided by enriched indexers
       // Releases with no language (null/undefined) always pass
