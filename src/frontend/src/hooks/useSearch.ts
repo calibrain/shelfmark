@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Book, AppConfig, AdvancedFilterState, ContentType } from '../types';
 import { searchBooks, searchMetadata, AuthenticationError } from '../services/api';
@@ -78,6 +78,24 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
     sort: string;
     fieldValues: SearchFieldValues;
   } | null>(null);
+  const previousContentTypeRef = useRef<ContentType>(contentType);
+
+  // Switching media type starts a new search session.
+  useEffect(() => {
+    if (previousContentTypeRef.current === contentType) {
+      return;
+    }
+
+    previousContentTypeRef.current = contentType;
+    setBooks([]);
+    setLastSearchQuery('');
+    setSearchFieldValues({});
+    setHasMore(false);
+    setTotalFound(0);
+    setCurrentPage(1);
+    lastSearchParamsRef.current = null;
+    onSearchReset?.();
+  }, [contentType, onSearchReset]);
 
   const updateAdvancedFilters = useCallback((updates: Partial<AdvancedFilterState>) => {
     setAdvancedFilters(prev => ({ ...prev, ...updates }));
