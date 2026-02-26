@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 from typing import Any
 from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 
@@ -122,6 +123,71 @@ class TestProxyAuthMiddleware:
                     db_user_id = main_module.session.get("db_user_id")
                     db_user = main_module.user_db.get_user(user_id=db_user_id)
                     assert db_user["username"] == "proxyuser2"
+
+    def test_reprovisions_when_session_db_user_is_stale(self, main_module):
+        stale_user_id = 99999999
+        username = f"proxy_stale_{uuid4().hex[:8]}"
+        assert main_module.user_db.get_user(user_id=stale_user_id) is None
+
+        with patch.object(main_module, "get_auth_mode", return_value="proxy"):
+            with patch(
+                "shelfmark.core.settings_registry.load_config_file",
+                return_value={
+                    "PROXY_AUTH_USER_HEADER": "X-Auth-User",
+                },
+            ):
+                with main_module.app.test_request_context(
+                    "/api/search",
+                    headers={"X-Auth-User": username},
+                ):
+                    main_module.session["user_id"] = username
+                    main_module.session["db_user_id"] = stale_user_id
+
+                    result = main_module.proxy_auth_middleware()
+                    assert result is None
+                    assert main_module.session.get("user_id") == username
+
+                    db_user_id = main_module.session.get("db_user_id")
+                    assert db_user_id is not None
+                    assert db_user_id != stale_user_id
+
+                    db_user = main_module.user_db.get_user(user_id=db_user_id)
+                    assert db_user is not None
+                    assert db_user["username"] == username
+
+    def test_reprovisions_when_session_db_user_points_to_other_username(self, main_module):
+        username = f"proxy_target_{uuid4().hex[:8]}"
+        other_user = main_module.user_db.create_user(
+            username=f"proxy_other_{uuid4().hex[:8]}",
+            role="user",
+            auth_source="proxy",
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="proxy"):
+            with patch(
+                "shelfmark.core.settings_registry.load_config_file",
+                return_value={
+                    "PROXY_AUTH_USER_HEADER": "X-Auth-User",
+                },
+            ):
+                with main_module.app.test_request_context(
+                    "/api/search",
+                    headers={"X-Auth-User": username},
+                ):
+                    main_module.session["user_id"] = username
+                    main_module.session["db_user_id"] = other_user["id"]
+
+                    result = main_module.proxy_auth_middleware()
+                    assert result is None
+                    assert main_module.session.get("user_id") == username
+
+                    db_user_id = main_module.session.get("db_user_id")
+                    assert db_user_id is not None
+                    assert db_user_id != other_user["id"]
+
+                    db_user = main_module.user_db.get_user(user_id=db_user_id)
+                    assert db_user is not None
+                    assert db_user["username"] == username
 
     def test_returns_401_when_header_missing_on_protected_path(self, main_module):
         with patch.object(main_module, "get_auth_mode", return_value="proxy"):

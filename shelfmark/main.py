@@ -567,20 +567,39 @@ def proxy_auth_middleware():
         session['is_admin'] = is_admin
 
         # Provision proxy-authenticated users into users.db for multi-user features.
-        if user_db is not None and 'db_user_id' not in session:
-            role = "admin" if is_admin else "user"
-            db_user, _ = upsert_external_user(
-                user_db,
-                auth_source="proxy",
-                username=username,
-                role=role,
-                collision_strategy="takeover",
-                context="proxy_request",
-            )
-            if db_user is None:
-                raise RuntimeError("Unexpected proxy user sync result: no user returned")
+        # Re-provision when db_user_id is missing/stale/mismatched to avoid broken
+        # sessions after DB resets or auth-mode transitions.
+        if user_db is not None:
+            raw_db_user_id = session.get('db_user_id')
+            session_db_user = None
 
-            session['db_user_id'] = db_user["id"]
+            if raw_db_user_id is not None:
+                try:
+                    session_db_user = user_db.get_user(user_id=int(raw_db_user_id))
+                except (TypeError, ValueError):
+                    session_db_user = None
+
+            session_db_username = str(session_db_user.get("username") or "").strip() if session_db_user else ""
+            needs_db_user_sync = (
+                raw_db_user_id is None
+                or session_db_user is None
+                or session_db_username != username
+            )
+
+            if needs_db_user_sync:
+                role = "admin" if is_admin else "user"
+                db_user, _ = upsert_external_user(
+                    user_db,
+                    auth_source="proxy",
+                    username=username,
+                    role=role,
+                    collision_strategy="takeover",
+                    context="proxy_request",
+                )
+                if db_user is None:
+                    raise RuntimeError("Unexpected proxy user sync result: no user returned")
+
+                session['db_user_id'] = db_user["id"]
 
         session.permanent = False
 
