@@ -33,129 +33,8 @@ import {
 } from '../utils/languageFilters';
 import { getReleaseFormats } from '../utils/releaseFormats';
 import { getBookTitleCandidates, getBookAuthorCandidates, sortReleasesByBookMatch } from '../utils/releaseScoring';
-
-// Module-level cache for release search results
-// Key format: `${provider}:${provider_id}:${source}:${contentType}`
-// This persists across modal open/close cycles
-const releaseCache = new Map<string, ReleasesResponse>();
-
-function getCacheKey(provider: string, providerId: string, source: string, contentType: string): string {
-  return `${provider}:${providerId}:${source}:${contentType}`;
-}
-
-// Default cache TTL (5 minutes) - sources can override via column_config.cache_ttl_seconds
-const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
-const cacheTimestamps = new Map<string, number>();
-
-function getCachedReleases(provider: string, providerId: string, source: string, contentType: string): ReleasesResponse | null {
-  const key = getCacheKey(provider, providerId, source, contentType);
-  const timestamp = cacheTimestamps.get(key);
-  const cached = releaseCache.get(key);
-
-  if (!timestamp || !cached) {
-    return null;
-  }
-
-  // Use source-specific TTL if available, otherwise default
-  const ttlSeconds = cached.column_config?.cache_ttl_seconds;
-  const ttlMs = ttlSeconds ? ttlSeconds * 1000 : DEFAULT_CACHE_TTL_MS;
-
-  // Check if cache entry is not expired
-  if (Date.now() - timestamp < ttlMs) {
-    return cached;
-  }
-
-  // Clear expired entry
-  releaseCache.delete(key);
-  cacheTimestamps.delete(key);
-
-  return null;
-}
-
-function setCachedReleases(provider: string, providerId: string, source: string, contentType: string, data: ReleasesResponse): void {
-  const key = getCacheKey(provider, providerId, source, contentType);
-  releaseCache.set(key, data);
-  cacheTimestamps.set(key, Date.now());
-}
-
-// LocalStorage helpers for persisting sort preferences per source
-const SORT_STORAGE_PREFIX = 'cwa-bd-release-sort-';
-
-interface SortState {
-  key: string;
-  direction: 'asc' | 'desc';
-}
-
-function getSavedSort(sourceName: string): SortState | null {
-  try {
-    const saved = localStorage.getItem(`${SORT_STORAGE_PREFIX}${sourceName}`);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.key && parsed.direction) {
-        return parsed as SortState;
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function saveSort(sourceName: string, sortState: SortState): void {
-  try {
-    localStorage.setItem(`${SORT_STORAGE_PREFIX}${sourceName}`, JSON.stringify(sortState));
-  } catch {
-    // localStorage may be unavailable in private browsing
-  }
-}
-
-// Get nested value from an object using dot notation path
-function getNestedSortValue(obj: Record<string, unknown>, path: string): unknown {
-  return path.split('.').reduce<unknown>((current, key) => {
-    if (current && typeof current === 'object' && key in (current as Record<string, unknown>)) {
-      return (current as Record<string, unknown>)[key];
-    }
-    return undefined;
-  }, obj);
-}
-
-// Infer default sort direction from column render type
-function inferDefaultDirection(renderType: string): 'asc' | 'desc' {
-  // Numeric types sort descending by default (bigger is usually better)
-  if (renderType === 'size' || renderType === 'number' || renderType === 'peers') {
-    return 'desc';
-  }
-  // Text/badge types sort ascending (alphabetical)
-  return 'asc';
-}
-
-// Sort releases by a column
-function sortReleases(
-  releases: Release[],
-  sortKey: string,
-  direction: 'asc' | 'desc'
-): Release[] {
-  return [...releases].sort((a, b) => {
-    const aVal = getNestedSortValue(a as unknown as Record<string, unknown>, sortKey);
-    const bVal = getNestedSortValue(b as unknown as Record<string, unknown>, sortKey);
-
-    // Handle null/undefined - sort them to the end
-    if (aVal == null && bVal == null) return 0;
-    if (aVal == null) return 1;
-    if (bVal == null) return -1;
-
-    // Numeric comparison
-    if (typeof aVal === 'number' && typeof bVal === 'number') {
-      return direction === 'asc' ? aVal - bVal : bVal - aVal;
-    }
-
-    // String comparison (case-insensitive)
-    const aStr = String(aVal).toLowerCase();
-    const bStr = String(bVal).toLowerCase();
-    const cmp = aStr.localeCompare(bStr);
-    return direction === 'asc' ? cmp : -cmp;
-  });
-}
+import { getCachedReleases, setCachedReleases, invalidateCachedReleases } from '../utils/releaseCache';
+import { SortState, getSavedSort, saveSort, clearSort, inferDefaultDirection, sortReleases } from '../utils/releaseSort';
 
 
 // Default column configuration (fallback when backend doesn't provide one)
@@ -1201,12 +1080,7 @@ export const ReleaseModal = ({
         delete next[activeTab];
         return next;
       });
-      // Clear from localStorage
-      try {
-        localStorage.removeItem(`${SORT_STORAGE_PREFIX}${activeTab}`);
-      } catch {
-        // Ignore localStorage errors
-      }
+      clearSort(activeTab);
       return;
     }
 
@@ -1823,9 +1697,7 @@ export const ReleaseModal = ({
                                   const bookId = book.provider_id;
 
                                   // Clear cache and state
-                                  const key = getCacheKey(provider, bookId, activeTab, contentType);
-                                  releaseCache.delete(key);
-                                  cacheTimestamps.delete(key);
+                                  invalidateCachedReleases(provider, bookId, activeTab, contentType);
                                   setExpandedBySource((prev) => {
                                     const next = { ...prev };
                                     delete next[activeTab];
@@ -1889,9 +1761,7 @@ export const ReleaseModal = ({
                     const bookId = book.provider_id;
 
                     // Clear cache + clear visible results so user gets feedback.
-                    const key = getCacheKey(provider, bookId, activeTab, contentType);
-                    releaseCache.delete(key);
-                    cacheTimestamps.delete(key);
+                    invalidateCachedReleases(provider, bookId, activeTab, contentType);
                     setExpandedBySource((prev) => {
                       const next = { ...prev };
                       delete next[activeTab];
