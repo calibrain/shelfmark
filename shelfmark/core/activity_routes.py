@@ -24,7 +24,11 @@ def _require_authenticated(resolve_auth_mode: Callable[[], str]):
     return None
 
 
-def _resolve_db_user_id(require_in_auth_mode: bool = True):
+def _resolve_db_user_id(
+    require_in_auth_mode: bool = True,
+    *,
+    user_db: UserDB | None = None,
+):
     raw_db_user_id = session.get("db_user_id")
     if raw_db_user_id is None:
         if not require_in_auth_mode:
@@ -39,8 +43,10 @@ def _resolve_db_user_id(require_in_auth_mode: bool = True):
             403,
         )
     try:
-        return int(raw_db_user_id), None
+        parsed_db_user_id = int(raw_db_user_id)
     except (TypeError, ValueError):
+        if not require_in_auth_mode:
+            return None, None
         return None, (
             jsonify(
                 {
@@ -50,6 +56,40 @@ def _resolve_db_user_id(require_in_auth_mode: bool = True):
             ),
             403,
         )
+
+    if parsed_db_user_id < 1:
+        if not require_in_auth_mode:
+            return None, None
+        return None, (
+            jsonify(
+                {
+                    "error": "User identity unavailable for activity workflow",
+                    "code": "user_identity_unavailable",
+                }
+            ),
+            403,
+        )
+
+    if user_db is not None:
+        try:
+            db_user = user_db.get_user(user_id=parsed_db_user_id)
+        except Exception as exc:
+            logger.warning("Failed to validate activity db identity %s: %s", parsed_db_user_id, exc)
+            db_user = None
+        if db_user is None:
+            if not require_in_auth_mode:
+                return None, None
+            return None, (
+                jsonify(
+                    {
+                        "error": "User identity unavailable for activity workflow",
+                        "code": "user_identity_unavailable",
+                    }
+                ),
+                403,
+            )
+
+    return parsed_db_user_id, None
 
 
 def _ensure_no_auth_activity_user_id(user_db: UserDB) -> int | None:
@@ -83,14 +123,23 @@ def _resolve_activity_actor_user_id(
     resolve_auth_mode: Callable[[], str],
 ) -> tuple[int | None, Any | None]:
     """Resolve acting user identity for activity mutations."""
-    db_user_id, db_gate = _resolve_db_user_id()
-    if db_user_id is not None:
-        return db_user_id, None
-
     if resolve_auth_mode() == "none":
         no_auth_user_id = _ensure_no_auth_activity_user_id(user_db)
         if no_auth_user_id is not None:
             return no_auth_user_id, None
+        return None, (
+            jsonify(
+                {
+                    "error": "User identity unavailable for activity workflow",
+                    "code": "user_identity_unavailable",
+                }
+            ),
+            403,
+        )
+
+    db_user_id, db_gate = _resolve_db_user_id(user_db=user_db)
+    if db_user_id is not None:
+        return db_user_id, None
 
     return None, db_gate
 
@@ -360,9 +409,13 @@ def register_activity_routes(
                 403,
             )
 
-        viewer_db_user_id, _ = _resolve_db_user_id(require_in_auth_mode=False)
-        if viewer_db_user_id is None and resolve_auth_mode() == "none":
+        if resolve_auth_mode() == "none":
             viewer_db_user_id = _ensure_no_auth_activity_user_id(user_db)
+        else:
+            viewer_db_user_id, _ = _resolve_db_user_id(
+                require_in_auth_mode=False,
+                user_db=user_db,
+            )
         scoped_user_id = None if is_admin else db_user_id
         status = queue_status(user_id=scoped_user_id)
         updated_requests = sync_request_delivery_states(

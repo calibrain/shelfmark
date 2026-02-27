@@ -243,6 +243,65 @@ class TestActivityRoutes:
         assert history_one.status_code == 200
         assert any(row["item_key"] == item_key for row in history_one.json)
 
+    def test_no_auth_dismiss_many_ignores_stale_session_db_identity(self, main_module, client):
+        stale_db_user_id = 999999999
+        _set_session(client, user_id="stale-session-user", db_user_id=stale_db_user_id, is_admin=False)
+
+        item_key = f"download:no-auth-stale-{uuid.uuid4().hex[:8]}"
+        with patch.object(main_module, "get_auth_mode", return_value="none"):
+            response = client.post(
+                "/api/activity/dismiss-many",
+                json={"items": [{"item_type": "download", "item_key": item_key}]},
+            )
+
+        assert response.status_code == 200
+        assert response.json["status"] == "dismissed"
+
+        no_auth_user = main_module.user_db.get_user(username="__shelfmark_noauth_activity__")
+        assert no_auth_user is not None
+        dismissals = main_module.activity_service.get_dismissal_set(no_auth_user["id"])
+        assert {"item_type": "download", "item_key": item_key} in dismissals
+
+    def test_no_auth_dismiss_many_uses_shared_identity_even_with_valid_session_db_user(
+        self,
+        main_module,
+        client,
+    ):
+        existing_user = _create_user(main_module, prefix="legacy-reader")
+        _set_session(
+            client,
+            user_id=existing_user["username"],
+            db_user_id=existing_user["id"],
+            is_admin=False,
+        )
+
+        item_key = f"download:no-auth-valid-{uuid.uuid4().hex[:8]}"
+        other_client = main_module.app.test_client()
+
+        with patch.object(main_module, "get_auth_mode", return_value="none"):
+            dismiss_response = client.post(
+                "/api/activity/dismiss-many",
+                json={"items": [{"item_type": "download", "item_key": item_key}]},
+            )
+            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+                snapshot_response = other_client.get("/api/activity/snapshot")
+
+        assert dismiss_response.status_code == 200
+        assert snapshot_response.status_code == 200
+        assert {"item_type": "download", "item_key": item_key} in snapshot_response.json["dismissed"]
+
+    def test_dismiss_many_with_stale_db_identity_returns_identity_unavailable(self, main_module, client):
+        _set_session(client, user_id="stale-session-user", db_user_id=999999999, is_admin=False)
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            response = client.post(
+                "/api/activity/dismiss-many",
+                json={"items": [{"item_type": "download", "item_key": "download:test-stale"}]},
+            )
+
+        assert response.status_code == 403
+        assert response.json["code"] == "user_identity_unavailable"
+
     def test_queue_clear_does_not_set_request_delivery_state_to_cleared(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)

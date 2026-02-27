@@ -76,6 +76,13 @@ def _normalize_urls(value: Any) -> list[str]:
         url = str(raw_url or "").strip()
         if not url:
             continue
+        # Strip invisible/non-ASCII characters that can sneak in via copy-paste
+        # (zero-width spaces, smart quotes, non-breaking spaces, etc.).
+        # These pass Apprise URL validation but cause UnicodeEncodeError when
+        # requests tries to latin-1 encode credentials for Basic Auth headers.
+        url = url.encode("ascii", errors="ignore").decode("ascii").strip()
+        if not url:
+            continue
         if url in seen:
             continue
         seen.add(url)
@@ -98,7 +105,7 @@ def _extract_url_schemes(urls: Iterable[str]) -> list[str]:
 class _AppriseLogCapture(logging.Handler):
     def __init__(self, *, thread_id: int):
         super().__init__(level=logging.INFO)
-        self.records: list[tuple[int, str, str]] = []
+        self.records: list[tuple[int, str, str, str]] = []
         self._thread_id = thread_id
 
     def emit(self, record: logging.LogRecord) -> None:
@@ -107,11 +114,19 @@ class _AppriseLogCapture(logging.Handler):
 
         message = record.getMessage()
         if message:
-            self.records.append((record.levelno, record.name, str(message)))
+            exception_summary = ""
+            if record.exc_info and record.exc_info[0]:
+                exc_type = getattr(record.exc_info[0], "__name__", "Exception")
+                exc = record.exc_info[1]
+                exception_summary = f"{exc_type}: {exc}"
+            elif record.exc_text:
+                exception_summary = str(record.exc_text).strip()
+
+            self.records.append((record.levelno, record.name, str(message), exception_summary))
 
 
 @contextmanager
-def _capture_apprise_logs(*, min_level: int = logging.INFO) -> Iterator[list[tuple[int, str, str]]]:
+def _capture_apprise_logs(*, min_level: int = logging.INFO) -> Iterator[list[tuple[int, str, str, str]]]:
     apprise_logger = logging.getLogger(_APPRISE_LOGGER_NAME)
     previous_level = apprise_logger.level
     handler = _AppriseLogCapture(thread_id=threading.get_ident())
@@ -127,22 +142,25 @@ def _capture_apprise_logs(*, min_level: int = logging.INFO) -> Iterator[list[tup
         apprise_logger.setLevel(previous_level)
 
 
-def _log_apprise_records(records: Iterable[tuple[int, str, str]]) -> None:
-    seen: set[tuple[int, str, str]] = set()
-    for level, source, raw_message in records:
+def _log_apprise_records(records: Iterable[tuple[int, str, str, str]]) -> None:
+    seen: set[tuple[int, str, str, str]] = set()
+    for level, source, raw_message, raw_exception_summary in records:
         message = str(raw_message or "").strip()
         source_name = str(source or "").strip() or _APPRISE_LOGGER_NAME
-        key = (int(level), source_name, message)
+        exception_summary = str(raw_exception_summary or "").strip()
+        key = (int(level), source_name, message, exception_summary)
         if not message or key in seen:
             continue
         seen.add(key)
 
+        full_message = message if not exception_summary else f"{message} ({exception_summary})"
+
         if level >= logging.ERROR:
-            logger.error("Apprise source [%s]: %s", source_name, message)
+            logger.error("Apprise source [%s]: %s", source_name, full_message)
         elif level >= logging.WARNING:
-            logger.warning("Apprise source [%s]: %s", source_name, message)
+            logger.warning("Apprise source [%s]: %s", source_name, full_message)
         else:
-            logger.info("Apprise source [%s]: %s", source_name, message)
+            logger.info("Apprise source [%s]: %s", source_name, full_message)
 
 
 def _normalize_routes(value: Any) -> list[dict[str, str]]:
