@@ -1,5 +1,7 @@
 """Tests for core notification rendering and dispatch helpers."""
 
+import logging
+
 from shelfmark.core import notifications as notifications_module
 
 
@@ -24,6 +26,8 @@ class _FakeAppriseClient:
         self.add_calls = []
         self.notify_calls = []
         self.notify_result = True
+        self.notify_warning_messages: list[str] = []
+        self.notify_info_messages: list[str] = []
 
     def add(self, url):
         self.add_calls.append(url)
@@ -31,6 +35,10 @@ class _FakeAppriseClient:
 
     def notify(self, **kwargs):
         self.notify_calls.append(kwargs)
+        for message in self.notify_info_messages:
+            logging.getLogger("apprise.plugins.pushover").info(message)
+        for message in self.notify_warning_messages:
+            logging.getLogger("apprise.plugins.pushover").warning(message)
         return self.notify_result
 
 
@@ -183,6 +191,36 @@ def test_dispatch_to_apprise_uses_shelfmark_asset_defaults(monkeypatch):
     assert "logo.png" in fake_apprise.asset_kwargs["image_url_logo"]
 
 
+def test_dispatch_to_apprise_logs_captured_apprise_info_messages(monkeypatch):
+    fake_apprise = _FakeAppriseModule()
+    fake_apprise.client.notify_info_messages = [
+        "Sent Pushover notification to ALL_DEVICES."
+    ]
+    monkeypatch.setattr(notifications_module, "apprise", fake_apprise)
+
+    info_messages: list[str] = []
+
+    def _fake_info(message, *args, **kwargs):
+        _ = kwargs
+        info_messages.append(message % args if args else str(message))
+
+    monkeypatch.setattr(notifications_module.logger, "info", _fake_info)
+
+    result = notifications_module._dispatch_to_apprise(
+        ["ntfys://ntfy.sh/shelfmark"],
+        title="Test",
+        body="Body",
+        notify_type=_FakeNotifyType.INFO,
+    )
+
+    assert result["success"] is True
+    assert any(
+        "Apprise source [apprise.plugins.pushover]: Sent Pushover notification to ALL_DEVICES."
+        in message
+        for message in info_messages
+    )
+
+
 def test_dispatch_to_apprise_notify_false_returns_generic_failure_and_logs(monkeypatch):
     fake_apprise = _FakeAppriseModule()
     fake_apprise.client.notify_result = False
@@ -206,6 +244,37 @@ def test_dispatch_to_apprise_notify_false_returns_generic_failure_and_logs(monke
     assert result["success"] is False
     assert result["message"] == "Notification delivery failed"
     assert any("scheme(s): pover" in message for message in warning_messages)
+
+
+def test_dispatch_to_apprise_logs_captured_apprise_warning_messages(monkeypatch):
+    fake_apprise = _FakeAppriseModule()
+    fake_apprise.client.notify_result = False
+    fake_apprise.client.notify_warning_messages = [
+        "Failed to send Pushover notification to ALL_DEVICES: Unauthorized - Invalid Token., error=401."
+    ]
+    monkeypatch.setattr(notifications_module, "apprise", fake_apprise)
+
+    warning_messages: list[str] = []
+
+    def _fake_warning(message, *args, **kwargs):
+        _ = kwargs
+        warning_messages.append(message % args if args else str(message))
+
+    monkeypatch.setattr(notifications_module.logger, "warning", _fake_warning)
+
+    result = notifications_module._dispatch_to_apprise(
+        ["pover://user_key@app_token"],
+        title="Test",
+        body="Body",
+        notify_type=_FakeNotifyType.INFO,
+    )
+
+    assert result["success"] is False
+    assert any(
+        "Apprise source [apprise.plugins.pushover]: Failed to send Pushover notification"
+        in msg
+        for msg in warning_messages
+    )
 
 
 def test_resolve_admin_routes_returns_empty_when_no_routes(monkeypatch):

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 from urllib.parse import urlsplit
 
 try:
@@ -26,6 +29,7 @@ _APPRISE_APP_DESC = "Shelfmark notifications"
 _APPRISE_LOGO_URL = (
     "https://raw.githubusercontent.com/calibrain/shelfmark/main/src/frontend/public/logo.png"
 )
+_APPRISE_LOGGER_NAME = "apprise"
 
 
 class NotificationEvent(str, Enum):
@@ -89,6 +93,56 @@ def _extract_url_schemes(urls: Iterable[str]) -> list[str]:
         seen.add(scheme)
         schemes.append(scheme)
     return schemes
+
+
+class _AppriseLogCapture(logging.Handler):
+    def __init__(self, *, thread_id: int):
+        super().__init__(level=logging.INFO)
+        self.records: list[tuple[int, str, str]] = []
+        self._thread_id = thread_id
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.thread != self._thread_id:
+            return
+
+        message = record.getMessage()
+        if message:
+            self.records.append((record.levelno, record.name, str(message)))
+
+
+@contextmanager
+def _capture_apprise_logs(*, min_level: int = logging.INFO) -> Iterator[list[tuple[int, str, str]]]:
+    apprise_logger = logging.getLogger(_APPRISE_LOGGER_NAME)
+    previous_level = apprise_logger.level
+    handler = _AppriseLogCapture(thread_id=threading.get_ident())
+    apprise_logger.addHandler(handler)
+
+    if previous_level == logging.NOTSET or previous_level > min_level:
+        apprise_logger.setLevel(min_level)
+
+    try:
+        yield handler.records
+    finally:
+        apprise_logger.removeHandler(handler)
+        apprise_logger.setLevel(previous_level)
+
+
+def _log_apprise_records(records: Iterable[tuple[int, str, str]]) -> None:
+    seen: set[tuple[int, str, str]] = set()
+    for level, source, raw_message in records:
+        message = str(raw_message or "").strip()
+        source_name = str(source or "").strip() or _APPRISE_LOGGER_NAME
+        key = (int(level), source_name, message)
+        if not message or key in seen:
+            continue
+        seen.add(key)
+
+        if level >= logging.ERROR:
+            logger.error("Apprise source [%s]: %s", source_name, message)
+        elif level >= logging.WARNING:
+            logger.warning("Apprise source [%s]: %s", source_name, message)
+        else:
+            logger.info("Apprise source [%s]: %s", source_name, message)
 
 
 def _normalize_routes(value: Any) -> list[dict[str, str]]:
@@ -251,45 +305,52 @@ def _dispatch_to_apprise(
     apobj = _create_apprise_client()
     if apobj is None:
         return {"success": False, "message": "Apprise is not installed"}
-    valid_urls = 0
-    invalid_urls = 0
-    for url in normalized_urls:
-        scheme = urlsplit(url).scheme or "unknown"
-        try:
-            added = bool(apobj.add(url))
-        except Exception as exc:
+    with _capture_apprise_logs(min_level=logging.INFO) as apprise_records:
+        valid_urls = 0
+        invalid_urls = 0
+        for url in normalized_urls:
+            scheme = urlsplit(url).scheme or "unknown"
+            try:
+                added = bool(apobj.add(url))
+            except Exception as exc:
+                logger.warning(
+                    "Failed to register notification route URL for scheme '%s': %s",
+                    scheme,
+                    exc,
+                )
+                added = False
+            if added:
+                valid_urls += 1
+            else:
+                invalid_urls += 1
+                logger.warning("Apprise rejected notification route URL for scheme '%s'", scheme)
+
+        if valid_urls == 0:
+            _log_apprise_records(apprise_records)
+            scheme_summary = ", ".join(url_schemes) if url_schemes else "unknown"
             logger.warning(
-                "Failed to register notification route URL for scheme '%s': %s",
-                scheme,
-                exc,
+                "No valid Apprise notification routes after registration for scheme(s): %s",
+                scheme_summary,
             )
-            added = False
-        if added:
-            valid_urls += 1
-        else:
-            invalid_urls += 1
-            logger.warning("Apprise rejected notification route URL for scheme '%s'", scheme)
+            return {
+                "success": False,
+                "message": "No valid notification URLs configured",
+            }
 
-    if valid_urls == 0:
-        scheme_summary = ", ".join(url_schemes) if url_schemes else "unknown"
-        logger.warning("No valid Apprise notification routes after registration for scheme(s): %s", scheme_summary)
-        return {
-            "success": False,
-            "message": "No valid notification URLs configured",
-        }
-
-    try:
-        delivered = bool(apobj.notify(title=title, body=body, notify_type=notify_type))
-    except Exception as exc:
-        scheme_summary = ", ".join(url_schemes) if url_schemes else "unknown"
-        logger.warning(
-            "Apprise notify raised %s for scheme(s): %s",
-            type(exc).__name__,
-            scheme_summary,
-        )
-        return {"success": False, "message": f"Notification send failed: {type(exc).__name__}: {exc}"}
+        try:
+            delivered = bool(apobj.notify(title=title, body=body, notify_type=notify_type))
+        except Exception as exc:
+            _log_apprise_records(apprise_records)
+            scheme_summary = ", ".join(url_schemes) if url_schemes else "unknown"
+            logger.warning(
+                "Apprise notify raised %s for scheme(s): %s",
+                type(exc).__name__,
+                scheme_summary,
+            )
+            return {"success": False, "message": f"Notification send failed: {type(exc).__name__}: {exc}"}
 
     if not delivered:
+        _log_apprise_records(apprise_records)
         scheme_summary = ", ".join(url_schemes) if url_schemes else "unknown"
         logger.warning(
             "Apprise notify returned False for scheme(s): %s (valid_urls=%s invalid_urls=%s)",
@@ -298,6 +359,8 @@ def _dispatch_to_apprise(
             invalid_urls,
         )
         return {"success": False, "message": "Notification delivery failed"}
+
+    _log_apprise_records(apprise_records)
 
     message = f"Notification sent to {valid_urls} URL(s)"
     if invalid_urls:
