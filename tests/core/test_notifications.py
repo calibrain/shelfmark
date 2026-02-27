@@ -23,6 +23,7 @@ class _FakeAppriseClient:
     def __init__(self):
         self.add_calls = []
         self.notify_calls = []
+        self.notify_result = True
 
     def add(self, url):
         self.add_calls.append(url)
@@ -30,7 +31,7 @@ class _FakeAppriseClient:
 
     def notify(self, **kwargs):
         self.notify_calls.append(kwargs)
-        return True
+        return self.notify_result
 
 
 class _FakeAppriseModule:
@@ -180,6 +181,31 @@ def test_dispatch_to_apprise_uses_shelfmark_asset_defaults(monkeypatch):
     assert fake_apprise.asset_kwargs is not None
     assert fake_apprise.asset_kwargs["app_id"] == "Shelfmark"
     assert "logo.png" in fake_apprise.asset_kwargs["image_url_logo"]
+
+
+def test_dispatch_to_apprise_notify_false_returns_generic_failure_and_logs(monkeypatch):
+    fake_apprise = _FakeAppriseModule()
+    fake_apprise.client.notify_result = False
+    monkeypatch.setattr(notifications_module, "apprise", fake_apprise)
+
+    warning_messages: list[str] = []
+
+    def _fake_warning(message, *args, **kwargs):
+        _ = kwargs
+        warning_messages.append(message % args if args else str(message))
+
+    monkeypatch.setattr(notifications_module.logger, "warning", _fake_warning)
+
+    result = notifications_module._dispatch_to_apprise(
+        ["pover://user_key@app_token"],
+        title="Test",
+        body="Body",
+        notify_type=_FakeNotifyType.INFO,
+    )
+
+    assert result["success"] is False
+    assert result["message"] == "Notification delivery failed"
+    assert any("scheme(s): pover" in message for message in warning_messages)
 
 
 def test_resolve_admin_routes_returns_empty_when_no_routes(monkeypatch):

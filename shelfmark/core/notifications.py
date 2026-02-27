@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Iterable
+from urllib.parse import urlsplit
 
 try:
     import apprise
@@ -76,6 +77,18 @@ def _normalize_urls(value: Any) -> list[str]:
         seen.add(url)
         normalized.append(url)
     return normalized
+
+
+def _extract_url_schemes(urls: Iterable[str]) -> list[str]:
+    schemes: list[str] = []
+    seen: set[str] = set()
+    for raw_url in urls:
+        scheme = urlsplit(str(raw_url or "")).scheme.lower()
+        if not scheme or scheme in seen:
+            continue
+        seen.add(scheme)
+        schemes.append(scheme)
+    return schemes
 
 
 def _normalize_routes(value: Any) -> list[dict[str, str]]:
@@ -228,6 +241,7 @@ def _dispatch_to_apprise(
     notify_type: Any,
 ) -> dict[str, Any]:
     normalized_urls = _normalize_urls(list(urls))
+    url_schemes = _extract_url_schemes(normalized_urls)
     if not normalized_urls:
         return {"success": False, "message": "No notification URLs configured"}
 
@@ -240,16 +254,25 @@ def _dispatch_to_apprise(
     valid_urls = 0
     invalid_urls = 0
     for url in normalized_urls:
+        scheme = urlsplit(url).scheme or "unknown"
         try:
             added = bool(apobj.add(url))
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "Failed to register notification route URL for scheme '%s': %s",
+                scheme,
+                exc,
+            )
             added = False
         if added:
             valid_urls += 1
         else:
             invalid_urls += 1
+            logger.warning("Apprise rejected notification route URL for scheme '%s'", scheme)
 
     if valid_urls == 0:
+        scheme_summary = ", ".join(url_schemes) if url_schemes else "unknown"
+        logger.warning("No valid Apprise notification routes after registration for scheme(s): %s", scheme_summary)
         return {
             "success": False,
             "message": "No valid notification URLs configured",
@@ -258,9 +281,22 @@ def _dispatch_to_apprise(
     try:
         delivered = bool(apobj.notify(title=title, body=body, notify_type=notify_type))
     except Exception as exc:
+        scheme_summary = ", ".join(url_schemes) if url_schemes else "unknown"
+        logger.warning(
+            "Apprise notify raised %s for scheme(s): %s",
+            type(exc).__name__,
+            scheme_summary,
+        )
         return {"success": False, "message": f"Notification send failed: {type(exc).__name__}: {exc}"}
 
     if not delivered:
+        scheme_summary = ", ".join(url_schemes) if url_schemes else "unknown"
+        logger.warning(
+            "Apprise notify returned False for scheme(s): %s (valid_urls=%s invalid_urls=%s)",
+            scheme_summary,
+            valid_urls,
+            invalid_urls,
+        )
         return {"success": False, "message": "Notification delivery failed"}
 
     message = f"Notification sent to {valid_urls} URL(s)"
