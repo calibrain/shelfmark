@@ -79,6 +79,18 @@ def migrate_security_settings(
                 logger.info("Removed deprecated USE_CWA_AUTH setting (AUTH_METHOD already exists)")
                 migrated_security = True
 
+        # Backfill AUTH_METHOD for configs that have builtin credentials but
+        # were never migrated from USE_CWA_AUTH (e.g. dev builds that predated
+        # the AUTH_METHOD field).
+        if "AUTH_METHOD" not in config:
+            if config.get("BUILTIN_USERNAME") and config.get("BUILTIN_PASSWORD_HASH"):
+                config["AUTH_METHOD"] = "builtin"
+                migrated_security = True
+                logger.info(
+                    "Backfilled AUTH_METHOD='builtin' from legacy "
+                    "BUILTIN_USERNAME/BUILTIN_PASSWORD_HASH credentials"
+                )
+
         if "RESTRICT_SETTINGS_TO_ADMIN" not in users_config:
             legacy_restrict = _pick_legacy_settings_restriction(config)
             if legacy_restrict is not None:
