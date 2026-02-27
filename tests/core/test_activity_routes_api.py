@@ -214,6 +214,35 @@ class TestActivityRoutes:
             to=f"user_{user['id']}",
         )
 
+    def test_no_auth_dismiss_many_and_history_use_shared_identity(self, main_module):
+        item_key = f"download:no-auth-{uuid.uuid4().hex[:10]}"
+
+        client_one = main_module.app.test_client()
+        client_two = main_module.app.test_client()
+
+        with patch.object(main_module, "get_auth_mode", return_value="none"):
+            dismiss_many_response = client_one.post(
+                "/api/activity/dismiss-many",
+                json={"items": [{"item_type": "download", "item_key": item_key}]},
+            )
+            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+                snapshot_one = client_one.get("/api/activity/snapshot")
+                snapshot_two = client_two.get("/api/activity/snapshot")
+            history_one = client_one.get("/api/activity/history?limit=10&offset=0")
+
+        assert dismiss_many_response.status_code == 200
+        assert dismiss_many_response.json["status"] == "dismissed"
+        assert dismiss_many_response.json["count"] == 1
+
+        assert snapshot_one.status_code == 200
+        assert {"item_type": "download", "item_key": item_key} in snapshot_one.json["dismissed"]
+
+        assert snapshot_two.status_code == 200
+        assert {"item_type": "download", "item_key": item_key} in snapshot_two.json["dismissed"]
+
+        assert history_one.status_code == 200
+        assert any(row["item_key"] == item_key for row in history_one.json)
+
     def test_queue_clear_does_not_set_request_delivery_state_to_cleared(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)

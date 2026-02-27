@@ -12,6 +12,8 @@ from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
 
+_NO_AUTH_ACTIVITY_USERNAME = "__shelfmark_noauth_activity__"
+
 
 def _require_authenticated(resolve_auth_mode: Callable[[], str]):
     auth_mode = resolve_auth_mode()
@@ -48,6 +50,49 @@ def _resolve_db_user_id(require_in_auth_mode: bool = True):
             ),
             403,
         )
+
+
+def _ensure_no_auth_activity_user_id(user_db: UserDB) -> int | None:
+    """Resolve a stable users.db identity for no-auth activity state."""
+    try:
+        user = user_db.get_user(username=_NO_AUTH_ACTIVITY_USERNAME)
+        if user is None:
+            try:
+                user_db.create_user(
+                    username=_NO_AUTH_ACTIVITY_USERNAME,
+                    display_name="No-auth Activity",
+                    role="admin",
+                )
+            except ValueError:
+                # Another request may have created it between lookup and insert.
+                pass
+            user = user_db.get_user(username=_NO_AUTH_ACTIVITY_USERNAME)
+
+        if user is None:
+            return None
+        user_id = int(user.get("id"))
+        return user_id if user_id > 0 else None
+    except Exception as exc:
+        logger.warning("Failed to resolve no-auth activity identity: %s", exc)
+        return None
+
+
+def _resolve_activity_actor_user_id(
+    *,
+    user_db: UserDB,
+    resolve_auth_mode: Callable[[], str],
+) -> tuple[int | None, Any | None]:
+    """Resolve acting user identity for activity mutations."""
+    db_user_id, db_gate = _resolve_db_user_id()
+    if db_user_id is not None:
+        return db_user_id, None
+
+    if resolve_auth_mode() == "none":
+        no_auth_user_id = _ensure_no_auth_activity_user_id(user_db)
+        if no_auth_user_id is not None:
+            return no_auth_user_id, None
+
+    return None, db_gate
 
 
 def _emit_activity_event(ws_manager: Any | None, *, room: str, payload: dict[str, Any]) -> None:
@@ -316,6 +361,8 @@ def register_activity_routes(
             )
 
         viewer_db_user_id, _ = _resolve_db_user_id(require_in_auth_mode=False)
+        if viewer_db_user_id is None and resolve_auth_mode() == "none":
+            viewer_db_user_id = _ensure_no_auth_activity_user_id(user_db)
         scoped_user_id = None if is_admin else db_user_id
         status = queue_status(user_id=scoped_user_id)
         updated_requests = sync_request_delivery_states(
@@ -371,7 +418,10 @@ def register_activity_routes(
         if auth_gate is not None:
             return auth_gate
 
-        db_user_id, db_gate = _resolve_db_user_id()
+        db_user_id, db_gate = _resolve_activity_actor_user_id(
+            user_db=user_db,
+            resolve_auth_mode=resolve_auth_mode,
+        )
         if db_gate is not None or db_user_id is None:
             return db_gate
 
@@ -437,7 +487,10 @@ def register_activity_routes(
         if auth_gate is not None:
             return auth_gate
 
-        db_user_id, db_gate = _resolve_db_user_id()
+        db_user_id, db_gate = _resolve_activity_actor_user_id(
+            user_db=user_db,
+            resolve_auth_mode=resolve_auth_mode,
+        )
         if db_gate is not None or db_user_id is None:
             return db_gate
 
@@ -517,7 +570,10 @@ def register_activity_routes(
         if auth_gate is not None:
             return auth_gate
 
-        db_user_id, db_gate = _resolve_db_user_id()
+        db_user_id, db_gate = _resolve_activity_actor_user_id(
+            user_db=user_db,
+            resolve_auth_mode=resolve_auth_mode,
+        )
         if db_gate is not None or db_user_id is None:
             return db_gate
 
@@ -536,7 +592,10 @@ def register_activity_routes(
         if auth_gate is not None:
             return auth_gate
 
-        db_user_id, db_gate = _resolve_db_user_id()
+        db_user_id, db_gate = _resolve_activity_actor_user_id(
+            user_db=user_db,
+            resolve_auth_mode=resolve_auth_mode,
+        )
         if db_gate is not None or db_user_id is None:
             return db_gate
 
