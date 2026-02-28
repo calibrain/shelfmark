@@ -84,7 +84,14 @@ export const ActionButton = ({ field, onAction, disabled }: ActionButtonProps) =
               : 'bg-red-500/20 text-red-700 dark:text-red-300'
           }`}
         >
-          {result.message}
+          <p>{result.message}</p>
+          {Array.isArray(result.details) && result.details.length > 0 && (
+            <ul className="mt-2 list-disc pl-5 space-y-1 text-xs opacity-90">
+              {result.details.map((detail, index) => (
+                <li key={`${detail}-${index}`}>{detail}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 

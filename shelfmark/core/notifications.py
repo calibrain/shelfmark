@@ -163,6 +163,40 @@ def _log_apprise_records(records: Iterable[tuple[int, str, str, str]]) -> None:
             logger.info("Apprise source [%s]: %s", source_name, full_message)
 
 
+def _log_apprise_exception_debug(*, action: str, scheme: str, exc: Exception) -> None:
+    logger.debug(
+        "Apprise %s raised %s for scheme '%s': %s",
+        action,
+        type(exc).__name__,
+        scheme,
+        exc,
+        exc_info=True,
+    )
+
+
+def _build_apprise_warning_detail(
+    records: Iterable[tuple[int, str, str, str]],
+    *,
+    scheme: str,
+) -> str | None:
+    for level, source, raw_message, raw_exception_summary in records:
+        if level < logging.WARNING:
+            continue
+
+        message = str(raw_message or "").strip()
+        if not message:
+            continue
+
+        source_name = str(source or "").strip()
+        exception_summary = str(raw_exception_summary or "").strip()
+        full_message = message if not exception_summary else f"{message} ({exception_summary})"
+
+        if source_name and source_name != _APPRISE_LOGGER_NAME:
+            return f"{scheme}: {source_name}: {full_message}"
+        return f"{scheme}: {full_message}"
+    return None
+
+
 def _normalize_routes(value: Any) -> list[dict[str, str]]:
     if not isinstance(value, list):
         return []
@@ -305,6 +339,31 @@ def _render_message(context: NotificationContext) -> tuple[str, str]:
     return "Download Failed", f'Failed to download "{title}" by {author}.{error_line}'
 
 
+def _plugin_label(plugin: Any, fallback_scheme: str) -> str:
+    """Build a human-readable label from a validated Apprise plugin.
+
+    Combines the URL scheme with the plugin's service name (app_id) and
+    privacy-safe URL for richer diagnostics, e.g.
+    ``"slack (Slack - slack://TokenA/To...n/To...n/)"``
+    """
+    parts: list[str] = [fallback_scheme]
+
+    app_id = getattr(plugin, "app_id", None)
+    if app_id and str(app_id) != fallback_scheme:
+        privacy_url: str | None = None
+        try:
+            privacy_url = plugin.url(privacy=True)
+        except Exception:
+            pass
+
+        suffix = str(app_id)
+        if privacy_url:
+            suffix = f"{suffix} - {privacy_url}"
+        parts.append(f"({suffix})")
+
+    return " ".join(parts)
+
+
 def _dispatch_to_apprise(
     urls: Iterable[str],
     *,
@@ -320,70 +379,127 @@ def _dispatch_to_apprise(
     if apprise is None:
         return {"success": False, "message": "Apprise is not installed"}
 
-    apobj = _create_apprise_client()
-    if apobj is None:
-        return {"success": False, "message": "Apprise is not installed"}
-    with _capture_apprise_logs(min_level=logging.INFO) as apprise_records:
-        valid_urls = 0
-        invalid_urls = 0
-        for url in normalized_urls:
-            scheme = urlsplit(url).scheme or "unknown"
+    valid_urls = 0
+    invalid_urls = 0
+    delivered_urls = 0
+    failed_delivery_urls = 0
+    failure_details: list[str] = []
+
+    for url in normalized_urls:
+        scheme = urlsplit(url).scheme or "unknown"
+        apobj = _create_apprise_client()
+        if apobj is None:
+            return {"success": False, "message": "Apprise is not installed"}
+
+        registration_failure_detail: str | None = None
+        with _capture_apprise_logs(min_level=logging.INFO) as apprise_records:
             try:
-                added = bool(apobj.add(url))
+                plugin = apprise.Apprise.instantiate(url, asset=getattr(apobj, "asset", None))
             except Exception as exc:
                 logger.warning(
                     "Failed to register notification route URL for scheme '%s': %s",
                     scheme,
                     exc,
                 )
-                added = False
-            if added:
-                valid_urls += 1
-            else:
+                _log_apprise_exception_debug(
+                    action="route registration",
+                    scheme=scheme,
+                    exc=exc,
+                )
+                registration_failure_detail = (
+                    f"{scheme}: route registration failed ({type(exc).__name__}: {exc})"
+                )
+                failure_details.append(registration_failure_detail)
+                plugin = None
+
+            if plugin is None:
                 invalid_urls += 1
                 logger.warning("Apprise rejected notification route URL for scheme '%s'", scheme)
+                _log_apprise_records(apprise_records)
+                warning_detail = _build_apprise_warning_detail(apprise_records, scheme=scheme)
+                if warning_detail:
+                    failure_details.append(warning_detail)
+                elif registration_failure_detail is None:
+                    failure_details.append(f"{scheme}: route URL rejected by Apprise")
+                continue
 
-        if valid_urls == 0:
-            _log_apprise_records(apprise_records)
-            scheme_summary = ", ".join(url_schemes) if url_schemes else "unknown"
-            logger.warning(
-                "No valid Apprise notification routes after registration for scheme(s): %s",
-                scheme_summary,
-            )
-            return {
-                "success": False,
-                "message": "No valid notification URLs configured",
-            }
+            plugin_label = _plugin_label(plugin, scheme)
+            apobj.add(plugin)
+            valid_urls += 1
 
-        try:
-            delivered = bool(apobj.notify(title=title, body=body, notify_type=notify_type))
-        except Exception as exc:
-            _log_apprise_records(apprise_records)
-            scheme_summary = ", ".join(url_schemes) if url_schemes else "unknown"
-            logger.warning(
-                "Apprise notify raised %s for scheme(s): %s",
-                type(exc).__name__,
-                scheme_summary,
-            )
-            return {"success": False, "message": f"Notification send failed: {type(exc).__name__}: {exc}"}
+            try:
+                delivered = bool(apobj.notify(title=title, body=body, notify_type=notify_type))
+            except Exception as exc:
+                _log_apprise_records(apprise_records)
+                failed_delivery_urls += 1
+                logger.warning(
+                    "Apprise notify raised %s for %s: %s",
+                    type(exc).__name__,
+                    plugin_label,
+                    exc,
+                )
+                _log_apprise_exception_debug(action="notify", scheme=scheme, exc=exc)
+                warning_detail = _build_apprise_warning_detail(apprise_records, scheme=scheme)
+                if warning_detail:
+                    failure_details.append(warning_detail)
+                else:
+                    failure_details.append(
+                        f"{scheme}: notify raised {type(exc).__name__}: {exc}"
+                    )
+                continue
 
-    if not delivered:
         _log_apprise_records(apprise_records)
-        scheme_summary = ", ".join(url_schemes) if url_schemes else "unknown"
+        if delivered:
+            delivered_urls += 1
+            logger.debug("Notification delivered via %s", plugin_label)
+            continue
+
+        failed_delivery_urls += 1
+        logger.warning("Apprise notify returned False for %s", plugin_label)
+        warning_detail = _build_apprise_warning_detail(apprise_records, scheme=scheme)
+        if warning_detail:
+            failure_details.append(warning_detail)
+        else:
+            failure_details.append(f"{scheme}: delivery failed")
+
+    scheme_summary = ", ".join(url_schemes) if url_schemes else "unknown"
+    if valid_urls == 0:
         logger.warning(
-            "Apprise notify returned False for scheme(s): %s (valid_urls=%s invalid_urls=%s)",
+            "No valid Apprise notification routes after registration for scheme(s): %s",
+            scheme_summary,
+        )
+        result: dict[str, Any] = {
+            "success": False,
+            "message": "No valid notification URLs configured",
+        }
+        if failure_details:
+            result["details"] = failure_details
+        return result
+
+    if delivered_urls == 0:
+        logger.warning(
+            (
+                "Apprise notify returned False for scheme(s): %s "
+                "(valid_urls=%s invalid_urls=%s failed_deliveries=%s)"
+            ),
             scheme_summary,
             valid_urls,
             invalid_urls,
+            failed_delivery_urls,
         )
-        return {"success": False, "message": "Notification delivery failed"}
+        result = {"success": False, "message": "Notification delivery failed"}
+        if failure_details:
+            result["details"] = failure_details
+        return result
 
-    _log_apprise_records(apprise_records)
-
-    message = f"Notification sent to {valid_urls} URL(s)"
-    if invalid_urls:
-        message += f" ({invalid_urls} invalid URL(s) skipped)"
-    return {"success": True, "message": message}
+    message = f"Notification sent to {delivered_urls} URL(s)"
+    failed_urls = invalid_urls + failed_delivery_urls
+    if failed_urls:
+        message += f" ({failed_urls} URL(s) failed)"
+    result = {"success": True, "message": message}
+    if failure_details:
+        result["details"] = failure_details
+    return result
 
 
 def _create_apprise_client() -> Any:

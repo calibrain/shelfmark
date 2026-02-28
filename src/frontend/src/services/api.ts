@@ -94,6 +94,31 @@ export const isApiResponseError = (error: unknown): error is ApiResponseError =>
   return error instanceof ApiResponseError;
 };
 
+const mapApiErrorToActionResult = (error: unknown): ActionResult | null => {
+  if (!isApiResponseError(error) || !error.payload) {
+    return null;
+  }
+
+  const payload = error.payload;
+  const message =
+    typeof payload.message === 'string'
+      ? payload.message
+      : (typeof payload.error === 'string' ? payload.error : null);
+  if (!message) {
+    return null;
+  }
+
+  const details = Array.isArray(payload.details)
+    ? payload.details.filter((detail): detail is string => typeof detail === 'string' && detail.trim().length > 0)
+    : undefined;
+
+  return {
+    success: false,
+    message,
+    ...(details && details.length > 0 ? { details } : {}),
+  };
+};
+
 // Default request timeout in milliseconds (30 seconds)
 const DEFAULT_TIMEOUT_MS = 30000;
 
@@ -470,10 +495,18 @@ export const executeSettingsAction = async (
   actionKey: string,
   currentValues?: Record<string, unknown>
 ): Promise<ActionResult> => {
-  return fetchJSON<ActionResult>(`${API.settings}/${tabName}/action/${actionKey}`, {
-    method: 'POST',
-    body: currentValues ? JSON.stringify(currentValues) : undefined,
-  });
+  try {
+    return await fetchJSON<ActionResult>(`${API.settings}/${tabName}/action/${actionKey}`, {
+      method: 'POST',
+      body: currentValues ? JSON.stringify(currentValues) : undefined,
+    });
+  } catch (error) {
+    const mapped = mapApiErrorToActionResult(error);
+    if (mapped) {
+      return mapped;
+    }
+    throw error;
+  }
 };
 
 // Onboarding API functions
@@ -709,25 +742,41 @@ export const testAdminUserNotificationPreferences = async (
   userId: number,
   routes: Array<Record<string, unknown>>
 ): Promise<import('../types/settings').ActionResult> => {
-  return fetchJSON<import('../types/settings').ActionResult>(
-    `${API_BASE}/admin/users/${userId}/notification-preferences/test`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
+  try {
+    return await fetchJSON<import('../types/settings').ActionResult>(
+      `${API_BASE}/admin/users/${userId}/notification-preferences/test`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
+      }
+    );
+  } catch (error) {
+    const mapped = mapApiErrorToActionResult(error);
+    if (mapped) {
+      return mapped;
     }
-  );
+    throw error;
+  }
 };
 
 export const testSelfNotificationPreferences = async (
   routes: Array<Record<string, unknown>>
 ): Promise<import('../types/settings').ActionResult> => {
-  return fetchJSON<import('../types/settings').ActionResult>(
-    `${API_BASE}/users/me/notification-preferences/test`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
+  try {
+    return await fetchJSON<import('../types/settings').ActionResult>(
+      `${API_BASE}/users/me/notification-preferences/test`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
+      }
+    );
+  } catch (error) {
+    const mapped = mapApiErrorToActionResult(error);
+    if (mapped) {
+      return mapped;
     }
-  );
+    throw error;
+  }
 };
 
 export interface SettingsOverrideUserDetail {
