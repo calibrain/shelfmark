@@ -34,7 +34,7 @@ import {
 import { getReleaseFormats } from '../utils/releaseFormats';
 import { getBookTitleCandidates, getBookAuthorCandidates, sortReleasesByBookMatch } from '../utils/releaseScoring';
 import { getCachedReleases, setCachedReleases, invalidateCachedReleases } from '../utils/releaseCache';
-import { SortState, getSavedSort, saveSort, clearSort, inferDefaultDirection, sortReleases } from '../utils/releaseSort';
+import { SortState, getSavedSort, saveSort, clearSort, inferDefaultDirection, sortReleases, FORMAT_SORT_KEY, sortReleasesByFormat } from '../utils/releaseSort';
 
 
 // Default column configuration (fallback when backend doesn't provide one)
@@ -575,6 +575,7 @@ export const ReleaseModal = ({
   // Sort state - keyed by source name, persisted to localStorage
   // null means "Default" (best title match), undefined means "not set yet"
   const [sortBySource, setSortBySource] = useState<Record<string, SortState | null>>({});
+  const [formatSortExpanded, setFormatSortExpanded] = useState(false);
 
   // Description expansion
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
@@ -1061,18 +1062,26 @@ export const ReleaseModal = ({
     // Check localStorage
     const saved = getSavedSort(activeTab);
     if (saved) {
-      // Verify the saved sort is still valid for this source
-      const isValid = allSortOptions.some(opt => opt.sortKey === saved.key);
-      if (isValid) {
-        return saved;
+      // Validate format sorts - check the saved format still exists in results
+      if (saved.key === FORMAT_SORT_KEY) {
+        if (saved.value && availableFormats.includes(saved.value)) {
+          return saved;
+        }
+        // Saved format no longer available - fall through to default
+      } else {
+        // Verify the saved sort is still valid for this source
+        const isValid = allSortOptions.some(opt => opt.sortKey === saved.key);
+        if (isValid) {
+          return saved;
+        }
       }
     }
     // Default to null (best-match sorting)
     return null;
-  }, [activeTab, sortBySource, allSortOptions]);
+  }, [activeTab, sortBySource, allSortOptions, availableFormats]);
 
   // Handle sort change - null means "Default" (best title match), otherwise toggle direction or set new column
-  const handleSortChange = useCallback((sortKey: string | null, defaultDirection: 'asc' | 'desc') => {
+  const handleSortChange = useCallback((sortKey: string | null, defaultDirection: 'asc' | 'desc', value?: string) => {
     if (sortKey === null) {
       // "Default" selected - use best-match sorting
       setSortBySource(prev => {
@@ -1087,17 +1096,20 @@ export const ReleaseModal = ({
     const currentState = sortBySource[activeTab] ?? currentSort;
     let newState: SortState;
 
-    if (currentState && currentState.key === sortKey) {
-      // Same key - toggle direction
+    const isSameSort = currentState && currentState.key === sortKey && currentState.value === value;
+    if (isSameSort) {
+      // Same key+value - toggle direction
       newState = {
         key: sortKey,
         direction: currentState.direction === 'asc' ? 'desc' : 'asc',
+        ...(value !== undefined && { value }),
       };
     } else {
-      // New key - use provided default direction
+      // New key or different value - use provided default direction
       newState = {
         key: sortKey,
         direction: defaultDirection,
+        ...(value !== undefined && { value }),
       };
     }
 
@@ -1143,8 +1155,10 @@ export const ReleaseModal = ({
       return true;
     });
 
-    // Then, sort by explicit column, or default to book-title relevance with exact author boost
-    if (currentSort && allSortOptions.length > 0) {
+    // Then, sort by explicit column/format, or default to book-title relevance with exact author boost
+    if (currentSort?.key === FORMAT_SORT_KEY && currentSort.value) {
+      filtered = sortReleasesByFormat(filtered, currentSort.value, currentSort.direction);
+    } else if (currentSort && allSortOptions.length > 0) {
       filtered = sortReleases(filtered, currentSort.key, currentSort.direction);
     } else {
       const responseBook = releasesBySource[activeTab]?.book;
@@ -1532,8 +1546,8 @@ export const ReleaseModal = ({
                       </svg>
                     </button>
 
-                    {/* Sort dropdown - only show if source has sort options */}
-                    {allSortOptions.length > 0 && (
+                    {/* Sort dropdown - show if source has sort options or multiple formats */}
+                    {(allSortOptions.length > 0 || availableFormats.length > 1) && (
                       <Dropdown
                         align="right"
                         widthClassName="w-auto flex-shrink-0"
@@ -1562,6 +1576,7 @@ export const ReleaseModal = ({
                               type="button"
                               onClick={() => {
                                 handleSortChange(null, 'asc');
+                                setFormatSortExpanded(false);
                                 close();
                               }}
                               className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between hover-surface rounded ${!currentSort
@@ -1585,6 +1600,7 @@ export const ReleaseModal = ({
                                   type="button"
                                   onClick={() => {
                                     handleSortChange(opt.sortKey, opt.defaultDirection);
+                                    setFormatSortExpanded(false);
                                     // Don't close - allow toggling direction
                                     if (!isSelected) close();
                                   }}
@@ -1606,6 +1622,67 @@ export const ReleaseModal = ({
                                 </button>
                               );
                             })}
+
+                            {/* Format priority sort sub-menu */}
+                            {availableFormats.length > 1 && (
+                              <>
+                                {allSortOptions.length > 0 && (
+                                  <div className="mx-2 my-1 border-t border-gray-200 dark:border-gray-700" />
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setFormatSortExpanded(prev => !prev)}
+                                  className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between hover-surface rounded ${
+                                    currentSort?.key === FORMAT_SORT_KEY
+                                      ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                                      : 'text-gray-700 dark:text-gray-300'
+                                  }`}
+                                >
+                                  <span>
+                                    Format{currentSort?.key === FORMAT_SORT_KEY && currentSort.value ? ` (${currentSort.value.toUpperCase()})` : ''}
+                                  </span>
+                                  <svg
+                                    className={`w-4 h-4 transition-transform ${formatSortExpanded ? 'rotate-90' : ''}`}
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                    strokeWidth={2}
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                  </svg>
+                                </button>
+                                {formatSortExpanded && availableFormats.map((fmt) => {
+                                  const isSelected = currentSort?.key === FORMAT_SORT_KEY && currentSort.value === fmt;
+                                  const direction = isSelected ? currentSort?.direction : null;
+                                  return (
+                                    <button
+                                      key={fmt}
+                                      type="button"
+                                      onClick={() => {
+                                        handleSortChange(FORMAT_SORT_KEY, 'asc', fmt);
+                                        if (!isSelected) close();
+                                      }}
+                                      className={`w-full pl-6 pr-3 py-1.5 text-left text-sm flex items-center justify-between hover-surface rounded ${
+                                        isSelected
+                                          ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                                          : 'text-gray-700 dark:text-gray-300'
+                                      }`}
+                                    >
+                                      <span>{fmt.toUpperCase()}</span>
+                                      {isSelected && direction && (
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                          {direction === 'asc' ? (
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+                                          ) : (
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                          )}
+                                        </svg>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </>
+                            )}
                           </div>
                         )}
                       </Dropdown>

@@ -1,9 +1,13 @@
 import { Release } from '../types';
+import { getReleaseFormats } from './releaseFormats';
 
 export interface SortState {
   key: string;
   direction: 'asc' | 'desc';
+  value?: string;
 }
+
+export const FORMAT_SORT_KEY = '_format_priority';
 
 // LocalStorage helpers for persisting sort preferences per source
 const SORT_STORAGE_PREFIX = 'cwa-bd-release-sort-';
@@ -57,6 +61,24 @@ export function inferDefaultDirection(renderType: string): 'asc' | 'desc' {
   }
   // Text/badge types sort ascending (alphabetical)
   return 'asc';
+}
+
+// Sort releases by format priority - matching releases come first (asc) or last (desc)
+export function sortReleasesByFormat(
+  releases: Release[],
+  targetFormat: string,
+  direction: 'asc' | 'desc'
+): Release[] {
+  const target = targetFormat.toLowerCase();
+  return [...releases].sort((a, b) => {
+    const aFormats = getReleaseFormats(a);
+    const bFormats = getReleaseFormats(b);
+    const aMatch = aFormats.includes(target) ? 1 : 0;
+    const bMatch = bFormats.includes(target) ? 1 : 0;
+    if (aMatch === bMatch) return 0;
+    // asc = matching first, desc = matching last
+    return direction === 'asc' ? bMatch - aMatch : aMatch - bMatch;
+  });
 }
 
 // Sort releases by a column
