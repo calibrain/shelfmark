@@ -57,6 +57,14 @@ def build_metadata_dict(task: DownloadTask) -> dict:
     }
 
 
+def build_file_metadata(task: DownloadTask, source_file: Path, part_number: Optional[str] = None) -> dict:
+    metadata = build_metadata_dict(task)
+    metadata["OriginalName"] = source_file.stem
+    if part_number is not None:
+        metadata["PartNumber"] = part_number
+    return metadata
+
+
 def resolve_hardlink_source(
     temp_file: Path,
     task: DownloadTask,
@@ -157,16 +165,16 @@ def transfer_book_files(
 
     if organization_mode == "organize":
         template = get_template(is_audiobook, "organize")
-        metadata = build_metadata_dict(task)
 
         if len(book_files) == 1:
             source_file = book_files[0]
             ext = source_file.suffix.lstrip(".") or task.format or ""
+            file_metadata = build_file_metadata(task, source_file)
             dest_path = run_blocking_io(
                 build_library_path,
                 str(destination),
                 template,
-                metadata,
+                file_metadata,
                 extension=ext or None,
             )
             run_blocking_io(dest_path.parent.mkdir, parents=True, exist_ok=True)
@@ -188,7 +196,7 @@ def transfer_book_files(
 
             for source_file, part_number in files_with_parts:
                 ext = source_file.suffix.lstrip(".") or task.format or ""
-                file_metadata = {**metadata, "PartNumber": part_number}
+                file_metadata = build_file_metadata(task, source_file, part_number=part_number)
                 dest_path = run_blocking_io(
                     build_library_path,
                     str(destination),
@@ -218,7 +226,7 @@ def transfer_book_files(
                 task.format = book_file.suffix.lower().lstrip(".")
 
             template = get_template(is_audiobook, "rename")
-            metadata = build_metadata_dict(task)
+            metadata = build_file_metadata(task, book_file)
             extension = book_file.suffix.lstrip(".") or task.format or ""
 
             filename = parse_naming_template(template, metadata, allow_path_separators=False)
@@ -311,7 +319,9 @@ def transfer_file_to_library(
     use_hardlink: bool,
 ) -> Optional[str]:
     extension = source_path.suffix.lstrip(".") or task.format
-    dest_path = run_blocking_io(build_library_path, library_base, template, metadata, extension)
+    template_metadata = dict(metadata)
+    template_metadata.setdefault("OriginalName", source_path.stem)
+    dest_path = run_blocking_io(build_library_path, library_base, template, template_metadata, extension)
     run_blocking_io(dest_path.parent.mkdir, parents=True, exist_ok=True)
 
     is_torrent = is_torrent_source(source_path, task)

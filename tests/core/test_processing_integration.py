@@ -16,9 +16,13 @@ def _build_config(
     organization: str,
     hardlink: bool = False,
     rename_template: str = "{Author} - {Title}",
+    organize_template: str = "{Author}/{Title}",
+    audiobook_rename_template: str | None = None,
+    audiobook_organize_template: str = "{Author}/{Title}{ - PartNumber}",
     supported_formats: list[str] | None = None,
     supported_audiobook_formats: list[str] | None = None,
 ):
+    audiobook_rename = audiobook_rename_template or rename_template
     values = {
         "DESTINATION": str(destination),
         "INGEST_DIR": str(destination),
@@ -26,9 +30,9 @@ def _build_config(
         "FILE_ORGANIZATION": organization,
         "FILE_ORGANIZATION_AUDIOBOOK": organization,
         "TEMPLATE_RENAME": rename_template,
-        "TEMPLATE_ORGANIZE": "{Author}/{Title}",
-        "TEMPLATE_AUDIOBOOK_RENAME": rename_template,
-        "TEMPLATE_AUDIOBOOK_ORGANIZE": "{Author}/{Title}{ - PartNumber}",
+        "TEMPLATE_ORGANIZE": organize_template,
+        "TEMPLATE_AUDIOBOOK_RENAME": audiobook_rename,
+        "TEMPLATE_AUDIOBOOK_ORGANIZE": audiobook_organize_template,
         "SUPPORTED_FORMATS": supported_formats or ["epub"],
         "SUPPORTED_AUDIOBOOK_FORMATS": supported_audiobook_formats or ["mp3"],
         "HARDLINK_TORRENTS": hardlink,
@@ -82,6 +86,56 @@ def test_direct_download_rename_moves_file(tmp_path):
     assert any("Moving" in msg for _, msg in statuses)
 
 
+@pytest.mark.parametrize("source_kind", ["direct", "torrent"])
+def test_original_name_rename_single_file_for_direct_and_torrent(tmp_path, source_kind: str):
+    from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+
+    staging = tmp_path / "staging"
+    downloads = tmp_path / "downloads"
+    ingest = tmp_path / "ingest"
+    staging.mkdir()
+    downloads.mkdir()
+    ingest.mkdir()
+
+    base_dir = staging if source_kind == "direct" else downloads
+    input_path = base_dir / "Some.Release.v2.epub"
+    input_path.write_text("content")
+
+    task = DownloadTask(
+        task_id=f"original-name-single-{source_kind}",
+        source="direct_download" if source_kind == "direct" else "prowlarr",
+        title="Ignored Title",
+        author="Ignored Author",
+        format="epub",
+        search_mode=SearchMode.DIRECT if source_kind == "direct" else SearchMode.UNIVERSAL,
+        original_download_path=str(input_path) if source_kind == "torrent" else None,
+    )
+
+    with patch("shelfmark.core.config.config") as mock_config, \
+         patch("shelfmark.config.env.TMP_DIR", staging):
+        mock_config.get = _build_config(
+            ingest,
+            organization="rename",
+            rename_template="{OriginalName}",
+            supported_formats=["epub"],
+        )
+        mock_config.CUSTOM_SCRIPT = None
+        _sync_config(mock_config, mock_config)
+
+        result = _post_process_download(input_path, task, Event(), lambda *_args: None)
+
+    assert result is not None
+    result_path = Path(result)
+    assert result_path.exists()
+    assert result_path.parent == ingest
+    assert result_path.name == "Some.Release.v2.epub"
+
+    if source_kind == "direct":
+        assert not input_path.exists()
+    else:
+        assert input_path.exists()
+
+
 def test_torrent_hardlink_preserves_source(tmp_path):
     from shelfmark.download.postprocess.router import post_process_download as _post_process_download
 
@@ -118,6 +172,47 @@ def test_torrent_hardlink_preserves_source(tmp_path):
     assert result_path.exists()
     assert original.exists()
     assert os.stat(original).st_ino == os.stat(result_path).st_ino
+
+
+def test_archive_extraction_rename_single_file_can_use_original_name(tmp_path):
+    from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+
+    staging = tmp_path / "staging"
+    ingest = tmp_path / "ingest"
+    staging.mkdir()
+    ingest.mkdir()
+
+    archive_path = staging / "book.zip"
+    with zipfile.ZipFile(archive_path, "w") as zf:
+        zf.writestr("book.v2.epub", "content")
+
+    task = DownloadTask(
+        task_id="archive-single-original-name",
+        source="direct_download",
+        title="Ignored",
+        author="Ignored",
+        format="epub",
+        search_mode=SearchMode.DIRECT,
+    )
+
+    with patch("shelfmark.core.config.config") as mock_config, \
+         patch("shelfmark.config.env.TMP_DIR", staging):
+        mock_config.get = _build_config(
+            ingest,
+            organization="rename",
+            rename_template="{OriginalName}",
+            supported_formats=["epub"],
+        )
+        mock_config.CUSTOM_SCRIPT = None
+        _sync_config(mock_config, mock_config)
+
+        result = _post_process_download(archive_path, task, Event(), lambda *_args: None)
+
+    assert result is not None
+    result_path = Path(result)
+    assert result_path.exists()
+    assert result_path.parent == ingest
+    assert result_path.name == "book.v2.epub"
 
 
 def test_torrent_hardlink_enabled_archive_is_hardlinked_without_extraction(tmp_path):
@@ -170,6 +265,49 @@ def test_torrent_hardlink_enabled_archive_is_hardlinked_without_extraction(tmp_p
 
     # No extraction should occur.
     assert list(ingest.glob("*.epub")) == []
+
+
+def test_multifile_rename_ignores_template_even_with_original_name(tmp_path):
+    from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+
+    staging = tmp_path / "staging"
+    ingest = tmp_path / "ingest"
+    staging.mkdir()
+    ingest.mkdir()
+
+    source_dir = staging / "release"
+    source_dir.mkdir()
+    (source_dir / "Part 2 of 2.mp3").write_text("audio2")
+    (source_dir / "Part 1 of 2.mp3").write_text("audio1")
+
+    task = DownloadTask(
+        task_id="multi-rename-template-ignored",
+        source="direct_download",
+        title="Ignored",
+        author="Ignored",
+        format="mp3",
+        content_type="audiobook",
+        search_mode=SearchMode.DIRECT,
+    )
+
+    with patch("shelfmark.core.config.config") as mock_config, \
+         patch("shelfmark.config.env.TMP_DIR", staging):
+        mock_config.get = _build_config(
+            ingest,
+            organization="rename",
+            rename_template="{Author} - {Title}",
+            audiobook_rename_template="{OriginalName} - RENAMED",
+            supported_audiobook_formats=["mp3"],
+        )
+        mock_config.CUSTOM_SCRIPT = None
+        _sync_config(mock_config, mock_config)
+
+        result = _post_process_download(source_dir, task, Event(), lambda *_args: None)
+
+    assert result is not None
+    files = sorted(path.name for path in ingest.glob("*.mp3"))
+    assert files == ["Part 1 of 2.mp3", "Part 2 of 2.mp3"]
+    assert all("RENAMED" not in name for name in files)
 
 
 def test_torrent_hardlink_enabled_copy_fallback_does_not_extract_archives(tmp_path):
@@ -434,6 +572,60 @@ def test_archive_extraction_organize_multifile_assigns_part_numbers(tmp_path):
     assert len(files) == 2
     assert files[0].name == "Archive Audio - 01.mp3"
     assert files[1].name == "Archive Audio - 02.mp3"
+
+
+def test_archive_extraction_organize_multifile_can_use_original_name(tmp_path):
+    from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+
+    staging = tmp_path / "staging"
+    ingest = tmp_path / "ingest"
+    staging.mkdir()
+    ingest.mkdir()
+
+    archive_path = staging / "audio.zip"
+    with zipfile.ZipFile(archive_path, "w") as zf:
+        zf.writestr("Part 2 of 2.mp3", "audio2")
+        zf.writestr("Part 1 of 2.mp3", "audio1")
+
+    task = DownloadTask(
+        task_id="direct-archive-audio-original-name",
+        source="direct_download",
+        title="Archive Audio",
+        author="Tester",
+        format="mp3",
+        content_type="audiobook",
+        search_mode=SearchMode.DIRECT,
+    )
+
+    status_cb = lambda *_args: None
+    values = {
+        "DESTINATION": str(ingest),
+        "INGEST_DIR": str(ingest),
+        "DESTINATION_AUDIOBOOK": str(ingest),
+        "FILE_ORGANIZATION": "organize",
+        "FILE_ORGANIZATION_AUDIOBOOK": "organize",
+        "TEMPLATE_RENAME": "{Author} - {Title}",
+        "TEMPLATE_ORGANIZE": "{Author}/{Title}",
+        "TEMPLATE_AUDIOBOOK_RENAME": "{Author} - {Title}",
+        "TEMPLATE_AUDIOBOOK_ORGANIZE": "{Author}/{Title}/{OriginalName}",
+        "SUPPORTED_FORMATS": ["epub"],
+        "SUPPORTED_AUDIOBOOK_FORMATS": ["mp3"],
+        "HARDLINK_TORRENTS": False,
+        "HARDLINK_TORRENTS_AUDIOBOOK": False,
+    }
+
+    with patch("shelfmark.core.config.config") as mock_config, \
+         patch("shelfmark.config.env.TMP_DIR", staging):
+        mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: values.get(key, default))
+        mock_config.CUSTOM_SCRIPT = None
+        _sync_config(mock_config, mock_config)
+
+        result = _post_process_download(archive_path, task, Event(), status_cb)
+
+    assert result is not None
+    author_title_dir = ingest / "Tester" / "Archive Audio"
+    files = sorted(path.name for path in author_title_dir.glob("*.mp3"))
+    assert files == ["Part 1 of 2.mp3", "Part 2 of 2.mp3"]
 
 
 def test_booklore_mode_uploads_and_cleans_staging(tmp_path):

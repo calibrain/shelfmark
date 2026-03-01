@@ -14,6 +14,7 @@ logger = setup_logger(__name__)
 # e.g., "SeriesPosition" must match before "Series"
 KNOWN_TOKENS = [
     'seriesposition',
+    'originalname',
     'partnumber',
     'subtitle',
     'author',
