@@ -135,9 +135,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   );
 
   const selectedActingAsValue = actingAsUser ? String(actingAsUser.id) : '';
-  const dropdownPanelWidthClass = isAdmin && onActingAsUserChange
-    ? 'w-56 max-w-[calc(100vw-2rem)]'
-    : 'w-48';
+  const dropdownPanelWidthClass = 'w-48';
 
   useEffect(() => {
     const saved = localStorage.getItem('preferred-theme') || 'auto';
