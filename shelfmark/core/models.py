@@ -107,6 +107,9 @@ class DownloadTask:
     status: QueueStatus = QueueStatus.QUEUED
     status_message: Optional[str] = None
     download_path: Optional[str] = None
+    last_error_message: Optional[str] = None
+    last_error_type: Optional[str] = None
+    staged_path: Optional[str] = None
 
     def __lt__(self, other):
         """Compare tasks for priority queue (lower priority number = higher precedence)."""

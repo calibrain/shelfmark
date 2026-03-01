@@ -88,6 +88,7 @@ def process_folder_output(
     task: DownloadTask,
     cancel_flag: Event,
     status_callback,
+    preserve_source_on_failure: bool = False,
 ) -> Optional[str]:
     """Post-process download to the configured folder destination."""
     from shelfmark.download.postprocess.pipeline import (
@@ -122,6 +123,7 @@ def process_folder_output(
         output_mode=plan.output_mode,
         status_callback=status_callback,
         destination=plan.destination,
+        preserve_source_on_failure=preserve_source_on_failure,
     )
     if not prepared:
         return None
@@ -143,7 +145,7 @@ def process_folder_output(
 
     # For external usenet downloads, always copy from the client path.
     # "Move" is implemented as a client-side cleanup after import.
-    preserve_source = is_usenet
+    preserve_source = is_usenet or preserve_source_on_failure
 
     copy_for_label = is_torrent or preserve_source or prepared.output_plan.stage_action != STAGE_NONE
 
@@ -227,12 +229,13 @@ def process_folder_output(
     )
 
     if not maybe_run_custom_script(script_context, status_callback=status_callback, steps=steps):
-        cleanup_output_staging(
-            prepared.output_plan,
-            prepared.working_path,
-            task,
-            prepared.cleanup_paths,
-        )
+        if not preserve_source_on_failure:
+            cleanup_output_staging(
+                prepared.output_plan,
+                prepared.working_path,
+                task,
+                prepared.cleanup_paths,
+            )
         return None
 
     cleanup_output_staging(

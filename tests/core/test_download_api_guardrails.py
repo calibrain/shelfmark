@@ -617,6 +617,176 @@ class TestCancelDownloadEndpointGuardrails:
         mock_cancel.assert_called_once_with("requested-task-2")
 
 
+class TestRetryDownloadEndpointGuardrails:
+    def test_retry_returns_404_when_task_missing(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+            is_admin=False,
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend.book_queue, "get_task", return_value=None):
+                with patch.object(main_module.backend, "retry_download") as mock_retry:
+                    resp = client.post("/api/download/missing-task/retry")
+
+        assert resp.status_code == 404
+        assert resp.get_json() == {"error": "Download not found"}
+        mock_retry.assert_not_called()
+
+    def test_owner_can_retry_direct_download(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+            is_admin=False,
+        )
+        task = DownloadTask(
+            task_id="direct-task-retry-1",
+            source="direct_download",
+            title="Direct Task",
+            user_id=user["id"],
+            username=user["username"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
+                with patch.object(main_module.backend, "retry_download", return_value=(True, None)) as mock_retry:
+                    resp = client.post("/api/download/direct-task-retry-1/retry")
+
+        assert resp.status_code == 200
+        assert resp.get_json() == {"status": "queued", "book_id": "direct-task-retry-1"}
+        mock_retry.assert_called_once_with("direct-task-retry-1")
+
+    def test_non_owner_cannot_retry_download(self, main_module, client):
+        owner = _create_user(main_module, prefix="owner")
+        actor = _create_user(main_module, prefix="actor")
+        _set_authenticated_session(
+            client,
+            user_id=actor["username"],
+            db_user_id=actor["id"],
+            is_admin=False,
+        )
+        task = DownloadTask(
+            task_id="owned-task-retry-1",
+            source="direct_download",
+            title="Owned Task",
+            user_id=owner["id"],
+            username=owner["username"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
+                with patch.object(main_module.backend, "retry_download", return_value=(True, None)) as mock_retry:
+                    resp = client.post("/api/download/owned-task-retry-1/retry")
+
+        assert resp.status_code == 403
+        assert resp.get_json()["code"] == "download_not_owned"
+        mock_retry.assert_not_called()
+
+    def test_retry_forbidden_for_request_id_linked_download(self, main_module, client):
+        user = _create_user(main_module, prefix="requester")
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+            is_admin=False,
+        )
+        task = DownloadTask(
+            task_id="requested-retry-1",
+            source="prowlarr",
+            title="Requested Book",
+            user_id=user["id"],
+            username=user["username"],
+            request_id=123,
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
+                with patch.object(main_module.backend, "retry_download", return_value=(True, None)) as mock_retry:
+                    resp = client.post("/api/download/requested-retry-1/retry")
+
+        assert resp.status_code == 403
+        assert resp.get_json()["code"] == "requested_download_retry_forbidden"
+        mock_retry.assert_not_called()
+
+    def test_retry_forbidden_for_graduated_request_download(self, main_module, client):
+        user = _create_user(main_module, prefix="requester")
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+            is_admin=False,
+        )
+        main_module.user_db.create_request(
+            user_id=user["id"],
+            content_type="ebook",
+            request_level="release",
+            policy_mode="request_release",
+            book_data={
+                "title": "Requested Book",
+                "author": "Request Author",
+                "provider": "openlibrary",
+                "provider_id": "req-retry-1",
+            },
+            release_data={
+                "source": "prowlarr",
+                "source_id": "requested-retry-2",
+                "title": "Requested Book.epub",
+            },
+            status="fulfilled",
+            delivery_state="error",
+        )
+        task = DownloadTask(
+            task_id="requested-retry-2",
+            source="prowlarr",
+            title="Requested Book",
+            user_id=user["id"],
+            username=user["username"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
+                with patch.object(main_module.backend, "retry_download", return_value=(True, None)) as mock_retry:
+                    resp = client.post("/api/download/requested-retry-2/retry")
+
+        assert resp.status_code == 403
+        assert resp.get_json()["code"] == "requested_download_retry_forbidden"
+        mock_retry.assert_not_called()
+
+    def test_retry_returns_409_for_non_retryable_state(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+            is_admin=False,
+        )
+        task = DownloadTask(
+            task_id="direct-task-retry-409",
+            source="direct_download",
+            title="Direct Task",
+            user_id=user["id"],
+            username=user["username"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
+                with patch.object(
+                    main_module.backend,
+                    "retry_download",
+                    return_value=(False, "Download is not in an error state"),
+                ) as mock_retry:
+                    resp = client.post("/api/download/direct-task-retry-409/retry")
+
+        assert resp.status_code == 409
+        assert resp.get_json() == {"error": "Download is not in an error state"}
+        mock_retry.assert_called_once_with("direct-task-retry-409")
+
+
 class TestStatusEndpointGuardrails:
     def test_no_auth_allows_without_session_and_returns_status(self, main_module, client):
         observed: dict[str, object] = {}

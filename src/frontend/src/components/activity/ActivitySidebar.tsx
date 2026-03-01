@@ -12,6 +12,7 @@ interface ActivitySidebarProps {
   isAdmin: boolean;
   onClearCompleted: (items: ActivityDismissTarget[]) => void;
   onCancel: (id: string) => void;
+  onRetry?: (id: string) => void;
   onDownloadDismiss?: (bookId: string, linkedRequestId?: number) => void;
   requestItems: ActivityItem[];
   dismissedItemKeys?: string[];
@@ -241,6 +242,7 @@ export const ActivitySidebar = ({
   isAdmin,
   onClearCompleted,
   onCancel,
+  onRetry,
   onDownloadDismiss,
   requestItems,
   dismissedItemKeys = [],
@@ -886,6 +888,7 @@ export const ActivitySidebar = ({
                         item={item}
                         isAdmin={isAdmin}
                         onDownloadCancel={onCancel}
+                        onDownloadRetry={onRetry}
                         onDownloadDismiss={onDownloadDismiss}
                         onRequestCancel={onRequestCancel}
                         onRequestApprove={onRequestApprove}

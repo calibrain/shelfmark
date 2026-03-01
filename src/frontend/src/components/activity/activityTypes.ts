@@ -38,7 +38,6 @@ export interface ActivityItem {
 
   downloadBookId?: string;
   downloadPath?: string;
-
   requestId?: number;
   requestLevel?: 'book' | 'release';
   requestNote?: string;

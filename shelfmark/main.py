@@ -1478,6 +1478,55 @@ def api_cancel_download(book_id: str) -> Union[Response, Tuple[Response, int]]:
         logger.error_trace(f"Cancel download error: {e}")
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/api/download/<path:book_id>/retry', methods=['POST'])
+@login_required
+def api_retry_download(book_id: str) -> Union[Response, Tuple[Response, int]]:
+    """Retry a failed download."""
+    try:
+        task = backend.book_queue.get_task(book_id)
+        if task is None:
+            return jsonify({"error": "Download not found"}), 404
+
+        is_admin, db_user_id, can_access_status = _resolve_status_scope()
+        if not is_admin:
+            if not can_access_status or db_user_id is None:
+                return jsonify({"error": "User identity unavailable", "code": "user_identity_unavailable"}), 403
+
+            actor_username = session.get("user_id")
+            normalized_actor_username = actor_username if isinstance(actor_username, str) else None
+            if not _task_owned_by_actor(
+                task,
+                actor_user_id=db_user_id,
+                actor_username=normalized_actor_username,
+            ):
+                return jsonify({"error": "Forbidden", "code": "download_not_owned"}), 403
+
+        raw_owner_user_id = getattr(task, "user_id", None)
+        try:
+            owner_user_id = int(raw_owner_user_id) if raw_owner_user_id is not None else None
+        except (TypeError, ValueError):
+            owner_user_id = None
+
+        is_request_linked = bool(getattr(task, "request_id", None))
+        if not is_request_linked and owner_user_id is not None:
+            is_request_linked = _is_graduated_request_download(book_id, user_id=owner_user_id)
+        if is_request_linked:
+            return jsonify({"error": "Forbidden", "code": "requested_download_retry_forbidden"}), 403
+
+        success, error = backend.retry_download(book_id)
+        if success:
+            return jsonify({"status": "queued", "book_id": book_id})
+
+        if error == "Download not found":
+            return jsonify({"error": error}), 404
+
+        return jsonify({"error": error or "Download cannot be retried"}), 409
+    except Exception as e:
+        logger.error_trace(f"Retry download error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/queue/<path:book_id>/priority', methods=['PUT'])
 @login_required
 def api_set_priority(book_id: str) -> Union[Response, Tuple[Response, int]]:

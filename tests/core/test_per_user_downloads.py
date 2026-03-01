@@ -149,6 +149,19 @@ class TestQueueFilterByUser:
         removed = q.clear_completed(user_id=1)
         assert removed == 2
 
+    def test_enqueue_existing_deduplicates_queue_entries(self):
+        q = BookQueue()
+        q.add(self._make_task("book-1", user_id=1))
+
+        assert q.enqueue_existing("book-1")
+        assert q.enqueue_existing("book-1", priority=-10)
+
+        queue_order = q.get_queue_order()
+        assert len(queue_order) == 1
+        assert queue_order[0]["id"] == "book-1"
+        assert q.get_task("book-1").priority == -10
+        assert q.get_task_status("book-1") == QueueStatus.QUEUED
+
 
 # ---------------------------------------------------------------------------
 # Per-user destination override in get_final_destination

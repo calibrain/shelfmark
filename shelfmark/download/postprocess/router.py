@@ -26,6 +26,7 @@ def post_process_download(
     task: DownloadTask,
     cancel_flag: Event,
     status_callback,
+    preserve_source_on_failure: bool = False,
 ) -> Optional[str]:
     """Post-process download using the selected output handler."""
 
@@ -44,9 +45,21 @@ def post_process_download(
     output_handler = resolve_output_handler(task)
     if output_handler:
         logger.info("Task %s: using output mode %s", task.task_id, output_handler.mode)
-        return output_handler.handler(temp_file, task, cancel_flag, status_callback)
+        return output_handler.handler(
+            temp_file,
+            task,
+            cancel_flag,
+            status_callback,
+            preserve_source_on_failure,
+        )
 
     from shelfmark.download.outputs.folder import process_folder_output
 
     logger.info("Task %s: using output mode folder", task.task_id)
-    return process_folder_output(temp_file, task, cancel_flag, status_callback)
+    return process_folder_output(
+        temp_file,
+        task,
+        cancel_flag,
+        status_callback,
+        preserve_source_on_failure,
+    )

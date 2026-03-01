@@ -25,6 +25,7 @@ interface ActivityCardProps {
   item: ActivityItem;
   isAdmin: boolean;
   onDownloadCancel?: (bookId: string) => void;
+  onDownloadRetry?: (bookId: string) => void;
   onDownloadDismiss?: (bookId: string, linkedRequestId?: number) => void;
   onRequestCancel?: (requestId: number) => void;
   onRequestApprove?: RequestApproveHandler;
@@ -72,6 +73,7 @@ const actionKey = (action: ActivityCardAction): string => {
   switch (action.kind) {
     case 'download-remove':
     case 'download-stop':
+    case 'download-retry':
     case 'download-dismiss':
       return `${action.kind}-${action.bookId}`;
     case 'request-approve':
@@ -106,6 +108,12 @@ const actionUiConfig = (
         title: 'Clear',
         className: 'text-gray-500 hover:text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30',
         icon: 'cross',
+      };
+    case 'download-retry':
+      return {
+        title: 'Retry',
+        className: 'text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-900/30',
+        icon: 'retry',
       };
     case 'request-approve':
       return {
@@ -235,6 +243,7 @@ export const ActivityCard = ({
   item,
   isAdmin,
   onDownloadCancel,
+  onDownloadRetry,
   onDownloadDismiss,
   onRequestCancel,
   onRequestApprove,
@@ -353,6 +362,9 @@ export const ActivityCard = ({
       case 'download-stop':
         onDownloadCancel?.(action.bookId);
         break;
+      case 'download-retry':
+        onDownloadRetry?.(action.bookId);
+        break;
       case 'download-dismiss':
         onDownloadDismiss?.(action.bookId, action.linkedRequestId);
         break;
@@ -388,6 +400,8 @@ export const ActivityCard = ({
       case 'download-remove':
       case 'download-stop':
         return Boolean(onDownloadCancel);
+      case 'download-retry':
+        return Boolean(onDownloadRetry);
       case 'download-dismiss':
         return Boolean(onDownloadDismiss);
       case 'request-approve':

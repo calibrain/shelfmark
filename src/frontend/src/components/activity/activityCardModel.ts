@@ -4,7 +4,7 @@ import { ActivityItem, ActivityVisualStatus } from './activityTypes';
 
 export type ActivityCardAction =
   | {
-      kind: 'download-remove' | 'download-stop' | 'download-dismiss';
+      kind: 'download-remove' | 'download-stop' | 'download-dismiss' | 'download-retry';
       bookId: string;
       linkedRequestId?: number;
     }
@@ -161,6 +161,19 @@ const buildActions = (item: ActivityItem, isAdmin: boolean): ActivityCardAction[
       item.visualStatus === 'downloading'
     ) {
       return [{ kind: 'download-stop', bookId: item.downloadBookId }];
+    }
+    if (item.visualStatus === 'error' && !item.requestId) {
+      return [
+        {
+          kind: 'download-retry',
+          bookId: item.downloadBookId,
+        },
+        {
+          kind: 'download-dismiss',
+          bookId: item.downloadBookId,
+          linkedRequestId: item.requestId,
+        },
+      ];
     }
     return [
       {

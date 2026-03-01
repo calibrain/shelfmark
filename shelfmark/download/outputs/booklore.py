@@ -13,7 +13,7 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download.outputs import register_output
-from shelfmark.download.staging import STAGE_MOVE, STAGE_NONE, build_staging_dir, get_staging_dir
+from shelfmark.download.staging import STAGE_COPY, STAGE_MOVE, STAGE_NONE, build_staging_dir, get_staging_dir
 
 logger = setup_logger(__name__)
 
@@ -241,6 +241,7 @@ def _post_process_booklore(
     task: DownloadTask,
     cancel_flag: Event,
     status_callback,
+    preserve_source_on_failure: bool = False,
 ) -> Optional[str]:
     from shelfmark.download.postprocess.pipeline import (
         CustomScriptContext,
@@ -249,6 +250,7 @@ def _post_process_booklore(
         is_managed_workspace_path,
         maybe_run_custom_script,
         prepare_output_files,
+        safe_cleanup_path,
     )
 
     if cancel_flag.is_set():
@@ -267,7 +269,9 @@ def _post_process_booklore(
 
     status_callback("resolving", "Preparing Booklore upload")
 
-    stage_action = STAGE_MOVE if is_managed_workspace_path(temp_file) else STAGE_NONE
+    stage_action = STAGE_NONE
+    if is_managed_workspace_path(temp_file):
+        stage_action = STAGE_COPY if preserve_source_on_failure else STAGE_MOVE
     staging_dir = build_staging_dir("booklore", task.task_id) if stage_action != STAGE_NONE else get_staging_dir()
 
     output_plan = OutputPlan(
@@ -283,12 +287,14 @@ def _post_process_booklore(
         BOOKLORE_OUTPUT_MODE,
         status_callback,
         output_plan=output_plan,
+        preserve_source_on_failure=preserve_source_on_failure,
     )
     if not prepared:
         return None
 
     logger.debug("Task %s: prepared %d file(s) for Booklore upload", task.task_id, len(prepared.files))
 
+    success = False
     try:
         unsupported_files = [
             file_path
@@ -359,6 +365,7 @@ def _post_process_booklore(
         if len(prepared.files) > 1:
             message = f"Uploaded to Booklore ({len(prepared.files)} files)"
         status_callback("complete", message)
+        success = True
         return f"booklore://{task.task_id}"
 
     except BookloreError as e:
@@ -376,6 +383,8 @@ def _post_process_booklore(
             task,
             prepared.cleanup_paths,
         )
+        if preserve_source_on_failure and success:
+            safe_cleanup_path(temp_file, task)
 
 
 @register_output(BOOKLORE_OUTPUT_MODE, supports_task=_supports_booklore, priority=10)
@@ -384,5 +393,12 @@ def process_booklore_output(
     task: DownloadTask,
     cancel_flag: Event,
     status_callback,
+    preserve_source_on_failure: bool = False,
 ) -> Optional[str]:
-    return _post_process_booklore(temp_file, task, cancel_flag, status_callback)
+    return _post_process_booklore(
+        temp_file,
+        task,
+        cancel_flag,
+        status_callback,
+        preserve_source_on_failure=preserve_source_on_failure,
+    )

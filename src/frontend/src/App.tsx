@@ -19,6 +19,7 @@ import {
   downloadBook,
   downloadRelease,
   cancelDownload,
+  retryDownload,
   getConfig,
   createRequest,
   isApiResponseError,
@@ -955,6 +956,16 @@ function App() {
     }
   };
 
+  const handleRetry = async (id: string) => {
+    try {
+      await retryDownload(id);
+      await fetchStatus();
+    } catch (error) {
+      console.error('Retry failed:', error);
+      showToast('Failed to retry download', 'error');
+    }
+  };
+
   // Universal-mode "Get" action (open releases, request-book, or block by policy).
   const handleGetReleases = async (book: Book) => {
     let mode = getUniversalDefaultPolicyMode();
@@ -1525,6 +1536,7 @@ function App() {
         isAdmin={requestRoleIsAdmin}
         onClearCompleted={handleClearCompleted}
         onCancel={handleCancel}
+        onRetry={handleRetry}
         onDownloadDismiss={handleDownloadDismiss}
         requestItems={requestItems}
         dismissedItemKeys={dismissedActivityKeys}

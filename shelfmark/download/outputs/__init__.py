@@ -8,7 +8,7 @@ from typing import Callable, Optional
 from shelfmark.core.models import DownloadTask
 
 StatusCallback = Callable[[str, Optional[str]], None]
-OutputHandler = Callable[[Path, DownloadTask, Event, StatusCallback], Optional[str]]
+OutputHandler = Callable[[Path, DownloadTask, Event, StatusCallback, bool], Optional[str]]
 
 
 @dataclass(frozen=True)

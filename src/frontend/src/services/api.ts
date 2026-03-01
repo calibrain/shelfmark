@@ -33,6 +33,7 @@ const API = {
   download: `${API_BASE}/download`,
   status: `${API_BASE}/status`,
   cancelDownload: `${API_BASE}/download`,
+  retryDownload: `${API_BASE}/download`,
   setPriority: `${API_BASE}/queue`,
   clearCompleted: `${API_BASE}/queue/clear`,
   config: `${API_BASE}/config`,
@@ -365,6 +366,10 @@ export const clearActivityHistory = async (): Promise<void> => {
 
 export const cancelDownload = async (id: string): Promise<void> => {
   await fetchJSON(`${API.cancelDownload}/${encodeURIComponent(id)}/cancel`, { method: 'DELETE' });
+};
+
+export const retryDownload = async (id: string): Promise<void> => {
+  await fetchJSON(`${API.retryDownload}/${encodeURIComponent(id)}/retry`, { method: 'POST' });
 };
 
 export const clearCompleted = async (): Promise<void> => {

@@ -77,6 +77,11 @@ class BookQueue:
         with self._lock:
             return self._task_data.get(task_id)
 
+    def get_task_status(self, task_id: str) -> Optional[QueueStatus]:
+        """Get queue status for a task id."""
+        with self._lock:
+            return self._status.get(task_id)
+
     def _update_status(self, book_id: str, status: QueueStatus) -> None:
         """Internal method to update status and timestamp."""
         self._status[book_id] = status
@@ -246,6 +251,41 @@ class BookQueue:
                 self._queue.put(item)
 
             return found
+
+    def enqueue_existing(self, task_id: str, *, priority: Optional[int] = None) -> bool:
+        """Requeue an existing task regardless of current status.
+
+        This is used for retries where task metadata should be preserved.
+        """
+        with self._lock:
+            task = self._task_data.get(task_id)
+            if task is None:
+                return False
+
+            if priority is not None:
+                task.priority = priority
+
+            # Ensure task doesn't appear active while waiting for retry.
+            self._active_downloads.pop(task_id, None)
+            self._cancel_flags.pop(task_id, None)
+
+            # De-duplicate queue entries for this task id.
+            temp_items: list[QueueItem] = []
+            while not self._queue.empty():
+                try:
+                    item = self._queue.get_nowait()
+                except queue.Empty:
+                    break
+                if item.book_id != task_id:
+                    temp_items.append(item)
+
+            for item in temp_items:
+                self._queue.put(item)
+
+            queue_item = QueueItem(task_id, task.priority, time.time())
+            self._queue.put(queue_item)
+            self._update_status(task_id, QueueStatus.QUEUED)
+            return True
 
     def reorder_queue(self, task_priorities: Dict[str, int]) -> bool:
         """Bulk reorder queue by mapping task_id to new priority."""
