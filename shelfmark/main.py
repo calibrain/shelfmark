@@ -388,6 +388,36 @@ def _policy_block_response(mode: PolicyMode):
     )
 
 
+def _resolve_download_user_context(
+    db_user_id: Any,
+    username: Any,
+    on_behalf_of_user_id: Any,
+) -> tuple[Any, Any, tuple[Response, int] | None]:
+    """Resolve download queue user context, including optional admin on-behalf overrides."""
+    if on_behalf_of_user_id in (None, ""):
+        return db_user_id, username, None
+
+    if not session.get("is_admin", False):
+        return db_user_id, username, (jsonify({"error": "Admin required"}), 403)
+
+    if user_db is None:
+        return db_user_id, username, (jsonify({"error": "User database unavailable"}), 503)
+
+    try:
+        target_user_id = int(on_behalf_of_user_id)
+    except (TypeError, ValueError):
+        return db_user_id, username, (jsonify({"error": "Invalid on_behalf_of_user_id"}), 400)
+
+    if target_user_id <= 0:
+        return db_user_id, username, (jsonify({"error": "Invalid on_behalf_of_user_id"}), 400)
+
+    target_user = user_db.get_user(user_id=target_user_id)
+    if not target_user:
+        return db_user_id, username, (jsonify({"error": "User not found"}), 404)
+
+    return target_user["id"], target_user["username"], None
+
+
 if user_db is not None:
     try:
         from shelfmark.core.request_routes import register_request_routes
@@ -864,6 +894,13 @@ def api_download() -> Union[Response, Tuple[Response, int]]:
         # Per-user download overrides
         db_user_id = session.get('db_user_id')
         _username = session.get('user_id')
+        db_user_id, _username, on_behalf_error = _resolve_download_user_context(
+            db_user_id,
+            _username,
+            request.args.get("on_behalf_of_user_id"),
+        )
+        if on_behalf_error:
+            return on_behalf_error
         success, error_msg = backend.queue_book(
             book_id, priority,
             user_id=db_user_id, username=_username,
@@ -922,6 +959,13 @@ def api_download_release() -> Union[Response, Tuple[Response, int]]:
         # Per-user download overrides
         db_user_id = session.get('db_user_id')
         _username = session.get('user_id')
+        db_user_id, _username, on_behalf_error = _resolve_download_user_context(
+            db_user_id,
+            _username,
+            data.get("on_behalf_of_user_id"),
+        )
+        if on_behalf_error:
+            return on_behalf_error
         success, error_msg = backend.queue_release(
             release_payload, priority,
             user_id=db_user_id, username=_username,

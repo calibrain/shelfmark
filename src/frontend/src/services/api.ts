@@ -280,14 +280,17 @@ export const getMetadataBookInfo = async (provider: string, bookId: string): Pro
   return transformMetadataToBook(response);
 };
 
-export const downloadBook = async (id: string): Promise<void> => {
+export const downloadBook = async (id: string, onBehalfOfUserId?: number): Promise<void> => {
   const params = new URLSearchParams();
   params.set('id', id);
+  if (typeof onBehalfOfUserId === 'number') {
+    params.set('on_behalf_of_user_id', String(onBehalfOfUserId));
+  }
   await fetchJSON(`${API.download}?${params.toString()}`);
 };
 
 // Download a specific release (from ReleaseModal)
-export const downloadRelease = async (release: {
+export type DownloadReleasePayload = {
   source: string;
   source_id: string;
   title: string;
@@ -307,10 +310,20 @@ export const downloadRelease = async (release: {
   series_position?: number;
   subtitle?: string;
   search_author?: string;
-}): Promise<void> => {
+};
+
+export const downloadRelease = async (
+  release: DownloadReleasePayload,
+  onBehalfOfUserId?: number
+): Promise<void> => {
+  const payload =
+    typeof onBehalfOfUserId === 'number'
+      ? { ...release, on_behalf_of_user_id: onBehalfOfUserId }
+      : release;
+
   await fetchJSON(`${API_BASE}/releases/download`, {
     method: 'POST',
-    body: JSON.stringify(release),
+    body: JSON.stringify(payload),
   });
 };
 

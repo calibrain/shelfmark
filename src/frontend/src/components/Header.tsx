@@ -1,7 +1,10 @@
-import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { SearchBar, SearchBarHandle } from './SearchBar';
-import { ContentType } from '../types';
+import { DropdownList } from './DropdownList';
+import { getAdminUsers } from '../services/api';
+import { ContentType, ActingAsUserSelection } from '../types';
 import { ActivityStatusCounts, getActivityBadgeState } from '../utils/activityBadge';
+import { formatActingAsUserName } from '../utils/actingAsUser';
 import { withBasePath } from '../utils/basePath';
 
 export interface HeaderHandle {
@@ -29,6 +32,8 @@ interface HeaderProps {
   isAuthenticated?: boolean;
   username?: string | null;
   displayName?: string | null;
+  actingAsUser?: ActingAsUserSelection | null;
+  onActingAsUserChange?: (user: ActingAsUserSelection | null) => void;
   onLogout?: () => void;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info', persistent?: boolean) => string;
   onRemoveToast?: (id: string) => void;
@@ -57,6 +62,8 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   isAuthenticated = false,
   username,
   displayName,
+  actingAsUser = null,
+  onActingAsUserChange,
   onLogout,
   onShowToast,
   onRemoveToast,
@@ -76,6 +83,61 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   const [isClosing, setIsClosing] = useState(false);
   const [shouldAnimateIn, setShouldAnimateIn] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [adminUsers, setAdminUsers] = useState<ActingAsUserSelection[]>([]);
+  const [isAdminUsersLoading, setIsAdminUsersLoading] = useState(false);
+  const [adminUsersError, setAdminUsersError] = useState<string | null>(null);
+  const [hasLoadedAdminUsers, setHasLoadedAdminUsers] = useState(false);
+
+  const loadAdminUsers = useCallback(async () => {
+    if (!isAdmin) {
+      return;
+    }
+
+    setIsAdminUsersLoading(true);
+    setAdminUsersError(null);
+    try {
+      const users = await getAdminUsers();
+      const filteredUsers = users.filter((user) => {
+        if (username && user.username === username) {
+          return false;
+        }
+        return true;
+      });
+      setAdminUsers(
+        filteredUsers.map((user) => ({
+          id: user.id,
+          username: user.username,
+          displayName: user.display_name,
+        }))
+      );
+      setHasLoadedAdminUsers(true);
+    } catch (error) {
+      console.error('Failed to load admin users:', error);
+      setAdminUsersError('Failed to load users');
+    } finally {
+      setIsAdminUsersLoading(false);
+    }
+  }, [isAdmin, username]);
+
+  const actingAsOptions = useMemo(
+    () => [
+      { value: '', label: 'Myself' },
+      ...adminUsers.map((user) => {
+        const displayLabel = formatActingAsUserName(user);
+        return {
+          value: String(user.id),
+          label: displayLabel,
+          description: displayLabel !== user.username ? `@${user.username}` : undefined,
+        };
+      }),
+    ],
+    [adminUsers]
+  );
+
+  const selectedActingAsValue = actingAsUser ? String(actingAsUser.id) : '';
+  const dropdownPanelWidthClass = isAdmin && onActingAsUserChange
+    ? 'w-56 max-w-[calc(100vw-2rem)]'
+    : 'w-48';
 
   useEffect(() => {
     const saved = localStorage.getItem('preferred-theme') || 'auto';
@@ -97,6 +159,39 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
   }, []);
+
+  useEffect(() => {
+    if (isAdmin) {
+      return;
+    }
+    setAdminUsers([]);
+    setAdminUsersError(null);
+    setIsAdminUsersLoading(false);
+    setHasLoadedAdminUsers(false);
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!onActingAsUserChange || !actingAsUser) {
+      return;
+    }
+    if (username && actingAsUser.username === username) {
+      onActingAsUserChange(null);
+      return;
+    }
+    if (hasLoadedAdminUsers && !isAdminUsersLoading) {
+      const stillAvailable = adminUsers.some((user) => user.id === actingAsUser.id);
+      if (!stillAvailable) {
+        onActingAsUserChange(null);
+      }
+    }
+  }, [
+    onActingAsUserChange,
+    actingAsUser,
+    username,
+    hasLoadedAdminUsers,
+    isAdminUsersLoading,
+    adminUsers,
+  ]);
 
   // Helper function to close dropdown with animation
   const closeDropdown = () => {
@@ -150,6 +245,9 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
     if (isDropdownOpen) {
       closeDropdown();
     } else {
+      if (isAdmin && !hasLoadedAdminUsers && !isAdminUsersLoading) {
+        void loadAdminUsers();
+      }
       setShouldAnimateIn(true);
       setIsDropdownOpen(true);
       // Reset animation flag after animation completes
@@ -163,6 +261,24 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
 
   const handleSearchChange = (value: string) => {
     onSearchChange?.(value);
+  };
+
+  const handleActingAsChange = (nextValue: string[] | string) => {
+    if (Array.isArray(nextValue)) {
+      return;
+    }
+
+    if (nextValue === '') {
+      onActingAsUserChange?.(null);
+      return;
+    }
+
+    const selectedUser = adminUsers.find((user) => String(user.id) === nextValue);
+    if (!selectedUser) {
+      return;
+    }
+
+    onActingAsUserChange?.(selectedUser);
   };
 
   // Determine if we should show icons only (both URLs configured)
@@ -266,12 +382,18 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
               d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
             />
           </svg>
+          {actingAsUser && (
+            <span
+              className="absolute top-1 right-1 h-2 w-2 rounded-full bg-sky-500 border border-[var(--bg)]"
+              title={`Downloading as ${formatActingAsUserName(actingAsUser)}`}
+            />
+          )}
         </button>
 
         {/* Dropdown Menu */}
         {(isDropdownOpen || isClosing) && (
           <div
-            className={`absolute right-0 mt-2 w-48 rounded-lg shadow-lg border z-50 ${
+            className={`absolute right-0 mt-2 ${dropdownPanelWidthClass} rounded-lg shadow-lg border z-50 ${
               isClosing ? 'animate-fade-out-up' : shouldAnimateIn ? 'animate-fade-in-down' : ''
             }`}
             style={{
@@ -439,6 +561,44 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
                       </button>
                     )}
                   </div>
+                </div>
+              )}
+
+              {isAdmin && onActingAsUserChange && (
+                <div
+                  className="border-t px-4 py-3 space-y-2"
+                  style={{ borderColor: 'var(--border-muted)' }}
+                >
+                  <div className="text-xs font-medium uppercase tracking-wide opacity-70">
+                    Download as
+                  </div>
+                  <div className={isAdminUsersLoading ? 'pointer-events-none opacity-60' : ''}>
+                    <DropdownList
+                      options={actingAsOptions}
+                      value={selectedActingAsValue}
+                      onChange={handleActingAsChange}
+                      placeholder="Myself"
+                      widthClassName="w-full"
+                      buttonClassName="rounded-lg text-sm"
+                    />
+                  </div>
+                  {isAdminUsersLoading && (
+                    <div className="text-xs opacity-70">Loading users...</div>
+                  )}
+                  {adminUsersError && (
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-xs text-red-600 dark:text-red-400">
+                        {adminUsersError}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void loadAdminUsers()}
+                        className="text-xs font-medium text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

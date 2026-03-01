@@ -111,6 +111,121 @@ class TestDownloadEndpointGuardrails:
         assert resp.status_code == 401
         assert resp.get_json() == {"error": "Unauthorized"}
 
+    def test_admin_can_queue_book_on_behalf_of_another_user(self, main_module, client):
+        target_user = _create_user(main_module, prefix="target")
+        admin_user = _create_user(main_module, prefix="admin", role="admin")
+        captured: dict[str, object] = {}
+
+        def fake_queue_book(book_id, priority, user_id=None, username=None):
+            captured.update(
+                {
+                    "book_id": book_id,
+                    "priority": priority,
+                    "user_id": user_id,
+                    "username": username,
+                }
+            )
+            return True, None
+
+        _set_authenticated_session(
+            client,
+            user_id=admin_user["username"],
+            db_user_id=admin_user["id"],
+            is_admin=True,
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_book", side_effect=fake_queue_book):
+                resp = client.get(
+                    f"/api/download?id=book-123&priority=4&on_behalf_of_user_id={target_user['id']}"
+                )
+
+        assert resp.status_code == 200
+        assert resp.get_json() == {"status": "queued", "priority": 4}
+        assert captured == {
+            "book_id": "book-123",
+            "priority": 4,
+            "user_id": target_user["id"],
+            "username": target_user["username"],
+        }
+
+    def test_non_admin_cannot_queue_book_on_behalf_of_user(self, main_module, client):
+        target_user = _create_user(main_module, prefix="target")
+        actor_user = _create_user(main_module, prefix="actor")
+        _set_authenticated_session(
+            client,
+            user_id=actor_user["username"],
+            db_user_id=actor_user["id"],
+            is_admin=False,
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_book") as mock_queue_book:
+                resp = client.get(
+                    f"/api/download?id=book-123&on_behalf_of_user_id={target_user['id']}"
+                )
+
+        assert resp.status_code == 403
+        assert resp.get_json() == {"error": "Admin required"}
+        mock_queue_book.assert_not_called()
+
+    @pytest.mark.parametrize("raw_user_id", ["abc", "-1", "0"])
+    def test_invalid_on_behalf_user_id_returns_400_for_book_download(
+        self, main_module, client, raw_user_id
+    ):
+        admin_user = _create_user(main_module, prefix="admin", role="admin")
+        _set_authenticated_session(
+            client,
+            user_id=admin_user["username"],
+            db_user_id=admin_user["id"],
+            is_admin=True,
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_book") as mock_queue_book:
+                resp = client.get(
+                    f"/api/download?id=book-123&on_behalf_of_user_id={raw_user_id}"
+                )
+
+        assert resp.status_code == 400
+        assert resp.get_json() == {"error": "Invalid on_behalf_of_user_id"}
+        mock_queue_book.assert_not_called()
+
+    def test_unknown_on_behalf_user_returns_404_for_book_download(self, main_module, client):
+        admin_user = _create_user(main_module, prefix="admin", role="admin")
+        _set_authenticated_session(
+            client,
+            user_id=admin_user["username"],
+            db_user_id=admin_user["id"],
+            is_admin=True,
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_book") as mock_queue_book:
+                resp = client.get("/api/download?id=book-123&on_behalf_of_user_id=99999999")
+
+        assert resp.status_code == 404
+        assert resp.get_json() == {"error": "User not found"}
+        mock_queue_book.assert_not_called()
+
+    def test_on_behalf_book_download_returns_503_when_user_db_unavailable(self, main_module, client):
+        admin_user = _create_user(main_module, prefix="admin", role="admin")
+        _set_authenticated_session(
+            client,
+            user_id=admin_user["username"],
+            db_user_id=admin_user["id"],
+            is_admin=True,
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "user_db", None):
+                with patch.object(main_module.backend, "queue_book") as mock_queue_book:
+                    resp = client.get("/api/download?id=book-123&on_behalf_of_user_id=7")
+
+        assert resp.status_code == 503
+        assert resp.get_json() == {"error": "User database unavailable"}
+        mock_queue_book.assert_not_called()
+
 
 class TestReleaseDownloadEndpointGuardrails:
     def test_empty_json_payload_returns_400(self, main_module, client):
@@ -216,6 +331,147 @@ class TestReleaseDownloadEndpointGuardrails:
         body = resp.get_json()
         assert resp.status_code == 500
         assert "Unsupported Media Type" in body["error"]
+        mock_queue_release.assert_not_called()
+
+    def test_admin_can_queue_release_on_behalf_of_another_user(self, main_module, client):
+        target_user = _create_user(main_module, prefix="target")
+        admin_user = _create_user(main_module, prefix="admin", role="admin")
+        captured: dict[str, object] = {}
+
+        def fake_queue_release(release_data, priority, user_id=None, username=None):
+            captured.update(
+                {
+                    "release_data": release_data,
+                    "priority": priority,
+                    "user_id": user_id,
+                    "username": username,
+                }
+            )
+            return True, None
+
+        _set_authenticated_session(
+            client,
+            user_id=admin_user["username"],
+            db_user_id=admin_user["id"],
+            is_admin=True,
+        )
+        payload = {
+            "source": "direct_download",
+            "source_id": "release-admin-on-behalf",
+            "title": "Release Title",
+            "priority": 2,
+            "on_behalf_of_user_id": target_user["id"],
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_release", side_effect=fake_queue_release):
+                resp = client.post("/api/releases/download", json=payload)
+
+        assert resp.status_code == 200
+        assert resp.get_json() == {"status": "queued", "priority": 2}
+        assert captured["priority"] == 2
+        assert captured["user_id"] == target_user["id"]
+        assert captured["username"] == target_user["username"]
+        assert captured["release_data"] == {
+            **payload,
+            "content_type": "ebook",
+        }
+
+    def test_non_admin_cannot_queue_release_on_behalf_of_user(self, main_module, client):
+        target_user = _create_user(main_module, prefix="target")
+        actor_user = _create_user(main_module, prefix="actor")
+        _set_authenticated_session(
+            client,
+            user_id=actor_user["username"],
+            db_user_id=actor_user["id"],
+            is_admin=False,
+        )
+        payload = {
+            "source": "direct_download",
+            "source_id": "release-forbidden",
+            "title": "Release Title",
+            "on_behalf_of_user_id": target_user["id"],
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_release") as mock_queue_release:
+                resp = client.post("/api/releases/download", json=payload)
+
+        assert resp.status_code == 403
+        assert resp.get_json() == {"error": "Admin required"}
+        mock_queue_release.assert_not_called()
+
+    @pytest.mark.parametrize("raw_user_id", ["abc", "-1", "0"])
+    def test_invalid_on_behalf_user_id_returns_400_for_release_download(
+        self, main_module, client, raw_user_id
+    ):
+        admin_user = _create_user(main_module, prefix="admin", role="admin")
+        _set_authenticated_session(
+            client,
+            user_id=admin_user["username"],
+            db_user_id=admin_user["id"],
+            is_admin=True,
+        )
+        payload = {
+            "source": "direct_download",
+            "source_id": "release-invalid",
+            "title": "Release Title",
+            "on_behalf_of_user_id": raw_user_id,
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_release") as mock_queue_release:
+                resp = client.post("/api/releases/download", json=payload)
+
+        assert resp.status_code == 400
+        assert resp.get_json() == {"error": "Invalid on_behalf_of_user_id"}
+        mock_queue_release.assert_not_called()
+
+    def test_unknown_on_behalf_user_returns_404_for_release_download(self, main_module, client):
+        admin_user = _create_user(main_module, prefix="admin", role="admin")
+        _set_authenticated_session(
+            client,
+            user_id=admin_user["username"],
+            db_user_id=admin_user["id"],
+            is_admin=True,
+        )
+        payload = {
+            "source": "direct_download",
+            "source_id": "release-missing-user",
+            "title": "Release Title",
+            "on_behalf_of_user_id": 99999999,
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_release") as mock_queue_release:
+                resp = client.post("/api/releases/download", json=payload)
+
+        assert resp.status_code == 404
+        assert resp.get_json() == {"error": "User not found"}
+        mock_queue_release.assert_not_called()
+
+    def test_on_behalf_release_download_returns_503_when_user_db_unavailable(self, main_module, client):
+        admin_user = _create_user(main_module, prefix="admin", role="admin")
+        _set_authenticated_session(
+            client,
+            user_id=admin_user["username"],
+            db_user_id=admin_user["id"],
+            is_admin=True,
+        )
+        payload = {
+            "source": "direct_download",
+            "source_id": "release-user-db-missing",
+            "title": "Release Title",
+            "on_behalf_of_user_id": 7,
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "user_db", None):
+                with patch.object(main_module.backend, "queue_release") as mock_queue_release:
+                    resp = client.post("/api/releases/download", json=payload)
+
+        assert resp.status_code == 503
+        assert resp.get_json() == {"error": "User database unavailable"}
         mock_queue_release.assert_not_called()
 
 

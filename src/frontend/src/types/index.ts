@@ -265,6 +265,12 @@ export interface AuthResponse {
   oidc_auto_redirect?: boolean;
 }
 
+export interface ActingAsUserSelection {
+  id: number;
+  username: string;
+  displayName: string | null;
+}
+
 // Type guard to check if a book is from a metadata provider
 // Returns true and narrows type to include required provider fields
 export const isMetadataBook = (book: Book): book is Book & {

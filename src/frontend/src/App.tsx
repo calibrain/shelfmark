@@ -10,6 +10,7 @@ import {
   ButtonStateInfo,
   RequestPolicyMode,
   CreateRequestPayload,
+  ActingAsUserSelection,
   isMetadataBook,
 } from './types';
 import {
@@ -21,6 +22,7 @@ import {
   getConfig,
   createRequest,
   isApiResponseError,
+  type DownloadReleasePayload,
 } from './services/api';
 import { useToast } from './hooks/useToast';
 import { useRealtimeStatus } from './hooks/useRealtimeStatus';
@@ -39,6 +41,7 @@ import { ResultsSection } from './components/ResultsSection';
 import { DetailsModal } from './components/DetailsModal';
 import { ReleaseModal } from './components/ReleaseModal';
 import { RequestConfirmationModal } from './components/RequestConfirmationModal';
+import { OnBehalfConfirmationModal } from './components/OnBehalfConfirmationModal';
 import { ToastContainer } from './components/ToastContainer';
 import { Footer } from './components/Footer';
 import { ActivitySidebar } from './components/activity';
@@ -48,6 +51,7 @@ import { ConfigSetupBanner } from './components/ConfigSetupBanner';
 import { OnboardingModal } from './components/OnboardingModal';
 import { DEFAULT_LANGUAGES, DEFAULT_SUPPORTED_FORMATS } from './data/languages';
 import { buildSearchQuery } from './utils/buildSearchQuery';
+import { formatActingAsUserName } from './utils/actingAsUser';
 import { withBasePath } from './utils/basePath';
 import {
   applyDirectPolicyModeToButtonState,
@@ -115,6 +119,20 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
   }
   return fallback;
 };
+
+type PendingOnBehalfDownload =
+  | {
+      type: 'book';
+      book: Book;
+      actingAsUser: ActingAsUserSelection;
+    }
+  | {
+      type: 'release';
+      book: Book;
+      release: Release;
+      releaseContentType: ContentType;
+      actingAsUser: ActingAsUserSelection;
+    };
 
 function App() {
   const { toasts, showToast, removeToast } = useToast();
@@ -314,6 +332,8 @@ function App() {
   });
 
   const [pendingRequestPayload, setPendingRequestPayload] = useState<CreateRequestPayload | null>(null);
+  const [actingAsUser, setActingAsUser] = useState<ActingAsUserSelection | null>(null);
+  const [pendingOnBehalfDownload, setPendingOnBehalfDownload] = useState<PendingOnBehalfDownload | null>(null);
   const [fulfillingRequest, setFulfillingRequest] = useState<{
     requestId: number;
     book: Book;
@@ -326,11 +346,21 @@ function App() {
     setBooks([]);
     clearTracking();
     setPendingRequestPayload(null);
+    setActingAsUser(null);
+    setPendingOnBehalfDownload(null);
     setFulfillingRequest(null);
     resetActivity();
     setSettingsOpen(false);
     setSelfSettingsOpen(false);
   }, [handleLogout, setBooks, clearTracking, resetActivity]);
+
+  useEffect(() => {
+    if (isAuthenticated && authIsAdmin) {
+      return;
+    }
+    setActingAsUser(null);
+    setPendingOnBehalfDownload(null);
+  }, [isAuthenticated, authIsAdmin]);
 
   // UI state
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
@@ -717,6 +747,149 @@ function App() {
     return getDefaultMode(contentType);
   }, [getDefaultMode, contentType]);
 
+  const buildReleaseDownloadPayload = useCallback(
+    (book: Book, release: Release, releaseContentType: ContentType): DownloadReleasePayload => ({
+      source: release.source,
+      source_id: release.source_id,
+      title: book.title,    // Use book metadata title, not release/torrent title
+      author: book.author,  // Pass author from metadata
+      year: book.year,      // Pass year from metadata
+      format: release.format,
+      size: release.size,
+      size_bytes: release.size_bytes,
+      download_url: release.download_url,
+      protocol: release.protocol,
+      indexer: release.indexer,
+      seeders: release.seeders,
+      extra: release.extra,
+      preview: book.preview,  // Pass book cover from metadata
+      content_type: releaseContentType,  // For audiobook directory routing
+      series_name: book.series_name,
+      series_position: book.series_position,
+      subtitle: book.subtitle,
+    }),
+    []
+  );
+
+  const executeBookDownload = useCallback(
+    async (book: Book, onBehalfOfUserId?: number): Promise<void> => {
+      try {
+        await downloadBook(book.id, onBehalfOfUserId);
+        await fetchStatus();
+      } catch (error) {
+        console.error('Download failed:', error);
+        if (isPolicyGuardError(error)) {
+          const requiredMode = getPolicyGuardRequiredMode(error);
+          policyTrace('direct.action:policy_guard', {
+            bookId: book.id,
+            requiredMode,
+            code: isApiResponseError(error) ? error.code : null,
+          });
+          if (requiredMode === 'request_release' || requiredMode === 'request_book') {
+            openRequestConfirmation(buildDirectRequestPayload(book, requiredMode));
+            await refreshRequestPolicy({ force: true });
+            return;
+          }
+          showToast('Download blocked by policy', 'error');
+          await refreshRequestPolicy({ force: true });
+          return;
+        }
+        showToast(getErrorMessage(error, 'Failed to queue download'), 'error');
+        throw error;
+      }
+    },
+    [fetchStatus, openRequestConfirmation, refreshRequestPolicy, showToast]
+  );
+
+  const executeReleaseDownload = useCallback(
+    async (
+      book: Book,
+      release: Release,
+      releaseContentType: ContentType,
+      onBehalfOfUserId?: number
+    ): Promise<void> => {
+      try {
+        trackRelease(book.id, release.source_id);
+        await downloadRelease(
+          buildReleaseDownloadPayload(book, release, releaseContentType),
+          onBehalfOfUserId
+        );
+        await fetchStatus();
+      } catch (error) {
+        console.error('Release download failed:', error);
+        if (isPolicyGuardError(error)) {
+          const requiredMode = getPolicyGuardRequiredMode(error);
+          const normalizedContentType = toContentType(releaseContentType);
+          policyTrace('release.action:policy_guard', {
+            bookId: book.id,
+            releaseId: release.source_id,
+            source: release.source,
+            requiredMode,
+            code: isApiResponseError(error) ? error.code : null,
+            contentType: normalizedContentType,
+          });
+          if (requiredMode === 'request_release') {
+            openRequestConfirmation({
+              book_data: buildMetadataBookRequestData(book, normalizedContentType),
+              release_data: buildReleaseDataFromMetadataRelease(book, release, normalizedContentType),
+              context: {
+                source: release.source || 'direct_download',
+                content_type: normalizedContentType,
+                request_level: 'release',
+              },
+            });
+            await refreshRequestPolicy({ force: true });
+            return;
+          }
+          if (requiredMode === 'request_book') {
+            setReleaseBook(null);
+            openRequestConfirmation({
+              book_data: buildMetadataBookRequestData(book, normalizedContentType),
+              release_data: null,
+              context: {
+                source: release.source || 'direct_download',
+                content_type: normalizedContentType,
+                request_level: 'book',
+              },
+            });
+            await refreshRequestPolicy({ force: true });
+            return;
+          }
+          showToast('Download blocked by policy', 'error');
+          await refreshRequestPolicy({ force: true });
+          return;
+        }
+        showToast(getErrorMessage(error, 'Failed to queue download'), 'error');
+        throw error;
+      }
+    },
+    [buildReleaseDownloadPayload, fetchStatus, openRequestConfirmation, refreshRequestPolicy, showToast, trackRelease]
+  );
+
+  const handleConfirmOnBehalfDownload = useCallback(async (): Promise<boolean> => {
+    if (!pendingOnBehalfDownload) {
+      return true;
+    }
+
+    const onBehalfOfUserId = pendingOnBehalfDownload.actingAsUser.id;
+    try {
+      if (pendingOnBehalfDownload.type === 'book') {
+        await executeBookDownload(pendingOnBehalfDownload.book, onBehalfOfUserId);
+      } else {
+        await executeReleaseDownload(
+          pendingOnBehalfDownload.book,
+          pendingOnBehalfDownload.release,
+          pendingOnBehalfDownload.releaseContentType,
+          onBehalfOfUserId
+        );
+      }
+      setPendingOnBehalfDownload(null);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [executeBookDownload, executeReleaseDownload, pendingOnBehalfDownload]);
+
   // Direct-mode action (download or release-level request based on policy).
   const handleDownload = async (book: Book): Promise<void> => {
     let mode = getDirectPolicyMode();
@@ -759,30 +932,16 @@ function App() {
       return;
     }
 
-    try {
-      await downloadBook(book.id);
-      await fetchStatus();
-    } catch (error) {
-      console.error('Download failed:', error);
-      if (isPolicyGuardError(error)) {
-        const requiredMode = getPolicyGuardRequiredMode(error);
-        policyTrace('direct.action:policy_guard', {
-          bookId: book.id,
-          requiredMode,
-          code: isApiResponseError(error) ? error.code : null,
-        });
-        if (requiredMode === 'request_release' || requiredMode === 'request_book') {
-          openRequestConfirmation(buildDirectRequestPayload(book, requiredMode));
-          await refreshRequestPolicy({ force: true });
-          return;
-        }
-        showToast('Download blocked by policy', 'error');
-        await refreshRequestPolicy({ force: true });
-        return;
-      }
-      showToast(getErrorMessage(error, 'Failed to queue download'), 'error');
-      throw error;
+    if (actingAsUser) {
+      setPendingOnBehalfDownload({
+        type: 'book',
+        book,
+        actingAsUser,
+      });
+      return;
     }
+
+    await executeBookDownload(book);
   };
 
   // Cancel download
@@ -886,83 +1045,25 @@ function App() {
 
   // Handle download from ReleaseModal (universal mode release rows).
   const handleReleaseDownload = async (book: Book, release: Release, releaseContentType: ContentType) => {
-    try {
-      policyTrace('release.action:start', {
-        bookId: book.id,
-        releaseId: release.source_id,
-        source: release.source,
-        contentType: toContentType(releaseContentType),
-      });
-      trackRelease(book.id, release.source_id);
+    policyTrace('release.action:start', {
+      bookId: book.id,
+      releaseId: release.source_id,
+      source: release.source,
+      contentType: toContentType(releaseContentType),
+    });
 
-      await downloadRelease({
-        source: release.source,
-        source_id: release.source_id,
-        title: book.title,    // Use book metadata title, not release/torrent title
-        author: book.author,  // Pass author from metadata
-        year: book.year,      // Pass year from metadata
-        format: release.format,
-        size: release.size,
-        size_bytes: release.size_bytes,
-        download_url: release.download_url,
-        protocol: release.protocol,
-        indexer: release.indexer,
-        seeders: release.seeders,
-        extra: release.extra,
-        preview: book.preview,  // Pass book cover from metadata
-        content_type: releaseContentType,  // For audiobook directory routing
-        series_name: book.series_name,
-        series_position: book.series_position,
-        subtitle: book.subtitle,
+    if (actingAsUser) {
+      setPendingOnBehalfDownload({
+        type: 'release',
+        book,
+        release,
+        releaseContentType,
+        actingAsUser,
       });
-      await fetchStatus();
-    } catch (error) {
-      console.error('Release download failed:', error);
-      if (isPolicyGuardError(error)) {
-        const requiredMode = getPolicyGuardRequiredMode(error);
-        const normalizedContentType = toContentType(releaseContentType);
-        policyTrace('release.action:policy_guard', {
-          bookId: book.id,
-          releaseId: release.source_id,
-          source: release.source,
-          requiredMode,
-          code: isApiResponseError(error) ? error.code : null,
-          contentType: normalizedContentType,
-        });
-        if (requiredMode === 'request_release') {
-          openRequestConfirmation({
-            book_data: buildMetadataBookRequestData(book, normalizedContentType),
-            release_data: buildReleaseDataFromMetadataRelease(book, release, normalizedContentType),
-            context: {
-              source: release.source || 'direct_download',
-              content_type: normalizedContentType,
-              request_level: 'release',
-            },
-          });
-          await refreshRequestPolicy({ force: true });
-          return;
-        }
-        if (requiredMode === 'request_book') {
-          setReleaseBook(null);
-          openRequestConfirmation({
-            book_data: buildMetadataBookRequestData(book, normalizedContentType),
-            release_data: null,
-            context: {
-              source: release.source || 'direct_download',
-              content_type: normalizedContentType,
-              request_level: 'book',
-            },
-          });
-          await refreshRequestPolicy({ force: true });
-          return;
-        }
-        showToast('Download blocked by policy', 'error');
-        await refreshRequestPolicy({ force: true });
-        return;
-      }
-      showToast(getErrorMessage(error, 'Failed to queue download'), 'error');
-      throw error;
+      return;
     }
+
+    await executeReleaseDownload(book, release, releaseContentType);
   };
 
   const handleReleaseRequest = useCallback(
@@ -1190,6 +1291,17 @@ function App() {
     setReleaseBook(null);
   }, [isBrowseFulfilMode]);
 
+  const pendingOnBehalfTitle = pendingOnBehalfDownload
+    ? pendingOnBehalfDownload.type === 'book'
+      ? pendingOnBehalfDownload.book.title || 'Untitled'
+      : pendingOnBehalfDownload.release.title ||
+        pendingOnBehalfDownload.book.title ||
+        'Untitled'
+    : '';
+  const pendingOnBehalfUserName = pendingOnBehalfDownload
+    ? formatActingAsUserName(pendingOnBehalfDownload.actingAsUser)
+    : '';
+
   const mainAppContent = (
     <SearchModeProvider searchMode={searchMode}>
       <div ref={headerRef} className="fixed top-0 left-0 right-0 z-40">
@@ -1217,6 +1329,8 @@ function App() {
           canAccessSettings={isAuthenticated}
           username={username}
           displayName={displayName}
+          actingAsUser={actingAsUser}
+          onActingAsUserChange={setActingAsUser}
           statusCounts={statusCounts}
           onLogoClick={() => handleResetSearch(config)}
           authRequired={authRequired}
@@ -1380,6 +1494,16 @@ function App() {
             allowNotes={allowRequestNotes}
             onConfirm={handleConfirmRequest}
             onClose={() => setPendingRequestPayload(null)}
+          />
+        )}
+
+        {pendingOnBehalfDownload && (
+          <OnBehalfConfirmationModal
+            isOpen={Boolean(pendingOnBehalfDownload)}
+            actingAsName={pendingOnBehalfUserName}
+            itemTitle={pendingOnBehalfTitle}
+            onConfirm={handleConfirmOnBehalfDownload}
+            onClose={() => setPendingOnBehalfDownload(null)}
           />
         )}
 
