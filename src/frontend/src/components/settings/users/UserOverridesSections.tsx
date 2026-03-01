@@ -5,15 +5,17 @@ import { SettingsTab } from '../../../types/settings';
 import { UserNotificationOverridesSection } from './UserNotificationOverridesSection';
 import { UserOverridesSection } from './UserOverridesSection';
 import { UserRequestPolicyOverridesSection } from './UserRequestPolicyOverridesSection';
+import { UserSearchPreferencesSection } from './UserSearchPreferencesSection';
 import { PerUserSettings } from './types';
 
 export type UserOverrideScope = 'admin' | 'self';
-export type UserOverrideSectionId = 'delivery' | 'notifications' | 'requestPolicy';
+export type UserOverrideSectionId = 'delivery' | 'search' | 'notifications' | 'requestPolicy';
 
 interface UserOverridesSectionsProps {
   scope: UserOverrideScope;
   sections?: UserOverrideSectionId[];
   deliveryPreferences: DeliveryPreferencesResponse | null;
+  searchPreferences: DeliveryPreferencesResponse | null;
   notificationPreferences: DeliveryPreferencesResponse | null;
   isUserOverridable: (key: keyof PerUserSettings) => boolean;
   userSettings: PerUserSettings;
@@ -35,6 +37,7 @@ interface UserOverrideSectionNode {
 
 const USER_OVERRIDE_SECTION_DEFINITIONS: UserOverrideSectionDefinition[] = [
   { id: 'delivery', adminOnly: false },
+  { id: 'search', adminOnly: false },
   { id: 'notifications', adminOnly: false },
   { id: 'requestPolicy', adminOnly: true },
 ];
@@ -45,6 +48,7 @@ const USER_OVERRIDE_SECTION_ID_SET = new Set<UserOverrideSectionId>(USER_OVERRID
 
 const USER_OVERRIDE_SECTION_META: Record<UserOverrideSectionId, UserOverrideSectionDefinition> = {
   delivery: { id: 'delivery', adminOnly: false },
+  search: { id: 'search', adminOnly: false },
   notifications: { id: 'notifications', adminOnly: false },
   requestPolicy: { id: 'requestPolicy', adminOnly: true },
 };
@@ -100,6 +104,7 @@ export const UserOverridesSections = ({
   scope,
   sections,
   deliveryPreferences,
+  searchPreferences,
   notificationPreferences,
   isUserOverridable,
   userSettings,
@@ -144,6 +149,24 @@ export const UserOverridesSections = ({
             userSettings={userSettings}
             setUserSettings={setUserSettings}
             onTestNotificationRoutes={onTestNotificationRoutes}
+          />
+        ),
+      });
+      return;
+    }
+
+    if (sectionId === 'search') {
+      if (!searchPreferences) {
+        return;
+      }
+      sectionNodes.push({
+        id: sectionId,
+        node: (
+          <UserSearchPreferencesSection
+            searchPreferences={searchPreferences}
+            isUserOverridable={isUserOverridable}
+            userSettings={userSettings}
+            setUserSettings={setUserSettings}
           />
         ),
       });

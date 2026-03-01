@@ -1572,6 +1572,7 @@ function App() {
         isOpen={selfSettingsOpen}
         onClose={() => setSelfSettingsOpen(false)}
         onShowToast={showToast}
+        onSettingsSaved={handleSettingsSaved}
       />
 
       {/* Auto-show banner on startup for users without config */}

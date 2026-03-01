@@ -4,6 +4,7 @@ import {
   DeliveryPreferencesResponse,
   DownloadDefaults,
   getAdminDeliveryPreferences,
+  getAdminSearchPreferences,
   getAdminNotificationPreferences,
   getAdminUser,
   getAdminUsers,
@@ -64,6 +65,7 @@ export interface UserEditContext {
   user: AdminUser;
   downloadDefaults: DownloadDefaults;
   deliveryPreferences: DeliveryPreferencesResponse | null;
+  searchPreferences: DeliveryPreferencesResponse | null;
   notificationPreferences: DeliveryPreferencesResponse | null;
   userSettings: PerUserSettings;
   userOverridableSettings: Set<string>;
@@ -136,14 +138,16 @@ export const useUsersFetch = ({ onShowToast }: UseUsersFetchParams) => {
     ]);
 
     let deliveryPreferences: DeliveryPreferencesResponse | null = null;
+    let searchPreferences: DeliveryPreferencesResponse | null = null;
     let notificationPreferences: DeliveryPreferencesResponse | null = null;
     let userSettings = {
       ...(fullUser.settings || {}),
     } as PerUserSettings;
     let userOverridableSettings = new Set<string>();
 
-    const [deliveryResult, notificationResult] = await Promise.allSettled([
+    const [deliveryResult, searchResult, notificationResult] = await Promise.allSettled([
       getAdminDeliveryPreferences(userId),
+      getAdminSearchPreferences(userId),
       getAdminNotificationPreferences(userId),
     ]);
 
@@ -154,6 +158,15 @@ export const useUsersFetch = ({ onShowToast }: UseUsersFetchParams) => {
         ...(deliveryResult.value.userOverrides || {}),
       } as PerUserSettings;
       deliveryResult.value.keys.forEach((key) => userOverridableSettings.add(key));
+    }
+
+    if (searchResult.status === 'fulfilled') {
+      searchPreferences = searchResult.value;
+      userSettings = {
+        ...userSettings,
+        ...(searchResult.value.userOverrides || {}),
+      } as PerUserSettings;
+      searchResult.value.keys.forEach((key) => userOverridableSettings.add(key));
     }
 
     if (notificationResult.status === 'fulfilled') {
@@ -177,6 +190,7 @@ export const useUsersFetch = ({ onShowToast }: UseUsersFetchParams) => {
       user: fullUser,
       downloadDefaults: defaults,
       deliveryPreferences,
+      searchPreferences,
       notificationPreferences,
       userSettings,
       userOverridableSettings,

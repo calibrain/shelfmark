@@ -33,9 +33,11 @@ logger = setup_logger(__name__)
 MIN_PASSWORD_LENGTH = 4
 _VISIBLE_SELF_SETTINGS_SECTIONS_KEY = "VISIBLE_SELF_SETTINGS_SECTIONS"
 _SELF_SETTINGS_SECTION_DELIVERY = "delivery"
+_SELF_SETTINGS_SECTION_SEARCH = "search"
 _SELF_SETTINGS_SECTION_NOTIFICATIONS = "notifications"
 _VALID_SELF_SETTINGS_SECTIONS = (
     _SELF_SETTINGS_SECTION_DELIVERY,
+    _SELF_SETTINGS_SECTION_SEARCH,
     _SELF_SETTINGS_SECTION_NOTIFICATIONS,
 )
 _DEFAULT_VISIBLE_SELF_SETTINGS_SECTIONS = list(_VALID_SELF_SETTINGS_SECTIONS)
@@ -155,6 +157,11 @@ def _get_allowed_self_settings_keys(visible_sections: list[str]) -> set[str]:
             key for key, _field in _get_ordered_user_overridable_fields("downloads")
         }
 
+    if _SELF_SETTINGS_SECTION_SEARCH in visible_sections_set:
+        allowed_keys |= {
+            key for key, _field in _get_ordered_user_overridable_fields("search_mode")
+        }
+
     if _SELF_SETTINGS_SECTION_NOTIFICATIONS in visible_sections_set:
         allowed_keys |= {
             key for key, _field in _get_ordered_user_overridable_fields("notifications")
@@ -188,6 +195,16 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
                 logger.warning(f"Failed to build user delivery preferences for user_id={user_id}: {exc}")
                 delivery_preferences = None
 
+        search_preferences = None
+        if _SELF_SETTINGS_SECTION_SEARCH in visible_self_settings_sections:
+            try:
+                search_preferences = _build_user_preferences_payload(user_db, user_id, "search_mode")
+            except ValueError:
+                return jsonify({"error": "Search mode settings tab not found"}), 500
+            except Exception as exc:
+                logger.warning(f"Failed to build user search preferences for user_id={user_id}: {exc}")
+                search_preferences = None
+
         notification_preferences = None
         if _SELF_SETTINGS_SECTION_NOTIFICATIONS in visible_self_settings_sections:
             try:
@@ -200,6 +217,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
 
         user_overridable_keys = sorted(
             set(delivery_preferences.get("keys", []) if delivery_preferences else [])
+            | set(search_preferences.get("keys", []) if search_preferences else [])
             | set(notification_preferences.get("keys", []) if notification_preferences else [])
         )
 
@@ -207,6 +225,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
             {
                 "user": serialized_user,
                 "deliveryPreferences": delivery_preferences,
+                "searchPreferences": search_preferences,
                 "notificationPreferences": notification_preferences,
                 "userOverridableKeys": user_overridable_keys,
                 "visibleUserSettingsSections": visible_self_settings_sections,

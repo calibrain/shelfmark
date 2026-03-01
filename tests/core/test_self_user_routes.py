@@ -78,6 +78,54 @@ def test_users_me_edit_context_respects_visible_sections(app, user_db):
     assert resp.json["userOverridableKeys"] == ["DESTINATION"]
 
 
+def test_users_me_edit_context_includes_search_preferences_when_visible(app, user_db):
+    user = user_db.create_user(username="alice")
+    client = _authed_client_for_user(app, user)
+
+    def build_preferences(_user_db, _user_id, tab_name):
+        payloads = {
+            "downloads": {
+                "tab": "downloads",
+                "keys": ["DESTINATION"],
+                "fields": [],
+                "globalValues": {},
+                "userOverrides": {},
+                "effective": {},
+            },
+            "search_mode": {
+                "tab": "search_mode",
+                "keys": ["SEARCH_MODE", "METADATA_PROVIDER"],
+                "fields": [],
+                "globalValues": {},
+                "userOverrides": {},
+                "effective": {},
+            },
+        }
+        if tab_name not in payloads:
+            raise AssertionError(f"Unexpected tab requested: {tab_name}")
+        return payloads[tab_name]
+
+    with patch("shelfmark.core.self_user_routes._get_auth_mode", return_value="builtin"):
+        with patch(
+            "shelfmark.core.self_user_routes.load_config_file",
+            side_effect=lambda tab_name: {
+                "VISIBLE_SELF_SETTINGS_SECTIONS": ["delivery", "search"]
+            } if tab_name == "users" else {},
+        ):
+            with patch(
+                "shelfmark.core.self_user_routes._build_user_preferences_payload",
+                side_effect=build_preferences,
+            ):
+                resp = client.get("/api/users/me/edit-context")
+
+    assert resp.status_code == 200
+    assert resp.json["visibleUserSettingsSections"] == ["delivery", "search"]
+    assert resp.json["deliveryPreferences"]["tab"] == "downloads"
+    assert resp.json["searchPreferences"]["tab"] == "search_mode"
+    assert resp.json["notificationPreferences"] is None
+    assert resp.json["userOverridableKeys"] == ["DESTINATION", "METADATA_PROVIDER", "SEARCH_MODE"]
+
+
 def test_users_me_update_rejects_hidden_section_settings(app, user_db):
     user = user_db.create_user(username="alice")
     client = _authed_client_for_user(app, user)

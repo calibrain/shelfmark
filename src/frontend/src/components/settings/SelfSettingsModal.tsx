@@ -23,6 +23,7 @@ interface SelfSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+  onSettingsSaved?: () => void;
 }
 
 const MIN_PASSWORD_LENGTH = 4;
@@ -47,7 +48,12 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
   return fallback;
 };
 
-export const SelfSettingsModal = ({ isOpen, onClose, onShowToast }: SelfSettingsModalProps) => {
+export const SelfSettingsModal = ({
+  isOpen,
+  onClose,
+  onShowToast,
+  onSettingsSaved,
+}: SelfSettingsModalProps) => {
   const [isClosing, setIsClosing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -56,6 +62,7 @@ export const SelfSettingsModal = ({ isOpen, onClose, onShowToast }: SelfSettings
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [originalUser, setOriginalUser] = useState<AdminUser | null>(null);
   const [deliveryPreferences, setDeliveryPreferences] = useState<DeliveryPreferencesResponse | null>(null);
+  const [searchPreferences, setSearchPreferences] = useState<DeliveryPreferencesResponse | null>(null);
   const [notificationPreferences, setNotificationPreferences] = useState<DeliveryPreferencesResponse | null>(null);
   const [visibleSections, setVisibleSections] = useState<UserOverrideSectionId[]>(
     DEFAULT_SELF_USER_OVERRIDE_SECTIONS
@@ -67,8 +74,8 @@ export const SelfSettingsModal = ({ isOpen, onClose, onShowToast }: SelfSettings
   const [themeValue, setThemeValue] = useState<string>(getStoredThemePreference());
 
   const preferenceGroups = useMemo(
-    () => [deliveryPreferences, notificationPreferences],
-    [deliveryPreferences, notificationPreferences]
+    () => [deliveryPreferences, searchPreferences, notificationPreferences],
+    [deliveryPreferences, searchPreferences, notificationPreferences]
   );
   const {
     userSettings,
@@ -88,6 +95,7 @@ export const SelfSettingsModal = ({ isOpen, onClose, onShowToast }: SelfSettings
       setEditingUser(context.user);
       setOriginalUser(context.user);
       setDeliveryPreferences(context.deliveryPreferences || null);
+      setSearchPreferences(context.searchPreferences || null);
       setNotificationPreferences(context.notificationPreferences || null);
       setVisibleSections(
         normalizeUserOverrideSections(context.visibleUserSettingsSections, 'self')
@@ -208,6 +216,7 @@ export const SelfSettingsModal = ({ isOpen, onClose, onShowToast }: SelfSettings
     try {
       await updateSelfUser(payload);
       onShowToast?.('Account updated', 'success');
+      onSettingsSaved?.();
       await loadEditContext();
     } catch (error) {
       onShowToast?.(getErrorMessage(error, 'Failed to update account'), 'error');
@@ -219,6 +228,7 @@ export const SelfSettingsModal = ({ isOpen, onClose, onShowToast }: SelfSettings
     editingUser,
     hasSettingsChanges,
     loadEditContext,
+    onSettingsSaved,
     onShowToast,
     originalUser,
     passwordError,
@@ -322,6 +332,7 @@ export const SelfSettingsModal = ({ isOpen, onClose, onShowToast }: SelfSettings
                       scope="self"
                       sections={visibleSections}
                       deliveryPreferences={deliveryPreferences}
+                      searchPreferences={searchPreferences}
                       notificationPreferences={notificationPreferences}
                       isUserOverridable={isUserOverridable}
                       userSettings={userSettings}

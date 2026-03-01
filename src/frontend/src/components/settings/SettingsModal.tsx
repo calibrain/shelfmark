@@ -303,6 +303,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
           onShowToast,
           onRefreshOverrideSummary: handleRefreshCurrentTabOverrideSummary,
           onRefreshAuth,
+          onSettingsSaved,
         }}
       />
     ))

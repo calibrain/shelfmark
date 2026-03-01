@@ -11,10 +11,11 @@ export const useUserForm = () => {
   const [editPasswordConfirm, setEditPasswordConfirm] = useState('');
   const [downloadDefaults, setDownloadDefaults] = useState<DownloadDefaults | null>(null);
   const [deliveryPreferences, setDeliveryPreferences] = useState<DeliveryPreferencesResponse | null>(null);
+  const [searchPreferences, setSearchPreferences] = useState<DeliveryPreferencesResponse | null>(null);
   const [notificationPreferences, setNotificationPreferences] = useState<DeliveryPreferencesResponse | null>(null);
   const preferenceGroups = useMemo(
-    () => [deliveryPreferences, notificationPreferences],
-    [deliveryPreferences, notificationPreferences]
+    () => [deliveryPreferences, searchPreferences, notificationPreferences],
+    [deliveryPreferences, searchPreferences, notificationPreferences]
   );
   const {
     userSettings,
@@ -31,6 +32,7 @@ export const useUserForm = () => {
   const resetEditContext = () => {
     setDownloadDefaults(null);
     setDeliveryPreferences(null);
+    setSearchPreferences(null);
     setNotificationPreferences(null);
     resetUserOverridesState();
   };
@@ -45,6 +47,7 @@ export const useUserForm = () => {
     setEditingUser({ ...context.user });
     setDownloadDefaults(context.downloadDefaults);
     setDeliveryPreferences(context.deliveryPreferences);
+    setSearchPreferences(context.searchPreferences);
     setNotificationPreferences(context.notificationPreferences);
     applyUserOverridesContext({
       settings: context.userSettings,
@@ -75,6 +78,7 @@ export const useUserForm = () => {
     setEditPasswordConfirm,
     downloadDefaults,
     deliveryPreferences,
+    searchPreferences,
     notificationPreferences,
     userSettings,
     setUserSettings,

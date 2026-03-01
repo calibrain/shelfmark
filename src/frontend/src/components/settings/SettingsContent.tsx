@@ -54,6 +54,7 @@ interface SettingsContentProps {
     onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
     onRefreshOverrideSummary?: () => void;
     onRefreshAuth?: () => Promise<void>;
+    onSettingsSaved?: () => void;
   };
 }
 
@@ -409,6 +410,7 @@ export const SettingsContent = ({
               onShowToast: customFieldContext?.onShowToast,
               onRefreshOverrideSummary: customFieldContext?.onRefreshOverrideSummary,
               onRefreshAuth: customFieldContext?.onRefreshAuth,
+              onSettingsSaved: customFieldContext?.onSettingsSaved,
             })
           : renderField(
               field,

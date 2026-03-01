@@ -14,6 +14,7 @@ export interface CustomSettingsFieldRendererProps {
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
   onRefreshOverrideSummary?: () => void;
   onRefreshAuth?: () => Promise<void>;
+  onSettingsSaved?: () => void;
 }
 
 export interface CustomSettingsFieldLayout {

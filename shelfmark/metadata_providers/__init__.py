@@ -393,7 +393,10 @@ def get_enabled_providers() -> List[str]:
     return [name for name in _PROVIDERS if is_provider_enabled(name)]
 
 
-def get_configured_provider(content_type: str = "ebook") -> Optional[MetadataProvider]:
+def get_configured_provider(
+    content_type: str = "ebook",
+    user_id: Optional[int] = None,
+) -> Optional[MetadataProvider]:
     """Get the currently configured metadata provider for the content type."""
     from shelfmark.core.config import config as app_config
 
@@ -402,11 +405,11 @@ def get_configured_provider(content_type: str = "ebook") -> Optional[MetadataPro
 
     # For audiobooks, try audiobook-specific provider first, then fall back to main provider
     if content_type == "audiobook":
-        metadata_provider = app_config.get("METADATA_PROVIDER_AUDIOBOOK", "")
+        metadata_provider = app_config.get("METADATA_PROVIDER_AUDIOBOOK", "", user_id=user_id)
         if not metadata_provider:
-            metadata_provider = app_config.get("METADATA_PROVIDER", "")
+            metadata_provider = app_config.get("METADATA_PROVIDER", "", user_id=user_id)
     else:
-        metadata_provider = app_config.get("METADATA_PROVIDER", "")
+        metadata_provider = app_config.get("METADATA_PROVIDER", "", user_id=user_id)
 
     if not metadata_provider:
         return None
@@ -422,17 +425,20 @@ def get_configured_provider(content_type: str = "ebook") -> Optional[MetadataPro
     return get_provider(metadata_provider, **kwargs)
 
 
-def _get_configured_provider_name() -> str:
+def _get_configured_provider_name(user_id: Optional[int] = None) -> str:
     """Get the currently configured metadata provider name from config."""
     from shelfmark.core.config import config as app_config
     app_config.refresh()
-    return app_config.get("METADATA_PROVIDER", "")
+    return app_config.get("METADATA_PROVIDER", "", user_id=user_id)
 
 
-def get_provider_sort_options(provider_name: Optional[str] = None) -> List[Dict[str, str]]:
+def get_provider_sort_options(
+    provider_name: Optional[str] = None,
+    user_id: Optional[int] = None,
+) -> List[Dict[str, str]]:
     """Get sort options for a metadata provider as {value, label} dicts."""
     if provider_name is None:
-        provider_name = _get_configured_provider_name()
+        provider_name = _get_configured_provider_name(user_id=user_id)
 
     if provider_name and provider_name in _PROVIDERS:
         provider_class = _PROVIDERS[provider_name]
@@ -446,10 +452,13 @@ def get_provider_sort_options(provider_name: Optional[str] = None) -> List[Dict[
     ]
 
 
-def get_provider_search_fields(provider_name: Optional[str] = None) -> List[Dict[str, Any]]:
+def get_provider_search_fields(
+    provider_name: Optional[str] = None,
+    user_id: Optional[int] = None,
+) -> List[Dict[str, Any]]:
     """Get search fields for a metadata provider as serialized dicts."""
     if provider_name is None:
-        provider_name = _get_configured_provider_name()
+        provider_name = _get_configured_provider_name(user_id=user_id)
 
     if provider_name and provider_name in _PROVIDERS:
         provider_class = _PROVIDERS[provider_name]
@@ -460,19 +469,22 @@ def get_provider_search_fields(provider_name: Optional[str] = None) -> List[Dict
     return [serialize_search_field(f) for f in fields]
 
 
-def get_provider_default_sort(provider_name: Optional[str] = None) -> str:
+def get_provider_default_sort(
+    provider_name: Optional[str] = None,
+    user_id: Optional[int] = None,
+) -> str:
     """Get the default sort order for a metadata provider."""
     from shelfmark.core.config import config as app_config
 
     if provider_name is None:
-        provider_name = _get_configured_provider_name()
+        provider_name = _get_configured_provider_name(user_id=user_id)
 
     if not provider_name:
         return "relevance"
 
     # Look up provider-specific default sort setting
     setting_key = f"{provider_name.upper()}_DEFAULT_SORT"
-    return app_config.get(setting_key, "relevance")
+    return app_config.get(setting_key, "relevance", user_id=user_id)
 
 
 def sync_metadata_provider_selection() -> None:

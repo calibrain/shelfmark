@@ -9,6 +9,7 @@ from shelfmark.config.notifications_settings import (
     is_valid_notification_url,
     normalize_notification_routes,
 )
+from shelfmark.config.users_settings import validate_search_preference_value
 from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_settings_overrides import (
     build_user_preferences_payload as _build_user_preferences_payload,
@@ -66,6 +67,19 @@ def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], li
                     )
                     continue
                 valid[key] = normalized_routes
+                continue
+
+            normalized_search_value, search_validation_error = validate_search_preference_value(key, value)
+            if search_validation_error:
+                errors.append(search_validation_error)
+                continue
+            if key in {
+                "SEARCH_MODE",
+                "METADATA_PROVIDER",
+                "METADATA_PROVIDER_AUDIOBOOK",
+                "DEFAULT_RELEASE_SOURCE",
+            }:
+                valid[key] = normalized_search_value
                 continue
 
             valid[key] = value
@@ -133,6 +147,20 @@ def register_admin_settings_routes(
             payload = _build_user_preferences_payload(user_db, user_id, "downloads")
         except ValueError:
             return jsonify({"error": "Downloads settings tab not found"}), 500
+
+        return jsonify(payload)
+
+    @app.route("/api/admin/users/<int:user_id>/search-preferences", methods=["GET"])
+    @require_admin
+    def admin_get_search_preferences(user_id):
+        user = user_db.get_user(user_id=user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        try:
+            payload = _build_user_preferences_payload(user_db, user_id, "search_mode")
+        except ValueError:
+            return jsonify({"error": "Search mode settings tab not found"}), 500
 
         return jsonify(payload)
 

@@ -997,6 +997,30 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
         from shelfmark.config.env import _is_config_dir_writable
         from shelfmark.core.onboarding import is_onboarding_complete as _get_onboarding_complete
 
+        raw_db_user_id = session.get("db_user_id")
+        try:
+            db_user_id = int(raw_db_user_id) if raw_db_user_id is not None else None
+        except (TypeError, ValueError):
+            db_user_id = None
+
+        search_mode = app_config.get("SEARCH_MODE", "direct", user_id=db_user_id)
+        default_release_source = app_config.get(
+            "DEFAULT_RELEASE_SOURCE",
+            "direct_download",
+            user_id=db_user_id,
+        )
+        configured_metadata_provider = app_config.get(
+            "METADATA_PROVIDER",
+            "",
+            user_id=db_user_id,
+        )
+        _configured_metadata_provider_audiobook = app_config.get(
+            "METADATA_PROVIDER_AUDIOBOOK",
+            "",
+            user_id=db_user_id,
+        )
+        metadata_ui_provider = configured_metadata_provider or _configured_metadata_provider_audiobook
+
         config = {
             "calibre_web_url": app_config.get("CALIBRE_WEB_URL", ""),
             "audiobook_library_url": app_config.get("AUDIOBOOK_LIBRARY_URL", ""),
@@ -1007,10 +1031,10 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
             "default_language": app_config.BOOK_LANGUAGE,
             "supported_formats": app_config.SUPPORTED_FORMATS,
             "supported_audiobook_formats": app_config.SUPPORTED_AUDIOBOOK_FORMATS,
-            "search_mode": app_config.get("SEARCH_MODE", "direct"),
-            "metadata_sort_options": get_provider_sort_options(),
-            "metadata_search_fields": get_provider_search_fields(),
-            "default_release_source": app_config.get("DEFAULT_RELEASE_SOURCE", "direct_download"),
+            "search_mode": search_mode,
+            "metadata_sort_options": get_provider_sort_options(metadata_ui_provider),
+            "metadata_search_fields": get_provider_search_fields(metadata_ui_provider),
+            "default_release_source": default_release_source,
             "books_output_mode": app_config.get("BOOKS_OUTPUT_MODE", "folder"),
             "auto_open_downloads_sidebar": app_config.get("AUTO_OPEN_DOWNLOADS_SIDEBAR", True),
             "download_to_browser": app_config.get("DOWNLOAD_TO_BROWSER", False),
@@ -1018,7 +1042,7 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
             "onboarding_complete": _get_onboarding_complete(),
             # Default sort orders
             "default_sort": app_config.get("AA_DEFAULT_SORT", "relevance"),  # For direct mode (Anna's Archive)
-            "metadata_default_sort": get_provider_default_sort(),  # For universal mode
+            "metadata_default_sort": get_provider_default_sort(metadata_ui_provider),  # For universal mode
         }
         return jsonify(config)
     except Exception as e:
@@ -2037,7 +2061,13 @@ def api_metadata_search() -> Union[Response, Tuple[Response, int]]:
         except ValueError:
             sort_order = SortOrder.RELEVANCE
 
-        provider = get_configured_provider(content_type=content_type)
+        raw_db_user_id = session.get("db_user_id")
+        try:
+            db_user_id = int(raw_db_user_id) if raw_db_user_id is not None else None
+        except (TypeError, ValueError):
+            db_user_id = None
+
+        provider = get_configured_provider(content_type=content_type, user_id=db_user_id)
         if not provider:
             return jsonify({
                 "error": "No metadata provider configured",

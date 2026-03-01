@@ -1166,6 +1166,83 @@ class TestAdminDeliveryPreferences:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/admin/users/<id>/search-preferences
+# ---------------------------------------------------------------------------
+
+
+class TestAdminSearchPreferences:
+    """Tests for GET /api/admin/users/<id>/search-preferences."""
+
+    @pytest.fixture(autouse=True)
+    def setup_config(self, tmp_path, monkeypatch):
+        import json
+        from pathlib import Path
+
+        config_dir = str(tmp_path)
+        monkeypatch.setenv("CONFIG_DIR", config_dir)
+        monkeypatch.setattr("shelfmark.config.env.CONFIG_DIR", Path(config_dir))
+
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+        search_mode_config = {
+            "SEARCH_MODE": "direct",
+            "METADATA_PROVIDER": "openlibrary",
+            "METADATA_PROVIDER_AUDIOBOOK": "",
+            "DEFAULT_RELEASE_SOURCE": "direct_download",
+        }
+        (plugins_dir / "search_mode.json").write_text(json.dumps(search_mode_config))
+
+        from shelfmark.core.config import config as app_config
+        app_config.refresh()
+
+    def test_returns_curated_fields_and_effective_values(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+        user_db.set_user_settings(
+            user["id"],
+            {
+                "SEARCH_MODE": "universal",
+                "METADATA_PROVIDER": "openlibrary",
+                "DEFAULT_RELEASE_SOURCE": "prowlarr",
+            },
+        )
+
+        resp = admin_client.get(f"/api/admin/users/{user['id']}/search-preferences")
+        assert resp.status_code == 200
+
+        data = resp.json
+        assert data["tab"] == "search_mode"
+        assert data["keys"] == [
+            "SEARCH_MODE",
+            "METADATA_PROVIDER",
+            "METADATA_PROVIDER_AUDIOBOOK",
+            "DEFAULT_RELEASE_SOURCE",
+        ]
+
+        field_keys = [field["key"] for field in data["fields"]]
+        assert set(field_keys) == set(data["keys"])
+
+        assert data["userOverrides"]["SEARCH_MODE"] == "universal"
+        assert data["userOverrides"]["METADATA_PROVIDER"] == "openlibrary"
+        assert data["userOverrides"]["DEFAULT_RELEASE_SOURCE"] == "prowlarr"
+
+        assert data["effective"]["SEARCH_MODE"]["source"] == "user_override"
+        assert data["effective"]["SEARCH_MODE"]["value"] == "universal"
+        assert data["effective"]["METADATA_PROVIDER"]["source"] == "user_override"
+        assert data["effective"]["METADATA_PROVIDER_AUDIOBOOK"]["source"] in {"global_config", "default"}
+        assert data["effective"]["DEFAULT_RELEASE_SOURCE"]["source"] == "user_override"
+        assert data["effective"]["DEFAULT_RELEASE_SOURCE"]["value"] == "prowlarr"
+
+    def test_returns_404_for_unknown_user(self, admin_client):
+        resp = admin_client.get("/api/admin/users/9999/search-preferences")
+        assert resp.status_code == 404
+
+    def test_requires_admin(self, regular_client, user_db):
+        user = user_db.create_user(username="alice")
+        resp = regular_client.get(f"/api/admin/users/{user['id']}/search-preferences")
+        assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
 # GET /api/admin/users/<id>/notification-preferences
 # ---------------------------------------------------------------------------
 

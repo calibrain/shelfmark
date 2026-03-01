@@ -9,6 +9,7 @@ interface UserOverridesViewProps {
   hasChanges: boolean;
   onBack: () => void;
   deliveryPreferences: DeliveryPreferencesResponse | null;
+  searchPreferences: DeliveryPreferencesResponse | null;
   notificationPreferences: DeliveryPreferencesResponse | null;
   isUserOverridable: (key: keyof PerUserSettings) => boolean;
   userSettings: PerUserSettings;
@@ -23,6 +24,7 @@ export const UserOverridesView = ({
   hasChanges,
   onBack,
   deliveryPreferences,
+  searchPreferences,
   notificationPreferences,
   isUserOverridable,
   userSettings,
@@ -56,6 +58,7 @@ export const UserOverridesView = ({
       <UserOverridesSections
         scope="admin"
         deliveryPreferences={deliveryPreferences}
+        searchPreferences={searchPreferences}
         notificationPreferences={notificationPreferences}
         isUserOverridable={isUserOverridable}
         userSettings={userSettings}

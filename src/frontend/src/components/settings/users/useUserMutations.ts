@@ -23,6 +23,7 @@ interface UseUserMutationsParams {
   userSettings: PerUserSettings;
   userOverridableSettings: Set<string>;
   deliveryPreferences: DeliveryPreferencesResponse | null;
+  searchPreferences: DeliveryPreferencesResponse | null;
   notificationPreferences: DeliveryPreferencesResponse | null;
   onEditSaveSuccess?: () => void;
 }
@@ -61,6 +62,7 @@ export const useUserMutations = ({
   userSettings,
   userOverridableSettings,
   deliveryPreferences,
+  searchPreferences,
   notificationPreferences,
   onEditSaveSuccess,
 }: UseUserMutationsParams) => {
@@ -110,7 +112,7 @@ export const useUserMutations = ({
       ? buildUserSettingsPayload(
         userSettings,
         userOverridableSettings,
-        [deliveryPreferences, notificationPreferences]
+        [deliveryPreferences, searchPreferences, notificationPreferences]
       )
       : null;
     const updatePayload: Partial<Pick<AdminUser, 'role' | 'email' | 'display_name'>> & {

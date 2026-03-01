@@ -419,6 +419,7 @@ def search_mode_settings():
                 },
             ],
             default="direct",
+            user_overridable=True,
         ),
         SelectField(
             key="AA_DEFAULT_SORT",
@@ -441,6 +442,7 @@ def search_mode_settings():
             options=_get_metadata_provider_options,  # Callable - evaluated lazily to avoid circular imports
             default="openlibrary",
             show_when={"field": "SEARCH_MODE", "value": "universal"},
+            user_overridable=True,
         ),
         SelectField(
             key="METADATA_PROVIDER_AUDIOBOOK",
@@ -449,6 +451,7 @@ def search_mode_settings():
             options=_get_metadata_provider_options_with_none,  # Callable - includes "Use main provider" option
             default="",
             show_when={"field": "SEARCH_MODE", "value": "universal"},
+            user_overridable=True,
         ),
         SelectField(
             key="DEFAULT_RELEASE_SOURCE",
@@ -457,6 +460,7 @@ def search_mode_settings():
             options=_get_release_source_options,  # Callable - evaluated lazily to avoid circular imports
             default="direct_download",
             show_when={"field": "SEARCH_MODE", "value": "universal"},
+            user_overridable=True,
         ),
     ]
 

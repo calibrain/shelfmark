@@ -78,7 +78,7 @@ def test_visible_self_settings_sections_field_defaults_and_options():
     fields = _field_map("users")
     field = fields["VISIBLE_SELF_SETTINGS_SECTIONS"]
 
-    assert field.default == ["delivery", "notifications"]
+    assert field.default == ["delivery", "search", "notifications"]
     assert field.variant == "dropdown"
     assert field.env_supported is False
     assert field.options == [
@@ -86,6 +86,11 @@ def test_visible_self_settings_sections_field_defaults_and_options():
             "value": "delivery",
             "label": "Delivery Preferences",
             "description": "Show personal delivery output and destination settings.",
+        },
+        {
+            "value": "search",
+            "label": "Search Preferences",
+            "description": "Show personal search mode and provider settings.",
         },
         {
             "value": "notifications",
@@ -330,3 +335,37 @@ def test_on_save_users_normalizes_rules(monkeypatch):
     assert result["values"]["REQUEST_POLICY_RULES"] == [
         {"source": "direct_download", "content_type": "ebook", "mode": "request_release"},
     ]
+
+
+def test_on_save_users_normalizes_search_mode_override():
+    result = users_settings_module._on_save_users({"SEARCH_MODE": " UNIVERSAL "})
+
+    assert result["error"] is False
+    assert result["values"]["SEARCH_MODE"] == "universal"
+
+
+def test_on_save_users_rejects_invalid_metadata_provider_override(monkeypatch):
+    monkeypatch.setattr(
+        "shelfmark.metadata_providers.is_provider_registered",
+        lambda provider_name: provider_name == "openlibrary",
+    )
+
+    result = users_settings_module._on_save_users({"METADATA_PROVIDER": "unknown-provider"})
+
+    assert result["error"] is True
+    assert "METADATA_PROVIDER must be a valid metadata provider name or empty" in result["message"]
+
+
+def test_on_save_users_rejects_invalid_default_release_source_override(monkeypatch):
+    monkeypatch.setattr(
+        "shelfmark.release_sources.list_available_sources",
+        lambda: [
+            {"name": "direct_download", "display_name": "Direct Download", "enabled": True},
+            {"name": "prowlarr", "display_name": "Prowlarr", "enabled": True},
+        ],
+    )
+
+    result = users_settings_module._on_save_users({"DEFAULT_RELEASE_SOURCE": "unknown-source"})
+
+    assert result["error"] is True
+    assert "DEFAULT_RELEASE_SOURCE must be a valid release source name or empty" in result["message"]

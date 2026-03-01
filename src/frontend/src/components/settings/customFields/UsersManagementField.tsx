@@ -22,6 +22,7 @@ export const UsersManagementField = ({
   onShowToast,
   onRefreshOverrideSummary,
   onRefreshAuth,
+  onSettingsSaved,
 }: CustomSettingsFieldRendererProps) => {
   const { route, openCreate, openEdit, openEditOverrides, backToList } = useUsersPanelState();
   const activeEditRequestIdRef = useRef(0);
@@ -46,6 +47,7 @@ export const UsersManagementField = ({
     setEditPasswordConfirm,
     downloadDefaults,
     deliveryPreferences,
+    searchPreferences,
     notificationPreferences,
     isUserOverridable,
     userSettings,
@@ -79,6 +81,7 @@ export const UsersManagementField = ({
     userSettings,
     userOverridableSettings,
     deliveryPreferences,
+    searchPreferences,
     notificationPreferences,
     onEditSaveSuccess: clearEditState,
   });
@@ -191,10 +194,11 @@ export const UsersManagementField = ({
       includeSettings: true,
     });
     if (ok) {
+      onSettingsSaved?.();
       onRefreshOverrideSummary?.();
       backToList();
     }
-  }, [backToList, onRefreshOverrideSummary, saveEditedUser]);
+  }, [backToList, onRefreshOverrideSummary, onSettingsSaved, saveEditedUser]);
 
   const handleSaveUserOverridesRef = useRef(handleSaveUserOverrides);
   useEffect(() => {
@@ -249,6 +253,7 @@ export const UsersManagementField = ({
         hasChanges={hasUserSettingsChanges}
         onBack={handleBackToEdit}
         deliveryPreferences={deliveryPreferences}
+        searchPreferences={searchPreferences}
         notificationPreferences={notificationPreferences}
         isUserOverridable={isUserOverridable}
         userSettings={userSettings}
