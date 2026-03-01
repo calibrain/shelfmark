@@ -1053,32 +1053,31 @@ export const ReleaseModal = ({
     return [...fromColumns, ...fromExtra];
   }, [sortableColumns, columnConfig.extra_sort_options]);
 
+  const isValidSortForCurrentResults = useCallback((sort: SortState | null): boolean => {
+    if (!sort) return false;
+
+    if (sort.key === FORMAT_SORT_KEY) {
+      return !!sort.value && availableFormats.includes(sort.value);
+    }
+
+    return allSortOptions.some(opt => opt.sortKey === sort.key);
+  }, [availableFormats, allSortOptions]);
+
   // Get current sort state for active tab (from state, localStorage, or default to null = best match)
   const currentSort = useMemo((): SortState | null => {
     // Check state first - explicit null means "Default" was selected
     if (activeTab in sortBySource) {
-      return sortBySource[activeTab];
+      const inMemory = sortBySource[activeTab];
+      return inMemory === null || isValidSortForCurrentResults(inMemory) ? inMemory : null;
     }
     // Check localStorage
     const saved = getSavedSort(activeTab);
-    if (saved) {
-      // Validate format sorts - check the saved format still exists in results
-      if (saved.key === FORMAT_SORT_KEY) {
-        if (saved.value && availableFormats.includes(saved.value)) {
-          return saved;
-        }
-        // Saved format no longer available - fall through to default
-      } else {
-        // Verify the saved sort is still valid for this source
-        const isValid = allSortOptions.some(opt => opt.sortKey === saved.key);
-        if (isValid) {
-          return saved;
-        }
-      }
+    if (isValidSortForCurrentResults(saved)) {
+      return saved;
     }
     // Default to null (best-match sorting)
     return null;
-  }, [activeTab, sortBySource, allSortOptions, availableFormats]);
+  }, [activeTab, sortBySource, isValidSortForCurrentResults]);
 
   // Handle sort change - null means "Default" (best title match), otherwise toggle direction or set new column
   const handleSortChange = useCallback((sortKey: string | null, defaultDirection: 'asc' | 'desc', value?: string) => {
