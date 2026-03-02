@@ -16,7 +16,7 @@ from shelfmark.core.user_settings_overrides import (
     get_ordered_user_overridable_fields as _get_ordered_user_overridable_fields,
     get_settings_registry as _get_settings_registry,
 )
-from shelfmark.core.user_db import UserDB
+from shelfmark.core.user_db import NO_AUTH_ACTIVITY_USERNAME, UserDB
 from shelfmark.core.request_policy import parse_policy_mode, validate_policy_rules
 
 
@@ -205,6 +205,8 @@ def register_admin_settings_routes(
         keys_payload: dict[str, dict[str, Any]] = {}
 
         for user_record in user_db.list_users():
+            if str(user_record.get("username") or "").strip() == NO_AUTH_ACTIVITY_USERNAME:
+                continue
             user_settings = user_db.get_user_settings(user_record["id"])
             if not isinstance(user_settings, dict):
                 continue

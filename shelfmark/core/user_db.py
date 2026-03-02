@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional
 
 from shelfmark.core.auth_modes import AUTH_SOURCE_BUILTIN, AUTH_SOURCE_SET
 from shelfmark.core.logger import setup_logger
+
+NO_AUTH_ACTIVITY_USERNAME = "__shelfmark_noauth_activity__"
 from shelfmark.core.requests_service import (
     normalize_delivery_state,
     normalize_policy_mode,

@@ -8,11 +8,9 @@ from flask import Flask, jsonify, request, session
 
 from shelfmark.core.activity_service import ActivityService
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.user_db import UserDB
+from shelfmark.core.user_db import NO_AUTH_ACTIVITY_USERNAME, UserDB
 
 logger = setup_logger(__name__)
-
-_NO_AUTH_ACTIVITY_USERNAME = "__shelfmark_noauth_activity__"
 
 
 def _require_authenticated(resolve_auth_mode: Callable[[], str]):
@@ -95,18 +93,18 @@ def _resolve_db_user_id(
 def _ensure_no_auth_activity_user_id(user_db: UserDB) -> int | None:
     """Resolve a stable users.db identity for no-auth activity state."""
     try:
-        user = user_db.get_user(username=_NO_AUTH_ACTIVITY_USERNAME)
+        user = user_db.get_user(username=NO_AUTH_ACTIVITY_USERNAME)
         if user is None:
             try:
                 user_db.create_user(
-                    username=_NO_AUTH_ACTIVITY_USERNAME,
+                    username=NO_AUTH_ACTIVITY_USERNAME,
                     display_name="No-auth Activity",
                     role="admin",
                 )
             except ValueError:
                 # Another request may have created it between lookup and insert.
                 pass
-            user = user_db.get_user(username=_NO_AUTH_ACTIVITY_USERNAME)
+            user = user_db.get_user(username=NO_AUTH_ACTIVITY_USERNAME)
 
         if user is None:
             return None
@@ -167,6 +165,8 @@ def _list_admin_user_ids(user_db: UserDB) -> list[int]:
 
     for user in users:
         if not isinstance(user, dict):
+            continue
+        if str(user.get("username") or "").strip() == NO_AUTH_ACTIVITY_USERNAME:
             continue
         role = str(user.get("role") or "").strip().lower()
         if role != "admin":

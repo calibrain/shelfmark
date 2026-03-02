@@ -33,10 +33,9 @@ from shelfmark.core.auth_modes import (
 from shelfmark.core.cwa_user_sync import sync_cwa_users_from_rows
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import load_config_file
-from shelfmark.core.user_db import UserDB
+from shelfmark.core.user_db import NO_AUTH_ACTIVITY_USERNAME, UserDB
 
 logger = setup_logger(__name__)
-_NO_AUTH_ACTIVITY_USERNAME = "__shelfmark_noauth_activity__"
 
 
 def _get_user_edit_capabilities(
@@ -146,7 +145,7 @@ def _serialize_user(
 
 def _is_internal_system_user(user: dict[str, Any]) -> bool:
     username = str(user.get("username") or "").strip()
-    return username == _NO_AUTH_ACTIVITY_USERNAME
+    return username == NO_AUTH_ACTIVITY_USERNAME
 
 
 def _sync_all_cwa_users(user_db: UserDB) -> dict[str, int]:
