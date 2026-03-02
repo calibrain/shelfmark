@@ -324,6 +324,18 @@ class TestSecuritySettings:
         notice = next((f for f in fields if f.key == "builtin_auth_notice"), None)
         assert notice is None
 
+    def test_builtin_admin_requirement_hint_present(self):
+        """Builtin mode should show local-admin requirement warning."""
+        from shelfmark.config.security import security_settings
+
+        fields = security_settings()
+        hint = next((f for f in fields if f.key == "builtin_admin_requirement"), None)
+        assert hint is not None
+        assert hint.component == "oidc_admin_hint"
+        assert hint.show_when == {"field": "AUTH_METHOD", "value": "builtin"}
+        assert "inactive" in hint.label.lower()
+        assert "local admin" in hint.label.lower()
+
     def test_builtin_option_label_is_local(self):
         """Builtin auth option should be labeled Local."""
         from shelfmark.config.security import security_settings

@@ -98,6 +98,15 @@ def security_settings():
             env_supported=False,
         ),
         CustomComponentField(
+            key="builtin_admin_requirement",
+            component="oidc_admin_hint",
+            label=(
+                "Local authentication is inactive until a local admin account with a "
+                "password is created."
+            ),
+            show_when=_auth_condition("builtin"),
+        ),
+        CustomComponentField(
             key="oidc_admin_requirement",
             component="oidc_admin_hint",
             label="A local admin account is required before OIDC can be enabled.",
