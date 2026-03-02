@@ -1312,10 +1312,9 @@ function App() {
   }, [searchInput]);
 
   // Manual search is only allowed when the default policy permits browsing releases
-  const manualSearchAllowed = searchMode === 'universal' && (() => {
-    const mode = getUniversalDefaultPolicyMode();
-    return mode === 'download' || mode === 'request_release';
-  })();
+  const universalDefaultMode = getUniversalDefaultPolicyMode();
+  const manualSearchAllowed = searchMode === 'universal'
+    && (universalDefaultMode === 'download' || universalDefaultMode === 'request_release');
 
   // Reset manual search if policy changes to disallow it
   useEffect(() => {
@@ -1323,6 +1322,23 @@ function App() {
       setIsManualSearch(false);
     }
   }, [manualSearchAllowed, isManualSearch]);
+
+  // Unified search dispatch: intercepts manual search mode, otherwise runs normal search
+  const handleSearchDispatch = useCallback(() => {
+    if (isManualSearch) {
+      handleManualSearch();
+      return;
+    }
+    const query = buildSearchQuery({
+      searchInput,
+      showAdvanced,
+      advancedFilters,
+      bookLanguages,
+      defaultLanguage: defaultLanguageCodes,
+      searchMode,
+    });
+    runSearchWithPolicyRefresh(query);
+  }, [isManualSearch, handleManualSearch, searchInput, showAdvanced, advancedFilters, bookLanguages, defaultLanguageCodes, searchMode, runSearchWithPolicyRefresh]);
 
   const isBrowseFulfilMode = fulfillingRequest !== null;
   const activeReleaseBook = fulfillingRequest?.book ?? releaseBook;
@@ -1382,21 +1398,7 @@ function App() {
           authRequired={authRequired}
           isAuthenticated={isAuthenticated}
           onLogout={handleLogoutWithCleanup}
-          onSearch={() => {
-            if (isManualSearch) {
-              handleManualSearch();
-              return;
-            }
-            const query = buildSearchQuery({
-              searchInput,
-              showAdvanced,
-              advancedFilters,
-              bookLanguages,
-              defaultLanguage: defaultLanguageCodes,
-              searchMode,
-            });
-            runSearchWithPolicyRefresh(query);
-          }}
+          onSearch={handleSearchDispatch}
           onAdvancedToggle={() => setShowAdvanced(!showAdvanced)}
           isLoading={isSearching}
           onShowToast={showToast}
@@ -1436,21 +1438,7 @@ function App() {
         metadataSearchFields={config?.metadata_search_fields}
         searchFieldValues={searchFieldValues}
         onSearchFieldChange={updateSearchFieldValue}
-        onSubmit={() => {
-          if (isManualSearch) {
-            handleManualSearch();
-            return;
-          }
-          const query = buildSearchQuery({
-            searchInput,
-            showAdvanced,
-            advancedFilters,
-            bookLanguages,
-            defaultLanguage: defaultLanguageCodes,
-            searchMode,
-          });
-          runSearchWithPolicyRefresh(query);
-        }}
+        onSubmit={handleSearchDispatch}
         isManualSearch={isManualSearch}
         onManualSearchToggle={manualSearchAllowed ? () => setIsManualSearch(prev => !prev) : undefined}
       />
@@ -1464,13 +1452,7 @@ function App() {
         }
       >
         <SearchSection
-          onSearch={(query) => {
-            if (isManualSearch) {
-              handleManualSearch();
-              return;
-            }
-            runSearchWithPolicyRefresh(query);
-          }}
+          onSearch={() => handleSearchDispatch()}
           isLoading={isSearching}
           isInitialState={isInitialState}
           bookLanguages={bookLanguages}

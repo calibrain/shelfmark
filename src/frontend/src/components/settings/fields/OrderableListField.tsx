@@ -4,6 +4,7 @@ import {
   OrderableListItem,
   OrderableListOption,
 } from '../../../types/settings';
+import { ToggleSwitch } from '../../shared';
 
 interface OrderableListFieldProps {
   field: OrderableListFieldConfig;
@@ -307,30 +308,13 @@ export const OrderableListField = ({
               </div>
 
               {/* Toggle Switch */}
-              <button
-                type="button"
-                role="switch"
-                aria-checked={item.enabled && !item.isLocked}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleItem(index);
-                }}
-                disabled={isItemDisabled}
-                className={`
-                  relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full
-                  transition-colors duration-200 focus:outline-none focus:ring-2
-                  focus:ring-sky-500/50 disabled:opacity-60 disabled:cursor-not-allowed
-                  ${item.enabled && !item.isLocked ? 'bg-sky-600' : 'bg-gray-300 dark:bg-gray-600'}
-                `}
-              >
-                <span
-                  className={`
-                    inline-block h-4 w-4 transform rounded-full bg-white
-                    shadow-sm transition-transform duration-200
-                    ${item.enabled && !item.isLocked ? 'translate-x-6' : 'translate-x-1'}
-                  `}
+              <div onClick={(e) => e.stopPropagation()} className="flex-shrink-0">
+                <ToggleSwitch
+                  checked={item.enabled && !item.isLocked}
+                  onChange={() => toggleItem(index)}
+                  disabled={isItemDisabled}
                 />
-              </button>
+              </div>
             </div>
           </div>
         );
