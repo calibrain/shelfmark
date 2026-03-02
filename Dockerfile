@@ -68,7 +68,7 @@ RUN apt-get update && \
     # For debug
     zip iputils-ping \
     # For user switching
-    sudo \
+    gosu \
     # --- Tor support (activated via USING_TOR=true) ---
     tor \
     supervisor \
@@ -151,8 +151,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements-shelfmark.txt
 
 # Grant read/execute permissions to others
-RUN chmod -R o+rx /usr/bin/chromium && \
-    chmod -R o+rwx /usr/local/lib/python3.10/site-packages/seleniumbase/drivers/
+RUN chmod -R o+rx /usr/bin/chromium
 
 # Default command to run the application entrypoint script
 CMD ["/app/entrypoint.sh"]

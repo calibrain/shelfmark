@@ -1,6 +1,7 @@
 services:
   shelfmark-lite:
     image: ghcr.io/calibrain/shelfmark-lite:latest
+    container_name: shelfmark-lite
     environment:
       # EXT_BYPASSER_URL: http://flaresolverr:8191 #If using Flaresolverr
       PUID: 1000

@@ -79,12 +79,13 @@ if BASE_PATH:
 # We run this app under Gunicorn with a gevent websocket worker (even when DEBUG=true),
 # so Socket.IO should always use gevent here.
 async_mode = 'gevent'
+socketio_cors_allowed_origins = "*" if DEBUG else None
 
 # Initialize Flask-SocketIO with reverse proxy support
 socketio_path = f"{BASE_PATH}/socket.io" if BASE_PATH else "/socket.io"
 socketio = SocketIO(
     app,
-    cors_allowed_origins="*",
+    cors_allowed_origins=socketio_cors_allowed_origins,
     async_mode=async_mode,
     logger=False,
     engineio_logger=False,
@@ -104,6 +105,7 @@ socketio = SocketIO(
 ws_manager.init_app(app, socketio)
 ws_manager.set_queue_status_fn(backend.queue_status)
 logger.info(f"Flask-SocketIO initialized with async_mode='{async_mode}'")
+logger.info("Socket.IO CORS allowed origins: %s", socketio_cors_allowed_origins)
 
 # Ensure all plugins are loaded before starting the download coordinator.
 # This prevents a race condition where the download loop could try to process
@@ -474,14 +476,45 @@ werkzeug_logger.setLevel(logger.level)
 werkzeug_logger.addFilter(LogNoiseFilter())
 
 # Set up authentication defaults
-# The secret key will reset every time we restart, which will
-# require users to authenticate again
 from shelfmark.config.env import SESSION_COOKIE_NAME, SESSION_COOKIE_SECURE_ENV, string_to_bool
 
 SESSION_COOKIE_SECURE = string_to_bool(SESSION_COOKIE_SECURE_ENV)
 
+
+def _load_or_create_secret_key() -> bytes:
+    """Load a persisted Flask secret key from config, or create one."""
+    secret_path = CONFIG_DIR / ".flask_secret"
+
+    try:
+        if secret_path.exists():
+            secret_key = secret_path.read_bytes()
+            if len(secret_key) >= 32:
+                return secret_key
+            logger.warning(
+                "Invalid persisted Flask secret key at %s (length=%s). Regenerating.",
+                secret_path,
+                len(secret_key),
+            )
+    except OSError as exc:
+        logger.warning("Failed to read Flask secret key at %s: %s", secret_path, exc)
+
+    secret_key = os.urandom(64)
+    try:
+        secret_path.parent.mkdir(parents=True, exist_ok=True)
+        secret_path.write_bytes(secret_key)
+        os.chmod(secret_path, 0o600)
+    except OSError as exc:
+        logger.warning(
+            "Failed to persist Flask secret key at %s. Sessions may reset on restart: %s",
+            secret_path,
+            exc,
+        )
+
+    return secret_key
+
+
 app.config.update(
-    SECRET_KEY = os.urandom(64),
+    SECRET_KEY = _load_or_create_secret_key(),
     SESSION_COOKIE_HTTPONLY = True,
     SESSION_COOKIE_SAMESITE = 'Lax',
     SESSION_COOKIE_SECURE = SESSION_COOKIE_SECURE,

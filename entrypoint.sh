@@ -45,9 +45,9 @@ if is_truthy "$ENABLE_LOGGING_VALUE"; then
     LOG_DIR=${LOG_ROOT:-/var/log/}/shelfmark
     mkdir -p "$LOG_DIR"
     LOG_FILE="${LOG_DIR}/shelfmark_entrypoint.log"
-
-    # Cleanup any existing files or folders in the log directory
-    rm -rf "$LOG_DIR"/*
+    # Keep the previous entrypoint log instead of deleting all history on boot.
+    [ -f "${LOG_FILE}.prev" ] && rm -f "${LOG_FILE}.prev"
+    [ -f "$LOG_FILE" ] && mv "$LOG_FILE" "${LOG_FILE}.prev"
 fi
 
 (
@@ -127,14 +127,26 @@ USERNAME=$(getent passwd "$RUN_UID" | cut -d: -f1)
 echo "Username for UID $RUN_UID is $USERNAME"
 
 test_write() {
-    folder=$1
-    test_file=$folder/shelfmark_TEST_WRITE
-    mkdir -p $folder
-    (
-        echo 0123456789_TEST | sudo -E -u "$USERNAME" HOME=/app tee $test_file > /dev/null
-    )
-    FILE_CONTENT=$(cat $test_file || echo "")
-    rm -f $test_file
+    local folder=$1
+    local test_file="$folder/shelfmark_TEST_WRITE"
+    local FILE_CONTENT
+    local result
+    local result_text
+
+    if ! mkdir -p "$folder"; then
+        echo "Failed to create directory for write test: $folder"
+        return 1
+    fi
+
+    if ! (
+        echo 0123456789_TEST | gosu "$USERNAME" env HOME=/app tee "$test_file" > /dev/null
+    ); then
+        echo "Failed to write test file in $folder as $USERNAME"
+        return 1
+    fi
+
+    FILE_CONTENT=$(cat "$test_file" 2>/dev/null || echo "")
+    rm -f "$test_file"
     [ "$FILE_CONTENT" = "0123456789_TEST" ]
     result=$?
     if [ $result -eq 0 ]; then
@@ -342,4 +354,4 @@ echo "Setting umask to $UMASK_VALUE"
 umask $UMASK_VALUE
 
 stop_file_logging
-exec sudo -E -u "$USERNAME" HOME=/app $command
+exec gosu "$USERNAME" env HOME=/app $command
