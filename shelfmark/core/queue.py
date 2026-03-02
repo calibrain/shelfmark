@@ -150,8 +150,8 @@ class BookQueue:
         """Get current queue status grouped by status.
 
         Args:
-            user_id: If provided, only return tasks belonging to this user
-                     (plus legacy tasks with no user_id). If None, return all.
+            user_id: If provided, only return tasks belonging to this user.
+                     If None, return all.
         """
         self.refresh()
         with self._lock:
@@ -159,7 +159,7 @@ class BookQueue:
             for task_id, status in self._status.items():
                 if task_id in self._task_data:
                     task = self._task_data[task_id]
-                    if user_id is not None and task.user_id is not None and task.user_id != user_id:
+                    if user_id is not None and task.user_id != user_id:
                         continue
                     result[status][task_id] = task
             return result
@@ -329,8 +329,8 @@ class BookQueue:
         """Remove terminal tasks from tracking, optionally scoped to one user.
 
         Args:
-            user_id: If provided, only clear tasks belonging to this user,
-                     plus legacy tasks with no user_id. If None, clear all.
+            user_id: If provided, only clear tasks belonging to this user.
+                     If None, clear all.
         """
         terminal_statuses = {QueueStatus.COMPLETE, QueueStatus.DONE, QueueStatus.AVAILABLE, QueueStatus.ERROR, QueueStatus.CANCELLED}
         with self._lock:
@@ -347,7 +347,7 @@ class BookQueue:
                 if task is None:
                     # Without task ownership metadata we cannot safely scope removal.
                     continue
-                if task.user_id is None or task.user_id == user_id:
+                if task.user_id == user_id:
                     to_remove.append(task_id)
 
             for task_id in to_remove:
