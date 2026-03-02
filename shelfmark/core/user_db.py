@@ -8,9 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from shelfmark.core.auth_modes import AUTH_SOURCE_BUILTIN, AUTH_SOURCE_SET
 from shelfmark.core.logger import setup_logger
-
-NO_AUTH_ACTIVITY_USERNAME = "__shelfmark_noauth_activity__"
-from shelfmark.core.requests_service import (
+from shelfmark.core.request_validation import (
     normalize_delivery_state,
     normalize_policy_mode,
     normalize_request_level,
@@ -18,6 +16,8 @@ from shelfmark.core.requests_service import (
     validate_request_level_payload,
     validate_status_transition,
 )
+
+NO_AUTH_ACTIVITY_USERNAME = "__shelfmark_noauth_activity__"
 
 logger = setup_logger(__name__)
 
@@ -730,6 +730,73 @@ class UserDB:
                 if parsed is None:
                     raise ValueError(f"Request {request_id} not found after update")
                 return parsed
+            finally:
+                conn.close()
+
+    def reopen_failed_request(
+        self,
+        request_id: int,
+        *,
+        failure_reason: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Reopen a failed fulfilled request so admins can re-approve it."""
+        normalized_failure_reason = None
+        if isinstance(failure_reason, str):
+            normalized_failure_reason = failure_reason.strip() or None
+
+        with self._lock:
+            conn = self._connect()
+            try:
+                current_row = conn.execute(
+                    "SELECT * FROM download_requests WHERE id = ?",
+                    (request_id,),
+                ).fetchone()
+                current_request = self._parse_request_row(current_row)
+                if current_request is None:
+                    return None
+
+                if current_request.get("status") != "fulfilled":
+                    return None
+
+                current_delivery_state = current_request.get("delivery_state")
+                if isinstance(current_delivery_state, str):
+                    try:
+                        current_delivery_state = normalize_delivery_state(current_delivery_state)
+                    except ValueError:
+                        current_delivery_state = "none"
+                else:
+                    current_delivery_state = "none"
+
+                # Terminal hook callbacks can run before delivery-state sync persists "error".
+                # Allow reopening fulfilled requests unless they are already complete.
+                if current_delivery_state == "complete":
+                    return None
+                if (
+                    current_delivery_state not in {"error", "cancelled"}
+                    and normalized_failure_reason is None
+                ):
+                    return None
+
+                conn.execute(
+                    """
+                    UPDATE download_requests
+                    SET status = 'pending',
+                        delivery_state = 'none',
+                        delivery_updated_at = NULL,
+                        release_data = NULL,
+                        last_failure_reason = ?,
+                        reviewed_by = NULL,
+                        reviewed_at = NULL
+                    WHERE id = ?
+                    """,
+                    (normalized_failure_reason, request_id),
+                )
+                updated_row = conn.execute(
+                    "SELECT * FROM download_requests WHERE id = ?",
+                    (request_id,),
+                ).fetchone()
+                conn.commit()
+                return self._parse_request_row(updated_row)
             finally:
                 conn.close()
 

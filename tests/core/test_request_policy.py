@@ -196,7 +196,7 @@ def test_resolve_policy_mode_caps_at_content_type_default_ceiling():
 
 
 def test_resolve_policy_mode_request_book_ceiling_overrides_all_rules():
-    """When default is request_book, no matrix rule can open the release modal."""
+    """request_book defaults stay capped for non-direct sources."""
     settings = {
         "REQUEST_POLICY_DEFAULT_EBOOK": "request_book",
         "REQUEST_POLICY_DEFAULT_AUDIOBOOK": "blocked",
@@ -206,17 +206,18 @@ def test_resolve_policy_mode_request_book_ceiling_overrides_all_rules():
         ],
     }
 
-    # Both rules try to upgrade beyond request_book → capped
+    # Prowlarr rule tries to upgrade beyond request_book → capped
     assert resolve_policy_mode(
         source="prowlarr",
         content_type="ebook",
         global_settings=settings,
     ) == PolicyMode.REQUEST_BOOK
+    # Direct-download requests are concrete releases, so request_book normalizes to request_release.
     assert resolve_policy_mode(
         source="direct_download",
         content_type="ebook",
         global_settings=settings,
-    ) == PolicyMode.REQUEST_BOOK
+    ) == PolicyMode.REQUEST_RELEASE
     # audiobook default is blocked → even more restrictive ceiling
     assert resolve_policy_mode(
         source="prowlarr",
@@ -236,7 +237,7 @@ def test_resolve_policy_mode_falls_back_to_request_book_when_unset():
         source="direct_download",
         content_type="ebook",
         global_settings=settings,
-    ) == PolicyMode.REQUEST_BOOK
+    ) == PolicyMode.REQUEST_RELEASE
     assert resolve_policy_mode(
         source="prowlarr",
         content_type="audiobook",

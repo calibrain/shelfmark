@@ -565,6 +565,32 @@ def test_reopen_failed_request_reverts_to_pending_from_queued_and_clears_on_refu
     assert refulfilled["last_failure_reason"] is None
 
 
+def test_reopen_failed_request_delegates_to_user_db_public_api():
+    class StubUserDB:
+        def __init__(self) -> None:
+            self.calls: list[tuple[int, str | None]] = []
+
+        def reopen_failed_request(
+            self,
+            request_id: int,
+            *,
+            failure_reason: str | None = None,
+        ) -> dict[str, object]:
+            self.calls.append((request_id, failure_reason))
+            return {"id": request_id, "status": "pending"}
+
+    user_db = StubUserDB()
+
+    reopened = reopen_failed_request(
+        user_db,  # type: ignore[arg-type]
+        request_id=7,
+        failure_reason="  Download failed: Timeout  ",
+    )
+
+    assert reopened == {"id": 7, "status": "pending"}
+    assert user_db.calls == [(7, "Download failed: Timeout")]
+
+
 def test_reopen_failed_request_does_not_reopen_completed_delivery(user_db):
     alice = user_db.create_user(username="alice")
     admin = user_db.create_user(username="admin", role="admin")

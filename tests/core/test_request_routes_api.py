@@ -75,10 +75,10 @@ class TestDownloadPolicyGuards:
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             with patch.object(
                 main_module,
-                "_load_users_request_policy_settings",
+                "load_users_request_policy_settings",
                 return_value=_policy(default_ebook="request_release"),
             ):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=_policy(default_ebook="request_release")):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=_policy(default_ebook="request_release")):
                     with patch.object(main_module.backend, "queue_book") as mock_queue_book:
                         resp = client.get("/api/download?id=book-123")
 
@@ -94,10 +94,10 @@ class TestDownloadPolicyGuards:
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             with patch.object(
                 main_module,
-                "_load_users_request_policy_settings",
+                "load_users_request_policy_settings",
                 return_value=_policy(default_ebook="blocked"),
             ):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=_policy(default_ebook="blocked")):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=_policy(default_ebook="blocked")):
                     with patch.object(main_module.backend, "queue_release") as mock_queue_release:
                         resp = client.post(
                             "/api/releases/download",
@@ -116,10 +116,10 @@ class TestDownloadPolicyGuards:
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             with patch.object(
                 main_module,
-                "_load_users_request_policy_settings",
+                "load_users_request_policy_settings",
                 return_value=_policy(default_ebook="blocked"),
             ):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=_policy(default_ebook="blocked")):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=_policy(default_ebook="blocked")):
                     with patch.object(main_module.backend, "queue_book", return_value=(True, None)) as mock_queue_book:
                         resp = client.get("/api/download?id=book-123")
 
@@ -131,10 +131,10 @@ class TestDownloadPolicyGuards:
         with patch.object(main_module, "get_auth_mode", return_value="none"):
             with patch.object(
                 main_module,
-                "_load_users_request_policy_settings",
+                "load_users_request_policy_settings",
                 return_value=_policy(default_ebook="blocked"),
             ):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=_policy(default_ebook="blocked")):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=_policy(default_ebook="blocked")):
                     with patch.object(main_module.backend, "queue_book", return_value=(True, None)) as mock_queue_book:
                         resp = client.get("/api/download?id=book-123")
 
@@ -157,14 +157,33 @@ class TestRequestRoutes:
         policy = _policy(default_ebook="request_release")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.get("/api/request-policy")
 
         assert resp.status_code == 200
         assert resp.json["requests_enabled"] is True
         assert resp.json["defaults"]["ebook"] == "request_release"
         assert "source_modes" in resp.json
+
+    def test_request_policy_endpoint_normalizes_direct_request_book_to_request_release(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(default_ebook="request_book")
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
+                    with patch(
+                        "shelfmark.core.request_routes.get_source_content_type_capabilities",
+                        return_value={"direct_download": {"ebook"}},
+                    ):
+                        resp = client.get("/api/request-policy")
+
+        assert resp.status_code == 200
+        assert resp.json["defaults"]["ebook"] == "request_book"
+        assert resp.json["source_modes"][0]["source"] == "direct_download"
+        assert resp.json["source_modes"][0]["modes"]["ebook"] == "request_release"
 
     def test_create_list_and_cancel_request(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -188,8 +207,8 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     create_resp = client.post("/api/requests", json=payload)
                     list_resp = client.get("/api/requests")
 
@@ -235,8 +254,8 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     with patch.object(main_module.ws_manager, "is_enabled", return_value=True):
                         with patch.object(main_module.ws_manager.socketio, "emit") as mock_emit:
                             resp = client.post("/api/requests", json=payload)
@@ -275,8 +294,8 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     with patch("shelfmark.core.request_routes.notify_admin") as mock_notify:
                         with patch("shelfmark.core.request_routes.notify_user") as mock_notify_user:
                             resp = client.post("/api/requests", json=payload)
@@ -315,8 +334,8 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     with patch(
                         "shelfmark.core.request_routes.notify_admin",
                         side_effect=RuntimeError("admin notification unavailable"),
@@ -353,8 +372,8 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     with patch.object(main_module.ws_manager, "is_enabled", return_value=True):
                         with patch.object(main_module.ws_manager.socketio, "emit") as mock_emit:
                             create_resp = client.post("/api/requests", json=payload)
@@ -397,8 +416,8 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.post("/api/requests", json=payload)
 
         assert resp.status_code == 400
@@ -425,8 +444,8 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     first_resp = client.post("/api/requests", json=payload)
                     second_resp = client.post("/api/requests", json=payload)
 
@@ -469,8 +488,8 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     first_resp = client.post("/api/requests", json=payload_1)
                     second_resp = client.post("/api/requests", json=payload_2)
 
@@ -500,8 +519,8 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.post("/api/requests", json=payload)
 
         assert resp.status_code == 201
@@ -533,8 +552,8 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.post("/api/requests", json=payload)
 
         assert resp.status_code == 403
@@ -569,13 +588,13 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.post("/api/requests", json=payload)
 
         assert resp.status_code == 201
         assert resp.json["request_level"] == "release"
-        assert resp.json["policy_mode"] == "request_book"
+        assert resp.json["policy_mode"] == "request_release"
         assert resp.json["release_data"]["source"] == "direct_download"
         assert resp.json["release_data"]["source_id"] == "dd-1"
 
@@ -611,8 +630,8 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     create_resp = client.post("/api/requests", json=create_payload)
                     request_id = create_resp.json["id"]
 
@@ -667,8 +686,8 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     create_resp = client.post("/api/requests", json=create_payload)
                     request_id = create_resp.json["id"]
 
@@ -710,8 +729,8 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     create_resp = client.post("/api/requests", json=create_payload)
                     request_id = create_resp.json["id"]
 
@@ -773,8 +792,8 @@ class TestRequestRoutes:
             return True, None
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     create_resp = client.post("/api/requests", json=create_payload)
                     request_id = create_resp.json["id"]
 
@@ -818,8 +837,8 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     create_resp = client.post("/api/requests", json=create_payload)
                     request_id = create_resp.json["id"]
 
@@ -867,8 +886,8 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     create_resp = client.post("/api/requests", json=create_payload)
                     request_id = create_resp.json["id"]
 
@@ -909,15 +928,15 @@ class TestRequestRoutes:
                 "provider_id": "ol-7",
             },
             "context": {
-                "source": "direct_download",
+                "source": "prowlarr",
                 "content_type": "ebook",
                 "request_level": "book",
             },
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     create_resp = client.post("/api/requests", json=create_payload)
                     request_id = create_resp.json["id"]
 
@@ -942,15 +961,15 @@ class TestRequestRoutes:
                 "provider_id": "ol-manual-approval",
             },
             "context": {
-                "source": "direct_download",
+                "source": "prowlarr",
                 "content_type": "ebook",
                 "request_level": "book",
             },
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     create_resp = client.post("/api/requests", json=create_payload)
                     request_id = create_resp.json["id"]
 
@@ -984,7 +1003,7 @@ class TestRequestRoutes:
                 "provider_id": "ol-book-fulfil",
             },
             "context": {
-                "source": "direct_download",
+                "source": "prowlarr",
                 "content_type": "ebook",
                 "request_level": "book",
             },
@@ -1000,8 +1019,8 @@ class TestRequestRoutes:
             return True, None
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     create_resp = client.post("/api/requests", json=create_payload)
                     request_id = create_resp.json["id"]
 
@@ -1011,7 +1030,7 @@ class TestRequestRoutes:
                             f"/api/admin/requests/{request_id}/fulfil",
                             json={
                                 "release_data": {
-                                    "source": "direct_download",
+                                    "source": "prowlarr",
                                     "source_id": "book-level-picked-release",
                                     "title": "Book Level Fulfil.epub",
                                 }
@@ -1057,8 +1076,8 @@ class TestRequestRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     create_resp = client.post("/api/requests", json=create_payload)
                     request_id = create_resp.json["id"]
 
@@ -1085,8 +1104,8 @@ class TestRequestCreationEdgeCases:
         policy = _policy(default_ebook="request_book")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.post("/api/requests", content_type="text/plain", data="garbage")
 
         assert resp.status_code == 400
@@ -1098,8 +1117,8 @@ class TestRequestCreationEdgeCases:
         policy = _policy(default_ebook="request_book")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.post("/api/requests", json={"context": {"source": "direct_download"}})
 
         assert resp.status_code == 400
@@ -1111,8 +1130,8 @@ class TestRequestCreationEdgeCases:
         policy = _policy(default_ebook="request_book")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.post("/api/requests", json={
                         "context": "not-a-dict",
                         "book_data": {"title": "X", "author": "Y", "provider": "z", "provider_id": "1"},
@@ -1127,8 +1146,8 @@ class TestRequestCreationEdgeCases:
         policy = _policy(default_ebook="request_book")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.post("/api/requests", json={
                         "book_data": {"title": "Only a title"},
                         "context": {"source": "direct_download", "content_type": "ebook", "request_level": "book"},
@@ -1155,8 +1174,8 @@ class TestRequestCreationEdgeCases:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.post("/api/requests", json=payload)
 
         assert resp.status_code == 400
@@ -1168,8 +1187,8 @@ class TestRequestCreationEdgeCases:
         policy = _policy(requests_enabled=False, default_ebook="request_book")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.post("/api/requests", json={
                         "book_data": {"title": "T", "author": "A", "provider": "p", "provider_id": "1"},
                         "context": {"source": "direct_download", "content_type": "ebook", "request_level": "book"},
@@ -1184,8 +1203,8 @@ class TestRequestCreationEdgeCases:
         policy = _policy(default_ebook="blocked")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.post("/api/requests", json={
                         "book_data": {"title": "T", "author": "A", "provider": "p", "provider_id": "1", "content_type": "ebook"},
                         "context": {"source": "direct_download", "content_type": "ebook", "request_level": "book"},
@@ -1195,7 +1214,7 @@ class TestRequestCreationEdgeCases:
         assert resp.json["code"] == "policy_blocked"
         assert resp.json["required_mode"] == "blocked"
 
-    def test_auto_infers_book_level_when_no_release_data(self, main_module, client):
+    def test_direct_requests_are_forced_to_release_level(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
         policy = _policy(default_ebook="request_book")
@@ -1212,12 +1231,15 @@ class TestRequestCreationEdgeCases:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.post("/api/requests", json=payload)
 
         assert resp.status_code == 201
-        assert resp.json["request_level"] == "book"
+        assert resp.json["request_level"] == "release"
+        assert resp.json["policy_mode"] == "request_release"
+        assert resp.json["release_data"]["source"] == "direct_download"
+        assert resp.json["release_data"]["source_id"] == "ol-auto-1"
 
     def test_auto_infers_release_level_when_release_data_present(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -1237,8 +1259,8 @@ class TestRequestCreationEdgeCases:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.post("/api/requests", json=payload)
 
         assert resp.status_code == 201
@@ -1263,8 +1285,8 @@ class TestRequestCreationEdgeCases:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.post("/api/requests", json=payload)
 
         assert resp.status_code == 201
@@ -1305,8 +1327,8 @@ class TestRequestCreationEdgeCases:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.post("/api/requests", json=payload)
 
         assert resp.status_code == 201
@@ -1352,8 +1374,8 @@ class TestRequestListAndFilterEdgeCases:
         policy = _policy(default_ebook="request_book")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     ids = self._seed_requests(main_module, client, user, policy, count=3)
 
                     # Cancel the first request.
@@ -1378,8 +1400,8 @@ class TestRequestListAndFilterEdgeCases:
         policy = _policy(default_ebook="request_book")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     self._seed_requests(main_module, client, user, policy, count=5)
 
                     page1 = client.get("/api/requests?limit=2&offset=0")
@@ -1402,8 +1424,8 @@ class TestRequestListAndFilterEdgeCases:
         policy = _policy(default_ebook="request_book")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     # Alice creates a request.
                     _set_session(client, user_id=alice["username"], db_user_id=alice["id"], is_admin=False)
                     client.post("/api/requests", json={
@@ -1437,8 +1459,8 @@ class TestRequestListAndFilterEdgeCases:
         policy = _policy(default_ebook="request_book")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
                     client.post("/api/requests", json={
                         "book_data": {"title": "Admin View", "author": "AV", "provider": "p", "provider_id": "av1", "content_type": "ebook"},
@@ -1459,8 +1481,8 @@ class TestRequestListAndFilterEdgeCases:
         policy = _policy(default_ebook="request_book")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
                     create_resp = client.post("/api/requests", json={
                         "book_data": {"title": f"FilterTest-{uuid.uuid4().hex[:6]}", "author": "FT", "provider": "p", "provider_id": f"ft-{uuid.uuid4().hex[:6]}", "content_type": "ebook"},
@@ -1498,8 +1520,8 @@ class TestCancelEdgeCases:
         policy = _policy(default_ebook="request_book")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     _set_session(client, user_id=alice["username"], db_user_id=alice["id"], is_admin=False)
                     create_resp = client.post("/api/requests", json={
                         "book_data": {"title": "Alice Only", "author": "A", "provider": "p", "provider_id": "ao1", "content_type": "ebook"},
@@ -1518,8 +1540,8 @@ class TestCancelEdgeCases:
         policy = _policy(default_ebook="request_book")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     create_resp = client.post("/api/requests", json={
                         "book_data": {"title": "Cancel Twice", "author": "CT", "provider": "p", "provider_id": "ct1", "content_type": "ebook"},
                         "context": {"source": "direct_download", "content_type": "ebook", "request_level": "book"},
@@ -1556,8 +1578,8 @@ class TestAdminFulfilEdgeCases:
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     create_resp = client.post("/api/requests", json={
                         "book_data": {"title": "Queue Fail", "author": "QF", "provider": "p", "provider_id": "qf1", "content_type": "ebook"},
                         "context": {"source": "prowlarr", "content_type": "ebook", "request_level": "release"},
@@ -1586,8 +1608,8 @@ class TestAdminFulfilEdgeCases:
             return True, None
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     create_resp = client.post("/api/requests", json={
                         "book_data": {"title": "Override RD", "author": "OR", "provider": "p", "provider_id": "or1", "content_type": "ebook"},
                         "context": {"source": "prowlarr", "content_type": "ebook", "request_level": "release"},
@@ -1626,8 +1648,8 @@ class TestAdminFulfilEdgeCases:
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     create_resp = client.post("/api/requests", json={
                         "book_data": {
                             "title": "Manual Flag Validation",
@@ -1672,8 +1694,8 @@ class TestAdminRejectEdgeCases:
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     create_resp = client.post("/api/requests", json={
                         "book_data": {"title": "Rej After Ful", "author": "RAF", "provider": "p", "provider_id": "raf1", "content_type": "ebook"},
                         "context": {"source": "prowlarr", "content_type": "ebook", "request_level": "release"},
@@ -1700,8 +1722,8 @@ class TestAdminCountEdgeCases:
         policy = _policy(default_ebook="request_book")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
                     # Create 3 requests.
@@ -1747,8 +1769,8 @@ class TestPolicyEndpointEdgeCases:
         policy = _policy(default_ebook="download")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.get("/api/request-policy")
 
         assert resp.status_code == 200
@@ -1763,8 +1785,8 @@ class TestPolicyEndpointEdgeCases:
         main_module.user_db.set_user_settings(user["id"], {"REQUEST_POLICY_DEFAULT_EBOOK": "request_release"})
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=global_policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=global_policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=global_policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=global_policy):
                     resp = client.get("/api/request-policy")
 
         assert resp.status_code == 200
@@ -1783,8 +1805,8 @@ class TestPolicyEndpointEdgeCases:
         policy = _policy(default_ebook="download", requests_allow_notes=False)
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     resp = client.get("/api/request-policy")
 
         assert resp.status_code == 200
@@ -1798,8 +1820,8 @@ class TestPolicyEndpointEdgeCases:
         main_module.user_db.set_user_settings(user["id"], {"REQUESTS_ALLOW_NOTES": True})
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=global_policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=global_policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=global_policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=global_policy):
                     resp = client.get("/api/request-policy")
 
         assert resp.status_code == 200
@@ -1818,8 +1840,8 @@ class TestDownloadPolicyGuardsExtended:
         policy = _policy(requests_enabled=False, default_ebook="blocked")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     with patch.object(main_module.backend, "queue_book", return_value=(True, None)):
                         resp = client.get("/api/download?id=book-pass")
 
@@ -1832,8 +1854,8 @@ class TestDownloadPolicyGuardsExtended:
         policy = _policy(default_ebook="download")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     with patch.object(main_module.backend, "queue_book", return_value=(True, None)):
                         resp = client.get("/api/download?id=book-free")
 
@@ -1846,8 +1868,8 @@ class TestDownloadPolicyGuardsExtended:
         policy = _policy(default_ebook="request_release")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     with patch.object(main_module.backend, "queue_release") as mock_queue:
                         resp = client.post("/api/releases/download", json={
                             "source": "prowlarr",
@@ -1866,8 +1888,8 @@ class TestDownloadPolicyGuardsExtended:
         policy = _policy(default_ebook="download", default_audiobook="blocked")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     with patch.object(main_module.backend, "queue_release") as mock_queue:
                         resp = client.post("/api/releases/download", json={
                             "source": "prowlarr",
@@ -1887,8 +1909,8 @@ class TestDownloadPolicyGuardsExtended:
         policy = _policy(default_ebook="request_book")
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     with patch.object(main_module.backend, "queue_release") as mock_queue:
                         resp = client.post("/api/releases/download", json={
                             "source": "direct_download",
@@ -1898,7 +1920,7 @@ class TestDownloadPolicyGuardsExtended:
 
         assert resp.status_code == 403
         assert resp.json["code"] == "policy_requires_request"
-        assert resp.json["required_mode"] == "request_book"
+        assert resp.json["required_mode"] == "request_release"
         mock_queue.assert_not_called()
 
     def test_release_download_with_per_source_matrix_rule(self, main_module, client):
@@ -1911,8 +1933,8 @@ class TestDownloadPolicyGuardsExtended:
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
                     with patch.object(main_module.backend, "queue_release") as mock_queue:
                         # Prowlarr should be blocked.
                         prowlarr_resp = client.post("/api/releases/download", json={
@@ -1953,8 +1975,8 @@ class TestDownloadPolicyGuardsExtended:
         })
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module, "_load_users_request_policy_settings", return_value=global_policy):
-                with patch("shelfmark.core.request_routes._load_users_request_policy_settings", return_value=global_policy):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=global_policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=global_policy):
                     with patch.object(main_module.backend, "queue_release", return_value=(True, None)):
                         resp = client.post("/api/releases/download", json={
                             "source": "prowlarr",

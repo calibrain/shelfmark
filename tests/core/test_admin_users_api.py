@@ -57,7 +57,7 @@ def regular_client(app):
     with client.session_transaction() as sess:
         sess["user_id"] = "user"
         sess["is_admin"] = False
-    with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="builtin"):
+    with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="builtin"):
         yield client
 
 
@@ -71,7 +71,7 @@ def no_session_client(app):
 def no_session_auth_client(app):
     """Client with no session but auth mode enabled (should be rejected)."""
     client = app.test_client()
-    with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="builtin"):
+    with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="builtin"):
         yield client
 
 
@@ -129,7 +129,7 @@ class TestAdminUsersListEndpoint:
         )
         user_db.create_user(username="proxy_user", auth_source="proxy")
 
-        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="builtin"):
+        with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="builtin"):
             resp = admin_client.get("/api/admin/users")
 
         assert resp.status_code == 200
@@ -340,7 +340,7 @@ class TestAdminUserCreateEndpoint:
         assert resp.json["role"] == "user"
 
     def test_create_user_rejected_in_proxy_mode(self, admin_client):
-        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="proxy"):
+        with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="proxy"):
             resp = admin_client.post(
                 "/api/admin/users",
                 json={"username": "alice", "password": "pass1234"},
@@ -350,7 +350,7 @@ class TestAdminUserCreateEndpoint:
         assert "Local user creation is disabled" in resp.json["error"]
 
     def test_create_user_rejected_in_cwa_mode(self, admin_client):
-        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="cwa"):
+        with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="cwa"):
             resp = admin_client.post(
                 "/api/admin/users",
                 json={"username": "alice", "password": "pass1234"},
@@ -360,7 +360,7 @@ class TestAdminUserCreateEndpoint:
         assert "Local user creation is disabled" in resp.json["error"]
 
     def test_create_user_allowed_in_oidc_mode(self, admin_client):
-        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="oidc"):
+        with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="oidc"):
             resp = admin_client.post(
                 "/api/admin/users",
                 json={"username": "alice", "password": "pass1234"},
@@ -932,7 +932,7 @@ class TestAdminSyncCwaUsersEndpoint:
             auth_source="cwa",
         )
 
-        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="cwa"):
+        with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="cwa"):
             with patch("shelfmark.core.admin_routes.CWA_DB_PATH", cwa_db_path):
                 resp = admin_client.post("/api/admin/users/sync-cwa")
 
@@ -966,7 +966,7 @@ class TestAdminSyncCwaUsersEndpoint:
         assert user_db.get_user(user_id=stale_cwa["id"]) is None
 
     def test_sync_cwa_users_rejected_when_not_in_cwa_mode(self, admin_client):
-        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="builtin"):
+        with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="builtin"):
             resp = admin_client.post("/api/admin/users/sync-cwa")
 
         assert resp.status_code == 400
@@ -974,7 +974,7 @@ class TestAdminSyncCwaUsersEndpoint:
 
     def test_sync_cwa_users_returns_503_when_db_unavailable(self, admin_client, tmp_path):
         missing_db_path = tmp_path / "missing.db"
-        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="cwa"):
+        with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="cwa"):
             with patch("shelfmark.core.admin_routes.CWA_DB_PATH", missing_db_path):
                 resp = admin_client.post("/api/admin/users/sync-cwa")
 
@@ -1578,7 +1578,7 @@ class TestAdminUserDeleteEndpoint:
     def test_delete_active_proxy_user_allowed(self, admin_client, user_db):
         user = user_db.create_user(username="proxyuser", auth_source="proxy")
 
-        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="proxy"):
+        with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="proxy"):
             resp = admin_client.delete(f"/api/admin/users/{user['id']}")
 
         assert resp.status_code == 200
@@ -1587,7 +1587,7 @@ class TestAdminUserDeleteEndpoint:
     def test_delete_active_cwa_user_rejected(self, admin_client, user_db):
         user = user_db.create_user(username="cwauser", auth_source="cwa")
 
-        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="cwa"):
+        with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="cwa"):
             resp = admin_client.delete(f"/api/admin/users/{user['id']}")
 
         assert resp.status_code == 400
@@ -1596,7 +1596,7 @@ class TestAdminUserDeleteEndpoint:
     def test_delete_inactive_proxy_user_allowed(self, admin_client, user_db):
         user = user_db.create_user(username="proxyuser", auth_source="proxy")
 
-        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="builtin"):
+        with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="builtin"):
             resp = admin_client.delete(f"/api/admin/users/{user['id']}")
 
         assert resp.status_code == 200
@@ -1609,7 +1609,7 @@ class TestAdminUserDeleteEndpoint:
             auth_source="oidc",
         )
 
-        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="oidc"):
+        with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="oidc"):
             resp = admin_client.delete(f"/api/admin/users/{user['id']}")
 
         assert resp.status_code == 200
@@ -1622,7 +1622,7 @@ class TestAdminUserDeleteEndpoint:
             role="admin",
         )
 
-        with patch("shelfmark.core.admin_routes._get_auth_mode", return_value="builtin"):
+        with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="builtin"):
             resp = admin_client.delete(f"/api/admin/users/{user['id']}")
 
         assert resp.status_code == 200

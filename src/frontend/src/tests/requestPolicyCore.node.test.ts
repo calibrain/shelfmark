@@ -51,6 +51,19 @@ describe('requestPolicyCore mode resolution', () => {
     assert.equal(resolveSourceModeFromPolicy(policy, false, 'unknown', 'audiobook'), 'request_release');
   });
 
+  it('normalizes direct source request_book mode to request_release', () => {
+    const policy = makePolicy({
+      defaults: {
+        ebook: 'request_book',
+        audiobook: 'request_release',
+      },
+      source_modes: [],
+      rules: [],
+    });
+
+    assert.equal(resolveSourceModeFromPolicy(policy, false, 'direct_download', 'ebook'), 'request_release');
+  });
+
   it('short-circuits to download for admins and requests-disabled policy', () => {
     const blockedPolicy = makePolicy({
       requests_enabled: false,

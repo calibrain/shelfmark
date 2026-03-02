@@ -30,6 +30,15 @@ export const normalizeSource = (value: string): string => {
   return source || '*';
 };
 
+const normalizeDirectSourceMode = (
+  source: string,
+  mode: RequestPolicyMode
+): RequestPolicyMode => {
+  return source === 'direct_download' && mode === 'request_book'
+    ? 'request_release'
+    : mode;
+};
+
 const normalizeRuleSource = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -87,19 +96,22 @@ export const resolveSourceModeFromPolicy = (
   source: string,
   contentType: ContentType | string
 ): RequestPolicyMode => {
+  const normalizedSource = normalizeSource(source);
   const defaultMode = resolveDefaultModeFromPolicy(policy, isAdmin, contentType);
   if (defaultMode === 'download' && (isAdmin || !policy || !policy.requests_enabled)) {
     return 'download';
   }
 
-  const normalizedSource = normalizeSource(source);
   const normalizedContentType = normalizeContentType(contentType);
   const sourceModes = policy?.source_modes?.find(
     (sourceMode) => normalizeSource(sourceMode.source) === normalizedSource
   );
   const fromSource = sourceModes?.modes?.[normalizedContentType];
   if (fromSource) {
-    return capModeToCeiling(fromSource, defaultMode);
+    return normalizeDirectSourceMode(
+      normalizedSource,
+      capModeToCeiling(fromSource, defaultMode)
+    );
   }
 
   const rules = Array.isArray(policy?.rules) ? policy.rules : [];
@@ -129,10 +141,13 @@ export const resolveSourceModeFromPolicy = (
       continue;
     }
 
-    return capModeToCeiling(parsedMode, defaultMode);
+    return normalizeDirectSourceMode(
+      normalizedSource,
+      capModeToCeiling(parsedMode, defaultMode)
+    );
   }
 
-  return defaultMode;
+  return normalizeDirectSourceMode(normalizedSource, defaultMode);
 };
 
 export class RequestPolicyCache {

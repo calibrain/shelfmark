@@ -786,8 +786,8 @@ function App() {
             requiredMode,
             code: isApiResponseError(error) ? error.code : null,
           });
-          if (requiredMode === 'request_release' || requiredMode === 'request_book') {
-            openRequestConfirmation(buildDirectRequestPayload(book, requiredMode));
+          if (requiredMode === 'request_release') {
+            openRequestConfirmation(buildDirectRequestPayload(book));
             await refreshRequestPolicy({ force: true });
             return;
           }
@@ -927,9 +927,9 @@ function App() {
       return;
     }
 
-    if (mode === 'request_release' || mode === 'request_book') {
+    if (mode === 'request_release') {
       policyTrace('direct.action:request_modal', { bookId: book.id, mode });
-      openRequestConfirmation(buildDirectRequestPayload(book, mode));
+      openRequestConfirmation(buildDirectRequestPayload(book));
       return;
     }
 

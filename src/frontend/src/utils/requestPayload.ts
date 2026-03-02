@@ -3,7 +3,6 @@ import {
   ContentType,
   CreateRequestPayload,
   Release,
-  RequestPolicyMode,
 } from '../types';
 
 export const toContentType = (value: ContentType | string): ContentType => {
@@ -86,26 +85,13 @@ export const buildReleaseDataFromDirectBook = (book: Book) => {
 };
 
 export const buildDirectRequestPayload = (
-  book: Book,
-  mode: Extract<RequestPolicyMode, 'request_release' | 'request_book'>
+  book: Book
 ): CreateRequestPayload => {
   const bookData = buildDirectBookRequestData(book);
 
   // In direct mode, every result already represents a concrete downloadable release.
-  // Even when policy defaults resolve to request_book, attach the selected release so
-  // admins can approve immediately or browse alternatives from the same record.
-  if (mode === 'request_book') {
-    return {
-      book_data: bookData,
-      release_data: buildReleaseDataFromDirectBook(book),
-      context: {
-        source: 'direct_download',
-        content_type: 'ebook',
-        request_level: 'release',
-      },
-    };
-  }
-
+  // Keep request payloads release-level so admins can approve immediately while still
+  // allowing alternate release selection from the same direct record.
   return {
     book_data: bookData,
     release_data: buildReleaseDataFromDirectBook(book),

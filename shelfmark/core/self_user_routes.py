@@ -16,8 +16,8 @@ from shelfmark.core.auth_modes import (
     AUTH_SOURCE_CWA,
     AUTH_SOURCE_OIDC,
     AUTH_SOURCE_PROXY,
-    determine_auth_mode,
-    has_local_password_admin,
+    is_user_active_for_auth_mode,
+    load_active_auth_mode,
     normalize_auth_source,
 )
 from shelfmark.core.logger import setup_logger
@@ -43,25 +43,12 @@ _VALID_SELF_SETTINGS_SECTIONS = (
 _DEFAULT_VISIBLE_SELF_SETTINGS_SECTIONS = list(_VALID_SELF_SETTINGS_SECTIONS)
 
 
-def _get_auth_mode() -> str:
-    """Get current auth mode from config."""
-    try:
-        config = load_config_file("security")
-        return determine_auth_mode(
-            config,
-            CWA_DB_PATH,
-            has_local_admin=has_local_password_admin(),
-        )
-    except Exception:
-        return "none"
-
-
 def _require_authenticated_user(f: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator requiring an authenticated session linked to a local user row."""
 
     @wraps(f)
     def decorated(*args, **kwargs):
-        auth_mode = _get_auth_mode()
+        auth_mode = load_active_auth_mode(CWA_DB_PATH)
         if auth_mode != "none" and "user_id" not in session:
             return jsonify({"error": "Authentication required"}), 401
         if "db_user_id" not in session:
@@ -85,10 +72,7 @@ def _get_current_user(user_db: UserDB) -> tuple[int | None, dict[str, Any] | Non
 
 
 def _is_user_active(user: Mapping[str, Any], auth_method: str) -> bool:
-    source = normalize_auth_source(user.get("auth_source"), user.get("oidc_subject"))
-    if source == AUTH_SOURCE_BUILTIN:
-        return auth_method in (AUTH_SOURCE_BUILTIN, AUTH_SOURCE_OIDC)
-    return source == auth_method
+    return is_user_active_for_auth_mode(user, auth_method)
 
 
 def _get_self_edit_capabilities(user: Mapping[str, Any]) -> dict[str, Any]:
@@ -180,7 +164,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
         if user_error:
             return user_error
 
-        auth_mode = _get_auth_mode()
+        auth_mode = load_active_auth_mode(CWA_DB_PATH)
         serialized_user = _serialize_self_user(user, auth_mode)
         serialized_user["settings"] = user_db.get_user_settings(user_id)
         visible_self_settings_sections = _get_visible_self_settings_sections()
@@ -367,7 +351,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
         if not updated:
             return jsonify({"error": "User not found"}), 404
 
-        result = _serialize_self_user(updated, _get_auth_mode())
+        result = _serialize_self_user(updated, load_active_auth_mode(CWA_DB_PATH))
         result["settings"] = user_db.get_user_settings(user_id)
         logger.info(f"User {user_id} updated their own account")
         return jsonify(result)

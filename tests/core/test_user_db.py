@@ -628,6 +628,70 @@ class TestDownloadRequests:
         with pytest.raises(ValueError, match="release_data must be an object when provided"):
             user_db.update_request(created["id"], release_data="not-an-object")
 
+    def test_reopen_failed_request_resets_fulfilled_request_for_reapproval(self, user_db):
+        user = user_db.create_user(username="alice")
+        created = user_db.create_request(
+            user_id=user["id"],
+            content_type="ebook",
+            request_level="release",
+            policy_mode="request_release",
+            book_data=self._book_data(),
+            release_data=self._release_data(),
+            status="fulfilled",
+            delivery_state="queued",
+            reviewed_by=user["id"],
+            reviewed_at="2026-01-01T00:00:00+00:00",
+            delivery_updated_at="2026-01-01T00:00:01+00:00",
+        )
+
+        reopened = user_db.reopen_failed_request(
+            created["id"],
+            failure_reason=" Download timed out ",
+        )
+
+        assert reopened is not None
+        assert reopened["status"] == "pending"
+        assert reopened["delivery_state"] == "none"
+        assert reopened["delivery_updated_at"] is None
+        assert reopened["release_data"] is None
+        assert reopened["last_failure_reason"] == "Download timed out"
+        assert reopened["reviewed_by"] is None
+        assert reopened["reviewed_at"] is None
+
+    def test_reopen_failed_request_requires_reason_for_non_failure_states(self, user_db):
+        user = user_db.create_user(username="alice")
+        created = user_db.create_request(
+            user_id=user["id"],
+            content_type="ebook",
+            request_level="release",
+            policy_mode="request_release",
+            book_data=self._book_data(),
+            release_data=self._release_data(),
+            status="fulfilled",
+            delivery_state="queued",
+        )
+
+        reopened = user_db.reopen_failed_request(created["id"])
+        assert reopened is None
+
+    def test_reopen_failed_request_allows_failure_states_without_reason(self, user_db):
+        user = user_db.create_user(username="alice")
+        created = user_db.create_request(
+            user_id=user["id"],
+            content_type="ebook",
+            request_level="release",
+            policy_mode="request_release",
+            book_data=self._book_data(),
+            release_data=self._release_data(),
+            status="fulfilled",
+            delivery_state="error",
+        )
+
+        reopened = user_db.reopen_failed_request(created["id"])
+        assert reopened is not None
+        assert reopened["status"] == "pending"
+        assert reopened["last_failure_reason"] is None
+
     def test_count_pending_requests(self, user_db):
         alice = user_db.create_user(username="alice")
         bob = user_db.create_user(username="bob")

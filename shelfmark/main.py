@@ -30,10 +30,9 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import SearchFilters, QueueStatus
 from shelfmark.core.prefix_middleware import PrefixMiddleware
 from shelfmark.core.auth_modes import (
-    determine_auth_mode,
     get_auth_check_admin_status,
-    has_local_password_admin,
     is_settings_or_onboarding_path,
+    load_active_auth_mode,
     requires_admin_for_settings_access,
 )
 from shelfmark.core.cwa_user_sync import upsert_cwa_user
@@ -52,6 +51,12 @@ from shelfmark.core.requests_service import (
 )
 from shelfmark.core.activity_service import ActivityService, build_download_item_key
 from shelfmark.core.notifications import NotificationContext, NotificationEvent, notify_admin, notify_user
+from shelfmark.core.request_helpers import (
+    coerce_bool,
+    extract_release_source_id,
+    load_users_request_policy_settings,
+    normalize_optional_text,
+)
 from shelfmark.core.utils import normalize_base_path
 from shelfmark.api.websocket import ws_manager
 
@@ -213,38 +218,7 @@ def get_auth_mode() -> str:
     Uses configured AUTH_METHOD plus runtime prerequisites.
     Returns "none" when config is invalid or unavailable.
     """
-    from shelfmark.core.settings_registry import load_config_file
-
-    try:
-        security_config = load_config_file("security")
-        return determine_auth_mode(
-            security_config,
-            CWA_DB_PATH,
-            has_local_admin=has_local_password_admin(user_db),
-        )
-    except Exception:
-        return "none"
-
-
-def _load_users_request_policy_settings() -> dict[str, Any]:
-    """Load global request policy settings from users config."""
-    from shelfmark.core.settings_registry import load_config_file
-
-    return load_config_file("users")
-
-
-def _as_bool(value: Any, default: bool = False) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"1", "true", "yes", "on"}:
-            return True
-        if normalized in {"0", "false", "no", "off", ""}:
-            return False
-    return bool(value)
+    return load_active_auth_mode(CWA_DB_PATH, user_db=user_db)
 
 
 _AUDIOBOOK_CATEGORY_RANGE = (3030, 3049)
@@ -331,7 +305,7 @@ def _resolve_policy_mode_for_current_user(*, source: Any, content_type: Any) -> 
     if user_db is None:
         return None
 
-    global_settings = _load_users_request_policy_settings()
+    global_settings = load_users_request_policy_settings()
     db_user_id = session.get("db_user_id")
     user_settings: dict[str, Any] | None = None
     if db_user_id is not None:
@@ -341,7 +315,7 @@ def _resolve_policy_mode_for_current_user(*, source: Any, content_type: Any) -> 
             user_settings = None
 
     effective = merge_request_policy_settings(global_settings, user_settings)
-    if not _as_bool(effective.get("REQUESTS_ENABLED"), False):
+    if not coerce_bool(effective.get("REQUESTS_ENABLED"), False):
         return None
 
     resolved_mode = resolve_policy_mode(
@@ -1096,16 +1070,6 @@ def _resolve_status_scope(*, require_authenticated: bool = True) -> tuple[bool, 
     return False, db_user_id, True
 
 
-def _extract_release_source_id(release_data: Any) -> str | None:
-    if not isinstance(release_data, dict):
-        return None
-    source_id = release_data.get("source_id")
-    if not isinstance(source_id, str):
-        return None
-    normalized = source_id.strip()
-    return normalized or None
-
-
 def _queue_status_to_final_activity_status(status: QueueStatus) -> str | None:
     if status == QueueStatus.COMPLETE:
         return "complete"
@@ -1114,14 +1078,6 @@ def _queue_status_to_final_activity_status(status: QueueStatus) -> str | None:
     if status == QueueStatus.CANCELLED:
         return "cancelled"
     return None
-
-
-def _normalize_optional_text(value: Any) -> str | None:
-    if not isinstance(value, str):
-        return None
-    normalized = value.strip()
-    return normalized or None
-
 
 def _queue_status_to_notification_event(status: QueueStatus) -> NotificationEvent | None:
     if status in {QueueStatus.COMPLETE, QueueStatus.AVAILABLE, QueueStatus.DONE}:
@@ -1142,17 +1098,17 @@ def _notify_admin_for_terminal_download_status(*, task_id: str, status: QueueSta
     except (TypeError, ValueError):
         owner_user_id = None
 
-    content_type = _normalize_optional_text(getattr(task, "content_type", None))
+    content_type = normalize_optional_text(getattr(task, "content_type", None))
     context = NotificationContext(
         event=event,
         title=str(getattr(task, "title", "Unknown title") or "Unknown title"),
         author=str(getattr(task, "author", "Unknown author") or "Unknown author"),
-        username=_normalize_optional_text(getattr(task, "username", None)),
+        username=normalize_optional_text(getattr(task, "username", None)),
         content_type=normalize_content_type(content_type) if content_type is not None else None,
-        format=_normalize_optional_text(getattr(task, "format", None)),
+        format=normalize_optional_text(getattr(task, "format", None)),
         source=normalize_source(getattr(task, "source", None)),
         error_message=(
-            _normalize_optional_text(getattr(task, "status_message", None))
+            normalize_optional_text(getattr(task, "status_message", None))
             if event == NotificationEvent.DOWNLOAD_FAILED
             else None
         ),
@@ -1199,7 +1155,7 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
     if user_db is not None and owner_user_id is not None:
         fulfilled_rows = user_db.list_requests(user_id=owner_user_id, status="fulfilled")
         for row in fulfilled_rows:
-            source_id = _extract_release_source_id(row.get("release_data"))
+            source_id = extract_release_source_id(row.get("release_data"))
             if source_id == task_id:
                 linked_request = row
                 origin = "requested"
@@ -1293,7 +1249,7 @@ def _is_graduated_request_download(task_id: str, *, user_id: int) -> bool:
 
     fulfilled_rows = user_db.list_requests(user_id=user_id, status="fulfilled")
     for row in fulfilled_rows:
-        source_id = _extract_release_source_id(row.get("release_data"))
+        source_id = extract_release_source_id(row.get("release_data"))
         if source_id == task_id:
             return True
     return False

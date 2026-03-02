@@ -9,12 +9,8 @@ import {
 describe('requestPolicyUi', () => {
   const baseDownload: ButtonStateInfo = { text: 'Download', state: 'download' };
 
-  it('maps direct mode to request for request_release/request_book', () => {
+  it('maps direct mode to request for request_release', () => {
     assert.deepEqual(applyDirectPolicyModeToButtonState(baseDownload, 'request_release'), {
-      text: 'Request',
-      state: 'download',
-    });
-    assert.deepEqual(applyDirectPolicyModeToButtonState(baseDownload, 'request_book'), {
       text: 'Request',
       state: 'download',
     });

@@ -12,7 +12,7 @@ export const applyDirectPolicyModeToButtonState = (
     return { text: 'Unavailable', state: 'blocked' };
   }
 
-  if (mode === 'request_release' || mode === 'request_book') {
+  if (mode === 'request_release') {
     return { text: 'Request', state: 'download' };
   }
 
@@ -37,4 +37,3 @@ export const applyUniversalPolicyModeToButtonState = (
 
   return { ...baseState, text: 'Get' };
 };
-

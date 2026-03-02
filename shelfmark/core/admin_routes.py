@@ -26,8 +26,8 @@ from shelfmark.core.auth_modes import (
     AUTH_SOURCE_CWA,
     AUTH_SOURCE_OIDC,
     AUTH_SOURCE_PROXY,
-    determine_auth_mode,
-    has_local_password_admin,
+    is_user_active_for_auth_mode,
+    load_active_auth_mode,
     normalize_auth_source,
 )
 from shelfmark.core.cwa_user_sync import sync_cwa_users_from_rows
@@ -65,19 +65,6 @@ def _get_user_edit_capabilities(
     }
 
 
-def _get_auth_mode():
-    """Get current auth mode from config."""
-    try:
-        config = load_config_file("security")
-        return determine_auth_mode(
-            config,
-            CWA_DB_PATH,
-            has_local_admin=has_local_password_admin(),
-        )
-    except Exception:
-        return "none"
-
-
 def _require_admin(f):
     """Decorator to require admin session for admin routes.
 
@@ -86,7 +73,7 @@ def _require_admin(f):
     """
     @wraps(f)
     def decorated(*args, **kwargs):
-        auth_mode = _get_auth_mode()
+        auth_mode = load_active_auth_mode(CWA_DB_PATH)
         if auth_mode != "none":
             if "user_id" not in session:
                 return jsonify({"error": "Authentication required"}), 401
@@ -118,10 +105,7 @@ def _oidc_role_management_message(security_config: dict[str, Any]) -> str:
 
 def _is_user_active(user: dict[str, Any], auth_method: str) -> bool:
     """Determine whether a user can authenticate in the current auth mode."""
-    source = normalize_auth_source(user.get("auth_source"), user.get("oidc_subject"))
-    if source == AUTH_SOURCE_BUILTIN:
-        return auth_method in (AUTH_SOURCE_BUILTIN, AUTH_SOURCE_OIDC)
-    return source == auth_method
+    return is_user_active_for_auth_mode(user, auth_method)
 
 
 def _serialize_user(
@@ -174,7 +158,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
     def admin_list_users():
         """List all users."""
         users = [u for u in user_db.list_users() if not _is_internal_system_user(u)]
-        auth_mode = _get_auth_mode()
+        auth_mode = load_active_auth_mode(CWA_DB_PATH)
         security_config = load_config_file("security")
         return jsonify([
             _serialize_user(u, auth_mode, security_config=security_config)
@@ -186,7 +170,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
     def admin_create_user():
         """Create a new user with password authentication."""
         data = request.get_json() or {}
-        auth_mode = _get_auth_mode()
+        auth_mode = load_active_auth_mode(CWA_DB_PATH)
 
         username = (data.get("username") or "").strip()
         password = data.get("password", "")
@@ -239,7 +223,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         return jsonify(
             _serialize_user(
                 user,
-                _get_auth_mode(),
+                load_active_auth_mode(CWA_DB_PATH),
                 security_config=load_config_file("security"),
             )
         ), 201
@@ -254,7 +238,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
         result = _serialize_user(
             user,
-            _get_auth_mode(),
+            load_active_auth_mode(CWA_DB_PATH),
             security_config=load_config_file("security"),
         )
         result["settings"] = user_db.get_user_settings(user_id)
@@ -369,7 +353,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         updated = user_db.get_user(user_id=user_id)
         result = _serialize_user(
             updated,
-            _get_auth_mode(),
+            load_active_auth_mode(CWA_DB_PATH),
             security_config=security_config,
         )
         result["settings"] = user_db.get_user_settings(user_id)
@@ -380,7 +364,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
     @_require_admin
     def admin_sync_cwa_users():
         """Manually sync users from Calibre-Web into users.db."""
-        auth_mode = _get_auth_mode()
+        auth_mode = load_active_auth_mode(CWA_DB_PATH)
         if auth_mode != AUTH_SOURCE_CWA:
             return jsonify({
                 "error": "CWA sync is only available when CWA authentication is enabled",
@@ -425,7 +409,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         if not user:
             return jsonify({"error": "User not found"}), 404
 
-        auth_mode = _get_auth_mode()
+        auth_mode = load_active_auth_mode(CWA_DB_PATH)
         auth_source = normalize_auth_source(
             user.get("auth_source"),
             user.get("oidc_subject"),

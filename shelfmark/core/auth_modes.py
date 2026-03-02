@@ -78,6 +78,33 @@ def determine_auth_mode(
     return "none"
 
 
+def load_active_auth_mode(
+    cwa_db_path: Any | None,
+    *,
+    user_db: Any | None = None,
+) -> str:
+    """Resolve active auth mode using current security config and runtime prerequisites."""
+    try:
+        from shelfmark.core.settings_registry import load_config_file
+
+        security_config = load_config_file("security")
+        return determine_auth_mode(
+            security_config,
+            cwa_db_path,
+            has_local_admin=has_local_password_admin(user_db),
+        )
+    except Exception:
+        return "none"
+
+
+def is_user_active_for_auth_mode(user: Mapping[str, Any], auth_mode: str) -> bool:
+    """Return whether a user can authenticate under the current auth mode."""
+    source = normalize_auth_source(user.get("auth_source"), user.get("oidc_subject"))
+    if source == AUTH_SOURCE_BUILTIN:
+        return auth_mode in (AUTH_SOURCE_BUILTIN, AUTH_SOURCE_OIDC)
+    return source == auth_mode
+
+
 def is_settings_or_onboarding_path(path: str) -> bool:
     """Return True when request path targets protected admin settings routes."""
     return path.startswith("/api/settings") or path.startswith("/api/onboarding")

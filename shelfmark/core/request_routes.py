@@ -31,37 +31,16 @@ from shelfmark.core.notifications import (
     notify_admin,
     notify_user,
 )
-from shelfmark.core.settings_registry import load_config_file
+from shelfmark.core.request_helpers import (
+    coerce_bool,
+    coerce_int,
+    extract_release_source_id,
+    load_users_request_policy_settings,
+    normalize_optional_text,
+)
 from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
-
-
-def _load_users_request_policy_settings() -> dict[str, Any]:
-    """Load global request-policy settings from users config."""
-    return load_config_file("users")
-
-
-def _as_bool(value: Any, default: bool = False) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"1", "true", "yes", "on"}:
-            return True
-        if normalized in {"0", "false", "no", "off", ""}:
-            return False
-    return bool(value)
-
-
-def _as_int(value: Any, default: int) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return default
-    return parsed
 
 
 def _error_response(
@@ -115,10 +94,10 @@ def _resolve_effective_policy(
     *,
     db_user_id: int | None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], bool]:
-    global_settings = _load_users_request_policy_settings()
+    global_settings = load_users_request_policy_settings()
     user_settings = user_db.get_user_settings(db_user_id) if db_user_id is not None else {}
     effective = merge_request_policy_settings(global_settings, user_settings)
-    requests_enabled = _as_bool(effective.get("REQUESTS_ENABLED"), False)
+    requests_enabled = coerce_bool(effective.get("REQUESTS_ENABLED"), False)
     return global_settings, user_settings, effective, requests_enabled
 
 
@@ -139,16 +118,6 @@ def _emit_request_event(
         socketio.emit(event_name, payload, to=room)
     except Exception as exc:
         logger.warning(f"Failed to emit WebSocket event '{event_name}' to room '{room}': {exc}")
-
-
-def _extract_release_source_id(release_data: Any) -> str | None:
-    if not isinstance(release_data, dict):
-        return None
-    source_id = release_data.get("source_id")
-    if not isinstance(source_id, str):
-        return None
-    normalized = source_id.strip()
-    return normalized or None
 
 
 def _record_terminal_request_snapshot(
@@ -177,7 +146,7 @@ def _record_terminal_request_snapshot(
     except (TypeError, ValueError):
         user_id = None
 
-    source_id = _extract_release_source_id(request_row.get("release_data"))
+    source_id = extract_release_source_id(request_row.get("release_data"))
 
     try:
         activity_service.record_terminal_snapshot(
@@ -194,19 +163,68 @@ def _record_terminal_request_snapshot(
         logger.warning("Failed to record terminal request snapshot for request %s: %s", request_id, exc)
 
 
-def _normalize_optional_text(value: Any) -> str | None:
-    if not isinstance(value, str):
-        return None
-    normalized = value.strip()
-    return normalized or None
-
-
 def _resolve_title_from_book_data(book_data: Any) -> str:
     if isinstance(book_data, dict):
-        title = _normalize_optional_text(book_data.get("title"))
+        title = normalize_optional_text(book_data.get("title"))
         if title is not None:
             return title
     return "Unknown title"
+
+
+def _build_direct_release_data_from_book_data(
+    *,
+    book_data: dict[str, Any],
+    content_type: str,
+) -> dict[str, Any]:
+    """Build release-level payload fields for direct-download requests."""
+    payload: dict[str, Any] = {
+        "source": "direct_download",
+        "source_id": book_data.get("provider_id") or book_data.get("id"),
+        "title": book_data.get("title"),
+        "author": book_data.get("author"),
+        "year": book_data.get("year"),
+        "format": book_data.get("format"),
+        "size": book_data.get("size"),
+        "preview": book_data.get("preview"),
+        "content_type": content_type,
+    }
+    return {key: value for key, value in payload.items() if value is not None}
+
+
+def _normalize_direct_request_payload(
+    *,
+    source: str,
+    request_level: Any,
+    book_data: Any,
+    release_data: Any,
+    content_type: str,
+) -> tuple[Any, Any]:
+    """Direct-search requests are always release-level with direct source metadata."""
+    if source != "direct_download":
+        return request_level, release_data
+
+    normalized_release_data = release_data
+    if normalized_release_data is None and isinstance(book_data, dict):
+        normalized_release_data = _build_direct_release_data_from_book_data(
+            book_data=book_data,
+            content_type=content_type,
+        )
+    elif isinstance(normalized_release_data, dict):
+        normalized_release_data = dict(normalized_release_data)
+
+    if isinstance(normalized_release_data, dict):
+        normalized_release_data["source"] = "direct_download"
+        if normalized_release_data.get("content_type") is None:
+            normalized_release_data["content_type"] = content_type
+
+        if normalize_optional_text(normalized_release_data.get("source_id")) is None and isinstance(book_data, dict):
+            fallback_source_id = normalize_optional_text(book_data.get("provider_id")) or normalize_optional_text(
+                book_data.get("id")
+            )
+            if fallback_source_id is not None:
+                normalized_release_data["source_id"] = fallback_source_id
+
+    return "release", normalized_release_data
 
 
 def _resolve_request_title(request_row: dict[str, Any]) -> str:
@@ -214,7 +232,7 @@ def _resolve_request_title(request_row: dict[str, Any]) -> str:
 
 
 def _format_user_label(username: str | None, user_id: int | None = None) -> str:
-    normalized_username = _normalize_optional_text(username)
+    normalized_username = normalize_optional_text(username)
     if normalized_username is not None:
         return normalized_username
     if user_id is not None and user_id > 0:
@@ -228,7 +246,7 @@ def _resolve_request_username(
     request_row: dict[str, Any],
     fallback_username: str | None = None,
 ) -> str | None:
-    normalized_fallback = _normalize_optional_text(fallback_username)
+    normalized_fallback = normalize_optional_text(fallback_username)
     raw_user_id = request_row.get("user_id")
     try:
         request_user_id = int(raw_user_id)
@@ -238,14 +256,14 @@ def _resolve_request_username(
     requester = user_db.get_user(user_id=request_user_id)
     if not isinstance(requester, dict):
         return normalized_fallback
-    return _normalize_optional_text(requester.get("username")) or normalized_fallback
+    return normalize_optional_text(requester.get("username")) or normalized_fallback
 
 
 def _resolve_request_source_and_format(request_row: dict[str, Any]) -> tuple[str, str | None]:
     release_data = request_row.get("release_data")
     if isinstance(release_data, dict):
         source = normalize_source(release_data.get("source") or request_row.get("source_hint"))
-        release_format = _normalize_optional_text(
+        release_format = normalize_optional_text(
             release_data.get("format")
             or release_data.get("filetype")
             or release_data.get("extension")
@@ -289,7 +307,7 @@ def _notify_admin_for_request_event(
         ),
         format=release_format,
         source=source,
-        admin_note=_normalize_optional_text(request_row.get("admin_note")),
+        admin_note=normalize_optional_text(request_row.get("admin_note")),
         error_message=None,
     )
 
@@ -382,7 +400,7 @@ def register_request_routes(
             {
                 "requests_enabled": requests_enabled,
                 "is_admin": is_admin,
-                "allow_notes": _as_bool(effective.get("REQUESTS_ALLOW_NOTES"), default=True),
+                "allow_notes": coerce_bool(effective.get("REQUESTS_ALLOW_NOTES"), default=True),
                 "defaults": {
                     "ebook": (
                         default_ebook_mode.value
@@ -409,7 +427,7 @@ def register_request_routes(
         db_user_id, db_gate = _require_db_user_id()
         if db_gate is not None or db_user_id is None:
             return db_gate
-        actor_username = _normalize_optional_text(session.get("user_id"))
+        actor_username = normalize_optional_text(session.get("user_id"))
         actor_label = _format_user_label(actor_username, db_user_id)
 
         data = request.get_json(silent=True)
@@ -436,6 +454,13 @@ def register_request_routes(
             or data.get("content_type")
             or book_data.get("content_type")
         )
+        request_level, release_data = _normalize_direct_request_payload(
+            source=source,
+            request_level=request_level,
+            book_data=book_data,
+            release_data=release_data,
+            content_type=content_type,
+        )
 
         global_settings, user_settings, effective, requests_enabled = _resolve_effective_policy(
             user_db,
@@ -453,7 +478,7 @@ def register_request_routes(
                 code="requests_unavailable",
             )
 
-        max_pending = _as_int(
+        max_pending = coerce_int(
             effective.get("MAX_PENDING_REQUESTS_PER_USER"),
             default=20,
         )
@@ -461,7 +486,7 @@ def register_request_routes(
             max_pending = 1
         if max_pending > 1000:
             max_pending = 1000
-        allow_notes = _as_bool(effective.get("REQUESTS_ALLOW_NOTES"), default=True)
+        allow_notes = coerce_bool(effective.get("REQUESTS_ALLOW_NOTES"), default=True)
         note_value = data.get("note") if allow_notes else None
 
         resolved_mode = resolve_policy_mode(
@@ -495,10 +520,7 @@ def register_request_routes(
 
         if resolved_mode == PolicyMode.REQUEST_BOOK:
             requested_level = str(request_level).strip().lower() if isinstance(request_level, str) else ""
-            # Direct search results are already concrete releases, so allow release-level
-            # request payloads even when the policy default is request_book.
-            allow_direct_release_payload = source == "direct_download" and requested_level == "release"
-            if requested_level != "book" and not allow_direct_release_payload:
+            if requested_level != "book":
                 logger.debug(
                     "Request not created for '%s' by %s: policy requires book-level requests",
                     request_title,
@@ -611,7 +633,7 @@ def register_request_routes(
             "status": updated["status"],
             "title": _resolve_request_title(updated),
         }
-        actor_label = _format_user_label(_normalize_optional_text(session.get("user_id")), db_user_id)
+        actor_label = _format_user_label(normalize_optional_text(session.get("user_id")), db_user_id)
         logger.info(
             "Request cancelled #%s for '%s' by %s",
             updated["id"],
@@ -718,7 +740,7 @@ def register_request_routes(
             "status": updated["status"],
             "title": _resolve_request_title(updated),
         }
-        admin_label = _format_user_label(_normalize_optional_text(session.get("user_id")), admin_user_id)
+        admin_label = _format_user_label(normalize_optional_text(session.get("user_id")), admin_user_id)
         requester_label = _format_user_label(
             _resolve_request_username(user_db, request_row=updated),
             _resolve_request_user_id(updated),
@@ -788,7 +810,7 @@ def register_request_routes(
             "status": updated["status"],
             "title": _resolve_request_title(updated),
         }
-        admin_label = _format_user_label(_normalize_optional_text(session.get("user_id")), admin_user_id)
+        admin_label = _format_user_label(normalize_optional_text(session.get("user_id")), admin_user_id)
         requester_label = _format_user_label(
             _resolve_request_username(user_db, request_row=updated),
             _resolve_request_user_id(updated),

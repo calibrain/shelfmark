@@ -60,7 +60,7 @@ def test_users_me_edit_context_respects_visible_sections(app, user_db):
             }
         raise AssertionError(f"Unexpected tab requested: {tab_name}")
 
-    with patch("shelfmark.core.self_user_routes._get_auth_mode", return_value="builtin"):
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
         with patch(
             "shelfmark.core.self_user_routes.load_config_file",
             side_effect=lambda tab_name: {"VISIBLE_SELF_SETTINGS_SECTIONS": ["delivery"]} if tab_name == "users" else {},
@@ -105,7 +105,7 @@ def test_users_me_edit_context_includes_search_preferences_when_visible(app, use
             raise AssertionError(f"Unexpected tab requested: {tab_name}")
         return payloads[tab_name]
 
-    with patch("shelfmark.core.self_user_routes._get_auth_mode", return_value="builtin"):
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
         with patch(
             "shelfmark.core.self_user_routes.load_config_file",
             side_effect=lambda tab_name: {
@@ -135,7 +135,7 @@ def test_users_me_update_rejects_hidden_section_settings(app, user_db):
             return [("DESTINATION", object())]
         raise AssertionError(f"Unexpected tab requested: {tab_name}")
 
-    with patch("shelfmark.core.self_user_routes._get_auth_mode", return_value="builtin"):
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
         with patch(
             "shelfmark.core.self_user_routes.load_config_file",
             side_effect=lambda tab_name: {"VISIBLE_SELF_SETTINGS_SECTIONS": ["delivery"]} if tab_name == "users" else {},
@@ -167,7 +167,7 @@ def test_users_me_update_accepts_visible_section_settings(app, user_db):
             return [("DESTINATION", object())]
         raise AssertionError(f"Unexpected tab requested: {tab_name}")
 
-    with patch("shelfmark.core.self_user_routes._get_auth_mode", return_value="builtin"):
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
         with patch(
             "shelfmark.core.self_user_routes.load_config_file",
             side_effect=lambda tab_name: {"VISIBLE_SELF_SETTINGS_SECTIONS": ["delivery"]} if tab_name == "users" else {},

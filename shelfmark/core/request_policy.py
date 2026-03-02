@@ -43,6 +43,13 @@ def cap_mode(mode: PolicyMode, ceiling: PolicyMode) -> PolicyMode:
     return mode
 
 
+def _normalize_direct_source_mode(source: Any, mode: PolicyMode) -> PolicyMode:
+    """Direct search results are concrete releases; normalize request_book to request_release."""
+    if normalize_source(source) == "direct_download" and mode == PolicyMode.REQUEST_BOOK:
+        return PolicyMode.REQUEST_RELEASE
+    return mode
+
+
 REQUEST_POLICY_KEYS = frozenset(
     {
         "REQUESTS_ENABLED",
@@ -320,6 +327,10 @@ def resolve_policy_mode(
 
     The content-type default acts as a ceiling — matrix rules can only
     match or restrict further, never upgrade beyond the default.
+
+    Direct-download exception:
+    - direct_download results are concrete releases, so request_book is
+      normalized to request_release for that source.
     """
 
     effective = merge_request_policy_settings(global_settings, user_settings)
@@ -346,6 +357,9 @@ def resolve_policy_mode(
     for candidate_source, candidate_content_type in candidates:
         for rule_source, rule_content_type, rule_mode in rules:
             if rule_source == candidate_source and rule_content_type == candidate_content_type:
-                return cap_mode(rule_mode, ceiling)
+                return _normalize_direct_source_mode(
+                    normalized_source,
+                    cap_mode(rule_mode, ceiling),
+                )
 
-    return ceiling
+    return _normalize_direct_source_mode(normalized_source, ceiling)
