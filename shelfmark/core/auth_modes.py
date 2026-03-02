@@ -28,10 +28,7 @@ def has_local_password_admin(user_db: Any | None = None) -> bool:
             db = UserDB(os.path.join(config_root, "users.db"))
             db.initialize()
 
-        return any(
-            user.get("password_hash") and user.get("role") == "admin"
-            for user in db.list_users()
-        )
+        return db.has_admin_with_password()
     except Exception:
         return False
 

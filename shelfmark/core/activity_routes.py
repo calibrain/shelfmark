@@ -8,6 +8,7 @@ from flask import Flask, jsonify, request, session
 
 from shelfmark.core.activity_service import ActivityService
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import extract_release_source_id
 from shelfmark.core.user_db import NO_AUTH_ACTIVITY_USERNAME, UserDB
 
 logger = setup_logger(__name__)
@@ -279,14 +280,7 @@ def _collect_active_download_item_keys(status: dict[str, dict[str, Any]]) -> set
 
 
 def _extract_request_source_id(row: dict[str, Any]) -> str | None:
-    release_data = row.get("release_data")
-    if not isinstance(release_data, dict):
-        return None
-    source_id = release_data.get("source_id")
-    if not isinstance(source_id, str):
-        return None
-    normalized = source_id.strip()
-    return normalized or None
+    return extract_release_source_id(row.get("release_data"))
 
 
 def _request_terminal_status(row: dict[str, Any]) -> str | None:

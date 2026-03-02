@@ -6,6 +6,14 @@ import tempfile
 import pytest
 
 from shelfmark.core.request_policy import PolicyMode
+from shelfmark.core.request_validation import (
+    normalize_delivery_state,
+    normalize_policy_mode,
+    normalize_request_level,
+    normalize_request_status,
+    validate_request_level_payload,
+    validate_status_transition,
+)
 from shelfmark.core.requests_service import (
     MAX_REQUEST_JSON_BLOB_BYTES,
     MAX_REQUEST_NOTE_LENGTH,
@@ -13,15 +21,9 @@ from shelfmark.core.requests_service import (
     cancel_request,
     create_request,
     fulfil_request,
-    normalize_policy_mode,
-    normalize_delivery_state,
-    normalize_request_level,
-    normalize_request_status,
     reopen_failed_request,
     reject_request,
     sync_delivery_states_from_queue_status,
-    validate_request_level_payload,
-    validate_status_transition,
 )
 from shelfmark.core.user_db import UserDB
 
@@ -588,7 +590,8 @@ def test_reopen_failed_request_delegates_to_user_db_public_api():
     )
 
     assert reopened == {"id": 7, "status": "pending"}
-    assert user_db.calls == [(7, "Download failed: Timeout")]
+    # Service layer passes failure_reason through; normalization happens in UserDB.
+    assert user_db.calls == [(7, "  Download failed: Timeout  ")]
 
 
 def test_reopen_failed_request_does_not_reopen_completed_delivery(user_db):

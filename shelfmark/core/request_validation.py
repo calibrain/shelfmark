@@ -63,6 +63,14 @@ def normalize_delivery_state(state: Any) -> str:
     return normalized
 
 
+def safe_delivery_state(state: Any, default: str = "none") -> str:
+    """Normalize delivery-state with a fallback for invalid/missing values."""
+    if not isinstance(state, str):
+        return default
+    normalized = state.strip().lower()
+    return normalized if normalized in VALID_DELIVERY_STATES else default
+
+
 def validate_request_level_payload(request_level: Any, release_data: Any) -> str:
     """Validate request_level and release_data shape coupling."""
     normalized_level = normalize_request_level(request_level)

@@ -13,6 +13,7 @@ from shelfmark.core.request_validation import (
     normalize_policy_mode,
     normalize_request_level,
     normalize_request_status,
+    safe_delivery_state,
     validate_request_level_payload,
     validate_status_transition,
 )
@@ -397,6 +398,19 @@ class UserDB:
         finally:
             conn.close()
 
+    def has_admin_with_password(self) -> bool:
+        """Return True when at least one admin user with a password hash exists."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT 1 FROM users WHERE role = 'admin'"
+                " AND password_hash IS NOT NULL AND password_hash != ''"
+                " LIMIT 1",
+            ).fetchone()
+            return row is not None
+        finally:
+            conn.close()
+
     def get_user_settings(self, user_id: int) -> Dict[str, Any]:
         """Get per-user settings. Returns empty dict if none set."""
         conn = self._connect()
@@ -758,14 +772,9 @@ class UserDB:
                 if current_request.get("status") != "fulfilled":
                     return None
 
-                current_delivery_state = current_request.get("delivery_state")
-                if isinstance(current_delivery_state, str):
-                    try:
-                        current_delivery_state = normalize_delivery_state(current_delivery_state)
-                    except ValueError:
-                        current_delivery_state = "none"
-                else:
-                    current_delivery_state = "none"
+                current_delivery_state = safe_delivery_state(
+                    current_request.get("delivery_state"),
+                )
 
                 # Terminal hook callbacks can run before delivery-state sync persists "error".
                 # Allow reopening fulfilled requests unless they are already complete.

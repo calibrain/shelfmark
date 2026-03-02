@@ -8,11 +8,10 @@ from typing import Any, Callable, TYPE_CHECKING
 
 from shelfmark.core.request_policy import normalize_content_type
 from shelfmark.core.request_validation import (
-    VALID_DELIVERY_STATES,
-    normalize_delivery_state,
     normalize_policy_mode,
     normalize_request_level,
     normalize_request_status,
+    safe_delivery_state,
     validate_request_level_payload,
     validate_status_transition,
 )
@@ -124,11 +123,7 @@ def _now_timestamp() -> str:
 
 
 def _existing_delivery_state(request_row: dict[str, Any]) -> str:
-    raw_state = request_row.get("delivery_state")
-    if not isinstance(raw_state, str):
-        return "none"
-    normalized = raw_state.strip().lower()
-    return normalized if normalized in VALID_DELIVERY_STATES else "none"
+    return safe_delivery_state(request_row.get("delivery_state"))
 
 
 def sync_delivery_states_from_queue_status(
@@ -443,11 +438,7 @@ def reopen_failed_request(
     failure_reason: str | None = None,
 ) -> dict[str, Any] | None:
     """Reopen a failed fulfilled request so admins can re-approve with a new release."""
-    normalized_failure_reason = None
-    if isinstance(failure_reason, str):
-        normalized_failure_reason = failure_reason.strip() or None
-
     return user_db.reopen_failed_request(
         request_id,
-        failure_reason=normalized_failure_reason,
+        failure_reason=failure_reason,
     )
