@@ -1289,46 +1289,50 @@ export const ReleaseModal = ({
           {/* Header */}
           <header className="flex items-start gap-3 border-b border-[var(--border-muted)] px-5 py-4">
             {/* Animated thumbnail that appears when scrolling */}
-            <div
-              className="flex-shrink-0 overflow-hidden transition-[width,margin] duration-300 ease-out"
-              style={{
-                width: showHeaderThumb ? 46 : 0,
-                marginRight: showHeaderThumb ? 0 : -12,
-              }}
-            >
+            {!isRequestMode && (
               <div
-                className="transition-opacity duration-300 ease-out"
-                style={{ opacity: showHeaderThumb ? 1 : 0 }}
+                className="flex-shrink-0 overflow-hidden transition-[width,margin] duration-300 ease-out"
+                style={{
+                  width: showHeaderThumb ? 46 : 0,
+                  marginRight: showHeaderThumb ? 0 : -12,
+                }}
               >
-                {book.preview ? (
-                  <img
-                    src={book.preview}
-                    alt=""
-                    width={46}
-                    height={68}
-                    className="rounded shadow-md object-cover object-top"
-                    style={{ width: 46, height: 68, minWidth: 46 }}
-                  />
-                ) : (
-                  <div
-                    className="rounded border border-dashed border-[var(--border-muted)] bg-[var(--bg)]/60 flex items-center justify-center text-[7px] text-gray-500"
-                    style={{ width: 46, height: 68, minWidth: 46 }}
-                  >
-                    No cover
-                  </div>
-                )}
+                <div
+                  className="transition-opacity duration-300 ease-out"
+                  style={{ opacity: showHeaderThumb ? 1 : 0 }}
+                >
+                  {book.preview ? (
+                    <img
+                      src={book.preview}
+                      alt=""
+                      width={46}
+                      height={68}
+                      className="rounded shadow-md object-cover object-top"
+                      style={{ width: 46, height: 68, minWidth: 46 }}
+                    />
+                  ) : (
+                    <div
+                      className="rounded border border-dashed border-[var(--border-muted)] bg-[var(--bg)]/60 flex items-center justify-center text-[7px] text-gray-500"
+                      style={{ width: 46, height: 68, minWidth: 46 }}
+                    >
+                      No cover
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
             <div className="flex-1 space-y-1 min-w-0">
               <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 Find Releases
               </p>
               <h3 id={titleId} className="text-lg font-semibold leading-snug truncate">
-                {book.title || 'Untitled'}
+                {book.provider === 'manual' ? 'Manual Query' : (book.title || 'Untitled')}
               </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-300 truncate">
-                {book.author || 'Unknown author'}
-              </p>
+              {!isRequestMode && (
+                <p className="text-sm text-gray-600 dark:text-gray-300 truncate">
+                  {book.author || 'Unknown author'}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
@@ -1836,15 +1840,19 @@ export const ReleaseModal = ({
                     const provider = book.provider;
                     const bookId = book.provider_id;
 
-                    // Clear cache + clear visible results so user gets feedback.
-                    invalidateCachedReleases(provider, bookId, activeTab, contentType);
-                    setExpandedBySource((prev) => {
-                      const next = { ...prev };
-                      delete next[activeTab];
-                      return next;
+                    // Clear cache + results for ALL tabs so tab switches re-fetch with the new query
+                    for (const tab of allTabs) {
+                      invalidateCachedReleases(provider, bookId, tab.name, contentType);
+                    }
+                    setExpandedBySource({});
+                    setErrorBySource({});
+                    // null for active tab triggers immediate re-fetch; omitting others
+                    // means they'll re-fetch when switched to
+                    setReleasesBySource((prev) => {
+                      const cleared: typeof prev = {};
+                      cleared[activeTab] = null;
+                      return cleared;
                     });
-                    setErrorBySource((prev) => ({ ...prev, [activeTab]: null }));
-                    setReleasesBySource((prev) => ({ ...prev, [activeTab]: null }));
 
                     setLoadingBySource((prev) => ({ ...prev, [activeTab]: true }));
                     try {

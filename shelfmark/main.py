@@ -2256,6 +2256,20 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
                 language=direct_book.get("language"),
                 source_url=direct_book.get("source_url"),
             )
+        elif provider == "manual":
+            resolved_title = title_param or manual_query or "Manual Search"
+            resolved_author = author_param or ""
+            authors = [a.strip() for a in resolved_author.split(",") if a.strip()]
+
+            book = BookMetadata(
+                provider="manual",
+                provider_id=book_id,
+                provider_display_name="Manual Search",
+                title=resolved_title,
+                search_title=resolved_title,
+                search_author=resolved_author or None,
+                authors=authors,
+            )
         else:
             if not is_provider_registered(provider):
                 return jsonify({"error": f"Unknown metadata provider: {provider}"}), 400

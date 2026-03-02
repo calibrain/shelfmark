@@ -24,6 +24,8 @@ interface SearchBarProps {
   // Content type selector props
   contentType?: ContentType;
   onContentTypeChange?: (type: ContentType) => void;
+  // Manual search mode
+  isManualSearch?: boolean;
 }
 
 export interface SearchBarHandle {
@@ -51,6 +53,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
   enterKeyHint = 'search',
   contentType = 'ebook',
   onContentTypeChange,
+  isManualSearch = false,
 }, ref) => {
   const { searchMode, isUniversalMode } = useSearchMode();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -62,10 +65,12 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const showContentTypeSelector = isUniversalMode && !!onContentTypeChange;
 
-  // Dynamic placeholder based on content type
-  const effectivePlaceholder = showContentTypeSelector
-    ? (contentType === 'ebook' ? 'Search Books' : 'Search Audiobooks')
-    : placeholder;
+  // Dynamic placeholder based on content type and manual search
+  const effectivePlaceholder = isManualSearch
+    ? 'Search releases directly...'
+    : showContentTypeSelector
+      ? (contentType === 'ebook' ? 'Search Books' : 'Search Audiobooks')
+      : placeholder;
 
   // Close dropdown on click outside or escape
   useEffect(() => {

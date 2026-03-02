@@ -24,6 +24,9 @@ interface SearchSectionProps {
   onSearchFieldChange?: (key: string, value: string | number | boolean) => void;
   contentType?: ContentType;
   onContentTypeChange?: (type: ContentType) => void;
+  // Manual search mode (universal only)
+  isManualSearch?: boolean;
+  onManualSearchToggle?: () => void;
 }
 
 export const SearchSection = ({
@@ -45,6 +48,8 @@ export const SearchSection = ({
   onSearchFieldChange,
   contentType = 'ebook',
   onContentTypeChange,
+  isManualSearch = false,
+  onManualSearchToggle,
 }: SearchSectionProps) => {
   const { searchMode } = useSearchMode();
 
@@ -86,6 +91,7 @@ export const SearchSection = ({
           onAdvancedToggle={onAdvancedToggle}
           contentType={contentType}
           onContentTypeChange={onContentTypeChange}
+          isManualSearch={isManualSearch}
         />
         <AdvancedFilters
           visible={showAdvanced}
@@ -100,6 +106,8 @@ export const SearchSection = ({
           searchFieldValues={searchFieldValues}
           onSearchFieldChange={onSearchFieldChange}
           onSubmit={handleSearch}
+          isManualSearch={isManualSearch}
+          onManualSearchToggle={onManualSearchToggle}
         />
       </div>
     </section>

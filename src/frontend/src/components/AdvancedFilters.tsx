@@ -24,6 +24,9 @@ interface AdvancedFiltersProps {
   onSearchFieldChange?: (key: string, value: string | number | boolean) => void;
   // Submit handler for Enter key
   onSubmit?: () => void;
+  // Manual search mode (universal only)
+  isManualSearch?: boolean;
+  onManualSearchToggle?: () => void;
 }
 
 export const AdvancedFilters = ({
@@ -39,6 +42,8 @@ export const AdvancedFilters = ({
   searchFieldValues = {},
   onSearchFieldChange,
   onSubmit,
+  isManualSearch = false,
+  onManualSearchToggle,
 }: AdvancedFiltersProps) => {
   const { searchMode } = useSearchMode();
   const { isbn, author, title, lang, content, formats } = filters;
@@ -73,10 +78,39 @@ export const AdvancedFilters = ({
 
   if (!visible) return null;
 
-  // Universal search mode: render dynamic provider fields
+  // Universal search mode: render dynamic provider fields + manual search toggle
   if (searchMode === 'universal') {
-    // If no fields defined for this provider, don't show the section
-    if (metadataSearchFields.length === 0) return null;
+    const hasProviderFields = metadataSearchFields.length > 0;
+
+    // If no fields and no toggle available, don't show the section
+    if (!hasProviderFields && !onManualSearchToggle) return null;
+
+    const manualToggle = onManualSearchToggle ? (
+      <div className="space-y-1.5">
+        <div className="flex items-start justify-between gap-2">
+          <label className="text-sm font-medium">Manual search</label>
+        </div>
+        <div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isManualSearch}
+            onClick={() => onManualSearchToggle()}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full
+                        transition-colors duration-200 focus:outline-none focus:ring-2
+                        focus:ring-emerald-500/50
+                        ${isManualSearch ? 'bg-emerald-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white
+                          shadow-sm transition-transform duration-200
+                          ${isManualSearch ? 'translate-x-6' : 'translate-x-1'}`}
+            />
+          </button>
+        </div>
+        <p className="text-xs"><span className="opacity-60">Search release sources directly</span></p>
+      </div>
+    ) : null;
 
     const universalForm = (
       <form
@@ -86,7 +120,8 @@ export const AdvancedFilters = ({
           'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 px-2 lg:ml-[calc(3rem+1rem)] lg:w-[50vw]'
         }
       >
-        {metadataSearchFields.map((field) => (
+        {manualToggle && <div className="col-span-full">{manualToggle}</div>}
+        {!isManualSearch && metadataSearchFields.map((field) => (
           <div key={field.key}>
             {field.type !== 'CheckboxSearchField' && (
               <label htmlFor={`${field.key}-input`} className="block text-sm mb-1 opacity-80">

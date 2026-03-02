@@ -39,6 +39,7 @@ interface HeaderProps {
   onRemoveToast?: (id: string) => void;
   contentType?: ContentType;
   onContentTypeChange?: (type: ContentType) => void;
+  isManualSearch?: boolean;
 }
 
 export const Header = forwardRef<HeaderHandle, HeaderProps>(({
@@ -69,6 +70,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   onRemoveToast,
   contentType = 'ebook',
   onContentTypeChange,
+  isManualSearch = false,
 }, ref) => {
   const activityBadge = getActivityBadgeState(statusCounts, isAdmin);
   const settingsEnabled = canAccessSettings ?? isAdmin;
@@ -652,6 +654,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
                 isLoading={isLoading}
                 contentType={contentType}
                 onContentTypeChange={onContentTypeChange}
+                isManualSearch={isManualSearch}
               />
             </div>
           </div>
