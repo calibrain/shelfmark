@@ -40,7 +40,7 @@ export function useUrlSearch({ enabled }: UseUrlSearchOptions): UseUrlSearchRetu
   useEffect(() => {
     if (enabled && !processedRef.current) {
       const parsed = parseUrlSearchParams(searchParams);
-      if (parsed.hasSearchParams) {
+      if (parsed.hasSearchParams || parsed.contentType) {
         parsedRef.current = parsed;
       }
       processedRef.current = true;

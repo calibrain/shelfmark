@@ -585,9 +585,13 @@ function App() {
   }, [isAuthenticated, loadConfig]);
 
   const runSearchWithPolicyRefresh = useCallback(
-    (query: string, fields = searchFieldValues) => {
+    (
+      query: string,
+      fields = searchFieldValues,
+      contentTypeOverride?: ContentType
+    ) => {
       void refreshRequestPolicy();
-      handleSearch(query, config, fields);
+      handleSearch(query, config, fields, contentTypeOverride);
     },
     [refreshRequestPolicy, handleSearch, config, searchFieldValues]
   );
@@ -596,13 +600,23 @@ function App() {
   useEffect(() => {
     if (
       wasProcessed &&
-      parsedParams?.hasSearchParams &&
+      parsedParams &&
       !urlSearchExecutedRef.current &&
       config
     ) {
       urlSearchExecutedRef.current = true;
 
       const searchMode = config.search_mode || 'direct';
+      const urlContentTypeOverride =
+        searchMode === 'universal' ? parsedParams.contentType : undefined;
+
+      if (urlContentTypeOverride && urlContentTypeOverride !== contentType) {
+        setContentType(urlContentTypeOverride);
+      }
+
+      if (!parsedParams.hasSearchParams) {
+        return;
+      }
       const bookLanguages = config.book_languages || [];
       const defaultLanguageCodes =
         config.default_language && config.default_language.length > 0
@@ -645,11 +659,12 @@ function App() {
         searchMode,
       });
 
-      runSearchWithPolicyRefresh(query);
+      runSearchWithPolicyRefresh(query, searchFieldValues, urlContentTypeOverride);
     }
   }, [
     wasProcessed,
     parsedParams,
+    contentType,
     config,
     advancedFilters,
     searchFieldValues,

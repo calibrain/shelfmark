@@ -30,7 +30,12 @@ interface UseSearchReturn {
   advancedFilters: AdvancedFilterState;
   setAdvancedFilters: React.Dispatch<React.SetStateAction<AdvancedFilterState>>;
   updateAdvancedFilters: (updates: Partial<AdvancedFilterState>) => void;
-  handleSearch: (query: string, config: AppConfig | null, fieldValues?: Record<string, string | number | boolean>) => Promise<void>;
+  handleSearch: (
+    query: string,
+    config: AppConfig | null,
+    fieldValues?: Record<string, string | number | boolean>,
+    contentTypeOverride?: ContentType
+  ) => Promise<void>;
   handleResetSearch: (config: AppConfig | null) => void;
   handleSortChange: (value: string, config: AppConfig | null) => void;
   resetSortFilter: () => void;
@@ -127,8 +132,10 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
   const handleSearch = useCallback(async (
     query: string,
     config: AppConfig | null,
-    fieldValues?: Record<string, string | number | boolean>
+    fieldValues?: Record<string, string | number | boolean>,
+    contentTypeOverride?: ContentType
   ) => {
+    const effectiveContentType = contentTypeOverride ?? contentType;
     const searchMode = config?.search_mode || 'direct';
 
     // In universal mode, check if we have either a query or field values
@@ -167,7 +174,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
       setTotalFound(0);
 
       try {
-        const result = await searchMetadata(searchQuery, 40, sort, effectiveFieldValues, 1, contentType);
+        const result = await searchMetadata(searchQuery, 40, sort, effectiveFieldValues, 1, effectiveContentType);
         if (result.books.length > 0) {
           setBooks(result.books);
           setHasMore(result.hasMore);

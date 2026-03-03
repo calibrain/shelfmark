@@ -19,6 +19,7 @@ http://your-server:8084/?q=harry+potter
 | `lang` | Filter by language (ISO 639-1 code) | `/?lang=en` |
 | `format` | Filter by file format | `/?format=epub` |
 | `content` | Filter by content type | `/?content=fiction` |
+| `content_type` | Select media type (`ebook` or `audiobook`) in Universal mode only | `/?q=dune&content_type=audiobook` |
 | `sort` | Sort order for results | `/?sort=newest` |
 
 ## Multiple Values
@@ -57,15 +58,21 @@ Some parameters support multiple values by repeating the parameter:
 /?q=science+fiction&sort=newest
 ```
 
+**Universal search as audiobook:**
+```
+/?q=dune&content_type=audiobook
+```
+
 ## Search Mode Behavior
 
 ### Direct Download Mode (default)
 
 All parameters are used to filter results from the direct download source.
+`content_type` is ignored in Direct mode.
 
 ### Universal Mode
 
-Only `q` and `sort` are used. Other parameters (author, title, format, etc.) are silently ignored since metadata providers have their own search capabilities.
+`q`, `sort`, and `content_type` are used. Other parameters (author, title, format, etc.) are silently ignored since metadata providers have their own search capabilities.
 
 ## Notes
 

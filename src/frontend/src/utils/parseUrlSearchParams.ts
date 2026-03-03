@@ -1,4 +1,4 @@
-import { AdvancedFilterState } from '../types';
+import { AdvancedFilterState, ContentType } from '../types';
 
 /**
  * Parsed search parameters from URL
@@ -6,24 +6,41 @@ import { AdvancedFilterState } from '../types';
 export interface ParsedUrlSearch {
   searchInput: string;
   advancedFilters: Partial<AdvancedFilterState>;
+  contentType?: ContentType;
   hasSearchParams: boolean;
 }
+
+const parseContentType = (value: string | null): ContentType | undefined => {
+  if (!value) {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'ebook' || normalized === 'audiobook') {
+    return normalized;
+  }
+  return undefined;
+};
 
 /**
  * Parse URL search parameters into search state.
  *
  * Supports both Direct Download and Universal mode parameters.
- * In Universal mode, only query and sort are used (others are parsed but
- * ignored by buildSearchQuery).
+ * In Universal mode, query/sort are used for search text, and content_type
+ * is used to select ebook vs audiobook.
  *
  * @example
  * // Direct mode: /?q=harry+potter&author=rowling&format=epub&lang=en
  * // Universal mode: /?q=dune&sort=popularity
  */
 export function parseUrlSearchParams(searchParams: URLSearchParams): ParsedUrlSearch {
+  const parsedContentType = parseContentType(
+    searchParams.get('content_type') || searchParams.get('contentType')
+  );
+
   const result: ParsedUrlSearch = {
     searchInput: '',
     advancedFilters: {},
+    contentType: parsedContentType,
     hasSearchParams: false,
   };
 
