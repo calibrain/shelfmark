@@ -289,6 +289,13 @@ def _publish_temp_file(temp_path: Path, dest_path: Path) -> bool:
     """
     try:
         run_blocking_io(os.link, str(temp_path), str(dest_path))
+        # Trigger IN_CLOSE_WRITE so inotify-based file watchers (e.g. CWA) detect the new file.
+        # os.link() only generates IN_CREATE which many watchers don't monitor.
+        try:
+            fd = run_blocking_io(os.open, str(dest_path), os.O_WRONLY)
+            run_blocking_io(os.close, fd)
+        except OSError:
+            pass
         run_blocking_io(temp_path.unlink, missing_ok=True)
         return True
     except FileExistsError:
