@@ -33,7 +33,7 @@ from shelfmark.core.auth_modes import (
 from shelfmark.core.cwa_user_sync import sync_cwa_users_from_rows
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import load_config_file
-from shelfmark.core.user_db import NO_AUTH_ACTIVITY_USERNAME, UserDB
+from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
 
@@ -104,9 +104,6 @@ def _serialize_user(
     return payload
 
 
-def _is_internal_system_user(user: dict[str, Any]) -> bool:
-    username = str(user.get("username") or "").strip()
-    return username == NO_AUTH_ACTIVITY_USERNAME
 
 
 def _sync_all_cwa_users(user_db: UserDB) -> dict[str, int]:
@@ -153,7 +150,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
     @_require_admin
     def admin_list_users():
         """List all users."""
-        users = [u for u in user_db.list_users() if not _is_internal_system_user(u)]
+        users = user_db.list_users()
         auth_mode = g.auth_mode
         security_config = load_config_file("security")
         return jsonify([
@@ -191,8 +188,8 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             return jsonify({"error": "Role must be 'admin' or 'user'"}), 400
 
         # First user is always admin
-        real_users = [u for u in user_db.list_users() if not _is_internal_system_user(u)]
-        if not real_users:
+        existing_users = user_db.list_users()
+        if not existing_users:
             role = "admin"
 
         # Check if username already exists

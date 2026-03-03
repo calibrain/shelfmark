@@ -106,20 +106,6 @@ class TestAdminUsersListEndpoint:
         users = resp.json
         assert "password_hash" not in users[0]
 
-    def test_list_users_hides_internal_no_auth_activity_user(self, admin_client, user_db):
-        user_db.create_user(
-            username="__shelfmark_noauth_activity__",
-            display_name="No-auth Activity",
-            role="admin",
-        )
-        user_db.create_user(username="alice", email="alice@example.com")
-
-        resp = admin_client.get("/api/admin/users")
-        assert resp.status_code == 200
-        usernames = [u["username"] for u in resp.json]
-        assert "__shelfmark_noauth_activity__" not in usernames
-        assert "alice" in usernames
-
     def test_list_users_includes_auth_source_and_is_active(self, admin_client, user_db):
         user_db.create_user(username="local_user", auth_source="builtin")
         user_db.create_user(

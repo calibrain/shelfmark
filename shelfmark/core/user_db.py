@@ -18,8 +18,6 @@ from shelfmark.core.request_validation import (
     validate_status_transition,
 )
 
-NO_AUTH_ACTIVITY_USERNAME = "__shelfmark_noauth_activity__"
-
 logger = setup_logger(__name__)
 
 _CREATE_TABLES_SQL = """

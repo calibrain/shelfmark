@@ -10,7 +10,7 @@ from flask import Flask, jsonify, request, session
 from shelfmark.core.download_history_service import DownloadHistoryService
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import extract_release_source_id
-from shelfmark.core.user_db import NO_AUTH_ACTIVITY_USERNAME, UserDB
+from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
 
@@ -114,56 +114,34 @@ def _resolve_db_user_id(
     return parsed_db_user_id, None
 
 
-def _ensure_no_auth_activity_user_id(user_db: UserDB) -> int | None:
-    """Resolve a stable users.db identity for no-auth activity state."""
-    try:
-        user = user_db.get_user(username=NO_AUTH_ACTIVITY_USERNAME)
-        if user is None:
-            try:
-                user_db.create_user(
-                    username=NO_AUTH_ACTIVITY_USERNAME,
-                    display_name="No-auth Activity",
-                    role="admin",
-                )
-            except ValueError:
-                # Another request may have created it between lookup and insert.
-                pass
-            user = user_db.get_user(username=NO_AUTH_ACTIVITY_USERNAME)
-
-        if user is None:
-            return None
-        user_id = int(user.get("id"))
-        return user_id if user_id > 0 else None
-    except Exception as exc:
-        logger.warning("Failed to resolve no-auth activity identity: %s", exc)
-        return None
-
-
-def _resolve_activity_actor_user_id(
+def _resolve_activity_actor(
     *,
     user_db: UserDB,
     resolve_auth_mode: Callable[[], str],
-) -> tuple[int | None, Any | None]:
-    """Resolve acting user identity for activity mutations."""
+) -> tuple[int | None, bool, Any | None]:
+    """Resolve acting user identity for activity mutations.
+
+    Returns (db_user_id, is_no_auth, error_response).
+    In no-auth mode: db_user_id=None, is_no_auth=True, error=None.
+    In auth mode: db_user_id=<int>, is_no_auth=False, error=None (or error response on failure).
+    """
     if resolve_auth_mode() == "none":
-        no_auth_user_id = _ensure_no_auth_activity_user_id(user_db)
-        if no_auth_user_id is not None:
-            return no_auth_user_id, None
-        return None, (
-            jsonify(
-                {
-                    "error": "User identity unavailable for activity workflow",
-                    "code": "user_identity_unavailable",
-                }
-            ),
-            403,
-        )
+        return None, True, None
 
     db_user_id, db_gate = _resolve_db_user_id(user_db=user_db)
     if db_user_id is not None:
-        return db_user_id, None
+        return db_user_id, False, None
 
-    return None, db_gate
+    return None, False, db_gate
+
+
+def _activity_ws_room(*, is_no_auth: bool, actor_db_user_id: int | None) -> str:
+    """Resolve the WebSocket room for activity events."""
+    if is_no_auth:
+        return "admins"
+    if actor_db_user_id is not None:
+        return f"user_{actor_db_user_id}"
+    return "admins"
 
 
 def _emit_activity_event(ws_manager: Any | None, *, room: str, payload: dict[str, Any]) -> None:
@@ -382,16 +360,9 @@ def register_activity_routes(
                 403,
             )
 
-        if resolve_auth_mode() == "none":
-            viewer_db_user_id = _ensure_no_auth_activity_user_id(user_db)
-        else:
-            viewer_db_user_id, _ = _resolve_db_user_id(
-                require_in_auth_mode=False,
-                user_db=user_db,
-            )
-
+        is_no_auth = resolve_auth_mode() == "none"
         owner_user_scope = None if is_admin else db_user_id
-        if resolve_auth_mode() == "none":
+        if is_no_auth:
             owner_user_scope = None
 
         status = queue_status(user_id=owner_user_scope)
@@ -445,7 +416,8 @@ def register_activity_routes(
         except Exception as exc:
             logger.warning("Failed to load dismissed request keys: %s", exc)
 
-        if viewer_db_user_id is None and resolve_auth_mode() != "none":
+        if not is_no_auth and not is_admin and db_user_id is None:
+            # In auth mode, if we can't identify a non-admin viewer, don't show dismissals.
             dismissed = []
         else:
             dismissed = _dedupe_dismissed_entries(dismissed)
@@ -464,14 +436,16 @@ def register_activity_routes(
         if auth_gate is not None:
             return auth_gate
 
-        actor_db_user_id, db_gate = _resolve_activity_actor_user_id(
+        actor_db_user_id, is_no_auth, db_gate = _resolve_activity_actor(
             user_db=user_db,
             resolve_auth_mode=resolve_auth_mode,
         )
-        if db_gate is not None or actor_db_user_id is None:
+        if db_gate is not None:
             return db_gate
+        if not is_no_auth and actor_db_user_id is None:
+            return jsonify({"error": "User identity unavailable for activity workflow", "code": "user_identity_unavailable"}), 403
 
-        actor_is_admin = bool(session.get("is_admin")) or resolve_auth_mode() == "none"
+        actor_is_admin = is_no_auth or bool(session.get("is_admin"))
         owner_scope_user_id = None if actor_is_admin else actor_db_user_id
 
         data = request.get_json(silent=True)
@@ -481,7 +455,6 @@ def register_activity_routes(
         item_type = str(data.get("item_type") or "").strip().lower()
         item_key = data.get("item_key")
 
-        target_user_ids: set[int] = {actor_db_user_id}
         dismissal_item: dict[str, str] | None = None
 
         if item_type == "download":
@@ -524,17 +497,16 @@ def register_activity_routes(
         else:
             return jsonify({"error": "item_type must be one of: download, request"}), 400
 
-        for target_user_id in sorted(target_user_ids):
-            _emit_activity_event(
-                ws_manager,
-                room=f"user_{target_user_id}",
-                payload={
-                    "kind": "dismiss",
-                    "user_id": target_user_id,
-                    "item_type": dismissal_item["item_type"],
-                    "item_key": dismissal_item["item_key"],
-                },
-            )
+        room = _activity_ws_room(is_no_auth=is_no_auth, actor_db_user_id=actor_db_user_id)
+        _emit_activity_event(
+            ws_manager,
+            room=room,
+            payload={
+                "kind": "dismiss",
+                "item_type": dismissal_item["item_type"],
+                "item_key": dismissal_item["item_key"],
+            },
+        )
 
         return jsonify({"status": "dismissed", "item": dismissal_item})
 
@@ -544,14 +516,16 @@ def register_activity_routes(
         if auth_gate is not None:
             return auth_gate
 
-        actor_db_user_id, db_gate = _resolve_activity_actor_user_id(
+        actor_db_user_id, is_no_auth, db_gate = _resolve_activity_actor(
             user_db=user_db,
             resolve_auth_mode=resolve_auth_mode,
         )
-        if db_gate is not None or actor_db_user_id is None:
+        if db_gate is not None:
             return db_gate
+        if not is_no_auth and actor_db_user_id is None:
+            return jsonify({"error": "User identity unavailable for activity workflow", "code": "user_identity_unavailable"}), 403
 
-        actor_is_admin = bool(session.get("is_admin")) or resolve_auth_mode() == "none"
+        actor_is_admin = is_no_auth or bool(session.get("is_admin"))
         owner_scope_user_id = None if actor_is_admin else actor_db_user_id
 
         data = request.get_json(silent=True)
@@ -563,7 +537,6 @@ def register_activity_routes(
 
         download_task_ids: list[str] = []
         request_ids: list[int] = []
-        target_user_ids: set[int] = {actor_db_user_id}
 
         for item in items:
             if not isinstance(item, dict):
@@ -616,16 +589,15 @@ def register_activity_routes(
 
         dismissed_count = dismissed_download_count + dismissed_request_count
 
-        for target_user_id in sorted(target_user_ids):
-            _emit_activity_event(
-                ws_manager,
-                room=f"user_{target_user_id}",
-                payload={
-                    "kind": "dismiss_many",
-                    "user_id": target_user_id,
-                    "count": dismissed_count,
-                },
-            )
+        room = _activity_ws_room(is_no_auth=is_no_auth, actor_db_user_id=actor_db_user_id)
+        _emit_activity_event(
+            ws_manager,
+            room=room,
+            payload={
+                "kind": "dismiss_many",
+                "count": dismissed_count,
+            },
+        )
 
         return jsonify({"status": "dismissed", "count": dismissed_count})
 
@@ -635,12 +607,14 @@ def register_activity_routes(
         if auth_gate is not None:
             return auth_gate
 
-        actor_db_user_id, db_gate = _resolve_activity_actor_user_id(
+        actor_db_user_id, is_no_auth, db_gate = _resolve_activity_actor(
             user_db=user_db,
             resolve_auth_mode=resolve_auth_mode,
         )
-        if db_gate is not None or actor_db_user_id is None:
+        if db_gate is not None:
             return db_gate
+        if not is_no_auth and actor_db_user_id is None:
+            return jsonify({"error": "User identity unavailable for activity workflow", "code": "user_identity_unavailable"}), 403
 
         limit = request.args.get("limit", type=int, default=50)
         offset = request.args.get("offset", type=int, default=0)
@@ -653,7 +627,7 @@ def register_activity_routes(
         if offset < 0:
             return jsonify({"error": "offset must be a non-negative integer"}), 400
 
-        actor_is_admin = bool(session.get("is_admin")) or resolve_auth_mode() == "none"
+        actor_is_admin = is_no_auth or bool(session.get("is_admin"))
         owner_scope_user_id = None if actor_is_admin else actor_db_user_id
 
         # We combine download + request history and apply pagination over the merged list.
@@ -687,26 +661,28 @@ def register_activity_routes(
         if auth_gate is not None:
             return auth_gate
 
-        actor_db_user_id, db_gate = _resolve_activity_actor_user_id(
+        actor_db_user_id, is_no_auth, db_gate = _resolve_activity_actor(
             user_db=user_db,
             resolve_auth_mode=resolve_auth_mode,
         )
-        if db_gate is not None or actor_db_user_id is None:
+        if db_gate is not None:
             return db_gate
+        if not is_no_auth and actor_db_user_id is None:
+            return jsonify({"error": "User identity unavailable for activity workflow", "code": "user_identity_unavailable"}), 403
 
-        actor_is_admin = bool(session.get("is_admin")) or resolve_auth_mode() == "none"
+        actor_is_admin = is_no_auth or bool(session.get("is_admin"))
         owner_scope_user_id = None if actor_is_admin else actor_db_user_id
 
         deleted_downloads = download_history_service.clear_dismissed(user_id=owner_scope_user_id)
         cleared_requests = user_db.clear_request_dismissals(user_id=owner_scope_user_id)
         deleted_count = deleted_downloads + cleared_requests
 
+        room = _activity_ws_room(is_no_auth=is_no_auth, actor_db_user_id=actor_db_user_id)
         _emit_activity_event(
             ws_manager,
-            room=f"user_{actor_db_user_id}",
+            room=room,
             payload={
                 "kind": "history_cleared",
-                "user_id": actor_db_user_id,
                 "count": deleted_count,
             },
         )
