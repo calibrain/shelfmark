@@ -325,40 +325,6 @@ class BookQueue:
                 return True
             return any(status == QueueStatus.QUEUED for status in self._status.values())
 
-    def clear_completed(self, user_id: Optional[int] = None) -> int:
-        """Remove terminal tasks from tracking, optionally scoped to one user.
-
-        Args:
-            user_id: If provided, only clear tasks belonging to this user.
-                     If None, clear all.
-        """
-        terminal_statuses = {QueueStatus.COMPLETE, QueueStatus.DONE, QueueStatus.AVAILABLE, QueueStatus.ERROR, QueueStatus.CANCELLED}
-        with self._lock:
-            to_remove: list[str] = []
-            for task_id, status in self._status.items():
-                if status not in terminal_statuses:
-                    continue
-
-                if user_id is None:
-                    to_remove.append(task_id)
-                    continue
-
-                task = self._task_data.get(task_id)
-                if task is None:
-                    # Without task ownership metadata we cannot safely scope removal.
-                    continue
-                if task.user_id == user_id:
-                    to_remove.append(task_id)
-
-            for task_id in to_remove:
-                self._status.pop(task_id, None)
-                self._status_timestamps.pop(task_id, None)
-                self._task_data.pop(task_id, None)
-                self._cancel_flags.pop(task_id, None)
-                self._active_downloads.pop(task_id, None)
-
-            return len(to_remove)
-
     def refresh(self) -> None:
         """Remove any tasks that are done downloading or have stale status."""
         terminal_statuses = {QueueStatus.COMPLETE, QueueStatus.DONE, QueueStatus.ERROR, QueueStatus.AVAILABLE, QueueStatus.CANCELLED}

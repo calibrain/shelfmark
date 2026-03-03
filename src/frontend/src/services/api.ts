@@ -35,7 +35,6 @@ const API = {
   cancelDownload: `${API_BASE}/download`,
   retryDownload: `${API_BASE}/download`,
   setPriority: `${API_BASE}/queue`,
-  clearCompleted: `${API_BASE}/queue/clear`,
   config: `${API_BASE}/config`,
   login: `${API_BASE}/auth/login`,
   logout: `${API_BASE}/auth/logout`,
@@ -402,10 +401,6 @@ export const retryDownload = async (id: string): Promise<void> => {
   await fetchJSON(`${API.retryDownload}/${encodeURIComponent(id)}/retry`, { method: 'POST' });
 };
 
-export const clearCompleted = async (): Promise<void> => {
-  await fetchJSON(`${API_BASE}/queue/clear`, { method: 'DELETE' });
-};
-
 export const getConfig = async (): Promise<AppConfig> => {
   return fetchJSON<AppConfig>(API.config);
 };
@@ -432,7 +427,6 @@ export interface ActivitySnapshotResponse {
 export interface ActivityDismissPayload {
   item_type: 'download' | 'request';
   item_key: string;
-  activity_log_id?: number;
 }
 
 export interface ActivityHistoryItem {
@@ -440,7 +434,6 @@ export interface ActivityHistoryItem {
   user_id: number;
   item_type: 'download' | 'request';
   item_key: string;
-  activity_log_id: number | null;
   dismissed_at: string;
   snapshot: Record<string, unknown> | null;
   origin: 'direct' | 'request' | 'requested' | null;

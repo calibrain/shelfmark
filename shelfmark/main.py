@@ -49,7 +49,7 @@ from shelfmark.core.requests_service import (
     reopen_failed_request,
     sync_delivery_states_from_queue_status,
 )
-from shelfmark.core.activity_service import ActivityService, build_download_item_key
+from shelfmark.core.download_history_service import DownloadHistoryService
 from shelfmark.core.notifications import NotificationContext, NotificationEvent, notify_admin, notify_user
 from shelfmark.core.request_helpers import (
     coerce_bool,
@@ -127,11 +127,11 @@ import os as _os
 from shelfmark.core.user_db import UserDB
 _user_db_path = _os.path.join(_os.environ.get("CONFIG_DIR", "/config"), "users.db")
 user_db: UserDB | None = None
-activity_service: ActivityService | None = None
+download_history_service: DownloadHistoryService | None = None
 try:
     user_db = UserDB(_user_db_path)
     user_db.initialize()
-    activity_service = ActivityService(_user_db_path)
+    download_history_service = DownloadHistoryService(_user_db_path)
     import shelfmark.config.users_settings as _  # noqa: F401 - registers users tab
     from shelfmark.core.oidc_routes import register_oidc_routes
     from shelfmark.core.admin_routes import register_admin_routes
@@ -146,6 +146,7 @@ except (sqlite3.OperationalError, OSError) as e:
         f"Ensure CONFIG_DIR ({_os.environ.get('CONFIG_DIR', '/config')}) exists and is writable."
     )
     user_db = None
+    download_history_service = None
 
 # Start download coordinator
 backend.start()
@@ -404,14 +405,13 @@ if user_db is not None:
             user_db,
             resolve_auth_mode=lambda: get_auth_mode(),
             queue_release=lambda *args, **kwargs: backend.queue_release(*args, **kwargs),
-            activity_service=activity_service,
             ws_manager=ws_manager,
         )
-        if activity_service is not None:
+        if download_history_service is not None:
             register_activity_routes(
                 app,
                 user_db,
-                activity_service=activity_service,
+                download_history_service=download_history_service,
                 resolve_auth_mode=lambda: get_auth_mode(),
                 resolve_status_scope=lambda: _resolve_status_scope(),
                 queue_status=lambda user_id=None: backend.queue_status(user_id=user_id),
@@ -1214,24 +1214,28 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
             "username": getattr(task, "username", None),
         }
 
-    snapshot: dict[str, Any] = {"kind": "download", "download": download_payload}
-    if linked_request is not None:
-        snapshot["request"] = linked_request
-
-    if activity_service is not None:
+    if download_history_service is not None:
         try:
-            activity_service.record_terminal_snapshot(
+            download_history_service.record_terminal(
                 user_id=owner_user_id,
-                item_type="download",
-                item_key=build_download_item_key(task_id),
+                task_id=task_id,
+                username=normalize_optional_text(getattr(task, "username", None)),
+                request_id=request_id,
+                source=normalize_source(getattr(task, "source", None)),
+                source_display_name=download_payload.get("source_display_name"),
+                title=str(download_payload.get("title") or getattr(task, "title", "Unknown title")),
+                author=normalize_optional_text(download_payload.get("author")),
+                format=normalize_optional_text(download_payload.get("format")),
+                size=normalize_optional_text(download_payload.get("size")),
+                preview=normalize_optional_text(download_payload.get("preview")),
+                content_type=normalize_optional_text(download_payload.get("content_type")),
                 origin=origin,
                 final_status=final_status,
-                snapshot=snapshot,
-                request_id=request_id,
-                source_id=task_id,
+                status_message=normalize_optional_text(download_payload.get("status_message")),
+                download_path=normalize_optional_text(download_payload.get("download_path")),
             )
         except Exception as exc:
-            logger.warning("Failed to record terminal download snapshot for task %s: %s", task_id, exc)
+            logger.warning("Failed to record terminal download history for task %s: %s", task_id, exc)
 
     if user_db is None or linked_request is None or request_id is None or status != QueueStatus.ERROR:
         return
@@ -1637,32 +1641,6 @@ def api_active_downloads() -> Union[Response, Tuple[Response, int]]:
         return jsonify({"active_downloads": active_downloads})
     except Exception as e:
         logger.error_trace(f"Active downloads error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/queue/clear', methods=['DELETE'])
-@login_required
-def api_clear_completed() -> Union[Response, Tuple[Response, int]]:
-    """
-    Clear all completed, errored, or cancelled books from tracking.
-
-    Returns:
-        flask.Response: JSON with count of removed books.
-    """
-    try:
-        is_admin, db_user_id, can_access_status = _resolve_status_scope()
-        if not can_access_status:
-            return jsonify({"error": "User identity unavailable", "code": "user_identity_unavailable"}), 403
-
-        scoped_user_id = None if is_admin else db_user_id
-        removed_count = backend.clear_completed(user_id=scoped_user_id)
-
-        # Broadcast status update after clearing
-        if ws_manager:
-            ws_manager.broadcast_status_update(backend.queue_status())
-
-        return jsonify({"status": "cleared", "removed_count": removed_count})
-    except Exception as e:
-        logger.error_trace(f"Clear completed error: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.errorhandler(404)

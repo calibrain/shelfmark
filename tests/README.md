@@ -254,10 +254,8 @@ docker ps | grep -E "qbittorrent|transmission|deluge|nzbget|sabnzbd"
 ```
 
 ### Stale test data
+
+Restart the container to reset the in-memory queue between test runs:
 ```bash
-# Clear the queue between test runs
-docker exec test-cwabd python3 -c "
-from shelfmark.core.queue import book_queue
-book_queue.clear()
-"
+docker restart test-cwabd
 ```

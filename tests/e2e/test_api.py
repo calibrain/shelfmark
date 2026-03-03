@@ -207,14 +207,6 @@ class TestQueueEndpoint:
         else:
             assert isinstance(data, list)
 
-    def test_clear_queue(self, api_client: APIClient, download_tracker: DownloadTracker):
-        """Test clearing the queue."""
-        resp = api_client.delete("/api/queue/clear")
-
-        # Should succeed (may be 200 or 204)
-        assert resp.status_code in [200, 204]
-
-
 @pytest.mark.e2e
 class TestSettingsEndpoint:
     """Tests for settings endpoints."""

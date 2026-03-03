@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS download_requests (
     reviewed_by    INTEGER REFERENCES users(id),
     created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     reviewed_at    TIMESTAMP,
-    delivery_updated_at TIMESTAMP
+    delivery_updated_at TIMESTAMP,
+    dismissed_at TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_download_requests_user_status_created_at
@@ -65,38 +66,33 @@ ON download_requests (user_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_download_requests_status_created_at
 ON download_requests (status, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS activity_log (
+CREATE TABLE IF NOT EXISTS download_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    item_type TEXT NOT NULL,
-    item_key TEXT NOT NULL,
+    task_id TEXT UNIQUE NOT NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    username TEXT,
     request_id INTEGER,
-    source_id TEXT,
-    origin TEXT NOT NULL,
+    source TEXT NOT NULL,
+    source_display_name TEXT,
+    title TEXT NOT NULL,
+    author TEXT,
+    format TEXT,
+    size TEXT,
+    preview TEXT,
+    content_type TEXT,
+    origin TEXT NOT NULL DEFAULT 'direct',
     final_status TEXT NOT NULL,
-    snapshot_json TEXT NOT NULL,
-    terminal_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    status_message TEXT,
+    download_path TEXT,
+    terminal_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    dismissed_at TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_activity_log_user_terminal
-ON activity_log (user_id, terminal_at DESC);
+CREATE INDEX IF NOT EXISTS idx_download_history_user_status
+ON download_history (user_id, final_status, terminal_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_activity_log_lookup
-ON activity_log (user_id, item_type, item_key, id DESC);
-
-CREATE TABLE IF NOT EXISTS activity_dismissals (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    item_type TEXT NOT NULL,
-    item_key TEXT NOT NULL,
-    activity_log_id INTEGER REFERENCES activity_log(id) ON DELETE SET NULL,
-    dismissed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, item_type, item_key)
-);
-
-CREATE INDEX IF NOT EXISTS idx_activity_dismissals_user_dismissed_at
-ON activity_dismissals (user_id, dismissed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_download_history_dismissed
+ON download_history (dismissed_at) WHERE dismissed_at IS NOT NULL;
 """
 
 
@@ -166,7 +162,7 @@ class UserDB:
                 conn.executescript(_CREATE_TABLES_SQL)
                 self._migrate_auth_source_column(conn)
                 self._migrate_request_delivery_columns(conn)
-                self._migrate_activity_tables(conn)
+                self._migrate_download_requests_dismissed_at(conn)
                 conn.commit()
                 # WAL mode must be changed outside an open transaction.
                 conn.execute("PRAGMA journal_mode=WAL")
@@ -235,49 +231,12 @@ class UserDB:
             """
         )
 
-    def _migrate_activity_tables(self, conn: sqlite3.Connection) -> None:
-        """Ensure activity log and dismissal tables exist with current columns/indexes."""
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS activity_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                item_type TEXT NOT NULL,
-                item_key TEXT NOT NULL,
-                request_id INTEGER,
-                source_id TEXT,
-                origin TEXT NOT NULL,
-                final_status TEXT NOT NULL,
-                snapshot_json TEXT NOT NULL,
-                terminal_at TIMESTAMP NOT NULL,
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_activity_log_user_terminal
-            ON activity_log (user_id, terminal_at DESC);
-
-            CREATE INDEX IF NOT EXISTS idx_activity_log_lookup
-            ON activity_log (user_id, item_type, item_key, id DESC);
-
-            CREATE TABLE IF NOT EXISTS activity_dismissals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                item_type TEXT NOT NULL,
-                item_key TEXT NOT NULL,
-                activity_log_id INTEGER REFERENCES activity_log(id) ON DELETE SET NULL,
-                dismissed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(user_id, item_type, item_key)
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_activity_dismissals_user_dismissed_at
-            ON activity_dismissals (user_id, dismissed_at DESC);
-            """
-        )
-
-        dismissal_columns = conn.execute("PRAGMA table_info(activity_dismissals)").fetchall()
-        dismissal_column_names = {str(col["name"]) for col in dismissal_columns}
-        if "activity_log_id" not in dismissal_column_names:
-            conn.execute("ALTER TABLE activity_dismissals ADD COLUMN activity_log_id INTEGER")
+    def _migrate_download_requests_dismissed_at(self, conn: sqlite3.Connection) -> None:
+        """Ensure download_requests.dismissed_at exists for request dismissal history."""
+        columns = conn.execute("PRAGMA table_info(download_requests)").fetchall()
+        column_names = {str(col["name"]) for col in columns}
+        if "dismissed_at" not in column_names:
+            conn.execute("ALTER TABLE download_requests ADD COLUMN dismissed_at TIMESTAMP")
 
     def create_user(
         self,
@@ -634,6 +593,7 @@ class UserDB:
         "delivery_state",
         "delivery_updated_at",
         "last_failure_reason",
+        "dismissed_at",
     }
 
     def update_request(
@@ -692,6 +652,11 @@ class UserDB:
                     delivery_updated_at = updates["delivery_updated_at"]
                     if delivery_updated_at is not None and not isinstance(delivery_updated_at, str):
                         raise ValueError("delivery_updated_at must be a string when provided")
+
+                if "dismissed_at" in updates:
+                    dismissed_at = updates["dismissed_at"]
+                    if dismissed_at is not None and not isinstance(dismissed_at, str):
+                        raise ValueError("dismissed_at must be a string when provided")
 
                 if "content_type" in updates and not updates["content_type"]:
                     raise ValueError("content_type is required")
@@ -831,3 +796,57 @@ class UserDB:
             return int(row["count"]) if row else 0
         finally:
             conn.close()
+
+    def list_dismissed_requests(self, *, user_id: int | None, limit: int | None = None) -> List[Dict[str, Any]]:
+        """List dismissed requests, optionally scoped by owner user_id."""
+        params: list[Any] = []
+        query = "SELECT * FROM download_requests WHERE dismissed_at IS NOT NULL"
+        if user_id is not None:
+            try:
+                normalized_user_id = int(user_id)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("user_id must be a positive integer when provided") from exc
+            if normalized_user_id < 1:
+                raise ValueError("user_id must be a positive integer when provided")
+            query += " AND user_id = ?"
+            params.append(normalized_user_id)
+        query += " ORDER BY dismissed_at DESC, id DESC"
+        if limit is not None and limit > 0:
+            query += " LIMIT ?"
+            params.append(limit)
+
+        conn = self._connect()
+        try:
+            rows = conn.execute(query, params).fetchall()
+            results: List[Dict[str, Any]] = []
+            for row in rows:
+                parsed = self._parse_request_row(row)
+                if parsed is not None:
+                    results.append(parsed)
+            return results
+        finally:
+            conn.close()
+
+    def clear_request_dismissals(self, *, user_id: int | None) -> int:
+        """Clear dismissed_at on requests, optionally scoped by owner user_id."""
+        params: list[Any] = []
+        query = "UPDATE download_requests SET dismissed_at = NULL WHERE dismissed_at IS NOT NULL"
+        if user_id is not None:
+            try:
+                normalized_user_id = int(user_id)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("user_id must be a positive integer when provided") from exc
+            if normalized_user_id < 1:
+                raise ValueError("user_id must be a positive integer when provided")
+            query += " AND user_id = ?"
+            params.append(normalized_user_id)
+
+        with self._lock:
+            conn = self._connect()
+            try:
+                cursor = conn.execute(query, params)
+                conn.commit()
+                rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
+                return max(rowcount, 0)
+            finally:
+                conn.close()

@@ -62,7 +62,15 @@ class TestUserDBInitialization:
         assert cursor.fetchone() is not None
         conn.close()
 
-    def test_initialize_creates_activity_tables(self, user_db, db_path):
+    def test_initialize_creates_download_history_table(self, user_db, db_path):
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='download_history'"
+        )
+        assert cursor.fetchone() is not None
+        conn.close()
+
+    def test_initialize_does_not_create_legacy_activity_tables(self, user_db, db_path):
         conn = sqlite3.connect(db_path)
         activity_log = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='activity_log'"
@@ -70,8 +78,8 @@ class TestUserDBInitialization:
         dismissals = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='activity_dismissals'"
         ).fetchone()
-        assert activity_log is not None
-        assert dismissals is not None
+        assert activity_log is None
+        assert dismissals is None
         conn.close()
 
     def test_initialize_creates_download_requests_indexes(self, user_db, db_path):
@@ -84,20 +92,30 @@ class TestUserDBInitialization:
         assert "idx_download_requests_status_created_at" in index_names
         conn.close()
 
-    def test_initialize_creates_activity_indexes(self, user_db, db_path):
+    def test_initialize_does_not_create_legacy_activity_indexes(self, user_db, db_path):
         conn = sqlite3.connect(db_path)
         rows = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='activity_log'"
         ).fetchall()
         log_index_names = {row[0] for row in rows}
-        assert "idx_activity_log_user_terminal" in log_index_names
-        assert "idx_activity_log_lookup" in log_index_names
+        assert "idx_activity_log_user_terminal" not in log_index_names
+        assert "idx_activity_log_lookup" not in log_index_names
 
         rows = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='activity_dismissals'"
         ).fetchall()
         dismissal_index_names = {row[0] for row in rows}
-        assert "idx_activity_dismissals_user_dismissed_at" in dismissal_index_names
+        assert "idx_activity_dismissals_user_dismissed_at" not in dismissal_index_names
+        conn.close()
+
+    def test_initialize_creates_download_history_indexes(self, user_db, db_path):
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='download_history'"
+        ).fetchall()
+        index_names = {row[0] for row in rows}
+        assert "idx_download_history_user_status" in index_names
+        assert "idx_download_history_dismissed" in index_names
         conn.close()
 
     def test_initialize_enables_wal_mode(self, user_db, db_path):
@@ -224,6 +242,226 @@ class TestUserDBInitialization:
         assert "REQUEST_POLICY_RULES" not in column_names
         assert "MAX_PENDING_REQUESTS_PER_USER" not in column_names
         assert "REQUESTS_ALLOW_NOTES" not in column_names
+        conn.close()
+
+    def test_initialize_migrates_download_requests_dismissed_at_column(self, db_path):
+        conn = sqlite3.connect(db_path)
+        conn.executescript(
+            """
+            CREATE TABLE users (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                username      TEXT UNIQUE NOT NULL,
+                email         TEXT,
+                display_name  TEXT,
+                password_hash TEXT,
+                oidc_subject  TEXT UNIQUE,
+                auth_source   TEXT NOT NULL DEFAULT 'builtin',
+                role          TEXT NOT NULL DEFAULT 'user',
+                created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE user_settings (
+                user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                settings_json TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE TABLE download_requests (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                status         TEXT NOT NULL DEFAULT 'pending',
+                delivery_state TEXT NOT NULL DEFAULT 'none',
+                source_hint    TEXT,
+                content_type   TEXT NOT NULL,
+                request_level  TEXT NOT NULL,
+                policy_mode    TEXT NOT NULL,
+                book_data      TEXT NOT NULL,
+                release_data   TEXT,
+                note           TEXT,
+                admin_note     TEXT,
+                reviewed_by    INTEGER REFERENCES users(id),
+                created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at    TIMESTAMP,
+                delivery_updated_at TIMESTAMP
+            );
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        from shelfmark.core.user_db import UserDB
+
+        db = UserDB(db_path)
+        db.initialize()
+
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        columns = conn.execute("PRAGMA table_info(download_requests)").fetchall()
+        column_names = {str(col["name"]) for col in columns}
+        assert "dismissed_at" in column_names
+        conn.close()
+
+    def test_initialize_migrates_existing_install_without_backfill(self, db_path):
+        """Upgrade path: preserve existing rows and add new schema without retroactive history backfill."""
+        conn = sqlite3.connect(db_path)
+        conn.executescript(
+            """
+            CREATE TABLE users (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                username      TEXT UNIQUE NOT NULL,
+                email         TEXT,
+                display_name  TEXT,
+                password_hash TEXT,
+                oidc_subject  TEXT UNIQUE,
+                auth_source   TEXT NOT NULL DEFAULT 'builtin',
+                role          TEXT NOT NULL DEFAULT 'user',
+                created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE user_settings (
+                user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                settings_json TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE TABLE download_requests (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                status         TEXT NOT NULL DEFAULT 'pending',
+                delivery_state TEXT NOT NULL DEFAULT 'none',
+                source_hint    TEXT,
+                content_type   TEXT NOT NULL,
+                request_level  TEXT NOT NULL,
+                policy_mode    TEXT NOT NULL,
+                book_data      TEXT NOT NULL,
+                release_data   TEXT,
+                note           TEXT,
+                admin_note     TEXT,
+                reviewed_by    INTEGER REFERENCES users(id),
+                created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at    TIMESTAMP,
+                delivery_updated_at TIMESTAMP
+            );
+
+            CREATE TABLE activity_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                item_type TEXT NOT NULL,
+                item_key TEXT NOT NULL,
+                request_id INTEGER,
+                source_id TEXT,
+                origin TEXT NOT NULL,
+                final_status TEXT NOT NULL,
+                snapshot_json TEXT NOT NULL,
+                terminal_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE activity_dismissals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                item_type TEXT NOT NULL,
+                item_key TEXT NOT NULL,
+                activity_log_id INTEGER REFERENCES activity_log(id) ON DELETE SET NULL,
+                dismissed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, item_type, item_key)
+            );
+            """
+        )
+        conn.execute("INSERT INTO users (id, username, role) VALUES (?, ?, ?)", (1, "legacy-user", "user"))
+        conn.execute(
+            """
+            INSERT INTO download_requests (
+                id,
+                user_id,
+                status,
+                delivery_state,
+                content_type,
+                request_level,
+                policy_mode,
+                book_data
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (11, 1, "fulfilled", "complete", "ebook", "book", "request_book", '{"title":"Legacy Book"}'),
+        )
+        conn.execute(
+            """
+            INSERT INTO activity_log (
+                id,
+                user_id,
+                item_type,
+                item_key,
+                request_id,
+                source_id,
+                origin,
+                final_status,
+                snapshot_json,
+                terminal_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                21,
+                1,
+                "download",
+                "download:legacy-task",
+                11,
+                "legacy-task",
+                "request",
+                "complete",
+                '{"kind":"download","download":{"id":"legacy-task","title":"Legacy Book"}}',
+                "2026-01-01T00:00:00+00:00",
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO activity_dismissals (
+                user_id,
+                item_type,
+                item_key,
+                activity_log_id,
+                dismissed_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (1, "download", "download:legacy-task", 21, "2026-01-02T00:00:00+00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        from shelfmark.core.user_db import UserDB
+
+        db = UserDB(db_path)
+        db.initialize()
+
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+
+        request_row = conn.execute(
+            "SELECT id, user_id, status FROM download_requests WHERE id = 11"
+        ).fetchone()
+        assert request_row is not None
+        assert request_row["user_id"] == 1
+        assert request_row["status"] == "fulfilled"
+
+        request_columns = conn.execute("PRAGMA table_info(download_requests)").fetchall()
+        request_column_names = {str(col["name"]) for col in request_columns}
+        assert "dismissed_at" in request_column_names
+
+        history_table = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='download_history'"
+        ).fetchone()
+        assert history_table is not None
+
+        # No retroactive copy from legacy activity tables in the no-backfill plan.
+        history_count = conn.execute("SELECT COUNT(*) AS count FROM download_history").fetchone()["count"]
+        assert history_count == 0
+
+        legacy_activity_rows = conn.execute("SELECT COUNT(*) AS count FROM activity_log").fetchone()["count"]
+        legacy_dismissal_rows = conn.execute(
+            "SELECT COUNT(*) AS count FROM activity_dismissals"
+        ).fetchone()["count"]
+        assert legacy_activity_rows == 1
+        assert legacy_dismissal_rows == 1
         conn.close()
 
 
@@ -738,3 +976,78 @@ class TestDownloadRequests:
         user_db.delete_user(user["id"])
 
         assert user_db.get_request(created["id"]) is None
+
+    def test_list_dismissed_requests_scopes_by_user(self, user_db):
+        alice = user_db.create_user(username="alice")
+        bob = user_db.create_user(username="bob")
+        first = user_db.create_request(
+            user_id=alice["id"],
+            content_type="ebook",
+            request_level="book",
+            policy_mode="request_book",
+            book_data=self._book_data(),
+        )
+        second = user_db.create_request(
+            user_id=bob["id"],
+            content_type="ebook",
+            request_level="book",
+            policy_mode="request_book",
+            book_data=self._book_data(),
+        )
+        third = user_db.create_request(
+            user_id=alice["id"],
+            content_type="ebook",
+            request_level="book",
+            policy_mode="request_book",
+            book_data=self._book_data(),
+        )
+
+        user_db.update_request(first["id"], dismissed_at="2026-01-01T10:00:00+00:00")
+        user_db.update_request(second["id"], dismissed_at="2026-01-01T12:00:00+00:00")
+        user_db.update_request(third["id"], dismissed_at="2026-01-01T11:00:00+00:00")
+
+        all_rows = user_db.list_dismissed_requests(user_id=None)
+        assert [row["id"] for row in all_rows] == [second["id"], third["id"], first["id"]]
+
+        alice_rows = user_db.list_dismissed_requests(user_id=alice["id"])
+        assert [row["id"] for row in alice_rows] == [third["id"], first["id"]]
+
+        bob_rows = user_db.list_dismissed_requests(user_id=bob["id"])
+        assert [row["id"] for row in bob_rows] == [second["id"]]
+
+    def test_clear_request_dismissals_scopes_by_user(self, user_db):
+        alice = user_db.create_user(username="alice")
+        bob = user_db.create_user(username="bob")
+        alice_request = user_db.create_request(
+            user_id=alice["id"],
+            content_type="ebook",
+            request_level="book",
+            policy_mode="request_book",
+            book_data=self._book_data(),
+        )
+        bob_request = user_db.create_request(
+            user_id=bob["id"],
+            content_type="ebook",
+            request_level="book",
+            policy_mode="request_book",
+            book_data=self._book_data(),
+        )
+
+        user_db.update_request(alice_request["id"], dismissed_at="2026-01-01T10:00:00+00:00")
+        user_db.update_request(bob_request["id"], dismissed_at="2026-01-01T11:00:00+00:00")
+
+        cleared_alice = user_db.clear_request_dismissals(user_id=alice["id"])
+        assert cleared_alice == 1
+        assert user_db.get_request(alice_request["id"])["dismissed_at"] is None
+        assert user_db.get_request(bob_request["id"])["dismissed_at"] is not None
+
+        cleared_all = user_db.clear_request_dismissals(user_id=None)
+        assert cleared_all == 1
+        assert user_db.get_request(bob_request["id"])["dismissed_at"] is None
+
+    def test_request_dismissal_helpers_validate_user_scope(self, user_db):
+        with pytest.raises(ValueError, match="user_id must be a positive integer"):
+            user_db.list_dismissed_requests(user_id=0)
+
+        with pytest.raises(ValueError, match="user_id must be a positive integer"):
+            user_db.clear_request_dismissals(user_id=-1)
