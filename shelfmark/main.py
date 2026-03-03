@@ -2118,6 +2118,50 @@ def api_metadata_search() -> Union[Response, Tuple[Response, int]]:
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/api/metadata/field-options', methods=['GET'])
+@login_required
+def api_metadata_field_options() -> Response:
+    """Return dynamic search-field options for a metadata provider."""
+    try:
+        from shelfmark.metadata_providers import (
+            get_configured_provider,
+            get_provider,
+            get_provider_kwargs,
+            is_provider_registered,
+        )
+
+        field_key = request.args.get('field', '').strip()
+        provider_name = request.args.get('provider', '').strip()
+        content_type = request.args.get('content_type', 'ebook').strip()
+
+        if not field_key:
+            return jsonify({"options": []})
+
+        raw_db_user_id = session.get("db_user_id")
+        try:
+            db_user_id = int(raw_db_user_id) if raw_db_user_id is not None else None
+        except (TypeError, ValueError):
+            db_user_id = None
+
+        provider = None
+        if provider_name:
+            if not is_provider_registered(provider_name):
+                return jsonify({"options": []})
+            kwargs = get_provider_kwargs(provider_name)
+            provider = get_provider(provider_name, **kwargs)
+        else:
+            provider = get_configured_provider(content_type=content_type, user_id=db_user_id)
+
+        if not provider or not provider.is_available():
+            return jsonify({"options": []})
+
+        options = provider.get_search_field_options(field_key)
+        return jsonify({"options": options})
+    except Exception as e:
+        logger.warning(f"Metadata field options endpoint error: {e}")
+        return jsonify({"options": []})
+
+
 @app.route('/api/metadata/book/<provider>/<book_id>', methods=['GET'])
 @login_required
 def api_metadata_book(provider: str, book_id: str) -> Union[Response, Tuple[Response, int]]:

@@ -75,8 +75,24 @@ class CheckboxSearchField:
     default: bool = False
 
 
+@dataclass
+class DynamicSelectSearchField:
+    """Single-choice dropdown field with options loaded from an API endpoint."""
+    key: str
+    label: str
+    options_endpoint: str
+    placeholder: str = ""
+    description: str = ""
+
+
 # Type alias for all search field types
-SearchField = Union[TextSearchField, NumberSearchField, SelectSearchField, CheckboxSearchField]
+SearchField = Union[
+    TextSearchField,
+    NumberSearchField,
+    SelectSearchField,
+    CheckboxSearchField,
+    DynamicSelectSearchField,
+]
 
 
 def serialize_search_field(search_field: SearchField) -> Dict[str, Any]:
@@ -98,6 +114,8 @@ def serialize_search_field(search_field: SearchField) -> Dict[str, Any]:
         result["options"] = search_field.options
     elif isinstance(search_field, CheckboxSearchField):
         result["default"] = search_field.default
+    elif isinstance(search_field, DynamicSelectSearchField):
+        result["options_endpoint"] = search_field.options_endpoint
 
     return result
 
@@ -314,6 +332,10 @@ class MetadataProvider(ABC):
             total_found=0,  # Unknown without provider-specific implementation
             has_more=has_more
         )
+
+    def get_search_field_options(self, field_key: str) -> List[Dict[str, str]]:
+        """Get dynamic options for a provider-specific search field."""
+        return []
 
 
 # Provider registry

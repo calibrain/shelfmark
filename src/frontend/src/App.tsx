@@ -1330,6 +1330,23 @@ function App() {
   const universalDefaultMode = getUniversalDefaultPolicyMode();
   const manualSearchAllowed = searchMode === 'universal'
     && (universalDefaultMode === 'download' || universalDefaultMode === 'request_release');
+  const isListBrowsing = useMemo(() => {
+    const dynamicFieldKeys = (config?.metadata_search_fields ?? [])
+      .filter((field) => field.type === 'DynamicSelectSearchField')
+      .map((field) => field.key);
+
+    if (dynamicFieldKeys.length === 0) {
+      return false;
+    }
+
+    return dynamicFieldKeys.some((key) => {
+      const value = searchFieldValues[key];
+      if (typeof value === 'string') {
+        return value.trim() !== '';
+      }
+      return value !== undefined && value !== null && value !== false;
+    });
+  }, [config?.metadata_search_fields, searchFieldValues]);
 
   // Reset manual search if policy changes to disallow it
   useEffect(() => {
@@ -1421,6 +1438,7 @@ function App() {
           contentType={contentType}
           onContentTypeChange={setContentType}
           isManualSearch={isManualSearch}
+          searchDisabled={isListBrowsing}
         />
       </div>
 
@@ -1487,6 +1505,7 @@ function App() {
           onContentTypeChange={setContentType}
           isManualSearch={isManualSearch}
           onManualSearchToggle={manualSearchAllowed ? () => setIsManualSearch(prev => !prev) : undefined}
+          searchDisabled={isListBrowsing}
         />
 
         <ResultsSection

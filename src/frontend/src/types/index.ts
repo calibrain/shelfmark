@@ -120,7 +120,8 @@ export type SearchFieldType =
   | 'TextSearchField'
   | 'NumberSearchField'
   | 'SelectSearchField'
-  | 'CheckboxSearchField';
+  | 'CheckboxSearchField'
+  | 'DynamicSelectSearchField';
 
 interface SearchFieldBase {
   key: string;
@@ -151,11 +152,17 @@ export interface CheckboxSearchField extends SearchFieldBase {
   default?: boolean;
 }
 
+export interface DynamicSelectSearchField extends SearchFieldBase {
+  type: 'DynamicSelectSearchField';
+  options_endpoint: string;
+}
+
 export type MetadataSearchField =
   | TextSearchField
   | NumberSearchField
   | SelectSearchField
-  | CheckboxSearchField;
+  | CheckboxSearchField
+  | DynamicSelectSearchField;
 
 // App configuration
 // Content type for search (ebook vs audiobook)

@@ -12,7 +12,7 @@ import {
 } from '../types';
 import { SettingsResponse, ActionResult, UpdateResult, SettingsTab } from '../types/settings';
 import { MetadataBookData, transformMetadataToBook } from '../utils/bookTransformers';
-import { getApiBase } from '../utils/basePath';
+import { getApiBase, withBasePath } from '../utils/basePath';
 import {
   buildAdminRequestActionUrl,
   buildFulfilAdminRequestBody,
@@ -227,6 +227,13 @@ export interface MetadataSearchResult {
   hasMore: boolean;
 }
 
+export interface DynamicFieldOption {
+  value: string;
+  label: string;
+  group?: string;
+  description?: string;
+}
+
 // Search metadata providers and normalize to Book format
 export const searchMetadata = async (
   query: string,
@@ -266,6 +273,29 @@ export const searchMetadata = async (
     totalFound: response.total_found || 0,
     hasMore: response.has_more || false,
   };
+};
+
+export const fetchFieldOptions = async (endpoint: string): Promise<DynamicFieldOption[]> => {
+  const normalizedEndpoint =
+    endpoint.startsWith('http://') || endpoint.startsWith('https://')
+      ? endpoint
+      : withBasePath(endpoint);
+
+  const response = await fetchJSON<{ options?: unknown }>(normalizedEndpoint);
+  if (!Array.isArray(response.options)) {
+    return [];
+  }
+
+  return response.options
+    .filter((option): option is Record<string, unknown> => typeof option === 'object' && option !== null)
+    .map((option) => {
+      const value = typeof option.value === 'string' ? option.value : String(option.value ?? '');
+      const label = typeof option.label === 'string' ? option.label : value;
+      const group = typeof option.group === 'string' ? option.group : undefined;
+      const description = typeof option.description === 'string' ? option.description : undefined;
+      return { value, label, group, description };
+    })
+    .filter((option) => option.value !== '');
 };
 
 export const getBookInfo = async (id: string): Promise<Book> => {

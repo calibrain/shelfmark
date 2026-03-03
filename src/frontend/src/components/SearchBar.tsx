@@ -26,6 +26,7 @@ interface SearchBarProps {
   onContentTypeChange?: (type: ContentType) => void;
   // Manual search mode
   isManualSearch?: boolean;
+  disabled?: boolean;
 }
 
 export interface SearchBarHandle {
@@ -54,6 +55,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
   contentType = 'ebook',
   onContentTypeChange,
   isManualSearch = false,
+  disabled = false,
 }, ref) => {
   const { searchMode, isUniversalMode } = useSearchMode();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -110,6 +112,10 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
+      if (disabled) {
+        e.preventDefault();
+        return;
+      }
       onSubmit();
       (e.target as HTMLInputElement).blur();
     }
@@ -124,6 +130,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
   const inputClasses = [
     'w-full pr-40 py-3 border outline-none search-input',
     showContentTypeSelector ? 'pl-3 rounded-r-full' : 'pl-4 rounded-full',
+    disabled ? 'opacity-60 cursor-not-allowed' : '',
     inputClassName,
   ]
     .filter(Boolean)
@@ -253,6 +260,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
           type="search"
           placeholder={effectivePlaceholder}
           aria-label={inputAriaLabel}
+          disabled={disabled}
           autoComplete={autoComplete}
           enterKeyHint={enterKeyHint}
           className={inputClasses}

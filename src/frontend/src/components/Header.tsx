@@ -40,6 +40,7 @@ interface HeaderProps {
   contentType?: ContentType;
   onContentTypeChange?: (type: ContentType) => void;
   isManualSearch?: boolean;
+  searchDisabled?: boolean;
 }
 
 export const Header = forwardRef<HeaderHandle, HeaderProps>(({
@@ -71,6 +72,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   contentType = 'ebook',
   onContentTypeChange,
   isManualSearch = false,
+  searchDisabled = false,
 }, ref) => {
   const activityBadge = getActivityBadgeState(statusCounts, isAdmin);
   const settingsEnabled = canAccessSettings ?? isAdmin;
@@ -655,6 +657,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
                 contentType={contentType}
                 onContentTypeChange={onContentTypeChange}
                 isManualSearch={isManualSearch}
+                disabled={searchDisabled}
               />
             </div>
           </div>

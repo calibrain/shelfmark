@@ -27,6 +27,7 @@ interface SearchSectionProps {
   // Manual search mode (universal only)
   isManualSearch?: boolean;
   onManualSearchToggle?: () => void;
+  searchDisabled?: boolean;
 }
 
 export const SearchSection = ({
@@ -50,6 +51,7 @@ export const SearchSection = ({
   onContentTypeChange,
   isManualSearch = false,
   onManualSearchToggle,
+  searchDisabled = false,
 }: SearchSectionProps) => {
   const { searchMode } = useSearchMode();
 
@@ -92,6 +94,7 @@ export const SearchSection = ({
           contentType={contentType}
           onContentTypeChange={onContentTypeChange}
           isManualSearch={isManualSearch}
+          disabled={searchDisabled}
         />
         <AdvancedFilters
           visible={showAdvanced}
