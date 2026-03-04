@@ -135,6 +135,17 @@ type PendingOnBehalfDownload =
       actingAsUser: ActingAsUserSelection;
     };
 
+const mergeTerminalBucket = (
+  persistedBucket: Record<string, Book> | undefined,
+  realtimeBucket: Record<string, Book> | undefined
+): Record<string, Book> | undefined => {
+  const merged = {
+    ...(persistedBucket || {}),
+    ...(realtimeBucket || {}),
+  };
+  return Object.keys(merged).length > 0 ? merged : undefined;
+};
+
 function App() {
   const { toasts, showToast, removeToast } = useToast();
   const { socket } = useSocket();
@@ -227,6 +238,7 @@ function App() {
   });
 
   const {
+    activityStatus,
     requestItems,
     dismissedActivityKeys,
     historyItems,
@@ -285,6 +297,18 @@ function App() {
       complete: filteredComplete,
     };
   }, [currentStatus, dismissedDownloadTaskIds]);
+
+  // Use real-time buckets for active work and merge persisted terminal buckets
+  // so completed/errored entries survive restarts.
+  const activitySidebarStatus = useMemo<StatusData>(() => ({
+      queued: currentStatus.queued,
+      resolving: currentStatus.resolving,
+      locating: currentStatus.locating,
+      downloading: currentStatus.downloading,
+      complete: mergeTerminalBucket(activityStatus.complete, currentStatus.complete),
+      error: mergeTerminalBucket(activityStatus.error, currentStatus.error),
+      cancelled: mergeTerminalBucket(activityStatus.cancelled, currentStatus.cancelled),
+  }), [activityStatus, currentStatus]);
 
   const showRequestsTab = useMemo(() => {
     if (requestRoleIsAdmin) {
@@ -425,14 +449,14 @@ function App() {
     };
 
     const ongoing = [
-      currentStatus.queued,
-      currentStatus.resolving,
-      currentStatus.locating,
-      currentStatus.downloading,
+      activitySidebarStatus.queued,
+      activitySidebarStatus.resolving,
+      activitySidebarStatus.locating,
+      activitySidebarStatus.downloading,
     ].reduce((sum, status) => sum + countVisibleDownloads(status, { filterDismissed: false }), 0);
 
-    const completed = countVisibleDownloads(currentStatus.complete, { filterDismissed: true });
-    const errored = countVisibleDownloads(currentStatus.error, { filterDismissed: true });
+    const completed = countVisibleDownloads(activitySidebarStatus.complete, { filterDismissed: true });
+    const errored = countVisibleDownloads(activitySidebarStatus.error, { filterDismissed: true });
     const pendingVisibleRequests = requestItems.filter((item) => {
       const requestId = item.requestId;
       if (!requestId || item.requestRecord?.status !== 'pending') {
@@ -447,7 +471,7 @@ function App() {
       errored,
       pendingRequests: pendingVisibleRequests,
     };
-  }, [currentStatus, dismissedActivityKeys, requestItems]);
+  }, [activitySidebarStatus, dismissedActivityKeys, requestItems]);
 
 
   // Compute visibility states
@@ -1602,7 +1626,7 @@ function App() {
       <ActivitySidebar
         isOpen={downloadsSidebarOpen}
         onClose={() => setDownloadsSidebarOpen(false)}
-        status={currentStatus}
+        status={activitySidebarStatus}
         isAdmin={requestRoleIsAdmin}
         onClearCompleted={handleClearCompleted}
         onCancel={handleCancel}

@@ -1366,9 +1366,27 @@ def api_local_download() -> Union[Response, Tuple[Response, int]]:
     try:
         file_data, book_info = backend.get_book_data(book_id)
         if file_data is None:
+            # Fallback for dismissed/history entries where queue task may no longer exist.
+            if download_history_service is not None:
+                is_admin, db_user_id, can_access_status = _resolve_status_scope()
+                if can_access_status:
+                    history_row = download_history_service.get_by_task_id(book_id)
+                    if history_row is not None:
+                        owner_user_id = history_row.get("user_id")
+                        if is_admin or owner_user_id == db_user_id:
+                            download_path = DownloadHistoryService._resolve_existing_download_path(
+                                history_row.get("download_path")
+                            )
+                            if download_path:
+                                return send_file(
+                                    download_path,
+                                    download_name=os.path.basename(download_path),
+                                    as_attachment=True,
+                                )
+
             # Book data not found or not available
             return jsonify({"error": "File not found"}), 404
-        file_name = book_info.get_filename()
+        file_name = book_info.get_filename() if book_info is not None else os.path.basename(book_id)
         # Prepare the file for sending to the client
         data = io.BytesIO(file_data)
         return send_file(

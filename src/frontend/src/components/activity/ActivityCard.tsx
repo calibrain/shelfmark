@@ -510,11 +510,14 @@ export const ActivityCard = ({
     ? 'text-sm leading-tight min-w-0 whitespace-normal break-words'
     : 'text-sm truncate leading-tight min-w-0';
 
-  const titleNode =
+  const canShowDownloadLink =
     item.kind === 'download' &&
     item.visualStatus === 'complete' &&
-    item.downloadPath &&
-    item.downloadBookId ? (
+    Boolean(item.downloadBookId) &&
+    Boolean(item.downloadPath);
+
+  const titleNode =
+    canShowDownloadLink && item.downloadBookId ? (
       <a
         href={withBasePath(`/api/localdownload?id=${encodeURIComponent(item.downloadBookId)}`)}
         className="text-sky-600 hover:underline"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import threading
 from typing import Any
@@ -88,6 +89,13 @@ class DownloadHistoryService:
         return f"download:{task_id}"
 
     @staticmethod
+    def _resolve_existing_download_path(value: Any) -> str | None:
+        normalized = normalize_optional_text(value)
+        if normalized is None:
+            return None
+        return normalized if os.path.exists(normalized) else None
+
+    @staticmethod
     def to_download_payload(row: dict[str, Any]) -> dict[str, Any]:
         return {
             "id": row.get("task_id"),
@@ -100,7 +108,7 @@ class DownloadHistoryService:
             "source": row.get("source"),
             "source_display_name": row.get("source_display_name"),
             "status_message": row.get("status_message"),
-            "download_path": row.get("download_path"),
+            "download_path": DownloadHistoryService._resolve_existing_download_path(row.get("download_path")),
             "user_id": row.get("user_id"),
             "username": row.get("username"),
             "request_id": row.get("request_id"),
@@ -396,4 +404,3 @@ class DownloadHistoryService:
                 return max(rowcount, 0)
             finally:
                 conn.close()
-

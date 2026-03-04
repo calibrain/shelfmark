@@ -28,6 +28,19 @@ const toNumber = (value: unknown, fallback = 0): number => {
   return fallback;
 };
 
+const toEpochMillis = (value: unknown): number => {
+  const parsed = toNumber(value, 0);
+  if (parsed <= 0) {
+    return 0;
+  }
+  // Queue `added_time` values are epoch seconds; request/history timestamps are ms.
+  // Normalize to ms so sorting is consistent across merged activity items.
+  if (parsed >= 1_000_000_000 && parsed < 1_000_000_000_000) {
+    return parsed * 1000;
+  }
+  return parsed;
+};
+
 const toSourceLabel = (value: unknown): string | undefined => {
   const text = toOptionalText(value);
   if (!text) {
@@ -94,7 +107,7 @@ export const downloadToActivityItem = (book: Book, statusKey: DownloadStatusKey)
     statusDetail,
     progress,
     progressAnimated: isActiveDownloadStatus(visualStatus),
-    timestamp: toNumber(book.added_time, 0),
+    timestamp: toEpochMillis(book.added_time),
     username: toOptionalText(book.username),
     downloadBookId: book.id,
     downloadPath: toOptionalText(book.download_path),

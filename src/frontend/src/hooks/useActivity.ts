@@ -282,20 +282,35 @@ export const useActivity = ({
         .map((row) => mapHistoryRowToActivityItem(row, isAdmin ? 'admin' : 'user'))
         .sort((left, right) => right.timestamp - left.timestamp);
 
+      // Request history entries with attached release metadata are approval artifacts,
+      // not actual download outcomes. Keep history focused on concrete download results.
+      const nonAttachedReleaseRequestItems = mappedItems.filter((item) => {
+        if (item.kind !== 'request') {
+          return true;
+        }
+
+        const releaseData = item.requestRecord?.release_data;
+        if (!releaseData || typeof releaseData !== 'object') {
+          return true;
+        }
+
+        return Object.keys(releaseData as Record<string, unknown>).length === 0;
+      });
+
       // Download dismissals already carry linked request context; hide redundant
       // fulfilled-request history rows that would otherwise appear as "Approved".
       const requestIdsWithDownloadRows = new Set<number>();
-      mappedItems.forEach((item) => {
+      nonAttachedReleaseRequestItems.forEach((item) => {
         if (item.kind === 'download' && typeof item.requestId === 'number') {
           requestIdsWithDownloadRows.add(item.requestId);
         }
       });
 
       if (!requestIdsWithDownloadRows.size) {
-        return mappedItems;
+        return nonAttachedReleaseRequestItems;
       }
 
-      return mappedItems.filter((item) => {
+      return nonAttachedReleaseRequestItems.filter((item) => {
         if (item.kind !== 'request' || typeof item.requestId !== 'number') {
           return true;
         }
@@ -389,12 +404,16 @@ export const useActivity = ({
 
   const handleClearHistory = useCallback(() => {
     resetActivityHistory();
-    void clearActivityHistory().catch((error) => {
-      console.error('Clear history failed:', error);
-      void refreshActivityHistory();
-      showToast('Failed to clear history', 'error');
-    });
-  }, [refreshActivityHistory, resetActivityHistory, showToast]);
+    void clearActivityHistory()
+      .then(() => {
+        void refreshActivitySnapshot();
+      })
+      .catch((error) => {
+        console.error('Clear history failed:', error);
+        void refreshActivityHistory();
+        showToast('Failed to clear history', 'error');
+      });
+  }, [refreshActivityHistory, refreshActivitySnapshot, resetActivityHistory, showToast]);
 
   return {
     activityStatus,

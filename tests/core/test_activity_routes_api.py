@@ -162,6 +162,50 @@ class TestActivityRoutes:
         assert history_after_clear.status_code == 200
         assert history_after_clear.json == []
 
+    def test_clear_history_deletes_dismissed_requests_from_snapshot(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        request_row = main_module.user_db.create_request(
+            user_id=user["id"],
+            content_type="ebook",
+            request_level="book",
+            policy_mode="request_book",
+            book_data={
+                "title": "Dismissed Request",
+                "author": "Request Author",
+                "provider": "openlibrary",
+                "provider_id": "dismissed-request",
+            },
+            status="rejected",
+        )
+        request_key = f"request:{request_row['id']}"
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            dismiss_response = client.post(
+                "/api/activity/dismiss",
+                json={"item_type": "request", "item_key": request_key},
+            )
+            history_before_clear = client.get("/api/activity/history?limit=10&offset=0")
+            clear_history_response = client.delete("/api/activity/history")
+            history_after_clear = client.get("/api/activity/history?limit=10&offset=0")
+            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+                snapshot_after_clear = client.get("/api/activity/snapshot")
+
+        assert dismiss_response.status_code == 200
+        assert history_before_clear.status_code == 200
+        assert any(row["item_key"] == request_key for row in history_before_clear.json)
+
+        assert clear_history_response.status_code == 200
+        assert clear_history_response.json["status"] == "cleared"
+
+        assert history_after_clear.status_code == 200
+        assert history_after_clear.json == []
+
+        assert snapshot_after_clear.status_code == 200
+        assert all(row["id"] != request_row["id"] for row in snapshot_after_clear.json["requests"])
+        assert {"item_type": "request", "item_key": request_key} not in snapshot_after_clear.json["dismissed"]
+
     def test_admin_snapshot_includes_admin_viewer_dismissals(self, main_module, client):
         admin = _create_user(main_module, prefix="admin", role="admin")
         _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
@@ -188,6 +232,52 @@ class TestActivityRoutes:
             "item_type": "download",
             "item_key": "download:admin-visible-task",
         } in snapshot_response.json["dismissed"]
+
+    def test_localdownload_falls_back_to_download_history_file(self, main_module, client, tmp_path):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        task_id = "history-localdownload-task"
+        file_path = tmp_path / "history-fallback.epub"
+        file_bytes = b"history download payload"
+        file_path.write_bytes(file_bytes)
+
+        _record_terminal_download(
+            main_module,
+            task_id=task_id,
+            user_id=user["id"],
+            username=user["username"],
+            title="History Local Download",
+        )
+
+        row = main_module.download_history_service.get_by_task_id(task_id)
+        assert row is not None
+        assert main_module.download_history_service is not None
+        main_module.download_history_service.record_terminal(
+            task_id=task_id,
+            user_id=user["id"],
+            username=user["username"],
+            request_id=row.get("request_id"),
+            source=row.get("source") or "direct_download",
+            source_display_name=row.get("source_display_name"),
+            title=row.get("title") or "History Local Download",
+            author=row.get("author"),
+            format=row.get("format"),
+            size=row.get("size"),
+            preview=row.get("preview"),
+            content_type=row.get("content_type"),
+            origin=row.get("origin") or "direct",
+            final_status=row.get("final_status") or "complete",
+            status_message=row.get("status_message"),
+            download_path=str(file_path),
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            response = client.get(f"/api/localdownload?id={task_id}")
+
+        assert response.status_code == 200
+        assert response.data == file_bytes
+        assert "attachment" in response.headers.get("Content-Disposition", "").lower()
 
     def test_dismiss_legacy_fulfilled_request_creates_minimal_history_snapshot(self, main_module, client):
         user = _create_user(main_module, prefix="reader")

@@ -80,6 +80,17 @@ describe('activityMappers.downloadToActivityItem', () => {
     assert.equal(item.timestamp, 123);
   });
 
+  it('normalizes epoch-second added_time values to milliseconds', () => {
+    const item = downloadToActivityItem(
+      makeBook({
+        added_time: 1700000000,
+      }),
+      'complete'
+    );
+
+    assert.equal(item.timestamp, 1700000000000);
+  });
+
   it('maps downloading progress using 20 + progress*0.8', () => {
     const item = downloadToActivityItem(makeBook({ progress: 60 }), 'downloading');
     assert.equal(item.visualStatus, 'downloading');

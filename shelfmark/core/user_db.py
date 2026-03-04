@@ -861,3 +861,26 @@ class UserDB:
                 return max(rowcount, 0)
             finally:
                 conn.close()
+
+    def delete_dismissed_requests(self, *, user_id: int | None) -> int:
+        """Delete dismissed terminal requests, optionally scoped by owner user_id."""
+        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
+        params: list[Any] = []
+        query = """
+            DELETE FROM download_requests
+            WHERE dismissed_at IS NOT NULL
+              AND status IN ('fulfilled', 'rejected', 'cancelled')
+        """
+        if normalized_user_id is not None:
+            query += " AND user_id = ?"
+            params.append(normalized_user_id)
+
+        with self._lock:
+            conn = self._connect()
+            try:
+                cursor = conn.execute(query, params)
+                conn.commit()
+                rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
+                return max(rowcount, 0)
+            finally:
+                conn.close()

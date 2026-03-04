@@ -630,8 +630,8 @@ def register_activity_routes(
             return actor_error
 
         deleted_downloads = download_history_service.clear_dismissed(user_id=actor.owner_scope)
-        cleared_requests = user_db.clear_request_dismissals(user_id=actor.owner_scope)
-        deleted_count = deleted_downloads + cleared_requests
+        deleted_requests = user_db.delete_dismissed_requests(user_id=actor.owner_scope)
+        deleted_count = deleted_downloads + deleted_requests
 
         room = _activity_ws_room(is_no_auth=actor.is_no_auth, actor_db_user_id=actor.db_user_id)
         emit_ws_event(
