@@ -9,10 +9,19 @@ from flask import Flask, jsonify, request, session
 
 from shelfmark.core.download_history_service import DownloadHistoryService
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.request_helpers import emit_ws_event, extract_release_source_id, now_utc_iso
+from shelfmark.core.request_helpers import (
+    emit_ws_event,
+    extract_release_source_id,
+    normalize_positive_int,
+    now_utc_iso,
+)
 from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
+
+# Offset added to request row IDs so they don't collide with download_history
+# row IDs when both types are merged into a single sorted list.
+_REQUEST_ID_OFFSET = 1_000_000_000
 
 
 def _parse_timestamp(value: Any) -> float:
@@ -23,14 +32,6 @@ def _parse_timestamp(value: Any) -> float:
         return datetime.fromisoformat(normalized).timestamp()
     except ValueError:
         return 0.0
-
-
-def _normalize_positive_int(value: Any) -> int | None:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return None
-    return parsed if parsed > 0 else None
 
 
 def _require_authenticated(resolve_auth_mode: Callable[[], str]):
@@ -179,7 +180,7 @@ def _parse_request_item_key(item_key: Any) -> int | None:
     if not isinstance(item_key, str) or not item_key.startswith("request:"):
         return None
     raw_id = item_key.split(":", 1)[1].strip()
-    return _normalize_positive_int(raw_id)
+    return normalize_positive_int(raw_id)
 
 
 def _merge_terminal_snapshot_backfill(
@@ -268,12 +269,12 @@ def _minimal_request_snapshot(request_row: dict[str, Any], request_id: int) -> d
 
 
 def _request_history_entry(request_row: dict[str, Any]) -> dict[str, Any] | None:
-    request_id = _normalize_positive_int(request_row.get("id"))
+    request_id = normalize_positive_int(request_row.get("id"))
     if request_id is None:
         return None
     final_status = _request_terminal_status(request_row)
     return {
-        "id": 1000000000 + request_id,
+        "id": _REQUEST_ID_OFFSET + request_id,
         "user_id": request_row.get("user_id"),
         "item_type": "request",
         "item_key": f"request:{request_id}",
@@ -355,33 +356,38 @@ def register_activity_routes(
         except Exception as exc:
             logger.warning("Failed to merge terminal download history rows: %s", exc)
 
-        active_task_ids = _collect_active_download_task_ids(status)
-        if active_task_ids:
-            try:
-                download_history_service.clear_dismissals_for_active(
-                    task_ids=active_task_ids,
-                    user_id=owner_user_scope,
-                )
-            except Exception as exc:
-                logger.warning("Failed to clear stale download dismissals for active tasks: %s", exc)
-
         dismissed: list[dict[str, str]] = []
+        dismissed_task_ids: list[str] = []
         try:
             dismissed_task_ids = download_history_service.get_dismissed_keys(
                 user_id=owner_user_scope,
             )
-            dismissed.extend(
-                {"item_type": "download", "item_key": f"download:{task_id}"}
-                for task_id in dismissed_task_ids
-            )
         except Exception as exc:
             logger.warning("Failed to load dismissed download keys: %s", exc)
+
+        # Only clear stale dismissals when active downloads overlap dismissed keys.
+        active_task_ids = _collect_active_download_task_ids(status)
+        stale_dismissed = active_task_ids & set(dismissed_task_ids) if active_task_ids else set()
+        if stale_dismissed:
+            try:
+                download_history_service.clear_dismissals_for_active(
+                    task_ids=stale_dismissed,
+                    user_id=owner_user_scope,
+                )
+                dismissed_task_ids = [tid for tid in dismissed_task_ids if tid not in stale_dismissed]
+            except Exception as exc:
+                logger.warning("Failed to clear stale download dismissals for active tasks: %s", exc)
+
+        dismissed.extend(
+            {"item_type": "download", "item_key": f"download:{task_id}"}
+            for task_id in dismissed_task_ids
+        )
 
         # Keep request dismissal state on the request rows directly.
         try:
             dismissed_request_rows = user_db.list_dismissed_requests(user_id=owner_user_scope)
             for request_row in dismissed_request_rows:
-                request_id = _normalize_positive_int(request_row.get("id"))
+                request_id = normalize_positive_int(request_row.get("id"))
                 if request_id is None:
                     continue
                 dismissed.append({"item_type": "request", "item_key": f"request:{request_id}"})
@@ -433,7 +439,7 @@ def register_activity_routes(
             if existing is None:
                 return jsonify({"error": "Activity item not found"}), 404
 
-            owner_user_id = _normalize_positive_int(existing.get("user_id"))
+            owner_user_id = normalize_positive_int(existing.get("user_id"))
             if not actor.is_admin and owner_user_id != actor.db_user_id:
                 return jsonify({"error": "Forbidden"}), 403
 
@@ -455,7 +461,7 @@ def register_activity_routes(
             if request_row is None:
                 return jsonify({"error": "Request not found"}), 404
 
-            owner_user_id = _normalize_positive_int(request_row.get("user_id"))
+            owner_user_id = normalize_positive_int(request_row.get("user_id"))
             if not actor.is_admin and owner_user_id != actor.db_user_id:
                 return jsonify({"error": "Forbidden"}), 403
 
@@ -515,7 +521,7 @@ def register_activity_routes(
                 existing = download_history_service.get_by_task_id(task_id)
                 if existing is None:
                     continue
-                owner_user_id = _normalize_positive_int(existing.get("user_id"))
+                owner_user_id = normalize_positive_int(existing.get("user_id"))
                 if not actor.is_admin and owner_user_id != actor.db_user_id:
                     return jsonify({"error": "Forbidden"}), 403
                 download_task_ids.append(task_id)
@@ -528,7 +534,7 @@ def register_activity_routes(
                 request_row = user_db.get_request(request_id)
                 if request_row is None:
                     continue
-                owner_user_id = _normalize_positive_int(request_row.get("user_id"))
+                owner_user_id = normalize_positive_int(request_row.get("user_id"))
                 if not actor.is_admin and owner_user_id != actor.db_user_id:
                     return jsonify({"error": "Forbidden"}), 403
                 request_ids.append(request_id)
@@ -541,14 +547,10 @@ def register_activity_routes(
             user_id=actor.owner_scope,
         )
 
-        dismissed_request_count = 0
-        dismissed_at = now_utc_iso()
-        for request_id in request_ids:
-            try:
-                user_db.update_request(request_id, dismissed_at=dismissed_at)
-                dismissed_request_count += 1
-            except ValueError:
-                continue
+        dismissed_request_count = user_db.dismiss_requests_batch(
+            request_ids=request_ids,
+            dismissed_at=now_utc_iso(),
+        )
 
         dismissed_count = dismissed_download_count + dismissed_request_count
 

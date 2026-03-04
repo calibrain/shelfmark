@@ -6,31 +6,22 @@ import sqlite3
 import threading
 from typing import Any
 
-from shelfmark.core.request_helpers import now_utc_iso
+from shelfmark.core.request_helpers import normalize_optional_positive_int, normalize_optional_text, now_utc_iso
 
 
 VALID_FINAL_STATUSES = frozenset({"complete", "error", "cancelled"})
 VALID_ORIGINS = frozenset({"direct", "request", "requested"})
 
 
-def _normalize_optional_text(value: Any) -> str | None:
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        value = str(value)
-    normalized = value.strip()
-    return normalized or None
-
-
 def _normalize_task_id(task_id: Any) -> str:
-    normalized = _normalize_optional_text(task_id)
+    normalized = normalize_optional_text(task_id)
     if normalized is None:
         raise ValueError("task_id must be a non-empty string")
     return normalized
 
 
 def _normalize_origin(origin: Any) -> str:
-    normalized = _normalize_optional_text(origin)
+    normalized = normalize_optional_text(origin)
     if normalized is None:
         return "direct"
     lowered = normalized.lower()
@@ -40,7 +31,7 @@ def _normalize_origin(origin: Any) -> str:
 
 
 def _normalize_final_status(final_status: Any) -> str:
-    normalized = _normalize_optional_text(final_status)
+    normalized = normalize_optional_text(final_status)
     if normalized is None:
         raise ValueError("final_status must be a non-empty string")
     lowered = normalized.lower()
@@ -72,18 +63,6 @@ def _normalize_offset(value: Any, *, default: int) -> int:
         raise ValueError("offset must be an integer") from exc
     if parsed < 0:
         return 0
-    return parsed
-
-
-def _normalize_optional_positive_int(value: Any, field_name: str = "value") -> int | None:
-    if value is None:
-        return None
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field_name} must be a positive integer when provided") from exc
-    if parsed < 1:
-        raise ValueError(f"{field_name} must be a positive integer when provided")
     return parsed
 
 
@@ -167,14 +146,14 @@ class DownloadHistoryService:
         status_message: str | None,
         download_path: str | None,
         terminal_at: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> None:
         normalized_task_id = _normalize_task_id(task_id)
-        normalized_user_id = _normalize_optional_positive_int(user_id, "user_id")
-        normalized_request_id = _normalize_optional_positive_int(request_id, "request_id")
-        normalized_source = _normalize_optional_text(source)
+        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
+        normalized_request_id = normalize_optional_positive_int(request_id, "request_id")
+        normalized_source = normalize_optional_text(source)
         if normalized_source is None:
             raise ValueError("source must be a non-empty string")
-        normalized_title = _normalize_optional_text(title)
+        normalized_title = normalize_optional_text(title)
         if normalized_title is None:
             raise ValueError("title must be a non-empty string")
         normalized_origin = _normalize_origin(origin)
@@ -232,32 +211,24 @@ class DownloadHistoryService:
                     (
                         normalized_task_id,
                         normalized_user_id,
-                        _normalize_optional_text(username),
+                        normalize_optional_text(username),
                         normalized_request_id,
                         normalized_source,
-                        _normalize_optional_text(source_display_name),
+                        normalize_optional_text(source_display_name),
                         normalized_title,
-                        _normalize_optional_text(author),
-                        _normalize_optional_text(format),
-                        _normalize_optional_text(size),
-                        _normalize_optional_text(preview),
-                        _normalize_optional_text(content_type),
+                        normalize_optional_text(author),
+                        normalize_optional_text(format),
+                        normalize_optional_text(size),
+                        normalize_optional_text(preview),
+                        normalize_optional_text(content_type),
                         normalized_origin,
                         normalized_final_status,
-                        _normalize_optional_text(status_message),
-                        _normalize_optional_text(download_path),
+                        normalize_optional_text(status_message),
+                        normalize_optional_text(download_path),
                         effective_terminal_at,
                     ),
                 )
                 conn.commit()
-                row = conn.execute(
-                    "SELECT * FROM download_history WHERE task_id = ?",
-                    (normalized_task_id,),
-                ).fetchone()
-                payload = self._row_to_dict(row)
-                if payload is None:
-                    raise ValueError("Failed to read back recorded download history row")
-                return payload
             finally:
                 conn.close()
 
@@ -279,7 +250,7 @@ class DownloadHistoryService:
         user_id: int | None,
         limit: int = 200,
     ) -> list[dict[str, Any]]:
-        normalized_user_id = _normalize_optional_positive_int(user_id, "user_id")
+        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
         normalized_limit = _normalize_limit(limit, default=200, minimum=1, maximum=1000)
         query = "SELECT * FROM download_history WHERE dismissed_at IS NULL"
         params: list[Any] = []
@@ -297,7 +268,7 @@ class DownloadHistoryService:
             conn.close()
 
     def get_dismissed_keys(self, *, user_id: int | None, limit: int = 5000) -> list[str]:
-        normalized_user_id = _normalize_optional_positive_int(user_id, "user_id")
+        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
         normalized_limit = _normalize_limit(limit, default=5000, minimum=1, maximum=10000)
         query = "SELECT task_id FROM download_history WHERE dismissed_at IS NOT NULL"
         params: list[Any] = []
@@ -312,7 +283,7 @@ class DownloadHistoryService:
             rows = conn.execute(query, params).fetchall()
             keys: list[str] = []
             for row in rows:
-                task_id = _normalize_optional_text(row["task_id"])
+                task_id = normalize_optional_text(row["task_id"])
                 if task_id is not None:
                     keys.append(task_id)
             return keys
@@ -321,7 +292,7 @@ class DownloadHistoryService:
 
     def dismiss(self, *, task_id: str, user_id: int | None) -> int:
         normalized_task_id = _normalize_task_id(task_id)
-        normalized_user_id = _normalize_optional_positive_int(user_id, "user_id")
+        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
         query = "UPDATE download_history SET dismissed_at = ? WHERE task_id = ?"
         params: list[Any] = [now_utc_iso(), normalized_task_id]
         if normalized_user_id is not None:
@@ -339,7 +310,7 @@ class DownloadHistoryService:
                 conn.close()
 
     def dismiss_many(self, *, task_ids: list[str], user_id: int | None) -> int:
-        normalized_user_id = _normalize_optional_positive_int(user_id, "user_id")
+        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
         normalized_task_ids = [_normalize_task_id(task_id) for task_id in task_ids]
         if not normalized_task_ids:
             return 0
@@ -362,7 +333,7 @@ class DownloadHistoryService:
                 conn.close()
 
     def get_history(self, *, user_id: int | None, limit: int, offset: int) -> list[dict[str, Any]]:
-        normalized_user_id = _normalize_optional_positive_int(user_id, "user_id")
+        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
         normalized_limit = _normalize_limit(limit, default=50, minimum=1, maximum=5000)
         normalized_offset = _normalize_offset(offset, default=0)
 
@@ -386,7 +357,7 @@ class DownloadHistoryService:
             conn.close()
 
     def clear_dismissed(self, *, user_id: int | None) -> int:
-        normalized_user_id = _normalize_optional_positive_int(user_id, "user_id")
+        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
         query = "DELETE FROM download_history WHERE dismissed_at IS NOT NULL"
         params: list[Any] = []
         if normalized_user_id is not None:
@@ -404,7 +375,7 @@ class DownloadHistoryService:
                 conn.close()
 
     def clear_dismissals_for_active(self, *, task_ids: set[str], user_id: int | None) -> int:
-        normalized_user_id = _normalize_optional_positive_int(user_id, "user_id")
+        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
         normalized_task_ids = [_normalize_task_id(task_id) for task_id in task_ids]
         if not normalized_task_ids:
             return 0

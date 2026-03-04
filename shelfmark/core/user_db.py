@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from shelfmark.core.auth_modes import AUTH_SOURCE_BUILTIN, AUTH_SOURCE_SET
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import normalize_optional_positive_int
 from shelfmark.core.request_validation import (
     normalize_delivery_state,
     normalize_policy_mode,
@@ -801,15 +802,10 @@ class UserDB:
 
     def list_dismissed_requests(self, *, user_id: int | None, limit: int | None = None) -> List[Dict[str, Any]]:
         """List dismissed requests, optionally scoped by owner user_id."""
+        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
         params: list[Any] = []
         query = "SELECT * FROM download_requests WHERE dismissed_at IS NOT NULL"
-        if user_id is not None:
-            try:
-                normalized_user_id = int(user_id)
-            except (TypeError, ValueError) as exc:
-                raise ValueError("user_id must be a positive integer when provided") from exc
-            if normalized_user_id < 1:
-                raise ValueError("user_id must be a positive integer when provided")
+        if normalized_user_id is not None:
             query += " AND user_id = ?"
             params.append(normalized_user_id)
         query += " ORDER BY dismissed_at DESC, id DESC"
@@ -829,17 +825,30 @@ class UserDB:
         finally:
             conn.close()
 
+    def dismiss_requests_batch(self, *, request_ids: list[int], dismissed_at: str) -> int:
+        """Set dismissed_at on multiple requests in a single UPDATE."""
+        if not request_ids:
+            return 0
+        placeholders = ",".join("?" for _ in request_ids)
+        query = f"UPDATE download_requests SET dismissed_at = ? WHERE id IN ({placeholders})"
+        params: list[Any] = [dismissed_at, *request_ids]
+
+        with self._lock:
+            conn = self._connect()
+            try:
+                cursor = conn.execute(query, params)
+                conn.commit()
+                rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
+                return max(rowcount, 0)
+            finally:
+                conn.close()
+
     def clear_request_dismissals(self, *, user_id: int | None) -> int:
         """Clear dismissed_at on requests, optionally scoped by owner user_id."""
+        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
         params: list[Any] = []
         query = "UPDATE download_requests SET dismissed_at = NULL WHERE dismissed_at IS NOT NULL"
-        if user_id is not None:
-            try:
-                normalized_user_id = int(user_id)
-            except (TypeError, ValueError) as exc:
-                raise ValueError("user_id must be a positive integer when provided") from exc
-            if normalized_user_id < 1:
-                raise ValueError("user_id must be a positive integer when provided")
+        if normalized_user_id is not None:
             query += " AND user_id = ?"
             params.append(normalized_user_id)
 

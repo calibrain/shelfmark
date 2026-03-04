@@ -65,11 +65,43 @@ def coerce_int(value: Any, default: int) -> int:
 
 
 def normalize_optional_text(value: Any) -> str | None:
-    """Return a trimmed string or None for empty/non-string input."""
-    if not isinstance(value, str):
+    """Return a trimmed string or None for empty/missing input.
+
+    Non-string values are coerced via ``str()`` before stripping;
+    ``None`` short-circuits to ``None``.
+    """
+    if value is None:
         return None
+    if not isinstance(value, str):
+        value = str(value)
     normalized = value.strip()
     return normalized or None
+
+
+def normalize_positive_int(value: Any) -> int | None:
+    """Parse *value* as a positive integer, returning ``None`` on failure."""
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def normalize_optional_positive_int(value: Any, field_name: str = "value") -> int | None:
+    """Parse *value* as a positive integer or ``None``.
+
+    Raises ``ValueError`` when *value* is present but not a valid
+    positive integer.
+    """
+    if value is None:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be a positive integer when provided") from exc
+    if parsed < 1:
+        raise ValueError(f"{field_name} must be a positive integer when provided")
+    return parsed
 
 
 def extract_release_source_id(release_data: Any) -> str | None:
