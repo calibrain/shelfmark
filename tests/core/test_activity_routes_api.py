@@ -162,6 +162,36 @@ class TestActivityRoutes:
         assert history_after_clear.status_code == 200
         assert history_after_clear.json == []
 
+    def test_dismiss_preserves_terminal_snapshot_without_live_queue_merge(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        task_id = "dismiss-preserve-task"
+        _record_terminal_download(
+            main_module,
+            task_id=task_id,
+            user_id=user["id"],
+            username=user["username"],
+            title="Recorded Title",
+            author="Recorded Author",
+            status_message="Complete",
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            dismiss_response = client.post(
+                "/api/activity/dismiss",
+                json={"item_type": "download", "item_key": f"download:{task_id}"},
+            )
+            history_response = client.get("/api/activity/history?limit=10&offset=0")
+
+        assert dismiss_response.status_code == 200
+        assert history_response.status_code == 200
+        assert history_response.json[0]["item_key"] == f"download:{task_id}"
+        snapshot_download = history_response.json[0]["snapshot"]["download"]
+        assert snapshot_download["title"] == "Recorded Title"
+        assert snapshot_download["author"] == "Recorded Author"
+        assert snapshot_download["status_message"] == "Complete"
+
     def test_clear_history_deletes_dismissed_requests_from_snapshot(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
@@ -354,6 +384,51 @@ class TestActivityRoutes:
             ANY,
             to=f"user_{user['id']}",
         )
+
+    def test_dismiss_many_preserves_terminal_snapshots_without_live_queue_merge(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        first_task_id = "dismiss-many-preserve-1"
+        second_task_id = "dismiss-many-preserve-2"
+        _record_terminal_download(
+            main_module,
+            task_id=first_task_id,
+            user_id=user["id"],
+            username=user["username"],
+            title="First Title",
+            author="First Author",
+        )
+        _record_terminal_download(
+            main_module,
+            task_id=second_task_id,
+            user_id=user["id"],
+            username=user["username"],
+            title="Second Title",
+            author="Second Author",
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            dismiss_many_response = client.post(
+                "/api/activity/dismiss-many",
+                json={
+                    "items": [
+                        {"item_type": "download", "item_key": f"download:{first_task_id}"},
+                        {"item_type": "download", "item_key": f"download:{second_task_id}"},
+                    ]
+                },
+            )
+            history_response = client.get("/api/activity/history?limit=20&offset=0")
+
+        assert dismiss_many_response.status_code == 200
+        assert dismiss_many_response.json["count"] == 2
+        assert history_response.status_code == 200
+
+        rows_by_key = {row["item_key"]: row for row in history_response.json}
+        assert rows_by_key[f"download:{first_task_id}"]["snapshot"]["download"]["title"] == "First Title"
+        assert rows_by_key[f"download:{first_task_id}"]["snapshot"]["download"]["author"] == "First Author"
+        assert rows_by_key[f"download:{second_task_id}"]["snapshot"]["download"]["title"] == "Second Title"
+        assert rows_by_key[f"download:{second_task_id}"]["snapshot"]["download"]["author"] == "Second Author"
 
     def test_no_auth_dismiss_many_and_history_use_shared_identity(self, main_module):
         task_id = f"no-auth-{uuid.uuid4().hex[:10]}"

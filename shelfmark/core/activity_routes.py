@@ -12,6 +12,7 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import (
     emit_ws_event,
     extract_release_source_id,
+    normalize_optional_text,
     normalize_positive_int,
     now_utc_iso,
 )

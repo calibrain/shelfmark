@@ -53,7 +53,6 @@ from shelfmark.core.download_history_service import DownloadHistoryService
 from shelfmark.core.notifications import NotificationContext, NotificationEvent, notify_admin, notify_user
 from shelfmark.core.request_helpers import (
     coerce_bool,
-    extract_release_source_id,
     load_users_request_policy_settings,
     normalize_optional_text,
 )
@@ -1182,21 +1181,12 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
     except (TypeError, ValueError):
         owner_user_id = None
 
-    linked_request: dict[str, Any] | None = None
-    request_id: int | None = None
-    origin = "direct"
-    if user_db is not None and owner_user_id is not None:
-        fulfilled_rows = user_db.list_requests(user_id=owner_user_id, status="fulfilled")
-        for row in fulfilled_rows:
-            source_id = extract_release_source_id(row.get("release_data"))
-            if source_id == task_id:
-                linked_request = row
-                origin = "requested"
-                try:
-                    request_id = int(row.get("id"))
-                except (TypeError, ValueError):
-                    request_id = None
-                break
+    raw_request_id = getattr(task, "request_id", None)
+    try:
+        request_id = int(raw_request_id) if raw_request_id is not None else None
+    except (TypeError, ValueError):
+        request_id = None
+    origin = "requested" if request_id else "direct"
 
     try:
         download_payload = backend._task_to_dict(task)
@@ -1237,7 +1227,7 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
         except Exception as exc:
             logger.warning("Failed to record terminal download history for task %s: %s", task_id, exc)
 
-    if user_db is None or linked_request is None or request_id is None or status != QueueStatus.ERROR:
+    if user_db is None or request_id is None or status != QueueStatus.ERROR:
         return
 
     raw_error_message = getattr(task, "status_message", None)
@@ -1277,18 +1267,6 @@ def _task_owned_by_actor(task: Any, *, actor_user_id: int | None, actor_username
     if isinstance(task_username, str) and task_username.strip() and isinstance(actor_username, str):
         return task_username.strip() == actor_username.strip()
 
-    return False
-
-
-def _is_graduated_request_download(task_id: str, *, user_id: int) -> bool:
-    if user_db is None:
-        return False
-
-    fulfilled_rows = user_db.list_requests(user_id=user_id, status="fulfilled")
-    for row in fulfilled_rows:
-        source_id = extract_release_source_id(row.get("release_data"))
-        if source_id == task_id:
-            return True
     return False
 
 
@@ -1502,7 +1480,7 @@ def api_cancel_download(book_id: str) -> Union[Response, Tuple[Response, int]]:
             ):
                 return jsonify({"error": "Forbidden", "code": "download_not_owned"}), 403
 
-            if _is_graduated_request_download(book_id, user_id=db_user_id):
+            if getattr(task, "request_id", None) is not None:
                 return jsonify({"error": "Forbidden", "code": "requested_download_cancel_forbidden"}), 403
 
         success = backend.cancel_download(book_id)
@@ -1537,16 +1515,7 @@ def api_retry_download(book_id: str) -> Union[Response, Tuple[Response, int]]:
             ):
                 return jsonify({"error": "Forbidden", "code": "download_not_owned"}), 403
 
-        raw_owner_user_id = getattr(task, "user_id", None)
-        try:
-            owner_user_id = int(raw_owner_user_id) if raw_owner_user_id is not None else None
-        except (TypeError, ValueError):
-            owner_user_id = None
-
-        is_request_linked = bool(getattr(task, "request_id", None))
-        if not is_request_linked and owner_user_id is not None:
-            is_request_linked = _is_graduated_request_download(book_id, user_id=owner_user_id)
-        if is_request_linked:
+        if getattr(task, "request_id", None) is not None:
             return jsonify({"error": "Forbidden", "code": "requested_download_retry_forbidden"}), 403
 
         success, error = backend.retry_download(book_id)

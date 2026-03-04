@@ -93,6 +93,7 @@ class TestTerminalSnapshotCapture:
             title="Requested Snapshot",
             user_id=user["id"],
             username=user["username"],
+            request_id=request_row["id"],
         )
         assert main_module.backend.book_queue.add(task) is True
 
