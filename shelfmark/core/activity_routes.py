@@ -3,20 +3,16 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 from flask import Flask, jsonify, request, session
 
 from shelfmark.core.download_history_service import DownloadHistoryService
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.request_helpers import extract_release_source_id
+from shelfmark.core.request_helpers import emit_ws_event, extract_release_source_id, now_utc_iso
 from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
-
-
-def _now_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _parse_timestamp(value: Any) -> float:
@@ -114,25 +110,36 @@ def _resolve_db_user_id(
     return parsed_db_user_id, None
 
 
+class _ActorContext(NamedTuple):
+    db_user_id: int | None
+    is_no_auth: bool
+    is_admin: bool
+    owner_scope: int | None
+
+
 def _resolve_activity_actor(
     *,
     user_db: UserDB,
     resolve_auth_mode: Callable[[], str],
-) -> tuple[int | None, bool, Any | None]:
+) -> tuple[_ActorContext | None, Any | None]:
     """Resolve acting user identity for activity mutations.
 
-    Returns (db_user_id, is_no_auth, error_response).
-    In no-auth mode: db_user_id=None, is_no_auth=True, error=None.
-    In auth mode: db_user_id=<int>, is_no_auth=False, error=None (or error response on failure).
+    Returns (actor, error_response). On success actor is non-None.
     """
     if resolve_auth_mode() == "none":
-        return None, True, None
+        return _ActorContext(db_user_id=None, is_no_auth=True, is_admin=True, owner_scope=None), None
 
     db_user_id, db_gate = _resolve_db_user_id(user_db=user_db)
-    if db_user_id is not None:
-        return db_user_id, False, None
+    if db_user_id is None:
+        return None, db_gate
 
-    return None, False, db_gate
+    is_admin = bool(session.get("is_admin"))
+    return _ActorContext(
+        db_user_id=db_user_id,
+        is_no_auth=False,
+        is_admin=is_admin,
+        owner_scope=None if is_admin else db_user_id,
+    ), None
 
 
 def _activity_ws_room(*, is_no_auth: bool, actor_db_user_id: int | None) -> str:
@@ -142,19 +149,6 @@ def _activity_ws_room(*, is_no_auth: bool, actor_db_user_id: int | None) -> str:
     if actor_db_user_id is not None:
         return f"user_{actor_db_user_id}"
     return "admins"
-
-
-def _emit_activity_event(ws_manager: Any | None, *, room: str, payload: dict[str, Any]) -> None:
-    if ws_manager is None:
-        return
-    try:
-        socketio = getattr(ws_manager, "socketio", None)
-        is_enabled = getattr(ws_manager, "is_enabled", None)
-        if socketio is None or not callable(is_enabled) or not is_enabled():
-            return
-        socketio.emit("activity_update", payload, to=room)
-    except Exception as exc:
-        logger.warning("Failed to emit activity_update event: %s", exc)
 
 
 def _list_visible_requests(user_db: UserDB, *, is_admin: bool, db_user_id: int | None) -> list[dict[str, Any]]:
@@ -188,25 +182,6 @@ def _parse_request_item_key(item_key: Any) -> int | None:
     return _normalize_positive_int(raw_id)
 
 
-def _download_history_row_to_download_payload(row: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": row.get("task_id"),
-        "title": row.get("title"),
-        "author": row.get("author"),
-        "format": row.get("format"),
-        "size": row.get("size"),
-        "preview": row.get("preview"),
-        "content_type": row.get("content_type"),
-        "source": row.get("source"),
-        "source_display_name": row.get("source_display_name"),
-        "status_message": row.get("status_message"),
-        "download_path": row.get("download_path"),
-        "user_id": row.get("user_id"),
-        "username": row.get("username"),
-        "request_id": row.get("request_id"),
-    }
-
-
 def _merge_terminal_snapshot_backfill(
     *,
     status: dict[str, dict[str, Any]],
@@ -228,7 +203,7 @@ def _merge_terminal_snapshot_backfill(
         if final_status not in {"complete", "error", "cancelled"}:
             continue
 
-        download_payload = _download_history_row_to_download_payload(row)
+        download_payload = DownloadHistoryService.to_download_payload(row)
         if final_status not in status or not isinstance(status.get(final_status), dict):
             status[final_status] = {}
         status[final_status][task_id] = download_payload
@@ -360,10 +335,7 @@ def register_activity_routes(
                 403,
             )
 
-        is_no_auth = resolve_auth_mode() == "none"
         owner_user_scope = None if is_admin else db_user_id
-        if is_no_auth:
-            owner_user_scope = None
 
         status = queue_status(user_id=owner_user_scope)
         updated_requests = sync_request_delivery_states(
@@ -416,7 +388,7 @@ def register_activity_routes(
         except Exception as exc:
             logger.warning("Failed to load dismissed request keys: %s", exc)
 
-        if not is_no_auth and not is_admin and db_user_id is None:
+        if not is_admin and db_user_id is None:
             # In auth mode, if we can't identify a non-admin viewer, don't show dismissals.
             dismissed = []
         else:
@@ -436,17 +408,12 @@ def register_activity_routes(
         if auth_gate is not None:
             return auth_gate
 
-        actor_db_user_id, is_no_auth, db_gate = _resolve_activity_actor(
+        actor, actor_error = _resolve_activity_actor(
             user_db=user_db,
             resolve_auth_mode=resolve_auth_mode,
         )
-        if db_gate is not None:
-            return db_gate
-        if not is_no_auth and actor_db_user_id is None:
-            return jsonify({"error": "User identity unavailable for activity workflow", "code": "user_identity_unavailable"}), 403
-
-        actor_is_admin = is_no_auth or bool(session.get("is_admin"))
-        owner_scope_user_id = None if actor_is_admin else actor_db_user_id
+        if actor_error is not None:
+            return actor_error
 
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
@@ -467,12 +434,12 @@ def register_activity_routes(
                 return jsonify({"error": "Activity item not found"}), 404
 
             owner_user_id = _normalize_positive_int(existing.get("user_id"))
-            if not actor_is_admin and owner_user_id != actor_db_user_id:
+            if not actor.is_admin and owner_user_id != actor.db_user_id:
                 return jsonify({"error": "Forbidden"}), 403
 
             dismissed_count = download_history_service.dismiss(
                 task_id=task_id,
-                user_id=owner_scope_user_id,
+                user_id=actor.owner_scope,
             )
             if dismissed_count < 1:
                 return jsonify({"error": "Activity item not found"}), 404
@@ -489,17 +456,18 @@ def register_activity_routes(
                 return jsonify({"error": "Request not found"}), 404
 
             owner_user_id = _normalize_positive_int(request_row.get("user_id"))
-            if not actor_is_admin and owner_user_id != actor_db_user_id:
+            if not actor.is_admin and owner_user_id != actor.db_user_id:
                 return jsonify({"error": "Forbidden"}), 403
 
-            user_db.update_request(request_id, dismissed_at=_now_timestamp())
+            user_db.update_request(request_id, dismissed_at=now_utc_iso())
             dismissal_item = {"item_type": "request", "item_key": f"request:{request_id}"}
         else:
             return jsonify({"error": "item_type must be one of: download, request"}), 400
 
-        room = _activity_ws_room(is_no_auth=is_no_auth, actor_db_user_id=actor_db_user_id)
-        _emit_activity_event(
+        room = _activity_ws_room(is_no_auth=actor.is_no_auth, actor_db_user_id=actor.db_user_id)
+        emit_ws_event(
             ws_manager,
+            event_name="activity_update",
             room=room,
             payload={
                 "kind": "dismiss",
@@ -516,17 +484,12 @@ def register_activity_routes(
         if auth_gate is not None:
             return auth_gate
 
-        actor_db_user_id, is_no_auth, db_gate = _resolve_activity_actor(
+        actor, actor_error = _resolve_activity_actor(
             user_db=user_db,
             resolve_auth_mode=resolve_auth_mode,
         )
-        if db_gate is not None:
-            return db_gate
-        if not is_no_auth and actor_db_user_id is None:
-            return jsonify({"error": "User identity unavailable for activity workflow", "code": "user_identity_unavailable"}), 403
-
-        actor_is_admin = is_no_auth or bool(session.get("is_admin"))
-        owner_scope_user_id = None if actor_is_admin else actor_db_user_id
+        if actor_error is not None:
+            return actor_error
 
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
@@ -553,7 +516,7 @@ def register_activity_routes(
                 if existing is None:
                     continue
                 owner_user_id = _normalize_positive_int(existing.get("user_id"))
-                if not actor_is_admin and owner_user_id != actor_db_user_id:
+                if not actor.is_admin and owner_user_id != actor.db_user_id:
                     return jsonify({"error": "Forbidden"}), 403
                 download_task_ids.append(task_id)
                 continue
@@ -566,7 +529,7 @@ def register_activity_routes(
                 if request_row is None:
                     continue
                 owner_user_id = _normalize_positive_int(request_row.get("user_id"))
-                if not actor_is_admin and owner_user_id != actor_db_user_id:
+                if not actor.is_admin and owner_user_id != actor.db_user_id:
                     return jsonify({"error": "Forbidden"}), 403
                 request_ids.append(request_id)
                 continue
@@ -575,11 +538,11 @@ def register_activity_routes(
 
         dismissed_download_count = download_history_service.dismiss_many(
             task_ids=download_task_ids,
-            user_id=owner_scope_user_id,
+            user_id=actor.owner_scope,
         )
 
         dismissed_request_count = 0
-        dismissed_at = _now_timestamp()
+        dismissed_at = now_utc_iso()
         for request_id in request_ids:
             try:
                 user_db.update_request(request_id, dismissed_at=dismissed_at)
@@ -589,9 +552,10 @@ def register_activity_routes(
 
         dismissed_count = dismissed_download_count + dismissed_request_count
 
-        room = _activity_ws_room(is_no_auth=is_no_auth, actor_db_user_id=actor_db_user_id)
-        _emit_activity_event(
+        room = _activity_ws_room(is_no_auth=actor.is_no_auth, actor_db_user_id=actor.db_user_id)
+        emit_ws_event(
             ws_manager,
+            event_name="activity_update",
             room=room,
             payload={
                 "kind": "dismiss_many",
@@ -607,14 +571,12 @@ def register_activity_routes(
         if auth_gate is not None:
             return auth_gate
 
-        actor_db_user_id, is_no_auth, db_gate = _resolve_activity_actor(
+        actor, actor_error = _resolve_activity_actor(
             user_db=user_db,
             resolve_auth_mode=resolve_auth_mode,
         )
-        if db_gate is not None:
-            return db_gate
-        if not is_no_auth and actor_db_user_id is None:
-            return jsonify({"error": "User identity unavailable for activity workflow", "code": "user_identity_unavailable"}), 403
+        if actor_error is not None:
+            return actor_error
 
         limit = request.args.get("limit", type=int, default=50)
         offset = request.args.get("offset", type=int, default=0)
@@ -627,17 +589,14 @@ def register_activity_routes(
         if offset < 0:
             return jsonify({"error": "offset must be a non-negative integer"}), 400
 
-        actor_is_admin = is_no_auth or bool(session.get("is_admin"))
-        owner_scope_user_id = None if actor_is_admin else actor_db_user_id
-
         # We combine download + request history and apply pagination over the merged list.
         max_rows = min(limit + offset + 500, 5000)
         download_history_rows = download_history_service.get_history(
-            user_id=owner_scope_user_id,
+            user_id=actor.owner_scope,
             limit=max_rows,
             offset=0,
         )
-        dismissed_request_rows = user_db.list_dismissed_requests(user_id=owner_scope_user_id, limit=max_rows)
+        dismissed_request_rows = user_db.list_dismissed_requests(user_id=actor.owner_scope, limit=max_rows)
         request_history_rows = [
             entry
             for entry in (_request_history_entry(row) for row in dismissed_request_rows)
@@ -661,25 +620,21 @@ def register_activity_routes(
         if auth_gate is not None:
             return auth_gate
 
-        actor_db_user_id, is_no_auth, db_gate = _resolve_activity_actor(
+        actor, actor_error = _resolve_activity_actor(
             user_db=user_db,
             resolve_auth_mode=resolve_auth_mode,
         )
-        if db_gate is not None:
-            return db_gate
-        if not is_no_auth and actor_db_user_id is None:
-            return jsonify({"error": "User identity unavailable for activity workflow", "code": "user_identity_unavailable"}), 403
+        if actor_error is not None:
+            return actor_error
 
-        actor_is_admin = is_no_auth or bool(session.get("is_admin"))
-        owner_scope_user_id = None if actor_is_admin else actor_db_user_id
-
-        deleted_downloads = download_history_service.clear_dismissed(user_id=owner_scope_user_id)
-        cleared_requests = user_db.clear_request_dismissals(user_id=owner_scope_user_id)
+        deleted_downloads = download_history_service.clear_dismissed(user_id=actor.owner_scope)
+        cleared_requests = user_db.clear_request_dismissals(user_id=actor.owner_scope)
         deleted_count = deleted_downloads + cleared_requests
 
-        room = _activity_ws_room(is_no_auth=is_no_auth, actor_db_user_id=actor_db_user_id)
-        _emit_activity_event(
+        room = _activity_ws_room(is_no_auth=actor.is_no_auth, actor_db_user_id=actor.db_user_id)
+        emit_ws_event(
             ws_manager,
+            event_name="activity_update",
             room=room,
             payload={
                 "kind": "history_cleared",

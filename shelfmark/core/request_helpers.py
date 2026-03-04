@@ -2,9 +2,38 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
+from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import load_config_file
+
+_logger = setup_logger(__name__)
+
+
+def now_utc_iso() -> str:
+    """Return the current UTC time as a seconds-precision ISO 8601 string."""
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def emit_ws_event(
+    ws_manager: Any,
+    *,
+    event_name: str,
+    payload: dict[str, Any],
+    room: str,
+) -> None:
+    """Emit a WebSocket event via the shared manager, swallowing failures."""
+    if ws_manager is None:
+        return
+    try:
+        socketio = getattr(ws_manager, "socketio", None)
+        is_enabled = getattr(ws_manager, "is_enabled", None)
+        if socketio is None or not callable(is_enabled) or not is_enabled():
+            return
+        socketio.emit(event_name, payload, to=room)
+    except Exception as exc:
+        _logger.warning("Failed to emit WebSocket event '%s' to room '%s': %s", event_name, room, exc)
 
 
 def load_users_request_policy_settings() -> dict[str, Any]:

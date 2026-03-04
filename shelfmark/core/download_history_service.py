@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import sqlite3
+import threading
 from typing import Any
+
+from shelfmark.core.request_helpers import now_utc_iso
 
 
 VALID_FINAL_STATUSES = frozenset({"complete", "error", "cancelled"})
 VALID_ORIGINS = frozenset({"direct", "request", "requested"})
-
-
-def _now_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _normalize_optional_text(value: Any) -> str | None:
@@ -77,15 +75,15 @@ def _normalize_offset(value: Any, *, default: int) -> int:
     return parsed
 
 
-def _normalize_optional_user_id(user_id: Any) -> int | None:
-    if user_id is None:
+def _normalize_optional_positive_int(value: Any, field_name: str = "value") -> int | None:
+    if value is None:
         return None
     try:
-        parsed = int(user_id)
+        parsed = int(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError("user_id must be a positive integer when provided") from exc
+        raise ValueError(f"{field_name} must be a positive integer when provided") from exc
     if parsed < 1:
-        raise ValueError("user_id must be a positive integer when provided")
+        raise ValueError(f"{field_name} must be a positive integer when provided")
     return parsed
 
 
@@ -94,6 +92,7 @@ class DownloadHistoryService:
 
     def __init__(self, db_path: str):
         self._db_path = db_path
+        self._lock = threading.Lock()
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path)
@@ -110,7 +109,7 @@ class DownloadHistoryService:
         return f"download:{task_id}"
 
     @staticmethod
-    def _to_download_payload(row: dict[str, Any]) -> dict[str, Any]:
+    def to_download_payload(row: dict[str, Any]) -> dict[str, Any]:
         return {
             "id": row.get("task_id"),
             "title": row.get("title"),
@@ -139,7 +138,7 @@ class DownloadHistoryService:
             "dismissed_at": row.get("dismissed_at"),
             "snapshot": {
                 "kind": "download",
-                "download": cls._to_download_payload(row),
+                "download": cls.to_download_payload(row),
             },
             "origin": row.get("origin"),
             "final_status": row.get("final_status"),
@@ -170,8 +169,8 @@ class DownloadHistoryService:
         terminal_at: str | None = None,
     ) -> dict[str, Any]:
         normalized_task_id = _normalize_task_id(task_id)
-        normalized_user_id = _normalize_optional_user_id(user_id)
-        normalized_request_id = _normalize_optional_user_id(request_id)
+        normalized_user_id = _normalize_optional_positive_int(user_id, "user_id")
+        normalized_request_id = _normalize_optional_positive_int(request_id, "request_id")
         normalized_source = _normalize_optional_text(source)
         if normalized_source is None:
             raise ValueError("source must be a non-empty string")
@@ -183,13 +182,14 @@ class DownloadHistoryService:
         effective_terminal_at = (
             terminal_at
             if isinstance(terminal_at, str) and terminal_at.strip()
-            else _now_timestamp()
+            else now_utc_iso()
         )
 
-        conn = self._connect()
-        try:
-            conn.execute(
-                """
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute(
+                    """
                 INSERT INTO download_history (
                     task_id,
                     user_id,
@@ -228,38 +228,38 @@ class DownloadHistoryService:
                     download_path = excluded.download_path,
                     terminal_at = excluded.terminal_at,
                     dismissed_at = NULL
-                """,
-                (
-                    normalized_task_id,
-                    normalized_user_id,
-                    _normalize_optional_text(username),
-                    normalized_request_id,
-                    normalized_source,
-                    _normalize_optional_text(source_display_name),
-                    normalized_title,
-                    _normalize_optional_text(author),
-                    _normalize_optional_text(format),
-                    _normalize_optional_text(size),
-                    _normalize_optional_text(preview),
-                    _normalize_optional_text(content_type),
-                    normalized_origin,
-                    normalized_final_status,
-                    _normalize_optional_text(status_message),
-                    _normalize_optional_text(download_path),
-                    effective_terminal_at,
-                ),
-            )
-            conn.commit()
-            row = conn.execute(
-                "SELECT * FROM download_history WHERE task_id = ?",
-                (normalized_task_id,),
-            ).fetchone()
-            payload = self._row_to_dict(row)
-            if payload is None:
-                raise ValueError("Failed to read back recorded download history row")
-            return payload
-        finally:
-            conn.close()
+                    """,
+                    (
+                        normalized_task_id,
+                        normalized_user_id,
+                        _normalize_optional_text(username),
+                        normalized_request_id,
+                        normalized_source,
+                        _normalize_optional_text(source_display_name),
+                        normalized_title,
+                        _normalize_optional_text(author),
+                        _normalize_optional_text(format),
+                        _normalize_optional_text(size),
+                        _normalize_optional_text(preview),
+                        _normalize_optional_text(content_type),
+                        normalized_origin,
+                        normalized_final_status,
+                        _normalize_optional_text(status_message),
+                        _normalize_optional_text(download_path),
+                        effective_terminal_at,
+                    ),
+                )
+                conn.commit()
+                row = conn.execute(
+                    "SELECT * FROM download_history WHERE task_id = ?",
+                    (normalized_task_id,),
+                ).fetchone()
+                payload = self._row_to_dict(row)
+                if payload is None:
+                    raise ValueError("Failed to read back recorded download history row")
+                return payload
+            finally:
+                conn.close()
 
     def get_by_task_id(self, task_id: str) -> dict[str, Any] | None:
         normalized_task_id = _normalize_task_id(task_id)
@@ -279,7 +279,7 @@ class DownloadHistoryService:
         user_id: int | None,
         limit: int = 200,
     ) -> list[dict[str, Any]]:
-        normalized_user_id = _normalize_optional_user_id(user_id)
+        normalized_user_id = _normalize_optional_positive_int(user_id, "user_id")
         normalized_limit = _normalize_limit(limit, default=200, minimum=1, maximum=1000)
         query = "SELECT * FROM download_history WHERE dismissed_at IS NULL"
         params: list[Any] = []
@@ -296,14 +296,16 @@ class DownloadHistoryService:
         finally:
             conn.close()
 
-    def get_dismissed_keys(self, *, user_id: int | None) -> list[str]:
-        normalized_user_id = _normalize_optional_user_id(user_id)
+    def get_dismissed_keys(self, *, user_id: int | None, limit: int = 5000) -> list[str]:
+        normalized_user_id = _normalize_optional_positive_int(user_id, "user_id")
+        normalized_limit = _normalize_limit(limit, default=5000, minimum=1, maximum=10000)
         query = "SELECT task_id FROM download_history WHERE dismissed_at IS NOT NULL"
         params: list[Any] = []
         if normalized_user_id is not None:
             query += " AND user_id = ?"
             params.append(normalized_user_id)
-        query += " ORDER BY dismissed_at DESC, id DESC"
+        query += " ORDER BY dismissed_at DESC, id DESC LIMIT ?"
+        params.append(normalized_limit)
 
         conn = self._connect()
         try:
@@ -319,46 +321,48 @@ class DownloadHistoryService:
 
     def dismiss(self, *, task_id: str, user_id: int | None) -> int:
         normalized_task_id = _normalize_task_id(task_id)
-        normalized_user_id = _normalize_optional_user_id(user_id)
+        normalized_user_id = _normalize_optional_positive_int(user_id, "user_id")
         query = "UPDATE download_history SET dismissed_at = ? WHERE task_id = ?"
-        params: list[Any] = [_now_timestamp(), normalized_task_id]
+        params: list[Any] = [now_utc_iso(), normalized_task_id]
         if normalized_user_id is not None:
             query += " AND user_id = ?"
             params.append(normalized_user_id)
 
-        conn = self._connect()
-        try:
-            cursor = conn.execute(query, params)
-            conn.commit()
-            rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
-            return max(rowcount, 0)
-        finally:
-            conn.close()
+        with self._lock:
+            conn = self._connect()
+            try:
+                cursor = conn.execute(query, params)
+                conn.commit()
+                rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
+                return max(rowcount, 0)
+            finally:
+                conn.close()
 
     def dismiss_many(self, *, task_ids: list[str], user_id: int | None) -> int:
-        normalized_user_id = _normalize_optional_user_id(user_id)
+        normalized_user_id = _normalize_optional_positive_int(user_id, "user_id")
         normalized_task_ids = [_normalize_task_id(task_id) for task_id in task_ids]
         if not normalized_task_ids:
             return 0
 
         placeholders = ",".join("?" for _ in normalized_task_ids)
         query = f"UPDATE download_history SET dismissed_at = ? WHERE task_id IN ({placeholders})"
-        params: list[Any] = [_now_timestamp(), *normalized_task_ids]
+        params: list[Any] = [now_utc_iso(), *normalized_task_ids]
         if normalized_user_id is not None:
             query += " AND user_id = ?"
             params.append(normalized_user_id)
 
-        conn = self._connect()
-        try:
-            cursor = conn.execute(query, params)
-            conn.commit()
-            rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
-            return max(rowcount, 0)
-        finally:
-            conn.close()
+        with self._lock:
+            conn = self._connect()
+            try:
+                cursor = conn.execute(query, params)
+                conn.commit()
+                rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
+                return max(rowcount, 0)
+            finally:
+                conn.close()
 
     def get_history(self, *, user_id: int | None, limit: int, offset: int) -> list[dict[str, Any]]:
-        normalized_user_id = _normalize_optional_user_id(user_id)
+        normalized_user_id = _normalize_optional_positive_int(user_id, "user_id")
         normalized_limit = _normalize_limit(limit, default=50, minimum=1, maximum=5000)
         normalized_offset = _normalize_offset(offset, default=0)
 
@@ -382,24 +386,25 @@ class DownloadHistoryService:
             conn.close()
 
     def clear_dismissed(self, *, user_id: int | None) -> int:
-        normalized_user_id = _normalize_optional_user_id(user_id)
+        normalized_user_id = _normalize_optional_positive_int(user_id, "user_id")
         query = "DELETE FROM download_history WHERE dismissed_at IS NOT NULL"
         params: list[Any] = []
         if normalized_user_id is not None:
             query += " AND user_id = ?"
             params.append(normalized_user_id)
 
-        conn = self._connect()
-        try:
-            cursor = conn.execute(query, params)
-            conn.commit()
-            rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
-            return max(rowcount, 0)
-        finally:
-            conn.close()
+        with self._lock:
+            conn = self._connect()
+            try:
+                cursor = conn.execute(query, params)
+                conn.commit()
+                rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
+                return max(rowcount, 0)
+            finally:
+                conn.close()
 
     def clear_dismissals_for_active(self, *, task_ids: set[str], user_id: int | None) -> int:
-        normalized_user_id = _normalize_optional_user_id(user_id)
+        normalized_user_id = _normalize_optional_positive_int(user_id, "user_id")
         normalized_task_ids = [_normalize_task_id(task_id) for task_id in task_ids]
         if not normalized_task_ids:
             return 0
@@ -411,12 +416,13 @@ class DownloadHistoryService:
             query += " AND user_id = ?"
             params.append(normalized_user_id)
 
-        conn = self._connect()
-        try:
-            cursor = conn.execute(query, params)
-            conn.commit()
-            rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
-            return max(rowcount, 0)
-        finally:
-            conn.close()
+        with self._lock:
+            conn = self._connect()
+            try:
+                cursor = conn.execute(query, params)
+                conn.commit()
+                rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
+                return max(rowcount, 0)
+            finally:
+                conn.close()
 

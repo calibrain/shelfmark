@@ -33,6 +33,7 @@ from shelfmark.core.notifications import (
 from shelfmark.core.request_helpers import (
     coerce_bool,
     coerce_int,
+    emit_ws_event,
     load_users_request_policy_settings,
     normalize_optional_text,
 )
@@ -97,25 +98,6 @@ def _resolve_effective_policy(
     effective = merge_request_policy_settings(global_settings, user_settings)
     requests_enabled = coerce_bool(effective.get("REQUESTS_ENABLED"), False)
     return global_settings, user_settings, effective, requests_enabled
-
-
-def _emit_request_event(
-    ws_manager: Any,
-    *,
-    event_name: str,
-    payload: dict[str, Any],
-    room: str,
-) -> None:
-    if ws_manager is None:
-        return
-    try:
-        socketio = getattr(ws_manager, "socketio", None)
-        is_enabled = getattr(ws_manager, "is_enabled", None)
-        if socketio is None or not callable(is_enabled) or not is_enabled():
-            return
-        socketio.emit(event_name, payload, to=room)
-    except Exception as exc:
-        logger.warning(f"Failed to emit WebSocket event '{event_name}' to room '{room}': {exc}")
 
 
 def _resolve_title_from_book_data(book_data: Any) -> str:
@@ -514,13 +496,13 @@ def register_request_routes(
             event_payload["title"],
             actor_label,
         )
-        _emit_request_event(
+        emit_ws_event(
             ws_manager,
             event_name="new_request",
             payload=event_payload,
             room="admins",
         )
-        _emit_request_event(
+        emit_ws_event(
             ws_manager,
             event_name="request_update",
             payload=event_payload,
@@ -592,13 +574,13 @@ def register_request_routes(
             event_payload["title"],
             actor_label,
         )
-        _emit_request_event(
+        emit_ws_event(
             ws_manager,
             event_name="request_update",
             payload=event_payload,
             room=f"user_{db_user_id}",
         )
-        _emit_request_event(
+        emit_ws_event(
             ws_manager,
             event_name="request_update",
             payload=event_payload,
@@ -704,13 +686,13 @@ def register_request_routes(
             admin_label,
             requester_label,
         )
-        _emit_request_event(
+        emit_ws_event(
             ws_manager,
             event_name="request_update",
             payload=event_payload,
             room=f"user_{updated['user_id']}",
         )
-        _emit_request_event(
+        emit_ws_event(
             ws_manager,
             event_name="request_update",
             payload=event_payload,
@@ -772,13 +754,13 @@ def register_request_routes(
             admin_label,
             requester_label,
         )
-        _emit_request_event(
+        emit_ws_event(
             ws_manager,
             event_name="request_update",
             payload=event_payload,
             room=f"user_{updated['user_id']}",
         )
-        _emit_request_event(
+        emit_ws_event(
             ws_manager,
             event_name="request_update",
             payload=event_payload,

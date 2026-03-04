@@ -235,6 +235,10 @@ class UserDB:
         column_names = {str(col["name"]) for col in columns}
         if "dismissed_at" not in column_names:
             conn.execute("ALTER TABLE download_requests ADD COLUMN dismissed_at TIMESTAMP")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_download_requests_dismissed "
+            "ON download_requests (dismissed_at) WHERE dismissed_at IS NOT NULL"
+        )
 
     def create_user(
         self,
