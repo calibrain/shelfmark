@@ -164,8 +164,8 @@ def search_books(query: str, filters: SearchFilters) -> List[BookInfo]:
 
     filters_query = ""
 
-    for value in filters.lang if filters.lang is not None else config.BOOK_LANGUAGE:
-        if value != "all":
+    for value in filters.lang if filters.lang else config.BOOK_LANGUAGE or []:
+        if value and value != "all":
             filters_query += f"&lang={quote(value)}"
 
     if filters.sort and filters.sort != "relevance":
