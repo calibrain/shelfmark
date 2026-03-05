@@ -8,7 +8,10 @@ from threading import Lock, Event
 from typing import Dict, List, Optional, Tuple, Any, Callable
 
 from shelfmark.core.config import config as app_config
+from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import QueueStatus, QueueItem, DownloadTask, TERMINAL_QUEUE_STATUSES
+
+logger = setup_logger(__name__)
 
 
 class BookQueue:
@@ -55,8 +58,8 @@ class BookQueue:
         if hook is not None:
             try:
                 hook(task_id, task)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Queue hook failed while adding task %s: %s", task_id, exc)
         return True
 
     def get_next(self) -> Optional[Tuple[str, Event]]:
@@ -294,8 +297,8 @@ class BookQueue:
         if hook is not None and hook_task is not None:
             try:
                 hook(task_id, hook_task)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Queue hook failed while requeueing task %s: %s", task_id, exc)
         return True
 
     def reorder_queue(self, task_priorities: Dict[str, int]) -> bool:

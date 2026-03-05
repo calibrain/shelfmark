@@ -65,15 +65,9 @@ def coerce_int(value: Any, default: int) -> int:
 
 
 def normalize_optional_text(value: Any) -> str | None:
-    """Return a trimmed string or None for empty/missing input.
-
-    Non-string values are coerced via ``str()`` before stripping;
-    ``None`` short-circuits to ``None``.
-    """
-    if value is None:
-        return None
+    """Return a trimmed string or None for empty/non-string input."""
     if not isinstance(value, str):
-        value = str(value)
+        return None
     normalized = value.strip()
     return normalized or None
 

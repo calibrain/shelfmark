@@ -135,17 +135,6 @@ type PendingOnBehalfDownload =
       actingAsUser: ActingAsUserSelection;
     };
 
-const mergeTerminalBucket = (
-  persistedBucket: Record<string, Book> | undefined,
-  realtimeBucket: Record<string, Book> | undefined
-): Record<string, Book> | undefined => {
-  const merged = {
-    ...(persistedBucket || {}),
-    ...(realtimeBucket || {}),
-  };
-  return Object.keys(merged).length > 0 ? merged : undefined;
-};
-
 function App() {
   const { toasts, showToast, removeToast } = useToast();
   const { socket } = useSocket();
@@ -263,10 +252,12 @@ function App() {
     requestItems,
     dismissedActivityKeys,
     historyItems,
+    activityHistoryLoaded,
     pendingRequestCount,
     isActivitySnapshotLoading,
     activityHistoryLoading,
     activityHistoryHasMore,
+    prefetchActivityHistory,
     refreshActivitySnapshot,
     resetActivity,
     handleActivityTabChange,
@@ -319,9 +310,9 @@ function App() {
     };
   }, [currentStatus, dismissedDownloadTaskIds]);
 
-  // Use real-time buckets for active work and merge persisted terminal buckets
-  // so completed/errored entries survive restarts.  Filter out dismissed items
-  // so the sidebar counts stay consistent with the activity panel.
+  // Use real-time buckets for active work and persisted activity snapshot
+  // buckets for terminal history. Filter out dismissed items so the sidebar
+  // counts stay consistent with the activity panel.
   const activitySidebarStatus = useMemo<StatusData>(() => {
     const filterDismissed = (
       bucket: Record<string, Book> | undefined
@@ -338,9 +329,9 @@ function App() {
       resolving: currentStatus.resolving,
       locating: currentStatus.locating,
       downloading: currentStatus.downloading,
-      complete: filterDismissed(mergeTerminalBucket(activityStatus.complete, currentStatus.complete)),
-      error: filterDismissed(mergeTerminalBucket(activityStatus.error, currentStatus.error)),
-      cancelled: filterDismissed(mergeTerminalBucket(activityStatus.cancelled, currentStatus.cancelled)),
+      complete: filterDismissed(activityStatus.complete),
+      error: filterDismissed(activityStatus.error),
+      cancelled: filterDismissed(activityStatus.cancelled),
     };
   }, [activityStatus, currentStatus, dismissedDownloadTaskIds]);
 
@@ -430,6 +421,13 @@ function App() {
   const [sidebarPinnedOpen, setSidebarPinnedOpen] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
   const headerObserverRef = useRef<ResizeObserver | null>(null);
+  useEffect(() => {
+    if (!downloadsSidebarOpen) {
+      return;
+    }
+    prefetchActivityHistory();
+  }, [downloadsSidebarOpen, prefetchActivityHistory]);
+
   const headerRef = useCallback((el: HTMLDivElement | null) => {
     if (headerObserverRef.current) {
       headerObserverRef.current.disconnect();
@@ -1696,6 +1694,7 @@ function App() {
         requestItems={requestItems}
         dismissedItemKeys={dismissedActivityKeys}
         historyItems={historyItems}
+        historyLoaded={activityHistoryLoaded}
         historyHasMore={activityHistoryHasMore}
         historyLoading={activityHistoryLoading}
         onHistoryLoadMore={handleActivityHistoryLoadMore}

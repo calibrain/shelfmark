@@ -123,15 +123,27 @@ def _resolve_title_from_book_data(book_data: Any) -> str:
     return "Unknown title"
 
 
+def _normalize_optional_source_id(value: Any) -> str | None:
+    """Normalize source identifiers while allowing integer provider ids."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        value = str(value)
+    return normalize_optional_text(value)
+
+
 def _build_direct_release_data_from_book_data(
     *,
     book_data: dict[str, Any],
     content_type: str,
 ) -> dict[str, Any]:
     """Build release-level payload fields for direct-download requests."""
+    source_id = _normalize_optional_source_id(book_data.get("provider_id")) or _normalize_optional_source_id(
+        book_data.get("id")
+    )
     payload: dict[str, Any] = {
         "source": "direct_download",
-        "source_id": book_data.get("provider_id") or book_data.get("id"),
+        "source_id": source_id,
         "title": book_data.get("title"),
         "author": book_data.get("author"),
         "year": book_data.get("year"),
@@ -169,8 +181,11 @@ def _normalize_direct_request_payload(
         if normalized_release_data.get("content_type") is None:
             normalized_release_data["content_type"] = content_type
 
-        if normalize_optional_text(normalized_release_data.get("source_id")) is None and isinstance(book_data, dict):
-            fallback_source_id = normalize_optional_text(book_data.get("provider_id")) or normalize_optional_text(
+        normalized_source_id = _normalize_optional_source_id(normalized_release_data.get("source_id"))
+        if normalized_source_id is not None:
+            normalized_release_data["source_id"] = normalized_source_id
+        elif isinstance(book_data, dict):
+            fallback_source_id = _normalize_optional_source_id(book_data.get("provider_id")) or _normalize_optional_source_id(
                 book_data.get("id")
             )
             if fallback_source_id is not None:

@@ -50,9 +50,11 @@ from shelfmark.core.requests_service import (
     reopen_failed_request,
     sync_delivery_states_from_queue_status,
 )
+from shelfmark.core.activity_view_state_service import ActivityViewStateService
 from shelfmark.core.download_history_service import DownloadHistoryService
 from shelfmark.core.notifications import NotificationContext, NotificationEvent, notify_admin, notify_user
 from shelfmark.core.request_helpers import (
+    emit_ws_event,
     coerce_bool,
     load_users_request_policy_settings,
     normalize_optional_text,
@@ -129,10 +131,12 @@ from shelfmark.core.user_db import UserDB
 _user_db_path = _os.path.join(_os.environ.get("CONFIG_DIR", "/config"), "users.db")
 user_db: UserDB | None = None
 download_history_service: DownloadHistoryService | None = None
+activity_view_state_service: ActivityViewStateService | None = None
 try:
     user_db = UserDB(_user_db_path)
     user_db.initialize()
     download_history_service = DownloadHistoryService(_user_db_path)
+    activity_view_state_service = ActivityViewStateService(_user_db_path)
     import shelfmark.config.users_settings as _  # noqa: F401 - registers users tab
     from shelfmark.core.oidc_routes import register_oidc_routes
     from shelfmark.core.admin_routes import register_admin_routes
@@ -148,6 +152,7 @@ except (sqlite3.OperationalError, OSError) as e:
     )
     user_db = None
     download_history_service = None
+    activity_view_state_service = None
 
 # Start download coordinator
 backend.start()
@@ -408,13 +413,13 @@ if user_db is not None:
             queue_release=lambda *args, **kwargs: backend.queue_release(*args, **kwargs),
             ws_manager=ws_manager,
         )
-        if download_history_service is not None:
+        if download_history_service is not None and activity_view_state_service is not None:
             register_activity_routes(
                 app,
                 user_db,
+                activity_view_state_service=activity_view_state_service,
                 download_history_service=download_history_service,
                 resolve_auth_mode=lambda: get_auth_mode(),
-                resolve_status_scope=lambda: _resolve_status_scope(),
                 queue_status=lambda user_id=None: backend.queue_status(user_id=user_id),
                 sync_request_delivery_states=sync_delivery_states_from_queue_status,
                 emit_request_updates=lambda rows: _emit_request_update_events(rows),
@@ -1164,6 +1169,24 @@ def _notify_admin_for_terminal_download_status(*, task_id: str, status: QueueSta
         )
 
 
+def _emit_activity_update_for_task(*, payload: dict[str, Any], task: Any) -> None:
+    owner_user_id = normalize_positive_int(getattr(task, "user_id", None))
+    emit_ws_event(
+        ws_manager,
+        event_name="activity_update",
+        room="admins",
+        payload=payload,
+    )
+    if owner_user_id is None:
+        return
+    emit_ws_event(
+        ws_manager,
+        event_name="activity_update",
+        room=f"user_{owner_user_id}",
+        payload=payload,
+    )
+
+
 def _record_download_queued(task_id: str, task: Any) -> None:
     """Persist initial download record when a task enters the queue."""
     if download_history_service is None:
@@ -1197,6 +1220,32 @@ def _record_download_queued(task_id: str, task: Any) -> None:
         )
     except Exception as exc:
         logger.warning("Failed to record download at queue time for task %s: %s", task_id, exc)
+        return
+
+    if activity_view_state_service is None:
+        return
+
+    try:
+        cleared_view_state = 0
+        cleared_view_state += activity_view_state_service.clear_item_for_all_viewers(
+            item_type="download",
+            item_key=f"download:{task_id}",
+        )
+        if request_id is not None:
+            cleared_view_state += activity_view_state_service.clear_item_for_all_viewers(
+                item_type="request",
+                item_key=f"request:{request_id}",
+            )
+        if cleared_view_state > 0:
+            _emit_activity_update_for_task(
+                task=task,
+                payload={
+                    "kind": "activity_reset",
+                    "task_id": task_id,
+                },
+            )
+    except Exception as exc:
+        logger.warning("Failed to reset activity viewer state for task %s: %s", task_id, exc)
 
 
 def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: Any) -> None:
@@ -1206,6 +1255,7 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
     if final_status is None:
         return
 
+    finalized_download = False
     if download_history_service is not None:
         try:
             download_history_service.finalize_download(
@@ -1214,8 +1264,19 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
                 status_message=normalize_optional_text(getattr(task, "status_message", None)),
                 download_path=normalize_optional_text(getattr(task, "download_path", None)),
             )
+            finalized_download = True
         except Exception as exc:
             logger.warning("Failed to finalize download history for task %s: %s", task_id, exc)
+
+    if finalized_download:
+        _emit_activity_update_for_task(
+            task=task,
+            payload={
+                "kind": "download_terminal",
+                "task_id": task_id,
+                "status": final_status,
+            },
+        )
 
     if user_db is None or status != QueueStatus.ERROR:
         return
@@ -1237,6 +1298,11 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
             failure_reason=fallback_reason,
         )
         if reopened_request is not None:
+            if activity_view_state_service is not None:
+                activity_view_state_service.clear_item_for_all_viewers(
+                    item_type="request",
+                    item_key=f"request:{request_id}",
+                )
             _emit_request_update_events([reopened_request])
     except Exception as exc:
         logger.warning(

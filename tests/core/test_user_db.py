@@ -70,6 +70,14 @@ class TestUserDBInitialization:
         assert cursor.fetchone() is not None
         conn.close()
 
+    def test_initialize_creates_activity_view_state_table(self, user_db, db_path):
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='activity_view_state'"
+        )
+        assert cursor.fetchone() is not None
+        conn.close()
+
     def test_initialize_does_not_create_legacy_activity_tables(self, user_db, db_path):
         conn = sqlite3.connect(db_path)
         activity_log = conn.execute(
@@ -115,7 +123,17 @@ class TestUserDBInitialization:
         ).fetchall()
         index_names = {row[0] for row in rows}
         assert "idx_download_history_user_status" in index_names
-        assert "idx_download_history_dismissed" in index_names
+        assert "idx_download_history_recent" in index_names
+        conn.close()
+
+    def test_initialize_creates_activity_view_state_indexes(self, user_db, db_path):
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='activity_view_state'"
+        ).fetchall()
+        index_names = {row[0] for row in rows}
+        assert "idx_activity_view_state_history" in index_names
+        assert "idx_activity_view_state_hidden" in index_names
         conn.close()
 
     def test_initialize_enables_wal_mode(self, user_db, db_path):
@@ -244,7 +262,7 @@ class TestUserDBInitialization:
         assert "REQUESTS_ALLOW_NOTES" not in column_names
         conn.close()
 
-    def test_initialize_migrates_download_requests_dismissed_at_column(self, db_path):
+    def test_initialize_does_not_add_dismissed_at_to_download_requests(self, db_path):
         conn = sqlite3.connect(db_path)
         conn.executescript(
             """
@@ -297,7 +315,7 @@ class TestUserDBInitialization:
         conn.row_factory = sqlite3.Row
         columns = conn.execute("PRAGMA table_info(download_requests)").fetchall()
         column_names = {str(col["name"]) for col in columns}
-        assert "dismissed_at" in column_names
+        assert "dismissed_at" not in column_names
         conn.close()
 
     def test_initialize_migrates_existing_install_without_backfill(self, db_path):
@@ -445,12 +463,17 @@ class TestUserDBInitialization:
 
         request_columns = conn.execute("PRAGMA table_info(download_requests)").fetchall()
         request_column_names = {str(col["name"]) for col in request_columns}
-        assert "dismissed_at" in request_column_names
+        assert "dismissed_at" not in request_column_names
 
         history_table = conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='download_history'"
         ).fetchone()
         assert history_table is not None
+
+        view_state_table = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='activity_view_state'"
+        ).fetchone()
+        assert view_state_table is not None
 
         # No retroactive copy from legacy activity tables in the no-backfill plan.
         history_count = conn.execute("SELECT COUNT(*) AS count FROM download_history").fetchone()["count"]
@@ -974,48 +997,14 @@ class TestDownloadRequests:
 
         assert user_db.get_request(created["id"]) is None
 
-    def test_list_dismissed_requests_scopes_by_user(self, user_db):
+    def test_delete_user_cleans_up_activity_view_state(self, user_db, db_path):
+        from shelfmark.core.activity_view_state_service import ActivityViewStateService
+
+        activity_view_state_service = ActivityViewStateService(db_path)
+
         alice = user_db.create_user(username="alice")
         bob = user_db.create_user(username="bob")
-        first = user_db.create_request(
-            user_id=alice["id"],
-            content_type="ebook",
-            request_level="book",
-            policy_mode="request_book",
-            book_data=self._book_data(),
-        )
-        second = user_db.create_request(
-            user_id=bob["id"],
-            content_type="ebook",
-            request_level="book",
-            policy_mode="request_book",
-            book_data=self._book_data(),
-        )
-        third = user_db.create_request(
-            user_id=alice["id"],
-            content_type="ebook",
-            request_level="book",
-            policy_mode="request_book",
-            book_data=self._book_data(),
-        )
-
-        user_db.update_request(first["id"], dismissed_at="2026-01-01T10:00:00+00:00")
-        user_db.update_request(second["id"], dismissed_at="2026-01-01T12:00:00+00:00")
-        user_db.update_request(third["id"], dismissed_at="2026-01-01T11:00:00+00:00")
-
-        all_rows = user_db.list_dismissed_requests(user_id=None)
-        assert [row["id"] for row in all_rows] == [second["id"], third["id"], first["id"]]
-
-        alice_rows = user_db.list_dismissed_requests(user_id=alice["id"])
-        assert [row["id"] for row in alice_rows] == [third["id"], first["id"]]
-
-        bob_rows = user_db.list_dismissed_requests(user_id=bob["id"])
-        assert [row["id"] for row in bob_rows] == [second["id"]]
-
-    def test_delete_dismissed_requests_scopes_by_user_and_only_deletes_terminal(self, user_db):
-        alice = user_db.create_user(username="alice")
-        bob = user_db.create_user(username="bob")
-        alice_rejected = user_db.create_request(
+        alice_request = user_db.create_request(
             user_id=alice["id"],
             content_type="ebook",
             request_level="book",
@@ -1023,41 +1012,37 @@ class TestDownloadRequests:
             book_data=self._book_data(),
             status="rejected",
         )
-        bob_fulfilled = user_db.create_request(
+        bob_request = user_db.create_request(
             user_id=bob["id"],
             content_type="ebook",
             request_level="book",
             policy_mode="request_book",
             book_data=self._book_data(),
-            status="fulfilled",
-        )
-        alice_pending = user_db.create_request(
-            user_id=alice["id"],
-            content_type="ebook",
-            request_level="book",
-            policy_mode="request_book",
-            book_data=self._book_data(),
-            status="pending",
+            status="rejected",
         )
 
-        user_db.update_request(alice_rejected["id"], dismissed_at="2026-01-01T10:00:00+00:00")
-        user_db.update_request(bob_fulfilled["id"], dismissed_at="2026-01-01T11:00:00+00:00")
-        user_db.update_request(alice_pending["id"], dismissed_at="2026-01-01T12:00:00+00:00")
+        activity_view_state_service.dismiss(
+            viewer_scope=f"user:{alice['id']}",
+            item_type="request",
+            item_key=f"request:{alice_request['id']}",
+        )
+        activity_view_state_service.dismiss(
+            viewer_scope="admin:shared",
+            item_type="request",
+            item_key=f"request:{alice_request['id']}",
+        )
+        activity_view_state_service.dismiss(
+            viewer_scope="admin:shared",
+            item_type="request",
+            item_key=f"request:{bob_request['id']}",
+        )
 
-        deleted_alice = user_db.delete_dismissed_requests(user_id=alice["id"])
-        assert deleted_alice == 1
-        assert user_db.get_request(alice_rejected["id"]) is None
-        assert user_db.get_request(alice_pending["id"]) is not None
-        assert user_db.get_request(bob_fulfilled["id"]) is not None
+        user_db.delete_user(alice["id"])
 
-        deleted_all = user_db.delete_dismissed_requests(user_id=None)
-        assert deleted_all == 1
-        assert user_db.get_request(bob_fulfilled["id"]) is None
-        assert user_db.get_request(alice_pending["id"]) is not None
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute(
+            "SELECT viewer_scope, item_key FROM activity_view_state ORDER BY viewer_scope, item_key"
+        ).fetchall()
+        conn.close()
 
-    def test_request_dismissal_helpers_validate_user_scope(self, user_db):
-        with pytest.raises(ValueError, match="user_id must be a positive integer"):
-            user_db.list_dismissed_requests(user_id=0)
-
-        with pytest.raises(ValueError, match="user_id must be a positive integer"):
-            user_db.delete_dismissed_requests(user_id=0)
+        assert rows == [("admin:shared", f"request:{bob_request['id']}")]

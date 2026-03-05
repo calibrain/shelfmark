@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import importlib
 import uuid
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import ANY, patch
 
 import pytest
 
@@ -162,6 +163,36 @@ class TestTerminalSnapshotCapture:
         finally:
             main_module.backend.book_queue.cancel_download(task_id)
 
+    def test_complete_transition_emits_activity_update_to_owner_and_admin_rooms(self, main_module):
+        user = _create_user(main_module, prefix="snap-activity-update")
+        task_id = f"activity-update-{uuid.uuid4().hex[:8]}"
+        task = DownloadTask(
+            task_id=task_id,
+            source="direct_download",
+            title="Activity Update Snapshot",
+            user_id=user["id"],
+            username=user["username"],
+        )
+        assert main_module.backend.book_queue.add(task) is True
+
+        try:
+            with patch.object(main_module.ws_manager, "is_enabled", return_value=True):
+                with patch.object(main_module.ws_manager.socketio, "emit") as mock_emit:
+                    main_module.backend.book_queue.update_status(task_id, QueueStatus.COMPLETE)
+
+            mock_emit.assert_any_call(
+                "activity_update",
+                ANY,
+                to="admins",
+            )
+            mock_emit.assert_any_call(
+                "activity_update",
+                ANY,
+                to=f"user_{user['id']}",
+            )
+        finally:
+            main_module.backend.book_queue.cancel_download(task_id)
+
     def test_error_transition_triggers_download_failed_notification(self, main_module):
         user = _create_user(main_module, prefix="snap-notify-error")
         task_id = f"notify-error-{uuid.uuid4().hex[:8]}"
@@ -290,6 +321,43 @@ class TestTerminalSnapshotCapture:
             assert row["user_id"] == user["id"]
         finally:
             main_module.backend.book_queue.cancel_download(task_id)
+
+    def test_queue_hook_emits_activity_update_when_requeue_clears_view_state(self, main_module):
+        user = _create_user(main_module, prefix="snap-reset")
+        task_id = f"reset-{uuid.uuid4().hex[:8]}"
+        main_module.activity_view_state_service.dismiss(
+            viewer_scope=f"user:{user['id']}",
+            item_type="download",
+            item_key=f"download:{task_id}",
+        )
+
+        task = SimpleNamespace(
+            user_id=user["id"],
+            username=user["username"],
+            request_id=None,
+            source="direct_download",
+            title="Reset Snapshot",
+            author="Reset Author",
+            format="epub",
+            size="1 MB",
+            preview=None,
+            content_type="ebook",
+        )
+
+        with patch.object(main_module.ws_manager, "is_enabled", return_value=True):
+            with patch.object(main_module.ws_manager.socketio, "emit") as mock_emit:
+                main_module._record_download_queued(task_id, task)
+
+        mock_emit.assert_any_call(
+            "activity_update",
+            ANY,
+            to="admins",
+        )
+        mock_emit.assert_any_call(
+            "activity_update",
+            ANY,
+            to=f"user_{user['id']}",
+        )
 
     def test_cancelled_transition_does_not_trigger_notification(self, main_module):
         user = _create_user(main_module, prefix="snap-notify-cancel")

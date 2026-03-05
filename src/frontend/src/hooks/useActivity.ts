@@ -16,6 +16,7 @@ import {
   downloadToActivityItem,
   requestToActivityItem,
 } from '../components/activity';
+import { dedupeHistoryItems } from '../components/activity/activityHistory.js';
 
 const HISTORY_PAGE_SIZE = 50;
 
@@ -120,10 +121,12 @@ interface UseActivityResult {
   requestItems: ActivityItem[];
   dismissedActivityKeys: string[];
   historyItems: ActivityItem[];
+  activityHistoryLoaded: boolean;
   pendingRequestCount: number;
   isActivitySnapshotLoading: boolean;
   activityHistoryLoading: boolean;
   activityHistoryHasMore: boolean;
+  prefetchActivityHistory: () => void;
   refreshActivitySnapshot: () => Promise<void>;
   handleActivityTabChange: (tab: 'all' | 'downloads' | 'requests' | 'history') => void;
   resetActivity: () => void;
@@ -217,6 +220,13 @@ export const useActivity = ({
     void refreshActivityHistory();
   }, [activityHistoryLoaded, activityHistoryLoading, refreshActivityHistory]);
 
+  const prefetchActivityHistory = useCallback(() => {
+    if (activityHistoryLoaded || activityHistoryLoading) {
+      return;
+    }
+    void refreshActivityHistory();
+  }, [activityHistoryLoaded, activityHistoryLoading, refreshActivityHistory]);
+
   const handleActivityHistoryLoadMore = useCallback(() => {
     if (!isAuthenticated || activityHistoryLoading || !activityHistoryHasMore) {
       return;
@@ -282,44 +292,7 @@ export const useActivity = ({
         .map((row) => mapHistoryRowToActivityItem(row, isAdmin ? 'admin' : 'user'))
         .sort((left, right) => right.timestamp - left.timestamp);
 
-      // Request history entries with attached release metadata are approval artifacts,
-      // not actual download outcomes. Keep history focused on concrete download results.
-      const nonAttachedReleaseRequestItems = mappedItems.filter((item) => {
-        if (item.kind !== 'request') {
-          return true;
-        }
-
-        const releaseData = item.requestRecord?.release_data;
-        if (!releaseData || typeof releaseData !== 'object') {
-          return true;
-        }
-
-        return Object.keys(releaseData as Record<string, unknown>).length === 0;
-      });
-
-      // Download dismissals already carry linked request context; hide redundant
-      // fulfilled-request history rows that would otherwise appear as "Approved".
-      const requestIdsWithDownloadRows = new Set<number>();
-      nonAttachedReleaseRequestItems.forEach((item) => {
-        if (item.kind === 'download' && typeof item.requestId === 'number') {
-          requestIdsWithDownloadRows.add(item.requestId);
-        }
-      });
-
-      if (!requestIdsWithDownloadRows.size) {
-        return nonAttachedReleaseRequestItems;
-      }
-
-      return nonAttachedReleaseRequestItems.filter((item) => {
-        if (item.kind !== 'request' || typeof item.requestId !== 'number') {
-          return true;
-        }
-        if (!requestIdsWithDownloadRows.has(item.requestId)) {
-          return true;
-        }
-        const requestStatus = item.requestRecord?.status;
-        return requestStatus !== 'fulfilled' && item.visualStatus !== 'fulfilled';
-      });
+      return dedupeHistoryItems(mappedItems);
     },
     [activityHistoryRows, isAdmin]
   );
@@ -421,10 +394,12 @@ export const useActivity = ({
     requestItems,
     dismissedActivityKeys,
     historyItems,
+    activityHistoryLoaded,
     pendingRequestCount,
     isActivitySnapshotLoading,
     activityHistoryLoading,
     activityHistoryHasMore,
+    prefetchActivityHistory,
     refreshActivitySnapshot,
     handleActivityTabChange,
     resetActivity,

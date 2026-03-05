@@ -1,4 +1,4 @@
-"""Persistence helpers for flat download terminal history."""
+"""Persistence helpers for canonical download activity rows."""
 
 from __future__ import annotations
 
@@ -61,20 +61,8 @@ def _normalize_limit(value: Any, *, default: int, minimum: int, maximum: int) ->
     return parsed
 
 
-def _normalize_offset(value: Any, *, default: int) -> int:
-    if value is None:
-        return default
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("offset must be an integer") from exc
-    if parsed < 0:
-        return 0
-    return parsed
-
-
 class DownloadHistoryService:
-    """Service for persisted terminal download history and dismissals."""
+    """Service for persisted canonical download activity rows."""
 
     def __init__(self, db_path: str):
         self._db_path = db_path
@@ -132,7 +120,7 @@ class DownloadHistoryService:
             return None
 
     @classmethod
-    def _to_history_row(cls, row: dict[str, Any]) -> dict[str, Any]:
+    def to_history_row(cls, row: dict[str, Any], *, dismissed_at: str) -> dict[str, Any]:
         task_id = str(row.get("task_id") or "").strip()
         item_key = cls._to_item_key(task_id)
         download_payload = cls.to_download_payload(row)
@@ -144,7 +132,7 @@ class DownloadHistoryService:
             "user_id": row.get("user_id"),
             "item_type": "download",
             "item_key": item_key,
-            "dismissed_at": row.get("dismissed_at"),
+            "dismissed_at": dismissed_at,
             "snapshot": {
                 "kind": "download",
                 "download": download_payload,
@@ -287,7 +275,7 @@ class DownloadHistoryService:
         finally:
             conn.close()
 
-    def get_undismissed(
+    def list_recent(
         self,
         *,
         user_id: int | None,
@@ -295,10 +283,10 @@ class DownloadHistoryService:
     ) -> list[dict[str, Any]]:
         normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
         normalized_limit = _normalize_limit(limit, default=200, minimum=1, maximum=1000)
-        query = "SELECT * FROM download_history WHERE dismissed_at IS NULL"
+        query = "SELECT * FROM download_history"
         params: list[Any] = []
         if normalized_user_id is not None:
-            query += " AND user_id = ?"
+            query += " WHERE user_id = ?"
             params.append(normalized_user_id)
         query += " ORDER BY terminal_at DESC, id DESC LIMIT ?"
         params.append(normalized_limit)
@@ -309,133 +297,3 @@ class DownloadHistoryService:
             return [dict(row) for row in rows]
         finally:
             conn.close()
-
-    def get_dismissed_keys(self, *, user_id: int | None, limit: int = 5000) -> list[str]:
-        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
-        normalized_limit = _normalize_limit(limit, default=5000, minimum=1, maximum=10000)
-        query = "SELECT task_id FROM download_history WHERE dismissed_at IS NOT NULL"
-        params: list[Any] = []
-        if normalized_user_id is not None:
-            query += " AND user_id = ?"
-            params.append(normalized_user_id)
-        query += " ORDER BY dismissed_at DESC, id DESC LIMIT ?"
-        params.append(normalized_limit)
-
-        conn = self._connect()
-        try:
-            rows = conn.execute(query, params).fetchall()
-            keys: list[str] = []
-            for row in rows:
-                task_id = normalize_optional_text(row["task_id"])
-                if task_id is not None:
-                    keys.append(task_id)
-            return keys
-        finally:
-            conn.close()
-
-    def dismiss(self, *, task_id: str, user_id: int | None) -> int:
-        normalized_task_id = _normalize_task_id(task_id)
-        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
-        query = "UPDATE download_history SET dismissed_at = ? WHERE task_id = ?"
-        params: list[Any] = [now_utc_iso(), normalized_task_id]
-        if normalized_user_id is not None:
-            query += " AND user_id = ?"
-            params.append(normalized_user_id)
-
-        with self._lock:
-            conn = self._connect()
-            try:
-                cursor = conn.execute(query, params)
-                conn.commit()
-                rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
-                return max(rowcount, 0)
-            finally:
-                conn.close()
-
-    def dismiss_many(self, *, task_ids: list[str], user_id: int | None) -> int:
-        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
-        normalized_task_ids = [_normalize_task_id(task_id) for task_id in task_ids]
-        if not normalized_task_ids:
-            return 0
-
-        placeholders = ",".join("?" for _ in normalized_task_ids)
-        query = f"UPDATE download_history SET dismissed_at = ? WHERE task_id IN ({placeholders})"
-        params: list[Any] = [now_utc_iso(), *normalized_task_ids]
-        if normalized_user_id is not None:
-            query += " AND user_id = ?"
-            params.append(normalized_user_id)
-
-        with self._lock:
-            conn = self._connect()
-            try:
-                cursor = conn.execute(query, params)
-                conn.commit()
-                rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
-                return max(rowcount, 0)
-            finally:
-                conn.close()
-
-    def get_history(self, *, user_id: int | None, limit: int, offset: int) -> list[dict[str, Any]]:
-        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
-        normalized_limit = _normalize_limit(limit, default=50, minimum=1, maximum=5000)
-        normalized_offset = _normalize_offset(offset, default=0)
-
-        query = "SELECT * FROM download_history WHERE dismissed_at IS NOT NULL"
-        params: list[Any] = []
-        if normalized_user_id is not None:
-            query += " AND user_id = ?"
-            params.append(normalized_user_id)
-        query += " ORDER BY dismissed_at DESC, id DESC LIMIT ? OFFSET ?"
-        params.extend([normalized_limit, normalized_offset])
-
-        conn = self._connect()
-        try:
-            rows = conn.execute(query, params).fetchall()
-            payload: list[dict[str, Any]] = []
-            for row in rows:
-                row_dict = dict(row)
-                payload.append(self._to_history_row(row_dict))
-            return payload
-        finally:
-            conn.close()
-
-    def clear_dismissed(self, *, user_id: int | None) -> int:
-        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
-        query = "DELETE FROM download_history WHERE dismissed_at IS NOT NULL"
-        params: list[Any] = []
-        if normalized_user_id is not None:
-            query += " AND user_id = ?"
-            params.append(normalized_user_id)
-
-        with self._lock:
-            conn = self._connect()
-            try:
-                cursor = conn.execute(query, params)
-                conn.commit()
-                rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
-                return max(rowcount, 0)
-            finally:
-                conn.close()
-
-    def clear_dismissals_for_active(self, *, task_ids: set[str], user_id: int | None) -> int:
-        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
-        normalized_task_ids = [_normalize_task_id(task_id) for task_id in task_ids]
-        if not normalized_task_ids:
-            return 0
-
-        placeholders = ",".join("?" for _ in normalized_task_ids)
-        query = f"UPDATE download_history SET dismissed_at = NULL WHERE task_id IN ({placeholders})"
-        params: list[Any] = [*normalized_task_ids]
-        if normalized_user_id is not None:
-            query += " AND user_id = ?"
-            params.append(normalized_user_id)
-
-        with self._lock:
-            conn = self._connect()
-            try:
-                cursor = conn.execute(query, params)
-                conn.commit()
-                rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
-                return max(rowcount, 0)
-            finally:
-                conn.close()

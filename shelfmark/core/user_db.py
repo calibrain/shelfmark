@@ -7,6 +7,7 @@ import threading
 from typing import Any, Dict, List, Optional
 
 from shelfmark.core.auth_modes import AUTH_SOURCE_BUILTIN, AUTH_SOURCE_SET
+from shelfmark.core.activity_view_state_service import user_viewer_scope
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import normalize_optional_positive_int
 from shelfmark.core.models import QueueStatus
@@ -57,8 +58,7 @@ CREATE TABLE IF NOT EXISTS download_requests (
     reviewed_by    INTEGER REFERENCES users(id),
     created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     reviewed_at    TIMESTAMP,
-    delivery_updated_at TIMESTAMP,
-    dismissed_at TIMESTAMP
+    delivery_updated_at TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_download_requests_user_status_created_at
@@ -86,19 +86,32 @@ CREATE TABLE IF NOT EXISTS download_history (
     status_message TEXT,
     download_path TEXT,
     queued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    terminal_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    dismissed_at TIMESTAMP
+    terminal_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_download_history_user_status
 ON download_history (user_id, final_status, terminal_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_download_history_dismissed
-ON download_history (dismissed_at) WHERE dismissed_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_download_history_recent
+ON download_history (user_id, terminal_at DESC, id DESC);
 
-CREATE INDEX IF NOT EXISTS idx_download_history_undismissed
-ON download_history (user_id, terminal_at DESC, id DESC)
-WHERE dismissed_at IS NULL;
+CREATE TABLE IF NOT EXISTS activity_view_state (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    viewer_scope TEXT NOT NULL,
+    item_type TEXT NOT NULL,
+    item_key TEXT NOT NULL,
+    dismissed_at TIMESTAMP,
+    cleared_at TIMESTAMP,
+    UNIQUE(viewer_scope, item_type, item_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_view_state_history
+ON activity_view_state (viewer_scope, dismissed_at DESC, id DESC)
+WHERE dismissed_at IS NOT NULL AND cleared_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_activity_view_state_hidden
+ON activity_view_state (viewer_scope, item_type, item_key)
+WHERE dismissed_at IS NOT NULL;
 """
 
 
@@ -168,7 +181,6 @@ class UserDB:
                 conn.executescript(_CREATE_TABLES_SQL)
                 self._migrate_auth_source_column(conn)
                 self._migrate_request_delivery_columns(conn)
-                self._migrate_download_requests_dismissed_at(conn)
                 self._migrate_download_history_queued_at(conn)
                 conn.commit()
                 # WAL mode must be changed outside an open transaction.
@@ -223,17 +235,6 @@ class UserDB:
             WHERE delivery_state != 'none' AND delivery_updated_at IS NULL
             """
         )
-
-    def _migrate_download_requests_dismissed_at(self, conn: sqlite3.Connection) -> None:
-        """Ensure download_requests.dismissed_at exists for request dismissal history."""
-        columns = conn.execute("PRAGMA table_info(download_requests)").fetchall()
-        column_names = {str(col["name"]) for col in columns}
-        if "dismissed_at" not in column_names:
-            conn.execute("ALTER TABLE download_requests ADD COLUMN dismissed_at TIMESTAMP")
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_download_requests_dismissed "
-                "ON download_requests (dismissed_at) WHERE dismissed_at IS NOT NULL"
-            )
 
     def _migrate_download_history_queued_at(self, conn: sqlite3.Connection) -> None:
         """Ensure download_history.queued_at exists for queue-time recording."""
@@ -349,6 +350,25 @@ class UserDB:
         with self._lock:
             conn = self._connect()
             try:
+                request_rows = conn.execute(
+                    "SELECT id FROM download_requests WHERE user_id = ?",
+                    (user_id,),
+                ).fetchall()
+                request_item_keys = [f"request:{row['id']}" for row in request_rows]
+                if request_item_keys:
+                    placeholders = ",".join("?" for _ in request_item_keys)
+                    conn.execute(
+                        f"""
+                        DELETE FROM activity_view_state
+                        WHERE item_type = 'request'
+                          AND item_key IN ({placeholders})
+                        """,
+                        request_item_keys,
+                    )
+                conn.execute(
+                    "DELETE FROM activity_view_state WHERE viewer_scope = ?",
+                    (user_viewer_scope(user_id),),
+                )
                 conn.execute("UPDATE download_requests SET reviewed_by = NULL WHERE reviewed_by = ?", (user_id,))
                 conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
                 conn.commit()
@@ -600,7 +620,6 @@ class UserDB:
         "delivery_state",
         "delivery_updated_at",
         "last_failure_reason",
-        "dismissed_at",
     }
 
     def update_request(
@@ -659,11 +678,6 @@ class UserDB:
                     delivery_updated_at = updates["delivery_updated_at"]
                     if delivery_updated_at is not None and not isinstance(delivery_updated_at, str):
                         raise ValueError("delivery_updated_at must be a string when provided")
-
-                if "dismissed_at" in updates:
-                    dismissed_at = updates["dismissed_at"]
-                    if dismissed_at is not None and not isinstance(dismissed_at, str):
-                        raise ValueError("dismissed_at must be a string when provided")
 
                 if "content_type" in updates and not updates["content_type"]:
                     raise ValueError("content_type is required")
@@ -785,69 +799,3 @@ class UserDB:
             return int(row["count"]) if row else 0
         finally:
             conn.close()
-
-    def list_dismissed_requests(self, *, user_id: int | None, limit: int | None = None) -> List[Dict[str, Any]]:
-        """List dismissed requests, optionally scoped by owner user_id."""
-        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
-        params: list[Any] = []
-        query = "SELECT * FROM download_requests WHERE dismissed_at IS NOT NULL"
-        if normalized_user_id is not None:
-            query += " AND user_id = ?"
-            params.append(normalized_user_id)
-        query += " ORDER BY dismissed_at DESC, id DESC"
-        if limit is not None and limit > 0:
-            query += " LIMIT ?"
-            params.append(limit)
-
-        conn = self._connect()
-        try:
-            rows = conn.execute(query, params).fetchall()
-            results: List[Dict[str, Any]] = []
-            for row in rows:
-                parsed = self._parse_request_row(row)
-                if parsed is not None:
-                    results.append(parsed)
-            return results
-        finally:
-            conn.close()
-
-    def dismiss_requests_batch(self, *, request_ids: list[int], dismissed_at: str) -> int:
-        """Set dismissed_at on multiple requests in a single UPDATE."""
-        if not request_ids:
-            return 0
-        placeholders = ",".join("?" for _ in request_ids)
-        query = f"UPDATE download_requests SET dismissed_at = ? WHERE id IN ({placeholders})"
-        params: list[Any] = [dismissed_at, *request_ids]
-
-        with self._lock:
-            conn = self._connect()
-            try:
-                cursor = conn.execute(query, params)
-                conn.commit()
-                rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
-                return max(rowcount, 0)
-            finally:
-                conn.close()
-
-    def delete_dismissed_requests(self, *, user_id: int | None) -> int:
-        """Delete dismissed terminal requests, optionally scoped by owner user_id."""
-        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
-        params: list[Any] = []
-        query = """
-            DELETE FROM download_requests
-            WHERE dismissed_at IS NOT NULL
-              AND status IN ('fulfilled', 'rejected', 'cancelled')
-        """
-        if normalized_user_id is not None:
-            query += " AND user_id = ?"
-            params.append(normalized_user_id)
-
-        with self._lock:
-            conn = self._connect()
-            try:
-                cursor = conn.execute(query, params)
-                conn.commit()
-                rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
-                return max(rowcount, 0)
-            finally:
-                conn.close()
