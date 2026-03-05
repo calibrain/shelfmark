@@ -402,17 +402,20 @@ function ShimmerBlock({ className }: { className: string }) {
 }
 
 // Loading skeleton for releases - matches ReleaseRow layout
+// Renders enough rows to fill the container, fading out at the bottom via a gradient mask
 function ReleaseSkeleton() {
+  // Render enough rows to cover tall viewports; overflow is hidden by the mask
+  const rows = 8;
   return (
-    <div className="divide-y divide-gray-200/60 dark:divide-gray-800/60">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <div
-          key={i}
-          className="px-5 py-2"
-          style={{
-            opacity: 1 - (i - 1) * 0.15, // Fade out lower rows
-          }}
-        >
+    <div
+      className="divide-y divide-gray-200/60 dark:divide-gray-800/60 overflow-hidden"
+      style={{
+        maskImage: 'linear-gradient(to bottom, black 40%, transparent 100%)',
+        WebkitMaskImage: 'linear-gradient(to bottom, black 40%, transparent 100%)',
+      }}
+    >
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="px-5 py-2">
           <div className="grid grid-cols-[auto_1fr_auto] sm:grid-cols-[auto_minmax(0,2fr)_60px_80px_80px_auto] items-center gap-2 sm:gap-3">
             {/* Thumbnail skeleton */}
             <ShimmerBlock className="w-7 h-10 sm:w-10 sm:h-14" />
