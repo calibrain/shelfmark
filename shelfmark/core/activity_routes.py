@@ -184,37 +184,64 @@ def _parse_request_item_key(item_key: Any) -> int | None:
     return normalize_positive_int(raw_id)
 
 
-def _merge_terminal_snapshot_backfill(
+_ACTIVE_QUEUE_BUCKETS = ("queued", "resolving", "locating", "downloading")
+_ALL_BUCKET_KEYS = ("queued", "resolving", "locating", "downloading", "complete", "available", "done", "error", "cancelled")
+
+
+def _build_download_status_from_db(
     *,
-    status: dict[str, dict[str, Any]],
-    terminal_rows: list[dict[str, Any]],
-) -> None:
-    existing_task_ids: set[str] = set()
-    for bucket_key in ("queued", "resolving", "locating", "downloading", "complete", "error", "cancelled"):
-        bucket = status.get(bucket_key)
+    db_rows: list[dict[str, Any]],
+    queue_status: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Build the download status dict from DB rows, overlaying live queue data.
+
+    Active DB rows are matched against the queue for live progress.
+    Terminal DB rows go directly into their final bucket.
+    Stale active rows (no queue entry) are treated as interrupted errors.
+    """
+    status: dict[str, dict[str, Any]] = {key: {} for key in _ALL_BUCKET_KEYS}
+
+    # Index queue items by task_id for fast lookup: task_id -> (bucket_key, payload)
+    queue_index: dict[str, tuple[str, dict[str, Any]]] = {}
+    for bucket_key in _ALL_BUCKET_KEYS:
+        bucket = queue_status.get(bucket_key)
         if not isinstance(bucket, dict):
             continue
-        existing_task_ids.update(str(task_id) for task_id in bucket.keys())
+        for task_id, payload in bucket.items():
+            queue_index[str(task_id)] = (bucket_key, payload)
 
-    for row in terminal_rows:
+    for row in db_rows:
         task_id = str(row.get("task_id") or "").strip()
-        if not task_id or task_id in existing_task_ids:
+        if not task_id:
             continue
 
         final_status = row.get("final_status")
-        if final_status not in {"complete", "error", "cancelled"}:
-            continue
 
-        download_payload = DownloadHistoryService.to_download_payload(row)
-        if final_status not in status or not isinstance(status.get(final_status), dict):
-            status[final_status] = {}
-        status[final_status][task_id] = download_payload
-        existing_task_ids.add(task_id)
+        if final_status == "active":
+            queue_entry = queue_index.pop(task_id, None)
+            if queue_entry is not None:
+                bucket_key, queue_payload = queue_entry
+                status[bucket_key][task_id] = queue_payload
+            else:
+                # Stale active row — no queue entry means it was interrupted
+                download_payload = DownloadHistoryService.to_download_payload(row)
+                download_payload["status_message"] = "Interrupted"
+                status["error"][task_id] = download_payload
+        elif final_status in {"complete", "error", "cancelled"}:
+            download_payload = DownloadHistoryService.to_download_payload(row)
+            status[final_status][task_id] = download_payload
+
+    # Include any queue items that don't have a DB row yet (race condition safety)
+    for task_id, (bucket_key, queue_payload) in queue_index.items():
+        if task_id not in status.get(bucket_key, {}):
+            status[bucket_key][task_id] = queue_payload
+
+    return status
 
 
 def _collect_active_download_task_ids(status: dict[str, dict[str, Any]]) -> set[str]:
     active_task_ids: set[str] = set()
-    for bucket_key in ("queued", "resolving", "locating", "downloading"):
+    for bucket_key in _ACTIVE_QUEUE_BUCKETS:
         bucket = status.get(bucket_key)
         if not isinstance(bucket, dict):
             continue
@@ -339,7 +366,22 @@ def register_activity_routes(
 
         owner_user_scope = None if is_admin else db_user_id
 
-        status = queue_status(user_id=owner_user_scope)
+        live_queue = queue_status(user_id=owner_user_scope)
+
+        try:
+            db_rows = download_history_service.get_undismissed(
+                user_id=owner_user_scope,
+                limit=200,
+            )
+        except Exception as exc:
+            logger.warning("Failed to load undismissed download rows: %s", exc)
+            db_rows = []
+
+        status = _build_download_status_from_db(
+            db_rows=db_rows,
+            queue_status=live_queue,
+        )
+
         updated_requests = sync_request_delivery_states(
             user_db,
             queue_status=status,
@@ -347,15 +389,6 @@ def register_activity_routes(
         )
         emit_request_updates(updated_requests)
         request_rows = _list_visible_requests(user_db, is_admin=is_admin, db_user_id=db_user_id)
-
-        try:
-            terminal_rows = download_history_service.get_undismissed_terminal(
-                user_id=owner_user_scope,
-                limit=200,
-            )
-            _merge_terminal_snapshot_backfill(status=status, terminal_rows=terminal_rows)
-        except Exception as exc:
-            logger.warning("Failed to merge terminal download history rows: %s", exc)
 
         dismissed: list[dict[str, str]] = []
         dismissed_task_ids: list[str] = []

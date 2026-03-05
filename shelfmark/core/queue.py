@@ -25,6 +25,7 @@ class BookQueue:
         self._terminal_status_hook: Optional[
             Callable[[str, QueueStatus, DownloadTask], None]
         ] = None
+        self._queue_hook: Optional[Callable[[str, DownloadTask], None]] = None
 
     @property
     def _status_timeout(self) -> timedelta:
@@ -33,6 +34,7 @@ class BookQueue:
 
     def add(self, task: DownloadTask) -> bool:
         """Add a download task to the queue. Returns False if already exists."""
+        hook: Optional[Callable[[str, DownloadTask], None]] = None
         with self._lock:
             task_id = task.task_id
 
@@ -48,7 +50,14 @@ class BookQueue:
             self._queue.put(queue_item)
             self._task_data[task_id] = task
             self._update_status(task_id, QueueStatus.QUEUED)
-            return True
+            hook = self._queue_hook
+
+        if hook is not None:
+            try:
+                hook(task_id, task)
+            except Exception:
+                pass
+        return True
 
     def get_next(self) -> Optional[Tuple[str, Event]]:
         """Get next task ID from queue with cancellation flag."""
@@ -94,6 +103,14 @@ class BookQueue:
         """Register a callback invoked when a task first enters a terminal status."""
         with self._lock:
             self._terminal_status_hook = hook
+
+    def set_queue_hook(
+        self,
+        hook: Optional[Callable[[str, DownloadTask], None]],
+    ) -> None:
+        """Register a callback invoked when a task is added to the queue."""
+        with self._lock:
+            self._queue_hook = hook
 
     def update_status(self, book_id: str, status: QueueStatus) -> None:
         """Update status of a book in the queue."""

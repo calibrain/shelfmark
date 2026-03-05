@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS download_history (
     final_status TEXT NOT NULL,
     status_message TEXT,
     download_path TEXT,
+    queued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     terminal_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     dismissed_at TIMESTAMP
 );
@@ -92,6 +93,10 @@ ON download_history (user_id, final_status, terminal_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_download_history_dismissed
 ON download_history (dismissed_at) WHERE dismissed_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_download_history_undismissed
+ON download_history (user_id, terminal_at DESC, id DESC)
+WHERE dismissed_at IS NULL;
 """
 
 
@@ -162,6 +167,7 @@ class UserDB:
                 self._migrate_auth_source_column(conn)
                 self._migrate_request_delivery_columns(conn)
                 self._migrate_download_requests_dismissed_at(conn)
+                self._migrate_download_history_queued_at(conn)
                 conn.commit()
                 # WAL mode must be changed outside an open transaction.
                 conn.execute("PRAGMA journal_mode=WAL")
@@ -240,6 +246,15 @@ class UserDB:
             "CREATE INDEX IF NOT EXISTS idx_download_requests_dismissed "
             "ON download_requests (dismissed_at) WHERE dismissed_at IS NOT NULL"
         )
+
+    def _migrate_download_history_queued_at(self, conn: sqlite3.Connection) -> None:
+        """Ensure download_history.queued_at exists for queue-time recording."""
+        columns = conn.execute("PRAGMA table_info(download_history)").fetchall()
+        column_names = {str(col["name"]) for col in columns}
+        if "queued_at" not in column_names:
+            conn.execute(
+                "ALTER TABLE download_history ADD COLUMN queued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            )
 
     def create_user(
         self,

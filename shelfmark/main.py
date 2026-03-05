@@ -18,6 +18,7 @@ from werkzeug.security import check_password_hash
 from werkzeug.wrappers import Response
 
 from shelfmark.download import orchestrator as backend
+from shelfmark.release_sources import get_source_display_name
 from shelfmark.release_sources.direct_download import SearchUnavailable
 from shelfmark.config.settings import _SUPPORTED_BOOK_LANGUAGE
 from shelfmark.config.env import (
@@ -55,6 +56,7 @@ from shelfmark.core.request_helpers import (
     coerce_bool,
     load_users_request_policy_settings,
     normalize_optional_text,
+    normalize_positive_int,
 )
 from shelfmark.core.utils import normalize_base_path
 from shelfmark.api.websocket import ws_manager
@@ -1168,6 +1170,41 @@ def _notify_admin_for_terminal_download_status(*, task_id: str, status: QueueSta
         )
 
 
+def _record_download_queued(task_id: str, task: Any) -> None:
+    """Persist initial download record when a task enters the queue."""
+    if download_history_service is None:
+        return
+
+    owner_user_id = normalize_positive_int(getattr(task, "user_id", None))
+    request_id = normalize_positive_int(getattr(task, "request_id", None))
+    origin = "requested" if request_id else "direct"
+
+    source_name = normalize_source(getattr(task, "source", None))
+    try:
+        source_display = get_source_display_name(source_name)
+    except Exception:
+        source_display = None
+
+    try:
+        download_history_service.record_download(
+            task_id=task_id,
+            user_id=owner_user_id,
+            username=normalize_optional_text(getattr(task, "username", None)),
+            request_id=request_id,
+            source=source_name,
+            source_display_name=source_display,
+            title=str(getattr(task, "title", "Unknown title") or "Unknown title"),
+            author=normalize_optional_text(getattr(task, "author", None)),
+            format=normalize_optional_text(getattr(task, "format", None)),
+            size=normalize_optional_text(getattr(task, "size", None)),
+            preview=normalize_optional_text(getattr(task, "preview", None)),
+            content_type=normalize_optional_text(getattr(task, "content_type", None)),
+            origin=origin,
+        )
+    except Exception as exc:
+        logger.warning("Failed to record download at queue time for task %s: %s", task_id, exc)
+
+
 def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: Any) -> None:
     _notify_admin_for_terminal_download_status(task_id=task_id, status=status, task=task)
 
@@ -1175,59 +1212,22 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
     if final_status is None:
         return
 
-    raw_owner_user_id = getattr(task, "user_id", None)
-    try:
-        owner_user_id = int(raw_owner_user_id) if raw_owner_user_id is not None else None
-    except (TypeError, ValueError):
-        owner_user_id = None
-
-    raw_request_id = getattr(task, "request_id", None)
-    try:
-        request_id = int(raw_request_id) if raw_request_id is not None else None
-    except (TypeError, ValueError):
-        request_id = None
-    origin = "requested" if request_id else "direct"
-
-    try:
-        download_payload = backend._task_to_dict(task)
-    except Exception as exc:
-        logger.warning("Failed to serialize task payload for terminal snapshot: %s", exc)
-        download_payload = {
-            "id": task_id,
-            "title": getattr(task, "title", "Unknown title"),
-            "author": getattr(task, "author", "Unknown author"),
-            "source": getattr(task, "source", "direct_download"),
-            "added_time": getattr(task, "added_time", 0),
-            "status_message": getattr(task, "status_message", None),
-            "download_path": getattr(task, "download_path", None),
-            "user_id": getattr(task, "user_id", None),
-            "username": getattr(task, "username", None),
-        }
-
     if download_history_service is not None:
         try:
-            download_history_service.record_terminal(
-                user_id=owner_user_id,
+            download_history_service.finalize_download(
                 task_id=task_id,
-                username=normalize_optional_text(getattr(task, "username", None)),
-                request_id=request_id,
-                source=normalize_source(getattr(task, "source", None)),
-                source_display_name=download_payload.get("source_display_name"),
-                title=str(download_payload.get("title") or getattr(task, "title", "Unknown title")),
-                author=normalize_optional_text(download_payload.get("author")),
-                format=normalize_optional_text(download_payload.get("format")),
-                size=normalize_optional_text(download_payload.get("size")),
-                preview=normalize_optional_text(download_payload.get("preview")),
-                content_type=normalize_optional_text(download_payload.get("content_type")),
-                origin=origin,
                 final_status=final_status,
-                status_message=normalize_optional_text(download_payload.get("status_message")),
-                download_path=normalize_optional_text(download_payload.get("download_path")),
+                status_message=normalize_optional_text(getattr(task, "status_message", None)),
+                download_path=normalize_optional_text(getattr(task, "download_path", None)),
             )
         except Exception as exc:
-            logger.warning("Failed to record terminal download history for task %s: %s", task_id, exc)
+            logger.warning("Failed to finalize download history for task %s: %s", task_id, exc)
 
-    if user_db is None or request_id is None or status != QueueStatus.ERROR:
+    if user_db is None or status != QueueStatus.ERROR:
+        return
+
+    request_id = normalize_positive_int(getattr(task, "request_id", None))
+    if request_id is None:
         return
 
     raw_error_message = getattr(task, "status_message", None)
@@ -1270,6 +1270,7 @@ def _task_owned_by_actor(task: Any, *, actor_user_id: int | None, actor_username
     return False
 
 
+backend.book_queue.set_queue_hook(_record_download_queued)
 backend.book_queue.set_terminal_status_hook(_record_download_terminal_snapshot)
 
 
