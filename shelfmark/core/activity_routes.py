@@ -7,21 +7,21 @@ from typing import Any, Callable, NamedTuple
 
 from flask import Flask, jsonify, request, session
 
-from shelfmark.core.download_history_service import DownloadHistoryService
+from shelfmark.core.download_history_service import ACTIVE_DOWNLOAD_STATUS, DownloadHistoryService, VALID_TERMINAL_STATUSES
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.models import ACTIVE_QUEUE_STATUSES, QueueStatus, TERMINAL_QUEUE_STATUSES
+from shelfmark.core.request_validation import RequestStatus
 from shelfmark.core.request_helpers import (
     emit_ws_event,
     extract_release_source_id,
+    normalize_optional_text,
     normalize_positive_int,
     now_utc_iso,
+    populate_request_usernames,
 )
 from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
-
-# Offset added to request row IDs so they don't collide with download_history
-# row IDs when both types are merged into a single sorted list.
-_REQUEST_ID_OFFSET = 1_000_000_000
 
 
 def _parse_timestamp(value: Any) -> float:
@@ -152,16 +152,20 @@ def _activity_ws_room(*, is_no_auth: bool, actor_db_user_id: int | None) -> str:
     return "admins"
 
 
+def _check_item_ownership(actor: _ActorContext, row: dict[str, Any]) -> Any | None:
+    """Return a 403 response if the actor doesn't own the item, else None."""
+    if actor.is_admin:
+        return None
+    owner_user_id = normalize_positive_int(row.get("user_id"))
+    if owner_user_id != actor.db_user_id:
+        return jsonify({"error": "Forbidden"}), 403
+    return None
+
+
 def _list_visible_requests(user_db: UserDB, *, is_admin: bool, db_user_id: int | None) -> list[dict[str, Any]]:
     if is_admin:
         request_rows = user_db.list_requests()
-        user_cache: dict[int, str] = {}
-        for row in request_rows:
-            requester_id = row["user_id"]
-            if requester_id not in user_cache:
-                requester = user_db.get_user(user_id=requester_id)
-                user_cache[requester_id] = requester.get("username", "") if requester else ""
-            row["username"] = user_cache[requester_id]
+        populate_request_usernames(request_rows, user_db)
         return request_rows
 
     if db_user_id is None:
@@ -169,51 +173,79 @@ def _list_visible_requests(user_db: UserDB, *, is_admin: bool, db_user_id: int |
     return user_db.list_requests(user_id=db_user_id)
 
 
-def _parse_download_item_key(item_key: Any) -> str | None:
-    if not isinstance(item_key, str) or not item_key.startswith("download:"):
+def _parse_item_key(item_key: Any, prefix: str) -> str | None:
+    """Extract the value after 'prefix:' from an item_key string."""
+    if not isinstance(item_key, str) or not item_key.startswith(f"{prefix}:"):
         return None
-    task_id = item_key.split(":", 1)[1].strip()
-    return task_id or None
+    value = item_key.split(":", 1)[1].strip()
+    return value or None
 
 
-def _parse_request_item_key(item_key: Any) -> int | None:
-    if not isinstance(item_key, str) or not item_key.startswith("request:"):
-        return None
-    raw_id = item_key.split(":", 1)[1].strip()
-    return normalize_positive_int(raw_id)
+_ALL_BUCKET_KEYS = (*ACTIVE_QUEUE_STATUSES, *TERMINAL_QUEUE_STATUSES)
 
 
-def _merge_terminal_snapshot_backfill(
+def _build_download_status_from_db(
     *,
-    status: dict[str, dict[str, Any]],
-    terminal_rows: list[dict[str, Any]],
-) -> None:
-    existing_task_ids: set[str] = set()
-    for bucket_key in ("queued", "resolving", "locating", "downloading", "complete", "error", "cancelled"):
-        bucket = status.get(bucket_key)
+    db_rows: list[dict[str, Any]],
+    queue_status: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Build the download status dict from DB rows, overlaying live queue data.
+
+    Active DB rows are matched against the queue for live progress.
+    Terminal DB rows go directly into their final bucket.
+    Stale active rows (no queue entry) are treated as interrupted errors.
+    """
+    status: dict[str, dict[str, Any]] = {key: {} for key in _ALL_BUCKET_KEYS}
+
+    # Index queue items by task_id for fast lookup: task_id -> (bucket_key, payload)
+    queue_index: dict[str, tuple[str, dict[str, Any]]] = {}
+    for bucket_key in _ALL_BUCKET_KEYS:
+        bucket = queue_status.get(bucket_key)
         if not isinstance(bucket, dict):
             continue
-        existing_task_ids.update(str(task_id) for task_id in bucket.keys())
+        for task_id, payload in bucket.items():
+            queue_index[str(task_id)] = (bucket_key, payload)
 
-    for row in terminal_rows:
+    for row in db_rows:
         task_id = str(row.get("task_id") or "").strip()
-        if not task_id or task_id in existing_task_ids:
+        if not task_id:
             continue
 
         final_status = row.get("final_status")
-        if final_status not in {"complete", "error", "cancelled"}:
-            continue
 
-        download_payload = DownloadHistoryService.to_download_payload(row)
-        if final_status not in status or not isinstance(status.get(final_status), dict):
-            status[final_status] = {}
-        status[final_status][task_id] = download_payload
-        existing_task_ids.add(task_id)
+        if final_status == ACTIVE_DOWNLOAD_STATUS:
+            queue_entry = queue_index.pop(task_id, None)
+            if queue_entry is not None:
+                bucket_key, queue_payload = queue_entry
+                status[bucket_key][task_id] = queue_payload
+            else:
+                # Stale active row — no queue entry means it was interrupted
+                download_payload = DownloadHistoryService.to_download_payload(row)
+                download_payload["status_message"] = "Interrupted"
+                status[QueueStatus.ERROR][task_id] = download_payload
+        elif final_status in VALID_TERMINAL_STATUSES:
+            download_payload = DownloadHistoryService.to_download_payload(row)
+            # For complete/cancelled the saved status_message is a stale
+            # progress string (e.g. "Fetching download sources") — clear it
+            # so the frontend only shows its own status label.  Error rows
+            # keep theirs since the message describes the failure.
+            if final_status in ("complete", "cancelled"):
+                download_payload["status_message"] = None
+            status[final_status][task_id] = download_payload
+
+    # Include any queue items that don't have a DB row yet (race condition safety).
+    # Only include active items — terminal items without a DB row are orphans
+    # (e.g. admin cleared history) and should not be shown.
+    for task_id, (bucket_key, queue_payload) in queue_index.items():
+        if bucket_key in ACTIVE_QUEUE_STATUSES and task_id not in status.get(bucket_key, {}):
+            status[bucket_key][task_id] = queue_payload
+
+    return status
 
 
 def _collect_active_download_task_ids(status: dict[str, dict[str, Any]]) -> set[str]:
     active_task_ids: set[str] = set()
-    for bucket_key in ("queued", "resolving", "locating", "downloading"):
+    for bucket_key in ACTIVE_QUEUE_STATUSES:
         bucket = status.get(bucket_key)
         if not isinstance(bucket, dict):
             continue
@@ -226,19 +258,19 @@ def _collect_active_download_task_ids(status: dict[str, dict[str, Any]]) -> set[
 
 def _request_terminal_status(row: dict[str, Any]) -> str | None:
     request_status = row.get("status")
-    if request_status == "pending":
+    if request_status == RequestStatus.PENDING:
         return None
-    if request_status == "rejected":
-        return "rejected"
-    if request_status == "cancelled":
-        return "cancelled"
-    if request_status != "fulfilled":
+    if request_status == RequestStatus.REJECTED:
+        return RequestStatus.REJECTED
+    if request_status == RequestStatus.CANCELLED:
+        return RequestStatus.CANCELLED
+    if request_status != RequestStatus.FULFILLED:
         return None
 
     delivery_state = str(row.get("delivery_state") or "").strip().lower()
-    if delivery_state in {"error", "cancelled"}:
+    if delivery_state in {QueueStatus.ERROR, QueueStatus.CANCELLED}:
         return delivery_state
-    return "complete"
+    return QueueStatus.COMPLETE
 
 
 def _minimal_request_snapshot(request_row: dict[str, Any], request_id: int) -> dict[str, Any]:
@@ -273,11 +305,12 @@ def _request_history_entry(request_row: dict[str, Any]) -> dict[str, Any] | None
     if request_id is None:
         return None
     final_status = _request_terminal_status(request_row)
+    item_key = f"request:{request_id}"
     return {
-        "id": _REQUEST_ID_OFFSET + request_id,
+        "id": item_key,
         "user_id": request_row.get("user_id"),
         "item_type": "request",
-        "item_key": f"request:{request_id}",
+        "item_key": item_key,
         "dismissed_at": request_row.get("dismissed_at"),
         "snapshot": _minimal_request_snapshot(request_row, request_id),
         "origin": "request",
@@ -338,7 +371,22 @@ def register_activity_routes(
 
         owner_user_scope = None if is_admin else db_user_id
 
-        status = queue_status(user_id=owner_user_scope)
+        live_queue = queue_status(user_id=owner_user_scope)
+
+        try:
+            db_rows = download_history_service.get_undismissed(
+                user_id=owner_user_scope,
+                limit=200,
+            )
+        except Exception as exc:
+            logger.warning("Failed to load undismissed download rows: %s", exc)
+            db_rows = []
+
+        status = _build_download_status_from_db(
+            db_rows=db_rows,
+            queue_status=live_queue,
+        )
+
         updated_requests = sync_request_delivery_states(
             user_db,
             queue_status=status,
@@ -346,15 +394,6 @@ def register_activity_routes(
         )
         emit_request_updates(updated_requests)
         request_rows = _list_visible_requests(user_db, is_admin=is_admin, db_user_id=db_user_id)
-
-        try:
-            terminal_rows = download_history_service.get_undismissed_terminal(
-                user_id=owner_user_scope,
-                limit=200,
-            )
-            _merge_terminal_snapshot_backfill(status=status, terminal_rows=terminal_rows)
-        except Exception as exc:
-            logger.warning("Failed to merge terminal download history rows: %s", exc)
 
         dismissed: list[dict[str, str]] = []
         dismissed_task_ids: list[str] = []
@@ -431,29 +470,27 @@ def register_activity_routes(
         dismissal_item: dict[str, str] | None = None
 
         if item_type == "download":
-            task_id = _parse_download_item_key(item_key)
+            task_id = _parse_item_key(item_key, "download")
             if task_id is None:
                 return jsonify({"error": "item_key must be in the format download:<task_id>"}), 400
 
             existing = download_history_service.get_by_task_id(task_id)
             if existing is None:
-                return jsonify({"error": "Activity item not found"}), 404
+                # Row already gone (e.g. admin cleared history) — treat as success
+                dismissal_item = {"item_type": "download", "item_key": f"download:{task_id}"}
+            else:
+                ownership_gate = _check_item_ownership(actor, existing)
+                if ownership_gate is not None:
+                    return ownership_gate
 
-            owner_user_id = normalize_positive_int(existing.get("user_id"))
-            if not actor.is_admin and owner_user_id != actor.db_user_id:
-                return jsonify({"error": "Forbidden"}), 403
-
-            dismissed_count = download_history_service.dismiss(
-                task_id=task_id,
-                user_id=actor.owner_scope,
-            )
-            if dismissed_count < 1:
-                return jsonify({"error": "Activity item not found"}), 404
-
-            dismissal_item = {"item_type": "download", "item_key": f"download:{task_id}"}
+                download_history_service.dismiss(
+                    task_id=task_id,
+                    user_id=actor.owner_scope,
+                )
+                dismissal_item = {"item_type": "download", "item_key": f"download:{task_id}"}
 
         elif item_type == "request":
-            request_id = _parse_request_item_key(item_key)
+            request_id = normalize_positive_int(_parse_item_key(item_key, "request"))
             if request_id is None:
                 return jsonify({"error": "item_key must be in the format request:<id>"}), 400
 
@@ -461,9 +498,9 @@ def register_activity_routes(
             if request_row is None:
                 return jsonify({"error": "Request not found"}), 404
 
-            owner_user_id = normalize_positive_int(request_row.get("user_id"))
-            if not actor.is_admin and owner_user_id != actor.db_user_id:
-                return jsonify({"error": "Forbidden"}), 403
+            ownership_gate = _check_item_ownership(actor, request_row)
+            if ownership_gate is not None:
+                return ownership_gate
 
             user_db.update_request(request_id, dismissed_at=now_utc_iso())
             dismissal_item = {"item_type": "request", "item_key": f"request:{request_id}"}
@@ -515,28 +552,28 @@ def register_activity_routes(
             item_key = item.get("item_key")
 
             if item_type == "download":
-                task_id = _parse_download_item_key(item_key)
+                task_id = _parse_item_key(item_key, "download")
                 if task_id is None:
                     return jsonify({"error": "download item_key must be in the format download:<task_id>"}), 400
                 existing = download_history_service.get_by_task_id(task_id)
                 if existing is None:
                     continue
-                owner_user_id = normalize_positive_int(existing.get("user_id"))
-                if not actor.is_admin and owner_user_id != actor.db_user_id:
-                    return jsonify({"error": "Forbidden"}), 403
+                ownership_gate = _check_item_ownership(actor, existing)
+                if ownership_gate is not None:
+                    return ownership_gate
                 download_task_ids.append(task_id)
                 continue
 
             if item_type == "request":
-                request_id = _parse_request_item_key(item_key)
+                request_id = normalize_positive_int(_parse_item_key(item_key, "request"))
                 if request_id is None:
                     return jsonify({"error": "request item_key must be in the format request:<id>"}), 400
                 request_row = user_db.get_request(request_id)
                 if request_row is None:
                     continue
-                owner_user_id = normalize_positive_int(request_row.get("user_id"))
-                if not actor.is_admin and owner_user_id != actor.db_user_id:
-                    return jsonify({"error": "Forbidden"}), 403
+                ownership_gate = _check_item_ownership(actor, request_row)
+                if ownership_gate is not None:
+                    return ownership_gate
                 request_ids.append(request_id)
                 continue
 
@@ -591,14 +628,14 @@ def register_activity_routes(
         if offset < 0:
             return jsonify({"error": "offset must be a non-negative integer"}), 400
 
-        # We combine download + request history and apply pagination over the merged list.
-        max_rows = min(limit + offset + 500, 5000)
+        # Fetch enough from each source to fill the requested page after merging.
+        merge_limit = offset + limit
         download_history_rows = download_history_service.get_history(
             user_id=actor.owner_scope,
-            limit=max_rows,
+            limit=merge_limit,
             offset=0,
         )
-        dismissed_request_rows = user_db.list_dismissed_requests(user_id=actor.owner_scope, limit=max_rows)
+        dismissed_request_rows = user_db.list_dismissed_requests(user_id=actor.owner_scope, limit=merge_limit)
         request_history_rows = [
             entry
             for entry in (_request_history_entry(row) for row in dismissed_request_rows)
@@ -609,7 +646,7 @@ def register_activity_routes(
         combined.sort(
             key=lambda row: (
                 _parse_timestamp(row.get("dismissed_at")),
-                int(row.get("id") or 0),
+                str(row.get("id") or ""),
             ),
             reverse=True,
         )

@@ -93,6 +93,7 @@ class TestTerminalSnapshotCapture:
             title="Requested Snapshot",
             user_id=user["id"],
             username=user["username"],
+            request_id=request_row["id"],
         )
         assert main_module.backend.book_queue.add(task) is True
 
@@ -190,6 +191,103 @@ class TestTerminalSnapshotCapture:
             assert user_id == user["id"]
             assert user_event == NotificationEvent.DOWNLOAD_FAILED
             assert user_context.error_message == "Resolver timed out"
+        finally:
+            main_module.backend.book_queue.cancel_download(task_id)
+
+    def test_queue_hook_records_active_row_at_queue_time(self, main_module):
+        user = _create_user(main_module, prefix="snap-queue")
+        task_id = f"queue-{uuid.uuid4().hex[:8]}"
+        task = DownloadTask(
+            task_id=task_id,
+            source="direct_download",
+            title="Queue Time Snapshot",
+            author="Queue Author",
+            user_id=user["id"],
+            username=user["username"],
+        )
+        assert main_module.backend.book_queue.add(task) is True
+
+        try:
+            row = _read_download_history_row(main_module, task_id)
+            assert row is not None
+            assert row["final_status"] == "active"
+            assert row["user_id"] == user["id"]
+            assert row["task_id"] == task_id
+            assert row["origin"] == "direct"
+            assert row["title"] == "Queue Time Snapshot"
+            assert row["author"] == "Queue Author"
+            assert row["queued_at"] is not None
+        finally:
+            main_module.backend.book_queue.cancel_download(task_id)
+
+    def test_queue_hook_records_requested_origin_for_request_linked_task(self, main_module):
+        user = _create_user(main_module, prefix="snap-queue-req")
+        task_id = f"queue-req-{uuid.uuid4().hex[:8]}"
+        request_row = main_module.user_db.create_request(
+            user_id=user["id"],
+            content_type="ebook",
+            request_level="release",
+            policy_mode="request_release",
+            book_data={
+                "title": "Requested Queue",
+                "author": "Request Author",
+                "provider": "openlibrary",
+                "provider_id": "queue-req-1",
+            },
+            release_data={
+                "source": "prowlarr",
+                "source_id": task_id,
+                "title": "Requested Queue.epub",
+            },
+            status="fulfilled",
+            delivery_state="queued",
+        )
+        task = DownloadTask(
+            task_id=task_id,
+            source="prowlarr",
+            title="Requested Queue",
+            user_id=user["id"],
+            username=user["username"],
+            request_id=request_row["id"],
+        )
+        assert main_module.backend.book_queue.add(task) is True
+
+        try:
+            row = _read_download_history_row(main_module, task_id)
+            assert row is not None
+            assert row["final_status"] == "active"
+            assert row["origin"] == "requested"
+            assert row["request_id"] == request_row["id"]
+        finally:
+            main_module.backend.book_queue.cancel_download(task_id)
+
+    def test_finalize_updates_active_row_to_terminal(self, main_module):
+        user = _create_user(main_module, prefix="snap-finalize")
+        task_id = f"finalize-{uuid.uuid4().hex[:8]}"
+        task = DownloadTask(
+            task_id=task_id,
+            source="direct_download",
+            title="Finalize Snapshot",
+            user_id=user["id"],
+            username=user["username"],
+        )
+        assert main_module.backend.book_queue.add(task) is True
+
+        try:
+            # Verify active row exists
+            row = _read_download_history_row(main_module, task_id)
+            assert row is not None
+            assert row["final_status"] == "active"
+
+            # Transition to complete
+            main_module.backend.book_queue.update_status(task_id, QueueStatus.COMPLETE)
+
+            row = _read_download_history_row(main_module, task_id)
+            assert row is not None
+            assert row["final_status"] == "complete"
+            # Metadata from queue-time should be preserved
+            assert row["title"] == "Finalize Snapshot"
+            assert row["user_id"] == user["id"]
         finally:
             main_module.backend.book_queue.cancel_download(task_id)
 

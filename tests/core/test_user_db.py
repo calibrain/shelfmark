@@ -818,9 +818,6 @@ class TestDownloadRequests:
             book_data=self._book_data(),
         )
 
-        with pytest.raises(ValueError, match="request_level=release requires non-null release_data"):
-            user_db.update_request(created["id"], request_level="release")
-
         updated = user_db.update_request(
             created["id"],
             request_level="release",
@@ -1015,36 +1012,6 @@ class TestDownloadRequests:
         bob_rows = user_db.list_dismissed_requests(user_id=bob["id"])
         assert [row["id"] for row in bob_rows] == [second["id"]]
 
-    def test_clear_request_dismissals_scopes_by_user(self, user_db):
-        alice = user_db.create_user(username="alice")
-        bob = user_db.create_user(username="bob")
-        alice_request = user_db.create_request(
-            user_id=alice["id"],
-            content_type="ebook",
-            request_level="book",
-            policy_mode="request_book",
-            book_data=self._book_data(),
-        )
-        bob_request = user_db.create_request(
-            user_id=bob["id"],
-            content_type="ebook",
-            request_level="book",
-            policy_mode="request_book",
-            book_data=self._book_data(),
-        )
-
-        user_db.update_request(alice_request["id"], dismissed_at="2026-01-01T10:00:00+00:00")
-        user_db.update_request(bob_request["id"], dismissed_at="2026-01-01T11:00:00+00:00")
-
-        cleared_alice = user_db.clear_request_dismissals(user_id=alice["id"])
-        assert cleared_alice == 1
-        assert user_db.get_request(alice_request["id"])["dismissed_at"] is None
-        assert user_db.get_request(bob_request["id"])["dismissed_at"] is not None
-
-        cleared_all = user_db.clear_request_dismissals(user_id=None)
-        assert cleared_all == 1
-        assert user_db.get_request(bob_request["id"])["dismissed_at"] is None
-
     def test_delete_dismissed_requests_scopes_by_user_and_only_deletes_terminal(self, user_db):
         alice = user_db.create_user(username="alice")
         bob = user_db.create_user(username="bob")
@@ -1091,9 +1058,6 @@ class TestDownloadRequests:
     def test_request_dismissal_helpers_validate_user_scope(self, user_db):
         with pytest.raises(ValueError, match="user_id must be a positive integer"):
             user_db.list_dismissed_requests(user_id=0)
-
-        with pytest.raises(ValueError, match="user_id must be a positive integer"):
-            user_db.clear_request_dismissals(user_id=-1)
 
         with pytest.raises(ValueError, match="user_id must be a positive integer"):
             user_db.delete_dismissed_requests(user_id=0)

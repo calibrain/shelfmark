@@ -53,8 +53,10 @@ def _record_terminal_download(
     final_status: str = "complete",
     request_id: int | None = None,
     status_message: str | None = None,
+    download_path: str | None = None,
 ) -> None:
-    main_module.download_history_service.record_terminal(
+    svc = main_module.download_history_service
+    svc.record_download(
         task_id=task_id,
         user_id=user_id,
         username=username,
@@ -68,9 +70,12 @@ def _record_terminal_download(
         preview=None,
         content_type="ebook",
         origin=origin,
+    )
+    svc.finalize_download(
+        task_id=task_id,
         final_status=final_status,
         status_message=status_message,
-        download_path=None,
+        download_path=download_path,
     )
 
 
@@ -162,6 +167,36 @@ class TestActivityRoutes:
         assert history_after_clear.status_code == 200
         assert history_after_clear.json == []
 
+    def test_dismiss_preserves_terminal_snapshot_without_live_queue_merge(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        task_id = "dismiss-preserve-task"
+        _record_terminal_download(
+            main_module,
+            task_id=task_id,
+            user_id=user["id"],
+            username=user["username"],
+            title="Recorded Title",
+            author="Recorded Author",
+            status_message="Complete",
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            dismiss_response = client.post(
+                "/api/activity/dismiss",
+                json={"item_type": "download", "item_key": f"download:{task_id}"},
+            )
+            history_response = client.get("/api/activity/history?limit=10&offset=0")
+
+        assert dismiss_response.status_code == 200
+        assert history_response.status_code == 200
+        assert history_response.json[0]["item_key"] == f"download:{task_id}"
+        snapshot_download = history_response.json[0]["snapshot"]["download"]
+        assert snapshot_download["title"] == "Recorded Title"
+        assert snapshot_download["author"] == "Recorded Author"
+        assert snapshot_download["status_message"] is None
+
     def test_clear_history_deletes_dismissed_requests_from_snapshot(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
@@ -248,27 +283,6 @@ class TestActivityRoutes:
             user_id=user["id"],
             username=user["username"],
             title="History Local Download",
-        )
-
-        row = main_module.download_history_service.get_by_task_id(task_id)
-        assert row is not None
-        assert main_module.download_history_service is not None
-        main_module.download_history_service.record_terminal(
-            task_id=task_id,
-            user_id=user["id"],
-            username=user["username"],
-            request_id=row.get("request_id"),
-            source=row.get("source") or "direct_download",
-            source_display_name=row.get("source_display_name"),
-            title=row.get("title") or "History Local Download",
-            author=row.get("author"),
-            format=row.get("format"),
-            size=row.get("size"),
-            preview=row.get("preview"),
-            content_type=row.get("content_type"),
-            origin=row.get("origin") or "direct",
-            final_status=row.get("final_status") or "complete",
-            status_message=row.get("status_message"),
             download_path=str(file_path),
         )
 
@@ -295,7 +309,7 @@ class TestActivityRoutes:
                 "provider_id": "legacy-fulfilled-1",
             },
             status="fulfilled",
-            delivery_state="unknown",
+            delivery_state="none",
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
@@ -354,6 +368,51 @@ class TestActivityRoutes:
             ANY,
             to=f"user_{user['id']}",
         )
+
+    def test_dismiss_many_preserves_terminal_snapshots_without_live_queue_merge(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        first_task_id = "dismiss-many-preserve-1"
+        second_task_id = "dismiss-many-preserve-2"
+        _record_terminal_download(
+            main_module,
+            task_id=first_task_id,
+            user_id=user["id"],
+            username=user["username"],
+            title="First Title",
+            author="First Author",
+        )
+        _record_terminal_download(
+            main_module,
+            task_id=second_task_id,
+            user_id=user["id"],
+            username=user["username"],
+            title="Second Title",
+            author="Second Author",
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            dismiss_many_response = client.post(
+                "/api/activity/dismiss-many",
+                json={
+                    "items": [
+                        {"item_type": "download", "item_key": f"download:{first_task_id}"},
+                        {"item_type": "download", "item_key": f"download:{second_task_id}"},
+                    ]
+                },
+            )
+            history_response = client.get("/api/activity/history?limit=20&offset=0")
+
+        assert dismiss_many_response.status_code == 200
+        assert dismiss_many_response.json["count"] == 2
+        assert history_response.status_code == 200
+
+        rows_by_key = {row["item_key"]: row for row in history_response.json}
+        assert rows_by_key[f"download:{first_task_id}"]["snapshot"]["download"]["title"] == "First Title"
+        assert rows_by_key[f"download:{first_task_id}"]["snapshot"]["download"]["author"] == "First Author"
+        assert rows_by_key[f"download:{second_task_id}"]["snapshot"]["download"]["title"] == "Second Title"
+        assert rows_by_key[f"download:{second_task_id}"]["snapshot"]["download"]["author"] == "Second Author"
 
     def test_no_auth_dismiss_many_and_history_use_shared_identity(self, main_module):
         task_id = f"no-auth-{uuid.uuid4().hex[:10]}"
@@ -512,6 +571,77 @@ class TestActivityRoutes:
         assert response.status_code == 200
         assert "cross-user-expired-task" in response.json["status"]["complete"]
         assert response.json["status"]["complete"]["cross-user-expired-task"]["id"] == "cross-user-expired-task"
+
+    def test_snapshot_shows_stale_active_download_as_interrupted_error(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        # Record a download at queue time (active status) but don't put it in the queue
+        main_module.download_history_service.record_download(
+            task_id="stale-active-task",
+            user_id=user["id"],
+            username=user["username"],
+            request_id=None,
+            source="direct_download",
+            source_display_name="Direct Download",
+            title="Stale Active Task",
+            author="Stale Author",
+            format="epub",
+            size="1 MB",
+            preview=None,
+            content_type="ebook",
+            origin="direct",
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+                response = client.get("/api/activity/snapshot")
+
+        assert response.status_code == 200
+        assert "stale-active-task" in response.json["status"]["error"]
+        assert response.json["status"]["error"]["stale-active-task"]["status_message"] == "Interrupted"
+
+    def test_snapshot_active_download_with_queue_entry_shows_in_correct_bucket(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        # Record a download at queue time
+        main_module.download_history_service.record_download(
+            task_id="active-downloading-task",
+            user_id=user["id"],
+            username=user["username"],
+            request_id=None,
+            source="direct_download",
+            source_display_name="Direct Download",
+            title="Active Downloading Task",
+            author="Active Author",
+            format="epub",
+            size="2 MB",
+            preview=None,
+            content_type="ebook",
+            origin="direct",
+        )
+
+        # Simulate it being active in the queue
+        active_status = _sample_status_payload()
+        active_status["downloading"] = {
+            "active-downloading-task": {
+                "id": "active-downloading-task",
+                "title": "Active Downloading Task",
+                "author": "Active Author",
+                "source": "direct_download",
+                "progress": 0.5,
+                "status_message": "Downloading 50%",
+            }
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_status", return_value=active_status):
+                response = client.get("/api/activity/snapshot")
+
+        assert response.status_code == 200
+        assert "active-downloading-task" in response.json["status"]["downloading"]
+        assert response.json["status"]["downloading"]["active-downloading-task"]["progress"] == 0.5
 
     def test_snapshot_clears_stale_download_dismissal_when_same_task_is_active(self, main_module, client):
         user = _create_user(main_module, prefix="reader")

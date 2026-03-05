@@ -307,7 +307,7 @@ def test_fulfil_request_requires_release_data_for_book_level(user_db):
         book_data=_book_data(),
     )
 
-    with pytest.raises(RequestServiceError, match="release_data is required to fulfil book-level requests"):
+    with pytest.raises(RequestServiceError, match="release_data is required to fulfil requests"):
         fulfil_request(
             user_db,
             request_id=created["id"],

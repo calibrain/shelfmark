@@ -175,6 +175,19 @@ const buildActions = (item: ActivityItem, isAdmin: boolean): ActivityCardAction[
         },
       ];
     }
+    if (item.visualStatus === 'cancelled') {
+      return [
+        {
+          kind: 'download-retry',
+          bookId: item.downloadBookId,
+        },
+        {
+          kind: 'download-dismiss',
+          bookId: item.downloadBookId,
+          linkedRequestId: item.requestId,
+        },
+      ];
+    }
     return [
       {
         kind: 'download-dismiss',

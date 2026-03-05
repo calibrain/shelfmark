@@ -17,6 +17,7 @@ from shelfmark.core.request_policy import (
     parse_policy_mode,
     resolve_policy_mode,
 )
+from shelfmark.core.request_validation import RequestStatus
 from shelfmark.core.requests_service import (
     RequestServiceError,
     cancel_request,
@@ -36,6 +37,8 @@ from shelfmark.core.request_helpers import (
     emit_ws_event,
     load_users_request_policy_settings,
     normalize_optional_text,
+    normalize_positive_int,
+    populate_request_usernames,
 )
 from shelfmark.core.user_db import UserDB
 
@@ -86,6 +89,18 @@ def _require_db_user_id() -> tuple[int | None, Any | None]:
             403,
             code="user_identity_unavailable",
         )
+
+
+def _require_admin_user_id() -> tuple[int | None, Any | None]:
+    if not session.get("is_admin", False):
+        return None, (jsonify({"error": "Admin access required"}), 403)
+    raw_admin_id = session.get("db_user_id")
+    if raw_admin_id is None:
+        return None, (jsonify({"error": "Admin user identity unavailable"}), 403)
+    try:
+        return int(raw_admin_id), None
+    except (TypeError, ValueError):
+        return None, (jsonify({"error": "Admin user identity unavailable"}), 403)
 
 
 def _resolve_effective_policy(
@@ -177,23 +192,16 @@ def _format_user_label(username: str | None, user_id: int | None = None) -> str:
     return "unknown user"
 
 
-def _resolve_request_username(
-    user_db: UserDB,
-    *,
-    request_row: dict[str, Any],
-    fallback_username: str | None = None,
-) -> str | None:
-    normalized_fallback = normalize_optional_text(fallback_username)
-    raw_user_id = request_row.get("user_id")
-    try:
-        request_user_id = int(raw_user_id)
-    except (TypeError, ValueError):
-        return normalized_fallback
-
-    requester = user_db.get_user(user_id=request_user_id)
-    if not isinstance(requester, dict):
-        return normalized_fallback
-    return normalize_optional_text(requester.get("username")) or normalized_fallback
+def _format_requester_label(user_db: UserDB, request_row: dict[str, Any]) -> str:
+    """Resolve a display label for the user who created a request."""
+    user_id = normalize_positive_int(request_row.get("user_id"))
+    if user_id is not None:
+        requester = user_db.get_user(user_id=user_id)
+        if isinstance(requester, dict):
+            username = normalize_optional_text(requester.get("username"))
+            if username is not None:
+                return username
+    return _format_user_label(None, user_id)
 
 
 def _resolve_request_source_and_format(request_row: dict[str, Any]) -> tuple[str, str | None]:
@@ -209,13 +217,6 @@ def _resolve_request_source_and_format(request_row: dict[str, Any]) -> tuple[str
     return normalize_source(request_row.get("source_hint")), None
 
 
-def _resolve_request_user_id(request_row: dict[str, Any]) -> int | None:
-    raw_user_id = request_row.get("user_id")
-    try:
-        user_id = int(raw_user_id)
-    except (TypeError, ValueError):
-        return None
-    return user_id if user_id > 0 else None
 
 
 def _notify_admin_for_request_event(
@@ -223,7 +224,6 @@ def _notify_admin_for_request_event(
     *,
     event: NotificationEvent,
     request_row: dict[str, Any],
-    fallback_username: str | None = None,
 ) -> None:
     book_data = request_row.get("book_data")
     if not isinstance(book_data, dict):
@@ -234,11 +234,7 @@ def _notify_admin_for_request_event(
         event=event,
         title=str(book_data.get("title") or "Unknown title"),
         author=str(book_data.get("author") or "Unknown author"),
-        username=_resolve_request_username(
-            user_db,
-            request_row=request_row,
-            fallback_username=fallback_username,
-        ),
+        username=_format_requester_label(user_db, request_row),
         content_type=normalize_content_type(
             request_row.get("content_type") or book_data.get("content_type")
         ),
@@ -248,7 +244,7 @@ def _notify_admin_for_request_event(
         error_message=None,
     )
 
-    owner_user_id = _resolve_request_user_id(request_row)
+    owner_user_id = normalize_positive_int(request_row.get("user_id"))
     try:
         notify_admin(event, context)
     except Exception as exc:
@@ -513,7 +509,6 @@ def register_request_routes(
             user_db,
             event=NotificationEvent.REQUEST_CREATED,
             request_row=created,
-            fallback_username=actor_username,
         )
 
         return jsonify(created), 201
@@ -606,13 +601,7 @@ def register_request_routes(
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
-        user_cache: dict[int, str] = {}
-        for row in rows:
-            requester_id = row["user_id"]
-            if requester_id not in user_cache:
-                requester = user_db.get_user(user_id=requester_id)
-                user_cache[requester_id] = requester.get("username", "") if requester else ""
-            row["username"] = user_cache[requester_id]
+        populate_request_usernames(rows, user_db)
 
         return jsonify(rows)
 
@@ -626,11 +615,11 @@ def register_request_routes(
 
         by_status = {
             status: len(user_db.list_requests(status=status))
-            for status in ("pending", "fulfilled", "rejected", "cancelled")
+            for status in RequestStatus
         }
         return jsonify(
             {
-                "pending": by_status["pending"],
+                "pending": by_status[RequestStatus.PENDING],
                 "total": sum(by_status.values()),
                 "by_status": by_status,
             }
@@ -641,16 +630,10 @@ def register_request_routes(
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
-        if not session.get("is_admin", False):
-            return jsonify({"error": "Admin access required"}), 403
 
-        raw_admin_id = session.get("db_user_id")
-        if raw_admin_id is None:
-            return jsonify({"error": "Admin user identity unavailable"}), 403
-        try:
-            admin_user_id = int(raw_admin_id)
-        except (TypeError, ValueError):
-            return jsonify({"error": "Admin user identity unavailable"}), 403
+        admin_user_id, admin_gate = _require_admin_user_id()
+        if admin_gate is not None:
+            return admin_gate
 
         data = request.get_json(silent=True) or {}
         if not isinstance(data, dict):
@@ -675,10 +658,7 @@ def register_request_routes(
             "title": _resolve_request_title(updated),
         }
         admin_label = _format_user_label(normalize_optional_text(session.get("user_id")), admin_user_id)
-        requester_label = _format_user_label(
-            _resolve_request_username(user_db, request_row=updated),
-            _resolve_request_user_id(updated),
-        )
+        requester_label = _format_requester_label(user_db, updated)
         logger.info(
             "Request fulfilled #%s for '%s' by %s (requested by %s)",
             updated["id"],
@@ -712,16 +692,10 @@ def register_request_routes(
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
-        if not session.get("is_admin", False):
-            return jsonify({"error": "Admin access required"}), 403
 
-        raw_admin_id = session.get("db_user_id")
-        if raw_admin_id is None:
-            return jsonify({"error": "Admin user identity unavailable"}), 403
-        try:
-            admin_user_id = int(raw_admin_id)
-        except (TypeError, ValueError):
-            return jsonify({"error": "Admin user identity unavailable"}), 403
+        admin_user_id, admin_gate = _require_admin_user_id()
+        if admin_gate is not None:
+            return admin_gate
 
         data = request.get_json(silent=True) or {}
         if not isinstance(data, dict):
@@ -743,10 +717,7 @@ def register_request_routes(
             "title": _resolve_request_title(updated),
         }
         admin_label = _format_user_label(normalize_optional_text(session.get("user_id")), admin_user_id)
-        requester_label = _format_user_label(
-            _resolve_request_username(user_db, request_row=updated),
-            _resolve_request_user_id(updated),
-        )
+        requester_label = _format_requester_label(user_db, updated)
         logger.info(
             "Request rejected #%s for '%s' by %s (requested by %s)",
             updated["id"],

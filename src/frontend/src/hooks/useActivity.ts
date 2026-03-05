@@ -407,6 +407,7 @@ export const useActivity = ({
     void clearActivityHistory()
       .then(() => {
         void refreshActivitySnapshot();
+        void refreshActivityHistory();
       })
       .catch((error) => {
         console.error('Clear history failed:', error);

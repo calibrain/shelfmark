@@ -922,7 +922,7 @@ class TestRequestRoutes:
                     fulfil_resp = client.post(f"/api/admin/requests/{request_id}/fulfil", json={})
 
         assert fulfil_resp.status_code == 400
-        assert "release_data is required to fulfil book-level requests" in fulfil_resp.json["error"]
+        assert "release_data is required to fulfil requests" in fulfil_resp.json["error"]
 
     def test_admin_fulfil_book_level_request_manual_approval(self, main_module, client):
         user = _create_user(main_module, prefix="reader")

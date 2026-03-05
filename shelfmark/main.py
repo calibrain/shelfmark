@@ -18,6 +18,7 @@ from werkzeug.security import check_password_hash
 from werkzeug.wrappers import Response
 
 from shelfmark.download import orchestrator as backend
+from shelfmark.release_sources import get_source_display_name
 from shelfmark.release_sources.direct_download import SearchUnavailable
 from shelfmark.config.settings import _SUPPORTED_BOOK_LANGUAGE
 from shelfmark.config.env import (
@@ -27,7 +28,7 @@ from shelfmark.config.env import (
 )
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import SearchFilters, QueueStatus
+from shelfmark.core.models import SearchFilters, QueueStatus, TERMINAL_QUEUE_STATUSES
 from shelfmark.core.prefix_middleware import PrefixMiddleware
 from shelfmark.core.auth_modes import (
     get_auth_check_admin_status,
@@ -53,9 +54,9 @@ from shelfmark.core.download_history_service import DownloadHistoryService
 from shelfmark.core.notifications import NotificationContext, NotificationEvent, notify_admin, notify_user
 from shelfmark.core.request_helpers import (
     coerce_bool,
-    extract_release_source_id,
     load_users_request_policy_settings,
     normalize_optional_text,
+    normalize_positive_int,
 )
 from shelfmark.core.utils import normalize_base_path
 from shelfmark.api.websocket import ws_manager
@@ -1104,16 +1105,10 @@ def _resolve_status_scope(*, require_authenticated: bool = True) -> tuple[bool, 
 
 
 def _queue_status_to_final_activity_status(status: QueueStatus) -> str | None:
-    if status == QueueStatus.COMPLETE:
-        return "complete"
-    if status == QueueStatus.ERROR:
-        return "error"
-    if status == QueueStatus.CANCELLED:
-        return "cancelled"
-    return None
+    return status.value if status in TERMINAL_QUEUE_STATUSES else None
 
 def _queue_status_to_notification_event(status: QueueStatus) -> NotificationEvent | None:
-    if status in {QueueStatus.COMPLETE, QueueStatus.AVAILABLE, QueueStatus.DONE}:
+    if status == QueueStatus.COMPLETE:
         return NotificationEvent.DOWNLOAD_COMPLETE
     if status == QueueStatus.ERROR:
         return NotificationEvent.DOWNLOAD_FAILED
@@ -1169,6 +1164,41 @@ def _notify_admin_for_terminal_download_status(*, task_id: str, status: QueueSta
         )
 
 
+def _record_download_queued(task_id: str, task: Any) -> None:
+    """Persist initial download record when a task enters the queue."""
+    if download_history_service is None:
+        return
+
+    owner_user_id = normalize_positive_int(getattr(task, "user_id", None))
+    request_id = normalize_positive_int(getattr(task, "request_id", None))
+    origin = "requested" if request_id else "direct"
+
+    source_name = normalize_source(getattr(task, "source", None))
+    try:
+        source_display = get_source_display_name(source_name)
+    except Exception:
+        source_display = None
+
+    try:
+        download_history_service.record_download(
+            task_id=task_id,
+            user_id=owner_user_id,
+            username=normalize_optional_text(getattr(task, "username", None)),
+            request_id=request_id,
+            source=source_name,
+            source_display_name=source_display,
+            title=str(getattr(task, "title", "Unknown title") or "Unknown title"),
+            author=normalize_optional_text(getattr(task, "author", None)),
+            format=normalize_optional_text(getattr(task, "format", None)),
+            size=normalize_optional_text(getattr(task, "size", None)),
+            preview=normalize_optional_text(getattr(task, "preview", None)),
+            content_type=normalize_optional_text(getattr(task, "content_type", None)),
+            origin=origin,
+        )
+    except Exception as exc:
+        logger.warning("Failed to record download at queue time for task %s: %s", task_id, exc)
+
+
 def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: Any) -> None:
     _notify_admin_for_terminal_download_status(task_id=task_id, status=status, task=task)
 
@@ -1176,68 +1206,22 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
     if final_status is None:
         return
 
-    raw_owner_user_id = getattr(task, "user_id", None)
-    try:
-        owner_user_id = int(raw_owner_user_id) if raw_owner_user_id is not None else None
-    except (TypeError, ValueError):
-        owner_user_id = None
-
-    linked_request: dict[str, Any] | None = None
-    request_id: int | None = None
-    origin = "direct"
-    if user_db is not None and owner_user_id is not None:
-        fulfilled_rows = user_db.list_requests(user_id=owner_user_id, status="fulfilled")
-        for row in fulfilled_rows:
-            source_id = extract_release_source_id(row.get("release_data"))
-            if source_id == task_id:
-                linked_request = row
-                origin = "requested"
-                try:
-                    request_id = int(row.get("id"))
-                except (TypeError, ValueError):
-                    request_id = None
-                break
-
-    try:
-        download_payload = backend._task_to_dict(task)
-    except Exception as exc:
-        logger.warning("Failed to serialize task payload for terminal snapshot: %s", exc)
-        download_payload = {
-            "id": task_id,
-            "title": getattr(task, "title", "Unknown title"),
-            "author": getattr(task, "author", "Unknown author"),
-            "source": getattr(task, "source", "direct_download"),
-            "added_time": getattr(task, "added_time", 0),
-            "status_message": getattr(task, "status_message", None),
-            "download_path": getattr(task, "download_path", None),
-            "user_id": getattr(task, "user_id", None),
-            "username": getattr(task, "username", None),
-        }
-
     if download_history_service is not None:
         try:
-            download_history_service.record_terminal(
-                user_id=owner_user_id,
+            download_history_service.finalize_download(
                 task_id=task_id,
-                username=normalize_optional_text(getattr(task, "username", None)),
-                request_id=request_id,
-                source=normalize_source(getattr(task, "source", None)),
-                source_display_name=download_payload.get("source_display_name"),
-                title=str(download_payload.get("title") or getattr(task, "title", "Unknown title")),
-                author=normalize_optional_text(download_payload.get("author")),
-                format=normalize_optional_text(download_payload.get("format")),
-                size=normalize_optional_text(download_payload.get("size")),
-                preview=normalize_optional_text(download_payload.get("preview")),
-                content_type=normalize_optional_text(download_payload.get("content_type")),
-                origin=origin,
                 final_status=final_status,
-                status_message=normalize_optional_text(download_payload.get("status_message")),
-                download_path=normalize_optional_text(download_payload.get("download_path")),
+                status_message=normalize_optional_text(getattr(task, "status_message", None)),
+                download_path=normalize_optional_text(getattr(task, "download_path", None)),
             )
         except Exception as exc:
-            logger.warning("Failed to record terminal download history for task %s: %s", task_id, exc)
+            logger.warning("Failed to finalize download history for task %s: %s", task_id, exc)
 
-    if user_db is None or linked_request is None or request_id is None or status != QueueStatus.ERROR:
+    if user_db is None or status != QueueStatus.ERROR:
+        return
+
+    request_id = normalize_positive_int(getattr(task, "request_id", None))
+    if request_id is None:
         return
 
     raw_error_message = getattr(task, "status_message", None)
@@ -1280,18 +1264,7 @@ def _task_owned_by_actor(task: Any, *, actor_user_id: int | None, actor_username
     return False
 
 
-def _is_graduated_request_download(task_id: str, *, user_id: int) -> bool:
-    if user_db is None:
-        return False
-
-    fulfilled_rows = user_db.list_requests(user_id=user_id, status="fulfilled")
-    for row in fulfilled_rows:
-        source_id = extract_release_source_id(row.get("release_data"))
-        if source_id == task_id:
-            return True
-    return False
-
-
+backend.book_queue.set_queue_hook(_record_download_queued)
 backend.book_queue.set_terminal_status_hook(_record_download_terminal_snapshot)
 
 
@@ -1502,7 +1475,7 @@ def api_cancel_download(book_id: str) -> Union[Response, Tuple[Response, int]]:
             ):
                 return jsonify({"error": "Forbidden", "code": "download_not_owned"}), 403
 
-            if _is_graduated_request_download(book_id, user_id=db_user_id):
+            if getattr(task, "request_id", None) is not None:
                 return jsonify({"error": "Forbidden", "code": "requested_download_cancel_forbidden"}), 403
 
         success = backend.cancel_download(book_id)
@@ -1537,16 +1510,8 @@ def api_retry_download(book_id: str) -> Union[Response, Tuple[Response, int]]:
             ):
                 return jsonify({"error": "Forbidden", "code": "download_not_owned"}), 403
 
-        raw_owner_user_id = getattr(task, "user_id", None)
-        try:
-            owner_user_id = int(raw_owner_user_id) if raw_owner_user_id is not None else None
-        except (TypeError, ValueError):
-            owner_user_id = None
-
-        is_request_linked = bool(getattr(task, "request_id", None))
-        if not is_request_linked and owner_user_id is not None:
-            is_request_linked = _is_graduated_request_download(book_id, user_id=owner_user_id)
-        if is_request_linked:
+        task_status = backend.book_queue.get_task_status(book_id)
+        if getattr(task, "request_id", None) is not None and task_status != QueueStatus.CANCELLED:
             return jsonify({"error": "Forbidden", "code": "requested_download_retry_forbidden"}), 403
 
         success, error = backend.retry_download(book_id)
@@ -2465,6 +2430,7 @@ def api_settings_get_all() -> Union[Response, Tuple[Response, int]]:
         # This triggers the @register_settings decorators
         import shelfmark.config.settings  # noqa: F401
         import shelfmark.config.security  # noqa: F401
+        import shelfmark.config.users_settings  # noqa: F401
         import shelfmark.config.notifications_settings  # noqa: F401
 
         data = serialize_all_settings(include_values=True)
@@ -2495,6 +2461,7 @@ def api_settings_get_tab(tab_name: str) -> Union[Response, Tuple[Response, int]]
         # Ensure settings are registered
         import shelfmark.config.settings  # noqa: F401
         import shelfmark.config.security  # noqa: F401
+        import shelfmark.config.users_settings  # noqa: F401
         import shelfmark.config.notifications_settings  # noqa: F401
 
         tab = get_settings_tab(tab_name)
@@ -2531,6 +2498,7 @@ def api_settings_update_tab(tab_name: str) -> Union[Response, Tuple[Response, in
         # Ensure settings are registered
         import shelfmark.config.settings  # noqa: F401
         import shelfmark.config.security  # noqa: F401
+        import shelfmark.config.users_settings  # noqa: F401
         import shelfmark.config.notifications_settings  # noqa: F401
 
         tab = get_settings_tab(tab_name)
@@ -2578,6 +2546,7 @@ def api_settings_execute_action(tab_name: str, action_key: str) -> Union[Respons
         # Ensure settings are registered
         import shelfmark.config.settings  # noqa: F401
         import shelfmark.config.security  # noqa: F401
+        import shelfmark.config.users_settings  # noqa: F401
         import shelfmark.config.notifications_settings  # noqa: F401
 
         # Get current form values if provided (for testing with unsaved values)

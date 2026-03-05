@@ -5,13 +5,19 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
+from datetime import datetime
 from typing import Any
 
+from shelfmark.core.logger import setup_logger
+from shelfmark.core.models import TERMINAL_QUEUE_STATUSES
 from shelfmark.core.request_helpers import normalize_optional_positive_int, normalize_optional_text, now_utc_iso
 
+logger = setup_logger(__name__)
 
-VALID_FINAL_STATUSES = frozenset({"complete", "error", "cancelled"})
-VALID_ORIGINS = frozenset({"direct", "request", "requested"})
+
+VALID_TERMINAL_STATUSES = frozenset(s.value for s in TERMINAL_QUEUE_STATUSES)
+ACTIVE_DOWNLOAD_STATUS = "active"
+VALID_ORIGINS = frozenset({"direct", "requested"})
 
 
 def _normalize_task_id(task_id: Any) -> str:
@@ -27,7 +33,7 @@ def _normalize_origin(origin: Any) -> str:
         return "direct"
     lowered = normalized.lower()
     if lowered not in VALID_ORIGINS:
-        raise ValueError("origin must be one of: direct, request, requested")
+        raise ValueError("origin must be one of: direct, requested")
     return lowered
 
 
@@ -36,7 +42,7 @@ def _normalize_final_status(final_status: Any) -> str:
     if normalized is None:
         raise ValueError("final_status must be a non-empty string")
     lowered = normalized.lower()
-    if lowered not in VALID_FINAL_STATUSES:
+    if lowered not in VALID_TERMINAL_STATUSES:
         raise ValueError("final_status must be one of: complete, error, cancelled")
     return lowered
 
@@ -109,23 +115,39 @@ class DownloadHistoryService:
             "source_display_name": row.get("source_display_name"),
             "status_message": row.get("status_message"),
             "download_path": DownloadHistoryService._resolve_existing_download_path(row.get("download_path")),
+            "added_time": DownloadHistoryService._iso_to_epoch(row.get("queued_at")),
             "user_id": row.get("user_id"),
             "username": row.get("username"),
             "request_id": row.get("request_id"),
         }
 
+    @staticmethod
+    def _iso_to_epoch(value: Any) -> float | None:
+        if not isinstance(value, str) or not value.strip():
+            return None
+        normalized = value.strip().replace("Z", "+00:00")
+        try:
+            return datetime.fromisoformat(normalized).timestamp()
+        except ValueError:
+            return None
+
     @classmethod
     def _to_history_row(cls, row: dict[str, Any]) -> dict[str, Any]:
         task_id = str(row.get("task_id") or "").strip()
+        item_key = cls._to_item_key(task_id)
+        download_payload = cls.to_download_payload(row)
+        # Clear stale progress messages for non-error terminal states.
+        if row.get("final_status") in ("complete", "cancelled"):
+            download_payload["status_message"] = None
         return {
-            "id": row.get("id"),
+            "id": item_key,
             "user_id": row.get("user_id"),
             "item_type": "download",
-            "item_key": cls._to_item_key(task_id),
+            "item_key": item_key,
             "dismissed_at": row.get("dismissed_at"),
             "snapshot": {
                 "kind": "download",
-                "download": cls.to_download_payload(row),
+                "download": download_payload,
             },
             "origin": row.get("origin"),
             "final_status": row.get("final_status"),
@@ -134,7 +156,7 @@ class DownloadHistoryService:
             "source_id": task_id or None,
         }
 
-    def record_terminal(
+    def record_download(
         self,
         *,
         task_id: str,
@@ -150,11 +172,13 @@ class DownloadHistoryService:
         preview: str | None,
         content_type: str | None,
         origin: str,
-        final_status: str,
-        status_message: str | None,
-        download_path: str | None,
-        terminal_at: str | None = None,
     ) -> None:
+        """Record a download at queue time with final_status='active'.
+
+        On first queue: inserts a new row.
+        On retry (row already exists): resets the row back to 'active'
+        so the normal finalize path works when the retry completes.
+        """
         normalized_task_id = _normalize_task_id(task_id)
         normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
         normalized_request_id = normalize_optional_positive_int(request_id, "request_id")
@@ -165,12 +189,6 @@ class DownloadHistoryService:
         if normalized_title is None:
             raise ValueError("title must be a non-empty string")
         normalized_origin = _normalize_origin(origin)
-        normalized_final_status = _normalize_final_status(final_status)
-        effective_terminal_at = (
-            terminal_at
-            if isinstance(terminal_at, str) and terminal_at.strip()
-            else now_utc_iso()
-        )
 
         with self._lock:
             conn = self._connect()
@@ -178,44 +196,20 @@ class DownloadHistoryService:
                 conn.execute(
                     """
                 INSERT INTO download_history (
-                    task_id,
-                    user_id,
-                    username,
-                    request_id,
-                    source,
-                    source_display_name,
-                    title,
-                    author,
-                    format,
-                    size,
-                    preview,
-                    content_type,
-                    origin,
-                    final_status,
-                    status_message,
-                    download_path,
-                    terminal_at
+                    task_id, user_id, username, request_id,
+                    source, source_display_name,
+                    title, author, format, size, preview, content_type,
+                    origin, final_status,
+                    status_message, download_path,
+                    queued_at, terminal_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT(task_id) DO UPDATE SET
-                    user_id = excluded.user_id,
-                    username = excluded.username,
-                    request_id = excluded.request_id,
-                    source = excluded.source,
-                    source_display_name = excluded.source_display_name,
-                    title = excluded.title,
-                    author = excluded.author,
-                    format = excluded.format,
-                    size = excluded.size,
-                    preview = excluded.preview,
-                    content_type = excluded.content_type,
-                    origin = excluded.origin,
-                    final_status = excluded.final_status,
-                    status_message = excluded.status_message,
-                    download_path = excluded.download_path,
-                    terminal_at = excluded.terminal_at,
-                    dismissed_at = NULL
-                    """,
+                    final_status = 'active',
+                    status_message = NULL,
+                    download_path = NULL,
+                    terminal_at = CURRENT_TIMESTAMP
+                """,
                     (
                         normalized_task_id,
                         normalized_user_id,
@@ -230,12 +224,53 @@ class DownloadHistoryService:
                         normalize_optional_text(preview),
                         normalize_optional_text(content_type),
                         normalized_origin,
-                        normalized_final_status,
-                        normalize_optional_text(status_message),
-                        normalize_optional_text(download_path),
-                        effective_terminal_at,
                     ),
                 )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def finalize_download(
+        self,
+        *,
+        task_id: str,
+        final_status: str,
+        status_message: str | None = None,
+        download_path: str | None = None,
+    ) -> None:
+        """Update an existing download row to its terminal state."""
+        normalized_task_id = _normalize_task_id(task_id)
+        normalized_final_status = _normalize_final_status(final_status)
+        normalized_status_message = normalize_optional_text(status_message)
+        normalized_download_path = normalize_optional_text(download_path)
+        effective_terminal_at = now_utc_iso()
+
+        with self._lock:
+            conn = self._connect()
+            try:
+                cursor = conn.execute(
+                    """
+                    UPDATE download_history
+                    SET final_status = ?,
+                        status_message = ?,
+                        download_path = ?,
+                        terminal_at = ?
+                    WHERE task_id = ? AND final_status = 'active'
+                    """,
+                    (
+                        normalized_final_status,
+                        normalized_status_message,
+                        normalized_download_path,
+                        effective_terminal_at,
+                        normalized_task_id,
+                    ),
+                )
+                rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
+                if rowcount < 1:
+                    logger.warning(
+                        "finalize_download: no active row found for task_id=%s (may have been missed at queue time)",
+                        normalized_task_id,
+                    )
                 conn.commit()
             finally:
                 conn.close()
@@ -252,7 +287,7 @@ class DownloadHistoryService:
         finally:
             conn.close()
 
-    def get_undismissed_terminal(
+    def get_undismissed(
         self,
         *,
         user_id: int | None,
