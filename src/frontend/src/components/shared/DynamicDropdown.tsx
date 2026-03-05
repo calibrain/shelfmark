@@ -5,48 +5,25 @@ import { DynamicFieldOption, fetchFieldOptions } from '../../services/api';
 interface DynamicDropdownProps {
   endpoint: string;
   value: string;
-  onChange: (value: string) => void;
+  onChange: (value: string, label?: string) => void;
   placeholder?: string;
-  allLabel?: string;
 }
-
-const GROUP_HEADER_PREFIX = '__group__';
 
 const buildOptions = (
   options: DynamicFieldOption[],
-  allLabel: string
 ): DropdownListOption[] => {
-  const built: DropdownListOption[] = [{ value: '', label: allLabel }];
-  let previousGroup: string | null = null;
-
-  options.forEach((option, index) => {
-    if (option.group && option.group !== previousGroup) {
-      previousGroup = option.group;
-      built.push({
-        value: `${GROUP_HEADER_PREFIX}${option.group}:${index}`,
-        label: option.group,
-        disabled: true,
-      });
-    } else if (!option.group) {
-      previousGroup = null;
-    }
-
-    built.push({
-      value: option.value,
-      label: option.label,
-      description: option.description,
-    });
-  });
-
-  return built;
+  return options.map((option) => ({
+    value: option.value,
+    label: option.label,
+    description: option.description,
+  }));
 };
 
 export const DynamicDropdown = ({
   endpoint,
   value,
   onChange,
-  placeholder = 'Select an option',
-  allLabel = 'All',
+  placeholder = 'Select...',
 }: DynamicDropdownProps) => {
   const [options, setOptions] = useState<DynamicFieldOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -87,28 +64,20 @@ export const DynamicDropdown = ({
 
   const dropdownOptions = useMemo(() => {
     if (isLoading) {
-      return [
-        { value: '', label: allLabel },
-        { value: '__loading', label: 'Loading...', disabled: true },
-      ];
+      return [{ value: '__loading', label: 'Loading...', disabled: true }];
     }
 
     if (loadError) {
-      return [
-        { value: '', label: allLabel },
-        { value: '__error', label: loadError, disabled: true },
-      ];
+      return [{ value: '__error', label: loadError, disabled: true }];
     }
 
-    return buildOptions(options, allLabel);
-  }, [allLabel, isLoading, loadError, options]);
+    return buildOptions(options);
+  }, [isLoading, loadError, options]);
 
   const handleChange = (nextValue: string[] | string) => {
     const normalized = Array.isArray(nextValue) ? nextValue[0] ?? '' : nextValue;
-    if (normalized.startsWith(GROUP_HEADER_PREFIX)) {
-      return;
-    }
-    onChange(normalized);
+    const match = options.find((opt) => opt.value === normalized);
+    onChange(normalized, match?.label);
   };
 
   return (

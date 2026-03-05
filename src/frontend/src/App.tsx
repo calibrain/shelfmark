@@ -356,6 +356,7 @@ function App() {
     handleSortChange,
     searchFieldValues,
     updateSearchFieldValue,
+    searchFieldLabels,
     // Pagination (universal mode)
     hasMore,
     isLoadingMore,
@@ -1385,12 +1386,34 @@ function App() {
     });
   }, [config?.metadata_search_fields, searchFieldValues]);
 
+  const activeListLabel = useMemo(() => {
+    if (!isListBrowsing) return '';
+    const field = (config?.metadata_search_fields ?? [])
+      .find((f) => f.type === 'DynamicSelectSearchField' && searchFieldValues[f.key]);
+    return field ? (searchFieldLabels[field.key] || '') : '';
+  }, [isListBrowsing, config?.metadata_search_fields, searchFieldValues, searchFieldLabels]);
+
   // Reset manual search if policy changes to disallow it
   useEffect(() => {
     if (!manualSearchAllowed && isManualSearch) {
       setIsManualSearch(false);
     }
   }, [manualSearchAllowed, isManualSearch]);
+
+  const handleManualSearchToggle = useCallback(() => {
+    setIsManualSearch(prev => {
+      if (!prev) {
+        // Turning on: clear any dynamic select field values (e.g. list selection)
+        const dynamicKeys = (config?.metadata_search_fields ?? [])
+          .filter((f) => f.type === 'DynamicSelectSearchField')
+          .map((f) => f.key);
+        for (const key of dynamicKeys) {
+          updateSearchFieldValue(key, '');
+        }
+      }
+      return !prev;
+    });
+  }, [config?.metadata_search_fields, updateSearchFieldValue]);
 
   // Unified search dispatch: intercepts manual search mode, otherwise runs normal search
   const handleSearchDispatch = useCallback(() => {
@@ -1476,6 +1499,7 @@ function App() {
           onContentTypeChange={setContentType}
           isManualSearch={isManualSearch}
           searchDisabled={isListBrowsing}
+          activeListLabel={activeListLabel}
         />
       </div>
 
@@ -1510,7 +1534,7 @@ function App() {
         onSearchFieldChange={updateSearchFieldValue}
         onSubmit={handleSearchDispatch}
         isManualSearch={isManualSearch}
-        onManualSearchToggle={manualSearchAllowed ? () => setIsManualSearch(prev => !prev) : undefined}
+        onManualSearchToggle={manualSearchAllowed ? handleManualSearchToggle : undefined}
       />
 
       <main
@@ -1541,8 +1565,9 @@ function App() {
           contentType={contentType}
           onContentTypeChange={setContentType}
           isManualSearch={isManualSearch}
-          onManualSearchToggle={manualSearchAllowed ? () => setIsManualSearch(prev => !prev) : undefined}
+          onManualSearchToggle={manualSearchAllowed ? handleManualSearchToggle : undefined}
           searchDisabled={isListBrowsing}
+          activeListLabel={activeListLabel}
         />
 
         <ResultsSection

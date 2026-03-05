@@ -6,7 +6,7 @@ import { DynamicDropdown } from './DynamicDropdown';
 interface SearchFieldRendererProps {
   field: MetadataSearchField;
   value: string | number | boolean;
-  onChange: (value: string | number | boolean) => void;
+  onChange: (value: string | number | boolean, label?: string) => void;
   onSubmit?: () => void;
 }
 
@@ -104,9 +104,8 @@ export const SearchFieldRenderer = ({ field, value, onChange, onSubmit }: Search
         <DynamicDropdown
           endpoint={field.options_endpoint}
           value={(value as string) ?? ''}
-          onChange={(v) => onChange(v)}
-          placeholder={field.placeholder || 'Select an option'}
-          allLabel="All"
+          onChange={(v, label) => onChange(v, label)}
+          placeholder={field.placeholder || 'Select...'}
         />
       );
 

@@ -41,6 +41,7 @@ interface HeaderProps {
   onContentTypeChange?: (type: ContentType) => void;
   isManualSearch?: boolean;
   searchDisabled?: boolean;
+  activeListLabel?: string;
 }
 
 export const Header = forwardRef<HeaderHandle, HeaderProps>(({
@@ -73,6 +74,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   onContentTypeChange,
   isManualSearch = false,
   searchDisabled = false,
+  activeListLabel,
 }, ref) => {
   const activityBadge = getActivityBadgeState(statusCounts, isAdmin);
   const settingsEnabled = canAccessSettings ?? isAdmin;
@@ -658,6 +660,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
                 onContentTypeChange={onContentTypeChange}
                 isManualSearch={isManualSearch}
                 disabled={searchDisabled}
+                activeListLabel={activeListLabel}
               />
             </div>
           </div>

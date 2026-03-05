@@ -21,13 +21,14 @@ interface SearchSectionProps {
   // Universal mode props
   metadataSearchFields?: MetadataSearchField[];
   searchFieldValues?: Record<string, string | number | boolean>;
-  onSearchFieldChange?: (key: string, value: string | number | boolean) => void;
+  onSearchFieldChange?: (key: string, value: string | number | boolean, label?: string) => void;
   contentType?: ContentType;
   onContentTypeChange?: (type: ContentType) => void;
   // Manual search mode (universal only)
   isManualSearch?: boolean;
   onManualSearchToggle?: () => void;
   searchDisabled?: boolean;
+  activeListLabel?: string;
 }
 
 export const SearchSection = ({
@@ -52,6 +53,7 @@ export const SearchSection = ({
   isManualSearch = false,
   onManualSearchToggle,
   searchDisabled = false,
+  activeListLabel,
 }: SearchSectionProps) => {
   const { searchMode } = useSearchMode();
 
@@ -95,6 +97,7 @@ export const SearchSection = ({
           onContentTypeChange={onContentTypeChange}
           isManualSearch={isManualSearch}
           disabled={searchDisabled}
+          activeListLabel={activeListLabel}
         />
         <AdvancedFilters
           visible={showAdvanced}
@@ -103,7 +106,7 @@ export const SearchSection = ({
           supportedFormats={supportedFormats}
           filters={advancedFilters}
           onFiltersChange={onAdvancedFiltersChange}
-          formClassName="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 px-2"
+          formClassName="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
           renderWrapper={form => form}
           metadataSearchFields={metadataSearchFields}
           searchFieldValues={searchFieldValues}

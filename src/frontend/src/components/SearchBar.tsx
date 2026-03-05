@@ -27,6 +27,7 @@ interface SearchBarProps {
   // Manual search mode
   isManualSearch?: boolean;
   disabled?: boolean;
+  activeListLabel?: string;
 }
 
 export interface SearchBarHandle {
@@ -56,6 +57,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
   onContentTypeChange,
   isManualSearch = false,
   disabled = false,
+  activeListLabel,
 }, ref) => {
   const { searchMode, isUniversalMode } = useSearchMode();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -67,12 +69,14 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const showContentTypeSelector = isUniversalMode && !!onContentTypeChange;
 
-  // Dynamic placeholder based on content type and manual search
-  const effectivePlaceholder = isManualSearch
-    ? 'Search releases directly...'
-    : showContentTypeSelector
-      ? (contentType === 'ebook' ? 'Search Books' : 'Search Audiobooks')
-      : placeholder;
+  // Dynamic placeholder based on content type, manual search, and list browsing
+  const effectivePlaceholder = activeListLabel
+    ? `${activeListLabel} selected`
+    : isManualSearch
+      ? 'Search releases directly...'
+      : showContentTypeSelector
+        ? (contentType === 'ebook' ? 'Search Books' : 'Search Audiobooks')
+        : placeholder;
 
   // Close dropdown on click outside or escape
   useEffect(() => {
@@ -162,7 +166,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
       <div
         className="flex items-stretch rounded-full border"
         style={{
-          background: 'var(--bg-soft)',
+          background: disabled ? 'var(--bg)' : 'var(--bg-soft)',
           borderColor: 'var(--border-muted)',
         }}
       >
