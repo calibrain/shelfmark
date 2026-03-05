@@ -594,16 +594,20 @@ def cancel_download(book_id: str) -> bool:
 
 
 def retry_download(book_id: str) -> Tuple[bool, Optional[str]]:
-    """Retry a failed standalone download."""
+    """Retry a failed or cancelled download.
+
+    Request-linked downloads can only be retried when cancelled (errors
+    reopen the request for admin re-approval instead).
+    """
     task = book_queue.get_task(book_id)
     if task is None:
         return False, "Download not found"
 
     status = book_queue.get_task_status(book_id)
-    if status != QueueStatus.ERROR:
-        return False, "Download is not in an error state"
+    if status not in (QueueStatus.ERROR, QueueStatus.CANCELLED):
+        return False, "Download is not in an error or cancelled state"
 
-    if task.request_id:
+    if task.request_id and status != QueueStatus.CANCELLED:
         return False, "Request-linked downloads must be retried from requests"
 
     task.last_error_message = None

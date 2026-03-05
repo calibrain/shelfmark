@@ -195,7 +195,7 @@ class TestActivityRoutes:
         snapshot_download = history_response.json[0]["snapshot"]["download"]
         assert snapshot_download["title"] == "Recorded Title"
         assert snapshot_download["author"] == "Recorded Author"
-        assert snapshot_download["status_message"] == "Complete"
+        assert snapshot_download["status_message"] is None
 
     def test_clear_history_deletes_dismissed_requests_from_snapshot(self, main_module, client):
         user = _create_user(main_module, prefix="reader")

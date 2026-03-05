@@ -206,29 +206,20 @@ class BookQueue:
             return sorted(queue_items, key=lambda x: (x['priority'], x['added_time']))
 
     def cancel_download(self, task_id: str) -> bool:
-        """Cancel a download or clear a completed/errored item."""
+        """Cancel an active or queued download."""
         with self._lock:
             current_status = self._status.get(task_id)
 
-            # Allow cancellation during any active state
             if current_status in [QueueStatus.RESOLVING, QueueStatus.LOCATING, QueueStatus.DOWNLOADING]:
                 # Signal active download to stop
                 if task_id in self._cancel_flags:
                     self._cancel_flags[task_id].set()
-            if current_status in TERMINAL_QUEUE_STATUSES:
-                # Clear completed/errored/cancelled items from tracking
-                self._status.pop(task_id, None)
-                self._status_timestamps.pop(task_id, None)
-                self._task_data.pop(task_id, None)
-                self._cancel_flags.pop(task_id, None)
-                self._active_downloads.pop(task_id, None)
-                return True
+            elif current_status not in [QueueStatus.QUEUED]:
+                # Not in a cancellable state
+                return False
 
-        if current_status in [QueueStatus.RESOLVING, QueueStatus.LOCATING, QueueStatus.DOWNLOADING, QueueStatus.QUEUED]:
-            self.update_status(task_id, QueueStatus.CANCELLED)
-            return True
-
-        return False
+        self.update_status(task_id, QueueStatus.CANCELLED)
+        return True
 
     def set_priority(self, task_id: str, new_priority: int) -> bool:
         """Change the priority of a queued task (lower = higher priority)."""

@@ -1510,7 +1510,8 @@ def api_retry_download(book_id: str) -> Union[Response, Tuple[Response, int]]:
             ):
                 return jsonify({"error": "Forbidden", "code": "download_not_owned"}), 403
 
-        if getattr(task, "request_id", None) is not None:
+        task_status = backend.book_queue.get_task_status(book_id)
+        if getattr(task, "request_id", None) is not None and task_status != QueueStatus.CANCELLED:
             return jsonify({"error": "Forbidden", "code": "requested_download_retry_forbidden"}), 403
 
         success, error = backend.retry_download(book_id)

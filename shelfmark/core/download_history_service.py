@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
+from datetime import datetime
 from typing import Any
 
 from shelfmark.core.logger import setup_logger
@@ -114,15 +115,30 @@ class DownloadHistoryService:
             "source_display_name": row.get("source_display_name"),
             "status_message": row.get("status_message"),
             "download_path": DownloadHistoryService._resolve_existing_download_path(row.get("download_path")),
+            "added_time": DownloadHistoryService._iso_to_epoch(row.get("queued_at")),
             "user_id": row.get("user_id"),
             "username": row.get("username"),
             "request_id": row.get("request_id"),
         }
 
+    @staticmethod
+    def _iso_to_epoch(value: Any) -> float | None:
+        if not isinstance(value, str) or not value.strip():
+            return None
+        normalized = value.strip().replace("Z", "+00:00")
+        try:
+            return datetime.fromisoformat(normalized).timestamp()
+        except ValueError:
+            return None
+
     @classmethod
     def _to_history_row(cls, row: dict[str, Any]) -> dict[str, Any]:
         task_id = str(row.get("task_id") or "").strip()
         item_key = cls._to_item_key(task_id)
+        download_payload = cls.to_download_payload(row)
+        # Clear stale progress messages for non-error terminal states.
+        if row.get("final_status") in ("complete", "cancelled"):
+            download_payload["status_message"] = None
         return {
             "id": item_key,
             "user_id": row.get("user_id"),
@@ -131,7 +147,7 @@ class DownloadHistoryService:
             "dismissed_at": row.get("dismissed_at"),
             "snapshot": {
                 "kind": "download",
-                "download": cls.to_download_payload(row),
+                "download": download_payload,
             },
             "origin": row.get("origin"),
             "final_status": row.get("final_status"),

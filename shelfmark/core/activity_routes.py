@@ -225,11 +225,19 @@ def _build_download_status_from_db(
                 status[QueueStatus.ERROR][task_id] = download_payload
         elif final_status in VALID_TERMINAL_STATUSES:
             download_payload = DownloadHistoryService.to_download_payload(row)
+            # For complete/cancelled the saved status_message is a stale
+            # progress string (e.g. "Fetching download sources") — clear it
+            # so the frontend only shows its own status label.  Error rows
+            # keep theirs since the message describes the failure.
+            if final_status in ("complete", "cancelled"):
+                download_payload["status_message"] = None
             status[final_status][task_id] = download_payload
 
-    # Include any queue items that don't have a DB row yet (race condition safety)
+    # Include any queue items that don't have a DB row yet (race condition safety).
+    # Only include active items — terminal items without a DB row are orphans
+    # (e.g. admin cleared history) and should not be shown.
     for task_id, (bucket_key, queue_payload) in queue_index.items():
-        if task_id not in status.get(bucket_key, {}):
+        if bucket_key in ACTIVE_QUEUE_STATUSES and task_id not in status.get(bucket_key, {}):
             status[bucket_key][task_id] = queue_payload
 
     return status
@@ -468,20 +476,18 @@ def register_activity_routes(
 
             existing = download_history_service.get_by_task_id(task_id)
             if existing is None:
-                return jsonify({"error": "Activity item not found"}), 404
+                # Row already gone (e.g. admin cleared history) — treat as success
+                dismissal_item = {"item_type": "download", "item_key": f"download:{task_id}"}
+            else:
+                ownership_gate = _check_item_ownership(actor, existing)
+                if ownership_gate is not None:
+                    return ownership_gate
 
-            ownership_gate = _check_item_ownership(actor, existing)
-            if ownership_gate is not None:
-                return ownership_gate
-
-            dismissed_count = download_history_service.dismiss(
-                task_id=task_id,
-                user_id=actor.owner_scope,
-            )
-            if dismissed_count < 1:
-                return jsonify({"error": "Activity item not found"}), 404
-
-            dismissal_item = {"item_type": "download", "item_key": f"download:{task_id}"}
+                download_history_service.dismiss(
+                    task_id=task_id,
+                    user_id=actor.owner_scope,
+                )
+                dismissal_item = {"item_type": "download", "item_key": f"download:{task_id}"}
 
         elif item_type == "request":
             request_id = normalize_positive_int(_parse_item_key(item_key, "request"))
