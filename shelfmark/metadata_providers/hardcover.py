@@ -189,6 +189,16 @@ def _is_probably_series_position(subtitle: str) -> bool:
     if normalized in {"a novel", "a novella", "a story", "a memoir"}:
         return True
 
+    # Descriptive subtitles like "A [Name] Novel", "An [Name] Mystery", etc.
+    genre_words = (
+        "novel", "novella", "story", "memoir", "tale", "thriller", "mystery",
+        "romance", "adventure", "epic", "saga", "chronicle", "fantasy",
+        "novel-in-stories",
+    )
+    genre_pattern = "|".join(re.escape(w) for w in genre_words)
+    if re.match(rf"^an?\s+.+\s+({genre_pattern})$", normalized):
+        return True
+
     return False
 
 
@@ -201,10 +211,12 @@ def _simplify_author_for_search(author: str) -> Optional[str]:
     """Return a looser author string for indexer searches.
 
     Primary goal: reduce mismatch between metadata providers and indexers.
+    Indexers store author names inconsistently ("R.A.", "R. A.", "Salvatore, R.A.")
+    so initials add noise and hurt recall.
 
-    Heuristics (intentionally conservative):
-    - Remove middle initials (e.g. "Robert R. McCammon" -> "Robert McCammon")
-    - Remove standalone middle names that are just an initial or initial+dot
+    Heuristics:
+    - Strip all initials (single or compound), keeping only full names
+      e.g. "R. A. Salvatore" -> "Salvatore", "George R.R. Martin" -> "George Martin"
     - Preserve suffixes like "Jr."/"Sr."/"III" as they sometimes matter
     """
     if not author:
@@ -238,15 +250,13 @@ def _simplify_author_for_search(author: str) -> Optional[str]:
             simplified.append(t)
             continue
 
-        # Drop middle initials like "R." or "R"
-        is_initial = re.match(r"^[A-Za-z]\.?$", t) is not None
-        is_middle_token = 0 < idx < (len(tokens) - 1)
-        if is_middle_token and is_initial:
+        # Drop all initials: "R.", "R", "R.R.", "J.K.", etc.
+        if re.match(r"^[A-Za-z]$|^([A-Za-z]\.)+[A-Za-z]?$", t):
             continue
 
         simplified.append(t)
 
-    if len(simplified) < 2:
+    if not simplified:
         return None
 
     candidate = " ".join(simplified).strip()
@@ -287,6 +297,14 @@ def _compute_search_title(
 
     if normalized_subtitle and normalized_subtitle.lower() == normalized_title.lower():
         normalized_subtitle = ""
+
+    # If subtitle is noise, strip it from the title and use just the prefix.
+    if normalized_subtitle and _is_probably_series_position(normalized_subtitle):
+        match = re.match(r"^(.+?)\s*:\s*(.+)$", normalized_title)
+        if match:
+            suffix = _strip_parenthetical_suffix(match.group(2).strip())
+            if normalized_subtitle.lower() == suffix.lower() or normalized_subtitle.lower() in suffix.lower():
+                return match.group(1).strip()
 
     # Prefer subtitle when it looks like the real title.
     if normalized_subtitle and not _is_probably_series_position(normalized_subtitle):
