@@ -535,7 +535,7 @@ class TestCancelDownloadEndpointGuardrails:
             db_user_id=user["id"],
             is_admin=False,
         )
-        main_module.user_db.create_request(
+        request_row = main_module.user_db.create_request(
             user_id=user["id"],
             content_type="ebook",
             request_level="release",
@@ -560,6 +560,7 @@ class TestCancelDownloadEndpointGuardrails:
             title="Requested Book",
             user_id=user["id"],
             username=user["username"],
+            request_id=request_row["id"],
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
@@ -721,7 +722,7 @@ class TestRetryDownloadEndpointGuardrails:
             db_user_id=user["id"],
             is_admin=False,
         )
-        main_module.user_db.create_request(
+        request_row = main_module.user_db.create_request(
             user_id=user["id"],
             content_type="ebook",
             request_level="release",
@@ -746,6 +747,7 @@ class TestRetryDownloadEndpointGuardrails:
             title="Requested Book",
             user_id=user["id"],
             username=user["username"],
+            request_id=request_row["id"],
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):

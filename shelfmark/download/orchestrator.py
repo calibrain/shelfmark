@@ -411,6 +411,14 @@ def _download_task(task_id: str, cancel_flag: Event) -> Optional[str]:
                     exc_type="StatusCallbackError",
                 )
                 return
+            # Don't propagate terminal statuses to the queue here. Output modules
+            # call status_callback("complete") before returning the download path,
+            # but _process_single_download needs to set download_path on the task
+            # first so the terminal hook captures it for history persistence.
+            if status_key in ("complete", "cancelled"):
+                if message is not None:
+                    book_queue.update_status_message(task_id, message)
+                return
             update_download_status(task_id, status, message)
 
         # Get the download handler based on the task's source
@@ -548,22 +556,10 @@ def update_download_progress(book_id: str, progress: float) -> None:
 
 def update_download_status(book_id: str, status: str, message: Optional[str] = None) -> None:
     """Update download status with optional message for UI display."""
-    # Map string status to QueueStatus enum
-    status_map = {
-        'queued': QueueStatus.QUEUED,
-        'resolving': QueueStatus.RESOLVING,
-        'locating': QueueStatus.LOCATING,
-        'downloading': QueueStatus.DOWNLOADING,
-        'complete': QueueStatus.COMPLETE,
-        'available': QueueStatus.AVAILABLE,
-        'error': QueueStatus.ERROR,
-        'done': QueueStatus.DONE,
-        'cancelled': QueueStatus.CANCELLED,
-    }
-    
     status_key = status.lower()
-    queue_status_enum = status_map.get(status_key)
-    if not queue_status_enum:
+    try:
+        queue_status_enum = QueueStatus(status_key)
+    except ValueError:
         return
 
     # Always update activity timestamp (used by stall detection) even if the status

@@ -9,12 +9,14 @@ from typing import Any, Dict, List, Optional
 from shelfmark.core.auth_modes import AUTH_SOURCE_BUILTIN, AUTH_SOURCE_SET
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import normalize_optional_positive_int
+from shelfmark.core.models import QueueStatus
 from shelfmark.core.request_validation import (
+    DELIVERY_STATE_NONE,
+    RequestStatus,
     normalize_delivery_state,
     normalize_policy_mode,
     normalize_request_level,
     normalize_request_status,
-    safe_delivery_state,
     validate_request_level_payload,
     validate_status_transition,
 )
@@ -210,15 +212,8 @@ class UserDB:
         conn.execute(
             """
             UPDATE download_requests
-            SET delivery_state = 'unknown'
-            WHERE status = 'fulfilled' AND (delivery_state IS NULL OR TRIM(delivery_state) = '' OR delivery_state = 'none')
-            """
-        )
-        conn.execute(
-            """
-            UPDATE download_requests
             SET delivery_state = 'none'
-            WHERE status != 'fulfilled' AND (delivery_state IS NULL OR TRIM(delivery_state) = '')
+            WHERE delivery_state IS NULL OR TRIM(delivery_state) = '' OR delivery_state IN ('unknown', 'available', 'done')
             """
         )
         conn.execute(
@@ -235,18 +230,19 @@ class UserDB:
         column_names = {str(col["name"]) for col in columns}
         if "dismissed_at" not in column_names:
             conn.execute("ALTER TABLE download_requests ADD COLUMN dismissed_at TIMESTAMP")
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_download_requests_dismissed "
-            "ON download_requests (dismissed_at) WHERE dismissed_at IS NOT NULL"
-        )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_download_requests_dismissed "
+                "ON download_requests (dismissed_at) WHERE dismissed_at IS NOT NULL"
+            )
 
     def _migrate_download_history_queued_at(self, conn: sqlite3.Connection) -> None:
         """Ensure download_history.queued_at exists for queue-time recording."""
         columns = conn.execute("PRAGMA table_info(download_history)").fetchall()
         column_names = {str(col["name"]) for col in columns}
         if "queued_at" not in column_names:
+            conn.execute("ALTER TABLE download_history ADD COLUMN queued_at TIMESTAMP")
             conn.execute(
-                "ALTER TABLE download_history ADD COLUMN queued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                "UPDATE download_history SET queued_at = CURRENT_TIMESTAMP WHERE queued_at IS NULL"
             )
 
     def create_user(
@@ -455,13 +451,13 @@ class UserDB:
         policy_mode: str,
         book_data: Dict[str, Any],
         release_data: Optional[Dict[str, Any]] = None,
-        status: str = "pending",
+        status: str = RequestStatus.PENDING,
         source_hint: Optional[str] = None,
         note: Optional[str] = None,
         admin_note: Optional[str] = None,
         reviewed_by: Optional[int] = None,
         reviewed_at: Optional[str] = None,
-        delivery_state: str = "none",
+        delivery_state: str = DELIVERY_STATE_NONE,
         delivery_updated_at: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create a download request row and return the created record."""
@@ -672,24 +668,8 @@ class UserDB:
                 if "content_type" in updates and not updates["content_type"]:
                     raise ValueError("content_type is required")
 
-                candidate_request_level = updates.get("request_level", current["request_level"])
-                candidate_release_data = (
-                    updates["release_data"] if "release_data" in updates else current["release_data"]
-                )
-                candidate_status = updates.get("status", current["status"])
-                normalized_request_level = normalize_request_level(candidate_request_level)
-                normalized_candidate_status = normalize_request_status(candidate_status)
-
-                if normalized_request_level == "release" and candidate_release_data is None:
-                    raise ValueError("request_level=release requires non-null release_data")
-                if (
-                    normalized_request_level == "book"
-                    and candidate_release_data is not None
-                    and normalized_candidate_status != "fulfilled"
-                ):
-                    raise ValueError("request_level=book requires null release_data")
                 if "request_level" in updates:
-                    updates["request_level"] = normalized_request_level
+                    updates["request_level"] = normalize_request_level(updates["request_level"])
 
                 if "book_data" in updates:
                     if not isinstance(updates["book_data"], dict):
@@ -745,19 +725,17 @@ class UserDB:
                 if current_request is None:
                     return None
 
-                if current_request.get("status") != "fulfilled":
+                if current_request.get("status") != RequestStatus.FULFILLED:
                     return None
 
-                current_delivery_state = safe_delivery_state(
-                    current_request.get("delivery_state"),
-                )
+                current_delivery_state = current_request.get("delivery_state", DELIVERY_STATE_NONE)
 
                 # Terminal hook callbacks can run before delivery-state sync persists "error".
                 # Allow reopening fulfilled requests unless they are already complete.
-                if current_delivery_state == "complete":
+                if current_delivery_state == QueueStatus.COMPLETE:
                     return None
                 if (
-                    current_delivery_state not in {"error", "cancelled"}
+                    current_delivery_state not in {QueueStatus.ERROR, QueueStatus.CANCELLED}
                     and normalized_failure_reason is None
                 ):
                     return None
@@ -840,25 +818,6 @@ class UserDB:
         placeholders = ",".join("?" for _ in request_ids)
         query = f"UPDATE download_requests SET dismissed_at = ? WHERE id IN ({placeholders})"
         params: list[Any] = [dismissed_at, *request_ids]
-
-        with self._lock:
-            conn = self._connect()
-            try:
-                cursor = conn.execute(query, params)
-                conn.commit()
-                rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
-                return max(rowcount, 0)
-            finally:
-                conn.close()
-
-    def clear_request_dismissals(self, *, user_id: int | None) -> int:
-        """Clear dismissed_at on requests, optionally scoped by owner user_id."""
-        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
-        params: list[Any] = []
-        query = "UPDATE download_requests SET dismissed_at = NULL WHERE dismissed_at IS NOT NULL"
-        if normalized_user_id is not None:
-            query += " AND user_id = ?"
-            params.append(normalized_user_id)
 
         with self._lock:
             conn = self._connect()

@@ -299,16 +299,29 @@ function App() {
   }, [currentStatus, dismissedDownloadTaskIds]);
 
   // Use real-time buckets for active work and merge persisted terminal buckets
-  // so completed/errored entries survive restarts.
-  const activitySidebarStatus = useMemo<StatusData>(() => ({
+  // so completed/errored entries survive restarts.  Filter out dismissed items
+  // so the sidebar counts stay consistent with the activity panel.
+  const activitySidebarStatus = useMemo<StatusData>(() => {
+    const filterDismissed = (
+      bucket: Record<string, Book> | undefined
+    ): Record<string, Book> | undefined => {
+      if (!bucket || dismissedDownloadTaskIds.size === 0) return bucket;
+      const filtered = Object.fromEntries(
+        Object.entries(bucket).filter(([taskId]) => !dismissedDownloadTaskIds.has(taskId))
+      ) as Record<string, Book>;
+      return Object.keys(filtered).length > 0 ? filtered : undefined;
+    };
+
+    return {
       queued: currentStatus.queued,
       resolving: currentStatus.resolving,
       locating: currentStatus.locating,
       downloading: currentStatus.downloading,
-      complete: mergeTerminalBucket(activityStatus.complete, currentStatus.complete),
-      error: mergeTerminalBucket(activityStatus.error, currentStatus.error),
-      cancelled: mergeTerminalBucket(activityStatus.cancelled, currentStatus.cancelled),
-  }), [activityStatus, currentStatus]);
+      complete: filterDismissed(mergeTerminalBucket(activityStatus.complete, currentStatus.complete)),
+      error: filterDismissed(mergeTerminalBucket(activityStatus.error, currentStatus.error)),
+      cancelled: filterDismissed(mergeTerminalBucket(activityStatus.cancelled, currentStatus.cancelled)),
+    };
+  }, [activityStatus, currentStatus, dismissedDownloadTaskIds]);
 
   const showRequestsTab = useMemo(() => {
     if (requestRoleIsAdmin) {

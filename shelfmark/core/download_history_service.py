@@ -8,12 +8,14 @@ import threading
 from typing import Any
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.models import TERMINAL_QUEUE_STATUSES
 from shelfmark.core.request_helpers import normalize_optional_positive_int, normalize_optional_text, now_utc_iso
 
 logger = setup_logger(__name__)
 
 
-VALID_TERMINAL_STATUSES = frozenset({"complete", "error", "cancelled"})
+VALID_TERMINAL_STATUSES = frozenset(s.value for s in TERMINAL_QUEUE_STATUSES)
+ACTIVE_DOWNLOAD_STATUS = "active"
 VALID_ORIGINS = frozenset({"direct", "requested"})
 
 
@@ -30,7 +32,7 @@ def _normalize_origin(origin: Any) -> str:
         return "direct"
     lowered = normalized.lower()
     if lowered not in VALID_ORIGINS:
-        raise ValueError("origin must be one of: direct, request, requested")
+        raise ValueError("origin must be one of: direct, requested")
     return lowered
 
 
@@ -120,11 +122,12 @@ class DownloadHistoryService:
     @classmethod
     def _to_history_row(cls, row: dict[str, Any]) -> dict[str, Any]:
         task_id = str(row.get("task_id") or "").strip()
+        item_key = cls._to_item_key(task_id)
         return {
-            "id": row.get("id"),
+            "id": item_key,
             "user_id": row.get("user_id"),
             "item_type": "download",
-            "item_key": cls._to_item_key(task_id),
+            "item_key": item_key,
             "dismissed_at": row.get("dismissed_at"),
             "snapshot": {
                 "kind": "download",

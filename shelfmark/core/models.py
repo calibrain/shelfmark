@@ -38,10 +38,17 @@ class QueueStatus(str, Enum):
     LOCATING = "locating"
     DOWNLOADING = "downloading"
     COMPLETE = "complete"
-    AVAILABLE = "available"
     ERROR = "error"
-    DONE = "done"
     CANCELLED = "cancelled"
+
+
+TERMINAL_QUEUE_STATUSES: frozenset[QueueStatus] = frozenset({
+    QueueStatus.COMPLETE, QueueStatus.ERROR, QueueStatus.CANCELLED,
+})
+
+ACTIVE_QUEUE_STATUSES: frozenset[QueueStatus] = frozenset({
+    QueueStatus.QUEUED, QueueStatus.RESOLVING, QueueStatus.LOCATING, QueueStatus.DOWNLOADING,
+})
 
 
 class SearchMode(str, Enum):

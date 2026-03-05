@@ -2,27 +2,29 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any
 
+from shelfmark.core.models import QueueStatus
 from shelfmark.core.request_policy import parse_policy_mode
 
 
-VALID_REQUEST_STATUSES = frozenset({"pending", "fulfilled", "rejected", "cancelled"})
-TERMINAL_REQUEST_STATUSES = frozenset({"fulfilled", "rejected", "cancelled"})
+class RequestStatus(str, Enum):
+    """Enum for request lifecycle statuses."""
+    PENDING = "pending"
+    FULFILLED = "fulfilled"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+
+
+DELIVERY_STATE_NONE = "none"
+
+VALID_REQUEST_STATUSES = frozenset(RequestStatus)
+TERMINAL_REQUEST_STATUSES = frozenset({
+    RequestStatus.FULFILLED, RequestStatus.REJECTED, RequestStatus.CANCELLED,
+})
 VALID_REQUEST_LEVELS = frozenset({"book", "release"})
-VALID_DELIVERY_STATES = frozenset(
-    {
-        "none",
-        "unknown",
-        "queued",
-        "resolving",
-        "locating",
-        "downloading",
-        "complete",
-        "error",
-        "cancelled",
-    }
-)
+VALID_DELIVERY_STATES = frozenset({DELIVERY_STATE_NONE} | set(QueueStatus))
 
 
 def normalize_request_status(status: Any) -> str:
@@ -61,14 +63,6 @@ def normalize_delivery_state(state: Any) -> str:
     if normalized not in VALID_DELIVERY_STATES:
         raise ValueError(f"Invalid delivery_state: {state}")
     return normalized
-
-
-def safe_delivery_state(state: Any, default: str = "none") -> str:
-    """Normalize delivery-state with a fallback for invalid/missing values."""
-    if not isinstance(state, str):
-        return default
-    normalized = state.strip().lower()
-    return normalized if normalized in VALID_DELIVERY_STATES else default
 
 
 def validate_request_level_payload(request_level: Any, release_data: Any) -> str:

@@ -309,7 +309,7 @@ class TestActivityRoutes:
                 "provider_id": "legacy-fulfilled-1",
             },
             status="fulfilled",
-            delivery_state="unknown",
+            delivery_state="none",
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):

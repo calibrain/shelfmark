@@ -17,6 +17,7 @@ from shelfmark.core.request_policy import (
     parse_policy_mode,
     resolve_policy_mode,
 )
+from shelfmark.core.request_validation import RequestStatus
 from shelfmark.core.requests_service import (
     RequestServiceError,
     cancel_request,
@@ -614,11 +615,11 @@ def register_request_routes(
 
         by_status = {
             status: len(user_db.list_requests(status=status))
-            for status in ("pending", "fulfilled", "rejected", "cancelled")
+            for status in RequestStatus
         }
         return jsonify(
             {
-                "pending": by_status["pending"],
+                "pending": by_status[RequestStatus.PENDING],
                 "total": sum(by_status.values()),
                 "by_status": by_status,
             }

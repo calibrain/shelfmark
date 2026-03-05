@@ -430,7 +430,7 @@ export interface ActivityDismissPayload {
 }
 
 export interface ActivityHistoryItem {
-  id: number;
+  id: string;
   user_id: number;
   item_type: 'download' | 'request';
   item_key: string;

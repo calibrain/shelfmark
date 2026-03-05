@@ -207,7 +207,7 @@ export interface RequestRecord {
   id: number;
   user_id: number;
   status: 'pending' | 'fulfilled' | 'rejected' | 'cancelled';
-  delivery_state?: 'none' | 'unknown' | 'queued' | 'resolving' | 'locating' | 'downloading' | 'complete' | 'error' | 'cancelled';
+  delivery_state?: 'none' | 'queued' | 'resolving' | 'locating' | 'downloading' | 'complete' | 'error' | 'cancelled';
   delivery_updated_at?: string | null;
   last_failure_reason?: string | null;
   source_hint: string | null;

@@ -7,11 +7,13 @@ import json
 from typing import Any, Callable, TYPE_CHECKING
 
 from shelfmark.core.request_policy import normalize_content_type
+from shelfmark.core.models import QueueStatus
 from shelfmark.core.request_validation import (
+    DELIVERY_STATE_NONE,
+    RequestStatus,
     normalize_policy_mode,
     normalize_request_level,
     normalize_request_status,
-    safe_delivery_state,
     validate_request_level_payload,
     validate_status_transition,
 )
@@ -102,7 +104,7 @@ def _find_duplicate_pending_request(
     author: str,
     content_type: str,
 ) -> dict[str, Any] | None:
-    pending_rows = user_db.list_requests(user_id=user_id, status="pending")
+    pending_rows = user_db.list_requests(user_id=user_id, status=RequestStatus.PENDING)
     for row in pending_rows:
         row_book_data = row.get("book_data") or {}
         if not isinstance(row_book_data, dict):
@@ -138,7 +140,7 @@ def sync_delivery_states_from_queue_status(
 ) -> list[dict[str, Any]]:
     """Persist delivery-state transitions for fulfilled requests based on queue status."""
     source_delivery_states: dict[str, str] = {}
-    for status_key in ("queued", "resolving", "locating", "downloading", "complete", "error", "cancelled"):
+    for status_key in QueueStatus:
         status_bucket = queue_status.get(status_key)
         if not isinstance(status_bucket, dict):
             continue
@@ -148,7 +150,7 @@ def sync_delivery_states_from_queue_status(
     if not source_delivery_states:
         return []
 
-    fulfilled_rows = user_db.list_requests(user_id=user_id, status="fulfilled")
+    fulfilled_rows = user_db.list_requests(user_id=user_id, status=RequestStatus.FULFILLED)
     updated: list[dict[str, Any]] = []
 
     for row in fulfilled_rows:
@@ -160,7 +162,7 @@ def sync_delivery_states_from_queue_status(
         if delivery_state is None:
             continue
 
-        if safe_delivery_state(row.get("delivery_state")) == delivery_state:
+        if row.get("delivery_state", DELIVERY_STATE_NONE) == delivery_state:
             continue
 
         updated.append(
@@ -262,7 +264,7 @@ def ensure_request_access(
 
 
 def _require_pending(request_row: dict[str, Any]) -> None:
-    if request_row["status"] != "pending":
+    if request_row["status"] != RequestStatus.PENDING:
         raise RequestServiceError(
             "Request is already in a terminal state",
             status_code=409,
@@ -288,8 +290,8 @@ def cancel_request(
     try:
         return user_db.update_request(
             request_id,
-            expected_current_status="pending",
-            status="cancelled",
+            expected_current_status=RequestStatus.PENDING,
+            status=RequestStatus.CANCELLED,
         )
     except ValueError as exc:
         raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
@@ -316,8 +318,8 @@ def reject_request(
     try:
         return user_db.update_request(
             request_id,
-            expected_current_status="pending",
-            status="rejected",
+            expected_current_status=RequestStatus.PENDING,
+            status=RequestStatus.REJECTED,
             admin_note=normalized_admin_note,
             reviewed_by=admin_user_id,
             reviewed_at=_now_timestamp(),
@@ -358,10 +360,10 @@ def fulfil_request(
         try:
             return user_db.update_request(
                 request_id,
-                expected_current_status="pending",
-                status="fulfilled",
+                expected_current_status=RequestStatus.PENDING,
+                status=RequestStatus.FULFILLED,
                 release_data=None,
-                delivery_state="complete",
+                delivery_state=QueueStatus.COMPLETE,
                 delivery_updated_at=_now_timestamp(),
                 last_failure_reason=None,
                 admin_note=normalized_admin_note,
@@ -402,10 +404,10 @@ def fulfil_request(
     try:
         return user_db.update_request(
             request_id,
-            expected_current_status="pending",
-            status="fulfilled",
+            expected_current_status=RequestStatus.PENDING,
+            status=RequestStatus.FULFILLED,
             release_data=selected_release_data,
-            delivery_state="queued",
+            delivery_state=QueueStatus.QUEUED,
             delivery_updated_at=_now_timestamp(),
             last_failure_reason=None,
             admin_note=normalized_admin_note,

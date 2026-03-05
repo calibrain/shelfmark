@@ -7,8 +7,10 @@ from typing import Any, Callable, NamedTuple
 
 from flask import Flask, jsonify, request, session
 
-from shelfmark.core.download_history_service import DownloadHistoryService
+from shelfmark.core.download_history_service import ACTIVE_DOWNLOAD_STATUS, DownloadHistoryService, VALID_TERMINAL_STATUSES
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.models import ACTIVE_QUEUE_STATUSES, QueueStatus, TERMINAL_QUEUE_STATUSES
+from shelfmark.core.request_validation import RequestStatus
 from shelfmark.core.request_helpers import (
     emit_ws_event,
     extract_release_source_id,
@@ -20,10 +22,6 @@ from shelfmark.core.request_helpers import (
 from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
-
-# Offset added to request row IDs so they don't collide with download_history
-# row IDs when both types are merged into a single sorted list.
-_REQUEST_ID_OFFSET = 1_000_000_000
 
 
 def _parse_timestamp(value: Any) -> float:
@@ -183,8 +181,7 @@ def _parse_item_key(item_key: Any, prefix: str) -> str | None:
     return value or None
 
 
-_ACTIVE_QUEUE_BUCKETS = ("queued", "resolving", "locating", "downloading")
-_ALL_BUCKET_KEYS = ("queued", "resolving", "locating", "downloading", "complete", "available", "done", "error", "cancelled")
+_ALL_BUCKET_KEYS = (*ACTIVE_QUEUE_STATUSES, *TERMINAL_QUEUE_STATUSES)
 
 
 def _build_download_status_from_db(
@@ -216,7 +213,7 @@ def _build_download_status_from_db(
 
         final_status = row.get("final_status")
 
-        if final_status == "active":
+        if final_status == ACTIVE_DOWNLOAD_STATUS:
             queue_entry = queue_index.pop(task_id, None)
             if queue_entry is not None:
                 bucket_key, queue_payload = queue_entry
@@ -225,8 +222,8 @@ def _build_download_status_from_db(
                 # Stale active row — no queue entry means it was interrupted
                 download_payload = DownloadHistoryService.to_download_payload(row)
                 download_payload["status_message"] = "Interrupted"
-                status["error"][task_id] = download_payload
-        elif final_status in {"complete", "error", "cancelled"}:
+                status[QueueStatus.ERROR][task_id] = download_payload
+        elif final_status in VALID_TERMINAL_STATUSES:
             download_payload = DownloadHistoryService.to_download_payload(row)
             status[final_status][task_id] = download_payload
 
@@ -240,7 +237,7 @@ def _build_download_status_from_db(
 
 def _collect_active_download_task_ids(status: dict[str, dict[str, Any]]) -> set[str]:
     active_task_ids: set[str] = set()
-    for bucket_key in _ACTIVE_QUEUE_BUCKETS:
+    for bucket_key in ACTIVE_QUEUE_STATUSES:
         bucket = status.get(bucket_key)
         if not isinstance(bucket, dict):
             continue
@@ -253,19 +250,19 @@ def _collect_active_download_task_ids(status: dict[str, dict[str, Any]]) -> set[
 
 def _request_terminal_status(row: dict[str, Any]) -> str | None:
     request_status = row.get("status")
-    if request_status == "pending":
+    if request_status == RequestStatus.PENDING:
         return None
-    if request_status == "rejected":
-        return "rejected"
-    if request_status == "cancelled":
-        return "cancelled"
-    if request_status != "fulfilled":
+    if request_status == RequestStatus.REJECTED:
+        return RequestStatus.REJECTED
+    if request_status == RequestStatus.CANCELLED:
+        return RequestStatus.CANCELLED
+    if request_status != RequestStatus.FULFILLED:
         return None
 
     delivery_state = str(row.get("delivery_state") or "").strip().lower()
-    if delivery_state in {"error", "cancelled"}:
+    if delivery_state in {QueueStatus.ERROR, QueueStatus.CANCELLED}:
         return delivery_state
-    return "complete"
+    return QueueStatus.COMPLETE
 
 
 def _minimal_request_snapshot(request_row: dict[str, Any], request_id: int) -> dict[str, Any]:
@@ -300,11 +297,12 @@ def _request_history_entry(request_row: dict[str, Any]) -> dict[str, Any] | None
     if request_id is None:
         return None
     final_status = _request_terminal_status(request_row)
+    item_key = f"request:{request_id}"
     return {
-        "id": _REQUEST_ID_OFFSET + request_id,
+        "id": item_key,
         "user_id": request_row.get("user_id"),
         "item_type": "request",
-        "item_key": f"request:{request_id}",
+        "item_key": item_key,
         "dismissed_at": request_row.get("dismissed_at"),
         "snapshot": _minimal_request_snapshot(request_row, request_id),
         "origin": "request",
@@ -642,7 +640,7 @@ def register_activity_routes(
         combined.sort(
             key=lambda row: (
                 _parse_timestamp(row.get("dismissed_at")),
-                int(row.get("id") or 0),
+                str(row.get("id") or ""),
             ),
             reverse=True,
         )

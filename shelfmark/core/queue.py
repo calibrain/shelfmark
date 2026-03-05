@@ -8,7 +8,7 @@ from threading import Lock, Event
 from typing import Dict, List, Optional, Tuple, Any, Callable
 
 from shelfmark.core.config import config as app_config
-from shelfmark.core.models import QueueStatus, QueueItem, DownloadTask
+from shelfmark.core.models import QueueStatus, QueueItem, DownloadTask, TERMINAL_QUEUE_STATUSES
 
 
 class BookQueue:
@@ -38,8 +38,8 @@ class BookQueue:
         with self._lock:
             task_id = task.task_id
 
-            # Don't add if already exists and not in error/done state
-            if task_id in self._status and self._status[task_id] not in [QueueStatus.ERROR, QueueStatus.DONE, QueueStatus.CANCELLED]:
+            # Don't add if already exists and not in error/cancelled state
+            if task_id in self._status and self._status[task_id] not in [QueueStatus.ERROR, QueueStatus.CANCELLED]:
                 return False
 
             # Ensure added_time is set
@@ -120,15 +120,8 @@ class BookQueue:
             previous_status = self._status.get(book_id)
             self._update_status(book_id, status)
 
-            terminal_statuses = {
-                QueueStatus.COMPLETE,
-                QueueStatus.AVAILABLE,
-                QueueStatus.ERROR,
-                QueueStatus.DONE,
-                QueueStatus.CANCELLED,
-            }
             if (
-                status in terminal_statuses
+                status in TERMINAL_QUEUE_STATUSES
                 and previous_status != status
                 and self._terminal_status_hook is not None
             ):
@@ -138,7 +131,7 @@ class BookQueue:
                     hook_task = current_task
 
             # Clean up active download tracking when finished
-            if status in [QueueStatus.COMPLETE, QueueStatus.AVAILABLE, QueueStatus.ERROR, QueueStatus.DONE, QueueStatus.CANCELLED]:
+            if status in TERMINAL_QUEUE_STATUSES:
                 self._active_downloads.pop(book_id, None)
                 self._cancel_flags.pop(book_id, None)
 
@@ -222,7 +215,7 @@ class BookQueue:
                 # Signal active download to stop
                 if task_id in self._cancel_flags:
                     self._cancel_flags[task_id].set()
-            if current_status in [QueueStatus.COMPLETE, QueueStatus.DONE, QueueStatus.AVAILABLE, QueueStatus.ERROR, QueueStatus.CANCELLED]:
+            if current_status in TERMINAL_QUEUE_STATUSES:
                 # Clear completed/errored/cancelled items from tracking
                 self._status.pop(task_id, None)
                 self._status_timestamps.pop(task_id, None)
@@ -274,6 +267,8 @@ class BookQueue:
 
         This is used for retries where task metadata should be preserved.
         """
+        hook: Optional[Callable[[str, DownloadTask], None]] = None
+        hook_task: Optional[DownloadTask] = None
         with self._lock:
             task = self._task_data.get(task_id)
             if task is None:
@@ -302,7 +297,15 @@ class BookQueue:
             queue_item = QueueItem(task_id, task.priority, time.time())
             self._queue.put(queue_item)
             self._update_status(task_id, QueueStatus.QUEUED)
-            return True
+            hook = self._queue_hook
+            hook_task = task
+
+        if hook is not None and hook_task is not None:
+            try:
+                hook(task_id, hook_task)
+            except Exception:
+                pass
+        return True
 
     def reorder_queue(self, task_priorities: Dict[str, int]) -> bool:
         """Bulk reorder queue by mapping task_id to new priority."""
@@ -344,7 +347,7 @@ class BookQueue:
 
     def refresh(self) -> None:
         """Remove any tasks that are done downloading or have stale status."""
-        terminal_statuses = {QueueStatus.COMPLETE, QueueStatus.DONE, QueueStatus.ERROR, QueueStatus.AVAILABLE, QueueStatus.CANCELLED}
+        terminal_statuses = TERMINAL_QUEUE_STATUSES
         with self._lock:
             current_time = datetime.now()
             to_remove = []
@@ -357,10 +360,6 @@ class BookQueue:
                 # Clear stale download paths
                 if task.download_path and not Path(task.download_path).exists():
                     task.download_path = None
-
-                # Mark available downloads as done if file is gone
-                if status == QueueStatus.AVAILABLE and not task.download_path:
-                    self._update_status(task_id, QueueStatus.DONE)
 
                 # Check for stale status entries
                 last_update = self._status_timestamps.get(task_id)

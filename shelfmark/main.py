@@ -28,7 +28,7 @@ from shelfmark.config.env import (
 )
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import SearchFilters, QueueStatus
+from shelfmark.core.models import SearchFilters, QueueStatus, TERMINAL_QUEUE_STATUSES
 from shelfmark.core.prefix_middleware import PrefixMiddleware
 from shelfmark.core.auth_modes import (
     get_auth_check_admin_status,
@@ -1105,16 +1105,10 @@ def _resolve_status_scope(*, require_authenticated: bool = True) -> tuple[bool, 
 
 
 def _queue_status_to_final_activity_status(status: QueueStatus) -> str | None:
-    if status == QueueStatus.COMPLETE:
-        return "complete"
-    if status == QueueStatus.ERROR:
-        return "error"
-    if status == QueueStatus.CANCELLED:
-        return "cancelled"
-    return None
+    return status.value if status in TERMINAL_QUEUE_STATUSES else None
 
 def _queue_status_to_notification_event(status: QueueStatus) -> NotificationEvent | None:
-    if status in {QueueStatus.COMPLETE, QueueStatus.AVAILABLE, QueueStatus.DONE}:
+    if status == QueueStatus.COMPLETE:
         return NotificationEvent.DOWNLOAD_COMPLETE
     if status == QueueStatus.ERROR:
         return NotificationEvent.DOWNLOAD_FAILED
@@ -2435,6 +2429,7 @@ def api_settings_get_all() -> Union[Response, Tuple[Response, int]]:
         # This triggers the @register_settings decorators
         import shelfmark.config.settings  # noqa: F401
         import shelfmark.config.security  # noqa: F401
+        import shelfmark.config.users_settings  # noqa: F401
         import shelfmark.config.notifications_settings  # noqa: F401
 
         data = serialize_all_settings(include_values=True)
@@ -2465,6 +2460,7 @@ def api_settings_get_tab(tab_name: str) -> Union[Response, Tuple[Response, int]]
         # Ensure settings are registered
         import shelfmark.config.settings  # noqa: F401
         import shelfmark.config.security  # noqa: F401
+        import shelfmark.config.users_settings  # noqa: F401
         import shelfmark.config.notifications_settings  # noqa: F401
 
         tab = get_settings_tab(tab_name)
@@ -2501,6 +2497,7 @@ def api_settings_update_tab(tab_name: str) -> Union[Response, Tuple[Response, in
         # Ensure settings are registered
         import shelfmark.config.settings  # noqa: F401
         import shelfmark.config.security  # noqa: F401
+        import shelfmark.config.users_settings  # noqa: F401
         import shelfmark.config.notifications_settings  # noqa: F401
 
         tab = get_settings_tab(tab_name)
@@ -2548,6 +2545,7 @@ def api_settings_execute_action(tab_name: str, action_key: str) -> Union[Respons
         # Ensure settings are registered
         import shelfmark.config.settings  # noqa: F401
         import shelfmark.config.security  # noqa: F401
+        import shelfmark.config.users_settings  # noqa: F401
         import shelfmark.config.notifications_settings  # noqa: F401
 
         # Get current form values if provided (for testing with unsaved values)
