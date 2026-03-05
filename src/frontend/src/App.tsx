@@ -227,6 +227,27 @@ function App() {
 
   const requestRoleIsAdmin = requestPolicy ? Boolean(requestPolicy.is_admin) : false;
 
+  // Compute which content types this user is allowed to search for.
+  // If a content type's default policy mode is 'blocked', hide it from the dropdown.
+  const allowedContentTypes = useMemo((): ContentType[] => {
+    // If policy not loaded yet or user is admin, allow everything
+    if (!requestPolicy || requestRoleIsAdmin || !requestsPolicyEnabled) {
+      return ['ebook', 'audiobook'];
+    }
+    const types: ContentType[] = [];
+    if (getDefaultMode('ebook') !== 'blocked') types.push('ebook');
+    if (getDefaultMode('audiobook') !== 'blocked') types.push('audiobook');
+    // If both are blocked, still show both (user can see results, just can't download)
+    return types.length > 0 ? types : ['ebook', 'audiobook'];
+  }, [requestPolicy, requestRoleIsAdmin, requestsPolicyEnabled, getDefaultMode]);
+
+  // Auto-switch content type if the current selection is blocked
+  useEffect(() => {
+    if (allowedContentTypes.length > 0 && !allowedContentTypes.includes(contentType)) {
+      setContentType(allowedContentTypes[0]);
+    }
+  }, [allowedContentTypes, contentType]);
+
   const {
     isLoading: isRequestsLoading,
     cancelRequest: cancelUserRequest,
@@ -1497,6 +1518,7 @@ function App() {
           onRemoveToast={removeToast}
           contentType={contentType}
           onContentTypeChange={setContentType}
+          allowedContentTypes={allowedContentTypes}
           isManualSearch={isManualSearch}
           searchDisabled={isListBrowsing}
           activeListLabel={activeListLabel}
@@ -1564,6 +1586,7 @@ function App() {
           onSearchFieldChange={updateSearchFieldValue}
           contentType={contentType}
           onContentTypeChange={setContentType}
+          allowedContentTypes={allowedContentTypes}
           isManualSearch={isManualSearch}
           onManualSearchToggle={manualSearchAllowed ? handleManualSearchToggle : undefined}
           searchDisabled={isListBrowsing}
