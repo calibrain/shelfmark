@@ -222,6 +222,7 @@ def generate_env_docs() -> str:
     """Generate markdown documentation for all environment variables."""
     # Import settings modules to ensure all settings are registered
     import shelfmark.config.settings  # noqa: F401
+    import shelfmark.config.security  # noqa: F401
     import shelfmark.release_sources.irc.settings  # noqa: F401
     import shelfmark.release_sources.prowlarr.settings  # noqa: F401
     import shelfmark.metadata_providers.hardcover  # noqa: F401
@@ -310,7 +311,7 @@ def generate_env_docs() -> str:
 
 def _generate_tab_docs(tab, group_prefix: Optional[str] = None) -> List[str]:
     """Generate documentation for a single settings tab."""
-    from shelfmark.core.settings_registry import ActionButton, HeadingField
+    from shelfmark.core.settings_registry import ActionButton, CustomComponentField, HeadingField
 
     lines = []
 
@@ -327,7 +328,7 @@ def _generate_tab_docs(tab, group_prefix: Optional[str] = None) -> List[str]:
     env_fields = []
     for field in tab.fields:
         # Skip non-value fields
-        if isinstance(field, (ActionButton, HeadingField)):
+        if isinstance(field, (ActionButton, CustomComponentField, HeadingField)):
             continue
 
         # Skip fields that don't support ENV vars

@@ -29,12 +29,8 @@ def _auth_condition(auth_method: str) -> dict[str, str]:
     return {"field": "AUTH_METHOD", "value": auth_method}
 
 
-def _ui_field(factory: Callable[..., Any], **kwargs: Any) -> Any:
-    return factory(env_supported=False, **kwargs)
-
-
-def _auth_ui_field(factory: Callable[..., Any], auth_method: str, **kwargs: Any) -> Any:
-    return _ui_field(factory, show_when=_auth_condition(auth_method), **kwargs)
+def _auth_field(factory: Callable[..., Any], auth_method: str, **kwargs: Any) -> Any:
+    return factory(show_when=_auth_condition(auth_method), **kwargs)
 
 
 def _migrate_security_settings() -> None:
@@ -80,22 +76,16 @@ def security_settings():
         {"label": "Local", "value": "builtin"},
         {"label": "Proxy Authentication", "value": "proxy"},
         {"label": "OIDC (OpenID Connect)", "value": "oidc"},
+        {"label": "Calibre-Web Database", "value": "cwa"},
     ]
-    if cwa_db_available:
-        auth_method_options.append({"label": "Calibre-Web Database", "value": "cwa"})
-
-    auth_method_description = "Select the authentication method for accessing Shelfmark."
-    if not cwa_db_available:
-        auth_method_description += " Calibre-Web database option requires mounting your Calibre-Web app.db to /auth/app.db."
 
     fields = [
         SelectField(
             key="AUTH_METHOD",
             label="Authentication Method",
-            description=auth_method_description,
+            description="Select the authentication method for accessing Shelfmark.",
             options=auth_method_options,
             default="none",
-            env_supported=False,
         ),
         CustomComponentField(
             key="builtin_admin_requirement",
@@ -112,6 +102,18 @@ def security_settings():
             label="A local admin account is required before OIDC can be enabled.",
             show_when=_auth_condition("oidc"),
         ),
+        *([] if cwa_db_available else [
+            CustomComponentField(
+                key="cwa_db_missing",
+                component="oidc_admin_hint",
+                label=(
+                    "Calibre-Web database not detected. Mount your app.db to "
+                    "/auth/app.db to enable this method. Authentication will fall "
+                    "back to none until the database is available."
+                ),
+                show_when=_auth_condition("cwa"),
+            ),
+        ]),
         ActionButton(
             key="open_users_tab",
             label="Go to Users",
@@ -119,7 +121,7 @@ def security_settings():
             style="primary",
             show_when={"field": "AUTH_METHOD", "value": ["builtin", "oidc"]},
         ),
-        _auth_ui_field(
+        _auth_field(
             TextField,
             "proxy",
             key="PROXY_AUTH_USER_HEADER",
@@ -128,7 +130,7 @@ def security_settings():
             placeholder="e.g. X-Auth-User",
             default="X-Auth-User",
         ),
-        _auth_ui_field(
+        _auth_field(
             TextField,
             "proxy",
             key="PROXY_AUTH_LOGOUT_URL",
@@ -137,7 +139,7 @@ def security_settings():
             placeholder="https://myauth.example.com/logout",
             default="",
         ),
-        _auth_ui_field(
+        _auth_field(
             TextField,
             "proxy",
             key="PROXY_AUTH_ADMIN_GROUP_HEADER",
@@ -146,7 +148,7 @@ def security_settings():
             placeholder="e.g. X-Auth-Groups",
             default="X-Auth-Groups",
         ),
-        _auth_ui_field(
+        _auth_field(
             TextField,
             "proxy",
             key="PROXY_AUTH_ADMIN_GROUP_NAME",
@@ -255,7 +257,7 @@ def security_settings():
             },
         ),
     ]
-    fields.extend(_auth_ui_field(factory, "oidc", **spec) for factory, spec in oidc_specs)
+    fields.extend(_auth_field(factory, "oidc", **spec) for factory, spec in oidc_specs)
     fields.append(
         ActionButton(
             key="test_oidc",

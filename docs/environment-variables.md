@@ -10,6 +10,7 @@ This document lists all configuration options that can be set via environment va
 - [General](#general)
 - [Search Mode](#search-mode)
 - [Downloads](#downloads)
+- [Security](#security)
 - [Network](#network)
 - [Advanced](#advanced)
 - [Prowlarr](#prowlarr)
@@ -251,8 +252,8 @@ The release source tab to open by default in the release modal.
 | `BOOKS_OUTPUT_MODE` | Choose where completed book files are sent. | string (choice) | `folder` |
 | `INGEST_DIR` | Directory where downloaded files are saved. Use {User} for per-user folders (e.g. /books/{User}). | string | `/books` |
 | `FILE_ORGANIZATION` | Choose how downloaded book files are named and organized. | string (choice) | `rename` |
-| `TEMPLATE_RENAME` | Variables: {Author}, {Title}, {Year}, {User}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. | string | `{Author} - {Title} ({Year})` |
-| `TEMPLATE_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title} ({Year})` |
+| `TEMPLATE_RENAME` | Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension). Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. Applies to single-file downloads. | string | `{Author} - {Title} ({Year})` |
+| `TEMPLATE_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension). Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title} ({Year})` |
 | `HARDLINK_TORRENTS` | Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder. | boolean | `false` |
 | `BOOKLORE_HOST` | Base URL of your Booklore instance | string | _none_ |
 | `BOOKLORE_USERNAME` | Booklore account username | string | _none_ |
@@ -273,8 +274,8 @@ The release source tab to open by default in the release modal.
 | `EMAIL_ALLOW_UNVERIFIED_TLS` | Disable TLS certificate verification (not recommended). | boolean | `false` |
 | `DESTINATION_AUDIOBOOK` | Directory where downloaded audiobook files are saved. Leave empty to use the Books destination. | string | _none_ |
 | `FILE_ORGANIZATION_AUDIOBOOK` | Choose how downloaded audiobook files are named and organized. | string (choice) | `rename` |
-| `TEMPLATE_AUDIOBOOK_RENAME` | Variables: {Author}, {Title}, {Year}, {User}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. | string | `{Author} - {Title}` |
-| `TEMPLATE_AUDIOBOOK_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title}` |
+| `TEMPLATE_AUDIOBOOK_RENAME` | Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. Applies to single-file downloads. | string | `{Author} - {Title}` |
+| `TEMPLATE_AUDIOBOOK_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title}` |
 | `HARDLINK_TORRENTS_AUDIOBOOK` | Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder. | boolean | `true` |
 | `AUTO_OPEN_DOWNLOADS_SIDEBAR` | Automatically open the downloads sidebar when a new download is queued. | boolean | `false` |
 | `DOWNLOAD_TO_BROWSER` | Automatically download completed files to your browser. | boolean | `false` |
@@ -318,7 +319,7 @@ Choose how downloaded book files are named and organized.
 
 **Naming Template**
 
-Variables: {Author}, {Title}, {Year}, {User}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders.
+Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension). Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. Applies to single-file downloads.
 
 - **Type:** string
 - **Default:** `{Author} - {Title} ({Year})`
@@ -327,7 +328,7 @@ Variables: {Author}, {Title}, {Year}, {User}. Universal adds: {Series}, {SeriesP
 
 **Path Template**
 
-Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}. Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty.
+Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension). Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty.
 
 - **Type:** string
 - **Default:** `{Author}/{Title} ({Year})`
@@ -528,7 +529,7 @@ Choose how downloaded audiobook files are named and organized.
 
 **Naming Template**
 
-Variables: {Author}, {Title}, {Year}, {User}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders.
+Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. Applies to single-file downloads.
 
 - **Type:** string
 - **Default:** `{Author} - {Title}`
@@ -537,7 +538,7 @@ Variables: {Author}, {Title}, {Year}, {User}, {Series}, {SeriesPosition}, {Subti
 
 **Path Template**
 
-Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty.
+Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty.
 
 - **Type:** string
 - **Default:** `{Author}/{Title}`
@@ -592,10 +593,165 @@ How long to keep completed/failed downloads in the queue display.
 
 </details>
 
+## Security
+
+| Variable | Description | Type | Default |
+|----------|-------------|------|---------|
+| `AUTH_METHOD` | Select the authentication method for accessing Shelfmark. | string (choice) | `none` |
+| `PROXY_AUTH_USER_HEADER` | The HTTP header your proxy uses to pass the authenticated username. | string | `X-Auth-User` |
+| `PROXY_AUTH_LOGOUT_URL` | The URL to redirect users to for logging out. Leave empty to disable logout functionality. | string | _empty string_ |
+| `PROXY_AUTH_ADMIN_GROUP_HEADER` | Optional: header your proxy uses to pass user groups/roles. | string | `X-Auth-Groups` |
+| `PROXY_AUTH_ADMIN_GROUP_NAME` | Optional: users in this group are treated as admins. Leave blank to skip group-based admin detection. | string | _empty string_ |
+| `OIDC_DISCOVERY_URL` | OpenID Connect discovery endpoint URL. Usually ends with /.well-known/openid-configuration. | string | _none_ |
+| `OIDC_CLIENT_ID` | OAuth2 client ID from your identity provider. | string | _none_ |
+| `OIDC_CLIENT_SECRET` | OAuth2 client secret from your identity provider. | string (secret) | _none_ |
+| `OIDC_SCOPES` | OAuth2 scopes to request from the identity provider. Managed automatically: includes essential scopes and the group claim when using admin group authorization. | string | `openid,email,profile` |
+| `OIDC_GROUP_CLAIM` | The name of the claim in the ID token that contains user groups. | string | `groups` |
+| `OIDC_ADMIN_GROUP` | Users in this group will be given admin access (if enabled below). Leave empty to use database roles only. | string | _empty string_ |
+| `OIDC_USE_ADMIN_GROUP` | When enabled, users in the Admin Group are granted admin access. When disabled, admin access is determined solely by database roles. | boolean | `true` |
+| `OIDC_AUTO_PROVISION` | Automatically create a user account on first OIDC login. When disabled, users must be pre-created by an admin. | boolean | `true` |
+| `OIDC_BUTTON_LABEL` | Custom label for the OIDC sign-in button on the login page. | string | _empty string_ |
+
+<details>
+<summary>Detailed descriptions</summary>
+
+#### `AUTH_METHOD`
+
+**Authentication Method**
+
+Select the authentication method for accessing Shelfmark.
+
+- **Type:** string (choice)
+- **Default:** `none`
+- **Options:** `none` (No Authentication), `builtin` (Local), `proxy` (Proxy Authentication), `oidc` (OIDC (OpenID Connect)), `cwa` (Calibre-Web Database)
+
+#### `PROXY_AUTH_USER_HEADER`
+
+**Proxy Auth User Header**
+
+The HTTP header your proxy uses to pass the authenticated username.
+
+- **Type:** string
+- **Default:** `X-Auth-User`
+
+#### `PROXY_AUTH_LOGOUT_URL`
+
+**Proxy Auth Logout URL**
+
+The URL to redirect users to for logging out. Leave empty to disable logout functionality.
+
+- **Type:** string
+- **Default:** _empty string_
+
+#### `PROXY_AUTH_ADMIN_GROUP_HEADER`
+
+**Proxy Auth Admin Group Header**
+
+Optional: header your proxy uses to pass user groups/roles.
+
+- **Type:** string
+- **Default:** `X-Auth-Groups`
+
+#### `PROXY_AUTH_ADMIN_GROUP_NAME`
+
+**Proxy Auth Admin Group**
+
+Optional: users in this group are treated as admins. Leave blank to skip group-based admin detection.
+
+- **Type:** string
+- **Default:** _empty string_
+
+#### `OIDC_DISCOVERY_URL`
+
+**Discovery URL**
+
+OpenID Connect discovery endpoint URL. Usually ends with /.well-known/openid-configuration.
+
+- **Type:** string
+- **Default:** _none_
+- **Required:** Yes
+
+#### `OIDC_CLIENT_ID`
+
+**Client ID**
+
+OAuth2 client ID from your identity provider.
+
+- **Type:** string
+- **Default:** _none_
+- **Required:** Yes
+
+#### `OIDC_CLIENT_SECRET`
+
+**Client Secret**
+
+OAuth2 client secret from your identity provider.
+
+- **Type:** string (secret)
+- **Default:** _none_
+- **Required:** Yes
+
+#### `OIDC_SCOPES`
+
+**Scopes**
+
+OAuth2 scopes to request from the identity provider. Managed automatically: includes essential scopes and the group claim when using admin group authorization.
+
+- **Type:** string
+- **Default:** `openid,email,profile`
+
+#### `OIDC_GROUP_CLAIM`
+
+**Group Claim Name**
+
+The name of the claim in the ID token that contains user groups.
+
+- **Type:** string
+- **Default:** `groups`
+
+#### `OIDC_ADMIN_GROUP`
+
+**Admin Group Name**
+
+Users in this group will be given admin access (if enabled below). Leave empty to use database roles only.
+
+- **Type:** string
+- **Default:** _empty string_
+
+#### `OIDC_USE_ADMIN_GROUP`
+
+**Use Admin Group for Authorization**
+
+When enabled, users in the Admin Group are granted admin access. When disabled, admin access is determined solely by database roles.
+
+- **Type:** boolean
+- **Default:** `true`
+
+#### `OIDC_AUTO_PROVISION`
+
+**Auto-Provision Users**
+
+Automatically create a user account on first OIDC login. When disabled, users must be pre-created by an admin.
+
+- **Type:** boolean
+- **Default:** `true`
+
+#### `OIDC_BUTTON_LABEL`
+
+**Login Button Label**
+
+Custom label for the OIDC sign-in button on the login page.
+
+- **Type:** string
+- **Default:** _empty string_
+
+</details>
+
 ## Network
 
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
+| `CERTIFICATE_VALIDATION` | Controls SSL/TLS certificate verification for outbound connections. Disable for self-signed certificates on internal services (e.g. OIDC providers, Prowlarr). | string (choice) | `enabled` |
 | `CUSTOM_DNS` | DNS provider for domain resolution. 'Auto' rotates through providers on failure. | string (choice) | `auto` |
 | `CUSTOM_DNS_MANUAL` | Comma-separated list of DNS server IP addresses (e.g., 8.8.8.8, 1.1.1.1). | string | _none_ |
 | `USE_DOH` | Use encrypted DNS queries for improved reliability and privacy. | boolean | `true` |
@@ -608,6 +764,16 @@ How long to keep completed/failed downloads in the queue display.
 
 <details>
 <summary>Detailed descriptions</summary>
+
+#### `CERTIFICATE_VALIDATION`
+
+**Certificate Validation**
+
+Controls SSL/TLS certificate verification for outbound connections. Disable for self-signed certificates on internal services (e.g. OIDC providers, Prowlarr).
+
+- **Type:** string (choice)
+- **Default:** `enabled`
+- **Options:** `enabled` (Enabled (Recommended)), `disabled_local` (Disabled for Local Addresses), `disabled` (Disabled)
 
 #### `CUSTOM_DNS`
 
@@ -1773,7 +1939,7 @@ Timeout for external bypasser requests in milliseconds.
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `AA_BASE_URL` | Select 'Auto' to try mirrors from your list on startup and fall back on failures. Choosing a specific mirror locks Shelfmark to that mirror (no fallback). | string (choice) | `auto` |
-| `AA_MIRROR_URLS` | Editable list of AA mirrors. Used to populate the Primary Mirror dropdown and the order used when Auto is selected. Type a URL and press Enter to add. Order matters for auto-rotation | string | `https://annas-archive.gl,https://annas-archive.li` |
+| `AA_MIRROR_URLS` | Editable list of AA mirrors. Used to populate the Primary Mirror dropdown and the order used when Auto is selected. Type a URL and press Enter to add. Order matters for auto-rotation | string | `https://annas-archive.gl,https://annas-archive.pk,https://annas-archive.vg,https://annas-archive.gd` |
 | `AA_ADDITIONAL_URLS` | Deprecated. Use Mirrors instead. This is kept for backwards compatibility with existing installs and environment variables. | string | _none_ |
 | `LIBGEN_ADDITIONAL_URLS` | Comma-separated list of custom LibGen mirrors to add to the defaults. | string | _none_ |
 | `ZLIB_PRIMARY_URL` | Z-Library mirror to use for downloads. | string (choice) | `https://z-lib.fm` |
@@ -1792,7 +1958,7 @@ Select 'Auto' to try mirrors from your list on startup and fall back on failures
 
 - **Type:** string (choice)
 - **Default:** `auto`
-- **Options:** `auto` (Auto (Recommended)), `https://annas-archive.gl` (annas-archive.gl), `https://annas-archive.li` (annas-archive.li)
+- **Options:** `auto` (Auto (Recommended)), `https://annas-archive.gl` (annas-archive.gl), `https://annas-archive.pk` (annas-archive.pk), `https://annas-archive.vg` (annas-archive.vg), `https://annas-archive.gd` (annas-archive.gd)
 
 #### `AA_MIRROR_URLS`
 
@@ -1801,7 +1967,7 @@ Select 'Auto' to try mirrors from your list on startup and fall back on failures
 Editable list of AA mirrors. Used to populate the Primary Mirror dropdown and the order used when Auto is selected. Type a URL and press Enter to add. Order matters for auto-rotation
 
 - **Type:** string
-- **Default:** `https://annas-archive.gl,https://annas-archive.li`
+- **Default:** `https://annas-archive.gl,https://annas-archive.pk,https://annas-archive.vg,https://annas-archive.gd`
 
 #### `AA_ADDITIONAL_URLS`
 
