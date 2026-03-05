@@ -15,6 +15,7 @@ from shelfmark.core.request_helpers import (
     normalize_optional_text,
     normalize_positive_int,
     now_utc_iso,
+    populate_request_usernames,
 )
 from shelfmark.core.user_db import UserDB
 
@@ -153,16 +154,20 @@ def _activity_ws_room(*, is_no_auth: bool, actor_db_user_id: int | None) -> str:
     return "admins"
 
 
+def _check_item_ownership(actor: _ActorContext, row: dict[str, Any]) -> Any | None:
+    """Return a 403 response if the actor doesn't own the item, else None."""
+    if actor.is_admin:
+        return None
+    owner_user_id = normalize_positive_int(row.get("user_id"))
+    if owner_user_id != actor.db_user_id:
+        return jsonify({"error": "Forbidden"}), 403
+    return None
+
+
 def _list_visible_requests(user_db: UserDB, *, is_admin: bool, db_user_id: int | None) -> list[dict[str, Any]]:
     if is_admin:
         request_rows = user_db.list_requests()
-        user_cache: dict[int, str] = {}
-        for row in request_rows:
-            requester_id = row["user_id"]
-            if requester_id not in user_cache:
-                requester = user_db.get_user(user_id=requester_id)
-                user_cache[requester_id] = requester.get("username", "") if requester else ""
-            row["username"] = user_cache[requester_id]
+        populate_request_usernames(request_rows, user_db)
         return request_rows
 
     if db_user_id is None:
@@ -170,18 +175,12 @@ def _list_visible_requests(user_db: UserDB, *, is_admin: bool, db_user_id: int |
     return user_db.list_requests(user_id=db_user_id)
 
 
-def _parse_download_item_key(item_key: Any) -> str | None:
-    if not isinstance(item_key, str) or not item_key.startswith("download:"):
+def _parse_item_key(item_key: Any, prefix: str) -> str | None:
+    """Extract the value after 'prefix:' from an item_key string."""
+    if not isinstance(item_key, str) or not item_key.startswith(f"{prefix}:"):
         return None
-    task_id = item_key.split(":", 1)[1].strip()
-    return task_id or None
-
-
-def _parse_request_item_key(item_key: Any) -> int | None:
-    if not isinstance(item_key, str) or not item_key.startswith("request:"):
-        return None
-    raw_id = item_key.split(":", 1)[1].strip()
-    return normalize_positive_int(raw_id)
+    value = item_key.split(":", 1)[1].strip()
+    return value or None
 
 
 _ACTIVE_QUEUE_BUCKETS = ("queued", "resolving", "locating", "downloading")
@@ -465,7 +464,7 @@ def register_activity_routes(
         dismissal_item: dict[str, str] | None = None
 
         if item_type == "download":
-            task_id = _parse_download_item_key(item_key)
+            task_id = _parse_item_key(item_key, "download")
             if task_id is None:
                 return jsonify({"error": "item_key must be in the format download:<task_id>"}), 400
 
@@ -473,9 +472,9 @@ def register_activity_routes(
             if existing is None:
                 return jsonify({"error": "Activity item not found"}), 404
 
-            owner_user_id = normalize_positive_int(existing.get("user_id"))
-            if not actor.is_admin and owner_user_id != actor.db_user_id:
-                return jsonify({"error": "Forbidden"}), 403
+            ownership_gate = _check_item_ownership(actor, existing)
+            if ownership_gate is not None:
+                return ownership_gate
 
             dismissed_count = download_history_service.dismiss(
                 task_id=task_id,
@@ -487,7 +486,7 @@ def register_activity_routes(
             dismissal_item = {"item_type": "download", "item_key": f"download:{task_id}"}
 
         elif item_type == "request":
-            request_id = _parse_request_item_key(item_key)
+            request_id = normalize_positive_int(_parse_item_key(item_key, "request"))
             if request_id is None:
                 return jsonify({"error": "item_key must be in the format request:<id>"}), 400
 
@@ -495,9 +494,9 @@ def register_activity_routes(
             if request_row is None:
                 return jsonify({"error": "Request not found"}), 404
 
-            owner_user_id = normalize_positive_int(request_row.get("user_id"))
-            if not actor.is_admin and owner_user_id != actor.db_user_id:
-                return jsonify({"error": "Forbidden"}), 403
+            ownership_gate = _check_item_ownership(actor, request_row)
+            if ownership_gate is not None:
+                return ownership_gate
 
             user_db.update_request(request_id, dismissed_at=now_utc_iso())
             dismissal_item = {"item_type": "request", "item_key": f"request:{request_id}"}
@@ -549,28 +548,28 @@ def register_activity_routes(
             item_key = item.get("item_key")
 
             if item_type == "download":
-                task_id = _parse_download_item_key(item_key)
+                task_id = _parse_item_key(item_key, "download")
                 if task_id is None:
                     return jsonify({"error": "download item_key must be in the format download:<task_id>"}), 400
                 existing = download_history_service.get_by_task_id(task_id)
                 if existing is None:
                     continue
-                owner_user_id = normalize_positive_int(existing.get("user_id"))
-                if not actor.is_admin and owner_user_id != actor.db_user_id:
-                    return jsonify({"error": "Forbidden"}), 403
+                ownership_gate = _check_item_ownership(actor, existing)
+                if ownership_gate is not None:
+                    return ownership_gate
                 download_task_ids.append(task_id)
                 continue
 
             if item_type == "request":
-                request_id = _parse_request_item_key(item_key)
+                request_id = normalize_positive_int(_parse_item_key(item_key, "request"))
                 if request_id is None:
                     return jsonify({"error": "request item_key must be in the format request:<id>"}), 400
                 request_row = user_db.get_request(request_id)
                 if request_row is None:
                     continue
-                owner_user_id = normalize_positive_int(request_row.get("user_id"))
-                if not actor.is_admin and owner_user_id != actor.db_user_id:
-                    return jsonify({"error": "Forbidden"}), 403
+                ownership_gate = _check_item_ownership(actor, request_row)
+                if ownership_gate is not None:
+                    return ownership_gate
                 request_ids.append(request_id)
                 continue
 
@@ -625,14 +624,14 @@ def register_activity_routes(
         if offset < 0:
             return jsonify({"error": "offset must be a non-negative integer"}), 400
 
-        # We combine download + request history and apply pagination over the merged list.
-        max_rows = min(limit + offset + 500, 5000)
+        # Fetch enough from each source to fill the requested page after merging.
+        merge_limit = offset + limit
         download_history_rows = download_history_service.get_history(
             user_id=actor.owner_scope,
-            limit=max_rows,
+            limit=merge_limit,
             offset=0,
         )
-        dismissed_request_rows = user_db.list_dismissed_requests(user_id=actor.owner_scope, limit=max_rows)
+        dismissed_request_rows = user_db.list_dismissed_requests(user_id=actor.owner_scope, limit=merge_limit)
         request_history_rows = [
             entry
             for entry in (_request_history_entry(row) for row in dismissed_request_rows)

@@ -228,13 +228,6 @@ class UserDB:
             WHERE delivery_state != 'none' AND delivery_updated_at IS NULL
             """
         )
-        conn.execute(
-            """
-            UPDATE download_requests
-            SET delivery_state = 'complete'
-            WHERE delivery_state = 'cleared'
-            """
-        )
 
     def _migrate_download_requests_dismissed_at(self, conn: sqlite3.Connection) -> None:
         """Ensure download_requests.dismissed_at exists for request dismissal history."""

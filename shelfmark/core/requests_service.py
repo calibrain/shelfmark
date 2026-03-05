@@ -122,8 +122,12 @@ def _now_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _existing_delivery_state(request_row: dict[str, Any]) -> str:
-    return safe_delivery_state(request_row.get("delivery_state"))
+def _normalize_admin_note(admin_note: Any) -> str | None:
+    if admin_note is None:
+        return None
+    if not isinstance(admin_note, str):
+        raise RequestServiceError("admin_note must be a string", status_code=400)
+    return admin_note.strip() or None
 
 
 def sync_delivery_states_from_queue_status(
@@ -156,7 +160,7 @@ def sync_delivery_states_from_queue_status(
         if delivery_state is None:
             continue
 
-        if _existing_delivery_state(row) == delivery_state:
+        if safe_delivery_state(row.get("delivery_state")) == delivery_state:
             continue
 
         updated.append(
@@ -257,6 +261,15 @@ def ensure_request_access(
     return request_row
 
 
+def _require_pending(request_row: dict[str, Any]) -> None:
+    if request_row["status"] != "pending":
+        raise RequestServiceError(
+            "Request is already in a terminal state",
+            status_code=409,
+            code="stale_transition",
+        )
+
+
 def cancel_request(
     user_db: "UserDB",
     *,
@@ -270,12 +283,7 @@ def cancel_request(
         actor_user_id=actor_user_id,
         is_admin=False,
     )
-    if request_row["status"] != "pending":
-        raise RequestServiceError(
-            "Request is already in a terminal state",
-            status_code=409,
-            code="stale_transition",
-        )
+    _require_pending(request_row)
 
     try:
         return user_db.update_request(
@@ -301,18 +309,9 @@ def reject_request(
         actor_user_id=admin_user_id,
         is_admin=True,
     )
-    if request_row["status"] != "pending":
-        raise RequestServiceError(
-            "Request is already in a terminal state",
-            status_code=409,
-            code="stale_transition",
-        )
+    _require_pending(request_row)
 
-    normalized_admin_note = None
-    if admin_note is not None:
-        if not isinstance(admin_note, str):
-            raise RequestServiceError("admin_note must be a string", status_code=400)
-        normalized_admin_note = admin_note.strip() or None
+    normalized_admin_note = _normalize_admin_note(admin_note)
 
     try:
         return user_db.update_request(
@@ -344,18 +343,9 @@ def fulfil_request(
         actor_user_id=admin_user_id,
         is_admin=True,
     )
-    if request_row["status"] != "pending":
-        raise RequestServiceError(
-            "Request is already in a terminal state",
-            status_code=409,
-            code="stale_transition",
-        )
+    _require_pending(request_row)
 
-    normalized_admin_note = None
-    if admin_note is not None:
-        if not isinstance(admin_note, str):
-            raise RequestServiceError("admin_note must be a string", status_code=400)
-        normalized_admin_note = admin_note.strip() or None
+    normalized_admin_note = _normalize_admin_note(admin_note)
 
     if not isinstance(manual_approval, bool):
         raise RequestServiceError("manual_approval must be a boolean", status_code=400)
@@ -381,14 +371,9 @@ def fulfil_request(
         except ValueError as exc:
             raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
 
-    if request_row["request_level"] == "book" and selected_release_data is None:
+    if selected_release_data is None:
         raise RequestServiceError(
-            "release_data is required to fulfil book-level requests",
-            status_code=400,
-        )
-    if request_row["request_level"] == "release" and selected_release_data is None:
-        raise RequestServiceError(
-            "release_data is required to fulfil release-level requests",
+            "release_data is required to fulfil requests",
             status_code=400,
         )
 
