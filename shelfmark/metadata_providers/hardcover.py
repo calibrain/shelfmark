@@ -95,6 +95,11 @@ query GetUserLists {
     me {
         id
         username
+        want_to_read_books: user_books_aggregate(where: {status_id: {_eq: 1}}) {
+            aggregate {
+                count(columns: [book_id], distinct: true)
+            }
+        }
         lists(order_by: {name: asc}) {
             id
             name
@@ -115,6 +120,56 @@ query GetUserLists {
     }
 }
 """
+
+USER_BOOKS_BY_STATUS_QUERY = """
+query GetCurrentUserBooksByStatus($statusId: Int!, $limit: Int!, $offset: Int!) {
+    me {
+        status_books: user_books(
+            where: {status_id: {_eq: $statusId}}
+            distinct_on: [book_id]
+            order_by: [{book_id: asc}, {created_at: desc}]
+            limit: $limit
+            offset: $offset
+        ) {
+            book {
+                id
+                title
+                subtitle
+                slug
+                release_date
+                headline
+                description
+                pages
+                rating
+                ratings_count
+                users_count
+                cached_image
+                cached_contributors
+                contributions(where: {contribution: {_eq: "Author"}}) {
+                    author {
+                        name
+                    }
+                }
+                featured_book_series {
+                    position
+                    series {
+                        name
+                        primary_books_count
+                    }
+                }
+            }
+        }
+        status_books_aggregate: user_books_aggregate(where: {status_id: {_eq: $statusId}}) {
+            aggregate {
+                count(columns: [book_id], distinct: true)
+            }
+        }
+    }
+}
+"""
+
+HARDCOVER_WANT_TO_READ_STATUS_ID = 1
+HARDCOVER_STATUS_PREFIX = "status:"
 
 
 # Mapping from abstract sort order to Hardcover sort parameter
@@ -498,51 +553,7 @@ class HardcoverProvider(MetadataProvider):
             if not isinstance(book_data, dict) or not book_data:
                 continue
             try:
-                author_names: List[str] = []
-
-                for contrib in book_data.get("contributions", []) or []:
-                    if not isinstance(contrib, dict):
-                        continue
-                    author_data = contrib.get("author", {})
-                    if isinstance(author_data, dict):
-                        author_name = str(author_data.get("name") or "").strip()
-                        if author_name:
-                            author_names.append(author_name)
-
-                if not author_names:
-                    for contrib in book_data.get("cached_contributors", []) or []:
-                        if isinstance(contrib, dict):
-                            nested_author = contrib.get("author", {})
-                            if isinstance(nested_author, dict):
-                                nested_name = str(nested_author.get("name") or "").strip()
-                                if nested_name:
-                                    author_names.append(nested_name)
-                                    continue
-
-                            flat_name = str(contrib.get("name") or "").strip()
-                            if flat_name:
-                                author_names.append(flat_name)
-                        elif isinstance(contrib, str):
-                            normalized = contrib.strip()
-                            if normalized:
-                                author_names.append(normalized)
-
-                search_like_item = {
-                    "id": book_data.get("id"),
-                    "title": book_data.get("title"),
-                    "subtitle": book_data.get("subtitle"),
-                    "slug": book_data.get("slug"),
-                    "release_date": book_data.get("release_date"),
-                    "headline": book_data.get("headline"),
-                    "description": book_data.get("description"),
-                    "rating": book_data.get("rating"),
-                    "ratings_count": book_data.get("ratings_count"),
-                    "users_count": book_data.get("users_count"),
-                    "image": book_data.get("cached_image"),
-                    "author_names": author_names,
-                }
-
-                parsed_book = self._parse_search_result(search_like_item)
+                parsed_book = self._parse_book(book_data)
                 if parsed_book:
                     books.append(parsed_book)
             except Exception as exc:
@@ -642,6 +653,78 @@ class HardcoverProvider(MetadataProvider):
         """Cached wrapper keyed by Hardcover user id to avoid cross-user cache leakage."""
         return self._fetch_user_lists()
 
+    def _fetch_current_user_books_by_status(self, status_id: int, page: int, limit: int) -> SearchResult:
+        """Fetch the current user's Hardcover books for a specific status shelf."""
+        if not self.api_key:
+            return SearchResult(books=[], page=page, total_found=0, has_more=False)
+
+        connected_user_id = self._resolve_current_user_id()
+        if not connected_user_id:
+            return SearchResult(books=[], page=page, total_found=0, has_more=False)
+
+        return self._fetch_user_books_by_status_cached(connected_user_id, status_id, page, limit)
+
+    @cacheable(ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="hardcover:user_books:status")
+    def _fetch_user_books_by_status_cached(
+        self,
+        _cache_user_id: str,
+        status_id: int,
+        page: int,
+        limit: int,
+    ) -> SearchResult:
+        """Cached wrapper keyed by Hardcover user id and status shelf."""
+        return self._fetch_user_books_by_status(status_id, page, limit)
+
+    def _fetch_user_books_by_status(self, status_id: int, page: int, limit: int) -> SearchResult:
+        """Fetch books from the current user's Hardcover status shelf."""
+        if not self.api_key:
+            return SearchResult(books=[], page=page, total_found=0, has_more=False)
+
+        offset = (page - 1) * limit
+        result = self._execute_query(
+            USER_BOOKS_BY_STATUS_QUERY,
+            {
+                "statusId": status_id,
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+        if not result:
+            return SearchResult(books=[], page=page, total_found=0, has_more=False)
+
+        me_data = result.get("me", {})
+        if isinstance(me_data, list) and me_data:
+            me_data = me_data[0]
+        if not isinstance(me_data, dict):
+            return SearchResult(books=[], page=page, total_found=0, has_more=False)
+
+        status_books = me_data.get("status_books", [])
+        aggregate_data = me_data.get("status_books_aggregate", {})
+        aggregate = aggregate_data.get("aggregate", {}) if isinstance(aggregate_data, dict) else {}
+        count_raw = aggregate.get("count", 0) if isinstance(aggregate, dict) else 0
+
+        try:
+            total_found = int(count_raw)
+        except (TypeError, ValueError):
+            total_found = 0
+
+        books: List[BookMetadata] = []
+        for item in status_books:
+            if not isinstance(item, dict):
+                continue
+            book_data = item.get("book", {})
+            if not isinstance(book_data, dict) or not book_data:
+                continue
+            try:
+                parsed_book = self._parse_book(book_data)
+                if parsed_book:
+                    books.append(parsed_book)
+            except Exception as exc:
+                logger.debug(f"Failed to parse Hardcover status book for status_id={status_id}: {exc}")
+
+        has_more = offset + len(status_books) < total_found
+        return SearchResult(books=books, page=page, total_found=total_found, has_more=has_more)
+
     def _fetch_user_lists(self) -> List[Dict[str, str]]:
         """Fetch raw list options from Hardcover me query."""
         result = self._execute_query(USER_LISTS_QUERY, {})
@@ -663,6 +746,27 @@ class HardcoverProvider(MetadataProvider):
                 return f"{name} ({int(books_count)})"
             except (TypeError, ValueError):
                 return name
+
+        want_to_read_count_data = me_data.get("want_to_read_books", {})
+        want_to_read_aggregate = (
+            want_to_read_count_data.get("aggregate", {})
+            if isinstance(want_to_read_count_data, dict)
+            else {}
+        )
+        want_to_read_count = (
+            want_to_read_aggregate.get("count")
+            if isinstance(want_to_read_aggregate, dict)
+            else None
+        )
+        want_to_read_value = f"{HARDCOVER_STATUS_PREFIX}{HARDCOVER_WANT_TO_READ_STATUS_ID}"
+        seen_values.add(want_to_read_value)
+        options.append(
+            {
+                "value": want_to_read_value,
+                "label": _format_label("Want to Read", want_to_read_count),
+                "group": "My Books",
+            }
+        )
 
         for list_item in me_data.get("lists", []):
             if not isinstance(list_item, dict):
@@ -733,6 +837,13 @@ class HardcoverProvider(MetadataProvider):
         # Advanced filter list selector (shared fetch path with URL detection)
         list_value_from_field = str(options.fields.get("hardcover_list", "")).strip()
         if list_value_from_field:
+            if list_value_from_field.startswith(HARDCOVER_STATUS_PREFIX):
+                try:
+                    status_id = int(list_value_from_field.split(":", 1)[1])
+                    return self._fetch_current_user_books_by_status(status_id, options.page, options.limit)
+                except (IndexError, ValueError):
+                    logger.debug(f"Invalid Hardcover status field value: {list_value_from_field}")
+                    return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
             if list_value_from_field.startswith("id:"):
                 try:
                     list_id = int(list_value_from_field.split(":", 1)[1])
