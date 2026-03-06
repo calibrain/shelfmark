@@ -23,6 +23,8 @@ interface HeaderProps {
   onAdvancedToggle?: () => void;
   isLoading?: boolean;
   onDownloadsClick?: () => void;
+  onWishlistClick?: () => void;
+  wishlistCount?: number;
   onSettingsClick?: () => void;
   isAdmin?: boolean;
   canAccessSettings?: boolean;
@@ -57,6 +59,8 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   onAdvancedToggle,
   isLoading = false,
   onDownloadsClick,
+  onWishlistClick,
+  wishlistCount = 0,
   onSettingsClick,
   isAdmin = false,
   canAccessSettings,
@@ -325,6 +329,39 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
           </svg>
           {!showIconsOnly && <span className="text-sm font-medium">Go To Library</span>}
         </a>
+      )}
+
+      {/* Wishlist Button */}
+      {onWishlistClick && (
+        <button
+          onClick={onWishlistClick}
+          className="relative flex items-center gap-2 px-3 py-2 rounded-full hover-action transition-all duration-200 text-gray-900 dark:text-gray-100"
+          aria-label="View wishlist"
+          title="Wishlist"
+        >
+          <div className="relative">
+            <svg
+              className="w-5 h-5"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth="1.5"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z"
+              />
+            </svg>
+            {wishlistCount > 0 && (
+              <span className="absolute -top-1 -right-1 text-white text-[0.55rem] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center bg-sky-600">
+                {wishlistCount > 9 ? '9+' : wishlistCount}
+              </span>
+            )}
+          </div>
+          <span className="hidden sm:inline text-sm font-medium">Wishlist</span>
+        </button>
       )}
 
       {/* Activity Button */}

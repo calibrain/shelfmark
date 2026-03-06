@@ -35,6 +35,7 @@ import { useRequestPolicy } from './hooks/useRequestPolicy';
 import { resolveDefaultModeFromPolicy, resolveSourceModeFromPolicy } from './hooks/requestPolicyCore';
 import { useRequests } from './hooks/useRequests';
 import { useActivity } from './hooks/useActivity';
+import { useWishlist } from './hooks/useWishlist';
 import { Header } from './components/Header';
 import { SearchSection } from './components/SearchSection';
 import { AdvancedFilters } from './components/AdvancedFilters';
@@ -46,6 +47,7 @@ import { OnBehalfConfirmationModal } from './components/OnBehalfConfirmationModa
 import { ToastContainer } from './components/ToastContainer';
 import { Footer } from './components/Footer';
 import { ActivitySidebar } from './components/activity';
+import { WishlistSidebar } from './components/WishlistSidebar';
 import { LoginPage } from './pages/LoginPage';
 import { SelfSettingsModal, SettingsModal } from './components/settings';
 import { ConfigSetupBanner } from './components/ConfigSetupBanner';
@@ -442,6 +444,22 @@ function App() {
     headerObserverRef.current = observer;
   }, []);
   const [isManualSearch, setIsManualSearch] = useState(false);
+
+  // Wishlist
+  const { items: wishlistItems, isLoading: isWishlistLoading, isInWishlist, toggle: toggleWishlist } = useWishlist({
+    enabled: isAuthenticated,
+  });
+  const [wishlistSidebarOpen, setWishlistSidebarOpen] = useState(false);
+  const handleWishlistSearch = useCallback((book: Book) => {
+    setWishlistSidebarOpen(false);
+    const query = [book.search_title ?? book.title, book.search_author ?? book.author]
+      .filter(Boolean)
+      .join(' ');
+    setSearchInput(query);
+    setIsManualSearch(true);
+    handleSearch(query, config);
+  }, [setSearchInput, handleSearch, config]);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selfSettingsOpen, setSelfSettingsOpen] = useState(false);
   const [configBannerOpen, setConfigBannerOpen] = useState(false);
@@ -1487,6 +1505,8 @@ function App() {
           searchInput={searchInput}
           onSearchChange={setSearchInput}
           onDownloadsClick={() => setDownloadsSidebarOpen((prev) => !prev)}
+          onWishlistClick={isAuthenticated ? () => setWishlistSidebarOpen((prev) => !prev) : undefined}
+          wishlistCount={wishlistItems.length}
           onSettingsClick={() => {
             if (config?.settings_enabled) {
               if (authIsAdmin) {
@@ -1606,6 +1626,8 @@ function App() {
           isLoadingMore={isLoadingMore}
           onLoadMore={() => loadMore(config)}
           totalFound={totalFound}
+          isWishlisted={isAuthenticated ? isInWishlist : undefined}
+          onWishlistToggle={isAuthenticated ? toggleWishlist : undefined}
         />
 
         {selectedBook && (
@@ -1709,6 +1731,18 @@ function App() {
         onRequestDismiss={showRequestsTab ? handleRequestDismiss : undefined}
         onPinnedOpenChange={setSidebarPinnedOpen}
         pinnedTopOffset={headerHeight}
+      />
+
+      <WishlistSidebar
+        isOpen={wishlistSidebarOpen}
+        onClose={() => setWishlistSidebarOpen(false)}
+        items={wishlistItems}
+        isLoading={isWishlistLoading}
+        onSearch={handleWishlistSearch}
+        onRemove={(bookId) => {
+          const item = wishlistItems.find((i) => i.book_id === bookId);
+          if (item) toggleWishlist(item.book_data);
+        }}
       />
 
       <ToastContainer toasts={toasts} />

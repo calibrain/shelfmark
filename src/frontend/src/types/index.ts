@@ -287,6 +287,12 @@ export const isMetadataBook = (book: Book): book is Book & {
   return !!book.provider && !!book.provider_id;
 };
 
+export interface WishlistItem {
+  book_id: string;
+  book_data: Book;
+  added_at: string;
+}
+
 // Release source types (from plugin system)
 export interface ReleaseSource {
   name: string;           // e.g., 'direct_download', 'prowlarr'

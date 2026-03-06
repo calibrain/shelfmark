@@ -141,9 +141,11 @@ try:
     from shelfmark.core.oidc_routes import register_oidc_routes
     from shelfmark.core.admin_routes import register_admin_routes
     from shelfmark.core.self_user_routes import register_self_user_routes
+    from shelfmark.core.wishlist_routes import register_wishlist_routes
     register_oidc_routes(app, user_db)
     register_admin_routes(app, user_db)
     register_self_user_routes(app, user_db)
+    register_wishlist_routes(app, user_db)
 except (sqlite3.OperationalError, OSError) as e:
     logger.warning(
         f"User database initialization failed: {e}. "

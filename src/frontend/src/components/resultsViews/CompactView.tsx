@@ -17,9 +17,11 @@ interface CompactViewProps {
   showDetailsButton?: boolean;
   animationDelay?: number;
   showSeriesPosition?: boolean;
+  isWishlisted?: boolean;
+  onWishlistToggle?: (book: Book) => void;
 }
 
-export const CompactView = ({ book, onDetails, onDownload, onGetReleases, buttonState, showDetailsButton = false, animationDelay = 0, showSeriesPosition = false }: CompactViewProps) => {
+export const CompactView = ({ book, onDetails, onDownload, onGetReleases, buttonState, showDetailsButton = false, animationDelay = 0, showSeriesPosition = false, isWishlisted = false, onWishlistToggle }: CompactViewProps) => {
   const { searchMode } = useSearchMode();
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [isLoadingReleases, setIsLoadingReleases] = useState(false);
@@ -100,6 +102,33 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
 
         <div className="absolute inset-0 bg-white transition-opacity duration-300 pointer-events-none" style={{ opacity: isHovered ? 0.02 : 0 }} />
 
+        {onWishlistToggle && (
+          <button
+            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm flex items-center justify-center transition-all duration-300 shadow-lg hover:scale-110"
+            style={{
+              opacity: isHovered || isWishlisted ? 1 : 0,
+              pointerEvents: isHovered || isWishlisted ? 'auto' : 'none',
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onWishlistToggle(book);
+            }}
+            aria-label={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+            title={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+          >
+            <svg
+              className="w-3.5 h-3.5"
+              xmlns="http://www.w3.org/2000/svg"
+              fill={isWishlisted ? 'currentColor' : 'none'}
+              viewBox="0 0 24 24"
+              strokeWidth="1.5"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" />
+            </svg>
+          </button>
+        )}
+
         {!showDetailsButton && (
           <button
             className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm flex items-center justify-center transition-all duration-300 shadow-lg hover:scale-110"
@@ -164,6 +193,26 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
                 <span className="details-button-text">{isLoadingDetails ? 'Loading' : 'Details'}</span>
                 {isLoadingDetails && <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />}
               </button>
+              {onWishlistToggle && (
+                <button
+                  className="px-2 py-1.5 rounded border flex-shrink-0 flex items-center justify-center"
+                  style={{ borderColor: 'var(--border-muted)' }}
+                  onClick={() => onWishlistToggle(book)}
+                  aria-label={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+                  title={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+                >
+                  <svg
+                    className="w-3.5 h-3.5"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill={isWishlisted ? 'currentColor' : 'none'}
+                    viewBox="0 0 24 24"
+                    strokeWidth="1.5"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" />
+                  </svg>
+                </button>
+              )}
               <BookActionButton
                 book={book}
                 buttonState={buttonState}

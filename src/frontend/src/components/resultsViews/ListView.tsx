@@ -13,6 +13,8 @@ interface ListViewProps {
   getButtonState: (bookId: string) => ButtonStateInfo;
   getUniversalButtonState: (bookId: string) => ButtonStateInfo;
   showSeriesPosition?: boolean;
+  isWishlisted?: (bookId: string) => boolean;
+  onWishlistToggle?: (book: Book) => void;
 }
 
 const ListViewThumbnail = ({ preview, title }: { preview?: string; title?: string }) => {
@@ -48,7 +50,7 @@ const ListViewThumbnail = ({ preview, title }: { preview?: string; title?: strin
   );
 };
 
-export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButtonState, getUniversalButtonState, showSeriesPosition = false }: ListViewProps) => {
+export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButtonState, getUniversalButtonState, showSeriesPosition = false, isWishlisted, onWishlistToggle }: ListViewProps) => {
   const { searchMode } = useSearchMode();
   const [detailsLoadingId, setDetailsLoadingId] = useState<string | null>(null);
   const [releasesLoadingId, setReleasesLoadingId] = useState<string | null>(null);
@@ -218,6 +220,25 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
 
                 {/* Action Buttons */}
                 <div className="flex flex-row justify-end gap-0.5 sm:gap-1 sm:pr-3">
+                  {onWishlistToggle && (
+                    <button
+                      className="flex items-center justify-center p-1.5 sm:p-2 rounded-full hover-action transition-all duration-200"
+                      onClick={() => onWishlistToggle(book)}
+                      aria-label={isWishlisted?.(book.id) ? 'Remove from wishlist' : 'Add to wishlist'}
+                      title={isWishlisted?.(book.id) ? 'Remove from wishlist' : 'Add to wishlist'}
+                    >
+                      <svg
+                        className="w-4 h-4 sm:w-5 sm:h-5"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill={isWishlisted?.(book.id) ? 'currentColor' : 'none'}
+                        viewBox="0 0 24 24"
+                        strokeWidth="1.5"
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" />
+                      </svg>
+                    </button>
+                  )}
                   <button
                     className="flex items-center justify-center p-1.5 sm:p-2 rounded-full text-gray-600 dark:text-gray-200 hover-action transition-all duration-200"
                     onClick={() => handleDetails(book.id)}

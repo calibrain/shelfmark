@@ -30,6 +30,9 @@ interface ResultsSectionProps {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   totalFound?: number;
+  // Wishlist
+  isWishlisted?: (bookId: string) => boolean;
+  onWishlistToggle?: (book: Book) => void;
 }
 
 export const ResultsSection = ({
@@ -47,6 +50,8 @@ export const ResultsSection = ({
   isLoadingMore,
   onLoadMore,
   totalFound,
+  isWishlisted,
+  onWishlistToggle,
 }: ResultsSectionProps) => {
   const { searchMode } = useSearchMode();
   const [viewMode, setViewMode] = useState<'card' | 'compact' | 'list'>(() => {
@@ -175,7 +180,7 @@ export const ResultsSection = ({
         </div>
       </div>
       {viewMode === 'list' ? (
-        <ListView books={books} onDetails={onDetails} onDownload={onDownload} onGetReleases={onGetReleases} getButtonState={getButtonState} getUniversalButtonState={getUniversalButtonState} showSeriesPosition={sortValue === 'series_order'} />
+        <ListView books={books} onDetails={onDetails} onDownload={onDownload} onGetReleases={onGetReleases} getButtonState={getButtonState} getUniversalButtonState={getUniversalButtonState} showSeriesPosition={sortValue === 'series_order'} isWishlisted={isWishlisted} onWishlistToggle={onWishlistToggle} />
       ) : (
         <div
           id="results-grid"
@@ -199,6 +204,8 @@ export const ResultsSection = ({
                 buttonState={buttonState}
                 animationDelay={animationDelay}
                 showSeriesPosition={sortValue === 'series_order'}
+                isWishlisted={isWishlisted?.(book.id)}
+                onWishlistToggle={onWishlistToggle}
               />
             ) : (
               <CompactView
@@ -211,6 +218,8 @@ export const ResultsSection = ({
                 showDetailsButton={!isDesktop}
                 animationDelay={animationDelay}
                 showSeriesPosition={sortValue === 'series_order'}
+                isWishlisted={isWishlisted?.(book.id)}
+                onWishlistToggle={onWishlistToggle}
               />
             );
           })}

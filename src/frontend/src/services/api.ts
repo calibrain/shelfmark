@@ -9,6 +9,7 @@ import {
   RequestPolicyResponse,
   CreateRequestPayload,
   RequestRecord,
+  WishlistItem,
 } from '../types';
 import { SettingsResponse, ActionResult, UpdateResult, SettingsTab } from '../types/settings';
 import { MetadataBookData, transformMetadataToBook } from '../utils/bookTransformers';
@@ -862,5 +863,22 @@ export const updateSelfUser = async (
   return fetchJSON<AdminUser>(`${API_BASE}/users/me`, {
     method: 'PUT',
     body: JSON.stringify(data),
+  });
+};
+
+export const listWishlist = async (): Promise<WishlistItem[]> => {
+  return fetchJSON<WishlistItem[]>(`${API_BASE}/wishlist`);
+};
+
+export const addToWishlist = async (book: Book): Promise<WishlistItem> => {
+  return fetchJSON<WishlistItem>(`${API_BASE}/wishlist`, {
+    method: 'POST',
+    body: JSON.stringify({ book_id: book.id, book_data: book }),
+  });
+};
+
+export const removeFromWishlist = async (bookId: string): Promise<void> => {
+  await fetchJSON<{ ok: boolean }>(`${API_BASE}/wishlist/${encodeURIComponent(bookId)}`, {
+    method: 'DELETE',
   });
 };

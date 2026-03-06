@@ -105,6 +105,18 @@ CREATE TABLE IF NOT EXISTS activity_view_state (
     UNIQUE(viewer_scope, item_type, item_key)
 );
 
+CREATE TABLE IF NOT EXISTS user_wishlist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    book_id TEXT NOT NULL,
+    book_data TEXT NOT NULL,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, book_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_wishlist_user
+ON user_wishlist (user_id, added_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_activity_view_state_history
 ON activity_view_state (viewer_scope, dismissed_at DESC, id DESC)
 WHERE dismissed_at IS NOT NULL AND cleared_at IS NULL;
@@ -313,6 +325,27 @@ class UserDB:
     def _get_user_by_id(self, conn: sqlite3.Connection, user_id: int) -> Optional[Dict[str, Any]]:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         return dict(row) if row else None
+
+    _NOAUTH_SYSTEM_USERNAME = "__noauth__"
+
+    def get_or_create_noauth_system_user(self) -> Dict[str, Any]:
+        """Get or create the system user used when no authentication is configured."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(
+                    "SELECT * FROM users WHERE username = ?", (self._NOAUTH_SYSTEM_USERNAME,)
+                ).fetchone()
+                if row:
+                    return dict(row)
+                cursor = conn.execute(
+                    "INSERT INTO users (username, auth_source, role) VALUES (?, ?, ?)",
+                    (self._NOAUTH_SYSTEM_USERNAME, AUTH_SOURCE_BUILTIN, "admin"),
+                )
+                conn.commit()
+                return self._get_user_by_id(conn, cursor.lastrowid)
+            finally:
+                conn.close()
 
     _ALLOWED_UPDATE_COLUMNS = {
         "email",
@@ -776,6 +809,82 @@ class UserDB:
                 return self._parse_request_row(updated_row)
             finally:
                 conn.close()
+
+    def add_wishlist_item(self, user_id: int, book_id: str, book_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Add or update a book in the user's wishlist. Returns the wishlist row."""
+        if not book_id or not book_id.strip():
+            raise ValueError("book_id must be a non-empty string")
+        if not isinstance(book_data, dict):
+            raise ValueError("book_data must be an object")
+        book_data_json = json.dumps(book_data)
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO user_wishlist (user_id, book_id, book_data)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(user_id, book_id) DO UPDATE SET
+                        book_data = excluded.book_data,
+                        added_at = CURRENT_TIMESTAMP
+                    """,
+                    (user_id, book_id.strip(), book_data_json),
+                )
+                conn.commit()
+                row = conn.execute(
+                    "SELECT * FROM user_wishlist WHERE user_id = ? AND book_id = ?",
+                    (user_id, book_id.strip()),
+                ).fetchone()
+                return self._parse_wishlist_row(dict(row))
+            finally:
+                conn.close()
+
+    def remove_wishlist_item(self, user_id: int, book_id: str) -> bool:
+        """Remove a book from the user's wishlist. Returns True if a row was deleted."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                cursor = conn.execute(
+                    "DELETE FROM user_wishlist WHERE user_id = ? AND book_id = ?",
+                    (user_id, book_id),
+                )
+                conn.commit()
+                return cursor.rowcount > 0
+            finally:
+                conn.close()
+
+    def list_wishlist_items(self, user_id: int) -> List[Dict[str, Any]]:
+        """List all wishlist items for a user, newest first."""
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM user_wishlist WHERE user_id = ? ORDER BY added_at DESC, id DESC",
+                (user_id,),
+            ).fetchall()
+            return [self._parse_wishlist_row(dict(row)) for row in rows]
+        finally:
+            conn.close()
+
+    def get_wishlist_item(self, user_id: int, book_id: str) -> Optional[Dict[str, Any]]:
+        """Get a single wishlist item. Returns None if not found."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT * FROM user_wishlist WHERE user_id = ? AND book_id = ?",
+                (user_id, book_id),
+            ).fetchone()
+            return self._parse_wishlist_row(dict(row)) if row else None
+        finally:
+            conn.close()
+
+    @staticmethod
+    def _parse_wishlist_row(row: Dict[str, Any]) -> Dict[str, Any]:
+        raw = row.get("book_data")
+        try:
+            row["book_data"] = json.loads(raw) if raw else {}
+        except (ValueError, TypeError):
+            row["book_data"] = {}
+        return row
 
     def count_pending_requests(self) -> int:
         """Count all pending requests."""
