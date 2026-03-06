@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CreateRequestPayload } from '../types';
 import { getMetadataBookInfo } from '../services/api';
+import { isSourceBackedRequestPayload } from '../utils/requestPayload';
 import {
   applyRequestNoteToPayload,
   buildRequestConfirmationPreview,
@@ -85,7 +86,7 @@ export const RequestConfirmationModal = ({
     if (
       typeof provider !== 'string' || !provider ||
       typeof providerId !== 'string' || !providerId ||
-      provider === 'direct_download' ||
+      isSourceBackedRequestPayload(payload) ||
       bookData.series_name
     ) {
       return;

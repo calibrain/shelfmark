@@ -251,19 +251,6 @@ class TestSettingsEndpoint:
 class TestDownloadFlow:
     """Tests for the complete download flow."""
 
-    def test_download_requires_id(self, api_client: APIClient):
-        """Test that download endpoint requires an ID."""
-        resp = api_client.get("/api/download")
-
-        assert resp.status_code in [400, 422]
-
-    def test_download_invalid_id_returns_error(self, api_client: APIClient):
-        """Test that invalid ID returns appropriate error."""
-        resp = api_client.get("/api/download", params={"id": "nonexistent-id-12345"})
-
-        # Should return 404 or error status
-        assert resp.status_code in [400, 404, 500]
-
     def test_cancel_nonexistent_download(self, api_client: APIClient):
         """Test cancelling a download that doesn't exist."""
         resp = api_client.delete("/api/download/nonexistent-id-xyz/cancel")
@@ -365,39 +352,36 @@ class TestCoverProxy:
 
 
 @pytest.mark.e2e
-class TestLegacySearchEndpoint:
-    """Tests for the legacy search endpoint (backwards compatibility)."""
+class TestDirectSourceQueryEndpoint:
+    """Tests for direct-mode source query search on the shared releases API."""
 
-    def test_legacy_search_without_query(self, api_client: APIClient):
-        """Test legacy search behavior without query parameter."""
-        resp = api_client.get("/api/search")
+    def test_direct_source_query_requires_browse_context(self, api_client: APIClient):
+        """Source query mode requires a query or browse filters."""
+        resp = api_client.get("/api/releases", params={"source": "direct_download"})
 
-        # May return 400 (error) or 200 with empty results depending on implementation
-        assert resp.status_code in [200, 400, 422]
+        assert resp.status_code in [400, 422]
 
-    def test_legacy_search_returns_results(self, api_client: APIClient):
-        """Test legacy search with a query."""
-        resp = api_client.get("/api/search", params={"query": "Pride Prejudice"})
+    def test_direct_source_query_returns_results(self, api_client: APIClient):
+        """Direct mode uses /api/releases source query mode."""
+        resp = api_client.get(
+            "/api/releases",
+            params={"source": "direct_download", "query": "Pride Prejudice"},
+        )
 
         # May return results or 503 if source unavailable
         if resp.status_code == 200:
             data = resp.json()
-            assert isinstance(data, list)
+            assert data.get("sources_searched") == ["direct_download"]
+            assert isinstance(data.get("releases"), list)
 
 
 @pytest.mark.e2e
-class TestLegacyInfoEndpoint:
-    """Tests for the legacy info endpoint."""
+class TestSourceRecordEndpoint:
+    """Tests for source-native record lookup on the shared source-record API."""
 
-    def test_legacy_info_requires_id(self, api_client: APIClient):
-        """Test that legacy info requires ID parameter."""
-        resp = api_client.get("/api/info")
-
-        assert resp.status_code in [400, 422]
-
-    def test_legacy_info_invalid_id(self, api_client: APIClient):
-        """Test legacy info with invalid ID."""
-        resp = api_client.get("/api/info", params={"id": "invalid-id-xyz"})
+    def test_source_record_invalid_id(self, api_client: APIClient):
+        """Unknown source records should return a not-found style response."""
+        resp = api_client.get("/api/release-sources/direct_download/records/invalid-id-xyz")
 
         # Should return 404 or error
-        assert resp.status_code in [400, 404, 500]
+        assert resp.status_code in [404, 500, 503]

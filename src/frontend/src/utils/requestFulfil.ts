@@ -39,6 +39,7 @@ export const bookFromRequestData = (bookData: Record<string, unknown> | null | u
     id: providerId || title || 'request',
     title,
     author: toOptionalText(row.author) || 'Unknown author',
+    source: toOptionalText(row.source),
     provider: toOptionalText(row.provider),
     provider_id: providerId,
     preview: toOptionalText(row.preview),

@@ -65,7 +65,7 @@ class TestSettingsRestrictionPolicy:
     def test_settings_path_detection(self):
         assert is_settings_or_onboarding_path("/api/settings/downloads")
         assert is_settings_or_onboarding_path("/api/onboarding")
-        assert not is_settings_or_onboarding_path("/api/search")
+        assert not is_settings_or_onboarding_path("/api/releases")
 
     def test_default_is_admin_restricted(self):
         assert should_restrict_settings_to_admin({}) is True
