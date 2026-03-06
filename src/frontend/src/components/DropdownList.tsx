@@ -22,6 +22,7 @@ interface DropdownListProps {
   buttonClassName?: string;
   summaryFormatter?: (selected: DropdownListOption[], placeholder: string) => ReactNode;
   keepOpenOnSelect?: boolean;
+  triggerChrome?: 'default' | 'minimal';
 }
 
 export const DropdownList = ({
@@ -37,6 +38,7 @@ export const DropdownList = ({
   buttonClassName,
   summaryFormatter,
   keepOpenOnSelect,
+  triggerChrome = 'default',
 }: DropdownListProps) => {
   const selectedValues = normalizeValue(value, multiple);
   const selectedOptions = options.filter(opt => selectedValues.includes(opt.value));
@@ -102,6 +104,7 @@ export const DropdownList = ({
       align={align}
       widthClassName={widthClassName}
       buttonClassName={buttonClassName}
+      triggerChrome={triggerChrome}
     >
       {({ close }) => (
         <div role="listbox" aria-multiselectable={multiple}>
@@ -159,4 +162,3 @@ const normalizeValue = (value: string[] | string | null | undefined, multiple: b
 
   return [];
 };
-

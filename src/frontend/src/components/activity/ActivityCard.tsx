@@ -518,12 +518,14 @@ export const ActivityCard = ({
 
   const titleNode =
     canShowDownloadLink && item.downloadBookId ? (
-      <a
-        href={withBasePath(`/api/localdownload?id=${encodeURIComponent(item.downloadBookId)}`)}
-        className="text-sky-600 hover:underline"
-      >
-        {item.title}
-      </a>
+      <Tooltip content="Download file" position="top" delay={0}>
+        <a
+          href={withBasePath(`/api/localdownload?id=${encodeURIComponent(item.downloadBookId)}`)}
+          className="text-sky-600 hover:underline"
+        >
+          {item.title}
+        </a>
+      </Tooltip>
     ) : (
       item.title
     );
@@ -652,6 +654,8 @@ export const ActivityCard = ({
                 ? getProgressConfig(badge.visualStatus, badge.progress)
                 : null;
 
+              const isError = badge.visualStatus === 'error';
+
               return (
                 <Tooltip
                   key={badgeId}
@@ -659,6 +663,7 @@ export const ActivityCard = ({
                   delay={0}
                   position="bottom"
                   unstyled
+                  interactive={isError}
                   className={STATUS_TOOLTIP_CLASSES[badge.visualStatus]}
                 >
                   <span

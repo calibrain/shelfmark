@@ -9,6 +9,8 @@ import {
   RequestPolicyResponse,
   CreateRequestPayload,
   RequestRecord,
+  MetadataProvidersResponse,
+  MetadataSearchConfig,
 } from '../types';
 import { SettingsResponse, ActionResult, UpdateResult, SettingsTab } from '../types/settings';
 import { MetadataBookData, transformMetadataToBook } from '../utils/bookTransformers';
@@ -31,6 +33,8 @@ const API = {
   metadataSearch: `${API_BASE}/metadata/search`,
   info: `${API_BASE}/info`,
   download: `${API_BASE}/download`,
+  metadataConfig: `${API_BASE}/metadata/config`,
+  metadataProviders: `${API_BASE}/metadata/providers`,
   status: `${API_BASE}/status`,
   cancelDownload: `${API_BASE}/download`,
   retryDownload: `${API_BASE}/download`,
@@ -240,7 +244,8 @@ export const searchMetadata = async (
   sort: string = 'relevance',
   fields: Record<string, string | number | boolean> = {},
   page: number = 1,
-  contentType: string = 'ebook'
+  contentType: string = 'ebook',
+  provider?: string
 ): Promise<MetadataSearchResult> => {
   const hasFields = Object.values(fields).some(v => v !== '' && v !== false);
 
@@ -256,6 +261,9 @@ export const searchMetadata = async (
   params.set('sort', sort);
   params.set('page', String(page));
   params.set('content_type', contentType);
+  if (provider) {
+    params.set('provider', provider);
+  }
 
   // Add custom search field values
   Object.entries(fields).forEach(([key, value]) => {
@@ -274,13 +282,44 @@ export const searchMetadata = async (
   };
 };
 
-export const fetchFieldOptions = async (endpoint: string): Promise<DynamicFieldOption[]> => {
+export const getMetadataProviders = async (): Promise<MetadataProvidersResponse> => {
+  return fetchJSON<MetadataProvidersResponse>(API.metadataProviders);
+};
+
+export const getMetadataSearchConfig = async (
+  contentType: string = 'ebook',
+  provider?: string,
+): Promise<MetadataSearchConfig> => {
+  const params = new URLSearchParams({
+    content_type: contentType,
+  });
+
+  if (provider) {
+    params.set('provider', provider);
+  }
+
+  return fetchJSON<MetadataSearchConfig>(`${API.metadataConfig}?${params.toString()}`);
+};
+
+export const fetchFieldOptions = async (
+  endpoint: string,
+  query?: string,
+): Promise<DynamicFieldOption[]> => {
   const normalizedEndpoint =
     endpoint.startsWith('http://') || endpoint.startsWith('https://')
       ? endpoint
       : withBasePath(endpoint);
 
-  const response = await fetchJSON<{ options?: unknown }>(normalizedEndpoint);
+  const url = new URL(normalizedEndpoint, window.location.origin);
+  if (query && query.trim().length > 0) {
+    url.searchParams.set('query', query.trim());
+  }
+
+  const requestUrl = url.origin === window.location.origin
+    ? `${url.pathname}${url.search}`
+    : url.toString();
+
+  const response = await fetchJSON<{ options?: unknown }>(requestUrl);
   if (!Array.isArray(response.options)) {
     return [];
   }

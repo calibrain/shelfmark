@@ -11,6 +11,10 @@ import {
   RequestPolicyMode,
   CreateRequestPayload,
   ActingAsUserSelection,
+  MetadataProviderSummary,
+  MetadataSearchConfig,
+  QueryTargetOption,
+  SearchMode,
   isMetadataBook,
 } from './types';
 import {
@@ -21,8 +25,11 @@ import {
   cancelDownload,
   retryDownload,
   getConfig,
+  getMetadataProviders,
+  getMetadataSearchConfig,
   createRequest,
   isApiResponseError,
+  updateSelfUser,
   type DownloadReleasePayload,
 } from './services/api';
 import { useToast } from './hooks/useToast';
@@ -69,6 +76,7 @@ import { bookFromRequestData } from './utils/requestFulfil';
 import { policyTrace } from './utils/policyTrace';
 import { SearchModeProvider } from './contexts/SearchModeContext';
 import { useSocket } from './contexts/SocketContext';
+import { buildQueryTargets, getDefaultQueryTargetKey } from './utils/queryTargets';
 import './styles.css';
 
 const CONTENT_TYPE_STORAGE_KEY = 'preferred-content-type';
@@ -365,7 +373,6 @@ function App() {
     updateAdvancedFilters,
     handleSearch,
     handleResetSearch,
-    handleSortChange,
     searchFieldValues,
     updateSearchFieldValue,
     searchFieldLabels,
@@ -396,6 +403,7 @@ function App() {
     await handleLogout();
     setBooks([]);
     clearTracking();
+    setActiveQueryTarget('general');
     setPendingRequestPayload(null);
     setActingAsUser(null);
     setPendingOnBehalfDownload(null);
@@ -417,6 +425,11 @@ function App() {
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [releaseBook, setReleaseBook] = useState<Book | null>(null);
   const [config, setConfig] = useState<AppConfig | null>(null);
+  const [metadataProviders, setMetadataProviders] = useState<MetadataProviderSummary[]>([]);
+  const [configuredMetadataProvider, setConfiguredMetadataProvider] = useState<string | null>(null);
+  const [configuredAudiobookMetadataProvider, setConfiguredAudiobookMetadataProvider] = useState<string | null>(null);
+  const [activeMetadataConfig, setActiveMetadataConfig] = useState<MetadataSearchConfig | null>(null);
+  const [activeQueryTarget, setActiveQueryTarget] = useState<string>('general');
   const [downloadsSidebarOpen, setDownloadsSidebarOpen] = useState(false);
   const [sidebarPinnedOpen, setSidebarPinnedOpen] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
@@ -441,7 +454,6 @@ function App() {
     observer.observe(el);
     headerObserverRef.current = observer;
   }, []);
-  const [isManualSearch, setIsManualSearch] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selfSettingsOpen, setSelfSettingsOpen] = useState(false);
   const [configBannerOpen, setConfigBannerOpen] = useState(false);
@@ -591,7 +603,10 @@ function App() {
   // Load config function
   const loadConfig = useCallback(async (mode: 'initial' | 'settings-saved' = 'initial') => {
     try {
-      const cfg = await getConfig();
+      const [cfg, metadataProviderState] = await Promise.all([
+        getConfig(),
+        getMetadataProviders(),
+      ]);
 
       // Check if search mode changed (only on settings save)
       if (mode === 'settings-saved' && prevSearchModeRef.current !== cfg.search_mode) {
@@ -602,6 +617,9 @@ function App() {
 
       prevSearchModeRef.current = cfg.search_mode;
       setConfig(cfg);
+      setMetadataProviders(metadataProviderState.providers);
+      setConfiguredMetadataProvider(metadataProviderState.configured_provider);
+      setConfiguredAudiobookMetadataProvider(metadataProviderState.configured_provider_audiobook);
 
       // Show onboarding modal on first run (settings enabled but not completed yet)
       if (mode === 'initial' && cfg.settings_enabled && !cfg.onboarding_complete) {
@@ -641,16 +659,108 @@ function App() {
     }
   }, [isAuthenticated, loadConfig]);
 
+  const effectiveSearchMode: SearchMode = config?.search_mode ?? 'direct';
+  const defaultMetadataProviderForContentType = contentType === 'audiobook'
+    ? (configuredAudiobookMetadataProvider || configuredMetadataProvider)
+    : configuredMetadataProvider;
+  const effectiveMetadataProvider = effectiveSearchMode === 'universal'
+    ? (defaultMetadataProviderForContentType || null)
+    : null;
+
+  // Non-admins in universal mode have nothing in the advanced panel
+  const hasAdvancedContent = requestRoleIsAdmin || effectiveSearchMode === 'direct';
+
+  useEffect(() => {
+    if (!hasAdvancedContent && showAdvanced) {
+      setShowAdvanced(false);
+    }
+  }, [hasAdvancedContent, showAdvanced, setShowAdvanced]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!isAuthenticated || effectiveSearchMode !== 'universal') {
+      setActiveMetadataConfig(null);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const loadMetadataConfig = async () => {
+      try {
+        const nextConfig = await getMetadataSearchConfig(
+          contentType,
+          effectiveMetadataProvider ?? undefined,
+        );
+        if (isMounted) {
+          setActiveMetadataConfig(nextConfig);
+        }
+      } catch (error) {
+        console.error('Failed to load metadata search config:', error);
+        if (isMounted) {
+          setActiveMetadataConfig(null);
+        }
+      }
+    };
+
+    void loadMetadataConfig();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isAuthenticated, effectiveSearchMode, contentType, effectiveMetadataProvider]);
+
+  useEffect(() => {
+    if (effectiveSearchMode !== 'universal') {
+      return;
+    }
+
+    const supportedSorts = activeMetadataConfig?.sort_options ?? config?.metadata_sort_options ?? [];
+    const currentSort = advancedFilters.sort;
+    const hasCurrentSort = supportedSorts.some((option) => option.value === currentSort);
+    if (!hasCurrentSort) {
+      const nextSort = activeMetadataConfig?.default_sort || config?.metadata_default_sort || 'relevance';
+      setAdvancedFilters((prev) => ({ ...prev, sort: nextSort }));
+    }
+  }, [
+    activeMetadataConfig,
+    advancedFilters.sort,
+    config?.metadata_default_sort,
+    config?.metadata_sort_options,
+    effectiveSearchMode,
+    setAdvancedFilters,
+  ]);
+
+  const prevEffectiveSearchModeRef = useRef<SearchMode>(effectiveSearchMode);
+  useEffect(() => {
+    if (prevEffectiveSearchModeRef.current !== effectiveSearchMode) {
+      setBooks([]);
+      setSelectedBook(null);
+      setReleaseBook(null);
+      clearTracking();
+      prevEffectiveSearchModeRef.current = effectiveSearchMode;
+    }
+  }, [effectiveSearchMode, setBooks, clearTracking]);
+
   const runSearchWithPolicyRefresh = useCallback(
-    (
-      query: string,
-      fields = searchFieldValues,
-      contentTypeOverride?: ContentType
-    ) => {
+    (opts: {
+      query: string;
+      fieldValues?: Record<string, string | number | boolean>;
+      contentTypeOverride?: ContentType;
+      searchModeOverride?: SearchMode;
+      providerOverride?: string;
+    }) => {
       void refreshRequestPolicy();
-      handleSearch(query, config, fields, contentTypeOverride);
+      void handleSearch({
+        query: opts.query,
+        config,
+        fieldValues: opts.fieldValues,
+        contentTypeOverride: opts.contentTypeOverride,
+        searchMode: opts.searchModeOverride,
+        providerOverride: opts.providerOverride,
+      });
     },
-    [refreshRequestPolicy, handleSearch, config, searchFieldValues]
+    [refreshRequestPolicy, handleSearch, config]
   );
 
   // Execute URL-based search when params are present
@@ -663,9 +773,9 @@ function App() {
     ) {
       urlSearchExecutedRef.current = true;
 
-      const searchMode = config.search_mode || 'direct';
+      const parsedSearchMode = config.search_mode || 'direct';
       const urlContentTypeOverride =
-        searchMode === 'universal' ? parsedParams.contentType : undefined;
+        parsedSearchMode === 'universal' ? parsedParams.contentType : undefined;
 
       if (urlContentTypeOverride && urlContentTypeOverride !== contentType) {
         setContentType(urlContentTypeOverride);
@@ -685,6 +795,18 @@ function App() {
         setSearchInput(parsedParams.searchInput);
       }
 
+      let nextQueryTarget = 'general';
+      if (parsedSearchMode === 'direct') {
+        if (parsedParams.advancedFilters.isbn) {
+          nextQueryTarget = 'isbn';
+        } else if (parsedParams.advancedFilters.author) {
+          nextQueryTarget = 'author';
+        } else if (parsedParams.advancedFilters.title) {
+          nextQueryTarget = 'title';
+        }
+      }
+      setActiveQueryTarget(nextQueryTarget);
+
       // Apply advanced filters from URL
       if (Object.keys(parsedParams.advancedFilters).length > 0) {
         setAdvancedFilters(prev => ({
@@ -692,8 +814,7 @@ function App() {
           ...parsedParams.advancedFilters,
         }));
 
-        // Show advanced panel if we have filter values (not just query/sort)
-        const hasAdvancedValues = ['isbn', 'author', 'title', 'content'].some(
+        const hasAdvancedValues = ['content', 'lang', 'formats'].some(
           key => parsedParams.advancedFilters[key as keyof typeof parsedParams.advancedFilters]
         );
         if (hasAdvancedValues) {
@@ -708,15 +829,27 @@ function App() {
       };
 
       const query = buildSearchQuery({
-        searchInput: parsedParams.searchInput,
+        searchInput:
+          parsedSearchMode === 'direct' && nextQueryTarget !== 'general'
+            ? ''
+            : parsedParams.searchInput,
         showAdvanced: true,
-        advancedFilters: mergedFilters as typeof advancedFilters,
+        advancedFilters: {
+          ...(mergedFilters as typeof advancedFilters),
+          isbn: nextQueryTarget === 'isbn' ? String(parsedParams.advancedFilters.isbn || '') : '',
+          author: nextQueryTarget === 'author' ? String(parsedParams.advancedFilters.author || '') : '',
+          title: nextQueryTarget === 'title' ? String(parsedParams.advancedFilters.title || '') : '',
+        },
         bookLanguages,
         defaultLanguage: defaultLanguageCodes,
-        searchMode,
+        searchMode: parsedSearchMode,
       });
 
-      runSearchWithPolicyRefresh(query, searchFieldValues, urlContentTypeOverride);
+      runSearchWithPolicyRefresh({
+        query,
+        contentTypeOverride: urlContentTypeOverride,
+        searchModeOverride: parsedSearchMode,
+      });
     }
   }, [
     wasProcessed,
@@ -724,11 +857,11 @@ function App() {
     contentType,
     config,
     advancedFilters,
-    searchFieldValues,
     runSearchWithPolicyRefresh,
     setSearchInput,
     setAdvancedFilters,
     setShowAdvanced,
+    setActiveQueryTarget,
   ]);
 
   const handleSettingsSaved = useCallback(() => {
@@ -759,6 +892,7 @@ function App() {
         setSelectedBook({
           ...metadataBook,
           description: fullBook.description || metadataBook.description,
+          series_id: fullBook.series_id || metadataBook.series_id,
           series_name: fullBook.series_name,
           series_position: fullBook.series_position,
           series_count: fullBook.series_count,
@@ -1111,6 +1245,7 @@ function App() {
         setReleaseBook({
           ...book,
           description: fullBook.description || book.description,
+          series_id: fullBook.series_id || book.series_id,
           series_name: fullBook.series_name,
           series_position: fullBook.series_position,
           series_count: fullBook.series_count,
@@ -1341,32 +1476,295 @@ function App() {
       ? config.default_language
       : [bookLanguages[0]?.code || 'en'];
 
-  const searchMode = config?.search_mode || 'direct';
   const logoUrl = withBasePath('/logo.png');
 
+  // Manual search is only allowed when the default policy permits browsing releases
+  const universalDefaultMode = getUniversalDefaultPolicyMode();
+  const manualSearchAllowed = effectiveSearchMode === 'universal'
+    && (universalDefaultMode === 'download' || universalDefaultMode === 'request_release');
+
+  const queryTargets = useMemo<QueryTargetOption[]>(
+    () => buildQueryTargets({
+      searchMode: effectiveSearchMode,
+      metadataSearchFields: activeMetadataConfig?.search_fields ?? [],
+      manualSearchAllowed,
+    }),
+    [effectiveSearchMode, activeMetadataConfig?.search_fields, manualSearchAllowed],
+  );
+
+  useEffect(() => {
+    setActiveQueryTarget((prev) => {
+      if (queryTargets.some((target) => target.key === prev)) return prev;
+      return getDefaultQueryTargetKey(queryTargets);
+    });
+  }, [queryTargets]);
+
+  const activeQueryOption = useMemo(
+    () => queryTargets.find((target) => target.key === activeQueryTarget) ?? queryTargets[0],
+    [queryTargets, activeQueryTarget],
+  );
+
+  const activeQueryField = activeQueryOption?.field ?? null;
+  const seriesBrowseCapability = useMemo(
+    () => activeMetadataConfig?.capabilities.find((capability) =>
+      capability.key === 'view_series'
+      && capability.field_key
+    ) ?? null,
+    [activeMetadataConfig?.capabilities],
+  );
+  const seriesBrowseTarget = useMemo(
+    () => seriesBrowseCapability?.field_key
+      ? queryTargets.find((target) => target.field?.key === seriesBrowseCapability.field_key) ?? null
+      : null,
+    [queryTargets, seriesBrowseCapability?.field_key],
+  );
+
+  const activeQueryValue = useMemo(() => {
+    if (!activeQueryOption || activeQueryOption.source === 'general' || activeQueryOption.source === 'manual') {
+      return searchInput;
+    }
+
+    if (activeQueryOption.source === 'direct-field') {
+      if (activeQueryOption.key === 'isbn') return advancedFilters.isbn;
+      if (activeQueryOption.key === 'author') return advancedFilters.author;
+      if (activeQueryOption.key === 'title') return advancedFilters.title;
+      return '';
+    }
+
+    if (!activeQueryOption.field) {
+      return '';
+    }
+
+    if (activeQueryOption.field.type === 'CheckboxSearchField') {
+      return searchFieldValues[activeQueryOption.field.key] ?? activeQueryOption.field.default ?? false;
+    }
+
+    return searchFieldValues[activeQueryOption.field.key] ?? '';
+  }, [activeQueryOption, searchInput, advancedFilters, searchFieldValues]);
+
+  const activeQueryValueLabel = useMemo(() => {
+    if (!activeQueryOption?.field) {
+      return undefined;
+    }
+    return searchFieldLabels[activeQueryOption.field.key];
+  }, [activeQueryOption, searchFieldLabels]);
+  const activeQueryUsesSeriesBrowse = Boolean(
+    seriesBrowseCapability?.field_key
+    && activeQueryOption?.source === 'provider-field'
+    && activeQueryOption.field?.key === seriesBrowseCapability.field_key
+    && activeQueryValue !== ''
+    && activeQueryValue !== false,
+  );
+
+  const getAppliedUniversalSort = useCallback((sortOverride?: string) => {
+    const requestedSort = sortOverride ?? advancedFilters.sort;
+    const seriesBrowseSort = seriesBrowseCapability?.sort ?? '';
+
+    if (activeQueryUsesSeriesBrowse && seriesBrowseSort) {
+      return seriesBrowseSort;
+    }
+
+    if (requestedSort === seriesBrowseSort) {
+      return '';
+    }
+
+    return requestedSort;
+  }, [activeQueryUsesSeriesBrowse, advancedFilters.sort, seriesBrowseCapability?.sort]);
+
+  const handleActiveQueryValueChange = useCallback((value: string | number | boolean, label?: string) => {
+    if (!activeQueryOption || activeQueryOption.source === 'general' || activeQueryOption.source === 'manual') {
+      setSearchInput(typeof value === 'string' ? value : String(value ?? ''));
+      return;
+    }
+
+    if (activeQueryOption.source === 'direct-field') {
+      const nextValue = typeof value === 'string' ? value : String(value ?? '');
+      if (activeQueryOption.key === 'isbn') {
+        updateAdvancedFilters({ isbn: nextValue });
+      } else if (activeQueryOption.key === 'author') {
+        updateAdvancedFilters({ author: nextValue });
+      } else if (activeQueryOption.key === 'title') {
+        updateAdvancedFilters({ title: nextValue });
+      }
+      return;
+    }
+
+    if (activeQueryOption.field) {
+      updateSearchFieldValue(activeQueryOption.field.key, value, label);
+    }
+  }, [activeQueryOption, setSearchInput, updateAdvancedFilters, updateSearchFieldValue]);
+
+  const handleSearchModeChange = useCallback((nextMode: SearchMode) => {
+    setConfig((prev) => prev ? { ...prev, search_mode: nextMode } : prev);
+    updateSelfUser({ settings: { SEARCH_MODE: nextMode } })
+      .then(() => loadConfig('settings-saved'))
+      .catch((err) => console.error('Failed to save search mode:', err));
+  }, [loadConfig]);
+
+  const handleMetadataProviderChange = useCallback((provider: string) => {
+    if (contentType === 'audiobook') {
+      setConfiguredAudiobookMetadataProvider(provider);
+    } else {
+      setConfiguredMetadataProvider(provider);
+    }
+    const key = contentType === 'audiobook' ? 'METADATA_PROVIDER_AUDIOBOOK' : 'METADATA_PROVIDER';
+    updateSelfUser({ settings: { [key]: provider } })
+      .then(() => loadConfig('settings-saved'))
+      .catch((err) => console.error('Failed to save metadata provider:', err));
+  }, [contentType, loadConfig]);
+
+  const buildCurrentSearchRequest = useCallback((sortOverride?: string) => {
+    const appliedSort = effectiveSearchMode === 'universal'
+      ? getAppliedUniversalSort(sortOverride)
+      : (sortOverride ?? advancedFilters.sort);
+    const nextFilters = appliedSort === advancedFilters.sort && sortOverride === undefined
+      ? advancedFilters
+      : { ...advancedFilters, sort: appliedSort };
+
+    if (effectiveSearchMode === 'direct') {
+      const directFilters = {
+        ...nextFilters,
+        isbn: '',
+        author: '',
+        title: '',
+      };
+
+      if (activeQueryOption?.source === 'direct-field') {
+        const nextValue = typeof activeQueryValue === 'string' ? activeQueryValue : String(activeQueryValue ?? '');
+        if (activeQueryOption.key === 'isbn') {
+          directFilters.isbn = nextValue;
+        } else if (activeQueryOption.key === 'author') {
+          directFilters.author = nextValue;
+        } else if (activeQueryOption.key === 'title') {
+          directFilters.title = nextValue;
+        }
+      }
+
+      const query = buildSearchQuery({
+        searchInput: activeQueryOption?.source === 'general' ? searchInput : '',
+        showAdvanced: true,
+        advancedFilters: directFilters,
+        bookLanguages,
+        defaultLanguage: defaultLanguageCodes,
+        searchMode: effectiveSearchMode,
+      });
+
+      return {
+        query,
+        fieldValues: {},
+        providerOverride: undefined,
+        appliedSort,
+      };
+    }
+
+    const fieldValues =
+      activeQueryOption?.source === 'provider-field'
+      && activeQueryOption.field
+      && activeQueryValue !== ''
+      && activeQueryValue !== false
+        ? { [activeQueryOption.field.key]: activeQueryValue }
+        : {};
+
+    const query = buildSearchQuery({
+      searchInput:
+        activeQueryOption?.source === 'general' || activeQueryOption?.source === 'manual'
+          ? searchInput
+          : '',
+      showAdvanced: true,
+      advancedFilters: nextFilters,
+      bookLanguages,
+      defaultLanguage: defaultLanguageCodes,
+      searchMode: effectiveSearchMode,
+    });
+
+    return {
+      query,
+      fieldValues,
+      providerOverride: effectiveMetadataProvider ?? undefined,
+      appliedSort,
+    };
+  }, [
+    activeQueryOption,
+    activeQueryValue,
+    advancedFilters,
+    bookLanguages,
+    defaultLanguageCodes,
+    effectiveMetadataProvider,
+    effectiveSearchMode,
+    getAppliedUniversalSort,
+    searchInput,
+  ]);
+
   // Handle "View Series" - trigger search with series field and series order sort
-  const handleSearchSeries = useCallback((seriesName: string) => {
+  const handleSearchSeries = useCallback((seriesName: string, seriesId?: string) => {
+    const seriesTarget = seriesBrowseTarget;
+    const seriesFieldKey = seriesTarget?.field?.key;
+    const seriesSort = seriesBrowseCapability?.sort;
+    if (!seriesTarget || !seriesFieldKey || !seriesSort) {
+      return;
+    }
+
     // Clear UI state
     setSearchInput('');
     setSelectedBook(null);
     setReleaseBook(null);
     clearTracking();
 
-    // Set sort to series_order (but don't show advanced panel or persist series value)
-    const newFilters = { ...advancedFilters, sort: 'series_order' };
+    const newFilters = { ...advancedFilters, sort: seriesSort };
     setAdvancedFilters(newFilters);
 
-    // Trigger search with series field (passed directly, not persisted in UI)
+    setActiveQueryTarget(seriesTarget.key);
+    updateSearchFieldValue(
+      seriesFieldKey,
+      seriesId ? `id:${seriesId}` : seriesName,
+      seriesName,
+    );
+
     const query = buildSearchQuery({
       searchInput: '',
       showAdvanced: true,
       advancedFilters: newFilters,
       bookLanguages,
       defaultLanguage: defaultLanguageCodes,
-      searchMode,
+      searchMode: effectiveSearchMode,
     });
-    runSearchWithPolicyRefresh(query, { ...searchFieldValues, series: seriesName });
-  }, [setSearchInput, clearTracking, searchFieldValues, advancedFilters, setAdvancedFilters, bookLanguages, defaultLanguageCodes, searchMode, runSearchWithPolicyRefresh]);
+
+    runSearchWithPolicyRefresh({
+      query,
+      fieldValues: { [seriesFieldKey]: seriesId ? `id:${seriesId}` : seriesName },
+      searchModeOverride: effectiveSearchMode,
+      providerOverride: effectiveMetadataProvider ?? undefined,
+    });
+  }, [
+    advancedFilters,
+    bookLanguages,
+    clearTracking,
+    defaultLanguageCodes,
+    effectiveMetadataProvider,
+    effectiveSearchMode,
+    runSearchWithPolicyRefresh,
+    setAdvancedFilters,
+    setSearchInput,
+    seriesBrowseCapability?.sort,
+    seriesBrowseTarget,
+    updateSearchFieldValue,
+  ]);
+
+  const canSearchSeriesForBook = useCallback((book: Book | null): boolean => {
+    if (!book?.provider || !book.series_name) {
+      return false;
+    }
+
+    if (!seriesBrowseCapability?.sort || !seriesBrowseTarget?.field || !activeMetadataConfig?.provider) {
+      return false;
+    }
+
+    return book.provider === activeMetadataConfig.provider;
+  }, [
+    activeMetadataConfig?.provider,
+    seriesBrowseCapability?.sort,
+    seriesBrowseTarget?.field,
+  ]);
 
   const handleManualSearch = useCallback(() => {
     const trimmed = searchInput.trim();
@@ -1383,73 +1781,37 @@ function App() {
     setReleaseBook(syntheticBook);
   }, [searchInput]);
 
-  // Manual search is only allowed when the default policy permits browsing releases
-  const universalDefaultMode = getUniversalDefaultPolicyMode();
-  const manualSearchAllowed = searchMode === 'universal'
-    && (universalDefaultMode === 'download' || universalDefaultMode === 'request_release');
-  const isListBrowsing = useMemo(() => {
-    const dynamicFieldKeys = (config?.metadata_search_fields ?? [])
-      .filter((field) => field.type === 'DynamicSelectSearchField')
-      .map((field) => field.key);
-
-    if (dynamicFieldKeys.length === 0) {
-      return false;
-    }
-
-    return dynamicFieldKeys.some((key) => {
-      const value = searchFieldValues[key];
-      if (typeof value === 'string') {
-        return value.trim() !== '';
-      }
-      return value !== undefined && value !== null && value !== false;
-    });
-  }, [config?.metadata_search_fields, searchFieldValues]);
-
-  const activeListLabel = useMemo(() => {
-    if (!isListBrowsing) return '';
-    const field = (config?.metadata_search_fields ?? [])
-      .find((f) => f.type === 'DynamicSelectSearchField' && searchFieldValues[f.key]);
-    return field ? (searchFieldLabels[field.key] || '') : '';
-  }, [isListBrowsing, config?.metadata_search_fields, searchFieldValues, searchFieldLabels]);
-
-  // Reset manual search if policy changes to disallow it
   useEffect(() => {
-    if (!manualSearchAllowed && isManualSearch) {
-      setIsManualSearch(false);
+    if (!manualSearchAllowed && activeQueryTarget === 'manual') {
+      setActiveQueryTarget(getDefaultQueryTargetKey(queryTargets));
     }
-  }, [manualSearchAllowed, isManualSearch]);
-
-  const handleManualSearchToggle = useCallback(() => {
-    setIsManualSearch(prev => {
-      if (!prev) {
-        // Turning on: clear any dynamic select field values (e.g. list selection)
-        const dynamicKeys = (config?.metadata_search_fields ?? [])
-          .filter((f) => f.type === 'DynamicSelectSearchField')
-          .map((f) => f.key);
-        for (const key of dynamicKeys) {
-          updateSearchFieldValue(key, '');
-        }
-      }
-      return !prev;
-    });
-  }, [config?.metadata_search_fields, updateSearchFieldValue]);
+  }, [manualSearchAllowed, activeQueryTarget, queryTargets]);
 
   // Unified search dispatch: intercepts manual search mode, otherwise runs normal search
   const handleSearchDispatch = useCallback(() => {
-    if (isManualSearch) {
+    if (activeQueryOption?.source === 'manual') {
       handleManualSearch();
       return;
     }
-    const query = buildSearchQuery({
-      searchInput,
-      showAdvanced,
-      advancedFilters,
-      bookLanguages,
-      defaultLanguage: defaultLanguageCodes,
-      searchMode,
+    const request = buildCurrentSearchRequest();
+    if (request.appliedSort !== advancedFilters.sort) {
+      updateAdvancedFilters({ sort: request.appliedSort });
+    }
+    runSearchWithPolicyRefresh({
+      query: request.query,
+      fieldValues: request.fieldValues,
+      searchModeOverride: effectiveSearchMode,
+      providerOverride: request.providerOverride,
     });
-    runSearchWithPolicyRefresh(query);
-  }, [isManualSearch, handleManualSearch, searchInput, showAdvanced, advancedFilters, bookLanguages, defaultLanguageCodes, searchMode, runSearchWithPolicyRefresh]);
+  }, [
+    activeQueryOption,
+    advancedFilters.sort,
+    buildCurrentSearchRequest,
+    effectiveSearchMode,
+    handleManualSearch,
+    runSearchWithPolicyRefresh,
+    updateAdvancedFilters,
+  ]);
 
   const isBrowseFulfilMode = fulfillingRequest !== null;
   const activeReleaseBook = fulfillingRequest?.book ?? releaseBook;
@@ -1476,7 +1838,7 @@ function App() {
     : '';
 
   const mainAppContent = (
-    <SearchModeProvider searchMode={searchMode}>
+    <SearchModeProvider searchMode={effectiveSearchMode}>
       <div ref={headerRef} className="fixed top-0 left-0 right-0 z-40">
         <Header
           calibreWebUrl={config?.calibre_web_url || ''}
@@ -1484,8 +1846,9 @@ function App() {
           debug={config?.debug || false}
           logoUrl={logoUrl}
           showSearch={!isInitialState}
-          searchInput={searchInput}
-          onSearchChange={setSearchInput}
+          searchInput={activeQueryValue}
+          searchInputLabel={activeQueryValueLabel}
+          onSearchChange={handleActiveQueryValueChange}
           onDownloadsClick={() => setDownloadsSidebarOpen((prev) => !prev)}
           onSettingsClick={() => {
             if (config?.settings_enabled) {
@@ -1505,21 +1868,25 @@ function App() {
           actingAsUser={actingAsUser}
           onActingAsUserChange={setActingAsUser}
           statusCounts={statusCounts}
-          onLogoClick={() => { handleResetSearch(config); setIsManualSearch(false); }}
+          onLogoClick={() => {
+            handleResetSearch(config);
+            setActiveQueryTarget('general');
+          }}
           authRequired={authRequired}
           isAuthenticated={isAuthenticated}
           onLogout={handleLogoutWithCleanup}
           onSearch={handleSearchDispatch}
-          onAdvancedToggle={() => setShowAdvanced(!showAdvanced)}
+          onAdvancedToggle={hasAdvancedContent ? () => setShowAdvanced(!showAdvanced) : undefined}
           isLoading={isSearching}
           onShowToast={showToast}
           onRemoveToast={removeToast}
           contentType={contentType}
           onContentTypeChange={setContentType}
           allowedContentTypes={allowedContentTypes}
-          isManualSearch={isManualSearch}
-          searchDisabled={isListBrowsing}
-          activeListLabel={activeListLabel}
+          queryTargets={queryTargets}
+          activeQueryTarget={activeQueryTarget}
+          onQueryTargetChange={setActiveQueryTarget}
+          activeQueryField={activeQueryField}
         />
       </div>
 
@@ -1543,19 +1910,19 @@ function App() {
         }
       >
         <AdvancedFilters
-        visible={showAdvanced && !isInitialState}
-        bookLanguages={bookLanguages}
-        defaultLanguage={defaultLanguageCodes}
-        supportedFormats={supportedFormats}
-        filters={advancedFilters}
-        onFiltersChange={updateAdvancedFilters}
-        metadataSearchFields={config?.metadata_search_fields}
-        searchFieldValues={searchFieldValues}
-        onSearchFieldChange={updateSearchFieldValue}
-        onSubmit={handleSearchDispatch}
-        isManualSearch={isManualSearch}
-        onManualSearchToggle={manualSearchAllowed ? handleManualSearchToggle : undefined}
-      />
+          visible={showAdvanced && !isInitialState}
+          bookLanguages={bookLanguages}
+          defaultLanguage={defaultLanguageCodes}
+          filters={advancedFilters}
+          onFiltersChange={updateAdvancedFilters}
+          searchMode={effectiveSearchMode}
+          onSearchModeChange={handleSearchModeChange}
+          metadataProviders={metadataProviders}
+          activeMetadataProvider={effectiveMetadataProvider}
+          onMetadataProviderChange={handleMetadataProviderChange}
+          contentType={contentType}
+          isAdmin={requestRoleIsAdmin}
+        />
 
       <main
         className="relative w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-6"
@@ -1566,29 +1933,32 @@ function App() {
         }
       >
         <SearchSection
-          onSearch={() => handleSearchDispatch()}
+          onSearch={handleSearchDispatch}
           isLoading={isSearching}
           isInitialState={isInitialState}
           bookLanguages={bookLanguages}
           defaultLanguage={defaultLanguageCodes}
-          supportedFormats={config?.supported_formats || DEFAULT_SUPPORTED_FORMATS}
           logoUrl={logoUrl}
-          searchInput={searchInput}
-          onSearchInputChange={setSearchInput}
+          queryValue={activeQueryValue}
+          queryValueLabel={activeQueryValueLabel}
+          onQueryValueChange={handleActiveQueryValueChange}
+          queryTargets={queryTargets}
+          activeQueryTarget={activeQueryTarget}
+          onQueryTargetChange={setActiveQueryTarget}
           showAdvanced={showAdvanced}
-          onAdvancedToggle={() => setShowAdvanced(!showAdvanced)}
+          onAdvancedToggle={hasAdvancedContent ? () => setShowAdvanced(!showAdvanced) : undefined}
           advancedFilters={advancedFilters}
           onAdvancedFiltersChange={updateAdvancedFilters}
-          metadataSearchFields={config?.metadata_search_fields}
-          searchFieldValues={searchFieldValues}
-          onSearchFieldChange={updateSearchFieldValue}
           contentType={contentType}
           onContentTypeChange={setContentType}
           allowedContentTypes={allowedContentTypes}
-          isManualSearch={isManualSearch}
-          onManualSearchToggle={manualSearchAllowed ? handleManualSearchToggle : undefined}
-          searchDisabled={isListBrowsing}
-          activeListLabel={activeListLabel}
+          activeQueryField={activeQueryField}
+          searchMode={effectiveSearchMode}
+          onSearchModeChange={handleSearchModeChange}
+          metadataProviders={metadataProviders}
+          activeMetadataProvider={effectiveMetadataProvider}
+          onMetadataProviderChange={handleMetadataProviderChange}
+          isAdmin={requestRoleIsAdmin}
         />
 
         <ResultsSection
@@ -1600,11 +1970,20 @@ function App() {
           getButtonState={getDirectActionButtonState}
           getUniversalButtonState={getUniversalActionButtonState}
           sortValue={advancedFilters.sort}
-          onSortChange={(value) => handleSortChange(value, config)}
-          metadataSortOptions={config?.metadata_sort_options}
+          onSortChange={(value) => {
+            const request = buildCurrentSearchRequest(value);
+            updateAdvancedFilters({ sort: request.appliedSort });
+            runSearchWithPolicyRefresh({
+              query: request.query,
+              fieldValues: request.fieldValues,
+              searchModeOverride: effectiveSearchMode,
+              providerOverride: request.providerOverride,
+            });
+          }}
+          metadataSortOptions={activeMetadataConfig?.sort_options}
           hasMore={hasMore}
           isLoadingMore={isLoadingMore}
-          onLoadMore={() => loadMore(config)}
+          onLoadMore={() => loadMore(config, effectiveSearchMode)}
           totalFound={totalFound}
         />
 
@@ -1617,7 +1996,7 @@ function App() {
               setSelectedBook(null);
               void handleGetReleases(book);
             }}
-            onSearchSeries={handleSearchSeries}
+            onSearchSeries={canSearchSeriesForBook(selectedBook) ? handleSearchSeries : undefined}
             buttonState={
               isMetadataBook(selectedBook)
                 ? getUniversalActionButtonState(selectedBook.id)
@@ -1646,7 +2025,7 @@ function App() {
             bookLanguages={bookLanguages}
             currentStatus={statusForButtonState}
             defaultReleaseSource={config?.default_release_source}
-            onSearchSeries={isBrowseFulfilMode || activeReleaseBook?.provider === 'manual' ? undefined : handleSearchSeries}
+            onSearchSeries={isBrowseFulfilMode || !canSearchSeriesForBook(activeReleaseBook) ? undefined : handleSearchSeries}
             defaultShowManualQuery={isBrowseFulfilMode || activeReleaseBook?.provider === 'manual'}
             isRequestMode={isBrowseFulfilMode || activeReleaseBook?.provider === 'manual'}
           />

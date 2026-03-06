@@ -56,6 +56,7 @@ from shelfmark.core.notifications import NotificationContext, NotificationEvent,
 from shelfmark.core.request_helpers import (
     emit_ws_event,
     coerce_bool,
+    get_session_db_user_id,
     load_users_request_policy_settings,
     normalize_optional_text,
     normalize_positive_int,
@@ -1010,11 +1011,7 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
         from shelfmark.config.env import _is_config_dir_writable
         from shelfmark.core.onboarding import is_onboarding_complete as _get_onboarding_complete
 
-        raw_db_user_id = session.get("db_user_id")
-        try:
-            db_user_id = int(raw_db_user_id) if raw_db_user_id is not None else None
-        except (TypeError, ValueError):
-            db_user_id = None
+        db_user_id = get_session_db_user_id(session)
 
         search_mode = app_config.get("SEARCH_MODE", "direct", user_id=db_user_id)
         default_release_source = app_config.get(
@@ -1097,11 +1094,7 @@ def _resolve_status_scope(*, require_authenticated: bool = True) -> tuple[bool, 
     if is_admin:
         return True, None, True
 
-    raw_db_user_id = session.get('db_user_id')
-    try:
-        db_user_id = int(raw_db_user_id) if raw_db_user_id is not None else None
-    except (TypeError, ValueError):
-        db_user_id = None
+    db_user_id = get_session_db_user_id(session)
 
     if db_user_id is None:
         return False, None, False
@@ -1996,28 +1989,40 @@ def api_metadata_providers() -> Union[Response, Tuple[Response, int]]:
     """
     try:
         from shelfmark.metadata_providers import (
+            get_configured_provider_name,
             list_providers,
             get_provider,
             get_provider_kwargs,
         )
 
-        configured_metadata_provider = app_config.get("METADATA_PROVIDER", "")
+        app_config.refresh()
+        db_user_id = get_session_db_user_id(session)
+
+        configured_metadata_provider = get_configured_provider_name(
+            content_type="ebook",
+            user_id=db_user_id,
+            fallback_to_main=True,
+        )
+        configured_audiobook_metadata_provider = get_configured_provider_name(
+            content_type="audiobook",
+            user_id=db_user_id,
+            fallback_to_main=False,
+        )
         providers = []
         for info in list_providers():
+            enabled_key = f"{info['name'].upper()}_ENABLED"
             provider_info = {
                 "name": info["name"],
                 "display_name": info["display_name"],
                 "requires_auth": info["requires_auth"],
-                "configured": False,
+                "enabled": app_config.get(enabled_key, False) is True,
                 "available": False,
             }
 
-            # Check if provider is configured and available
             try:
                 kwargs = get_provider_kwargs(info["name"])
                 provider = get_provider(info["name"], **kwargs)
                 provider_info["available"] = provider.is_available()
-                provider_info["configured"] = (info["name"] == configured_metadata_provider)
             except Exception:
                 pass
 
@@ -2025,10 +2030,76 @@ def api_metadata_providers() -> Union[Response, Tuple[Response, int]]:
 
         return jsonify({
             "providers": providers,
-            "configured_provider": configured_metadata_provider or None
+            "configured_provider": configured_metadata_provider or None,
+            "configured_provider_audiobook": configured_audiobook_metadata_provider or None,
         })
     except Exception as e:
         logger.error_trace(f"Metadata providers error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/metadata/config', methods=['GET'])
+@login_required
+def api_metadata_config() -> Union[Response, Tuple[Response, int]]:
+    """Return provider-specific metadata search config for the active session."""
+    try:
+        from shelfmark.metadata_providers import (
+            get_configured_provider_name,
+            get_provider_capabilities,
+            get_provider,
+            get_provider_default_sort,
+            get_provider_kwargs,
+            get_provider_search_fields,
+            get_provider_sort_options,
+            is_provider_registered,
+        )
+
+        app_config.refresh()
+        content_type = request.args.get('content_type', 'ebook').strip()
+        provider_name = request.args.get('provider', '').strip()
+
+        db_user_id = get_session_db_user_id(session)
+
+        if not provider_name:
+            provider_name = get_configured_provider_name(
+                content_type=content_type,
+                user_id=db_user_id,
+                fallback_to_main=True,
+            )
+
+        if not provider_name:
+            return jsonify({
+                "provider": None,
+                "display_name": None,
+                "enabled": False,
+                "available": False,
+                "search_fields": [],
+                "capabilities": [],
+                "sort_options": [{"value": "relevance", "label": "Most relevant"}],
+                "default_sort": "relevance",
+            })
+
+        if not is_provider_registered(provider_name):
+            return jsonify({"error": f"Unknown metadata provider: {provider_name}"}), 400
+
+        kwargs = get_provider_kwargs(provider_name)
+        provider = get_provider(provider_name, **kwargs)
+        enabled_key = f"{provider_name.upper()}_ENABLED"
+        provider_enabled = app_config.get(enabled_key, False) is True
+        provider_available = provider.is_available()
+
+        return jsonify({
+            "provider": provider_name,
+            "display_name": provider.display_name,
+            "enabled": provider_enabled,
+            "available": provider_available,
+            "search_fields": get_provider_search_fields(provider_name),
+            "capabilities": get_provider_capabilities(provider_name),
+            "sort_options": get_provider_sort_options(provider_name),
+            "default_sort": get_provider_default_sort(provider_name, user_id=db_user_id),
+        })
+    except Exception as e:
+        logger.error_trace(f"Metadata config error: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -2049,7 +2120,11 @@ def api_metadata_search() -> Union[Response, Tuple[Response, int]]:
     """
     try:
         from shelfmark.metadata_providers import (
+            get_provider,
             get_configured_provider,
+            get_provider_kwargs,
+            is_provider_enabled,
+            is_provider_registered,
             MetadataSearchOptions,
             SortOrder,
             CheckboxSearchField,
@@ -2059,6 +2134,7 @@ def api_metadata_search() -> Union[Response, Tuple[Response, int]]:
 
         query = request.args.get('query', '').strip()
         content_type = request.args.get('content_type', 'ebook').strip()
+        provider_name = request.args.get('provider', '').strip()
 
         try:
             limit = min(int(request.args.get('limit', 40)), 100)
@@ -2077,13 +2153,25 @@ def api_metadata_search() -> Union[Response, Tuple[Response, int]]:
         except ValueError:
             sort_order = SortOrder.RELEVANCE
 
-        raw_db_user_id = session.get("db_user_id")
-        try:
-            db_user_id = int(raw_db_user_id) if raw_db_user_id is not None else None
-        except (TypeError, ValueError):
-            db_user_id = None
+        db_user_id = get_session_db_user_id(session)
 
-        provider = get_configured_provider(content_type=content_type, user_id=db_user_id)
+        if provider_name:
+            if not is_provider_registered(provider_name):
+                return jsonify({
+                    "error": f"Unknown metadata provider: {provider_name}",
+                    "message": f"Unknown metadata provider: {provider_name}",
+                }), 400
+            if not is_provider_enabled(provider_name):
+                return jsonify({
+                    "error": f"Metadata provider '{provider_name}' is not enabled",
+                    "message": f"{provider_name} is not enabled. Enable it in Settings first.",
+                }), 503
+
+            kwargs = get_provider_kwargs(provider_name)
+            provider = get_provider(provider_name, **kwargs)
+        else:
+            provider = get_configured_provider(content_type=content_type, user_id=db_user_id)
+
         if not provider:
             return jsonify({
                 "error": "No metadata provider configured",
@@ -2160,15 +2248,12 @@ def api_metadata_field_options() -> Response:
         field_key = request.args.get('field', '').strip()
         provider_name = request.args.get('provider', '').strip()
         content_type = request.args.get('content_type', 'ebook').strip()
+        query_text = request.args.get('query', '').strip()
 
         if not field_key:
             return jsonify({"options": []})
 
-        raw_db_user_id = session.get("db_user_id")
-        try:
-            db_user_id = int(raw_db_user_id) if raw_db_user_id is not None else None
-        except (TypeError, ValueError):
-            db_user_id = None
+        db_user_id = get_session_db_user_id(session)
 
         provider = None
         if provider_name:
@@ -2182,7 +2267,7 @@ def api_metadata_field_options() -> Response:
         if not provider or not provider.is_available():
             return jsonify({"options": []})
 
-        options = provider.get_search_field_options(field_key)
+        options = provider.get_search_field_options(field_key, query=query_text or None)
         return jsonify({"options": options})
     except Exception as e:
         logger.warning(f"Metadata field options endpoint error: {e}")

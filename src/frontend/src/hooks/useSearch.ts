@@ -1,11 +1,11 @@
 import { useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Book, AppConfig, AdvancedFilterState, ContentType } from '../types';
+import { Book, AppConfig, AdvancedFilterState, ContentType, SearchMode } from '../types';
 import { searchBooks, searchMetadata, AuthenticationError } from '../services/api';
 import { LANGUAGE_OPTION_DEFAULT } from '../utils/languageFilters';
 import { DEFAULT_SUPPORTED_FORMATS } from '../data/languages';
 
-const DEFAULT_FORMAT_SELECTION = DEFAULT_SUPPORTED_FORMATS.filter(format => format !== 'pdf');
+const DEFAULT_FORMAT_SELECTION = DEFAULT_SUPPORTED_FORMATS;
 
 interface UseSearchOptions {
   showToast: (message: string, type: 'info' | 'success' | 'error') => void;
@@ -30,14 +30,15 @@ interface UseSearchReturn {
   advancedFilters: AdvancedFilterState;
   setAdvancedFilters: React.Dispatch<React.SetStateAction<AdvancedFilterState>>;
   updateAdvancedFilters: (updates: Partial<AdvancedFilterState>) => void;
-  handleSearch: (
-    query: string,
-    config: AppConfig | null,
-    fieldValues?: Record<string, string | number | boolean>,
-    contentTypeOverride?: ContentType
-  ) => Promise<void>;
+  handleSearch: (params: {
+    query: string;
+    config: AppConfig | null;
+    fieldValues?: Record<string, string | number | boolean>;
+    contentTypeOverride?: ContentType;
+    searchMode?: SearchMode;
+    providerOverride?: string;
+  }) => Promise<void>;
   handleResetSearch: (config: AppConfig | null) => void;
-  handleSortChange: (value: string, config: AppConfig | null) => void;
   resetSortFilter: () => void;
   // Universal mode search field values
   searchFieldValues: SearchFieldValues;
@@ -46,7 +47,7 @@ interface UseSearchReturn {
   // Pagination (universal mode only)
   hasMore: boolean;
   isLoadingMore: boolean;
-  loadMore: (config: AppConfig | null) => Promise<void>;
+  loadMore: (config: AppConfig | null, searchMode?: SearchMode) => Promise<void>;
   totalFound: number;
 }
 
@@ -84,6 +85,8 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
     query: string;
     sort: string;
     fieldValues: SearchFieldValues;
+    providerOverride?: string;
+    contentType: ContentType;
   } | null>(null);
 
   const updateAdvancedFilters = useCallback((updates: Partial<AdvancedFilterState>) => {
@@ -92,11 +95,20 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
 
   const updateSearchFieldValue = useCallback((key: string, value: string | number | boolean, label?: string) => {
     setSearchFieldValues(prev => ({ ...prev, [key]: value }));
-    if (label !== undefined) {
-      setSearchFieldLabels(prev => ({ ...prev, [key]: label }));
-    } else if (!value) {
-      setSearchFieldLabels(prev => { const next = { ...prev }; delete next[key]; return next; });
-    }
+    setSearchFieldLabels(prev => {
+      const next = { ...prev };
+      if (label !== undefined) {
+        if (label) {
+          next[key] = label;
+        } else {
+          delete next[key];
+        }
+        return next;
+      }
+
+      delete next[key];
+      return next;
+    });
   }, []);
 
   const resetSortFilter = useCallback(() => {
@@ -118,14 +130,23 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
     showToast(message, 'error');
   }, [setIsAuthenticated, authRequired, navigate, showToast]);
 
-  const handleSearch = useCallback(async (
-    query: string,
-    config: AppConfig | null,
-    fieldValues?: Record<string, string | number | boolean>,
-    contentTypeOverride?: ContentType
-  ) => {
+  const handleSearch = useCallback(async ({
+    query,
+    config,
+    fieldValues,
+    contentTypeOverride,
+    searchMode: searchModeOverride,
+    providerOverride,
+  }: {
+    query: string;
+    config: AppConfig | null;
+    fieldValues?: Record<string, string | number | boolean>;
+    contentTypeOverride?: ContentType;
+    searchMode?: SearchMode;
+    providerOverride?: string;
+  }) => {
     const effectiveContentType = contentTypeOverride ?? contentType;
-    const searchMode = config?.search_mode || 'direct';
+    const searchMode = (searchModeOverride ?? config?.search_mode) || 'direct';
 
     // In universal mode, check if we have either a query or field values
     if (searchMode === 'universal') {
@@ -134,11 +155,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
       // Use explicitly passed fieldValues if provided, otherwise fall back to state
       const effectiveFieldValues = fieldValues ?? searchFieldValues;
       const hasFieldValues = Object.values(effectiveFieldValues).some(v => v !== '' && v !== false);
-
-      // Auto-set sort to series_order when searching by series field
-      const seriesValue = effectiveFieldValues.series;
-      const hasSeriesSearch = typeof seriesValue === 'string' && seriesValue.trim() !== '';
-      const sort = hasSeriesSearch ? 'series_order' : (params.get('sort') || 'relevance');
+      const sort = params.get('sort') || 'relevance';
 
       if (!searchQuery && !hasFieldValues) {
         setBooks([]);
@@ -150,11 +167,6 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
         return;
       }
 
-      // Update UI sort dropdown to reflect series_order when searching by series
-      if (hasSeriesSearch) {
-        setAdvancedFilters(prev => ({ ...prev, sort: 'series_order' }));
-      }
-
       setIsSearching(true);
       setLastSearchQuery(query);
       // Reset pagination for new search
@@ -163,13 +175,27 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
       setTotalFound(0);
 
       try {
-        const result = await searchMetadata(searchQuery, 40, sort, effectiveFieldValues, 1, effectiveContentType);
+        const result = await searchMetadata(
+          searchQuery,
+          40,
+          sort,
+          effectiveFieldValues,
+          1,
+          effectiveContentType,
+          providerOverride,
+        );
         if (result.books.length > 0) {
           setBooks(result.books);
           setHasMore(result.hasMore);
           setTotalFound(result.totalFound);
           // Store params for loadMore
-          lastSearchParamsRef.current = { query: searchQuery, sort, fieldValues: effectiveFieldValues };
+          lastSearchParamsRef.current = {
+            query: searchQuery,
+            sort,
+            fieldValues: effectiveFieldValues,
+            providerOverride,
+            contentType: effectiveContentType,
+          };
         } else {
           setBooks([]);
           setHasMore(false);
@@ -237,6 +263,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
 
     // Reset universal mode search field values
     setSearchFieldValues({});
+    setSearchFieldLabels({});
 
     // Reset pagination
     setCurrentPage(1);
@@ -246,19 +273,27 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
   }, [onSearchReset]);
 
   // Load more results (universal mode pagination)
-  const loadMore = useCallback(async (config: AppConfig | null) => {
-    const searchMode = config?.search_mode || 'direct';
+  const loadMore = useCallback(async (config: AppConfig | null, searchModeOverride?: SearchMode) => {
+    const searchMode = (searchModeOverride ?? config?.search_mode) || 'direct';
     if (searchMode !== 'universal') return;
     if (!lastSearchParamsRef.current) return;
     if (isLoadingMore || !hasMore) return;
 
-    const { query, sort, fieldValues } = lastSearchParamsRef.current;
+    const { query, sort, fieldValues, providerOverride, contentType: searchContentType } = lastSearchParamsRef.current;
     const nextPage = currentPage + 1;
 
     setIsLoadingMore(true);
 
     try {
-      const result = await searchMetadata(query, 40, sort, fieldValues, nextPage, contentType);
+      const result = await searchMetadata(
+        query,
+        40,
+        sort,
+        fieldValues,
+        nextPage,
+        searchContentType,
+        providerOverride,
+      );
       if (result.books.length > 0) {
         setBooks(prev => [...prev, ...result.books]);
         setHasMore(result.hasMore);
@@ -271,23 +306,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [currentPage, hasMore, isLoadingMore, handleSearchError, contentType]);
-
-  const handleSortChange = useCallback((value: string, config: AppConfig | null) => {
-    updateAdvancedFilters({ sort: value });
-    if (!lastSearchQuery) return;
-
-    const params = new URLSearchParams(lastSearchQuery);
-    if (value) {
-      params.set('sort', value);
-    } else {
-      params.delete('sort');
-    }
-
-    const nextQuery = params.toString();
-    if (!nextQuery) return;
-    handleSearch(nextQuery, config);
-  }, [lastSearchQuery, updateAdvancedFilters, handleSearch]);
+  }, [currentPage, hasMore, isLoadingMore, handleSearchError]);
 
   return {
     books,
@@ -303,7 +322,6 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
     updateAdvancedFilters,
     handleSearch,
     handleResetSearch,
-    handleSortChange,
     resetSortFilter,
     // Universal mode search field values
     searchFieldValues,

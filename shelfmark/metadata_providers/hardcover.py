@@ -17,10 +17,12 @@ from shelfmark.core.settings_registry import (
     HeadingField,
 )
 from shelfmark.core.config import config as app_config
+from shelfmark.core.request_helpers import coerce_int
 from shelfmark.download.network import get_ssl_verify
 from shelfmark.metadata_providers import (
     BookMetadata,
     DisplayField,
+    MetadataCapability,
     MetadataProvider,
     MetadataSearchOptions,
     SearchResult,
@@ -80,6 +82,7 @@ query GetListBooksById($id: Int!, $limit: Int!, $offset: Int!) {
                 featured_book_series {
                     position
                     series {
+                        id
                         name
                         primary_books_count
                     }
@@ -153,6 +156,7 @@ query GetCurrentUserBooksByStatus($statusId: Int!, $limit: Int!, $offset: Int!) 
                 featured_book_series {
                     position
                     series {
+                        id
                         name
                         primary_books_count
                     }
@@ -162,6 +166,103 @@ query GetCurrentUserBooksByStatus($statusId: Int!, $limit: Int!, $offset: Int!) 
         status_books_aggregate: user_books_aggregate(where: {status_id: {_eq: $statusId}}) {
             aggregate {
                 count(columns: [book_id], distinct: true)
+            }
+        }
+    }
+}
+"""
+
+SEARCH_FIELD_OPTIONS_QUERY = """
+query SearchFieldOptions(
+    $query: String!,
+    $queryType: String!,
+    $limit: Int!,
+    $page: Int!,
+    $sort: String,
+    $fields: String,
+    $weights: String
+) {
+    search(
+        query: $query,
+        query_type: $queryType,
+        per_page: $limit,
+        page: $page,
+        sort: $sort,
+        fields: $fields,
+        weights: $weights
+    ) {
+        results
+    }
+}
+"""
+
+SERIES_BY_AUTHOR_IDS_QUERY = """
+query SeriesByAuthorIds($authorIds: [Int!], $limit: Int!) {
+    series(
+        where: {
+            author_id: {_in: $authorIds},
+            canonical_id: {_is_null: true},
+            state: {_eq: "active"}
+        },
+        limit: $limit,
+        order_by: [{primary_books_count: desc_nulls_last}, {books_count: desc}, {name: asc}]
+    ) {
+        id
+        name
+        primary_books_count
+        books_count
+        author {
+            name
+        }
+    }
+}
+"""
+
+SERIES_BOOKS_BY_ID_QUERY = """
+query GetSeriesBooks($seriesId: Int!) {
+    series(where: {id: {_eq: $seriesId}}, limit: 1) {
+        id
+        name
+        primary_books_count
+        book_series(
+            where: {
+                book: {
+                    canonical_id: {_is_null: true},
+                    state: {_in: ["normalized", "normalizing"]}
+                }
+            }
+            order_by: [{position: asc_nulls_last}, {book_id: asc}]
+        ) {
+            position
+            book {
+                id
+                title
+                subtitle
+                slug
+                release_date
+                headline
+                description
+                pages
+                rating
+                ratings_count
+                users_count
+                compilation
+                editions_count
+                cached_image
+                cached_contributors
+                contributions(where: {contribution: {_eq: "Author"}}) {
+                    author {
+                        name
+                    }
+                }
+                featured_book_series {
+                    position
+                    series {
+                        id
+                        name
+                        primary_books_count
+                    }
+                }
             }
         }
     }
@@ -189,6 +290,16 @@ SEARCH_TYPE_FIELDS: Dict[SearchType, str] = {
     SearchType.AUTHOR: "author_names",
     # ISBN is handled separately via search_by_isbn()
 }
+
+SERIES_SEARCH_FIELDS = "name,books,author_name"
+SERIES_SEARCH_WEIGHTS = "2,1,1"
+SERIES_SEARCH_SORT = "_text_match:desc,readers_count:desc"
+AUTHOR_SUGGESTION_FIELDS = "name,name_personal,alternate_names"
+AUTHOR_SUGGESTION_WEIGHTS = "4,3,2"
+AUTHOR_SUGGESTION_SORT = "_text_match:desc,books_count:desc"
+TITLE_SUGGESTION_FIELDS = "title,alternative_titles"
+TITLE_SUGGESTION_WEIGHTS = "5,2"
+TITLE_SUGGESTION_SORT = "_text_match:desc,users_count:desc"
 
 
 def _combine_headline_description(headline: Optional[str], description: Optional[str]) -> Optional[str]:
@@ -226,6 +337,117 @@ def _extract_publish_year(data: Dict) -> Optional[int]:
         except (ValueError, TypeError):
             pass
     return None
+
+
+def _parse_release_date(value: Any) -> Optional[datetime]:
+    """Parse Hardcover release dates stored as YYYY-MM-DD strings."""
+    if not value:
+        return None
+
+    normalized_value = str(value).strip()
+    if not normalized_value:
+        return None
+
+    try:
+        return datetime.fromisoformat(normalized_value[:10])
+    except ValueError:
+        return None
+
+
+def _normalize_series_position(value: Any) -> Optional[float]:
+    """Normalize a series position to a float for sorting and grouping."""
+    if value is None:
+        return None
+
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_search_text(value: str) -> str:
+    """Normalize free-text search input for matching and caching."""
+    return " ".join(value.split()).strip()
+
+
+def _unwrap_hit_document(hit: Any) -> Optional[Dict[str, Any]]:
+    """Extract the document dict from a Typesense hit, or return None."""
+    if not isinstance(hit, dict):
+        return None
+    item = hit.get("document", hit)
+    return item if isinstance(item, dict) else None
+
+
+def _search_tokens(value: str) -> List[str]:
+    """Tokenize search text for lightweight prefix matching."""
+    return re.findall(r"[a-z0-9']+", value.casefold())
+
+
+def _query_matches_author_name(query: str, author_name: str) -> bool:
+    """Return True when the query looks like an author-name search."""
+    normalized_query = _normalize_search_text(query)
+    normalized_author_name = _normalize_search_text(author_name)
+    if not normalized_query or not normalized_author_name:
+        return False
+
+    query_folded = normalized_query.casefold()
+    author_folded = normalized_author_name.casefold()
+    if query_folded in author_folded:
+        return True
+
+    query_tokens = _search_tokens(normalized_query)
+    author_tokens = _search_tokens(normalized_author_name)
+    if not query_tokens or not author_tokens:
+        return False
+
+    return all(
+        any(author_token.startswith(query_token) for author_token in author_tokens)
+        for query_token in query_tokens
+    )
+
+
+def _split_part_base_title(title: str) -> Optional[str]:
+    """Extract the base title from segmented part releases like ', Part 2'."""
+    normalized_title = _normalize_search_text(title)
+    if not normalized_title:
+        return None
+
+    match = re.match(r"^(?P<base>.+?),\s*Part\s+\d+$", normalized_title, re.IGNORECASE)
+    if not match:
+        return None
+
+    base_title = str(match.group("base") or "").strip()
+    return base_title or None
+
+
+def _series_allows_split_parts(series_name: str) -> bool:
+    """Return True for series that intentionally organize split-part releases."""
+    normalized_name = _normalize_search_text(series_name).casefold()
+    if not normalized_name:
+        return False
+
+    markers = (
+        "dramatized adaptation",
+        "graphicaudio",
+        "graphic audio",
+        "(3 parts)",
+        "(2 parts)",
+        "(4 parts)",
+    )
+    return any(marker in normalized_name for marker in markers)
+
+
+def _extract_typesense_hits(result: Dict[str, Any]) -> tuple[List[Dict[str, Any]], int]:
+    """Extract hit documents + total count from Hardcover search output."""
+    root = result.get("search", result) if isinstance(result, dict) else {}
+    results_obj = root.get("results", {}) if isinstance(root, dict) else {}
+    if isinstance(results_obj, dict):
+        hits = results_obj.get("hits", [])
+        found_count = results_obj.get("found", 0)
+    else:
+        hits = results_obj if isinstance(results_obj, list) else []
+        found_count = 0
+    return hits, found_count
 
 
 def _build_source_url(slug: str) -> Optional[str]:
@@ -427,21 +649,34 @@ class HardcoverProvider(MetadataProvider):
         SortOrder.OLDEST,
         SortOrder.SERIES_ORDER,
     ]
+    capabilities = [
+        MetadataCapability(
+            key="view_series",
+            field_key="series",
+            sort=SortOrder.SERIES_ORDER,
+        ),
+    ]
     search_fields = [
         TextSearchField(
             key="author",
             label="Author",
+            placeholder="Search author...",
             description="Search by author name",
+            suggestions_endpoint="/api/metadata/field-options?provider=hardcover&field=author",
         ),
         TextSearchField(
             key="title",
             label="Title",
+            placeholder="Search title...",
             description="Search by book title",
+            suggestions_endpoint="/api/metadata/field-options?provider=hardcover&field=title",
         ),
         TextSearchField(
             key="series",
             label="Series",
+            placeholder="Search series...",
             description="Search by series name",
+            suggestions_endpoint="/api/metadata/field-options?provider=hardcover&field=series",
         ),
         DynamicSelectSearchField(
             key="hardcover_list",
@@ -475,17 +710,12 @@ class HardcoverProvider(MetadataProvider):
 
         Returns (query, fields, weights) tuple. Fields/weights are None for general search.
         """
-        if series and not author and not title:
-            return series, "series_names", "1"
         if author and not title and not series:
             return author, "author_names", "1"
         if title and not author and not series:
             return title, "title,alternative_titles", "5,1"
         if author and title and not series:
             return f"{title} {author}", "title,alternative_titles,author_names", "5,1,3"
-        if series:
-            query = " ".join(p for p in [series, title, author] if p)
-            return query, "series_names,title,alternative_titles,author_names", "5,3,1,2"
         return default_query, None, None
 
     def _detect_list_url(self, query: str) -> Optional[tuple[Optional[str], str]]:
@@ -642,11 +872,416 @@ class HardcoverProvider(MetadataProvider):
 
         return self._get_user_lists_cached(connected_user_id)
 
-    def get_search_field_options(self, field_key: str) -> List[Dict[str, str]]:
+    def get_search_field_options(
+        self,
+        field_key: str,
+        query: Optional[str] = None,
+    ) -> List[Dict[str, str]]:
         """Provide dynamic options for Hardcover-specific advanced fields."""
+        if field_key == "author":
+            return self._search_author_options(query or "")
+        if field_key == "title":
+            return self._search_title_options(query or "")
+        if field_key == "series":
+            return self._search_series_options(query or "")
         if field_key == "hardcover_list":
             return self.get_user_lists()
         return []
+
+    def _search_field_hits(
+        self,
+        *,
+        query: str,
+        query_type: str,
+        limit: int,
+        sort: Optional[str],
+        fields: Optional[str],
+        weights: Optional[str],
+    ) -> List[Dict[str, Any]]:
+        """Run a Hardcover search request for field-level typeahead options."""
+        normalized_query = _normalize_search_text(query)
+        if not self.api_key or len(normalized_query) < 2:
+            return []
+
+        result = self._execute_query(
+            SEARCH_FIELD_OPTIONS_QUERY,
+            {
+                "query": normalized_query,
+                "queryType": query_type,
+                "limit": limit,
+                "page": 1,
+                "sort": sort,
+                "fields": fields,
+                "weights": weights,
+            },
+        )
+        if not result:
+            return []
+
+        hits, _found_count = _extract_typesense_hits(result)
+        return hits
+
+    def _search_series_by_matching_author(self, query: str) -> List[Dict[str, Any]]:
+        """Return direct series rows when the query clearly matches an author."""
+        author_hits = self._search_field_hits(
+            query=query,
+            query_type="Author",
+            limit=2,
+            sort=AUTHOR_SUGGESTION_SORT,
+            fields=AUTHOR_SUGGESTION_FIELDS,
+            weights=AUTHOR_SUGGESTION_WEIGHTS,
+        )
+
+        author_ids: List[int] = []
+        for hit in author_hits:
+            item = _unwrap_hit_document(hit)
+            if item is None:
+                continue
+
+            author_name = str(item.get("name") or "").strip()
+            if not _query_matches_author_name(query, author_name):
+                continue
+
+            try:
+                author_id = int(item.get("id"))
+            except (TypeError, ValueError):
+                continue
+
+            if author_id not in author_ids:
+                author_ids.append(author_id)
+
+        if not author_ids:
+            return []
+
+        result = self._execute_query(
+            SERIES_BY_AUTHOR_IDS_QUERY,
+            {
+                "authorIds": author_ids,
+                "limit": 7,
+            },
+        )
+        if not result:
+            return []
+
+        series_rows = result.get("series", [])
+        return [row for row in series_rows if isinstance(row, dict)]
+
+    @cacheable(ttl=120, key_prefix="hardcover:author:options")
+    def _search_author_options(self, query: str) -> List[Dict[str, str]]:
+        """Return typeahead options for Hardcover author search."""
+        hits = self._search_field_hits(
+            query=query,
+            query_type="Author",
+            limit=7,
+            sort=AUTHOR_SUGGESTION_SORT,
+            fields=AUTHOR_SUGGESTION_FIELDS,
+            weights=AUTHOR_SUGGESTION_WEIGHTS,
+        )
+        options: List[Dict[str, str]] = []
+        seen_labels: set[str] = set()
+
+        for hit in hits:
+            item = _unwrap_hit_document(hit)
+            if item is None:
+                continue
+
+            label = str(item.get("name") or "").strip()
+            normalized_label = label.casefold()
+            if not label or normalized_label in seen_labels:
+                continue
+
+            seen_labels.add(normalized_label)
+            options.append({"value": label, "label": label})
+
+        return options
+
+    @cacheable(ttl=120, key_prefix="hardcover:title:options")
+    def _search_title_options(self, query: str) -> List[Dict[str, str]]:
+        """Return typeahead options for Hardcover title search."""
+        hits = self._search_field_hits(
+            query=query,
+            query_type="Book",
+            limit=7,
+            sort=TITLE_SUGGESTION_SORT,
+            fields=TITLE_SUGGESTION_FIELDS,
+            weights=TITLE_SUGGESTION_WEIGHTS,
+        )
+
+        exclude_compilations = app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False)
+        exclude_unreleased = app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False)
+        current_year = datetime.now().year
+
+        options: List[Dict[str, str]] = []
+        seen_labels: set[str] = set()
+
+        for hit in hits:
+            item = _unwrap_hit_document(hit)
+            if item is None:
+                continue
+
+            if exclude_compilations and item.get("compilation"):
+                continue
+
+            if exclude_unreleased:
+                release_year = item.get("release_year")
+                try:
+                    if release_year is not None and int(release_year) > current_year:
+                        continue
+                except (TypeError, ValueError):
+                    pass
+
+            label = str(item.get("title") or "").strip()
+            normalized_label = label.casefold()
+            if not label or normalized_label in seen_labels:
+                continue
+
+            seen_labels.add(normalized_label)
+            options.append({"value": label, "label": label})
+
+        return options
+
+    def _format_series_option_description(self, item: Dict[str, Any]) -> Optional[str]:
+        """Build a short description for a series suggestion option."""
+        author_name = item.get("author_name")
+        if not author_name:
+            author_data = item.get("author")
+            if isinstance(author_data, dict):
+                author_name = author_data.get("name")
+
+        parts: List[str] = []
+        if author_name:
+            parts.append(f"by {author_name}")
+
+        books_count = item.get("primary_books_count")
+        if books_count is None:
+            books_count = item.get("books_count")
+
+        try:
+            if books_count is not None:
+                books_count_int = int(books_count)
+                parts.append(f"{books_count_int} book{'s' if books_count_int != 1 else ''}")
+        except (TypeError, ValueError):
+            pass
+
+        return " • ".join(parts) if parts else None
+
+    @cacheable(ttl=120, key_prefix="hardcover:series:options")
+    def _search_series_options(self, query: str) -> List[Dict[str, str]]:
+        """Return typeahead options for Hardcover series search."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            author_future = executor.submit(self._search_series_by_matching_author, query)
+            series_future = executor.submit(
+                self._search_field_hits,
+                query=query,
+                query_type="Series",
+                limit=7,
+                sort=SERIES_SEARCH_SORT,
+                fields=SERIES_SEARCH_FIELDS,
+                weights=SERIES_SEARCH_WEIGHTS,
+            )
+
+        author_series = author_future.result()
+        hits = series_future.result()
+        options: List[Dict[str, str]] = []
+        seen_values: set[str] = set()
+
+        series_items: List[Dict[str, Any]] = []
+        series_items.extend(author_series)
+        series_items.extend(
+            doc for hit in hits
+            if (doc := _unwrap_hit_document(hit)) is not None
+        )
+
+        for item in series_items:
+
+            series_id = item.get("id")
+            name = str(item.get("name") or "").strip()
+            if series_id is None or not name:
+                continue
+
+            value = f"id:{series_id}"
+            if value in seen_values:
+                continue
+            seen_values.add(value)
+
+            option: Dict[str, str] = {
+                "value": value,
+                "label": name,
+            }
+            description = self._format_series_option_description(item)
+            if description:
+                option["description"] = description
+            options.append(option)
+            if len(options) >= 7:
+                break
+
+        return options
+
+    def _resolve_series_search_value(self, series_value: str) -> Optional[Dict[str, Any]]:
+        """Resolve a series field value to a canonical Hardcover series."""
+        normalized_value = _normalize_search_text(series_value)
+        if not normalized_value:
+            return None
+
+        if normalized_value.startswith("id:"):
+            try:
+                return {"id": int(normalized_value.split(":", 1)[1])}
+            except (IndexError, ValueError):
+                logger.debug(f"Invalid Hardcover series id field value: {normalized_value}")
+                return None
+
+        result = self._execute_query(
+            SEARCH_FIELD_OPTIONS_QUERY,
+            {
+                "query": normalized_value,
+                "queryType": "Series",
+                "limit": 10,
+                "page": 1,
+                "sort": SERIES_SEARCH_SORT,
+                "fields": SERIES_SEARCH_FIELDS,
+                "weights": SERIES_SEARCH_WEIGHTS,
+            },
+        )
+        if not result:
+            return None
+
+        hits, _found_count = _extract_typesense_hits(result)
+        if not hits:
+            return None
+
+        normalized_lookup = normalized_value.lower()
+        candidates: List[Dict[str, Any]] = []
+        for hit in hits:
+            item = _unwrap_hit_document(hit)
+            if item is None:
+                continue
+            try:
+                series_id = int(item.get("id"))
+            except (TypeError, ValueError):
+                continue
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            candidates.append({"id": series_id, "name": name})
+
+        if not candidates:
+            return None
+
+        exact_match = next(
+            (candidate for candidate in candidates if candidate["name"].lower() == normalized_lookup),
+            None,
+        )
+        return exact_match or candidates[0]
+
+    @cacheable(ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="hardcover:series:rows:v4")
+    def _fetch_series_ordered_rows(
+        self,
+        series_id: int,
+        exclude_compilations: bool,
+        exclude_unreleased: bool,
+    ) -> Dict[str, Any]:
+        """Fetch and process all books for a series (cached independently of page)."""
+        empty: Dict[str, Any] = {"rows": [], "series_name": "", "total": 0}
+        if not self.api_key:
+            return empty
+
+        result = self._execute_query(
+            SERIES_BOOKS_BY_ID_QUERY,
+            {"seriesId": series_id},
+        )
+        if not result:
+            return empty
+
+        series_items = result.get("series", [])
+        if not isinstance(series_items, list) or not series_items:
+            return empty
+
+        series_data = series_items[0] if isinstance(series_items[0], dict) else {}
+        series_name = str(series_data.get("name") or "").strip() if isinstance(series_data, dict) else ""
+        allow_split_parts = _series_allows_split_parts(series_name)
+        today = datetime.now().date()
+
+        book_series_rows = series_data.get("book_series", []) if isinstance(series_data, dict) else []
+        rows_by_position: Dict[float, Dict[str, Any]] = {}
+        for row in book_series_rows:
+            if not isinstance(row, dict):
+                continue
+            book_data = row.get("book", {})
+            if not isinstance(book_data, dict) or not book_data:
+                continue
+            if exclude_compilations and book_data.get("compilation"):
+                continue
+            if not allow_split_parts and _split_part_base_title(str(book_data.get("title") or "")):
+                continue
+
+            position = _normalize_series_position(row.get("position"))
+            if position is None:
+                continue
+
+            release_date = _parse_release_date(book_data.get("release_date"))
+            if exclude_unreleased and (release_date is None or release_date.date() > today):
+                continue
+
+            sort_key = (
+                1 if release_date and release_date.date() <= today else 0,
+                0 if book_data.get("compilation") else 1,
+                coerce_int(book_data.get("users_count"), 0),
+                coerce_int(book_data.get("ratings_count"), 0),
+                coerce_int(book_data.get("editions_count"), 0),
+                -coerce_int(book_data.get("id"), 0),
+            )
+            existing_row = rows_by_position.get(position)
+            if existing_row is None:
+                rows_by_position[position] = {"row": row, "sort_key": sort_key}
+                continue
+            if sort_key > existing_row["sort_key"]:
+                rows_by_position[position] = {"row": row, "sort_key": sort_key}
+
+        ordered_rows = [
+            entry["row"]
+            for _position, entry in sorted(rows_by_position.items(), key=lambda item: item[0])
+        ]
+        return {"rows": ordered_rows, "series_name": series_name, "total": len(ordered_rows)}
+
+    def _fetch_series_books_by_id(
+        self,
+        series_id: int,
+        page: int,
+        limit: int,
+        exclude_compilations: bool,
+        exclude_unreleased: bool,
+    ) -> SearchResult:
+        """Fetch books for a Hardcover series in canonical series order."""
+        cached = self._fetch_series_ordered_rows(series_id, exclude_compilations, exclude_unreleased)
+        ordered_rows = cached["rows"]
+        series_name = cached["series_name"]
+        total_found = cached["total"]
+
+        offset = (page - 1) * limit
+        page_rows = ordered_rows[offset:offset + limit]
+
+        books: List[BookMetadata] = []
+        for row in page_rows:
+            book_data = row.get("book", {})
+            if not isinstance(book_data, dict) or not book_data:
+                continue
+            try:
+                parsed_book = self._parse_book(book_data)
+                if not parsed_book:
+                    continue
+                parsed_book.series_id = str(series_id)
+                if series_name:
+                    parsed_book.series_name = series_name
+                parsed_book.series_position = row.get("position")
+                parsed_book.series_count = total_found
+                books.append(parsed_book)
+            except Exception as exc:
+                logger.debug(f"Failed to parse Hardcover series book for series_id={series_id}: {exc}")
+
+        has_more = offset + len(page_rows) < total_found
+        return SearchResult(books=books, page=page, total_found=total_found, has_more=has_more)
 
     @cacheable(ttl=120, key_prefix="hardcover:user_lists")
     def _get_user_lists_cached(self, _cache_user_id: str) -> List[Dict[str, str]]:
@@ -853,6 +1488,21 @@ class HardcoverProvider(MetadataProvider):
                     return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
             return self._fetch_list_books(list_value_from_field, None, options.page, options.limit)
 
+        series_value_from_field = str(options.fields.get("series", "")).strip()
+        if series_value_from_field:
+            resolved_series = self._resolve_series_search_value(series_value_from_field)
+            if not resolved_series:
+                return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
+            exclude_compilations = app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False)
+            exclude_unreleased = app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False)
+            return self._fetch_series_books_by_id(
+                int(resolved_series["id"]),
+                options.page,
+                options.limit,
+                exclude_compilations,
+                exclude_unreleased,
+            )
+
         # Handle ISBN search separately
         if options.search_type == SearchType.ISBN:
             result = self.search_by_isbn(options.query)
@@ -873,11 +1523,10 @@ class HardcoverProvider(MetadataProvider):
         # Note: Hardcover API requires 'weights' when using 'fields' parameter
         author_value = options.fields.get("author", "").strip()
         title_value = options.fields.get("title", "").strip()
-        series_value = options.fields.get("series", "").strip()
 
         # Build query and field configuration based on which fields are provided
         query, search_fields, search_weights = self._build_search_params(
-            options.query, author_value, title_value, series_value
+            options.query, author_value, title_value, ""
         )
 
         # Build GraphQL query - include fields/weights parameters only when needed
@@ -919,13 +1568,7 @@ class HardcoverProvider(MetadataProvider):
                 return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
 
             # Extract hits from Typesense response
-            results_obj = result.get("search", {}).get("results", {})
-            if isinstance(results_obj, dict):
-                hits = results_obj.get("hits", [])
-                found_count = results_obj.get("found", 0)
-            else:
-                hits = results_obj if isinstance(results_obj, list) else []
-                found_count = 0
+            hits, found_count = _extract_typesense_hits(result)
 
             # Parse hits, filtering compilations and unreleased books if enabled
             exclude_compilations = app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False)
@@ -933,8 +1576,8 @@ class HardcoverProvider(MetadataProvider):
             current_year = datetime.now().year
             books = []
             for hit in hits:
-                item = hit.get("document", hit) if isinstance(hit, dict) else hit
-                if not isinstance(item, dict):
+                item = _unwrap_hit_document(hit)
+                if item is None:
                     continue
                 if exclude_compilations and item.get("compilation"):
                     continue
@@ -945,11 +1588,6 @@ class HardcoverProvider(MetadataProvider):
                 book = self._parse_search_result(item)
                 if book:
                     books.append(book)
-
-            # If series order sort is selected and series field is provided,
-            # filter to exact matches and sort by position
-            if options.sort == SortOrder.SERIES_ORDER and series_value and books:
-                books = self._apply_series_ordering(books, series_value)
 
             logger.info(f"Hardcover search '{query}' (fields={search_fields}) returned {len(books)} results")
 
@@ -967,36 +1605,6 @@ class HardcoverProvider(MetadataProvider):
         except Exception as e:
             logger.error(f"Hardcover search error: {e}")
             return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
-
-    def _apply_series_ordering(self, books: List[BookMetadata], series_name: str) -> List[BookMetadata]:
-        """Filter books to exact series match and sort by series position."""
-        series_name_lower = series_name.lower()
-        books_with_position = []
-
-        for book in books:
-            # Fetch full book details to get series info
-            full_book = self.get_book(book.provider_id)
-            if not full_book or not full_book.series_name:
-                continue
-
-            # Exact match on series name
-            if full_book.series_name.lower() != series_name_lower:
-                continue
-
-            # Merge series info into the search result book
-            book.series_name = full_book.series_name
-            book.series_position = full_book.series_position
-            book.series_count = full_book.series_count
-            # Also grab description if search didn't have it
-            if not book.description and full_book.description:
-                book.description = full_book.description
-            books_with_position.append(book)
-
-        # Sort by series position (books without position go last)
-        books_with_position.sort(key=lambda b: (b.series_position is None, b.series_position or 0))
-
-        logger.debug(f"Series ordering: filtered {len(books)} -> {len(books_with_position)} books for '{series_name}'")
-        return books_with_position
 
     @cacheable(ttl_key="METADATA_CACHE_BOOK_TTL", ttl_default=600, key_prefix="hardcover:book")
     def get_book(self, book_id: str) -> Optional[BookMetadata]:
@@ -1036,6 +1644,7 @@ class HardcoverProvider(MetadataProvider):
                 featured_book_series {
                     position
                     series {
+                        id
                         name
                         primary_books_count
                     }
@@ -1334,6 +1943,7 @@ class HardcoverProvider(MetadataProvider):
         full_description = _combine_headline_description(headline, description)
 
         # Extract series info from featured_book_series
+        series_id = None
         series_name = None
         series_position = None
         series_count = None
@@ -1342,6 +1952,8 @@ class HardcoverProvider(MetadataProvider):
             series_position = featured_series.get("position")
             series_data = featured_series.get("series")
             if series_data:
+                if series_data.get("id") is not None:
+                    series_id = str(series_data.get("id"))
                 series_name = series_data.get("name")
                 series_count = series_data.get("primary_books_count")
 
@@ -1412,6 +2024,7 @@ class HardcoverProvider(MetadataProvider):
              publish_year=publish_year,
              genres=genres,
              source_url=source_url,
+             series_id=series_id,
              series_name=series_name,
              series_position=series_position,
              series_count=series_count,

@@ -56,6 +56,15 @@ def coerce_bool(value: Any, default: bool = False) -> bool:
     return bool(value)
 
 
+def get_session_db_user_id(session_obj: Any) -> int | None:
+    """Extract and coerce `db_user_id` from a Flask session to ``int | None``."""
+    raw = session_obj.get("db_user_id") if session_obj is not None else None
+    try:
+        return int(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def coerce_int(value: Any, default: int) -> int:
     """Best-effort integer coercion with fallback to default."""
     try:

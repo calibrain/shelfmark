@@ -2,11 +2,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { DropdownList, DropdownListOption } from '../DropdownList';
 import { DynamicFieldOption, fetchFieldOptions } from '../../services/api';
 
+const optionsCache = new Map<string, DynamicFieldOption[]>();
+const OPTIONS_CACHE_MAX = 50;
+
 interface DynamicDropdownProps {
   endpoint: string;
   value: string;
   onChange: (value: string, label?: string) => void;
   placeholder?: string;
+  widthClassName?: string;
+  buttonClassName?: string;
+  triggerChrome?: 'default' | 'minimal';
 }
 
 const buildOptions = (
@@ -24,15 +30,25 @@ export const DynamicDropdown = ({
   value,
   onChange,
   placeholder = 'Select...',
+  widthClassName,
+  buttonClassName,
+  triggerChrome = 'default',
 }: DynamicDropdownProps) => {
-  const [options, setOptions] = useState<DynamicFieldOption[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const cachedOptions = optionsCache.get(endpoint) ?? [];
+  const [options, setOptions] = useState<DynamicFieldOption[]>(cachedOptions);
+  const [isLoading, setIsLoading] = useState(cachedOptions.length === 0);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
     const load = async () => {
+      if (optionsCache.has(endpoint)) {
+        setOptions(optionsCache.get(endpoint) ?? []);
+        setIsLoading(false);
+        return;
+      }
+
       setIsLoading(true);
       setLoadError(null);
 
@@ -41,6 +57,11 @@ export const DynamicDropdown = ({
         if (!isMounted) {
           return;
         }
+        if (optionsCache.size >= OPTIONS_CACHE_MAX) {
+          const oldest = optionsCache.keys().next().value;
+          if (oldest !== undefined) optionsCache.delete(oldest);
+        }
+        optionsCache.set(endpoint, loaded);
         setOptions(loaded);
       } catch (error) {
         if (!isMounted) {
@@ -86,6 +107,9 @@ export const DynamicDropdown = ({
       value={value}
       onChange={handleChange}
       placeholder={placeholder}
+      widthClassName={widthClassName}
+      buttonClassName={buttonClassName}
+      triggerChrome={triggerChrome}
     />
   );
 };

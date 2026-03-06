@@ -25,6 +25,7 @@ export interface MetadataBookData {
     icon?: string;
   }>;
   // Series info
+  series_id?: string;
   series_name?: string;
   series_position?: number;
   series_count?: number;
@@ -56,6 +57,7 @@ export function transformMetadataToBook(data: MetadataBookData): Book {
     genres: data.genres,
     source_url: data.source_url,
     display_fields: data.display_fields,
+    series_id: data.series_id,
     series_name: data.series_name,
     series_position: data.series_position,
     series_count: data.series_count,

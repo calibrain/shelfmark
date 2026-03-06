@@ -10,6 +10,7 @@ interface TooltipProps {
   unstyled?: boolean;
   triggerClassName?: string;
   alwaysWrap?: boolean;
+  interactive?: boolean;
 }
 
 export function Tooltip({
@@ -21,6 +22,7 @@ export function Tooltip({
   unstyled = false,
   triggerClassName = 'inline-flex max-w-full',
   alwaysWrap = false,
+  interactive = false,
 }: TooltipProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
@@ -67,11 +69,37 @@ export function Tooltip({
     }, delay);
   };
 
+  const isOverTooltipRef = useRef(false);
+
   const hideTooltip = () => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
+    if (interactive) {
+      // Small delay so the user can move the mouse from trigger to tooltip
+      timeoutRef.current = setTimeout(() => {
+        if (!isOverTooltipRef.current) {
+          setIsVisible(false);
+          setCoords(null);
+        }
+      }, 100);
+      return;
+    }
+    setIsVisible(false);
+    setCoords(null);
+  };
+
+  const handleTooltipMouseEnter = () => {
+    isOverTooltipRef.current = true;
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  };
+
+  const handleTooltipMouseLeave = () => {
+    isOverTooltipRef.current = false;
     setIsVisible(false);
     setCoords(null);
   };
@@ -164,7 +192,9 @@ export function Tooltip({
         <div
           ref={tooltipRef}
           role="tooltip"
-          className={`fixed z-[9999] pointer-events-none ${tooltipSizeClass} ${transformClass} ${className}`}
+          onMouseEnter={interactive ? handleTooltipMouseEnter : undefined}
+          onMouseLeave={interactive ? handleTooltipMouseLeave : undefined}
+          className={`fixed z-[9999] ${interactive ? 'select-text cursor-auto' : 'pointer-events-none'} ${tooltipSizeClass} ${transformClass} ${className}`}
           style={{
             top: coords.top,
             left: coords.left,
