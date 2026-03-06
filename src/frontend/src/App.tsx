@@ -60,6 +60,8 @@ import { DEFAULT_LANGUAGES, DEFAULT_SUPPORTED_FORMATS } from './data/languages';
 import { buildSearchQuery } from './utils/buildSearchQuery';
 import { formatActingAsUserName } from './utils/actingAsUser';
 import { withBasePath } from './utils/basePath';
+import { getConfiguredMetadataProviderForContentType } from './utils/metadataProviders';
+import { getEffectiveMetadataSort } from './utils/metadataSort';
 import {
   applyDirectPolicyModeToButtonState,
   applyUniversalPolicyModeToButtonState,
@@ -431,6 +433,7 @@ function App() {
   const [configuredAudiobookMetadataProvider, setConfiguredAudiobookMetadataProvider] = useState<string | null>(null);
   const [activeMetadataConfig, setActiveMetadataConfig] = useState<MetadataSearchConfig | null>(null);
   const [activeQueryTarget, setActiveQueryTarget] = useState<string>('general');
+  const [activeResultsSort, setActiveResultsSort] = useState('');
   const [downloadsSidebarOpen, setDownloadsSidebarOpen] = useState(false);
   const [sidebarPinnedOpen, setSidebarPinnedOpen] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
@@ -608,6 +611,29 @@ function App() {
         getConfig(),
         getMetadataProviders(),
       ]);
+      const activeConfiguredProvider = getConfiguredMetadataProviderForContentType({
+        contentType,
+        configuredMetadataProvider: metadataProviderState.configured_provider,
+        configuredAudiobookMetadataProvider: metadataProviderState.configured_provider_audiobook,
+      });
+      let nextMetadataConfig: MetadataSearchConfig | null = null;
+
+      if (cfg.search_mode === 'universal') {
+        try {
+          nextMetadataConfig = await getMetadataSearchConfig(
+            contentType,
+            activeConfiguredProvider ?? undefined,
+          );
+        } catch (metadataConfigError) {
+          console.error('Failed to load metadata search config during config sync:', metadataConfigError);
+        }
+      }
+
+      const resolvedMetadataDefaultSort = getEffectiveMetadataSort({
+        currentSort: '',
+        defaultSort: nextMetadataConfig?.default_sort || cfg.metadata_default_sort || 'relevance',
+        sortOptions: nextMetadataConfig?.sort_options ?? cfg.metadata_sort_options,
+      });
 
       // Check if search mode changed (only on settings save)
       if (mode === 'settings-saved' && prevSearchModeRef.current !== cfg.search_mode) {
@@ -617,10 +643,15 @@ function App() {
       }
 
       prevSearchModeRef.current = cfg.search_mode;
-      setConfig(cfg);
+      setConfig({
+        ...cfg,
+        metadata_default_sort: resolvedMetadataDefaultSort,
+        metadata_sort_options: nextMetadataConfig?.sort_options ?? cfg.metadata_sort_options,
+      });
       setMetadataProviders(metadataProviderState.providers);
       setConfiguredMetadataProvider(metadataProviderState.configured_provider);
       setConfiguredAudiobookMetadataProvider(metadataProviderState.configured_provider_audiobook);
+      setActiveMetadataConfig(nextMetadataConfig);
 
       // Show onboarding modal on first run (settings enabled but not completed yet)
       if (mode === 'initial' && cfg.settings_enabled && !cfg.onboarding_complete) {
@@ -629,7 +660,7 @@ function App() {
 
       // Determine the default sort based on search mode
       const defaultSort = cfg.search_mode === 'universal'
-        ? (cfg.metadata_default_sort || 'relevance')
+        ? resolvedMetadataDefaultSort
         : (cfg.default_sort || 'relevance');
 
       if (cfg?.supported_formats) {
@@ -651,7 +682,7 @@ function App() {
     } catch (error) {
       console.error('Failed to load config:', error);
     }
-  }, [setBooks, setAdvancedFilters, clearTracking]);
+  }, [clearTracking, contentType, setAdvancedFilters, setBooks]);
 
   // Fetch config when authenticated
   useEffect(() => {
@@ -661,12 +692,24 @@ function App() {
   }, [isAuthenticated, loadConfig]);
 
   const effectiveSearchMode: SearchMode = config?.search_mode ?? 'direct';
-  const defaultMetadataProviderForContentType = contentType === 'audiobook'
-    ? (configuredAudiobookMetadataProvider || configuredMetadataProvider)
-    : configuredMetadataProvider;
+  const defaultMetadataProviderForContentType = getConfiguredMetadataProviderForContentType({
+    contentType,
+    configuredMetadataProvider,
+    configuredAudiobookMetadataProvider,
+  });
   const effectiveMetadataProvider = effectiveSearchMode === 'universal'
     ? (defaultMetadataProviderForContentType || null)
     : null;
+  const resolvedMetadataSortOptions = useMemo(
+    () => activeMetadataConfig?.sort_options ?? config?.metadata_sort_options ?? [],
+    [activeMetadataConfig?.sort_options, config?.metadata_sort_options],
+  );
+  const resolvedMetadataDefaultSort = useMemo(() => getEffectiveMetadataSort({
+    currentSort: '',
+    defaultSort: activeMetadataConfig?.default_sort || config?.metadata_default_sort || 'relevance',
+    sortOptions: resolvedMetadataSortOptions,
+  }), [activeMetadataConfig?.default_sort, config?.metadata_default_sort, resolvedMetadataSortOptions]);
+  const prevMetadataSortContextRef = useRef<string>('');
 
   // Non-admins in universal mode have nothing in the advanced panel
   const hasAdvancedContent = requestRoleIsAdmin || effectiveSearchMode === 'direct';
@@ -713,22 +756,38 @@ function App() {
 
   useEffect(() => {
     if (effectiveSearchMode !== 'universal') {
+      prevMetadataSortContextRef.current = '';
       return;
     }
 
-    const supportedSorts = activeMetadataConfig?.sort_options ?? config?.metadata_sort_options ?? [];
-    const currentSort = advancedFilters.sort;
-    const hasCurrentSort = supportedSorts.some((option) => option.value === currentSort);
-    if (!hasCurrentSort) {
-      const nextSort = activeMetadataConfig?.default_sort || config?.metadata_default_sort || 'relevance';
+    const metadataSortContext = [
+      contentType,
+      effectiveMetadataProvider ?? '',
+      resolvedMetadataDefaultSort,
+      resolvedMetadataSortOptions.map((option) => option.value).join(','),
+    ].join('::');
+    const contextChanged = prevMetadataSortContextRef.current !== ''
+      && prevMetadataSortContextRef.current !== metadataSortContext;
+    const nextSort = contextChanged
+      ? resolvedMetadataDefaultSort
+      : getEffectiveMetadataSort({
+          currentSort: advancedFilters.sort,
+          defaultSort: resolvedMetadataDefaultSort,
+          sortOptions: resolvedMetadataSortOptions,
+        });
+
+    prevMetadataSortContextRef.current = metadataSortContext;
+
+    if (nextSort !== advancedFilters.sort) {
       setAdvancedFilters((prev) => ({ ...prev, sort: nextSort }));
     }
   }, [
-    activeMetadataConfig,
     advancedFilters.sort,
-    config?.metadata_default_sort,
-    config?.metadata_sort_options,
+    contentType,
+    effectiveMetadataProvider,
     effectiveSearchMode,
+    resolvedMetadataDefaultSort,
+    resolvedMetadataSortOptions,
     setAdvancedFilters,
   ]);
 
@@ -738,6 +797,7 @@ function App() {
       setBooks([]);
       setSelectedBook(null);
       setReleaseBook(null);
+      setActiveResultsSort('');
       clearTracking();
       prevEffectiveSearchModeRef.current = effectiveSearchMode;
     }
@@ -808,11 +868,24 @@ function App() {
       }
       setActiveQueryTarget(nextQueryTarget);
 
+      const resolvedUrlMetadataSort = parsedSearchMode === 'universal'
+        ? getEffectiveMetadataSort({
+            currentSort: typeof parsedParams.advancedFilters.sort === 'string'
+              ? parsedParams.advancedFilters.sort
+              : '',
+            defaultSort: resolvedMetadataDefaultSort,
+            sortOptions: resolvedMetadataSortOptions,
+          })
+        : parsedParams.advancedFilters.sort;
+
       // Apply advanced filters from URL
       if (Object.keys(parsedParams.advancedFilters).length > 0) {
         setAdvancedFilters(prev => ({
           ...prev,
           ...parsedParams.advancedFilters,
+          ...(parsedSearchMode === 'universal' && resolvedUrlMetadataSort
+            ? { sort: resolvedUrlMetadataSort }
+            : {}),
         }));
 
         const hasAdvancedValues = ['content', 'lang', 'formats'].some(
@@ -827,6 +900,9 @@ function App() {
       const mergedFilters = {
         ...advancedFilters,
         ...parsedParams.advancedFilters,
+        ...(parsedSearchMode === 'universal' && resolvedUrlMetadataSort
+          ? { sort: resolvedUrlMetadataSort }
+          : {}),
       };
 
       const query = buildSearchQuery({
@@ -858,6 +934,8 @@ function App() {
     contentType,
     config,
     advancedFilters,
+    resolvedMetadataDefaultSort,
+    resolvedMetadataSortOptions,
     runSearchWithPolicyRefresh,
     setSearchInput,
     setAdvancedFilters,
@@ -1579,21 +1657,25 @@ function App() {
     && activeQueryValue !== ''
     && activeQueryValue !== false,
   );
+  const effectiveMetadataSort = getEffectiveMetadataSort({
+    currentSort: advancedFilters.sort,
+    defaultSort: resolvedMetadataDefaultSort,
+    sortOptions: resolvedMetadataSortOptions,
+  });
+  const visibleResultsSort = activeResultsSort || (
+    effectiveSearchMode === 'universal' ? effectiveMetadataSort : advancedFilters.sort
+  );
 
   const getAppliedUniversalSort = useCallback((sortOverride?: string) => {
-    const requestedSort = sortOverride ?? advancedFilters.sort;
+    const requestedSort = sortOverride ?? effectiveMetadataSort;
     const seriesBrowseSort = seriesBrowseCapability?.sort ?? '';
 
     if (activeQueryUsesSeriesBrowse && seriesBrowseSort) {
       return seriesBrowseSort;
     }
 
-    if (requestedSort === seriesBrowseSort) {
-      return '';
-    }
-
     return requestedSort;
-  }, [activeQueryUsesSeriesBrowse, advancedFilters.sort, seriesBrowseCapability?.sort]);
+  }, [activeQueryUsesSeriesBrowse, effectiveMetadataSort, seriesBrowseCapability?.sort]);
 
   const handleActiveQueryValueChange = useCallback((value: string | number | boolean, label?: string) => {
     if (!activeQueryOption || activeQueryOption.source === 'general' || activeQueryOption.source === 'manual') {
@@ -1734,8 +1816,8 @@ function App() {
     setReleaseBook(null);
     clearTracking();
 
-    const newFilters = { ...advancedFilters, sort: seriesSort };
-    setAdvancedFilters(newFilters);
+    const seriesFilters = { ...advancedFilters, sort: seriesSort };
+    setActiveResultsSort(seriesSort);
 
     setActiveQueryTarget(seriesTarget.key);
     updateSearchFieldValue(
@@ -1747,7 +1829,7 @@ function App() {
     const query = buildSearchQuery({
       searchInput: '',
       showAdvanced: true,
-      advancedFilters: newFilters,
+      advancedFilters: seriesFilters,
       bookLanguages,
       defaultLanguage: defaultLanguageCodes,
       searchMode: effectiveSearchMode,
@@ -1818,9 +1900,16 @@ function App() {
       return;
     }
     const request = buildCurrentSearchRequest();
-    if (request.appliedSort !== advancedFilters.sort) {
+    const shouldPersistAppliedSort = !(
+      effectiveSearchMode === 'universal'
+      && activeQueryUsesSeriesBrowse
+      && request.appliedSort === seriesBrowseCapability?.sort
+    );
+
+    if (shouldPersistAppliedSort && request.appliedSort !== advancedFilters.sort) {
       updateAdvancedFilters({ sort: request.appliedSort });
     }
+    setActiveResultsSort(request.appliedSort);
     runSearchWithPolicyRefresh({
       query: request.query,
       fieldValues: request.fieldValues,
@@ -1830,10 +1919,12 @@ function App() {
   }, [
     activeQueryOption,
     advancedFilters.sort,
+    activeQueryUsesSeriesBrowse,
     buildCurrentSearchRequest,
     effectiveSearchMode,
     handleManualSearch,
     runSearchWithPolicyRefresh,
+    seriesBrowseCapability?.sort,
     updateAdvancedFilters,
   ]);
 
@@ -1895,6 +1986,7 @@ function App() {
           onLogoClick={() => {
             handleResetSearch(config);
             setActiveQueryTarget('general');
+            setActiveResultsSort('');
           }}
           authRequired={authRequired}
           isAuthenticated={isAuthenticated}
@@ -1993,10 +2085,18 @@ function App() {
           onGetReleases={handleGetReleases}
           getButtonState={getDirectActionButtonState}
           getUniversalButtonState={getUniversalActionButtonState}
-          sortValue={advancedFilters.sort}
+          sortValue={visibleResultsSort}
           onSortChange={(value) => {
             const request = buildCurrentSearchRequest(value);
-            updateAdvancedFilters({ sort: request.appliedSort });
+            const shouldPersistAppliedSort = !(
+              effectiveSearchMode === 'universal'
+              && activeQueryUsesSeriesBrowse
+              && request.appliedSort === seriesBrowseCapability?.sort
+            );
+            if (shouldPersistAppliedSort) {
+              updateAdvancedFilters({ sort: request.appliedSort });
+            }
+            setActiveResultsSort(request.appliedSort);
             runSearchWithPolicyRefresh({
               query: request.query,
               fieldValues: request.fieldValues,
@@ -2004,7 +2104,7 @@ function App() {
               providerOverride: request.providerOverride,
             });
           }}
-          metadataSortOptions={activeMetadataConfig?.sort_options}
+          metadataSortOptions={resolvedMetadataSortOptions}
           hasMore={hasMore}
           isLoadingMore={isLoadingMore}
           onLoadMore={() => loadMore(config, effectiveSearchMode)}

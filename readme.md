@@ -179,6 +179,25 @@ volumes:
 
 With any authentication method enabled, Shelfmark supports multi-user management with admin/user roles. Users can have per-user settings for download destinations, email recipients, and notification preferences. Non-admin users only see their own downloads and can submit book requests for admin review. Admins can configure request policies per source to control whether users can download directly, must submit a request, or are blocked entirely.
 
+## Project Scope
+
+Shelfmark is a manual search and download tool, the entry point to your book library, not a library manager. It finds books, downloads them, and sends them to a configured destination. That's the full scope.
+
+Shelfmark intentionally does not:
+
+- **Track or manage your library** - it doesn't know or care what you already own
+- **Integrate with library software** - what happens after delivery is up to your library tool
+- **Monitor authors, series, or new releases** - there is no background automation
+- **Queue future downloads** - if a book isn't available now, Shelfmark won't watch for it
+
+These are non-goals, not missing features.
+
+## Contributing
+
+Shelfmark's core feature set is complete. Development focuses on stability, bug fixes, quality-of-life improvements, and refining the search experience. Contributions in these areas are welcome, please file issues or submit pull requests on GitHub.
+
+Feature requests that fall outside the project scope (library integration, automation, collection management) will be closed. If you're unsure whether something fits, open a discussion first.
+
 ## Health Monitoring
 
 The application exposes a health endpoint at `/api/health` (no authentication required). Add a health check to your compose:
@@ -217,55 +236,20 @@ make restart     # Restart container
 
 The frontend dev server proxies to the backend on port 8084.
 
-### Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Web Interface                          │
-│                 (React + TypeScript + Vite)                 │
-├─────────────────────────────────────────────────────────────┤
-│                      Flask Backend                          │
-│                   (REST API + WebSocket)                    │
-├───────────────────┬─────────────────────┬───────────────────┤
-│ Metadata Providers│   Download Queue    │  Cloudflare       │
-│                   │   & Orchestrator    │  Bypass           │
-├───────────────────┼─────────────────────┼───────────────────┤
-│ • Hardcover       │ • Task scheduling   │ • Internal        │
-│ • Open Library    │ • Progress tracking │ • External        │
-│                   │ • Retry logic       │   (FlareSolverr)  │
-├───────────────────┴─────────────────────┴───────────────────┤
-│                     Release Sources                         │
-├─────────────────────────────────────────────────────────────┤
-│ • Direct Download (Web Sources → Mirrors → Fallbacks)       │
-├─────────────────────────────────────────────────────────────┤
-│                     Network Layer                           │
-├─────────────────────────────────────────────────────────────┤
-│ • Auto DNS rotation  • Mirror failover  • Resume support    │
-└─────────────────────────────────────────────────────────────┘
-```
-
-The backend uses a plugin architecture. Metadata providers and release sources register via decorators and are automatically discovered.
-
-## Contributing
-
-Shelfmark's core feature set is now largely complete. Development going forward will focus on stability, bug fixes, and maintenance rather than major new features. Contributions in these areas are welcome - please file issues or submit pull requests on GitHub.
-
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
-## ⚠️ Disclaimers
+## ⚠️ Disclaimer
 
-### Copyright Notice
+Shelfmark is a search interface that displays results from external metadata providers and sources. It does not host, store, or distribute any content. The developers are not responsible for how the tool is used or what is accessed through it.
 
-This tool can access various sources including those that might contain copyrighted material. Users are responsible for:
-- Ensuring they have the right to download requested materials
-- Respecting copyright laws and intellectual property rights
-- Using the tool in compliance with their local regulations
+Users are solely responsible for:
+- Ensuring they have the legal right to download any material they access
+- Complying with copyright laws and intellectual property rights in their jurisdiction
+- Understanding and accepting the terms of any sources they configure
 
-### Library Integration
-
-Downloads are written atomically (via intermediate `.crdownload` files) to prevent partial files from being ingested. However, if your library tool (CWA, Booklore, Calibre) is actively scanning or importing, there's a small chance of race conditions. If you experience database errors or import failures, try pausing your library's auto-import during bulk downloads.
+Use of this tool is entirely at your own risk.
 
 ## Support
 
