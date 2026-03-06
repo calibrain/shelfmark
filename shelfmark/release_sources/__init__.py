@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict
 from enum import Enum
+from pathlib import Path
 from threading import Event
 from typing import List, Optional, Dict, Type, Callable, Literal, Any, TYPE_CHECKING
 
@@ -19,6 +20,35 @@ class ReleaseProtocol(str, Enum):
     TORRENT = "torrent" # BitTorrent
     NZB = "nzb"         # Usenet NZB
     DCC = "dcc"         # IRC DCC
+
+
+class SourceUnavailableError(Exception):
+    """Raised when a source is configured but currently unreachable."""
+
+
+@dataclass
+class BrowseRecord:
+    """Source-native browse/search record used before normalization to Release."""
+    id: str
+    title: str
+    source: str
+    preview: Optional[str] = None
+    author: Optional[str] = None
+    publisher: Optional[str] = None
+    year: Optional[str] = None
+    language: Optional[str] = None
+    content: Optional[str] = None
+    format: Optional[str] = None
+    size: Optional[str] = None
+    info: Optional[Dict[str, List[str]]] = None
+    description: Optional[str] = None
+    download_urls: List[str] = field(default_factory=list)
+    download_path: Optional[str] = None
+    priority: int = 0
+    progress: Optional[float] = None
+    status_message: Optional[str] = None
+    added_time: Optional[float] = None
+    source_url: Optional[str] = None
 
 
 @dataclass
@@ -281,6 +311,23 @@ class ReleaseSource(ABC):
         """Get column configuration for release list UI. Override for custom columns."""
         return _default_column_config()
 
+    def get_record(
+        self,
+        record_id: str,
+        *,
+        fetch_download_count: bool = True,
+    ) -> Optional[BrowseRecord]:
+        """Resolve a source-native record for browse flows."""
+        raise NotImplementedError(f"{self.display_name} does not support record lookup")
+
+    def search_results_are_releases(self) -> bool:
+        """Whether source-native browse results already represent concrete releases."""
+        return False
+
+    def get_destination_override(self, task: DownloadTask) -> Optional[Path]:
+        """Return a source-specific destination override for a queued download."""
+        return None
+
 
 class DownloadHandler(ABC):
     """Interface for executing downloads.
@@ -364,6 +411,7 @@ def list_available_sources() -> List[dict]:
             "display_name": instance.display_name,
             "enabled": instance.is_available(),
             "supported_content_types": getattr(instance, 'supported_content_types', ["ebook", "audiobook"]),
+            "browse_results_are_releases": instance.search_results_are_releases(),
             "can_be_default": getattr(instance, 'can_be_default', True),
         })
     return result
@@ -374,6 +422,49 @@ def get_source_display_name(name: str) -> str:
     if name in _SOURCES:
         return _SOURCES[name]().display_name
     return name.replace('_', ' ').title()
+
+
+def browse_record_to_book_metadata(
+    record: BrowseRecord,
+    *,
+    title_override: Optional[str] = None,
+    author_override: Optional[str] = None,
+) -> BookMetadata:
+    """Convert a source-native browse record into generic book metadata."""
+    resolved_title = title_override or str(record.title or "").strip() or "Unknown title"
+    resolved_author = author_override or str(record.author or "").strip()
+    authors = [part.strip() for part in resolved_author.split(",") if part.strip()]
+    publish_year = None
+
+    if isinstance(record.year, int):
+        publish_year = record.year
+    elif isinstance(record.year, str):
+        normalized_year = record.year.strip()
+        if normalized_year.isdigit():
+            publish_year = int(normalized_year)
+
+    return BookMetadata(
+        provider=record.source,
+        provider_id=record.id,
+        provider_display_name=get_source_display_name(record.source),
+        title=resolved_title,
+        search_title=resolved_title,
+        search_author=resolved_author or None,
+        authors=authors,
+        cover_url=record.preview,
+        description=record.description,
+        publisher=record.publisher,
+        publish_year=publish_year,
+        language=record.language,
+        source_url=record.source_url,
+    )
+
+
+def source_results_are_releases(name: str) -> bool:
+    """Whether a source's browse/search results already map to concrete releases."""
+    if name not in _SOURCES:
+        return False
+    return _SOURCES[name]().search_results_are_releases()
 
 
 # Import source implementations to trigger registration

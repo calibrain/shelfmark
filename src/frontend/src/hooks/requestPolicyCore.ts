@@ -30,13 +30,21 @@ export const normalizeSource = (value: string): string => {
   return source || '*';
 };
 
-const normalizeDirectSourceMode = (
+const normalizeReleaseResultMode = (
+  policy: RequestPolicyResponse | null,
   source: string,
   mode: RequestPolicyMode
 ): RequestPolicyMode => {
-  return source === 'direct_download' && mode === 'request_book'
-    ? 'request_release'
-    : mode;
+  if (mode !== 'request_book') {
+    return mode;
+  }
+
+  const normalizedSource = normalizeSource(source);
+  const sourceMode = policy?.source_modes?.find(
+    (entry) => normalizeSource(entry.source) === normalizedSource
+  );
+
+  return sourceMode?.browse_results_are_releases ? 'request_release' : mode;
 };
 
 const normalizeRuleSource = (value: unknown): string | null => {
@@ -108,7 +116,8 @@ export const resolveSourceModeFromPolicy = (
   );
   const fromSource = sourceModes?.modes?.[normalizedContentType];
   if (fromSource) {
-    return normalizeDirectSourceMode(
+    return normalizeReleaseResultMode(
+      policy,
       normalizedSource,
       capModeToCeiling(fromSource, defaultMode)
     );
@@ -141,13 +150,14 @@ export const resolveSourceModeFromPolicy = (
       continue;
     }
 
-    return normalizeDirectSourceMode(
+    return normalizeReleaseResultMode(
+      policy,
       normalizedSource,
       capModeToCeiling(parsedMode, defaultMode)
     );
   }
 
-  return normalizeDirectSourceMode(normalizedSource, defaultMode);
+  return normalizeReleaseResultMode(policy, normalizedSource, defaultMode);
 };
 
 export class RequestPolicyCache {

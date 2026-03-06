@@ -178,6 +178,7 @@ export interface RequestPolicyDefaults {
 export interface RequestPolicySourceMode {
   source: string;
   supported_content_types: string[];
+  browse_results_are_releases?: boolean;
   modes: Record<string, RequestPolicyMode>;
 }
 
@@ -278,13 +279,11 @@ export interface ActingAsUserSelection {
   displayName: string | null;
 }
 
-// Type guard to check if a book is from a metadata provider
-// Returns true and narrows type to include required provider fields
 export const isMetadataBook = (book: Book): book is Book & {
   provider: string;
   provider_id: string;
 } => {
-  return !!book.provider && !!book.provider_id;
+  return Boolean(book.provider && book.provider_id) && book.provider !== book.source;
 };
 
 // Release source types (from plugin system)
@@ -293,6 +292,7 @@ export interface ReleaseSource {
   display_name: string;   // e.g., 'Direct Download', 'Prowlarr'
   enabled: boolean;       // Whether the source is available for use
   supported_content_types?: string[];  // Content types this source supports (e.g., ['ebook', 'audiobook'])
+  browse_results_are_releases?: boolean;
 }
 
 // Column schema types for plugin-driven release list UI
@@ -372,7 +372,7 @@ export interface Release {
 
 // Search info returned by release sources
 export interface SourceSearchInfo {
-  search_type: 'isbn' | 'title_author' | 'categories' | 'expanded';
+  search_type: 'isbn' | 'title_author' | 'categories' | 'expanded' | 'manual' | 'query';
 }
 
 // Response from /api/releases endpoint

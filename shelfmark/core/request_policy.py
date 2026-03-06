@@ -43,9 +43,17 @@ def cap_mode(mode: PolicyMode, ceiling: PolicyMode) -> PolicyMode:
     return mode
 
 
-def _normalize_direct_source_mode(source: Any, mode: PolicyMode) -> PolicyMode:
-    """Direct search results are concrete releases; normalize request_book to request_release."""
-    if normalize_source(source) == "direct_download" and mode == PolicyMode.REQUEST_BOOK:
+def _source_results_are_releases(source: Any) -> bool:
+    normalized_source = normalize_source(source)
+    if normalized_source in {"", "*"}:
+        return False
+    from shelfmark.release_sources import source_results_are_releases
+    return source_results_are_releases(normalized_source)
+
+
+def _normalize_release_result_mode(source: Any, mode: PolicyMode) -> PolicyMode:
+    """Concrete release browse results cannot fall back to request_book semantics."""
+    if mode == PolicyMode.REQUEST_BOOK and _source_results_are_releases(source):
         return PolicyMode.REQUEST_RELEASE
     return mode
 
@@ -328,9 +336,9 @@ def resolve_policy_mode(
     The content-type default acts as a ceiling — matrix rules can only
     match or restrict further, never upgrade beyond the default.
 
-    Direct-download exception:
-    - direct_download results are concrete releases, so request_book is
-      normalized to request_release for that source.
+    Concrete-release browse exception:
+    - sources whose browse results are already concrete releases normalize
+      request_book to request_release.
     """
 
     effective = merge_request_policy_settings(global_settings, user_settings)
@@ -357,9 +365,9 @@ def resolve_policy_mode(
     for candidate_source, candidate_content_type in candidates:
         for rule_source, rule_content_type, rule_mode in rules:
             if rule_source == candidate_source and rule_content_type == candidate_content_type:
-                return _normalize_direct_source_mode(
+                return _normalize_release_result_mode(
                     normalized_source,
                     cap_mode(rule_mode, ceiling),
                 )
 
-    return _normalize_direct_source_mode(normalized_source, ceiling)
+    return _normalize_release_result_mode(normalized_source, ceiling)

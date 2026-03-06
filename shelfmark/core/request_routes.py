@@ -132,17 +132,18 @@ def _normalize_optional_source_id(value: Any) -> str | None:
     return normalize_optional_text(value)
 
 
-def _build_direct_release_data_from_book_data(
+def _build_release_result_data_from_book_data(
     *,
+    source: str,
     book_data: dict[str, Any],
     content_type: str,
 ) -> dict[str, Any]:
-    """Build release-level payload fields for direct-download requests."""
+    """Build release-level payload fields for sources whose browse results are releases."""
     source_id = _normalize_optional_source_id(book_data.get("provider_id")) or _normalize_optional_source_id(
         book_data.get("id")
     )
     payload: dict[str, Any] = {
-        "source": "direct_download",
+        "source": source,
         "source_id": source_id,
         "title": book_data.get("title"),
         "author": book_data.get("author"),
@@ -151,11 +152,21 @@ def _build_direct_release_data_from_book_data(
         "size": book_data.get("size"),
         "preview": book_data.get("preview"),
         "content_type": content_type,
+        "source_url": book_data.get("source_url"),
+        "search_mode": "direct",
     }
     return {key: value for key, value in payload.items() if value is not None}
 
 
-def _normalize_direct_request_payload(
+def _source_results_are_releases(source: str) -> bool:
+    normalized_source = normalize_source(source)
+    if normalized_source in {"", "*"}:
+        return False
+    from shelfmark.release_sources import source_results_are_releases
+    return source_results_are_releases(normalized_source)
+
+
+def _normalize_release_result_request_payload(
     *,
     source: str,
     request_level: Any,
@@ -163,13 +174,14 @@ def _normalize_direct_request_payload(
     release_data: Any,
     content_type: str,
 ) -> tuple[Any, Any]:
-    """Direct-search requests are always release-level with direct source metadata."""
-    if source != "direct_download":
+    """Concrete-release browse results are always handled as release-level requests."""
+    if not _source_results_are_releases(source):
         return request_level, release_data
 
     normalized_release_data = release_data
     if normalized_release_data is None and isinstance(book_data, dict):
-        normalized_release_data = _build_direct_release_data_from_book_data(
+        normalized_release_data = _build_release_result_data_from_book_data(
+            source=source,
             book_data=book_data,
             content_type=content_type,
         )
@@ -177,7 +189,7 @@ def _normalize_direct_request_payload(
         normalized_release_data = dict(normalized_release_data)
 
     if isinstance(normalized_release_data, dict):
-        normalized_release_data["source"] = "direct_download"
+        normalized_release_data["source"] = source
         if normalized_release_data.get("content_type") is None:
             normalized_release_data["content_type"] = content_type
 
@@ -320,6 +332,7 @@ def register_request_routes(
         default_audio_mode = parse_policy_mode(effective.get("REQUEST_POLICY_DEFAULT_AUDIOBOOK"))
 
         source_capabilities = get_source_content_type_capabilities()
+        from shelfmark.release_sources import source_results_are_releases
         source_modes = []
         for source_name in sorted(source_capabilities):
             supported_types = sorted(
@@ -339,6 +352,7 @@ def register_request_routes(
                 {
                     "source": source_name,
                     "supported_content_types": supported_types,
+                    "browse_results_are_releases": source_results_are_releases(source_name),
                     "modes": modes,
                 }
             )
@@ -401,7 +415,7 @@ def register_request_routes(
             or data.get("content_type")
             or book_data.get("content_type")
         )
-        request_level, release_data = _normalize_direct_request_payload(
+        request_level, release_data = _normalize_release_result_request_payload(
             source=source,
             request_level=request_level,
             book_data=book_data,

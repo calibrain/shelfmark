@@ -14,9 +14,8 @@ import {
   isMetadataBook,
 } from './types';
 import {
-  getBookInfo,
+  getSourceRecordInfo,
   getMetadataBookInfo,
-  downloadBook,
   downloadRelease,
   cancelDownload,
   retryDownload,
@@ -60,8 +59,10 @@ import {
 } from './utils/requestPolicyUi';
 import {
   buildDirectRequestPayload,
+  buildReleaseDataFromDirectBook,
   buildMetadataBookRequestData,
   buildReleaseDataFromMetadataRelease,
+  getBrowseSource,
   getRequestSuccessMessage,
   toContentType,
 } from './utils/requestPayload';
@@ -751,7 +752,8 @@ function App() {
 
   // Show book details
   const handleShowDetails = async (id: string): Promise<void> => {
-    const metadataBook = books.find(b => b.id === id && b.provider && b.provider_id);
+    const book = books.find((entry) => entry.id === id);
+    const metadataBook = book && isMetadataBook(book) ? book : null;
 
     if (metadataBook) {
       try {
@@ -769,11 +771,18 @@ function App() {
       }
     } else {
       try {
-        const book = await getBookInfo(id);
-        setSelectedBook(book);
+        if (!book?.source) {
+          throw new Error('Book is missing source context');
+        }
+        const fullBook = await getSourceRecordInfo(book.source, id);
+        setSelectedBook(fullBook);
       } catch (error) {
-        console.error('Failed to load book details:', error);
-        showToast('Failed to load book details', 'error');
+        console.error('Failed to load book details, using search data:', error);
+        if (book) {
+          setSelectedBook(book);
+        } else {
+          showToast('Failed to load book details', 'error');
+        }
       }
     }
   };
@@ -813,8 +822,8 @@ function App() {
     [submitRequest]
   );
 
-  const getDirectPolicyMode = useCallback((): RequestPolicyMode => {
-    return getSourceMode('direct_download', 'ebook');
+  const getDirectPolicyMode = useCallback((book: Book): RequestPolicyMode => {
+    return getSourceMode(getBrowseSource(book), 'ebook');
   }, [getSourceMode]);
 
   const getUniversalDefaultPolicyMode = useCallback((): RequestPolicyMode => {
@@ -853,8 +862,10 @@ function App() {
 
   const executeBookDownload = useCallback(
     async (book: Book, onBehalfOfUserId?: number): Promise<void> => {
+      const source = getBrowseSource(book);
+      const directContentType: ContentType = 'ebook';
       try {
-        await downloadBook(book.id, onBehalfOfUserId);
+        await downloadRelease(buildReleaseDataFromDirectBook(book), onBehalfOfUserId);
         await fetchStatus();
       } catch (error) {
         console.error('Download failed:', error);
@@ -862,6 +873,8 @@ function App() {
           const requiredMode = getPolicyGuardRequiredMode(error);
           policyTrace('direct.action:policy_guard', {
             bookId: book.id,
+            source,
+            contentType: directContentType,
             requiredMode,
             code: isApiResponseError(error) ? error.code : null,
           });
@@ -913,7 +926,7 @@ function App() {
               book_data: buildMetadataBookRequestData(book, normalizedContentType),
               release_data: buildReleaseDataFromMetadataRelease(book, release, normalizedContentType),
               context: {
-                source: release.source || 'direct_download',
+                source: release.source,
                 content_type: normalizedContentType,
                 request_level: 'release',
               },
@@ -927,7 +940,7 @@ function App() {
               book_data: buildMetadataBookRequestData(book, normalizedContentType),
               release_data: null,
               context: {
-                source: release.source || 'direct_download',
+                source: release.source,
                 content_type: normalizedContentType,
                 request_level: 'book',
               },
@@ -972,19 +985,24 @@ function App() {
 
   // Direct-mode action (download or release-level request based on policy).
   const handleDownload = async (book: Book): Promise<void> => {
-    let mode = getDirectPolicyMode();
+    const source = getBrowseSource(book);
+    const directContentType: ContentType = 'ebook';
+    let mode = getDirectPolicyMode(book);
     policyTrace('direct.action:start', {
       bookId: book.id,
-      contentType: 'ebook',
+      source,
+      contentType: directContentType,
       cachedMode: mode,
       isAdmin: requestRoleIsAdmin,
     });
     try {
       const latestPolicy = await refreshRequestPolicy({ force: true });
       const effectiveIsAdmin = latestPolicy ? Boolean(latestPolicy.is_admin) : requestRoleIsAdmin;
-      mode = resolveSourceModeFromPolicy(latestPolicy, effectiveIsAdmin, 'direct_download', 'ebook');
+      mode = resolveSourceModeFromPolicy(latestPolicy, effectiveIsAdmin, source, directContentType);
       policyTrace('direct.action:resolved', {
         bookId: book.id,
+        source,
+        contentType: directContentType,
         resolvedMode: mode,
         effectiveIsAdmin,
         defaults: latestPolicy?.defaults ?? null,
@@ -994,6 +1012,8 @@ function App() {
       console.warn('Failed to refresh request policy before direct action:', error);
       policyTrace('direct.action:refresh_failed', {
         bookId: book.id,
+        source,
+        contentType: directContentType,
         mode,
         message: error instanceof Error ? error.message : String(error),
       });
@@ -1164,7 +1184,7 @@ function App() {
         book_data: buildMetadataBookRequestData(book, normalizedContentType),
         release_data: buildReleaseDataFromMetadataRelease(book, release, normalizedContentType),
         context: {
-          source: release.source || 'direct_download',
+          source: release.source,
           content_type: normalizedContentType,
           request_level: 'release',
         },
@@ -1300,16 +1320,20 @@ function App() {
   const getDirectActionButtonState = useCallback(
     (bookId: string): ButtonStateInfo => {
       const baseState = getButtonState(bookId);
+      const book = books.find((entry) => entry.id === bookId);
+      if (!book) {
+        return baseState;
+      }
       if (baseState.state === 'complete' && isDownloadTaskDismissed(bookId)) {
         return applyDirectPolicyModeToButtonState(
           { text: 'Download', state: 'download' },
-          getDirectPolicyMode()
+          getDirectPolicyMode(book)
         );
       }
-      const mode = getDirectPolicyMode();
+      const mode = getDirectPolicyMode(book);
       return applyDirectPolicyModeToButtonState(baseState, mode);
     },
-    [getButtonState, getDirectPolicyMode, isDownloadTaskDismissed]
+    [books, getButtonState, getDirectPolicyMode, isDownloadTaskDismissed]
   );
 
   const getUniversalActionButtonState = useCallback(

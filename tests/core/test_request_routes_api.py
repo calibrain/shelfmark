@@ -60,7 +60,7 @@ def _policy(
 
 
 class TestDownloadPolicyGuards:
-    def test_download_endpoint_blocks_before_queue_when_policy_requires_request(self, main_module, client):
+    def test_release_download_endpoint_blocks_before_queue_when_policy_requires_request(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
@@ -71,13 +71,16 @@ class TestDownloadPolicyGuards:
                 return_value=_policy(default_ebook="request_release"),
             ):
                 with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=_policy(default_ebook="request_release")):
-                    with patch.object(main_module.backend, "queue_book") as mock_queue_book:
-                        resp = client.get("/api/download?id=book-123")
+                    with patch.object(main_module.backend, "queue_release") as mock_queue_release:
+                        resp = client.post(
+                            "/api/releases/download",
+                            json={"source": "direct_download", "source_id": "book-123", "search_mode": "direct"},
+                        )
 
         assert resp.status_code == 403
         assert resp.json["code"] == "policy_requires_request"
         assert resp.json["required_mode"] == "request_release"
-        mock_queue_book.assert_not_called()
+        mock_queue_release.assert_not_called()
 
     def test_release_download_endpoint_blocks_before_queue_when_policy_blocked(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -112,12 +115,15 @@ class TestDownloadPolicyGuards:
                 return_value=_policy(default_ebook="blocked"),
             ):
                 with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=_policy(default_ebook="blocked")):
-                    with patch.object(main_module.backend, "queue_book", return_value=(True, None)) as mock_queue_book:
-                        resp = client.get("/api/download?id=book-123")
+                    with patch.object(main_module.backend, "queue_release", return_value=(True, None)) as mock_queue_release:
+                        resp = client.post(
+                            "/api/releases/download",
+                            json={"source": "direct_download", "source_id": "book-123", "search_mode": "direct"},
+                        )
 
         assert resp.status_code == 200
         assert resp.json["status"] == "queued"
-        mock_queue_book.assert_called_once()
+        mock_queue_release.assert_called_once()
 
     def test_no_auth_mode_bypasses_policy_guards(self, main_module, client):
         with patch.object(main_module, "get_auth_mode", return_value="none"):
@@ -127,12 +133,15 @@ class TestDownloadPolicyGuards:
                 return_value=_policy(default_ebook="blocked"),
             ):
                 with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=_policy(default_ebook="blocked")):
-                    with patch.object(main_module.backend, "queue_book", return_value=(True, None)) as mock_queue_book:
-                        resp = client.get("/api/download?id=book-123")
+                    with patch.object(main_module.backend, "queue_release", return_value=(True, None)) as mock_queue_release:
+                        resp = client.post(
+                            "/api/releases/download",
+                            json={"source": "direct_download", "source_id": "book-123", "search_mode": "direct"},
+                        )
 
         assert resp.status_code == 200
         assert resp.json["status"] == "queued"
-        mock_queue_book.assert_called_once()
+        mock_queue_release.assert_called_once()
 
 
 class TestRequestRoutes:
@@ -1218,6 +1227,7 @@ class TestRequestCreationEdgeCases:
         assert resp.json["policy_mode"] == "request_release"
         assert resp.json["release_data"]["source"] == "direct_download"
         assert resp.json["release_data"]["source_id"] == "ol-auto-1"
+        assert resp.json["release_data"]["search_mode"] == "direct"
 
     def test_auto_infers_release_level_when_release_data_present(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -1820,8 +1830,11 @@ class TestDownloadPolicyGuardsExtended:
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
                 with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
-                    with patch.object(main_module.backend, "queue_book", return_value=(True, None)):
-                        resp = client.get("/api/download?id=book-pass")
+                    with patch.object(main_module.backend, "queue_release", return_value=(True, None)):
+                        resp = client.post(
+                            "/api/releases/download",
+                            json={"source": "direct_download", "source_id": "book-pass", "search_mode": "direct"},
+                        )
 
         assert resp.status_code == 200
         assert resp.json["status"] == "queued"
@@ -1834,8 +1847,11 @@ class TestDownloadPolicyGuardsExtended:
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
                 with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
-                    with patch.object(main_module.backend, "queue_book", return_value=(True, None)):
-                        resp = client.get("/api/download?id=book-free")
+                    with patch.object(main_module.backend, "queue_release", return_value=(True, None)):
+                        resp = client.post(
+                            "/api/releases/download",
+                            json={"source": "direct_download", "source_id": "book-free", "search_mode": "direct"},
+                        )
 
         assert resp.status_code == 200
         assert resp.json["status"] == "queued"
@@ -1963,4 +1979,3 @@ class TestDownloadPolicyGuardsExtended:
                         })
 
         assert resp.status_code == 200
-

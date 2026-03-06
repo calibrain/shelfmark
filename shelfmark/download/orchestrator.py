@@ -16,15 +16,17 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import BookInfo, DownloadTask, QueueStatus, SearchFilters, SearchMode
+from shelfmark.core.models import DownloadTask, QueueStatus, SearchMode
 from shelfmark.core.queue import book_queue
 from shelfmark.core.utils import transform_cover_url, is_audiobook as check_audiobook
 from shelfmark.config import env as env_config
 from shelfmark.download.fs import run_blocking_io
 from shelfmark.download.postprocess.pipeline import is_torrent_source, safe_cleanup_path
 from shelfmark.download.postprocess.router import post_process_download
-from shelfmark.release_sources import direct_download, get_handler, get_source_display_name
-from shelfmark.release_sources.direct_download import SearchUnavailable
+from shelfmark.release_sources import (
+    get_handler,
+    get_source_display_name,
+)
 
 logger = setup_logger(__name__)
 
@@ -57,26 +59,6 @@ _last_activity: Dict[str, float] = {}
 _last_status_event: Dict[str, Tuple[str, Optional[str]]] = {}
 STALL_TIMEOUT = 300  # 5 minutes without progress/status update = stalled
 
-def search_books(query: str, filters: SearchFilters) -> List[Dict[str, Any]]:
-    """Search for books matching the query."""
-    try:
-        books = direct_download.search_books(query, filters)
-        return [_book_info_to_dict(book) for book in books]
-    except SearchUnavailable:
-        raise
-    except Exception as e:
-        logger.error_trace(f"Error searching books: {e}")
-        raise
-
-def get_book_info(book_id: str) -> Optional[Dict[str, Any]]:
-    """Get detailed information for a specific book."""
-    try:
-        book = direct_download.get_book_info(book_id)
-        return _book_info_to_dict(book)
-    except Exception as e:
-        logger.error_trace(f"Error getting book info: {e}")
-        raise
-
 def _is_plain_email_address(value: str) -> bool:
     parsed = parseaddr(value or "")[1]
     return bool(parsed) and "@" in parsed and parsed == value
@@ -97,76 +79,17 @@ def _resolve_email_destination(
         return None, "Configured email recipient is invalid"
 
     return None, None
-
-
-def queue_book(
-    book_id: str,
-    priority: int = 0,
-    source: str = "direct_download",
-    user_id: Optional[int] = None,
-    username: Optional[str] = None,
-) -> Tuple[bool, Optional[str]]:
-    """Add a book to the download queue. Returns (success, error_message)."""
-    try:
-        book_info = direct_download.get_book_info(book_id, fetch_download_count=False)
-        if not book_info:
-            error_msg = f"Could not fetch book info for {book_id}"
-            logger.warning(error_msg)
-            return False, error_msg
-
-        books_output_mode = str(
-            config.get("BOOKS_OUTPUT_MODE", "folder", user_id=user_id) or "folder"
-        ).strip().lower()
-        is_audiobook = check_audiobook(book_info.content)
-
-        # Capture output mode at queue time so tasks aren't affected if settings change later.
-        output_mode = "folder" if is_audiobook else books_output_mode
-        output_args: Dict[str, Any] = {}
-
-        if output_mode == "email" and not is_audiobook:
-            email_to, email_error = _resolve_email_destination(user_id=user_id)
-            if email_error:
-                return False, email_error
-            if email_to:
-                output_args = {"to": email_to}
-
-        # Create a source-agnostic download task
-        task = DownloadTask(
-            task_id=book_id,
-            source=source,
-            title=book_info.title,
-            author=book_info.author,
-            format=book_info.format,
-            size=book_info.size,
-            preview=book_info.preview,
-            content_type=book_info.content,
-            search_mode=SearchMode.DIRECT,
-            output_mode=output_mode,
-            output_args=output_args,
-            priority=priority,
-            user_id=user_id,
-            username=username,
-        )
-
-        if not book_queue.add(task):
-            logger.info(f"Book already in queue: {book_info.title}")
-            return False, "Book is already in the download queue"
-
-        logger.info(f"Book queued with priority {priority}: {book_info.title}")
-
-        # Broadcast status update via WebSocket
-        if ws_manager:
-            ws_manager.broadcast_status_update(queue_status())
-
-        return True, None
-    except SearchUnavailable as e:
-        error_msg = f"Search service unavailable: {e}"
-        logger.warning(error_msg)
-        return False, error_msg
-    except Exception as e:
-        error_msg = f"Error queueing book: {e}"
-        logger.error_trace(error_msg)
-        return False, error_msg
+def _parse_release_search_mode(value: Any) -> SearchMode:
+    if isinstance(value, SearchMode):
+        return value
+    if value is None:
+        return SearchMode.UNIVERSAL
+    if isinstance(value, str):
+        try:
+            return SearchMode(value.strip().lower())
+        except ValueError as exc:
+            raise ValueError(f"Invalid search_mode: {value}") from exc
+    raise ValueError(f"Invalid search_mode: {value}")
 
 
 def queue_release(
@@ -177,12 +100,13 @@ def queue_release(
 ) -> Tuple[bool, Optional[str]]:
     """Add a release to the download queue. Returns (success, error_message)."""
     try:
-        source = release_data.get('source', 'direct_download')
+        source = release_data['source']
         extra = release_data.get('extra', {})
         raw_request_id = release_data.get('_request_id')
         request_id: Optional[int] = None
         if isinstance(raw_request_id, int) and raw_request_id > 0:
             request_id = raw_request_id
+        search_mode = _parse_release_search_mode(release_data.get("search_mode"))
 
         # Get author, year, preview, and content_type from top-level (preferred) or extra (fallback)
         author = release_data.get('author') or extra.get('author')
@@ -235,7 +159,7 @@ def queue_release(
             series_name=series_name,
             series_position=series_position,
             subtitle=subtitle,
-            search_mode=SearchMode.UNIVERSAL,
+            search_mode=search_mode,
             output_mode=output_mode,
             output_args=output_args,
             priority=priority,
@@ -257,8 +181,7 @@ def queue_release(
         return True, None
 
     except ValueError as e:
-        # Handler not found for this source
-        error_msg = f"Unknown release source: {e}"
+        error_msg = str(e)
         logger.warning(error_msg)
         return False, error_msg
     except KeyError as e:
@@ -306,20 +229,6 @@ def get_book_data(task_id: str) -> Tuple[Optional[bytes], Optional[DownloadTask]
         if task:
             task.download_path = None
         return None, task
-
-def _book_info_to_dict(book: BookInfo) -> Dict[str, Any]:
-    """Convert BookInfo to dict, transforming cover URLs for caching."""
-    result = {
-        key: value for key, value in book.__dict__.items()
-        if value is not None
-    }
-
-    # Transform external preview URLs to local proxy URLs
-    if result.get('preview'):
-        result['preview'] = transform_cover_url(result['preview'], book.id)
-
-    return result
-
 
 def _task_to_dict(task: DownloadTask) -> Dict[str, Any]:
     """Convert DownloadTask to dict for frontend, transforming cover URLs."""

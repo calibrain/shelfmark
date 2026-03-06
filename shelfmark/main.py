@@ -18,8 +18,7 @@ from werkzeug.security import check_password_hash
 from werkzeug.wrappers import Response
 
 from shelfmark.download import orchestrator as backend
-from shelfmark.release_sources import get_source_display_name
-from shelfmark.release_sources.direct_download import SearchUnavailable
+from shelfmark.release_sources import SourceUnavailableError, get_source_display_name
 from shelfmark.config.settings import _SUPPORTED_BOOK_LANGUAGE
 from shelfmark.config.env import (
     BUILD_VERSION, CONFIG_DIR, CWA_DB_PATH, DEBUG, HIDE_LOCAL_AUTH,
@@ -810,120 +809,77 @@ if DEBUG:
         """
         os._exit(0)
 
-@app.route('/api/search', methods=['GET'])
-@login_required
-def api_search() -> Union[Response, Tuple[Response, int]]:
-    """
-    Search for books matching the provided query.
-
-    Query Parameters:
-        query (str): Search term (ISBN, title, author, etc.)
-        isbn (str): Book ISBN
-        author (str): Book Author
-        title (str): Book Title
-        lang (str): Book Language
-        sort (str): Order to sort results
-        content (str): Content type of book
-        format (str): File format filter (pdf, epub, mobi, azw3, fb2, djvu, cbz, cbr)
-
-    Returns:
-        flask.Response: JSON array of matching books or error response.
-    """
-    query = request.args.get('query', '')
-
-    filters = SearchFilters(
-        isbn = request.args.getlist('isbn'),
-        author = request.args.getlist('author'),
-        title = request.args.getlist('title'),
-        lang = request.args.getlist('lang'),
-        sort = request.args.get('sort'),
-        content = request.args.getlist('content'),
-        format = request.args.getlist('format'),
+def _parse_search_filters_from_request() -> SearchFilters:
+    """Parse direct/source browse filters from query parameters."""
+    return SearchFilters(
+        isbn=request.args.getlist('isbn'),
+        author=request.args.getlist('author'),
+        title=request.args.getlist('title'),
+        lang=request.args.getlist('lang'),
+        sort=request.args.get('sort'),
+        content=request.args.getlist('content'),
+        format=request.args.getlist('format'),
     )
 
-    if not query and not any(vars(filters).values()):
-        return jsonify([])
 
-    try:
-        books = backend.search_books(query, filters)
-        return jsonify(books)
-    except SearchUnavailable as e:
-        logger.warning(f"Search unavailable: {e}")
-        return jsonify({"error": str(e)}), 503
-    except Exception as e:
-        logger.error_trace(f"Search error: {e}")
-        return jsonify({"error": str(e)}), 500
+def _build_source_query_book(query_text: str, filters: SearchFilters):
+    """Build a synthetic book context for source-native browse searches."""
+    from shelfmark.metadata_providers import BookMetadata
 
-@app.route('/api/info', methods=['GET'])
-@login_required
-def api_info() -> Union[Response, Tuple[Response, int]]:
-    """
-    Get detailed book information.
+    author_values = [value.strip() for value in (filters.author or []) if str(value).strip()]
+    title_values = [value.strip() for value in (filters.title or []) if str(value).strip()]
+    isbn_values = [value.strip() for value in (filters.isbn or []) if str(value).strip()]
+    title = (
+        title_values[0]
+        if title_values
+        else query_text
+        or (isbn_values[0] if isbn_values else "")
+        or (author_values[0] if author_values else "Direct Search")
+    )
+    author = author_values[0] if author_values else ""
 
-    Query Parameters:
-        id (str): Book identifier (MD5 hash)
+    return BookMetadata(
+        provider="manual",
+        provider_id=query_text or title,
+        provider_display_name="Manual Search",
+        title=title,
+        search_title=title,
+        search_author=author or None,
+        authors=author_values,
+    )
 
-    Returns:
-        flask.Response: JSON object with book details, or an error message.
-    """
-    book_id = request.args.get('id', '')
-    if not book_id:
-        return jsonify({"error": "No book ID provided"}), 400
 
-    try:
-        book = backend.get_book_info(book_id)
-        if book:
-            return jsonify(book)
-        return jsonify({"error": "Book not found"}), 404
-    except Exception as e:
-        logger.error_trace(f"Info error: {e}")
-        return jsonify({"error": str(e)}), 500
+def _serialize_browse_record(record) -> dict:
+    """Serialize a source-native browse record for the frontend."""
+    result = {
+        key: value for key, value in record.__dict__.items()
+        if value is not None
+    }
 
-@app.route('/api/download', methods=['GET'])
-@login_required
-def api_download() -> Union[Response, Tuple[Response, int]]:
-    """
-    Queue a book for download.
+    preview = result.get("preview")
+    if isinstance(preview, str) and preview:
+        from shelfmark.core.utils import transform_cover_url
 
-    Query Parameters:
-        id (str): Book identifier (MD5 hash)
+        result["preview"] = transform_cover_url(preview, record.id)
 
-    Returns:
-        flask.Response: JSON status object indicating success or failure.
-    """
-    book_id = request.args.get('id', '')
-    if not book_id:
-        return jsonify({"error": "No book ID provided"}), 400
+    return result
 
-    try:
-        policy_mode = _resolve_policy_mode_for_current_user(
-            source="direct_download",
-            content_type="ebook",
-        )
-        if policy_mode is not None and policy_mode != PolicyMode.DOWNLOAD:
-            return _policy_block_response(policy_mode)
 
-        priority = int(request.args.get('priority', 0))
-        # Per-user download overrides
-        db_user_id = session.get('db_user_id')
-        _username = session.get('user_id')
-        db_user_id, _username, on_behalf_error = _resolve_download_user_context(
-            db_user_id,
-            _username,
-            request.args.get("on_behalf_of_user_id"),
-        )
-        if on_behalf_error:
-            return on_behalf_error
-        success, error_msg = backend.queue_book(
-            book_id, priority,
-            user_id=db_user_id, username=_username,
-        )
-        if success:
-            return jsonify({"status": "queued", "priority": priority})
-        return jsonify({"error": error_msg or "Failed to queue book"}), 500
-    except Exception as e:
-        logger.error_trace(f"Download error: {e}")
-        return jsonify({"error": str(e)}), 500
+def _serialize_release(release) -> dict:
+    """Serialize a release for the frontend, normalizing preview URLs."""
+    from dataclasses import asdict
+    from shelfmark.core.utils import transform_cover_url
+
+    result = asdict(release)
+    extra = result.get("extra")
+    if isinstance(extra, dict):
+        preview = extra.get("preview")
+        if isinstance(preview, str) and preview:
+            extra = dict(extra)
+            extra["preview"] = transform_cover_url(preview, release.source_id)
+            result["extra"] = extra
+
+    return result
 
 
 @app.route('/api/releases/download', methods=['POST'])
@@ -953,8 +909,10 @@ def api_download_release() -> Union[Response, Tuple[Response, int]]:
 
         if 'source_id' not in data:
             return jsonify({"error": "source_id is required"}), 400
+        if 'source' not in data:
+            return jsonify({"error": "source is required"}), 400
 
-        source = data.get('source', 'direct_download')
+        source = data['source']
         resolved_content_type, inferred_content_type = _resolve_release_content_type(data, source)
         policy_mode = _resolve_policy_mode_for_current_user(
             source=source,
@@ -2258,18 +2216,25 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
         flask.Response: JSON with list of available releases.
     """
     try:
+        from dataclasses import asdict
         from shelfmark.metadata_providers import (
             BookMetadata,
             get_provider,
             is_provider_registered,
             get_provider_kwargs,
         )
-        from shelfmark.release_sources import get_source, list_available_sources, serialize_column_config
-        from dataclasses import asdict
-
+        from shelfmark.release_sources import (
+            browse_record_to_book_metadata,
+            get_source,
+            list_available_sources,
+            serialize_column_config,
+            source_results_are_releases,
+        )
+        from shelfmark.core.search_plan import build_release_search_plan
         provider = request.args.get('provider', '').strip()
         book_id = request.args.get('book_id', '').strip()
         source_filter = request.args.get('source', '').strip()
+        query_text = request.args.get('query', '').strip()
         # Accept title/author from frontend to avoid re-fetching metadata
         title_param = request.args.get('title', '').strip()
         author_param = request.args.get('author', '').strip()
@@ -2285,47 +2250,33 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
         # Accept indexer names for Prowlarr filtering (comma-separated)
         indexers_param = request.args.get('indexers', '').strip()
         indexers = [idx.strip() for idx in indexers_param.split(',') if idx.strip()] if indexers_param else None
+        browse_filters = _parse_search_filters_from_request()
+        has_browse_filters = bool(query_text or any(vars(browse_filters).values()))
+
+        source_query_filters = None
+        is_source_provider = bool(provider) and source_results_are_releases(provider)
 
         if not provider or not book_id:
-            return jsonify({"error": "Parameters 'provider' and 'book_id' are required"}), 400
+            if not source_filter or not has_browse_filters:
+                return jsonify({"error": "Parameters 'provider' and 'book_id' are required"}), 400
+            if not source_results_are_releases(source_filter):
+                return jsonify({"error": f"Source does not support browse release search: {source_filter}"}), 400
 
-        # Direct mode request approvals can open ReleaseModal with provider=direct_download.
-        # In that flow, treat the direct result as release-search context instead of requiring
-        # a metadata provider registration.
-        if provider == "direct_download":
-            direct_book = backend.get_book_info(book_id)
-            if not isinstance(direct_book, dict):
-                return jsonify({"error": "Book not found in direct source"}), 404
+            book = _build_source_query_book(query_text, browse_filters)
+            source_query_filters = browse_filters
+        elif is_source_provider:
+            # Source-backed browse flows can reopen the release modal with provider=<source name>.
+            # In that flow, treat the source-native record as release-search context instead of
+            # requiring a metadata provider registration.
+            source = get_source(provider)
+            direct_record = source.get_record(book_id)
+            if direct_record is None:
+                return jsonify({"error": "Book not found in release source"}), 404
 
-            resolved_title = title_param or str(direct_book.get("title") or "").strip() or "Unknown title"
-            resolved_author = author_param or str(direct_book.get("author") or "").strip()
-            authors = [part.strip() for part in resolved_author.split(",") if part.strip()]
-            if not authors and resolved_author:
-                authors = [resolved_author]
-
-            raw_publish_year = direct_book.get("year")
-            publish_year = None
-            if isinstance(raw_publish_year, int):
-                publish_year = raw_publish_year
-            elif isinstance(raw_publish_year, str):
-                normalized_year = raw_publish_year.strip()
-                if normalized_year.isdigit():
-                    publish_year = int(normalized_year)
-
-            book = BookMetadata(
-                provider="direct_download",
-                provider_id=book_id,
-                provider_display_name="Direct Download",
-                title=resolved_title,
-                search_title=resolved_title,
-                search_author=resolved_author or None,
-                authors=authors,
-                cover_url=direct_book.get("preview"),
-                description=direct_book.get("description"),
-                publisher=direct_book.get("publisher"),
-                publish_year=publish_year,
-                language=direct_book.get("language"),
-                source_url=direct_book.get("source_url"),
+            book = browse_record_to_book_metadata(
+                direct_record,
+                title_override=title_param or None,
+                author_override=author_param or None,
             )
         elif provider == "manual":
             resolved_title = title_param or manual_query or "Manual Search"
@@ -2361,12 +2312,13 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
                 book.title = title_param
 
         # Determine which release sources to search
-        if source_filter:
+        if source_query_filters is not None:
             sources_to_search = [source_filter]
-        elif provider == "direct_download":
-            # Direct mode has no metadata-provider fanout; keep release browsing focused
-            # on Direct Download results (same dataset as legacy direct search).
-            sources_to_search = ["direct_download"]
+        elif source_filter:
+            sources_to_search = [source_filter]
+        elif is_source_provider:
+            # Source-backed browse flows stay within the source that produced the record.
+            sources_to_search = [provider]
         else:
             # Search only enabled sources
             sources_to_search = [src["name"] for src in list_available_sources() if src["enabled"]]
@@ -2381,11 +2333,18 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
                 source = get_source(source_name)
                 source_instances[source_name] = source
 
-                from shelfmark.core.search_plan import build_release_search_plan
+                plan = build_release_search_plan(
+                    book,
+                    languages=browse_filters.lang if source_query_filters is not None else languages,
+                    manual_query=query_text if source_query_filters is not None else manual_query,
+                    indexers=indexers,
+                    source_filters=source_query_filters,
+                )
 
-                plan = build_release_search_plan(book, languages=languages, manual_query=manual_query, indexers=indexers)
-
-                if plan.manual_query:
+                if plan.source_filters is not None:
+                    planned_query = plan.manual_query or plan.primary_query
+                    planned_query_type = "query"
+                elif plan.manual_query:
                     planned_query = plan.manual_query
                     planned_query_type = "manual"
                 elif not expand_search and plan.isbn_candidates:
@@ -2409,7 +2368,7 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
                 errors.append(f"{source_name}: {str(e)}")
 
         # Convert Release objects to dicts
-        releases_data = [asdict(release) for release in all_releases]
+        releases_data = [_serialize_release(release) for release in all_releases]
 
         # Get column config from the first source searched
         # Reuse the same instance to get any dynamic data (e.g., online_servers for IRC)
@@ -2446,8 +2405,9 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
         if errors:
             response["errors"] = errors
 
-        # If no releases found and there were errors, return 503 with error message
-        # This matches the behavior of /api/search when Anna's Archive is unreachable
+        # If no releases found and there were errors, return 503 with the first
+        # source failure message so direct-mode source query searches surface the
+        # same unavailable-state messaging as release modal searches.
         if not releases_data and errors:
             # Use the first error message (typically the most relevant)
             error_message = errors[0]
@@ -2457,6 +2417,9 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
             return jsonify({"error": error_message}), 503
 
         return jsonify(response)
+    except SourceUnavailableError as e:
+        logger.warning(f"Release search unavailable: {e}")
+        return jsonify({"error": str(e)}), 503
     except Exception as e:
         logger.error_trace(f"Releases search error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -2477,6 +2440,28 @@ def api_release_sources() -> Union[Response, Tuple[Response, int]]:
         return jsonify(sources)
     except Exception as e:
         logger.error_trace(f"Release sources error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/release-sources/<source_name>/records/<path:record_id>', methods=['GET'])
+@login_required
+def api_release_source_record(source_name: str, record_id: str) -> Union[Response, Tuple[Response, int]]:
+    """Resolve a source-native browse record for a release source."""
+    try:
+        from shelfmark.release_sources import get_source
+
+        source = get_source(source_name)
+        record = source.get_record(record_id)
+        if record is None:
+            return jsonify({"error": "Record not found"}), 404
+        return jsonify(_serialize_browse_record(record))
+    except ValueError:
+        return jsonify({"error": f"Unknown release source: {source_name}"}), 400
+    except SourceUnavailableError as e:
+        logger.warning(f"Release source record unavailable: {e}")
+        return jsonify({"error": str(e)}), 503
+    except Exception as e:
+        logger.error_trace(f"Release source record error: {e}")
         return jsonify({"error": str(e)}), 500
 
 

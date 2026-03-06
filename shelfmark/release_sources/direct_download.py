@@ -17,15 +17,17 @@ from shelfmark.download import http as downloader
 from shelfmark.download import network
 from shelfmark.config.env import DEBUG_SKIP_SOURCES, TMP_DIR
 from shelfmark.core.config import config
-from shelfmark.core.utils import CONTENT_TYPES
+from shelfmark.core.utils import CONTENT_TYPES, get_aa_content_type_dir, is_audiobook as check_audiobook
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import BookInfo, SearchFilters, DownloadTask
+from shelfmark.core.models import SearchFilters, DownloadTask, build_filename
 from shelfmark.metadata_providers import BookMetadata, group_languages_by_localized_title
 from shelfmark.release_sources import (
+    BrowseRecord,
     Release,
     ReleaseProtocol,
     ReleaseSource,
     DownloadHandler,
+    SourceUnavailableError,
     register_source,
     register_handler,
     ReleaseColumnConfig,
@@ -136,11 +138,11 @@ def _normalize_size(size_str: str) -> str:
     return _SIZE_UNIT_PATTERN.sub(lambda m: m.group(1).upper(), size_str.strip())
 
 
-class SearchUnavailable(Exception):
+class SearchUnavailable(SourceUnavailableError):
     """Raised when Anna's Archive cannot be reached via any mirror/DNS."""
 
 
-def search_books(query: str, filters: SearchFilters) -> List[BookInfo]:
+def search_books(query: str, filters: SearchFilters) -> List[BrowseRecord]:
     """Search for books matching the query.
 
     Args:
@@ -148,7 +150,7 @@ def search_books(query: str, filters: SearchFilters) -> List[BookInfo]:
         filters: Search filters (language, format, content type, etc.)
 
     Returns:
-        List[BookInfo]: List of matching books
+        List[BrowseRecord]: List of matching books
 
     Raises:
         SearchUnavailable: If Anna's Archive cannot be reached
@@ -232,7 +234,7 @@ def search_books(query: str, filters: SearchFilters) -> List[BookInfo]:
     return books
 
 
-def get_book_info(book_id: str, fetch_download_count: bool = True) -> BookInfo:
+def get_book_info(book_id: str, fetch_download_count: bool = True) -> BrowseRecord:
     """Get detailed information for a specific book.
 
     Args:
@@ -241,22 +243,22 @@ def get_book_info(book_id: str, fetch_download_count: bool = True) -> BookInfo:
             Only needed for display in DetailsModal, not for downloads.
 
     Returns:
-        BookInfo: Detailed book information including download URLs
+        BrowseRecord: Detailed book information including download URLs
     """
     url = f"{network.get_aa_base_url()}/md5/{book_id}"
     selector = network.AAMirrorSelector()
     html = downloader.html_get_page(url, selector=selector, allow_bypasser_fallback=False)
 
     if not html:
-        raise Exception(f"Failed to fetch book info for ID: {book_id}")
+        raise SearchUnavailable("Unable to reach download source. Network restricted or mirrors are blocked.")
 
     soup = BeautifulSoup(html, "html.parser")
 
     return _parse_book_info_page(soup, book_id, fetch_download_count)
 
 
-def _parse_search_result_row(row: Tag) -> Optional[BookInfo]:
-    """Parse a single search result row into a BookInfo object."""
+def _parse_search_result_row(row: Tag) -> Optional[BrowseRecord]:
+    """Parse a single search result row into a browse record."""
     try:
         if row.text.strip().lower().startswith("your ad here"):
             return None
@@ -264,10 +266,11 @@ def _parse_search_result_row(row: Tag) -> Optional[BookInfo]:
         preview_img = cells[0].find("img")
         preview = preview_img["src"] if preview_img else None
 
-        return BookInfo(
+        return BrowseRecord(
             id=row.find_all("a")[0]["href"].split("/")[-1],
-            preview=preview,
             title=cells[1].find("span").next,
+            source="direct_download",
+            preview=preview,
             author=cells[2].find("span").next,
             publisher=cells[3].find("span").next,
             year=cells[4].find("span").next,
@@ -281,8 +284,8 @@ def _parse_search_result_row(row: Tag) -> Optional[BookInfo]:
         return None
 
 
-def _parse_book_info_page(soup: BeautifulSoup, book_id: str, fetch_download_count: bool = True) -> BookInfo:
-    """Parse the book info page HTML into a BookInfo object."""
+def _parse_book_info_page(soup: BeautifulSoup, book_id: str, fetch_download_count: bool = True) -> BrowseRecord:
+    """Parse the book info page HTML into a browse record."""
     data = soup.select_one("body > main > div:nth-of-type(1)")
 
     if not data:
@@ -379,10 +382,11 @@ def _parse_book_info_page(soup: BeautifulSoup, book_id: str, fetch_download_coun
     # Extract basic information
     description = _extract_book_description(soup)
 
-    book_info = BookInfo(
+    book_info = BrowseRecord(
         id=book_id,
-        preview=preview,
         title=book_title,
+        source="direct_download",
+        preview=preview,
         content=content,
         publisher=(_find_in_divs(divs, "icon-[mdi--company]", is_class=True) or [""])[0],
         author=(_find_in_divs(divs, "icon-[mdi--user-edit]", is_class=True) or [""])[0],
@@ -538,7 +542,7 @@ def _group_urls_by_source(urls: List[str], urls_by_source: Dict[str, List[str]])
             urls_by_source.setdefault(source_type, []).append(url)
 
 
-def _fetch_aa_page_urls(book_info: BookInfo, urls_by_source: Dict[str, List[str]]) -> None:
+def _fetch_aa_page_urls(book_info: BrowseRecord, urls_by_source: Dict[str, List[str]]) -> None:
     """Fetch and parse AA page, populating urls_by_source dict.
 
     Groups existing book_info.download_urls by source type. If book_info
@@ -557,7 +561,7 @@ def _fetch_aa_page_urls(book_info: BookInfo, urls_by_source: Dict[str, List[str]
 
 def _get_urls_for_source(
     source_id: str,
-    book_info: BookInfo,
+    book_info: BrowseRecord,
     selector: network.AAMirrorSelector,
     cancel_flag: Optional[Event],
     status_callback: Optional[Callable[[str, Optional[str]], None]],
@@ -608,7 +612,7 @@ def _get_urls_for_source(
 def _try_download_url(
     url: str,
     source_id: str,
-    book_info: BookInfo,
+    book_info: BrowseRecord,
     book_path: Path,
     progress_callback: Optional[Callable[[float], None]],
     cancel_flag: Optional[Event],
@@ -747,7 +751,7 @@ def _extract_libgen_download_url(link: str, cancel_flag: Optional[Event] = None)
 
 
 def _download_book(
-    book_info: BookInfo,
+    book_info: BrowseRecord,
     book_path: Path,
     progress_callback: Optional[Callable[[float], None]] = None,
     cancel_flag: Optional[Event] = None,
@@ -1046,33 +1050,32 @@ def _extract_countdown_seconds(soup: BeautifulSoup, html_str: str) -> int:
     return 0
 
 
-def _book_info_to_release(book_info: BookInfo) -> Release:
-    """Convert a BookInfo object to a Release object.
+def _browse_record_to_release(record: BrowseRecord) -> Release:
+    """Convert a browse record to a Release object.
 
-    This bridges the existing BookInfo model (which combines metadata + release info)
-    to the new Release model (release info only).
+    This bridges the direct source's browse data to the generic release model.
     """
     return Release(
-        source="direct_download",
-        source_id=book_info.id,
-        title=book_info.title,
-        format=book_info.format,
-        language=book_info.language,  # Top-level language for filtering
-        size=book_info.size,
-        download_url=book_info.download_urls[0] if book_info.download_urls else None,
-        info_url=f"{network.get_aa_base_url()}/md5/{book_info.id}",
+        source=record.source,
+        source_id=record.id,
+        title=record.title,
+        format=record.format,
+        language=record.language,  # Top-level language for filtering
+        size=record.size,
+        download_url=record.download_urls[0] if record.download_urls else None,
+        info_url=f"{network.get_aa_base_url()}/md5/{record.id}",
         protocol=ReleaseProtocol.HTTP,
         indexer="Direct Download",
-        content_type=book_info.content,  # Preserve content type from source
+        content_type=record.content,  # Preserve content type from source
         extra={
-            "author": book_info.author,
-            "publisher": book_info.publisher,
-            "year": book_info.year,
-            "language": book_info.language,
-            "preview": book_info.preview,
-            "description": book_info.description,
-            "download_urls": book_info.download_urls,
-            "info": book_info.info,
+            "author": record.author,
+            "publisher": record.publisher,
+            "year": record.year,
+            "language": record.language,
+            "preview": record.preview,
+            "description": record.description,
+            "download_urls": record.download_urls,
+            "info": record.info,
         }
     )
 
@@ -1140,6 +1143,25 @@ class DirectDownloadSource(ReleaseSource):
             supported_filters=["format", "language"],  # AA has reliable language metadata
         )
 
+    def get_record(
+        self,
+        record_id: str,
+        *,
+        fetch_download_count: bool = True,
+    ) -> Optional[BrowseRecord]:
+        """Resolve a direct-download record for direct-mode info/download flows."""
+        return get_book_info(record_id, fetch_download_count=fetch_download_count)
+
+    def search_results_are_releases(self) -> bool:
+        """Direct search results already represent concrete downloadable releases."""
+        return True
+
+    def get_destination_override(self, task: DownloadTask) -> Optional[Path]:
+        """Apply Anna's Archive content-type routing when configured."""
+        if check_audiobook(task.content_type):
+            return None
+        return get_aa_content_type_dir(task.content_type)
+
     def search(
         self,
         book: BookMetadata,
@@ -1164,6 +1186,15 @@ class DirectDownloadSource(ReleaseSource):
         # Reset search type tracking
         self._last_search_type = "title_author"
 
+        if plan.source_filters is not None:
+            query = plan.manual_query or ""
+            logger.debug(f"Searching direct_download: source_query='{query}', langs={lang_filter}")
+            filters = plan.source_filters or SearchFilters()
+            filters.lang = lang_filter if lang_filter is not None else (filters.lang or [])
+            results = search_books(query, filters)
+            self._last_search_type = "manual" if query else "title_author"
+            return [_browse_record_to_release(record) for record in results]
+
         # ISBN search first (unless expand_search requested)
         if plan.manual_query:
             expand_search = True
@@ -1179,7 +1210,7 @@ class DirectDownloadSource(ReleaseSource):
                     if results:
                         logger.info(f"Found {len(results)} releases via ISBN")
                         self._last_search_type = "isbn"
-                        return [_book_info_to_release(bi) for bi in results]
+                        return [_browse_record_to_release(record) for record in results]
                     logger.debug("No ISBN results, falling back to title+author")
                 except SearchUnavailable:
                     raise
@@ -1192,7 +1223,7 @@ class DirectDownloadSource(ReleaseSource):
 
         # Execute searches with deduplication
         seen_ids: set = set()
-        all_results: List[BookInfo] = []
+        all_results: List[BrowseRecord] = []
 
         for title, langs in searches:
             query = f"{title} {author}".strip()
@@ -1212,7 +1243,7 @@ class DirectDownloadSource(ReleaseSource):
                 logger.error(f"Search error: {e}")
 
         logger.info(f"Found {len(all_results)} releases via title+author")
-        return [_book_info_to_release(bi) for bi in all_results]
+        return [_browse_record_to_release(record) for record in all_results]
 
     def is_available(self) -> bool:
         """Direct download is always available."""
@@ -1258,13 +1289,15 @@ class DirectDownloadHandler(DownloadHandler):
                 status_callback("cancelled", "Cancelled")
                 return None
 
-            # Create BookInfo from task data - NO AA page fetch here
+            # Create browse record from task data - NO AA page fetch here
             # AA page is fetched lazily by _fetch_aa_page_urls only when
             # we actually reach an AA slow source in the priority order
-            book_info = BookInfo(
+            book_info = BrowseRecord(
                 id=task.task_id,
                 title=task.title,
+                source="direct_download",
                 author=task.author,
+                year=task.year,
                 format=task.format,
                 size=task.size,
                 preview=task.preview,
@@ -1288,13 +1321,13 @@ class DirectDownloadHandler(DownloadHandler):
 
     def _execute_download(
         self,
-        book_info: BookInfo,
+        book_info: BrowseRecord,
         cancel_flag: Event,
         progress_callback: Callable[[float], None],
         status_callback: Callable[[str, Optional[str]], None]
     ) -> Optional[str]:
         """
-        Internal method to execute the download with fetched BookInfo.
+        Internal method to execute the download with fetched browse record.
 
         This contains the core download logic: cascade through sources,
         handle bypass, move to final location.
@@ -1308,7 +1341,12 @@ class DirectDownloadHandler(DownloadHandler):
             if file_org == "none":
                 book_name = f"{book_info.id}.{book_info.format or 'bin'}"
             else:
-                book_name = book_info.get_filename()
+                book_name = build_filename(
+                    book_info.title,
+                    book_info.author,
+                    book_info.year,
+                    book_info.format,
+                )
             book_path = TMP_DIR / book_name
 
             # Check cancellation before download

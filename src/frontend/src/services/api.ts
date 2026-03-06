@@ -11,7 +11,13 @@ import {
   RequestRecord,
 } from '../types';
 import { SettingsResponse, ActionResult, UpdateResult, SettingsTab } from '../types/settings';
-import { MetadataBookData, transformMetadataToBook } from '../utils/bookTransformers';
+import {
+  MetadataBookData,
+  SourceRecordData,
+  transformMetadataToBook,
+  transformReleaseToDirectBook,
+  transformSourceRecordToBook,
+} from '../utils/bookTransformers';
 import { getApiBase, withBasePath } from '../utils/basePath';
 import {
   buildAdminRequestActionUrl,
@@ -27,10 +33,7 @@ const API_BASE = getApiBase();
 
 // API endpoints
 const API = {
-  search: `${API_BASE}/search`,
   metadataSearch: `${API_BASE}/metadata/search`,
-  info: `${API_BASE}/info`,
-  download: `${API_BASE}/download`,
   status: `${API_BASE}/status`,
   cancelDownload: `${API_BASE}/download`,
   retryDownload: `${API_BASE}/download`,
@@ -205,7 +208,8 @@ async function fetchJSON<T>(
 // API functions
 export const searchBooks = async (query: string): Promise<Book[]> => {
   if (!query) return [];
-  return fetchJSON<Book[]>(`${API.search}?${query}`);
+  const response = await fetchJSON<ReleasesResponse>(`${API_BASE}/releases?source=direct_download&${query}`);
+  return response.releases.map(transformReleaseToDirectBook);
 };
 
 // Metadata search response type (internal)
@@ -297,8 +301,11 @@ export const fetchFieldOptions = async (endpoint: string): Promise<DynamicFieldO
     .filter((option) => option.value !== '');
 };
 
-export const getBookInfo = async (id: string): Promise<Book> => {
-  return fetchJSON<Book>(`${API.info}?id=${encodeURIComponent(id)}`);
+export const getSourceRecordInfo = async (source: string, id: string): Promise<Book> => {
+  const response = await fetchJSON<SourceRecordData>(
+    `${API_BASE}/release-sources/${encodeURIComponent(source)}/records/${encodeURIComponent(id)}`
+  );
+  return transformSourceRecordToBook(response);
 };
 
 // Get full book details from a metadata provider
@@ -308,15 +315,6 @@ export const getMetadataBookInfo = async (provider: string, bookId: string): Pro
   );
 
   return transformMetadataToBook(response);
-};
-
-export const downloadBook = async (id: string, onBehalfOfUserId?: number): Promise<void> => {
-  const params = new URLSearchParams();
-  params.set('id', id);
-  if (typeof onBehalfOfUserId === 'number') {
-    params.set('on_behalf_of_user_id', String(onBehalfOfUserId));
-  }
-  await fetchJSON(`${API.download}?${params.toString()}`);
 };
 
 // Download a specific release (from ReleaseModal)
@@ -340,6 +338,7 @@ export type DownloadReleasePayload = {
   series_position?: number;
   subtitle?: string;
   search_author?: string;
+  search_mode?: 'direct' | 'universal';
 };
 
 export const downloadRelease = async (
