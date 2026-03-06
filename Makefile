@@ -1,4 +1,4 @@
-.PHONY: help install dev build preview typecheck test clean up down docker-build refresh restart
+.PHONY: help install dev build preview typecheck frontend-test clean up down docker-build refresh restart
 
 # Frontend directory
 FRONTEND_DIR := src/frontend
@@ -16,7 +16,7 @@ help:
 	@echo "  build      - Build frontend for production"
 	@echo "  preview    - Preview production build"
 	@echo "  typecheck  - Run TypeScript type checking"
-	@echo "  test       - Run frontend unit tests"
+	@echo "  frontend-test - Run frontend unit tests"
 	@echo "  clean      - Remove node_modules and build artifacts"
 	@echo ""
 	@echo "Backend (Docker):"
@@ -52,7 +52,7 @@ typecheck:
 	cd $(FRONTEND_DIR) && npm run typecheck
 
 # Run frontend unit tests
-test:
+frontend-test:
 	@echo "Running frontend unit tests..."
 	cd $(FRONTEND_DIR) && npm run test:unit
 
