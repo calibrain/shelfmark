@@ -20,23 +20,26 @@
     <link rel="apple-touch-icon" href="logo.png" />
     <title>Shelfmark</title>
     <script>
-      // Apply theme immediately before first paint to prevent flash
+      // Apply theme immediately before first paint to prevent flash.
+      // CSS variables aren't available until the stylesheet loads, so set
+      // the background color directly on <html> to avoid a white flash.
       (function() {
         const savedTheme = localStorage.getItem('preferred-theme') || 'auto';
         let theme = savedTheme;
-        
+
         if (savedTheme === 'auto') {
           theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         }
-        
+
         document.documentElement.setAttribute('data-theme', theme);
-        
+        document.documentElement.style.backgroundColor = theme === 'dark' ? '#121212' : '#f8f8f8';
+
         // Add class to prevent transitions on initial load
         document.documentElement.classList.add('preload');
       })();
     </script>
   </head>
-  <body style="background: var(--bg); color: var(--text);">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
