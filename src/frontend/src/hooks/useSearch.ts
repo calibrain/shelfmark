@@ -20,7 +20,7 @@ type SearchFieldValues = Record<string, string | number | boolean>;
 
 interface UseSearchReturn {
   books: Book[];
-  setBooks: (books: Book[]) => void;
+  setBooks: React.Dispatch<React.SetStateAction<Book[]>>;
   isSearching: boolean;
   lastSearchQuery: string;
   searchInput: string;
@@ -49,6 +49,8 @@ interface UseSearchReturn {
   isLoadingMore: boolean;
   loadMore: (config: AppConfig | null, searchMode?: SearchMode) => Promise<void>;
   totalFound: number;
+  // Source URL for the current result set (e.g. Hardcover list page)
+  resultsSourceUrl: string | undefined;
 }
 
 export function useSearch(options: UseSearchOptions): UseSearchReturn {
@@ -79,6 +81,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [totalFound, setTotalFound] = useState(0);
+  const [resultsSourceUrl, setResultsSourceUrl] = useState<string | undefined>();
 
   // Store last search params for loadMore
   const lastSearchParamsRef = useRef<{
@@ -163,6 +166,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
         setHasMore(false);
         setTotalFound(0);
         setCurrentPage(1);
+        setResultsSourceUrl(undefined);
         lastSearchParamsRef.current = null;
         return;
       }
@@ -188,6 +192,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
           setBooks(result.books);
           setHasMore(result.hasMore);
           setTotalFound(result.totalFound);
+          setResultsSourceUrl(result.sourceUrl);
           // Store params for loadMore
           lastSearchParamsRef.current = {
             query: searchQuery,
@@ -200,6 +205,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
           setBooks([]);
           setHasMore(false);
           setTotalFound(0);
+          setResultsSourceUrl(undefined);
           showToast('No results found', 'error');
         }
       } catch (error) {
@@ -269,6 +275,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
     setCurrentPage(1);
     setHasMore(false);
     setTotalFound(0);
+    setResultsSourceUrl(undefined);
     lastSearchParamsRef.current = null;
   }, [onSearchReset]);
 
@@ -332,5 +339,6 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
     isLoadingMore,
     loadMore,
     totalFound,
+    resultsSourceUrl,
   };
 }

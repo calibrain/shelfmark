@@ -17,12 +17,15 @@ interface DropdownListProps {
   showCheckboxes?: boolean;
   value: string[] | string | null | undefined;
   onChange: (value: string[] | string) => void;
-  align?: 'left' | 'right';
+  align?: 'left' | 'right' | 'auto';
   widthClassName?: string;
   buttonClassName?: string;
+  panelClassName?: string;
   summaryFormatter?: (selected: DropdownListOption[], placeholder: string) => ReactNode;
   keepOpenOnSelect?: boolean;
   triggerChrome?: 'default' | 'minimal';
+  renderTrigger?: (props: { isOpen: boolean; toggle: () => void }) => ReactNode;
+  onOpenChange?: (isOpen: boolean) => void;
 }
 
 export const DropdownList = ({
@@ -36,9 +39,12 @@ export const DropdownList = ({
   align,
   widthClassName,
   buttonClassName,
+  panelClassName,
   summaryFormatter,
   keepOpenOnSelect,
   triggerChrome = 'default',
+  renderTrigger,
+  onOpenChange,
 }: DropdownListProps) => {
   const selectedValues = normalizeValue(value, multiple);
   const selectedOptions = options.filter(opt => selectedValues.includes(opt.value));
@@ -104,7 +110,10 @@ export const DropdownList = ({
       align={align}
       widthClassName={widthClassName}
       buttonClassName={buttonClassName}
+      panelClassName={panelClassName}
       triggerChrome={triggerChrome}
+      renderTrigger={renderTrigger}
+      onOpenChange={onOpenChange}
     >
       {({ close }) => (
         <div role="listbox" aria-multiselectable={multiple}>

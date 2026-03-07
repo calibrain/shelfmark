@@ -187,6 +187,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
   const selectTriggerRef = useRef<HTMLButtonElement>(null);
   const selectPanelRef = useRef<HTMLDivElement>(null);
   const autocompletePanelRef = useRef<HTMLDivElement>(null);
+  const selectorHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deferredTextInputValue = useDeferredValue(textInputValue);
 
   const hasMultipleContentTypes = !allowedContentTypes || allowedContentTypes.length !== 1;
@@ -210,9 +211,22 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
   useDismiss(isSelectOpen, [selectPanelRef, selectTriggerRef], () => setIsSelectOpen(false));
   useDismiss(isAutocompleteOpen, [autocompletePanelRef, inputRef], () => setIsAutocompleteOpen(false));
 
-  // Close select dropdown when active field changes
+  // Clean up hover timeout on unmount
   useEffect(() => {
-    setIsSelectOpen(false);
+    return () => {
+      if (selectorHoverTimeout.current) clearTimeout(selectorHoverTimeout.current);
+    };
+  }, []);
+
+  // Auto-open select dropdown only when transitioning into a select field
+  const prevFieldKeyRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const fieldKey = activeQueryField?.key;
+    const isSelect = activeQueryField?.type === 'SelectSearchField' || activeQueryField?.type === 'DynamicSelectSearchField';
+    const fieldChanged = fieldKey !== prevFieldKeyRef.current;
+    prevFieldKeyRef.current = fieldKey;
+
+    setIsSelectOpen(fieldChanged && isSelect);
     setIsAutocompleteOpen(false);
     setAutocompleteOptions([]);
   }, [activeQueryField?.key, activeQueryField?.type]);
@@ -434,6 +448,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
           onFocus={() => {
             if (autocompleteEndpoint && textInputValue.trim().length >= autocompleteMinQueryLength) {
               setIsAutocompleteOpen(true);
+              setIsSelectorOpen(false);
             }
           }}
           onKeyDown={handleKeyDown}
@@ -496,6 +511,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
               if (!disabled && !isDynamicLoading) {
                 setIsSelectOpen((prev) => !prev);
                 setIsSelectorOpen(false);
+                setIsAutocompleteOpen(false);
               }
             }}
             disabled={disabled}
@@ -559,10 +575,28 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
       }}
     >
         {showQueryTargetSelector && (
-          <div className="relative flex-shrink-0 flex self-stretch" ref={selectorRef}>
+          <div
+            className="relative flex-shrink-0 flex self-stretch"
+            ref={selectorRef}
+            onMouseEnter={() => {
+              if (selectorHoverTimeout.current) {
+                clearTimeout(selectorHoverTimeout.current);
+                selectorHoverTimeout.current = null;
+              }
+              setIsSelectorOpen(true);
+              setIsSelectOpen(false);
+              setIsAutocompleteOpen(false);
+            }}
+            onMouseLeave={() => {
+              selectorHoverTimeout.current = setTimeout(() => {
+                setIsSelectorOpen(false);
+                selectorHoverTimeout.current = null;
+              }, 150);
+            }}
+          >
             <button
               type="button"
-              onClick={() => { setIsSelectorOpen((prev) => !prev); setIsSelectOpen(false); }}
+              onClick={() => { setIsSelectorOpen((prev) => !prev); setIsSelectOpen(false); setIsAutocompleteOpen(false); }}
               className="flex items-center gap-1.5 pl-5 pr-2 rounded-l-full transition-colors hover-action"
               style={{ color: 'var(--text)' }}
               aria-label={`Searching ${contentType === 'ebook' ? 'books' : 'audiobooks'} by ${activeTarget?.label ?? 'general'}. Click to change.`}

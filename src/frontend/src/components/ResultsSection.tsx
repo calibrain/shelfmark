@@ -25,11 +25,14 @@ interface ResultsSectionProps {
   sortValue: string;
   onSortChange: (value: string) => void;
   metadataSortOptions?: SortOption[];
+  showSortControl?: boolean;
   // Pagination (universal mode)
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   totalFound?: number;
+  onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+  resultsSourceUrl?: string;
 }
 
 export const ResultsSection = ({
@@ -43,10 +46,13 @@ export const ResultsSection = ({
   sortValue,
   onSortChange,
   metadataSortOptions,
+  showSortControl = true,
   hasMore,
   isLoadingMore,
   onLoadMore,
   totalFound,
+  onShowToast,
+  resultsSourceUrl,
 }: ResultsSectionProps) => {
   const { searchMode } = useSearchMode();
   const [viewMode, setViewMode] = useState<'card' | 'compact' | 'list'>(() => {
@@ -86,10 +92,29 @@ export const ResultsSection = ({
   return (
     <section id="results-section" className="mb-4 sm:mb-8 w-full">
       <div className="flex items-center justify-between mb-2 sm:mb-3 relative z-10">
-        <SortControl value={sortValue} onChange={onSortChange} metadataSortOptions={metadataSortOptions} />
-        
+        {showSortControl ? (
+          <SortControl value={sortValue} onChange={onSortChange} metadataSortOptions={metadataSortOptions} />
+        ) : resultsSourceUrl ? (
+          <a
+            href={resultsSourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200 animate-pop-up"
+          >
+            View list on Hardcover
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+              />
+            </svg>
+          </a>
+        ) : null}
+
         {/* View toggle buttons - Desktop: show all 3, Mobile: show Compact and List only */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-auto">
           {isDesktop && (
             <button
               onClick={() => setViewMode('card')}
@@ -175,7 +200,7 @@ export const ResultsSection = ({
         </div>
       </div>
       {viewMode === 'list' ? (
-        <ListView books={books} onDetails={onDetails} onDownload={onDownload} onGetReleases={onGetReleases} getButtonState={getButtonState} getUniversalButtonState={getUniversalButtonState} showSeriesPosition={sortValue === 'series_order'} />
+        <ListView books={books} onDetails={onDetails} onDownload={onDownload} onGetReleases={onGetReleases} getButtonState={getButtonState} getUniversalButtonState={getUniversalButtonState} showSeriesPosition={sortValue === 'series_order'} onShowToast={onShowToast} />
       ) : (
         <div
           id="results-grid"
@@ -199,6 +224,7 @@ export const ResultsSection = ({
                 buttonState={buttonState}
                 animationDelay={animationDelay}
                 showSeriesPosition={sortValue === 'series_order'}
+                onShowToast={onShowToast}
               />
             ) : (
               <CompactView
@@ -211,6 +237,7 @@ export const ResultsSection = ({
                 showDetailsButton={!isDesktop}
                 animationDelay={animationDelay}
                 showSeriesPosition={sortValue === 'series_order'}
+                onShowToast={onShowToast}
               />
             );
           })}

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Book, ButtonStateInfo } from '../../types';
 import { useSearchMode } from '../../contexts/SearchModeContext';
 import { BookActionButton } from '../BookActionButton';
+import { BookTargetDropdown } from '../BookTargetDropdown';
+import { bookSupportsTargets } from '../../utils/bookTargetLoader';
 import { DisplayFieldIcon, DisplayFieldBadge } from '../shared';
 import { getFormatColor, getLanguageColor } from '../../utils/colorMaps';
 
@@ -13,6 +15,7 @@ interface ListViewProps {
   getButtonState: (bookId: string) => ButtonStateInfo;
   getUniversalButtonState: (bookId: string) => ButtonStateInfo;
   showSeriesPosition?: boolean;
+  onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
 const ListViewThumbnail = ({ preview, title }: { preview?: string; title?: string }) => {
@@ -48,10 +51,11 @@ const ListViewThumbnail = ({ preview, title }: { preview?: string; title?: strin
   );
 };
 
-export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButtonState, getUniversalButtonState, showSeriesPosition = false }: ListViewProps) => {
+export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButtonState, getUniversalButtonState, showSeriesPosition = false, onShowToast }: ListViewProps) => {
   const { searchMode } = useSearchMode();
   const [detailsLoadingId, setDetailsLoadingId] = useState<string | null>(null);
   const [releasesLoadingId, setReleasesLoadingId] = useState<string | null>(null);
+  const [openDropdownBookId, setOpenDropdownBookId] = useState<string | null>(null);
 
   if (books.length === 0) {
     return null;
@@ -77,7 +81,7 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
 
   return (
     <article
-      className="w-full overflow-hidden rounded-lg sm:rounded-2xl"
+      className="w-full rounded-lg sm:rounded-2xl"
       style={{
         background: 'var(--bg-soft)',
         boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)',
@@ -100,8 +104,9 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
           return (
             <div
               key={book.id}
-              className="px-1.5 sm:px-2 py-1.5 sm:py-2 transition-colors duration-200 hover-row w-full animate-pop-up will-change-transform"
+              className="px-1.5 sm:px-2 py-1.5 sm:py-2 transition-colors duration-200 hover-row w-full animate-pop-up will-change-transform relative"
               style={{
+                zIndex: openDropdownBookId === book.id ? 30 : undefined,
                 animationDelay: `${index * 50}ms`,
                 animationFillMode: 'both',
               }}
@@ -218,6 +223,15 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
 
                 {/* Action Buttons */}
                 <div className="flex flex-row justify-end gap-0.5 sm:gap-1 sm:pr-3">
+                  {bookSupportsTargets(book) && (
+                    <BookTargetDropdown
+                      provider={book.provider!}
+                      bookId={book.provider_id!}
+                      onShowToast={onShowToast}
+                      variant="icon"
+                      onOpenChange={(isOpen) => setOpenDropdownBookId(isOpen ? book.id : null)}
+                    />
+                  )}
                   <button
                     className="flex items-center justify-center p-1.5 sm:p-2 rounded-full text-gray-600 dark:text-gray-200 hover-action transition-all duration-200"
                     onClick={() => handleDetails(book.id)}

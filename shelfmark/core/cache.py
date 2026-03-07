@@ -62,6 +62,14 @@ class CacheService:
                 return True
             return False
 
+    def invalidate_prefix(self, prefix: str) -> int:
+        """Remove all cache entries whose keys start with prefix."""
+        with self._lock:
+            matching_keys = [key for key in self._cache if key.startswith(prefix)]
+            for key in matching_keys:
+                del self._cache[key]
+            return len(matching_keys)
+
     def clear(self) -> None:
         """Clear all cache entries."""
         with self._lock:

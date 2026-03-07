@@ -2,11 +2,12 @@
 
 import re
 import requests
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
-from shelfmark.core.cache import cacheable
+from shelfmark.core.cache import cache_key, cacheable, get_metadata_cache
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import (
     register_settings,
@@ -58,6 +59,10 @@ query LookupListsBySlug($slug: String!) {
 LIST_BOOKS_BY_ID_QUERY = """
 query GetListBooksById($id: Int!, $limit: Int!, $offset: Int!) {
     lists(where: {id: {_eq: $id}}, limit: 1) {
+        slug
+        user {
+            username
+        }
         books_count
         list_books(order_by: {position: asc}, limit: $limit, offset: $offset) {
             book {
@@ -172,6 +177,102 @@ query GetCurrentUserBooksByStatus($statusId: Int!, $limit: Int!, $offset: Int!) 
 }
 """
 
+BOOK_TARGET_MEMBERSHIP_QUERY = """
+query GetBookTargetMembership($bookId: Int!) {
+    me {
+        user_books(where: {book_id: {_eq: $bookId}}, limit: 1, order_by: [{created_at: desc}]) {
+            id
+            status_id
+        }
+        lists {
+            id
+            list_books(where: {book_id: {_eq: $bookId}}, limit: 1) {
+                id
+            }
+        }
+    }
+}
+"""
+
+BOOK_TARGET_MEMBERSHIP_BATCH_QUERY = """
+query GetBookTargetMembershipBatch($bookIds: [Int!]!) {
+    me {
+        user_books(where: {book_id: {_in: $bookIds}}, order_by: [{created_at: desc}]) {
+            id
+            book_id
+            status_id
+        }
+        lists {
+            id
+            list_books(where: {book_id: {_in: $bookIds}}) {
+                id
+                book_id
+            }
+        }
+    }
+}
+"""
+
+INSERT_USER_BOOK_MUTATION = """
+mutation AddBookToStatus($bookId: Int!, $statusId: Int!) {
+    insert_user_book(object: {book_id: $bookId, status_id: $statusId}) {
+        id
+        error
+        user_book {
+            id
+            book_id
+            status_id
+        }
+    }
+}
+"""
+
+UPDATE_USER_BOOK_MUTATION = """
+mutation UpdateBookStatus($userBookId: Int!, $statusId: Int!) {
+    update_user_book(id: $userBookId, object: {status_id: $statusId}) {
+        id
+        error
+        user_book {
+            id
+            book_id
+            status_id
+        }
+    }
+}
+"""
+
+DELETE_USER_BOOK_MUTATION = """
+mutation RemoveBookStatus($userBookId: Int!) {
+    delete_user_book(id: $userBookId) {
+        id
+        book_id
+        user_id
+    }
+}
+"""
+
+INSERT_LIST_BOOK_MUTATION = """
+mutation AddBookToList($bookId: Int!, $listId: Int!) {
+    insert_list_book(object: {book_id: $bookId, list_id: $listId}) {
+        id
+        list_book {
+            id
+            book_id
+            list_id
+        }
+    }
+}
+"""
+
+DELETE_LIST_BOOK_MUTATION = """
+mutation RemoveBookFromList($listBookId: Int!) {
+    delete_list_book(id: $listBookId) {
+        id
+        list_id
+    }
+}
+"""
+
 SEARCH_FIELD_OPTIONS_QUERY = """
 query SearchFieldOptions(
     $query: String!,
@@ -271,6 +372,46 @@ query GetSeriesBooks($seriesId: Int!) {
 
 HARDCOVER_WANT_TO_READ_STATUS_ID = 1
 HARDCOVER_STATUS_PREFIX = "status:"
+HARDCOVER_STATUS_URL_SLUGS: dict[int, str] = {
+    1: "want-to-read",
+    2: "currently-reading",
+    3: "read",
+    5: "did-not-finish",
+}
+HARDCOVER_LIST_ID_PREFIX = "id:"
+HARDCOVER_WRITABLE_TARGET_GROUPS = {"My Books", "My Lists"}
+
+
+@dataclass(frozen=True)
+class HardcoverBookTargetState:
+    """Current Hardcover target state for a specific book."""
+    user_book_id: Optional[int]
+    status_id: Optional[int]
+    list_book_ids: Dict[int, int]
+
+
+class HardcoverGraphQLError(ValueError):
+    """GraphQL request was rejected by Hardcover."""
+
+
+def _extract_graphql_error_message(payload: Any) -> str:
+    """Extract a readable message from a GraphQL error payload."""
+    if not isinstance(payload, dict):
+        return ""
+
+    errors = payload.get("errors", [])
+    if not isinstance(errors, list):
+        return ""
+
+    messages: List[str] = []
+    for error in errors:
+        if not isinstance(error, dict):
+            continue
+        message = str(error.get("message") or "").strip()
+        if message:
+            messages.append(message)
+
+    return "; ".join(messages)
 
 
 # Mapping from abstract sort order to Hardcover sort parameter
@@ -662,14 +803,12 @@ class HardcoverProvider(MetadataProvider):
             label="Author",
             placeholder="Search author...",
             description="Search by author name",
-            suggestions_endpoint="/api/metadata/field-options?provider=hardcover&field=author",
         ),
         TextSearchField(
             key="title",
             label="Title",
             placeholder="Search title...",
             description="Search by book title",
-            suggestions_endpoint="/api/metadata/field-options?provider=hardcover&field=title",
         ),
         TextSearchField(
             key="series",
@@ -770,6 +909,14 @@ class HardcoverProvider(MetadataProvider):
         list_books = list_data.get("list_books", []) if isinstance(list_data, dict) else []
         books_count_raw = list_data.get("books_count", 0) if isinstance(list_data, dict) else 0
 
+        # Build source URL from slug and owner username
+        source_url = None
+        list_slug = str(list_data.get("slug") or "").strip()
+        user_data = list_data.get("user", {})
+        owner_username = str(user_data.get("username") or "").strip() if isinstance(user_data, dict) else ""
+        if list_slug and owner_username:
+            source_url = f"https://hardcover.app/@{owner_username}/lists/{list_slug}"
+
         try:
             books_count = int(books_count_raw)
         except (TypeError, ValueError):
@@ -790,7 +937,7 @@ class HardcoverProvider(MetadataProvider):
                 logger.debug(f"Failed to parse Hardcover list book for list_id={list_id}: {exc}")
 
         has_more = offset + len(list_books) < books_count
-        return SearchResult(books=books, page=page, total_found=books_count, has_more=has_more)
+        return SearchResult(books=books, page=page, total_found=books_count, has_more=has_more, source_url=source_url)
 
     @cacheable(ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="hardcover:list:slug")
     def _fetch_list_books(self, slug: str, owner_username: Optional[str], page: int, limit: int) -> SearchResult:
@@ -1125,10 +1272,10 @@ class HardcoverProvider(MetadataProvider):
         if not normalized_value:
             return None
 
-        if normalized_value.startswith("id:"):
+        if normalized_value.startswith(HARDCOVER_LIST_ID_PREFIX):
             try:
-                return {"id": int(normalized_value.split(":", 1)[1])}
-            except (IndexError, ValueError):
+                return {"id": self._parse_prefixed_int(normalized_value, "series id")}
+            except ValueError:
                 logger.debug(f"Invalid Hardcover series id field value: {normalized_value}")
                 return None
 
@@ -1358,7 +1505,15 @@ class HardcoverProvider(MetadataProvider):
                 logger.debug(f"Failed to parse Hardcover status book for status_id={status_id}: {exc}")
 
         has_more = offset + len(status_books) < total_found
-        return SearchResult(books=books, page=page, total_found=total_found, has_more=has_more)
+
+        # Build source URL for the status shelf
+        source_url = None
+        url_slug = HARDCOVER_STATUS_URL_SLUGS.get(status_id)
+        username = _get_connected_username()
+        if url_slug and username:
+            source_url = f"https://hardcover.app/@{username}/books/{url_slug}"
+
+        return SearchResult(books=books, page=page, total_found=total_found, has_more=has_more, source_url=source_url)
 
     def _fetch_user_lists(self) -> List[Dict[str, str]]:
         """Fetch raw list options from Hardcover me query."""
@@ -1453,6 +1608,359 @@ class HardcoverProvider(MetadataProvider):
 
         return options
 
+    def get_book_targets(self, book_id: str) -> List[Dict[str, Any]]:
+        """Get writable Hardcover list/status targets for a specific book."""
+        if not self.api_key:
+            return []
+
+        book_id_int = coerce_int(book_id, 0)
+        if book_id_int < 1:
+            raise ValueError("book_id must be a valid Hardcover book id")
+
+        state = self._fetch_book_target_state(book_id_int)
+        options = [
+            dict(option)
+            for option in self.get_user_lists()
+            if option.get("group") in HARDCOVER_WRITABLE_TARGET_GROUPS
+        ]
+
+        for option in options:
+            value = str(option.get("value") or "").strip()
+            option["checked"] = self._is_target_checked(value, state)
+            option["writable"] = True
+
+        return options
+
+    def set_book_target_state(self, book_id: str, target: str, selected: bool) -> Dict[str, Any]:
+        """Set whether a Hardcover book belongs to a status shelf or user list."""
+        if not self.api_key:
+            raise ValueError("Hardcover is not configured")
+
+        book_id_int = coerce_int(book_id, 0)
+        if book_id_int < 1:
+            raise ValueError("book_id must be a valid Hardcover book id")
+
+        selected_target = str(target or "").strip()
+        if not selected_target:
+            raise ValueError("target is required")
+
+        if selected_target not in self._get_writable_targets():
+            raise ValueError("Unsupported Hardcover target")
+
+        state = self._fetch_book_target_state(book_id_int)
+        status_ids_to_invalidate: set[int] = set()
+        list_ids_to_invalidate: set[int] = set()
+
+        if selected_target.startswith(HARDCOVER_STATUS_PREFIX):
+            status_id = self._parse_prefixed_int(selected_target, "status target")
+            previous_status_id = state.status_id
+            changed = self._set_status_target_state(book_id_int, status_id, selected, state)
+            if changed:
+                if previous_status_id is not None:
+                    status_ids_to_invalidate.add(previous_status_id)
+                status_ids_to_invalidate.add(status_id)
+        elif selected_target.startswith(HARDCOVER_LIST_ID_PREFIX):
+            list_id = self._parse_prefixed_int(selected_target, "list target")
+            changed = self._set_list_target_state(book_id_int, list_id, selected, state)
+            if changed:
+                list_ids_to_invalidate.add(list_id)
+        else:
+            raise ValueError("Unsupported Hardcover target")
+
+        if changed:
+            self._invalidate_book_target_caches(
+                connected_user_id=self._resolve_current_user_id(),
+                status_ids=status_ids_to_invalidate,
+                list_ids=list_ids_to_invalidate,
+            )
+
+        return {"changed": changed}
+
+    @staticmethod
+    def _unwrap_me_data(result: Optional[Dict]) -> Dict:
+        """Extract and validate the ``me`` payload from a GraphQL result."""
+        if not isinstance(result, dict):
+            raise RuntimeError("Hardcover could not load book targets")
+
+        me_data = result.get("me", {})
+        if isinstance(me_data, list) and me_data:
+            me_data = me_data[0]
+        if not isinstance(me_data, dict):
+            raise RuntimeError("Hardcover returned an invalid target payload")
+        return me_data
+
+    def _fetch_book_target_state(self, book_id: int) -> HardcoverBookTargetState:
+        """Load current Hardcover membership state for a specific book."""
+        result = self._execute_query(
+            BOOK_TARGET_MEMBERSHIP_QUERY,
+            {"bookId": book_id},
+            raise_on_error=True,
+        )
+        me_data = self._unwrap_me_data(result)
+
+        user_book_id: Optional[int] = None
+        status_id: Optional[int] = None
+        user_books = me_data.get("user_books", [])
+        if isinstance(user_books, list) and user_books:
+            latest_user_book = user_books[0] if isinstance(user_books[0], dict) else {}
+            user_book_id = coerce_int(latest_user_book.get("id"), 0) or None
+            status_id = coerce_int(latest_user_book.get("status_id"), 0) or None
+
+        list_book_ids: Dict[int, int] = {}
+        for user_list in me_data.get("lists", []):
+            if not isinstance(user_list, dict):
+                continue
+            list_id = coerce_int(user_list.get("id"), 0)
+            if list_id < 1:
+                continue
+
+            list_books = user_list.get("list_books", [])
+            if not isinstance(list_books, list) or not list_books:
+                continue
+
+            list_book = list_books[0] if isinstance(list_books[0], dict) else {}
+            list_book_id = coerce_int(list_book.get("id"), 0)
+            if list_book_id > 0:
+                list_book_ids[list_id] = list_book_id
+
+        return HardcoverBookTargetState(
+            user_book_id=user_book_id,
+            status_id=status_id,
+            list_book_ids=list_book_ids,
+        )
+
+    def _fetch_book_target_states_batch(
+        self, book_ids: List[int],
+    ) -> Dict[int, HardcoverBookTargetState]:
+        """Load Hardcover membership state for multiple books in one query."""
+        result = self._execute_query(
+            BOOK_TARGET_MEMBERSHIP_BATCH_QUERY,
+            {"bookIds": book_ids},
+            raise_on_error=True,
+        )
+        me_data = self._unwrap_me_data(result)
+
+        # Group user_books by book_id (keep only the latest per book)
+        user_book_by_book: Dict[int, Dict] = {}
+        for ub in me_data.get("user_books", []):
+            if not isinstance(ub, dict):
+                continue
+            bid = coerce_int(ub.get("book_id"), 0)
+            if bid > 0 and bid not in user_book_by_book:
+                user_book_by_book[bid] = ub
+
+        # Group list_book memberships by book_id
+        list_book_ids_by_book: Dict[int, Dict[int, int]] = {}
+        for user_list in me_data.get("lists", []):
+            if not isinstance(user_list, dict):
+                continue
+            list_id = coerce_int(user_list.get("id"), 0)
+            if list_id < 1:
+                continue
+            for lb in user_list.get("list_books", []):
+                if not isinstance(lb, dict):
+                    continue
+                bid = coerce_int(lb.get("book_id"), 0)
+                lb_id = coerce_int(lb.get("id"), 0)
+                if bid > 0 and lb_id > 0:
+                    list_book_ids_by_book.setdefault(bid, {})[list_id] = lb_id
+
+        states: Dict[int, HardcoverBookTargetState] = {}
+        for bid in book_ids:
+            ub = user_book_by_book.get(bid)
+            states[bid] = HardcoverBookTargetState(
+                user_book_id=coerce_int(ub.get("id"), 0) or None if ub else None,
+                status_id=coerce_int(ub.get("status_id"), 0) or None if ub else None,
+                list_book_ids=list_book_ids_by_book.get(bid, {}),
+            )
+        return states
+
+    def get_book_targets_batch(self, book_ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+        """Get writable Hardcover list/status targets for multiple books."""
+        if not self.api_key or not book_ids:
+            return {bid: [] for bid in book_ids}
+
+        int_ids = []
+        id_map: Dict[int, str] = {}
+        for bid in book_ids:
+            int_id = coerce_int(bid, 0)
+            if int_id > 0:
+                int_ids.append(int_id)
+                id_map[int_id] = bid
+
+        if not int_ids:
+            return {bid: [] for bid in book_ids}
+
+        states = self._fetch_book_target_states_batch(int_ids)
+        writable_options = [
+            dict(option)
+            for option in self.get_user_lists()
+            if option.get("group") in HARDCOVER_WRITABLE_TARGET_GROUPS
+        ]
+
+        results: Dict[str, List[Dict[str, Any]]] = {}
+        for int_id, str_id in id_map.items():
+            state = states.get(int_id, HardcoverBookTargetState(
+                user_book_id=None, status_id=None, list_book_ids={},
+            ))
+            options = [dict(opt) for opt in writable_options]
+            for option in options:
+                value = str(option.get("value") or "").strip()
+                option["checked"] = self._is_target_checked(value, state)
+                option["writable"] = True
+            results[str_id] = options
+
+        # Fill in any book_ids that didn't parse as valid ints
+        for bid in book_ids:
+            if bid not in results:
+                results[bid] = []
+
+        return results
+
+    def _get_writable_targets(self) -> set[str]:
+        """Return the set of writable Hardcover targets for the current user."""
+        writable_targets: set[str] = set()
+        for option in self.get_user_lists():
+            value = str(option.get("value") or "").strip()
+            if (
+                option.get("group") in HARDCOVER_WRITABLE_TARGET_GROUPS
+                and value
+                and (
+                    value.startswith(HARDCOVER_STATUS_PREFIX)
+                    or value.startswith(HARDCOVER_LIST_ID_PREFIX)
+                )
+            ):
+                writable_targets.add(value)
+        return writable_targets
+
+    def _is_target_checked(self, target: str, state: HardcoverBookTargetState) -> bool:
+        """Return whether a target is currently selected for the book."""
+        if target.startswith(HARDCOVER_STATUS_PREFIX):
+            return state.status_id == self._parse_prefixed_int(target)
+        if target.startswith(HARDCOVER_LIST_ID_PREFIX):
+            return self._parse_prefixed_int(target) in state.list_book_ids
+        return False
+
+    def _set_status_target_state(
+        self,
+        book_id: int,
+        status_id: int,
+        selected: bool,
+        state: HardcoverBookTargetState,
+    ) -> bool:
+        """Set whether the book belongs to a Hardcover status shelf."""
+        if selected:
+            if state.user_book_id is None:
+                result = self._execute_query(
+                    INSERT_USER_BOOK_MUTATION,
+                    {"bookId": book_id, "statusId": status_id},
+                    raise_on_error=True,
+                )
+                self._check_mutation_result(result, "insert_user_book")
+                return True
+
+            if state.status_id == status_id:
+                return False
+
+            result = self._execute_query(
+                UPDATE_USER_BOOK_MUTATION,
+                {"userBookId": state.user_book_id, "statusId": status_id},
+                raise_on_error=True,
+            )
+            self._check_mutation_result(result, "update_user_book")
+            return True
+
+        if state.user_book_id is None or state.status_id != status_id:
+            return False
+
+        result = self._execute_query(
+            DELETE_USER_BOOK_MUTATION,
+            {"userBookId": state.user_book_id},
+            raise_on_error=True,
+        )
+        self._check_mutation_result(result, "delete_user_book", check_error=False)
+        return True
+
+    def _set_list_target_state(
+        self,
+        book_id: int,
+        list_id: int,
+        selected: bool,
+        state: HardcoverBookTargetState,
+    ) -> bool:
+        """Set whether the book belongs to a Hardcover list."""
+        list_book_id = state.list_book_ids.get(list_id)
+
+        if selected:
+            if list_book_id is not None:
+                return False
+
+            result = self._execute_query(
+                INSERT_LIST_BOOK_MUTATION,
+                {"bookId": book_id, "listId": list_id},
+                raise_on_error=True,
+            )
+            self._check_mutation_result(result, "insert_list_book")
+            return True
+
+        if list_book_id is None:
+            return False
+
+        result = self._execute_query(
+            DELETE_LIST_BOOK_MUTATION,
+            {"listBookId": list_book_id},
+            raise_on_error=True,
+        )
+        self._check_mutation_result(result, "delete_list_book", check_error=False)
+        return True
+
+    def _invalidate_book_target_caches(
+        self,
+        *,
+        connected_user_id: Optional[str],
+        status_ids: set[int],
+        list_ids: set[int],
+    ) -> None:
+        """Invalidate caches affected by a target membership change."""
+        metadata_cache = get_metadata_cache()
+
+        if connected_user_id:
+            metadata_cache.invalidate(cache_key("hardcover:user_lists", connected_user_id))
+            for status_id in status_ids:
+                metadata_cache.invalidate_prefix(
+                    cache_key("hardcover:user_books:status", connected_user_id, status_id)
+                )
+
+        for list_id in list_ids:
+            metadata_cache.invalidate_prefix(cache_key("hardcover:list:id", list_id))
+
+    @staticmethod
+    def _parse_prefixed_int(value: str, label: str = "target") -> int:
+        """Parse an integer from a colon-prefixed value like 'status:1' or 'id:42'."""
+        try:
+            return int(value.split(":", 1)[1])
+        except (IndexError, ValueError) as exc:
+            raise ValueError(f"Invalid Hardcover {label}") from exc
+
+    @staticmethod
+    def _check_mutation_result(result: Any, key: str, *, check_error: bool = True) -> None:
+        """Raise if a Hardcover mutation failed.
+
+        When *check_error* is True (the default) the ``error`` field inside
+        the payload is inspected and surfaced as a ``ValueError``.  Pass
+        ``check_error=False`` for delete mutations that don't return an
+        error field.
+        """
+        payload = result.get(key, {}) if isinstance(result, dict) else {}
+        if isinstance(payload, dict):
+            if check_error:
+                error_text = str(payload.get("error") or "").strip()
+                if error_text:
+                    raise ValueError(error_text)
+            if payload.get("id") is not None:
+                return
+        raise RuntimeError("Hardcover could not complete this action")
+
     def search(self, options: MetadataSearchOptions) -> List[BookMetadata]:
         """Search for books using Hardcover's search API."""
         return self.search_paginated(options).books
@@ -1474,16 +1982,16 @@ class HardcoverProvider(MetadataProvider):
         if list_value_from_field:
             if list_value_from_field.startswith(HARDCOVER_STATUS_PREFIX):
                 try:
-                    status_id = int(list_value_from_field.split(":", 1)[1])
+                    status_id = self._parse_prefixed_int(list_value_from_field, "status")
                     return self._fetch_current_user_books_by_status(status_id, options.page, options.limit)
-                except (IndexError, ValueError):
+                except ValueError:
                     logger.debug(f"Invalid Hardcover status field value: {list_value_from_field}")
                     return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
-            if list_value_from_field.startswith("id:"):
+            if list_value_from_field.startswith(HARDCOVER_LIST_ID_PREFIX):
                 try:
-                    list_id = int(list_value_from_field.split(":", 1)[1])
+                    list_id = self._parse_prefixed_int(list_value_from_field, "list")
                     return self._fetch_list_books_by_id(list_id, options.page, options.limit)
-                except (IndexError, ValueError):
+                except ValueError:
                     logger.debug(f"Invalid hardcover_list field value: {list_value_from_field}")
                     return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
             return self._fetch_list_books(list_value_from_field, None, options.page, options.limit)
@@ -1755,7 +2263,13 @@ class HardcoverProvider(MetadataProvider):
             logger.error(f"Hardcover ISBN search error: {e}")
             return None
 
-    def _execute_query(self, query: str, variables: Dict[str, Any]) -> Optional[Dict]:
+    def _execute_query(
+        self,
+        query: str,
+        variables: Dict[str, Any],
+        *,
+        raise_on_error: bool = False,
+    ) -> Optional[Dict]:
         """Execute a GraphQL query and return data or None on error."""
         try:
             response = self.session.post(
@@ -1770,21 +2284,39 @@ class HardcoverProvider(MetadataProvider):
 
             if "errors" in data:
                 logger.error(f"GraphQL errors: {data['errors']}")
+                if raise_on_error:
+                    message = _extract_graphql_error_message(data) or "Hardcover rejected this request"
+                    raise HardcoverGraphQLError(message)
                 return None
 
             return data.get("data")
 
         except requests.Timeout:
             logger.warning("Hardcover API request timed out")
+            if raise_on_error:
+                raise RuntimeError("Hardcover API request timed out")
             return None
         except requests.HTTPError as e:
             if e.response.status_code == 401:
                 logger.error("Hardcover API key is invalid")
+                if raise_on_error:
+                    raise RuntimeError("Hardcover API key is invalid")
             else:
                 logger.error(f"Hardcover API HTTP error: {e}")
+                if raise_on_error:
+                    raise RuntimeError(f"Hardcover API HTTP error: {e}")
+            return None
+        except HardcoverGraphQLError:
+            raise
+        except ValueError as e:
+            logger.error(f"Hardcover API returned invalid JSON: {e}")
+            if raise_on_error:
+                raise RuntimeError("Hardcover API returned an invalid response") from e
             return None
         except Exception as e:
             logger.error(f"Hardcover API request failed: {e}")
+            if raise_on_error:
+                raise RuntimeError("Hardcover API request failed") from e
             return None
 
     def _parse_search_result(self, item: Dict) -> Optional[BookMetadata]:

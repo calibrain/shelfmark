@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Book, ButtonStateInfo, isMetadataBook } from '../types';
 import { isUserCancelledError } from '../utils/errors';
+import { BookTargetDropdown } from './BookTargetDropdown';
+import { bookSupportsTargets } from '../utils/bookTargetLoader';
 
 interface DetailsModalProps {
   book: Book | null;
@@ -10,9 +12,18 @@ interface DetailsModalProps {
   onFindDownloads?: (book: Book) => void;  // For Universal mode
   onSearchSeries?: (seriesName: string, seriesId?: string) => void;  // Callback to search for series
   buttonState: ButtonStateInfo;
+  onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
-export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSearchSeries, buttonState }: DetailsModalProps) => {
+export const DetailsModal = ({
+  book,
+  onClose,
+  onDownload,
+  onFindDownloads,
+  onSearchSeries,
+  buttonState,
+  onShowToast,
+}: DetailsModalProps) => {
   const [isQueuing, setIsQueuing] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
 
@@ -55,6 +66,8 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
       };
     }
   }, [book]);
+
+  const hasBookTargets = Boolean(book && isMetadataBook(book) && bookSupportsTargets(book));
 
   if (!book && !isClosing) return null;
   if (!book) return null;
@@ -319,14 +332,14 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
             className="border-t border-[var(--border-muted)] bg-[var(--bg)] sm:bg-[var(--bg-soft)] px-5 py-4"
             style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
           >
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               {/* Source link - shown for both Universal and Direct Download modes */}
               {book.source_url && (
                 <a
                   href={book.source_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-muted)] bg-[var(--bg)] px-3 py-2 text-xs font-medium text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-900 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-200"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
                 >
                   View on {isMetadata ? providerDisplay : "Source"}
                   <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -339,22 +352,32 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
                   </svg>
                 </a>
               )}
-              {/* Action button - mirrors search result action state/flow */}
-              <button
-                onClick={isMetadata ? () => onFindDownloads?.(book) : handleDownload}
-                disabled={isMetadata ? buttonState.state === 'blocked' : buttonState.state !== 'download'}
-                className={`ml-auto rounded-full px-6 py-2.5 text-sm font-medium text-white transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-                  isMetadata
-                    ? buttonState.state === 'blocked'
-                      ? 'bg-gray-500 focus:ring-gray-400'
-                      : 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500'
-                    : buttonState.state === 'blocked'
-                    ? 'bg-gray-500 focus:ring-gray-400'
-                    : 'bg-sky-700 hover:bg-sky-800 focus:ring-sky-500'
-                }`}
-              >
-                {isMetadata ? metadataActionText : buttonState.text}
-              </button>
+              <div className="flex w-full flex-col gap-2 sm:ml-auto sm:w-auto sm:flex-row sm:items-center">
+                {hasBookTargets && book.provider_id && (
+                  <BookTargetDropdown
+                    provider={book.provider!}
+                    bookId={book.provider_id}
+                    onShowToast={onShowToast}
+                    widthClassName="w-full sm:w-56"
+                  />
+                )}
+                {/* Action button - mirrors search result action state/flow */}
+                <button
+                  onClick={isMetadata ? () => onFindDownloads?.(book) : handleDownload}
+                  disabled={isMetadata ? buttonState.state === 'blocked' : buttonState.state !== 'download'}
+                  className={`rounded-lg px-5 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    isMetadata
+                      ? buttonState.state === 'blocked'
+                        ? 'bg-gray-500'
+                        : 'bg-emerald-600 hover:bg-emerald-700'
+                      : buttonState.state === 'blocked'
+                      ? 'bg-gray-500'
+                      : 'bg-sky-700 hover:bg-sky-800'
+                  }`}
+                >
+                  {isMetadata ? metadataActionText : buttonState.text}
+                </button>
+              </div>
             </div>
           </footer>
         </div>

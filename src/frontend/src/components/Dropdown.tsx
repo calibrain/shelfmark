@@ -6,7 +6,7 @@ function getScrollableAncestor(element: HTMLElement | null): HTMLElement | null 
   while (current) {
     const style = getComputedStyle(current);
     const overflowY = style.overflowY;
-    if (overflowY === 'auto' || overflowY === 'scroll') {
+    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'hidden') {
       return current;
     }
     current = current.parentElement;
@@ -41,7 +41,7 @@ interface DropdownProps {
   label?: string;
   summary?: ReactNode;
   children: (helpers: { close: () => void }) => ReactNode;
-  align?: 'left' | 'right';
+  align?: 'left' | 'right' | 'auto';
   widthClassName?: string;
   buttonClassName?: string;
   panelClassName?: string;
@@ -50,6 +50,7 @@ interface DropdownProps {
   /** Disable max-height and overflow scrolling (for panels with nested dropdowns) */
   noScrollLimit?: boolean;
   triggerChrome?: 'default' | 'minimal';
+  onOpenChange?: (isOpen: boolean) => void;
 }
 
 export const Dropdown = ({
@@ -64,18 +65,27 @@ export const Dropdown = ({
   renderTrigger,
   noScrollLimit = false,
   triggerChrome = 'default',
+  onOpenChange,
 }: DropdownProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [panelDirection, setPanelDirection] = useState<'down' | 'up'>('down');
+  const [resolvedAlign, setResolvedAlign] = useState<'left' | 'right'>(align === 'right' ? 'right' : 'left');
 
   const toggleOpen = () => {
     if (disabled) return;
-    setIsOpen(prev => !prev);
+    setIsOpen(prev => {
+      const next = !prev;
+      onOpenChange?.(next);
+      return next;
+    });
   };
 
-  const close = () => setIsOpen(false);
+  const close = () => {
+    setIsOpen(false);
+    onOpenChange?.(false);
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -124,7 +134,24 @@ export const Dropdown = ({
     const shouldOpenUp = spaceBelow < panelHeight && spaceAbove >= panelHeight;
 
     setPanelDirection(shouldOpenUp ? 'up' : 'down');
-  }, []);
+
+    // Auto horizontal alignment: check if panel overflows viewport right/left
+    if (align === 'auto') {
+      const panelWidth = panelRef.current.offsetWidth || panelRef.current.scrollWidth;
+      const overflowsRight = rect.left + panelWidth > window.innerWidth - 8;
+      const overflowsLeft = rect.right - panelWidth < 8;
+
+      if (overflowsRight && !overflowsLeft) {
+        setResolvedAlign('right');
+      } else if (overflowsLeft && !overflowsRight) {
+        setResolvedAlign('left');
+      } else {
+        setResolvedAlign('left');
+      }
+    } else {
+      setResolvedAlign(align === 'right' ? 'right' : 'left');
+    }
+  }, [align]);
 
   useLayoutEffect(() => {
     if (!isOpen) return;
@@ -192,7 +219,7 @@ export const Dropdown = ({
         {isOpen && (
           <div
             ref={panelRef}
-            className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} ${
+            className={`absolute ${resolvedAlign === 'right' ? 'right-0' : 'left-0'} ${
               panelDirection === 'down'
                 ? renderTrigger ? 'mt-2' : ''
                 : renderTrigger ? 'bottom-full mb-2' : 'bottom-full'

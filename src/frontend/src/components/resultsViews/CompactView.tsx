@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Book, ButtonStateInfo } from '../../types';
 import { useSearchMode } from '../../contexts/SearchModeContext';
 import { BookActionButton } from '../BookActionButton';
+import { BookTargetDropdown } from '../BookTargetDropdown';
+import { bookSupportsTargets } from '../../utils/bookTargetLoader';
 import { DisplayFieldBadges } from '../shared';
 
 const SkeletonLoader = () => (
@@ -17,15 +19,17 @@ interface CompactViewProps {
   showDetailsButton?: boolean;
   animationDelay?: number;
   showSeriesPosition?: boolean;
+  onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
-export const CompactView = ({ book, onDetails, onDownload, onGetReleases, buttonState, showDetailsButton = false, animationDelay = 0, showSeriesPosition = false }: CompactViewProps) => {
+export const CompactView = ({ book, onDetails, onDownload, onGetReleases, buttonState, showDetailsButton = false, animationDelay = 0, showSeriesPosition = false, onShowToast }: CompactViewProps) => {
   const { searchMode } = useSearchMode();
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [isLoadingReleases, setIsLoadingReleases] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const handleDetails = async (id: string) => {
     setIsLoadingDetails(true);
@@ -47,11 +51,12 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
 
   return (
     <article
-      className="book-card overflow-hidden !flex !flex-row w-full !h-[180px] transition-shadow duration-300 animate-pop-up will-change-transform"
+      className="book-card !flex !flex-row w-full !h-[180px] transition-shadow duration-300 animate-pop-up will-change-transform relative"
       style={{
         background: 'var(--bg-soft)',
         borderRadius: '.75rem',
-        boxShadow: isHovered ? '0 10px 30px rgba(0, 0, 0, 0.15)' : 'none',
+        boxShadow: isHovered || dropdownOpen ? '0 10px 30px rgba(0, 0, 0, 0.15)' : 'none',
+        zIndex: dropdownOpen ? 20 : isHovered ? 10 : undefined,
         animationDelay: `${animationDelay}ms`,
         animationFillMode: 'both',
       }}
@@ -59,69 +64,85 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className="relative w-[120px] h-full flex-shrink-0">
-        {/* Series position badge */}
-        {showSeriesPosition && book.series_position != null && (
-          <div
-            className="absolute top-2 left-2 z-10 px-2 py-1 text-xs font-bold text-white bg-emerald-600 rounded-md border border-emerald-700"
-            style={{
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3)',
-              textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
-            }}
-          >
-            #{book.series_position}
-          </div>
-        )}
-        {book.preview && !imageError ? (
-          <>
-            {!imageLoaded && (
-              <div className="absolute inset-0">
-                <SkeletonLoader />
-              </div>
-            )}
-            <img
-              src={book.preview}
-              alt={book.title || 'Book cover'}
-              className="w-full h-full"
+        <div className="absolute inset-0 overflow-hidden rounded-l-[.75rem]">
+          {/* Series position badge */}
+          {showSeriesPosition && book.series_position != null && (
+            <div
+              className="absolute top-2 left-2 z-10 px-2 py-1 text-xs font-bold text-white bg-emerald-600 rounded-md border border-emerald-700"
               style={{
-                opacity: imageLoaded ? 1 : 0,
-                transition: 'opacity 0.3s ease-in-out',
-                objectFit: 'cover',
-                objectPosition: 'top',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3)',
+                textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
               }}
-              onLoad={() => setImageLoaded(true)}
-              onError={() => setImageError(true)}
-            />
-          </>
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-sm opacity-50" style={{ background: 'var(--border-muted)' }}>
-            No Cover
-          </div>
-        )}
+            >
+              #{book.series_position}
+            </div>
+          )}
+          {book.preview && !imageError ? (
+            <>
+              {!imageLoaded && (
+                <div className="absolute inset-0">
+                  <SkeletonLoader />
+                </div>
+              )}
+              <img
+                src={book.preview}
+                alt={book.title || 'Book cover'}
+                className="w-full h-full"
+                style={{
+                  opacity: imageLoaded ? 1 : 0,
+                  transition: 'opacity 0.3s ease-in-out',
+                  objectFit: 'cover',
+                  objectPosition: 'top',
+                }}
+                onLoad={() => setImageLoaded(true)}
+                onError={() => setImageError(true)}
+              />
+            </>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-sm opacity-50" style={{ background: 'var(--border-muted)' }}>
+              No Cover
+            </div>
+          )}
 
-        <div className="absolute inset-0 bg-white transition-opacity duration-300 pointer-events-none" style={{ opacity: isHovered ? 0.02 : 0 }} />
+          <div className="absolute inset-0 bg-white transition-opacity duration-300 pointer-events-none" style={{ opacity: isHovered || dropdownOpen ? 0.02 : 0 }} />
+        </div>
 
         {!showDetailsButton && (
-          <button
-            className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm flex items-center justify-center transition-all duration-300 shadow-lg hover:scale-110"
+          <div
+            className="absolute bottom-2 right-2 z-10 flex flex-col gap-1.5 transition-all duration-300"
             style={{
-              opacity: isHovered || isLoadingDetails ? 1 : 0,
-              pointerEvents: isHovered || isLoadingDetails ? 'auto' : 'none',
+              opacity: isHovered || dropdownOpen || isLoadingDetails ? 1 : 0,
+              pointerEvents: isHovered || dropdownOpen || isLoadingDetails ? 'auto' : 'none',
             }}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDetails(book.id);
-            }}
-            disabled={isLoadingDetails}
-            aria-label="Book details"
           >
-            {isLoadingDetails ? (
-              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+            {bookSupportsTargets(book) && (
+              <BookTargetDropdown
+                provider={book.provider!}
+                bookId={book.provider_id!}
+                onShowToast={onShowToast}
+                variant="icon"
+                className="w-8 h-8 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm shadow-lg hover:scale-110"
+                onOpenChange={setDropdownOpen}
+              />
             )}
-          </button>
+            <button
+              className="w-8 h-8 rounded-full bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm flex items-center justify-center transition-all duration-300 shadow-lg hover:scale-110"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDetails(book.id);
+              }}
+              disabled={isLoadingDetails}
+              aria-label="Book details"
+            >
+              {isLoadingDetails ? (
+                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )}
+            </button>
+          </div>
         )}
       </div>
 

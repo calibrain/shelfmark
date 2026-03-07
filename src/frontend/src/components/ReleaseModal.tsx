@@ -20,6 +20,8 @@ import { useSocket } from '../contexts/SocketContext';
 import { Dropdown } from './Dropdown';
 import { DropdownList } from './DropdownList';
 import { BookDownloadButton } from './BookDownloadButton';
+import { BookTargetDropdown } from './BookTargetDropdown';
+import { bookSupportsTargets } from '../utils/bookTargetLoader';
 import { ReleaseCell } from './ReleaseCell';
 import { getColorStyleFromHint } from '../utils/colorMaps';
 import { getNestedValue } from '../utils/objectHelpers';
@@ -95,6 +97,7 @@ interface ReleaseModalProps {
   onSearchSeries?: (seriesName: string, seriesId?: string) => void;  // Callback to search for series
   defaultShowManualQuery?: boolean;
   isRequestMode?: boolean;
+  onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
 
@@ -529,6 +532,7 @@ export const ReleaseModal = ({
   onSearchSeries,
   defaultShowManualQuery = false,
   isRequestMode = false,
+  onShowToast,
 }: ReleaseModalProps) => {
   // Use audiobook formats when in audiobook mode
   const effectiveFormats = contentType === 'audiobook' && supportedAudiobookFormats.length > 0
@@ -1490,6 +1494,14 @@ export const ReleaseModal = ({
                         </svg>
                         {isRequestingBook ? 'Adding...' : 'Add to requests'}
                       </button>
+                    )}
+                    {bookSupportsTargets(book) && (
+                      <BookTargetDropdown
+                        provider={book.provider!}
+                        bookId={book.provider_id!}
+                        onShowToast={onShowToast}
+                        variant="pill"
+                      />
                     )}
                   </div>
                 </div>

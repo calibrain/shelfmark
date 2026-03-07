@@ -224,6 +224,7 @@ interface MetadataSearchResponse {
   page?: number;
   total_found?: number;
   has_more?: boolean;
+  source_url?: string;
 }
 
 // Metadata search result with pagination info
@@ -232,6 +233,7 @@ export interface MetadataSearchResult {
   page: number;
   totalFound: number;
   hasMore: boolean;
+  sourceUrl?: string;
 }
 
 export interface DynamicFieldOption {
@@ -239,6 +241,20 @@ export interface DynamicFieldOption {
   label: string;
   group?: string;
   description?: string;
+}
+
+export interface BookTargetOption {
+  value: string;
+  label: string;
+  group?: string;
+  description?: string;
+  checked: boolean;
+  writable: boolean;
+}
+
+export interface BookTargetStateResult {
+  changed: boolean;
+  selected: boolean;
 }
 
 // Search metadata providers and normalize to Book format
@@ -283,6 +299,7 @@ export const searchMetadata = async (
     page: response.page || page,
     totalFound: response.total_found || 0,
     hasMore: response.has_more || false,
+    sourceUrl: response.source_url,
   };
 };
 
@@ -328,16 +345,93 @@ export const fetchFieldOptions = async (
     return [];
   }
 
-  return response.options
-    .filter((option): option is Record<string, unknown> => typeof option === 'object' && option !== null)
-    .map((option) => {
-      const value = typeof option.value === 'string' ? option.value : String(option.value ?? '');
-      const label = typeof option.label === 'string' ? option.label : value;
-      const group = typeof option.group === 'string' ? option.group : undefined;
-      const description = typeof option.description === 'string' ? option.description : undefined;
-      return { value, label, group, description };
-    })
+  return parseOptionList(response.options).map(({ value, label, group, description }) => ({
+    value,
+    label,
+    group,
+    description,
+  }));
+};
+
+const parseBaseOption = (
+  option: Record<string, unknown>,
+): { value: string; label: string; group?: string; description?: string } => {
+  const value = typeof option.value === 'string' ? option.value : String(option.value ?? '');
+  const label = typeof option.label === 'string' ? option.label : value;
+  const group = typeof option.group === 'string' ? option.group : undefined;
+  const description = typeof option.description === 'string' ? option.description : undefined;
+  return { value, label, group, description };
+};
+
+const parseOptionList = (raw: unknown): ReturnType<typeof parseBaseOption>[] => {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+    .map(parseBaseOption)
     .filter((option) => option.value !== '');
+};
+
+const parseBookTargetOptions = (raw: unknown): BookTargetOption[] => {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+    .map((item) => ({
+      ...parseBaseOption(item),
+      checked: item.checked === true,
+      writable: item.writable !== false,
+    }))
+    .filter((option) => option.value !== '');
+};
+
+export const fetchBookTargetOptions = async (
+  provider: string,
+  bookId: string,
+): Promise<BookTargetOption[]> => {
+  const response = await fetchJSON<{ options?: unknown }>(
+    `${API_BASE}/metadata/book/${encodeURIComponent(provider)}/${encodeURIComponent(bookId)}/targets`
+  );
+  return parseBookTargetOptions(response.options);
+};
+
+export const fetchBookTargetOptionsBatch = async (
+  provider: string,
+  bookIds: string[],
+): Promise<Map<string, BookTargetOption[]>> => {
+  const response = await fetchJSON<{ results?: unknown }>(
+    `${API_BASE}/metadata/book/${encodeURIComponent(provider)}/targets/batch`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ book_ids: bookIds }),
+    }
+  );
+
+  const results = new Map<string, BookTargetOption[]>();
+  if (typeof response.results === 'object' && response.results !== null) {
+    for (const [bookId, options] of Object.entries(response.results as Record<string, unknown>)) {
+      results.set(bookId, parseBookTargetOptions(options));
+    }
+  }
+  return results;
+};
+
+export const setBookTargetState = async (
+  provider: string,
+  bookId: string,
+  target: string,
+  selected: boolean,
+): Promise<BookTargetStateResult> => {
+  const response = await fetchJSON<{ changed?: unknown; selected?: unknown }>(
+    `${API_BASE}/metadata/book/${encodeURIComponent(provider)}/${encodeURIComponent(bookId)}/targets`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ target, selected }),
+    }
+  );
+
+  return {
+    changed: response.changed === true,
+    selected: response.selected === true,
+  };
 };
 
 export const getSourceRecordInfo = async (source: string, id: string): Promise<Book> => {

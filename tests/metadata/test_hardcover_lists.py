@@ -1,8 +1,25 @@
+from shelfmark.core.cache import cache_key
 from shelfmark.metadata_providers import MetadataSearchOptions, SearchResult
 from shelfmark.metadata_providers.hardcover import (
     HARDCOVER_WANT_TO_READ_STATUS_ID,
     HardcoverProvider,
 )
+
+
+class CacheStub:
+    """Minimal cache stub that records invalidation calls."""
+
+    def __init__(self):
+        self.invalidated: list[str] = []
+        self.invalidated_prefixes: list[str] = []
+
+    def invalidate(self, key: str) -> bool:
+        self.invalidated.append(key)
+        return True
+
+    def invalidate_prefix(self, prefix: str) -> int:
+        self.invalidated_prefixes.append(prefix)
+        return 1
 
 
 class TestHardcoverLists:
@@ -133,3 +150,189 @@ class TestHardcoverLists:
         assert len(result.books) == 1
         assert result.books[0].title == "Dune"
         assert result.books[0].authors == ["Frank Herbert"]
+
+    def test_get_book_targets_marks_checked_memberships(self, monkeypatch):
+        provider = HardcoverProvider(api_key="test-token")
+
+        monkeypatch.setattr(
+            provider,
+            "get_user_lists",
+            lambda: [
+                {
+                    "value": f"status:{HARDCOVER_WANT_TO_READ_STATUS_ID}",
+                    "label": "Want to Read (7)",
+                    "group": "My Books",
+                },
+                {
+                    "value": "id:42",
+                    "label": "Sci-Fi Favourites (12)",
+                    "group": "My Lists",
+                },
+                {
+                    "value": "id:99",
+                    "label": "Followed List (3)",
+                    "group": "Followed Lists",
+                },
+            ],
+        )
+
+        monkeypatch.setattr(
+            provider,
+            "_execute_query",
+            lambda query, variables, raise_on_error=False: {
+                "me": {
+                    "user_books": [{"id": 55, "status_id": HARDCOVER_WANT_TO_READ_STATUS_ID}],
+                    "lists": [
+                        {"id": 42, "list_books": [{"id": 500}]},
+                        {"id": 99, "list_books": [{"id": 900}]},
+                    ],
+                }
+            },
+        )
+
+        options = provider.get_book_targets("123")
+
+        assert options == [
+            {
+                "value": f"status:{HARDCOVER_WANT_TO_READ_STATUS_ID}",
+                "label": "Want to Read (7)",
+                "group": "My Books",
+                "checked": True,
+                "writable": True,
+            },
+            {
+                "value": "id:42",
+                "label": "Sci-Fi Favourites (12)",
+                "group": "My Lists",
+                "checked": True,
+                "writable": True,
+            },
+        ]
+
+    def test_set_book_target_state_updates_existing_status(self, monkeypatch):
+        provider = HardcoverProvider(api_key="test-token")
+        captured: dict[str, object] = {}
+        cache_stub = CacheStub()
+
+        monkeypatch.setattr(
+            provider,
+            "get_user_lists",
+            lambda: [
+                {
+                    "value": f"status:{HARDCOVER_WANT_TO_READ_STATUS_ID}",
+                    "label": "Want to Read (7)",
+                    "group": "My Books",
+                }
+            ],
+        )
+        monkeypatch.setattr(provider, "_resolve_current_user_id", lambda: "user-123")
+        monkeypatch.setattr("shelfmark.metadata_providers.hardcover.get_metadata_cache", lambda: cache_stub)
+
+        def fake_execute(query: str, variables, raise_on_error: bool = False):
+            if "query GetBookTargetMembership" in query:
+                return {
+                    "me": {
+                        "user_books": [{"id": 77, "status_id": 2}],
+                        "lists": [],
+                    }
+                }
+            if "mutation UpdateBookStatus" in query:
+                captured["variables"] = variables
+                return {
+                    "update_user_book": {
+                        "id": 77,
+                        "error": None,
+                        "user_book": {"id": 77, "book_id": 123, "status_id": HARDCOVER_WANT_TO_READ_STATUS_ID},
+                    }
+                }
+            raise AssertionError(f"Unexpected query: {query}")
+
+        monkeypatch.setattr(provider, "_execute_query", fake_execute)
+
+        result = provider.set_book_target_state(
+            "123",
+            f"status:{HARDCOVER_WANT_TO_READ_STATUS_ID}",
+            True,
+        )
+
+        assert result == {"changed": True}
+        assert captured["variables"] == {
+            "userBookId": 77,
+            "statusId": HARDCOVER_WANT_TO_READ_STATUS_ID,
+        }
+        assert cache_stub.invalidated == [
+            cache_key("hardcover:user_lists", "user-123"),
+        ]
+        assert set(cache_stub.invalidated_prefixes) == {
+            cache_key("hardcover:user_books:status", "user-123", 2),
+            cache_key("hardcover:user_books:status", "user-123", HARDCOVER_WANT_TO_READ_STATUS_ID),
+        }
+
+    def test_set_book_target_state_removes_list_membership(self, monkeypatch):
+        provider = HardcoverProvider(api_key="test-token")
+        cache_stub = CacheStub()
+
+        monkeypatch.setattr(
+            provider,
+            "get_user_lists",
+            lambda: [
+                {
+                    "value": "id:42",
+                    "label": "Sci-Fi Favourites (12)",
+                    "group": "My Lists",
+                }
+            ],
+        )
+        monkeypatch.setattr(provider, "_resolve_current_user_id", lambda: "user-123")
+        monkeypatch.setattr("shelfmark.metadata_providers.hardcover.get_metadata_cache", lambda: cache_stub)
+
+        def fake_execute(query: str, variables, raise_on_error: bool = False):
+            if "query GetBookTargetMembership" in query:
+                return {
+                    "me": {
+                        "user_books": [],
+                        "lists": [{"id": 42, "list_books": [{"id": 500}]}],
+                    }
+                }
+            if "mutation RemoveBookFromList" in query:
+                return {
+                    "delete_list_book": {
+                        "id": 500,
+                        "list_id": 42,
+                    }
+                }
+            raise AssertionError(f"Unexpected query: {query}")
+
+        monkeypatch.setattr(provider, "_execute_query", fake_execute)
+
+        result = provider.set_book_target_state("123", "id:42", False)
+
+        assert result == {"changed": True}
+        assert cache_stub.invalidated == [
+            cache_key("hardcover:user_lists", "user-123"),
+        ]
+        assert cache_stub.invalidated_prefixes == [
+            cache_key("hardcover:list:id", 42),
+        ]
+
+    def test_set_book_target_state_rejects_non_writable_targets(self, monkeypatch):
+        provider = HardcoverProvider(api_key="test-token")
+
+        monkeypatch.setattr(
+            provider,
+            "get_user_lists",
+            lambda: [
+                {
+                    "value": "id:99",
+                    "label": "Followed List (3)",
+                    "group": "Followed Lists",
+                }
+            ],
+        )
+
+        try:
+            provider.set_book_target_state("123", "id:99", True)
+        except ValueError as exc:
+            assert str(exc) == "Unsupported Hardcover target"
+        else:
+            raise AssertionError("Expected ValueError for followed list target")

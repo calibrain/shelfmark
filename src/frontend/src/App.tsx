@@ -29,6 +29,7 @@ import {
   createRequest,
   isApiResponseError,
   updateSelfUser,
+  setBookTargetState,
   type DownloadReleasePayload,
 } from './services/api';
 import { useToast } from './hooks/useToast';
@@ -76,6 +77,8 @@ import {
   toContentType,
 } from './utils/requestPayload';
 import { bookFromRequestData } from './utils/requestFulfil';
+import { emitBookTargetChange, onBookTargetChange } from './utils/bookTargetEvents';
+import { bookSupportsTargets } from './utils/bookTargetLoader';
 import { policyTrace } from './utils/policyTrace';
 import { SearchModeProvider } from './contexts/SearchModeContext';
 import { useSocket } from './contexts/SocketContext';
@@ -384,6 +387,7 @@ function App() {
     isLoadingMore,
     loadMore,
     totalFound,
+    resultsSourceUrl,
   } = useSearch({
     showToast,
     setIsAuthenticated,
@@ -391,6 +395,19 @@ function App() {
     onSearchReset: clearTracking,
     contentType,
   });
+
+  // When a book is removed from the Hardcover list currently being browsed, remove it from results
+  const searchFieldValuesRef = useRef(searchFieldValues);
+  searchFieldValuesRef.current = searchFieldValues;
+
+  useEffect(() => {
+    return onBookTargetChange((event) => {
+      if (event.selected) return;
+      const activeListValue = searchFieldValuesRef.current.hardcover_list;
+      if (!activeListValue || String(activeListValue) !== event.target) return;
+      setBooks((prev) => prev.filter((book) => book.provider_id !== event.bookId));
+    });
+  }, [setBooks]);
 
   const [pendingRequestPayload, setPendingRequestPayload] = useState<CreateRequestPayload | null>(null);
   const [actingAsUser, setActingAsUser] = useState<ActingAsUserSelection | null>(null);
@@ -1072,6 +1089,30 @@ function App() {
     []
   );
 
+  // When downloading a book while browsing a Hardcover list, automatically
+  // remove it from that list (fire-and-forget).
+  const searchFieldLabelsRef = useRef(searchFieldLabels);
+  searchFieldLabelsRef.current = searchFieldLabels;
+
+  const removeBookFromActiveList = useCallback((book: Book) => {
+    if (!bookSupportsTargets(book)) return;
+    const activeList = searchFieldValuesRef.current.hardcover_list;
+    if (!activeList) return;
+    const target = String(activeList);
+    void setBookTargetState(book.provider!, book.provider_id!, target, false).then((result) => {
+      if (result.changed) {
+        emitBookTargetChange({
+          provider: book.provider!,
+          bookId: book.provider_id!,
+          target,
+          selected: false,
+        });
+        const listName = searchFieldLabelsRef.current['hardcover_list'];
+        showToast(`Removed from ${listName || 'list'}`, 'info');
+      }
+    }).catch(() => {});
+  }, [showToast]);
+
   const executeBookDownload = useCallback(
     async (book: Book, onBehalfOfUserId?: number): Promise<void> => {
       const source = getBrowseSource(book);
@@ -1079,6 +1120,7 @@ function App() {
       try {
         await downloadRelease(buildReleaseDataFromDirectBook(book), onBehalfOfUserId);
         await fetchStatus();
+        removeBookFromActiveList(book);
       } catch (error) {
         console.error('Download failed:', error);
         if (isPolicyGuardError(error)) {
@@ -1103,7 +1145,7 @@ function App() {
         throw error;
       }
     },
-    [fetchStatus, openRequestConfirmation, refreshRequestPolicy, showToast]
+    [fetchStatus, openRequestConfirmation, refreshRequestPolicy, removeBookFromActiveList, showToast]
   );
 
   const executeReleaseDownload = useCallback(
@@ -1120,6 +1162,7 @@ function App() {
           onBehalfOfUserId
         );
         await fetchStatus();
+        removeBookFromActiveList(book);
       } catch (error) {
         console.error('Release download failed:', error);
         if (isPolicyGuardError(error)) {
@@ -1168,7 +1211,7 @@ function App() {
         throw error;
       }
     },
-    [buildReleaseDownloadPayload, fetchStatus, openRequestConfirmation, refreshRequestPolicy, showToast, trackRelease]
+    [buildReleaseDownloadPayload, fetchStatus, openRequestConfirmation, refreshRequestPolicy, removeBookFromActiveList, showToast, trackRelease]
   );
 
   const handleConfirmOnBehalfDownload = useCallback(async (): Promise<boolean> => {
@@ -1657,6 +1700,12 @@ function App() {
     && activeQueryValue !== ''
     && activeQueryValue !== false,
   );
+  const activeQueryUsesListBrowse = Boolean(
+    activeQueryOption?.source === 'provider-field'
+    && activeQueryOption.field?.type === 'DynamicSelectSearchField'
+    && activeQueryValue !== ''
+    && activeQueryValue !== false,
+  );
   const effectiveMetadataSort = getEffectiveMetadataSort({
     currentSort: advancedFilters.sort,
     defaultSort: resolvedMetadataDefaultSort,
@@ -2086,6 +2135,7 @@ function App() {
           getButtonState={getDirectActionButtonState}
           getUniversalButtonState={getUniversalActionButtonState}
           sortValue={visibleResultsSort}
+          showSortControl={!activeQueryUsesSeriesBrowse && !activeQueryUsesListBrowse}
           onSortChange={(value) => {
             const request = buildCurrentSearchRequest(value);
             const shouldPersistAppliedSort = !(
@@ -2109,6 +2159,8 @@ function App() {
           isLoadingMore={isLoadingMore}
           onLoadMore={() => loadMore(config, effectiveSearchMode)}
           totalFound={totalFound}
+          onShowToast={showToast}
+          resultsSourceUrl={resultsSourceUrl}
         />
 
         {selectedBook && (
@@ -2116,6 +2168,7 @@ function App() {
             book={selectedBook}
             onClose={() => setSelectedBook(null)}
             onDownload={handleDownload}
+            onShowToast={showToast}
             onFindDownloads={(book) => {
               setSelectedBook(null);
               void handleGetReleases(book);
@@ -2152,6 +2205,7 @@ function App() {
             onSearchSeries={isBrowseFulfilMode || !canSearchSeriesForBook(activeReleaseBook) ? undefined : handleSearchSeries}
             defaultShowManualQuery={isBrowseFulfilMode || activeReleaseBook?.provider === 'manual'}
             isRequestMode={isBrowseFulfilMode || activeReleaseBook?.provider === 'manual'}
+            onShowToast={showToast}
           />
         )}
 

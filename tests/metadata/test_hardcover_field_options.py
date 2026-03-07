@@ -2,16 +2,12 @@ from shelfmark.metadata_providers.hardcover import HardcoverProvider
 
 
 class TestHardcoverFieldOptions:
-    def test_search_fields_enable_typeahead_for_author_title_and_series(self):
+    def test_search_fields_enable_typeahead_for_series_only(self):
         provider = HardcoverProvider(api_key="test-token")
         fields_by_key = {field.key: field for field in provider.search_fields}
 
-        assert fields_by_key["author"].suggestions_endpoint == (
-            "/api/metadata/field-options?provider=hardcover&field=author"
-        )
-        assert fields_by_key["title"].suggestions_endpoint == (
-            "/api/metadata/field-options?provider=hardcover&field=title"
-        )
+        assert fields_by_key["author"].suggestions_endpoint is None
+        assert fields_by_key["title"].suggestions_endpoint is None
         assert fields_by_key["series"].suggestions_endpoint == (
             "/api/metadata/field-options?provider=hardcover&field=series"
         )
