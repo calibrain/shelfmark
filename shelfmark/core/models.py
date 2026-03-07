@@ -132,55 +132,6 @@ class DownloadTask:
 
 
 @dataclass
-class BookInfo:
-    """Data class representing book information."""
-    id: str
-    title: str
-    preview: Optional[str] = None
-    author: Optional[str] = None
-    publisher: Optional[str] = None
-    year: Optional[str] = None
-    language: Optional[str] = None
-    content: Optional[str] = None
-    format: Optional[str] = None
-    size: Optional[str] = None
-    info: Optional[Dict[str, List[str]]] = None
-    description: Optional[str] = None
-    download_urls: List[str] = field(default_factory=list)
-    download_path: Optional[str] = None
-    priority: int = 0
-    progress: Optional[float] = None
-    status_message: Optional[str] = None  # Detailed status message for UI display
-    added_time: Optional[float] = None  # Timestamp when added to queue
-    source: str = "direct_download"  # Release source handler to use for downloads
-    source_url: Optional[str] = None  # Link to source page (e.g., Anna's Archive)
-
-    def get_filename(self, fallback_url: Optional[str] = None) -> str:
-        """Build sanitized filename: 'Author - Title (Year).format'
-
-        Resolves format from self.format, download_urls, or fallback_url.
-
-        Args:
-            fallback_url: URL to extract format from if not already known
-
-        Returns:
-            Sanitized filename safe for filesystem use
-        """
-        # Resolve format if needed
-        if not self.format:
-            urls = [self.download_urls[0]] if self.download_urls else []
-            if fallback_url:
-                urls.append(fallback_url)
-            for url in urls:
-                ext = url.split(".")[-1].lower()
-                if ext and len(ext) <= 5 and ext.isalnum():
-                    self.format = ext
-                    break
-
-        return build_filename(self.title, self.author, self.year, self.format)
-
-
-@dataclass
 class SearchFilters:
     """Filters for book search queries."""
     isbn: Optional[List[str]] = None

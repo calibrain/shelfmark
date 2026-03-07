@@ -433,6 +433,11 @@ button:disabled {
     appearance: none;
 }
 
+.search-input::placeholder {
+    color: var(--text);
+    opacity: 0.5;
+}
+
 .search-input::-webkit-search-cancel-button,
 .search-input::-webkit-search-decoration,
 .search-input::-webkit-search-results-button,

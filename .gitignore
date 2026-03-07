@@ -233,3 +233,4 @@ AGENTS.md
 .claude/
 .playwright-mcp/
 frontend-dist/
+node_modules/

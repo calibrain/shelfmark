@@ -8,7 +8,7 @@ interface DetailsModalProps {
   onClose: () => void;
   onDownload: (book: Book) => Promise<void>;
   onFindDownloads?: (book: Book) => void;  // For Universal mode
-  onSearchSeries?: (seriesName: string) => void;  // Callback to search for series
+  onSearchSeries?: (seriesName: string, seriesId?: string) => void;  // Callback to search for series
   buttonState: ButtonStateInfo;
 }
 
@@ -283,7 +283,7 @@ export const DetailsModal = ({ book, onClose, onDownload, onFindDownloads, onSea
                         <button
                           type="button"
                           onClick={() => {
-                            onSearchSeries(book.series_name!);
+                            onSearchSeries(book.series_name!, book.series_id);
                             handleClose();
                           }}
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors flex-shrink-0"

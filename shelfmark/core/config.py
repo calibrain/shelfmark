@@ -2,6 +2,7 @@
 
 import os
 import sqlite3
+import time
 from threading import Lock
 from typing import Any, Dict, Optional
 
@@ -68,6 +69,7 @@ class Config:
         self._user_db_load_attempted = False
         self._initialized = True
         self._loaded = False
+        self._last_refresh_time: float = 0.0
 
     def _ensure_loaded(self) -> None:
         """Ensure settings are loaded from the registry."""
@@ -117,13 +119,22 @@ class Config:
 
         self._loaded = True
 
-    def refresh(self) -> None:
+    def refresh(self, force: bool = False) -> None:
         """
         Refresh all cached settings from config files.
 
         Call this after settings are updated via the UI to ensure
         the config singleton reflects the new values.
+
+        Multiple calls within a short window (50 ms) are coalesced to
+        avoid redundant disk I/O when several helpers each call refresh()
+        during the same request.  Pass ``force=True`` to bypass the guard
+        (e.g. after a settings write).
         """
+        now = time.monotonic()
+        if not force and (now - self._last_refresh_time) < 0.05:
+            return
+
         with self._cache_lock:
             self._loaded = False
             self._load_settings()
@@ -131,6 +142,7 @@ class Config:
             self._user_settings_cache.clear()
         self._user_db = None
         self._user_db_load_attempted = False
+        self._last_refresh_time = time.monotonic()
 
     def _get_user_db(self):
         """Get or initialize a UserDB handle if available."""

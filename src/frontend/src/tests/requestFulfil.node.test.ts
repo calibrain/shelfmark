@@ -7,6 +7,7 @@ describe('requestFulfil.bookFromRequestData', () => {
     const book = bookFromRequestData({
       title: 'The Pragmatic Programmer',
       author: 'Andrew Hunt',
+      source: 'direct_download',
       provider: 'openlibrary',
       provider_id: 'ol-123',
       preview: 'https://example.com/cover.jpg',
@@ -20,6 +21,7 @@ describe('requestFulfil.bookFromRequestData', () => {
     assert.equal(book.id, 'ol-123');
     assert.equal(book.title, 'The Pragmatic Programmer');
     assert.equal(book.author, 'Andrew Hunt');
+    assert.equal(book.source, 'direct_download');
     assert.equal(book.provider, 'openlibrary');
     assert.equal(book.provider_id, 'ol-123');
     assert.equal(book.preview, 'https://example.com/cover.jpg');

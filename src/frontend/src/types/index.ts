@@ -43,6 +43,7 @@ export interface Book {
   source_url?: string;         // Link to book on provider's site
   display_fields?: DisplayField[];  // Provider-specific display data
   // Series info (if book is part of a series)
+  series_id?: string;          // Provider-specific series ID
   series_name?: string;        // Name of the series
   series_position?: number;    // This book's position (e.g., 3, 1.5 for novellas)
   series_count?: number;       // Total books in the series
@@ -133,6 +134,8 @@ interface SearchFieldBase {
 
 export interface TextSearchField extends SearchFieldBase {
   type: 'TextSearchField';
+  suggestions_endpoint?: string;
+  suggestions_min_query_length?: number;
 }
 
 export interface NumberSearchField extends SearchFieldBase {
@@ -164,6 +167,20 @@ export type MetadataSearchField =
   | CheckboxSearchField
   | DynamicSelectSearchField;
 
+export type QueryTargetSource =
+  | 'general'
+  | 'manual'
+  | 'direct-field'
+  | 'provider-field';
+
+export interface QueryTargetOption {
+  key: string;
+  label: string;
+  description?: string;
+  source: QueryTargetSource;
+  field?: MetadataSearchField;
+}
+
 // App configuration
 // Content type for search (ebook vs audiobook)
 export type ContentType = 'ebook' | 'audiobook';
@@ -178,6 +195,7 @@ export interface RequestPolicyDefaults {
 export interface RequestPolicySourceMode {
   source: string;
   supported_content_types: string[];
+  browse_results_are_releases?: boolean;
   modes: Record<string, RequestPolicyMode>;
 }
 
@@ -250,6 +268,37 @@ export interface AppConfig {
   metadata_default_sort: string;  // Default sort for universal mode (from metadata provider)
 }
 
+export interface MetadataProviderSummary {
+  name: string;
+  display_name: string;
+  requires_auth: boolean;
+  enabled: boolean;
+  available: boolean;
+}
+
+export interface MetadataProvidersResponse {
+  providers: MetadataProviderSummary[];
+  configured_provider: string | null;
+  configured_provider_audiobook: string | null;
+}
+
+export interface MetadataCapability {
+  key: string;
+  field_key?: string;
+  sort?: string;
+}
+
+export interface MetadataSearchConfig {
+  provider: string | null;
+  display_name: string | null;
+  enabled: boolean;
+  available: boolean;
+  search_fields: MetadataSearchField[];
+  capabilities: MetadataCapability[];
+  sort_options: SortOption[];
+  default_sort: string;
+}
+
 // Authentication types
 export interface LoginCredentials {
   username: string;
@@ -278,13 +327,11 @@ export interface ActingAsUserSelection {
   displayName: string | null;
 }
 
-// Type guard to check if a book is from a metadata provider
-// Returns true and narrows type to include required provider fields
 export const isMetadataBook = (book: Book): book is Book & {
   provider: string;
   provider_id: string;
 } => {
-  return !!book.provider && !!book.provider_id;
+  return Boolean(book.provider && book.provider_id) && book.provider !== book.source;
 };
 
 export interface WishlistItem {
@@ -299,6 +346,7 @@ export interface ReleaseSource {
   display_name: string;   // e.g., 'Direct Download', 'Prowlarr'
   enabled: boolean;       // Whether the source is available for use
   supported_content_types?: string[];  // Content types this source supports (e.g., ['ebook', 'audiobook'])
+  browse_results_are_releases?: boolean;
 }
 
 // Column schema types for plugin-driven release list UI
@@ -378,7 +426,7 @@ export interface Release {
 
 // Search info returned by release sources
 export interface SourceSearchInfo {
-  search_type: 'isbn' | 'title_author' | 'categories' | 'expanded';
+  search_type: 'isbn' | 'title_author' | 'categories' | 'expanded' | 'manual' | 'query';
 }
 
 // Response from /api/releases endpoint

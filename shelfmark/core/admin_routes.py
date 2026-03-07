@@ -339,7 +339,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             # Ensure runtime reads see updated per-user overrides immediately.
             try:
                 from shelfmark.core.config import config as app_config
-                app_config.refresh()
+                app_config.refresh(force=True)
             except Exception:
                 pass
 

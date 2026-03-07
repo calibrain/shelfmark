@@ -20,6 +20,7 @@ const makePolicy = (overrides: Partial<RequestPolicyResponse> = {}): RequestPoli
     {
       source: 'direct_download',
       supported_content_types: ['ebook'],
+      browse_results_are_releases: true,
       modes: {
         ebook: 'request_release',
       },
@@ -57,7 +58,14 @@ describe('requestPolicyCore mode resolution', () => {
         ebook: 'request_book',
         audiobook: 'request_release',
       },
-      source_modes: [],
+      source_modes: [
+        {
+          source: 'direct_download',
+          supported_content_types: ['ebook'],
+          browse_results_are_releases: true,
+          modes: {},
+        },
+      ],
       rules: [],
     });
 

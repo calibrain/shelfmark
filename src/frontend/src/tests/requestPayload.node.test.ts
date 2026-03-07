@@ -4,7 +4,10 @@ import type { Book, CreateRequestPayload, Release } from '../types/index.js';
 import {
   buildDirectRequestPayload,
   buildMetadataBookRequestData,
+  buildReleaseDataFromDirectBook,
   buildReleaseDataFromMetadataRelease,
+  getBrowseSource,
+  isSourceBackedRequestPayload,
   getRequestSuccessMessage,
   toContentType,
 } from '../utils/requestPayload.js';
@@ -43,11 +46,27 @@ describe('requestPayload utilities', () => {
     assert.equal(payload.context.content_type, 'ebook');
     assert.ok(payload.release_data);
     assert.equal(payload.release_data?.source, 'direct_download');
+    assert.equal(payload.release_data?.search_mode, 'direct');
+    assert.equal(isSourceBackedRequestPayload(payload), true);
   });
 
   it('builds metadata book + release payload fragments', () => {
     const bookData = buildMetadataBookRequestData(baseBook, 'ebook');
     const releaseData = buildReleaseDataFromMetadataRelease(baseBook, baseRelease, 'ebook');
+    const directReleaseData = buildReleaseDataFromDirectBook(baseBook);
+    const sourceBackedReleaseData = buildReleaseDataFromMetadataRelease(
+      {
+        ...baseBook,
+        provider: 'direct_download',
+        provider_id: 'dd-1',
+        source: 'direct_download',
+      },
+      {
+        ...baseRelease,
+        source: 'direct_download',
+      },
+      'ebook'
+    );
 
     assert.equal(bookData.provider, 'openlibrary');
     assert.equal(bookData.provider_id, 'ol-1');
@@ -55,6 +74,31 @@ describe('requestPayload utilities', () => {
     assert.equal(releaseData.source, 'prowlarr');
     assert.equal(releaseData.format, 'epub');
     assert.equal(releaseData.content_type, 'ebook');
+    assert.equal(directReleaseData.search_mode, 'direct');
+    assert.equal(sourceBackedReleaseData.search_mode, 'direct');
+  });
+
+  it('resolves browse source from source-backed or provider-backed books', () => {
+    assert.equal(getBrowseSource(baseBook), 'direct_download');
+    assert.equal(
+      getBrowseSource({
+        ...baseBook,
+        source: undefined,
+        provider: 'direct_download',
+      }),
+      'direct_download'
+    );
+  });
+
+  it('throws when browse-source context is missing', () => {
+    assert.throws(
+      () => getBrowseSource({
+        id: 'missing-source',
+        title: 'Example',
+        author: 'Author',
+      }),
+      /missing source context/
+    );
   });
 
   it('builds success toast message from payload title with fallback', () => {

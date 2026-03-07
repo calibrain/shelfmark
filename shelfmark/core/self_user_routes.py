@@ -339,7 +339,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
             try:
                 from shelfmark.core.config import config as app_config
 
-                app_config.refresh()
+                app_config.refresh(force=True)
             except Exception:
                 pass
 

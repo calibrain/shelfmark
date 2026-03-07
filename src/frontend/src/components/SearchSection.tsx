@@ -1,35 +1,42 @@
-import { AdvancedFilterState, Language, MetadataSearchField, ContentType } from '../types';
-import { buildSearchQuery } from '../utils/buildSearchQuery';
-import { useSearchMode } from '../contexts/SearchModeContext';
+import {
+  AdvancedFilterState,
+  Language,
+  MetadataSearchField,
+  ContentType,
+  QueryTargetOption,
+  SearchMode,
+  MetadataProviderSummary,
+} from '../types';
 import { AdvancedFilters } from './AdvancedFilters';
 import { SearchBar } from './SearchBar';
 
 interface SearchSectionProps {
-  onSearch: (query: string) => void;
+  onSearch: () => void;
   isLoading: boolean;
   isInitialState: boolean;
   bookLanguages: Language[];
   defaultLanguage: string[];
-  supportedFormats: string[];
   logoUrl: string;
-  searchInput: string;
-  onSearchInputChange: (value: string) => void;
+  queryValue: string | number | boolean;
+  queryValueLabel?: string;
+  onQueryValueChange: (value: string | number | boolean, label?: string) => void;
+  queryTargets: QueryTargetOption[];
+  activeQueryTarget: string;
+  onQueryTargetChange: (key: string) => void;
   showAdvanced: boolean;
-  onAdvancedToggle: () => void;
+  onAdvancedToggle?: () => void;
   advancedFilters: AdvancedFilterState;
   onAdvancedFiltersChange: (updates: Partial<AdvancedFilterState>) => void;
-  // Universal mode props
-  metadataSearchFields?: MetadataSearchField[];
-  searchFieldValues?: Record<string, string | number | boolean>;
-  onSearchFieldChange?: (key: string, value: string | number | boolean, label?: string) => void;
   contentType?: ContentType;
   onContentTypeChange?: (type: ContentType) => void;
   allowedContentTypes?: ContentType[];
-  // Manual search mode (universal only)
-  isManualSearch?: boolean;
-  onManualSearchToggle?: () => void;
-  searchDisabled?: boolean;
-  activeListLabel?: string;
+  activeQueryField?: MetadataSearchField | null;
+  searchMode: SearchMode;
+  onSearchModeChange: (mode: SearchMode) => void;
+  metadataProviders?: MetadataProviderSummary[];
+  activeMetadataProvider?: string | null;
+  onMetadataProviderChange?: (provider: string) => void;
+  isAdmin?: boolean;
 }
 
 export const SearchSection = ({
@@ -38,39 +45,28 @@ export const SearchSection = ({
   isInitialState,
   bookLanguages,
   defaultLanguage,
-  supportedFormats,
   logoUrl,
-  searchInput,
-  onSearchInputChange,
+  queryValue,
+  queryValueLabel,
+  onQueryValueChange,
+  queryTargets,
+  activeQueryTarget,
+  onQueryTargetChange,
   showAdvanced,
   onAdvancedToggle,
   advancedFilters,
   onAdvancedFiltersChange,
-  metadataSearchFields,
-  searchFieldValues,
-  onSearchFieldChange,
   contentType = 'ebook',
   onContentTypeChange,
   allowedContentTypes,
-  isManualSearch = false,
-  onManualSearchToggle,
-  searchDisabled = false,
-  activeListLabel,
+  activeQueryField,
+  searchMode,
+  onSearchModeChange,
+  metadataProviders,
+  activeMetadataProvider,
+  onMetadataProviderChange,
+  isAdmin = false,
 }: SearchSectionProps) => {
-  const { searchMode } = useSearchMode();
-
-  const handleSearch = () => {
-    const query = buildSearchQuery({
-      searchInput,
-      showAdvanced,
-      advancedFilters,
-      bookLanguages,
-      defaultLanguage,
-      searchMode,
-    });
-    onSearch(query);
-  };
-
   return (
     <section
       id="search-section"
@@ -90,33 +86,35 @@ export const SearchSection = ({
         isInitialState ? '' : 'hidden'
       }`}>
         <SearchBar
-          value={searchInput}
-          onChange={onSearchInputChange}
-          onSubmit={handleSearch}
+          value={queryValue}
+          valueLabel={queryValueLabel}
+          onChange={onQueryValueChange}
+          onSubmit={onSearch}
           isLoading={isLoading}
           onAdvancedToggle={onAdvancedToggle}
           contentType={contentType}
           onContentTypeChange={onContentTypeChange}
           allowedContentTypes={allowedContentTypes}
-          isManualSearch={isManualSearch}
-          disabled={searchDisabled}
-          activeListLabel={activeListLabel}
+          queryTargets={queryTargets}
+          activeQueryTarget={activeQueryTarget}
+          onQueryTargetChange={onQueryTargetChange}
+          activeQueryField={activeQueryField}
         />
         <AdvancedFilters
           visible={showAdvanced}
           bookLanguages={bookLanguages}
           defaultLanguage={defaultLanguage}
-          supportedFormats={supportedFormats}
           filters={advancedFilters}
           onFiltersChange={onAdvancedFiltersChange}
           formClassName="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
           renderWrapper={form => form}
-          metadataSearchFields={metadataSearchFields}
-          searchFieldValues={searchFieldValues}
-          onSearchFieldChange={onSearchFieldChange}
-          onSubmit={handleSearch}
-          isManualSearch={isManualSearch}
-          onManualSearchToggle={onManualSearchToggle}
+          searchMode={searchMode}
+          onSearchModeChange={onSearchModeChange}
+          metadataProviders={metadataProviders}
+          activeMetadataProvider={activeMetadataProvider}
+          onMetadataProviderChange={onMetadataProviderChange}
+          contentType={contentType}
+          isAdmin={isAdmin}
         />
       </div>
     </section>

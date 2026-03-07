@@ -30,7 +30,7 @@ def main_module():
 class TestProxyAuthMiddleware:
     def test_skips_for_non_proxy_mode(self, main_module):
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with main_module.app.test_request_context("/api/search"):
+            with main_module.app.test_request_context("/api/releases"):
                 result = main_module.proxy_auth_middleware()
                 assert result is None
                 assert "user_id" not in main_module.session
@@ -61,7 +61,7 @@ class TestProxyAuthMiddleware:
                 },
             ):
                 with main_module.app.test_request_context(
-                    "/api/search",
+                    "/api/releases",
                     headers={"X-Auth-User": "proxyuser"},
                 ):
                     result = main_module.proxy_auth_middleware()
@@ -89,7 +89,7 @@ class TestProxyAuthMiddleware:
                 return_value={"PROXY_AUTH_USER_HEADER": "X-Auth-User"},
             ):
                 with main_module.app.test_request_context(
-                    "/api/search",
+                    "/api/releases",
                     headers={"X-Auth-User": "proxy_takeover_local"},
                 ):
                     result = main_module.proxy_auth_middleware()
@@ -111,7 +111,7 @@ class TestProxyAuthMiddleware:
                 },
             ):
                 with main_module.app.test_request_context(
-                    "/api/search",
+                    "/api/releases",
                     headers={"X-Auth-User": "proxyuser2"},
                 ):
                     main_module.session["user_id"] = "old-user"
@@ -137,7 +137,7 @@ class TestProxyAuthMiddleware:
                 },
             ):
                 with main_module.app.test_request_context(
-                    "/api/search",
+                    "/api/releases",
                     headers={"X-Auth-User": username},
                 ):
                     main_module.session["user_id"] = username
@@ -171,7 +171,7 @@ class TestProxyAuthMiddleware:
                 },
             ):
                 with main_module.app.test_request_context(
-                    "/api/search",
+                    "/api/releases",
                     headers={"X-Auth-User": username},
                 ):
                     main_module.session["user_id"] = username
@@ -195,7 +195,7 @@ class TestProxyAuthMiddleware:
                 "shelfmark.core.settings_registry.load_config_file",
                 return_value={"PROXY_AUTH_USER_HEADER": "X-Auth-User"},
             ):
-                with main_module.app.test_request_context("/api/search"):
+                with main_module.app.test_request_context("/api/releases"):
                     resp = _as_response(main_module.proxy_auth_middleware())
                     data = resp.get_json()
 
@@ -213,7 +213,7 @@ class TestProxyAuthMiddleware:
                 },
             ):
                 with main_module.app.test_request_context(
-                    "/api/search",
+                    "/api/releases",
                     headers={
                         "X-Auth-User": "adminuser",
                         "X-Auth-Groups": "users,admins,devs",
@@ -234,7 +234,7 @@ class TestLoginRequiredDecorator:
 
     def test_allows_no_auth(self, main_module, view):
         with patch.object(main_module, "get_auth_mode", return_value="none"):
-            with main_module.app.test_request_context("/api/search"):
+            with main_module.app.test_request_context("/api/releases"):
                 decorated = main_module.login_required(view)
                 resp = decorated()
 
@@ -242,7 +242,7 @@ class TestLoginRequiredDecorator:
 
     def test_blocks_when_not_authenticated(self, main_module, view):
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with main_module.app.test_request_context("/api/search"):
+            with main_module.app.test_request_context("/api/releases"):
                 decorated = main_module.login_required(view)
                 resp = _as_response(decorated())
 
@@ -250,7 +250,7 @@ class TestLoginRequiredDecorator:
 
     def test_allows_authenticated(self, main_module, view):
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with main_module.app.test_request_context("/api/search"):
+            with main_module.app.test_request_context("/api/releases"):
                 main_module.session["user_id"] = "user"
                 decorated = main_module.login_required(view)
                 resp = decorated()

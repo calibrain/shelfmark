@@ -36,12 +36,22 @@ SORT_LABELS: Dict[SortOrder, str] = {
 
 
 @dataclass
+class MetadataCapability:
+    """Declarative provider capability consumed by shared UI code."""
+    key: str
+    field_key: Optional[str] = None
+    sort: Optional[SortOrder] = None
+
+
+@dataclass
 class TextSearchField:
     """Text input search field."""
     key: str                              # Field identifier (e.g., "author", "publisher")
     label: str                            # Display label in UI
     placeholder: str = ""                 # Placeholder text
     description: str = ""                 # Help text
+    suggestions_endpoint: Optional[str] = None  # Remote suggestions endpoint for typeahead
+    suggestions_min_query_length: int = 2       # Minimum chars before requesting suggestions
 
 
 @dataclass
@@ -95,6 +105,21 @@ SearchField = Union[
 ]
 
 
+def serialize_metadata_capability(capability: MetadataCapability) -> Dict[str, Any]:
+    """Serialize a provider capability for API responses."""
+    result: Dict[str, Any] = {
+        "key": capability.key,
+    }
+
+    if capability.field_key:
+        result["field_key"] = capability.field_key
+
+    if capability.sort:
+        result["sort"] = capability.sort.value
+
+    return result
+
+
 def serialize_search_field(search_field: SearchField) -> Dict[str, Any]:
     """Serialize a search field to dict for API response."""
     result: Dict[str, Any] = {
@@ -110,6 +135,10 @@ def serialize_search_field(search_field: SearchField) -> Dict[str, Any]:
         result["min"] = search_field.min_value
         result["max"] = search_field.max_value
         result["step"] = search_field.step
+    elif isinstance(search_field, TextSearchField):
+        if search_field.suggestions_endpoint:
+            result["suggestions_endpoint"] = search_field.suggestions_endpoint
+            result["suggestions_min_query_length"] = search_field.suggestions_min_query_length
     elif isinstance(search_field, SelectSearchField):
         result["options"] = search_field.options
     elif isinstance(search_field, CheckboxSearchField):
@@ -169,6 +198,7 @@ class BookMetadata:
     display_fields: List[DisplayField] = field(default_factory=list)
 
     # Series info (if book is part of a series)
+    series_id: Optional[str] = None        # Provider-specific series ID
     series_name: Optional[str] = None      # Name of the series
     series_position: Optional[float] = None  # This book's position (e.g., 3, 1.5 for novellas)
     series_count: Optional[int] = None     # Total books in the series
@@ -294,12 +324,14 @@ class MetadataProvider(ABC):
         requires_auth: True if API key/authentication is required
         supported_sorts: List of SortOrder values this provider supports
         search_fields: List of provider-specific search fields
+        capabilities: Declarative capabilities exposed to shared UI code
     """
     name: str
     display_name: str
     requires_auth: bool
     supported_sorts: List[SortOrder] = [SortOrder.RELEVANCE]
     search_fields: List[SearchField] = []
+    capabilities: List[MetadataCapability] = []
 
     @abstractmethod
     def search(self, options: MetadataSearchOptions) -> List[BookMetadata]:
@@ -333,7 +365,11 @@ class MetadataProvider(ABC):
             has_more=has_more
         )
 
-    def get_search_field_options(self, field_key: str) -> List[Dict[str, str]]:
+    def get_search_field_options(
+        self,
+        field_key: str,
+        query: Optional[str] = None,
+    ) -> List[Dict[str, str]]:
         """Get dynamic options for a provider-specific search field."""
         return []
 
@@ -447,10 +483,25 @@ def get_configured_provider(
     return get_provider(metadata_provider, **kwargs)
 
 
-def _get_configured_provider_name(user_id: Optional[int] = None) -> str:
-    """Get the currently configured metadata provider name from config."""
+def get_configured_provider_name(
+    content_type: str = "ebook",
+    user_id: Optional[int] = None,
+    fallback_to_main: bool = True,
+) -> str:
+    """Get the configured metadata provider name for a content type."""
     from shelfmark.core.config import config as app_config
+
     app_config.refresh()
+
+    if content_type == "audiobook":
+        audiobook_provider = app_config.get(
+            "METADATA_PROVIDER_AUDIOBOOK",
+            "",
+            user_id=user_id,
+        )
+        if audiobook_provider or not fallback_to_main:
+            return audiobook_provider
+
     return app_config.get("METADATA_PROVIDER", "", user_id=user_id)
 
 
@@ -460,7 +511,7 @@ def get_provider_sort_options(
 ) -> List[Dict[str, str]]:
     """Get sort options for a metadata provider as {value, label} dicts."""
     if provider_name is None:
-        provider_name = _get_configured_provider_name(user_id=user_id)
+        provider_name = get_configured_provider_name(user_id=user_id)
 
     if provider_name and provider_name in _PROVIDERS:
         provider_class = _PROVIDERS[provider_name]
@@ -480,7 +531,7 @@ def get_provider_search_fields(
 ) -> List[Dict[str, Any]]:
     """Get search fields for a metadata provider as serialized dicts."""
     if provider_name is None:
-        provider_name = _get_configured_provider_name(user_id=user_id)
+        provider_name = get_configured_provider_name(user_id=user_id)
 
     if provider_name and provider_name in _PROVIDERS:
         provider_class = _PROVIDERS[provider_name]
@@ -491,6 +542,23 @@ def get_provider_search_fields(
     return [serialize_search_field(f) for f in fields]
 
 
+def get_provider_capabilities(
+    provider_name: Optional[str] = None,
+    user_id: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Get declarative capabilities for a metadata provider."""
+    if provider_name is None:
+        provider_name = get_configured_provider_name(user_id=user_id)
+
+    if provider_name and provider_name in _PROVIDERS:
+        provider_class = _PROVIDERS[provider_name]
+        capabilities = getattr(provider_class, "capabilities", [])
+    else:
+        capabilities = []
+
+    return [serialize_metadata_capability(capability) for capability in capabilities]
+
+
 def get_provider_default_sort(
     provider_name: Optional[str] = None,
     user_id: Optional[int] = None,
@@ -499,7 +567,7 @@ def get_provider_default_sort(
     from shelfmark.core.config import config as app_config
 
     if provider_name is None:
-        provider_name = _get_configured_provider_name(user_id=user_id)
+        provider_name = get_configured_provider_name(user_id=user_id)
 
     if not provider_name:
         return "relevance"
@@ -536,7 +604,7 @@ def sync_metadata_provider_selection() -> None:
         general_config = load_config_file("general")
         general_config["METADATA_PROVIDER"] = new_provider
         save_config_file("general", general_config)
-        app_config.refresh()
+        app_config.refresh(force=True)
 
 
 # Import provider implementations to trigger registration

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, forwardRef, useImper
 import { SearchBar, SearchBarHandle } from './SearchBar';
 import { DropdownList } from './DropdownList';
 import { getAdminUsers } from '../services/api';
-import { ContentType, ActingAsUserSelection } from '../types';
+import { ContentType, ActingAsUserSelection, MetadataSearchField, QueryTargetOption } from '../types';
 import { ActivityStatusCounts, getActivityBadgeState } from '../utils/activityBadge';
 import { formatActingAsUserName } from '../utils/actingAsUser';
 import { withBasePath } from '../utils/basePath';
@@ -17,8 +17,9 @@ interface HeaderProps {
   debug?: boolean;
   logoUrl?: string;
   showSearch?: boolean;
-  searchInput?: string;
-  onSearchChange?: (value: string) => void;
+  searchInput?: string | number | boolean;
+  searchInputLabel?: string;
+  onSearchChange?: (value: string | number | boolean, label?: string) => void;
   onSearch?: () => void;
   onAdvancedToggle?: () => void;
   isLoading?: boolean;
@@ -42,9 +43,10 @@ interface HeaderProps {
   contentType?: ContentType;
   onContentTypeChange?: (type: ContentType) => void;
   allowedContentTypes?: ContentType[];
-  isManualSearch?: boolean;
-  searchDisabled?: boolean;
-  activeListLabel?: string;
+  queryTargets?: QueryTargetOption[];
+  activeQueryTarget?: string;
+  onQueryTargetChange?: (target: string) => void;
+  activeQueryField?: MetadataSearchField | null;
 }
 
 export const Header = forwardRef<HeaderHandle, HeaderProps>(({
@@ -54,6 +56,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   logoUrl,
   showSearch = false,
   searchInput = '',
+  searchInputLabel,
   onSearchChange,
   onSearch,
   onAdvancedToggle,
@@ -78,9 +81,10 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   contentType = 'ebook',
   onContentTypeChange,
   allowedContentTypes,
-  isManualSearch = false,
-  searchDisabled = false,
-  activeListLabel,
+  queryTargets = [],
+  activeQueryTarget = 'general',
+  onQueryTargetChange,
+  activeQueryField = null,
 }, ref) => {
   const activityBadge = getActivityBadgeState(statusCounts, isAdmin);
   const settingsEnabled = canAccessSettings ?? isAdmin;
@@ -269,8 +273,8 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
     onSearch?.();
   };
 
-  const handleSearchChange = (value: string) => {
-    onSearchChange?.(value);
+  const handleSearchChange = (value: string | number | boolean, label?: string) => {
+    onSearchChange?.(value, label);
   };
 
   const handleActingAsChange = (nextValue: string[] | string) => {
@@ -688,9 +692,9 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
               )}
               <SearchBar
                 ref={searchBarRef}
-                className="flex-1 lg:flex-initial"
-                inputClassName="lg:w-[50vw]"
+                className="flex-1 lg:w-[calc(50vw+5rem)] lg:flex-none"
                 value={searchInput}
+                valueLabel={searchInputLabel}
                 onChange={handleSearchChange}
                 onSubmit={handleHeaderSearch}
                 onAdvancedToggle={onAdvancedToggle}
@@ -698,9 +702,10 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
                 contentType={contentType}
                 onContentTypeChange={onContentTypeChange}
                 allowedContentTypes={allowedContentTypes}
-                isManualSearch={isManualSearch}
-                disabled={searchDisabled}
-                activeListLabel={activeListLabel}
+                queryTargets={queryTargets}
+                activeQueryTarget={activeQueryTarget}
+                onQueryTargetChange={onQueryTargetChange}
+                activeQueryField={activeQueryField}
               />
             </div>
           </div>

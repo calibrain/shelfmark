@@ -6,6 +6,7 @@ from typing import List, Optional
 MANUAL_QUERY_MAX_LEN = 256
 
 from shelfmark.core.config import config
+from shelfmark.core.models import SearchFilters
 from shelfmark.metadata_providers import (
     BookMetadata,
     group_languages_by_localized_title,
@@ -37,6 +38,7 @@ class ReleaseSearchPlan:
     grouped_title_variants: List[ReleaseSearchVariant]
     manual_query: Optional[str] = None
     indexers: Optional[List[str]] = None  # Indexer names for Prowlarr (overrides settings)
+    source_filters: Optional[SearchFilters] = None
 
     @property
     def primary_query(self) -> str:
@@ -88,6 +90,7 @@ def build_release_search_plan(
     languages: Optional[List[str]] = None,
     manual_query: Optional[str] = None,
     indexers: Optional[List[str]] = None,
+    source_filters: Optional[SearchFilters] = None,
 ) -> ReleaseSearchPlan:
     resolved_languages = _normalize_languages(languages)
 
@@ -109,6 +112,7 @@ def build_release_search_plan(
             grouped_title_variants=[variant],
             manual_query=resolved_manual_query,
             indexers=indexers,
+            source_filters=source_filters,
         )
 
     isbn_candidates: List[str] = []
@@ -165,4 +169,5 @@ def build_release_search_plan(
         grouped_title_variants=grouped_variants,
         manual_query=None,
         indexers=indexers,
+        source_filters=source_filters,
     )

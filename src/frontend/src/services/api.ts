@@ -10,9 +10,17 @@ import {
   CreateRequestPayload,
   RequestRecord,
   WishlistItem,
+  MetadataProvidersResponse,
+  MetadataSearchConfig,
 } from '../types';
 import { SettingsResponse, ActionResult, UpdateResult, SettingsTab } from '../types/settings';
-import { MetadataBookData, transformMetadataToBook } from '../utils/bookTransformers';
+import {
+  MetadataBookData,
+  SourceRecordData,
+  transformMetadataToBook,
+  transformReleaseToDirectBook,
+  transformSourceRecordToBook,
+} from '../utils/bookTransformers';
 import { getApiBase, withBasePath } from '../utils/basePath';
 import {
   buildAdminRequestActionUrl,
@@ -28,10 +36,9 @@ const API_BASE = getApiBase();
 
 // API endpoints
 const API = {
-  search: `${API_BASE}/search`,
   metadataSearch: `${API_BASE}/metadata/search`,
-  info: `${API_BASE}/info`,
-  download: `${API_BASE}/download`,
+  metadataConfig: `${API_BASE}/metadata/config`,
+  metadataProviders: `${API_BASE}/metadata/providers`,
   status: `${API_BASE}/status`,
   cancelDownload: `${API_BASE}/download`,
   retryDownload: `${API_BASE}/download`,
@@ -206,7 +213,8 @@ async function fetchJSON<T>(
 // API functions
 export const searchBooks = async (query: string): Promise<Book[]> => {
   if (!query) return [];
-  return fetchJSON<Book[]>(`${API.search}?${query}`);
+  const response = await fetchJSON<ReleasesResponse>(`${API_BASE}/releases?source=direct_download&${query}`);
+  return response.releases.map(transformReleaseToDirectBook);
 };
 
 // Metadata search response type (internal)
@@ -241,7 +249,8 @@ export const searchMetadata = async (
   sort: string = 'relevance',
   fields: Record<string, string | number | boolean> = {},
   page: number = 1,
-  contentType: string = 'ebook'
+  contentType: string = 'ebook',
+  provider?: string
 ): Promise<MetadataSearchResult> => {
   const hasFields = Object.values(fields).some(v => v !== '' && v !== false);
 
@@ -257,6 +266,9 @@ export const searchMetadata = async (
   params.set('sort', sort);
   params.set('page', String(page));
   params.set('content_type', contentType);
+  if (provider) {
+    params.set('provider', provider);
+  }
 
   // Add custom search field values
   Object.entries(fields).forEach(([key, value]) => {
@@ -275,13 +287,44 @@ export const searchMetadata = async (
   };
 };
 
-export const fetchFieldOptions = async (endpoint: string): Promise<DynamicFieldOption[]> => {
+export const getMetadataProviders = async (): Promise<MetadataProvidersResponse> => {
+  return fetchJSON<MetadataProvidersResponse>(API.metadataProviders);
+};
+
+export const getMetadataSearchConfig = async (
+  contentType: string = 'ebook',
+  provider?: string,
+): Promise<MetadataSearchConfig> => {
+  const params = new URLSearchParams({
+    content_type: contentType,
+  });
+
+  if (provider) {
+    params.set('provider', provider);
+  }
+
+  return fetchJSON<MetadataSearchConfig>(`${API.metadataConfig}?${params.toString()}`);
+};
+
+export const fetchFieldOptions = async (
+  endpoint: string,
+  query?: string,
+): Promise<DynamicFieldOption[]> => {
   const normalizedEndpoint =
     endpoint.startsWith('http://') || endpoint.startsWith('https://')
       ? endpoint
       : withBasePath(endpoint);
 
-  const response = await fetchJSON<{ options?: unknown }>(normalizedEndpoint);
+  const url = new URL(normalizedEndpoint, window.location.origin);
+  if (query && query.trim().length > 0) {
+    url.searchParams.set('query', query.trim());
+  }
+
+  const requestUrl = url.origin === window.location.origin
+    ? `${url.pathname}${url.search}`
+    : url.toString();
+
+  const response = await fetchJSON<{ options?: unknown }>(requestUrl);
   if (!Array.isArray(response.options)) {
     return [];
   }
@@ -298,8 +341,11 @@ export const fetchFieldOptions = async (endpoint: string): Promise<DynamicFieldO
     .filter((option) => option.value !== '');
 };
 
-export const getBookInfo = async (id: string): Promise<Book> => {
-  return fetchJSON<Book>(`${API.info}?id=${encodeURIComponent(id)}`);
+export const getSourceRecordInfo = async (source: string, id: string): Promise<Book> => {
+  const response = await fetchJSON<SourceRecordData>(
+    `${API_BASE}/release-sources/${encodeURIComponent(source)}/records/${encodeURIComponent(id)}`
+  );
+  return transformSourceRecordToBook(response);
 };
 
 // Get full book details from a metadata provider
@@ -309,15 +355,6 @@ export const getMetadataBookInfo = async (provider: string, bookId: string): Pro
   );
 
   return transformMetadataToBook(response);
-};
-
-export const downloadBook = async (id: string, onBehalfOfUserId?: number): Promise<void> => {
-  const params = new URLSearchParams();
-  params.set('id', id);
-  if (typeof onBehalfOfUserId === 'number') {
-    params.set('on_behalf_of_user_id', String(onBehalfOfUserId));
-  }
-  await fetchJSON(`${API.download}?${params.toString()}`);
 };
 
 // Download a specific release (from ReleaseModal)
@@ -341,6 +378,7 @@ export type DownloadReleasePayload = {
   series_position?: number;
   subtitle?: string;
   search_author?: string;
+  search_mode?: 'direct' | 'universal';
 };
 
 export const downloadRelease = async (

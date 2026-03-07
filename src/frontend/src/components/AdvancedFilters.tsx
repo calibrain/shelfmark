@@ -1,11 +1,15 @@
-import { ReactNode, KeyboardEvent } from 'react';
-import { AdvancedFilterState, Language, MetadataSearchField } from '../types';
+import { ReactNode } from 'react';
+import {
+  AdvancedFilterState,
+  ContentType,
+  Language,
+  MetadataProviderSummary,
+  SearchMode,
+} from '../types';
 import { normalizeLanguageSelection } from '../utils/languageFilters';
-import { useSearchMode } from '../contexts/SearchModeContext';
 import { LanguageMultiSelect } from './LanguageMultiSelect';
 import { DropdownList } from './DropdownList';
 import { CONTENT_OPTIONS } from '../data/filterOptions';
-import { SearchFieldRenderer, ToggleSwitch } from './shared';
 
 const FORMAT_TYPES = ['pdf', 'epub', 'mobi', 'azw3', 'fb2', 'djvu', 'cbz', 'cbr', 'zip', 'rar'] as const;
 
@@ -13,47 +17,41 @@ interface AdvancedFiltersProps {
   visible: boolean;
   bookLanguages: Language[];
   defaultLanguage: string[];
-  supportedFormats: string[];
   filters: AdvancedFilterState;
   onFiltersChange: (updates: Partial<AdvancedFilterState>) => void;
   formClassName?: string;
   renderWrapper?: (form: ReactNode) => ReactNode;
-  // Universal mode props
-  metadataSearchFields?: MetadataSearchField[];
-  searchFieldValues?: Record<string, string | number | boolean>;
-  onSearchFieldChange?: (key: string, value: string | number | boolean, label?: string) => void;
-  // Submit handler for Enter key
-  onSubmit?: () => void;
-  // Manual search mode (universal only)
-  isManualSearch?: boolean;
-  onManualSearchToggle?: () => void;
+  searchMode: SearchMode;
+  onSearchModeChange: (mode: SearchMode) => void;
+  metadataProviders?: MetadataProviderSummary[];
+  activeMetadataProvider?: string | null;
+  onMetadataProviderChange?: (provider: string) => void;
+  contentType?: ContentType;
+  isAdmin?: boolean;
 }
+
+const SEARCH_MODE_OPTIONS = [
+  { value: 'direct', label: 'Direct', description: 'Search web sources for books and download directly. Works out of the box.' },
+  { value: 'universal', label: 'Universal', description: 'Metadata-based search with downloads from all sources. Book and Audiobook support.' },
+];
 
 export const AdvancedFilters = ({
   visible,
   bookLanguages,
   defaultLanguage,
-  supportedFormats,
   filters,
   onFiltersChange,
   formClassName,
   renderWrapper,
-  metadataSearchFields = [],
-  searchFieldValues = {},
-  onSearchFieldChange,
-  onSubmit,
-  isManualSearch = false,
-  onManualSearchToggle,
+  searchMode,
+  onSearchModeChange,
+  metadataProviders = [],
+  activeMetadataProvider,
+  onMetadataProviderChange,
+  contentType = 'ebook',
+  isAdmin = false,
 }: AdvancedFiltersProps) => {
-  const { searchMode } = useSearchMode();
-  const { isbn, author, title, lang, content, formats } = filters;
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && onSubmit) {
-      e.preventDefault();
-      onSubmit();
-    }
-  };
+  const { lang, content, formats } = filters;
 
   const handleLangChange = (next: string[]) => {
     const normalized = normalizeLanguageSelection(next);
@@ -73,45 +71,64 @@ export const AdvancedFilters = ({
   const formatOptions = FORMAT_TYPES.map(format => ({
     value: format,
     label: format.toUpperCase(),
-    disabled: !supportedFormats.includes(format),
   }));
+
+  const providerOptions = metadataProviders.map((provider) => {
+    const details: string[] = [];
+    if (!provider.enabled) details.push('Disabled in Settings');
+    if (provider.enabled && !provider.available) details.push('Not configured');
+    if (provider.requires_auth) details.push('API key required');
+
+    return {
+      value: provider.name,
+      label: provider.display_name,
+      description: details.length > 0 ? details.join(' • ') : undefined,
+      disabled: !provider.enabled || !provider.available,
+    };
+  });
 
   if (!visible) return null;
 
-  // Universal search mode: render dynamic provider fields + manual search toggle
-  if (searchMode === 'universal') {
-    const hasProviderFields = metadataSearchFields.length > 0;
+  const wrapperClassName = formClassName
+    ? 'px-2'
+    : 'px-2 lg:ml-[calc(3rem+1rem)] lg:w-[calc(50vw+4rem)]';
 
-    // If no fields and no toggle available, don't show the section
-    if (!hasProviderFields && !onManualSearchToggle) return null;
+  const settingsForm = (
+    <div className={wrapperClassName}>
+      {isAdmin && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <DropdownList
+              label="Search Mode"
+              options={SEARCH_MODE_OPTIONS}
+              value={searchMode}
+              onChange={(value) => {
+                const next = Array.isArray(value) ? value[0] ?? 'direct' : value;
+                onSearchModeChange(next === 'universal' ? 'universal' : 'direct');
+              }}
+              placeholder="Choose a mode"
+              widthClassName="w-full"
+            />
 
-    // When formClassName is provided (initial state), the form carries its own padding;
-    // otherwise use the default positioning classes for the header-bar state.
-    const wrapperClassName = formClassName
-      ? 'px-2'
-      : 'px-2 lg:ml-[calc(3rem+1rem)] lg:w-[calc(50vw+4rem)]';
-
-    const universalForm = (
-      <div className={wrapperClassName}>
-        {onManualSearchToggle && (
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-medium opacity-70">Search Options</span>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <span className="text-xs opacity-60">Manual search</span>
-              <ToggleSwitch
-                checked={isManualSearch}
-                onChange={() => onManualSearchToggle()}
-                color="emerald"
+            {searchMode === 'universal' && (
+              <DropdownList
+                label={contentType === 'audiobook' ? 'Audiobook Metadata Provider' : 'Book Metadata Provider'}
+                options={providerOptions}
+                value={activeMetadataProvider ?? ''}
+                onChange={(value) => {
+                  const next = Array.isArray(value) ? value[0] ?? '' : value;
+                  onMetadataProviderChange?.(next);
+                }}
+                placeholder="Choose a provider"
+                widthClassName="w-full"
               />
-            </label>
+            )}
           </div>
-        )}
-        {isManualSearch && (
-          <p className="text-xs opacity-50 mb-3">
-            Manual search queries release sources directly. Some sources may return limited metadata, which can affect file naming templates.
-          </p>
-        )}
-        {!isManualSearch && metadataSearchFields.length > 0 && (
+        </>
+      )}
+
+      {searchMode === 'direct' && (
+        <div className="space-y-4">
           <form
             id="search-filters"
             className={
@@ -119,144 +136,20 @@ export const AdvancedFilters = ({
               'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
             }
           >
-            {metadataSearchFields.map((field) => (
-              <div key={field.key}>
-                {field.type !== 'CheckboxSearchField' && (
-                  <div className="flex items-center justify-between mb-1">
-                    <label htmlFor={`${field.key}-input`} className="text-sm opacity-80">
-                      {field.label}
-                    </label>
-                    {field.type === 'DynamicSelectSearchField' && searchFieldValues[field.key] && (
-                      <button
-                        type="button"
-                        onClick={() => onSearchFieldChange?.(field.key, '')}
-                        className="text-xs font-medium text-sky-500 hover:text-sky-400 transition-colors"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                )}
-                <SearchFieldRenderer
-                  field={field}
-                  value={searchFieldValues[field.key] ?? (field.type === 'CheckboxSearchField' ? false : '')}
-                  onChange={(value, label) => onSearchFieldChange?.(field.key, value, label)}
-                  onSubmit={onSubmit}
-                />
-                {field.description && (
-                  <p className="text-xs mt-1 opacity-60">{field.description}</p>
-                )}
-              </div>
-            ))}
-          </form>
-        )}
-      </div>
-    );
-
-    const wrappedUniversalForm = renderWrapper ? (
-      renderWrapper(universalForm)
-    ) : (
-      <div className="w-full border-b pt-6 pb-4 mb-4" style={{ borderColor: 'var(--border-muted)' }}>
-        <div className="w-full px-4 sm:px-6 lg:px-8">{universalForm}</div>
-      </div>
-    );
-
-    return wrappedUniversalForm;
-  }
-
-  // Direct download mode: render existing hardcoded filters
-  const form = (
-    <form
-      id="search-filters"
-      className={
-        formClassName ??
-        'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 px-2 lg:ml-[calc(3rem+1rem)] lg:w-[calc(50vw+4rem)]'
-      }
-    >
-          <div>
-            <label htmlFor="isbn-input" className="block text-sm mb-1 opacity-80">
-              ISBN
-            </label>
-            <input
-              id="isbn-input"
-              type="text"
-              placeholder="ISBN"
-              autoComplete="off"
-              enterKeyHint="search"
-              className="w-full px-3 py-2 text-sm rounded-lg border"
-              style={{
-                background: 'var(--bg-soft)',
-                color: 'var(--text)',
-                borderColor: 'var(--border-muted)',
-              }}
-              value={isbn}
-              onChange={e => {
-                onFiltersChange({ isbn: e.target.value });
-              }}
-              onKeyDown={handleKeyDown}
+            <LanguageMultiSelect
+              options={bookLanguages}
+              value={lang}
+              onChange={handleLangChange}
+              defaultLanguageCodes={defaultLanguage}
+              label="Language"
             />
-          </div>
-          <div>
-            <label htmlFor="author-input" className="block text-sm mb-1 opacity-80">
-              Author
-            </label>
-            <input
-              id="author-input"
-              type="text"
-              placeholder="Author"
-              autoComplete="off"
-              enterKeyHint="search"
-              className="w-full px-3 py-2 text-sm rounded-lg border"
-              style={{
-                background: 'var(--bg-soft)',
-                color: 'var(--text)',
-                borderColor: 'var(--border-muted)',
-              }}
-              value={author}
-              onChange={e => {
-                onFiltersChange({ author: e.target.value });
-              }}
-              onKeyDown={handleKeyDown}
+            <DropdownList
+              label="Content"
+              options={CONTENT_OPTIONS}
+              value={content}
+              onChange={handleContentChange}
+              placeholder="All"
             />
-          </div>
-          <div>
-            <label htmlFor="title-input" className="block text-sm mb-1 opacity-80">
-              Title
-            </label>
-            <input
-              id="title-input"
-              type="text"
-              placeholder="Title"
-              autoComplete="off"
-              enterKeyHint="search"
-              className="w-full px-3 py-2 text-sm rounded-lg border"
-              style={{
-                background: 'var(--bg-soft)',
-                color: 'var(--text)',
-                borderColor: 'var(--border-muted)',
-              }}
-              value={title}
-              onChange={e => {
-                onFiltersChange({ title: e.target.value });
-              }}
-              onKeyDown={handleKeyDown}
-            />
-          </div>
-          <LanguageMultiSelect
-            options={bookLanguages}
-            value={lang}
-            onChange={handleLangChange}
-            defaultLanguageCodes={defaultLanguage}
-            label="Language"
-          />
-          <DropdownList
-            label="Content"
-            options={CONTENT_OPTIONS}
-            value={content}
-            onChange={handleContentChange}
-            placeholder="All"
-          />
-          <div>
             <DropdownList
               label="Formats"
               placeholder="Any"
@@ -267,17 +160,17 @@ export const AdvancedFilters = ({
               showCheckboxes
               keepOpenOnSelect
             />
-          </div>
-    </form>
-  );
-
-  const wrappedForm = renderWrapper ? (
-    renderWrapper(form)
-  ) : (
-    <div className="w-full border-b pt-6 pb-4 mb-4" style={{ borderColor: 'var(--border-muted)' }}>
-      <div className="w-full px-4 sm:px-6 lg:px-8">{form}</div>
+          </form>
+        </div>
+      )}
     </div>
   );
 
-  return wrappedForm;
+  return renderWrapper ? (
+    renderWrapper(settingsForm)
+  ) : (
+    <div className="w-full border-b pt-6 pb-4 mb-4" style={{ borderColor: 'var(--border-muted)' }}>
+      <div className="w-full px-4 sm:px-6 lg:px-8">{settingsForm}</div>
+    </div>
+  );
 };

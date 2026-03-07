@@ -163,8 +163,8 @@ class TestPerUserDestination:
             fake_get_destination,
         )
         monkeypatch.setattr(
-            "shelfmark.download.postprocess.destination.get_aa_content_type_dir",
-            lambda ct: None,
+            "shelfmark.download.postprocess.destination.get_source",
+            lambda _: type("Source", (), {"get_destination_override": staticmethod(lambda task: None)})(),
         )
 
         from shelfmark.download.postprocess.destination import get_final_destination
@@ -196,8 +196,8 @@ class TestPerUserDestination:
             fake_get_destination,
         )
         monkeypatch.setattr(
-            "shelfmark.download.postprocess.destination.get_aa_content_type_dir",
-            lambda ct: None,
+            "shelfmark.download.postprocess.destination.get_source",
+            lambda _: type("Source", (), {"get_destination_override": staticmethod(lambda task: None)})(),
         )
 
         from shelfmark.download.postprocess.destination import get_final_destination
@@ -224,8 +224,12 @@ class TestPerUserDestination:
             lambda is_audiobook=False, user_id=None, username=None: Path("/global/books"),
         )
         monkeypatch.setattr(
-            "shelfmark.download.postprocess.destination.get_aa_content_type_dir",
-            lambda ct: Path("/routed/books"),
+            "shelfmark.download.postprocess.destination.get_source",
+            lambda _: type(
+                "Source",
+                (),
+                {"get_destination_override": staticmethod(lambda task: Path("/routed/books"))},
+            )(),
         )
 
         from shelfmark.download.postprocess.destination import get_final_destination

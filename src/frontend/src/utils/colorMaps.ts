@@ -1,4 +1,4 @@
-// Color styles with transparent backgrounds and contrasting text (matches DownloadsSidebar style)
+// Color styles with transparent backgrounds and contrasting text
 interface ColorStyle {
   bg: string;
   text: string;

@@ -242,46 +242,50 @@ class TestFullDownloadJourney:
 
 @pytest.mark.e2e
 @pytest.mark.slow
-class TestLegacyDownloadFlow:
-    """Test the legacy download API (for backwards compatibility)."""
+class TestDirectSourceReleaseFlow:
+    """Test direct-mode search, record lookup, and download via shared release APIs."""
 
-    def test_legacy_search_and_download(
+    def test_direct_source_search_and_download(
         self, api_client: APIClient, download_tracker: DownloadTracker
     ):
-        """Test the legacy search -> info -> download flow."""
-        # Use the legacy search endpoint
+        """Test the shared direct-mode source query -> record -> release download flow."""
         search_resp = api_client.get(
-            "/api/search",
-            params={"query": "Frankenstein Mary Shelley"},
+            "/api/releases",
+            params={"source": "direct_download", "query": "Frankenstein Mary Shelley"},
             timeout=30,
         )
 
         if search_resp.status_code == 503:
-            pytest.skip("Legacy search source unavailable")
+            pytest.skip("Direct source query unavailable")
 
         if search_resp.status_code != 200:
-            pytest.skip(f"Legacy search failed: {search_resp.status_code}")
+            pytest.skip(f"Direct source query failed: {search_resp.status_code}")
 
-        results = search_resp.json()
+        payload = search_resp.json()
+        results = payload.get("releases") or []
         if not results:
-            pytest.skip("No legacy search results")
+            pytest.skip("No direct source query results")
 
         first_result = results[0]
-        book_id = first_result.get("id")
-        assert book_id, "Result missing ID"
+        source = first_result.get("source")
+        source_id = first_result.get("source_id")
+        assert source == "direct_download", "Result missing direct source context"
+        assert source_id, "Result missing source_id"
 
-        # Get book info
-        info_resp = api_client.get("/api/info", params={"id": book_id})
+        info_resp = api_client.get(f"/api/release-sources/{source}/records/{source_id}")
 
         if info_resp.status_code != 200:
-            pytest.skip(f"Info endpoint failed: {info_resp.status_code}")
+            pytest.skip(f"Source record endpoint failed: {info_resp.status_code}")
 
-        # Queue download (legacy endpoint)
-        download_tracker.track(book_id)
-        download_resp = api_client.get("/api/download", params={"id": book_id})
+        # Queue download from the shared release payload
+        download_tracker.track(source_id)
+        download_resp = api_client.post(
+            "/api/releases/download",
+            json={**first_result, "content_type": "ebook", "search_mode": "direct"},
+        )
 
         if download_resp.status_code != 200:
-            pytest.skip(f"Download queue failed: {download_resp.status_code}")
+            pytest.skip(f"Release download queue failed: {download_resp.status_code}")
 
         download_data = download_resp.json()
         assert download_data.get("status") == "queued"
