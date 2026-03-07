@@ -246,6 +246,32 @@ class TestAtomicHardlink:
         assert source.exists()
         assert os.stat(source).st_ino != os.stat(result).st_ino
 
+    def test_falls_back_to_copy_on_input_output_error(self, tmp_path, monkeypatch):
+        """Falls back to copy when filesystem reports hardlinks are unsupported via EIO."""
+        import errno
+
+        from shelfmark.download.fs import atomic_hardlink as _atomic_hardlink
+
+        source = tmp_path / "source.txt"
+        source.write_text("content")
+        dest = tmp_path / "dest.txt"
+
+        original_link = os.link
+
+        def _raise_eio_for_initial_link(src, dst, *_args, **_kwargs):
+            if Path(src) == source:
+                raise OSError(errno.EIO, "Input/output error")
+            return original_link(src, dst)
+
+        monkeypatch.setattr(os, "link", _raise_eio_for_initial_link)
+
+        result = _atomic_hardlink(source, dest)
+
+        assert result == dest
+        assert result.read_text() == "content"
+        assert source.exists()
+        assert os.stat(source).st_ino != os.stat(result).st_ino
+
 
 class TestAtomicMove:
     """Tests for _atomic_move() function."""

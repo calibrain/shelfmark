@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from shelfmark.core.logger import setup_logger
@@ -115,9 +115,12 @@ class DownloadHistoryService:
             return None
         normalized = value.strip().replace("Z", "+00:00")
         try:
-            return datetime.fromisoformat(normalized).timestamp()
+            parsed = datetime.fromisoformat(normalized)
         except ValueError:
             return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.timestamp()
 
     @classmethod
     def to_history_row(cls, row: dict[str, Any], *, dismissed_at: str) -> dict[str, Any]:
@@ -177,6 +180,7 @@ class DownloadHistoryService:
         if normalized_title is None:
             raise ValueError("title must be a non-empty string")
         normalized_origin = _normalize_origin(origin)
+        recorded_at = now_utc_iso()
 
         with self._lock:
             conn = self._connect()
@@ -191,12 +195,12 @@ class DownloadHistoryService:
                     status_message, download_path,
                     queued_at, terminal_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, NULL, ?, ?)
                 ON CONFLICT(task_id) DO UPDATE SET
                     final_status = 'active',
                     status_message = NULL,
                     download_path = NULL,
-                    terminal_at = CURRENT_TIMESTAMP
+                    terminal_at = ?
                 """,
                     (
                         normalized_task_id,
@@ -212,6 +216,9 @@ class DownloadHistoryService:
                         normalize_optional_text(preview),
                         normalize_optional_text(content_type),
                         normalized_origin,
+                        recorded_at,
+                        recorded_at,
+                        recorded_at,
                     ),
                 )
                 conn.commit()

@@ -140,9 +140,9 @@ class TestOIDCFieldShowWhen:
 
 
 class TestOIDCFieldsEnvSupport:
-    """Tests that OIDC fields are UI-only (no env var support)."""
+    """Tests that OIDC fields support env configuration."""
 
-    def test_oidc_fields_not_env_supported(self):
+    def test_oidc_fields_env_supported(self):
         fields = _reload_security_module()
         oidc_keys = [
             "OIDC_DISCOVERY_URL",
@@ -157,4 +157,4 @@ class TestOIDCFieldsEnvSupport:
         for key in oidc_keys:
             field = _get_field(fields, key)
             assert field is not None, f"Field {key} not found"
-            assert field.env_supported is False, f"Field {key} should not support env vars"
+            assert field.env_supported is True, f"Field {key} should support env vars"

@@ -137,6 +137,14 @@ def sync_builtin_admin_user(
 
     existing = user_db.get_user(username=normalized_username)
     if existing:
+        existing_auth_source = str(existing.get("auth_source") or AUTH_SOURCE_BUILTIN).strip().lower()
+        if existing_auth_source != AUTH_SOURCE_BUILTIN:
+            logger.warning(
+                "Skipped builtin admin sync for username '%s' because it belongs to auth_source='%s'",
+                normalized_username,
+                existing_auth_source,
+            )
+            return
         updates: dict[str, Any] = {}
         if existing.get("password_hash") != normalized_hash:
             updates["password_hash"] = normalized_hash
@@ -774,6 +782,56 @@ class UserDB:
                 ).fetchone()
                 conn.commit()
                 return self._parse_request_row(updated_row)
+            finally:
+                conn.close()
+
+    def rollback_request_fulfilment(
+        self,
+        request_id: int,
+        *,
+        release_data: Optional[Dict[str, Any]],
+        last_failure_reason: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Restore a request to pending after fulfilment claimed it but queueing failed."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(
+                    "SELECT * FROM download_requests WHERE id = ?",
+                    (request_id,),
+                ).fetchone()
+                current = self._parse_request_row(row)
+                if current is None:
+                    raise ValueError(f"Request {request_id} not found")
+
+                conn.execute(
+                    """
+                    UPDATE download_requests
+                    SET status = 'pending',
+                        release_data = ?,
+                        admin_note = NULL,
+                        reviewed_by = NULL,
+                        reviewed_at = NULL,
+                        delivery_state = 'none',
+                        delivery_updated_at = NULL,
+                        last_failure_reason = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        self._serialize_json(release_data, "release_data"),
+                        last_failure_reason,
+                        request_id,
+                    ),
+                )
+                updated_row = conn.execute(
+                    "SELECT * FROM download_requests WHERE id = ?",
+                    (request_id,),
+                ).fetchone()
+                conn.commit()
+                parsed = self._parse_request_row(updated_row)
+                if parsed is None:
+                    raise ValueError(f"Request {request_id} not found after rollback")
+                return parsed
             finally:
                 conn.close()
 

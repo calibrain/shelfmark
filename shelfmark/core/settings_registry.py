@@ -486,21 +486,19 @@ def sync_env_to_config() -> None:
 
 def migrate_mirror_settings() -> None:
     """
-    Migrate legacy AA mirror config into the new editable mirror list setting.
+    Sync AA mirror list when code defaults change between versions.
 
-    Legacy:
-    - AA_ADDITIONAL_URLS: comma-separated extra URLs appended to defaults
+    On startup, compares a hash of DEFAULT_AA_MIRRORS against the hash stored
+    in the config file. If they differ (i.e., an update shipped new defaults),
+    the config is overwritten with the new defaults. If they match, the user's
+    customizations are left untouched.
 
-    New:
-    - AA_MIRROR_URLS: full ordered list of available mirrors (used for Auto mode and for Settings options)
+    Also handles legacy migration from AA_ADDITIONAL_URLS.
     """
-    mirrors_config = load_config_file("mirrors")
+    import hashlib
 
     from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS
     from shelfmark.core.utils import normalize_http_url
-
-    raw_list = mirrors_config.get("AA_MIRROR_URLS")
-    raw_additional = mirrors_config.get("AA_ADDITIONAL_URLS", "")
 
     def _normalize_list(values: list[str]) -> list[str]:
         out: list[str] = []
@@ -512,12 +510,42 @@ def migrate_mirror_settings() -> None:
                 out.append(norm)
         return out
 
+    def _hash_mirrors(mirrors: list[str]) -> str:
+        return hashlib.sha256(",".join(mirrors).encode()).hexdigest()
+
+    normalized_defaults = _normalize_list(DEFAULT_AA_MIRRORS)
+    current_defaults_hash = _hash_mirrors(normalized_defaults)
+
+    mirrors_config = load_config_file("mirrors")
+    stored_hash = mirrors_config.get("_AA_MIRRORS_DEFAULTS_HASH")
+    raw_list = mirrors_config.get("AA_MIRROR_URLS")
+    raw_additional = mirrors_config.get("AA_ADDITIONAL_URLS", "")
+
+    def _save_mirrors(values: dict[str, Any]) -> None:
+        merged = dict(mirrors_config)
+        merged.update(values)
+        save_config_file("mirrors", merged)
+        mirrors_config.update(values)
+
+    # Defaults changed since last startup — push new mirrors to config
+    if stored_hash != current_defaults_hash:
+        _save_mirrors({
+            "AA_MIRROR_URLS": normalized_defaults,
+            "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+        })
+        return
+
+    # --- Legacy migration (only runs if hash already matches / first time) ---
+
     # If already a proper list, just ensure it's non-empty.
     if isinstance(raw_list, list):
         normalized = _normalize_list([str(v) for v in raw_list])
         if normalized:
             return
-        save_config_file("mirrors", {"AA_MIRROR_URLS": _normalize_list(DEFAULT_AA_MIRRORS)})
+        _save_mirrors({
+            "AA_MIRROR_URLS": normalized_defaults,
+            "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+        })
         return
 
     # If saved as a string, convert to list.
@@ -525,17 +553,33 @@ def migrate_mirror_settings() -> None:
         parts = [p.strip() for p in raw_list.split(",") if p.strip()]
         normalized = _normalize_list(parts)
         if normalized:
-            save_config_file("mirrors", {"AA_MIRROR_URLS": normalized})
+            _save_mirrors({
+                "AA_MIRROR_URLS": normalized,
+                "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+            })
             return
-        save_config_file("mirrors", {"AA_MIRROR_URLS": _normalize_list(DEFAULT_AA_MIRRORS)})
+        _save_mirrors({
+            "AA_MIRROR_URLS": normalized_defaults,
+            "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+        })
         return
 
-    # If there's legacy additional mirrors, seed the full list so the UI reflects reality.
+    # If there's legacy additional mirrors, seed the full list.
     if isinstance(raw_additional, str) and raw_additional.strip():
         additional_parts = [p.strip() for p in raw_additional.split(",") if p.strip()]
         combined = _normalize_list(DEFAULT_AA_MIRRORS + additional_parts)
         if combined:
-            save_config_file("mirrors", {"AA_MIRROR_URLS": combined})
+            _save_mirrors({
+                "AA_MIRROR_URLS": combined,
+                "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+            })
+            return
+
+    # No config at all yet — write defaults
+    _save_mirrors({
+        "AA_MIRROR_URLS": normalized_defaults,
+        "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+    })
 
 
 def migrate_legacy_settings() -> None:

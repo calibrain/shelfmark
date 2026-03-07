@@ -581,7 +581,7 @@ def _compute_search_title(
         if match:
             suffix = _strip_parenthetical_suffix(match.group(2).strip())
             if normalized_subtitle.lower() == suffix.lower() or normalized_subtitle.lower() in suffix.lower():
-                return match.group(1).strip()
+                return None
 
     # Prefer subtitle when it looks like the real title.
     if normalized_subtitle and not _is_probably_series_position(normalized_subtitle):

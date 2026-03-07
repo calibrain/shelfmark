@@ -17,7 +17,7 @@ from shelfmark.core.request_validation import (
     validate_request_level_payload,
     validate_status_transition,
 )
-from shelfmark.core.request_helpers import extract_release_source_id
+from shelfmark.core.request_helpers import extract_release_source_id, normalize_positive_int
 
 
 MAX_REQUEST_NOTE_LENGTH = 1000
@@ -139,26 +139,44 @@ def sync_delivery_states_from_queue_status(
     user_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """Persist delivery-state transitions for fulfilled requests based on queue status."""
-    source_delivery_states: dict[str, str] = {}
-    for status_key in QueueStatus:
-        status_bucket = queue_status.get(status_key)
-        if not isinstance(status_bucket, dict):
-            continue
-        for source_id in status_bucket:
-            source_delivery_states[source_id] = status_key
-
-    if not source_delivery_states:
+    fulfilled_rows = user_db.list_requests(user_id=user_id, status=RequestStatus.FULFILLED)
+    if not fulfilled_rows:
         return []
 
-    fulfilled_rows = user_db.list_requests(user_id=user_id, status=RequestStatus.FULFILLED)
-    updated: list[dict[str, Any]] = []
-
+    unique_request_ids_by_source: dict[str, int] = {}
+    ambiguous_source_ids: set[str] = set()
     for row in fulfilled_rows:
         source_id = extract_release_source_id(row.get("release_data"))
         if source_id is None:
             continue
+        if source_id in unique_request_ids_by_source:
+            ambiguous_source_ids.add(source_id)
+            continue
+        unique_request_ids_by_source[source_id] = int(row["id"])
+    for source_id in ambiguous_source_ids:
+        unique_request_ids_by_source.pop(source_id, None)
 
-        delivery_state = source_delivery_states.get(source_id)
+    request_delivery_states: dict[int, str] = {}
+    for status_key in QueueStatus:
+        status_bucket = queue_status.get(status_key)
+        if not isinstance(status_bucket, dict):
+            continue
+        for source_id, task_payload in status_bucket.items():
+            request_id = None
+            if isinstance(task_payload, dict):
+                request_id = normalize_positive_int(task_payload.get("request_id"))
+            if request_id is None:
+                request_id = unique_request_ids_by_source.get(str(source_id).strip())
+            if request_id is None:
+                continue
+            request_delivery_states[request_id] = status_key
+
+    if not request_delivery_states:
+        return []
+    updated: list[dict[str, Any]] = []
+
+    for row in fulfilled_rows:
+        delivery_state = request_delivery_states.get(int(row["id"]))
         if delivery_state is None:
             continue
 
@@ -385,24 +403,9 @@ def fulfil_request(
     if requester is None:
         raise RequestServiceError("Requesting user not found", status_code=404)
 
-    queued_release_data = dict(selected_release_data)
-    queued_release_data["_request_id"] = request_id
-
-    success, error = queue_release(
-        queued_release_data,
-        0,
-        user_id=request_row["user_id"],
-        username=requester.get("username"),
-    )
-    if not success:
-        raise RequestServiceError(
-            error or "Failed to queue release",
-            status_code=409,
-            code="queue_failed",
-        )
-
+    original_release_data = request_row.get("release_data")
     try:
-        return user_db.update_request(
+        claimed_request = user_db.update_request(
             request_id,
             expected_current_status=RequestStatus.PENDING,
             status=RequestStatus.FULFILLED,
@@ -416,6 +419,37 @@ def fulfil_request(
         )
     except ValueError as exc:
         raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
+
+    queued_release_data = dict(selected_release_data)
+    queued_release_data["_request_id"] = request_id
+
+    try:
+        success, error = queue_release(
+            queued_release_data,
+            0,
+            user_id=request_row["user_id"],
+            username=requester.get("username"),
+        )
+    except Exception:
+        user_db.rollback_request_fulfilment(
+            request_id,
+            release_data=original_release_data,
+            last_failure_reason="Queue dispatch raised an exception",
+        )
+        raise
+    if not success:
+        user_db.rollback_request_fulfilment(
+            request_id,
+            release_data=original_release_data,
+            last_failure_reason=error,
+        )
+        raise RequestServiceError(
+            error or "Failed to queue release",
+            status_code=409,
+            code="queue_failed",
+        )
+
+    return claimed_request
 
 
 def reopen_failed_request(

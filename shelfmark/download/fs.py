@@ -263,10 +263,12 @@ def _hardlink_not_supported(error: OSError) -> bool:
     return err in {
         errno.EXDEV,
         errno.EMLINK,
+        errno.EIO,
         errno.EPERM,
         errno.EACCES,
         getattr(errno, "ENOTSUP", errno.EPERM),
         getattr(errno, "EOPNOTSUPP", errno.EPERM),
+        getattr(errno, "ENOSYS", errno.EPERM),
         errno.EINVAL,
     }
 
@@ -287,43 +289,33 @@ def _publish_temp_file(temp_path: Path, dest_path: Path) -> bool:
 
     Returns True on success, False if the destination already exists.
     """
+    claimed = _claim_destination(dest_path)
+    if not claimed:
+        return False
+
     try:
-        run_blocking_io(os.link, str(temp_path), str(dest_path))
-        # Trigger IN_CLOSE_WRITE so inotify-based file watchers (e.g. CWA) detect the new file.
-        # os.link() only generates IN_CREATE which many watchers don't monitor.
+        # Publish by renaming the fully-written temp file into place. This gives
+        # watchers an IN_MOVED_TO-style event on the final path instead of relying
+        # on hardlink support in the destination filesystem.
+        run_blocking_io(os.replace, str(temp_path), str(dest_path))
+
+        # Best-effort nudge for watchers that only react to close-write on the
+        # final filename rather than rename/move events.
         try:
             fd = run_blocking_io(os.open, str(dest_path), os.O_WRONLY)
             run_blocking_io(os.close, fd)
         except OSError:
             pass
-        run_blocking_io(temp_path.unlink, missing_ok=True)
         return True
-    except FileExistsError:
-        return False
-    except OSError as e:
+    except Exception as e:
         if _is_permission_error(e):
             log_transfer_permission_context(
-                "publish_hardlink",
+                "publish_replace",
                 source=temp_path,
                 dest=dest_path,
                 error=e,
             )
-        if _hardlink_not_supported(e):
-            logger.debug(
-                "Hardlink publish unsupported; falling back to claim+replace: %s -> %s (%s)",
-                temp_path,
-                dest_path,
-                e,
-            )
-            claimed = _claim_destination(dest_path)
-            if not claimed:
-                return False
-            try:
-                run_blocking_io(os.replace, str(temp_path), str(dest_path))
-            except Exception:
-                run_blocking_io(dest_path.unlink, missing_ok=True)
-                raise
-            return True
+        run_blocking_io(dest_path.unlink, missing_ok=True)
         raise
 
 
@@ -505,14 +497,15 @@ def atomic_hardlink(source_path: Path, dest_path: Path, max_attempts: int = 100)
         except FileExistsError:
             continue
         except OSError as e:
-            if _is_permission_error(e) or e.errno in (errno.EXDEV, errno.EMLINK):
-                if _is_permission_error(e):
-                    log_transfer_permission_context(
-                        "atomic_hardlink",
-                        source=source_path,
-                        dest=try_path,
-                        error=e,
-                    )
+            permission_error = _is_permission_error(e)
+            if permission_error:
+                log_transfer_permission_context(
+                    "atomic_hardlink",
+                    source=source_path,
+                    dest=try_path,
+                    error=e,
+                )
+            if permission_error or _hardlink_not_supported(e):
                 logger.debug(
                     "Hardlink failed (%s), falling back to copy: %s -> %s",
                     e,
@@ -528,7 +521,7 @@ def atomic_hardlink(source_path: Path, dest_path: Path, max_attempts: int = 100)
 def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> Path:
     """Copy a file with atomic collision detection.
 
-    Uses a temp file in the destination directory and publishes it atomically,
+    Uses a temp file in the destination directory and publishes it via rename,
     avoiding partial files on failure.
 
     Args:

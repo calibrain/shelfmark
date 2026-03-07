@@ -267,8 +267,8 @@ class TestSecurityMigration:
 class TestSecuritySettings:
     """Tests for security settings registration."""
 
-    def test_security_settings_without_cwa(self):
-        """CWA option should be hidden when DB is unavailable."""
+    def test_security_settings_without_cwa_shows_warning_but_keeps_option(self):
+        """CWA remains selectable but warns when the DB is unavailable."""
         with patch("shelfmark.config.env.CWA_DB_PATH", None):
             import importlib
             import shelfmark.config.security
@@ -284,7 +284,10 @@ class TestSecuritySettings:
             assert "none" in option_values
             assert "builtin" in option_values
             assert "proxy" in option_values
-            assert "cwa" not in option_values
+            assert "cwa" in option_values
+
+            cwa_warning_field = next((f for f in fields if f.key == "cwa_db_missing"), None)
+            assert cwa_warning_field is not None
 
     def test_security_settings_with_cwa(self):
         """CWA option should be shown when DB is mounted."""

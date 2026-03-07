@@ -431,7 +431,7 @@ def test_fulfil_request_queues_as_requesting_user(user_db):
     assert "_request_id" not in (fulfilled["release_data"] or {})
 
 
-def test_fulfil_request_rejects_when_state_changes_after_queue_dispatch(user_db):
+def test_fulfil_request_claims_request_before_queue_dispatch(user_db):
     alice = user_db.create_user(username="alice")
     admin = user_db.create_user(username="admin", role="admin")
     created = create_request(
@@ -445,31 +445,22 @@ def test_fulfil_request_rejects_when_state_changes_after_queue_dispatch(user_db)
         release_data=_release_data(),
     )
 
-    release_data = _release_data()
-
     def fake_queue_release(_release_data_arg, _priority, user_id=None, username=None):
-        # Simulate another worker fulfilling the same request while this call is in-flight.
-        user_db.update_request(
-            created["id"],
-            status="fulfilled",
-            release_data=release_data,
-            delivery_state="queued",
-            delivery_updated_at="2026-01-01T00:00:00+00:00",
-            reviewed_by=admin["id"],
-            reviewed_at="2026-01-01T00:00:00+00:00",
-        )
+        in_flight = user_db.get_request(created["id"])
+        assert in_flight is not None
+        assert in_flight["status"] == "fulfilled"
+        assert in_flight["delivery_state"] == "queued"
+        assert in_flight["reviewed_by"] == admin["id"]
         return True, None
 
-    with pytest.raises(RequestServiceError) as exc_info:
-        fulfil_request(
-            user_db,
-            request_id=created["id"],
-            admin_user_id=admin["id"],
-            queue_release=fake_queue_release,
-        )
+    fulfilled = fulfil_request(
+        user_db,
+        request_id=created["id"],
+        admin_user_id=admin["id"],
+        queue_release=fake_queue_release,
+    )
 
-    assert exc_info.value.status_code == 409
-    assert exc_info.value.code == "stale_transition"
+    assert fulfilled["status"] == "fulfilled"
     assert user_db.get_request(created["id"])["status"] == "fulfilled"
 
 
@@ -672,6 +663,47 @@ def test_sync_delivery_states_from_queue_status_updates_matching_fulfilled_reque
     assert refreshed_alice["delivery_state"] == "downloading"
     assert refreshed_alice["delivery_updated_at"] is not None
     assert refreshed_bob["delivery_state"] == "queued"
+
+
+def test_sync_delivery_states_from_queue_status_uses_request_id_for_duplicate_source_ids(user_db):
+    alice = user_db.create_user(username="alice")
+
+    older_request = user_db.create_request(
+        user_id=alice["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={"source": "prowlarr", "source_id": "shared-rel", "title": "Shared Release"},
+        status="fulfilled",
+        delivery_state="complete",
+    )
+    newer_request = user_db.create_request(
+        user_id=alice["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={"source": "prowlarr", "source_id": "shared-rel", "title": "Shared Release"},
+        status="fulfilled",
+        delivery_state="queued",
+    )
+
+    updated = sync_delivery_states_from_queue_status(
+        user_db,
+        queue_status={
+            "downloading": {
+                "shared-rel": {"id": "shared-rel", "request_id": newer_request["id"]},
+            },
+        },
+        user_id=alice["id"],
+    )
+
+    assert [row["id"] for row in updated] == [newer_request["id"]]
+    assert user_db.get_request(older_request["id"])["delivery_state"] == "complete"
+    assert user_db.get_request(newer_request["id"])["delivery_state"] == "downloading"
 
 
 # ---------------------------------------------------------------------------
@@ -1185,9 +1217,14 @@ def test_fulfil_queue_failure_returns_error(user_db):
     assert exc_info.value.status_code == 409
     assert exc_info.value.code == "queue_failed"
 
-    # Request should still be pending since queue failed before status update.
+    # Request should be rolled back to pending when queue dispatch fails.
     row = user_db.get_request(created["id"])
     assert row["status"] == "pending"
+    assert row["delivery_state"] == "none"
+    assert row["reviewed_by"] is None
+    assert row["reviewed_at"] is None
+    assert row["last_failure_reason"] == "Torrent client unreachable"
+    assert row["release_data"]["source_id"] == "release-123"
 
 
 def test_fulfil_admin_can_override_release_data(user_db):

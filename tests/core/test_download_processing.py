@@ -224,6 +224,31 @@ class TestAtomicCopy:
         assert result.exists()
         assert result.read_text() == "content"
 
+    def test_publish_does_not_depend_on_hardlinks(self, tmp_path, monkeypatch):
+        """Temp-file publish succeeds even when hardlinks are unavailable."""
+
+        from shelfmark.download.fs import atomic_copy as _atomic_copy
+
+        source = tmp_path / "source.txt"
+        source.write_text("content")
+        dest = tmp_path / "dest.txt"
+
+        link_calls = {"count": 0}
+
+        def _link_should_not_be_used(*_args, **_kwargs):
+            link_calls["count"] += 1
+            raise AssertionError("atomic_copy publish should not call os.link")
+
+        monkeypatch.setattr(os, "link", _link_should_not_be_used)
+
+        result = _atomic_copy(source, dest)
+
+        assert result == dest
+        assert result.exists()
+        assert result.read_text() == "content"
+        assert source.exists()
+        assert link_calls["count"] == 0
+
     def test_max_attempts_exceeded(self, tmp_path):
         """Raises after max collision attempts."""
         from shelfmark.download.fs import atomic_copy as _atomic_copy
