@@ -79,6 +79,7 @@ import {
 import { bookFromRequestData } from './utils/requestFulfil';
 import { emitBookTargetChange, onBookTargetChange } from './utils/bookTargetEvents';
 import { bookSupportsTargets } from './utils/bookTargetLoader';
+import { getDynamicOptionGroup } from './components/shared/DynamicDropdown';
 import { policyTrace } from './utils/policyTrace';
 import { SearchModeProvider } from './contexts/SearchModeContext';
 import { useSocket } from './contexts/SocketContext';
@@ -1089,16 +1090,28 @@ function App() {
     []
   );
 
-  // When downloading a book while browsing a Hardcover list, automatically
-  // remove it from that list (fire-and-forget).
+  // When downloading a book while browsing a Hardcover list the user owns,
+  // automatically remove it from that list (fire-and-forget).
   const searchFieldLabelsRef = useRef(searchFieldLabels);
   searchFieldLabelsRef.current = searchFieldLabels;
+  const metadataConfigRef = useRef(activeMetadataConfig);
+  metadataConfigRef.current = activeMetadataConfig;
 
   const removeBookFromActiveList = useCallback((book: Book) => {
     if (!bookSupportsTargets(book)) return;
     const activeList = searchFieldValuesRef.current.hardcover_list;
     if (!activeList) return;
     const target = String(activeList);
+
+    // Only auto-remove from lists the user owns (My Books / My Lists)
+    const listField = metadataConfigRef.current?.search_fields.find(
+      (f) => f.key === 'hardcover_list' && f.type === 'DynamicSelectSearchField',
+    );
+    if (listField && listField.type === 'DynamicSelectSearchField') {
+      const group = getDynamicOptionGroup(listField.options_endpoint, target);
+      if (group && group !== 'My Books' && group !== 'My Lists') return;
+    }
+
     void setBookTargetState(book.provider!, book.provider_id!, target, false).then((result) => {
       if (result.changed) {
         emitBookTargetChange({
@@ -2135,7 +2148,7 @@ function App() {
           getButtonState={getDirectActionButtonState}
           getUniversalButtonState={getUniversalActionButtonState}
           sortValue={visibleResultsSort}
-          showSortControl={!activeQueryUsesSeriesBrowse && !activeQueryUsesListBrowse}
+          showSortControl={!activeQueryUsesSeriesBrowse && !activeQueryUsesListBrowse && !resultsSourceUrl}
           onSortChange={(value) => {
             const request = buildCurrentSearchRequest(value);
             const shouldPersistAppliedSort = !(

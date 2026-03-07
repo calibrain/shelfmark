@@ -59,6 +59,7 @@ query LookupListsBySlug($slug: String!) {
 LIST_BOOKS_BY_ID_QUERY = """
 query GetListBooksById($id: Int!, $limit: Int!, $offset: Int!) {
     lists(where: {id: {_eq: $id}}, limit: 1) {
+        name
         slug
         user {
             username
@@ -909,8 +910,9 @@ class HardcoverProvider(MetadataProvider):
         list_books = list_data.get("list_books", []) if isinstance(list_data, dict) else []
         books_count_raw = list_data.get("books_count", 0) if isinstance(list_data, dict) else 0
 
-        # Build source URL from slug and owner username
+        # Build source URL and title from list metadata
         source_url = None
+        source_title = str(list_data.get("name") or "").strip() or None
         list_slug = str(list_data.get("slug") or "").strip()
         user_data = list_data.get("user", {})
         owner_username = str(user_data.get("username") or "").strip() if isinstance(user_data, dict) else ""
@@ -937,7 +939,7 @@ class HardcoverProvider(MetadataProvider):
                 logger.debug(f"Failed to parse Hardcover list book for list_id={list_id}: {exc}")
 
         has_more = offset + len(list_books) < books_count
-        return SearchResult(books=books, page=page, total_found=books_count, has_more=has_more, source_url=source_url)
+        return SearchResult(books=books, page=page, total_found=books_count, has_more=has_more, source_url=source_url, source_title=source_title)
 
     @cacheable(ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="hardcover:list:slug")
     def _fetch_list_books(self, slug: str, owner_username: Optional[str], page: int, limit: int) -> SearchResult:

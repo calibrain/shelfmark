@@ -311,6 +311,7 @@ class SearchResult:
     total_found: int = 0  # Total matching results (if known)
     has_more: bool = False  # True if more results available
     source_url: Optional[str] = None  # External URL for the result set (e.g. Hardcover list page)
+    source_title: Optional[str] = None  # Display title for the result set (e.g. list name)
 
 
 class MetadataProvider(ABC):

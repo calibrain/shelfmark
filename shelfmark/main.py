@@ -2188,6 +2188,8 @@ def api_metadata_search() -> Union[Response, Tuple[Response, int]]:
         }
         if search_result.source_url:
             response_data["source_url"] = search_result.source_url
+        if search_result.source_title:
+            response_data["source_title"] = search_result.source_title
         return jsonify(response_data)
     except Exception as e:
         logger.error_trace(f"Metadata search error: {e}")

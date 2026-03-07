@@ -25,6 +25,13 @@ const buildOptions = (
   }));
 };
 
+/** Look up the group of a cached option by endpoint and value. */
+export const getDynamicOptionGroup = (endpoint: string, value: string): string | undefined => {
+  const cached = optionsCache.get(endpoint);
+  if (!cached) return undefined;
+  return cached.find((o) => o.value === value)?.group;
+};
+
 export const DynamicDropdown = ({
   endpoint,
   value,

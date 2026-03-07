@@ -225,6 +225,7 @@ interface MetadataSearchResponse {
   total_found?: number;
   has_more?: boolean;
   source_url?: string;
+  source_title?: string;
 }
 
 // Metadata search result with pagination info
@@ -234,6 +235,7 @@ export interface MetadataSearchResult {
   totalFound: number;
   hasMore: boolean;
   sourceUrl?: string;
+  sourceTitle?: string;
 }
 
 export interface DynamicFieldOption {
@@ -300,6 +302,7 @@ export const searchMetadata = async (
     totalFound: response.total_found || 0,
     hasMore: response.has_more || false,
     sourceUrl: response.source_url,
+    sourceTitle: response.source_title,
   };
 };
 

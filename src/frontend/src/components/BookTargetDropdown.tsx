@@ -217,7 +217,7 @@ export const BookTargetDropdown = ({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); toggle(); }}
-            className={`flex items-center justify-center rounded-full transition-all duration-200 focus:outline-none ${className ?? 'p-1.5 sm:p-2 text-gray-600 dark:text-gray-200 hover-action'}`}
+            className={`flex items-center justify-center rounded-full transition-colors duration-200 focus:outline-none ${className ?? 'p-1.5 sm:p-2 text-gray-600 dark:text-gray-200 hover-action'}`}
             aria-label="Hardcover Lists"
             title={count > 0 ? `On ${count} Hardcover list${count > 1 ? 's' : ''}` : 'Hardcover Lists'}
           >
