@@ -471,5 +471,6 @@ def source_results_are_releases(name: str) -> bool:
 # These must be imported AFTER the base classes and registry are defined
 from shelfmark.release_sources import direct_download  # noqa: F401, E402
 from shelfmark.release_sources import prowlarr  # noqa: F401, E402
+from shelfmark.release_sources import newznab  # noqa: F401, E402
 from shelfmark.release_sources import irc  # noqa: F401, E402
 from shelfmark.release_sources import audiobookbay  # noqa: F401, E402
