@@ -153,9 +153,11 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
     const saved = localStorage.getItem('preferred-theme') || 'auto';
     applyTheme(saved);
 
-    // Remove preload class after initial theme is applied to enable transitions
+    // Remove preload class and inline theme-init styles now that the
+    // external CSS is loaded and React has mounted.
     requestAnimationFrame(() => {
       document.documentElement.classList.remove('preload');
+      document.getElementById('theme-init')?.remove();
     });
   }, []);
 
@@ -163,7 +165,9 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const handler = (e: MediaQueryListEvent) => {
       if (localStorage.getItem('preferred-theme') === 'auto') {
-        document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+        const effective = e.matches ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', effective);
+        document.documentElement.style.colorScheme = effective;
       }
     };
     mq.addEventListener('change', handler);
@@ -238,12 +242,11 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   }, [isDropdownOpen, isClosing]);
 
   const applyTheme = (pref: string) => {
-    if (pref === 'auto') {
-      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    } else {
-      document.documentElement.setAttribute('data-theme', pref);
-    }
+    const effective = pref === 'auto'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : pref;
+    document.documentElement.setAttribute('data-theme', effective);
+    document.documentElement.style.colorScheme = effective;
   };
 
   const handleLogout = () => {

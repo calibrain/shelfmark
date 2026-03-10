@@ -218,15 +218,21 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
     };
   }, []);
 
-  // Auto-open select dropdown only when transitioning into a select field
-  const prevFieldKeyRef = useRef<string | undefined>(undefined);
+  // Auto-open select dropdown only when transitioning into a select field.
+  // Initialise the ref to the current key so that mounting with an already-
+  // active select field (e.g. the Header SearchBar after first search)
+  // doesn't count as a field change. Using `if (fieldChanged)` instead of
+  // always calling setIsSelectOpen avoids StrictMode's second effect
+  // invocation resetting the state set by the first.
+  const prevFieldKeyRef = useRef<string | undefined>(activeQueryField?.key);
   useEffect(() => {
-    const fieldKey = activeQueryField?.key;
     const isSelect = activeQueryField?.type === 'SelectSearchField' || activeQueryField?.type === 'DynamicSelectSearchField';
-    const fieldChanged = fieldKey !== prevFieldKeyRef.current;
-    prevFieldKeyRef.current = fieldKey;
+    const fieldChanged = activeQueryField?.key !== prevFieldKeyRef.current;
+    prevFieldKeyRef.current = activeQueryField?.key;
 
-    setIsSelectOpen(fieldChanged && isSelect);
+    if (fieldChanged) {
+      setIsSelectOpen(isSelect);
+    }
     setIsAutocompleteOpen(false);
     setAutocompleteOptions([]);
   }, [activeQueryField?.key, activeQueryField?.type]);
@@ -578,7 +584,8 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
           <div
             className="relative flex-shrink-0 flex self-stretch"
             ref={selectorRef}
-            onMouseEnter={() => {
+            onPointerEnter={(e) => {
+              if (e.pointerType !== 'mouse') return;
               if (selectorHoverTimeout.current) {
                 clearTimeout(selectorHoverTimeout.current);
                 selectorHoverTimeout.current = null;
@@ -587,7 +594,8 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
               setIsSelectOpen(false);
               setIsAutocompleteOpen(false);
             }}
-            onMouseLeave={() => {
+            onPointerLeave={(e) => {
+              if (e.pointerType !== 'mouse') return;
               selectorHoverTimeout.current = setTimeout(() => {
                 setIsSelectorOpen(false);
                 selectorHoverTimeout.current = null;

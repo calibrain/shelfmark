@@ -24,6 +24,7 @@
 }
 
 /* Disable transitions on initial load to prevent flash */
+html.preload,
 html.preload *,
 html.preload *::before,
 html.preload *::after {
@@ -39,6 +40,8 @@ input, select, textarea, button,
 }
 
 :root {
+    color-scheme: light;
+
     /* Light theme variables */
     --primary-color: oklch(44.3% 0.11 240.79);
     --primary-dark: oklch(39.1% 0.09 240.876);
@@ -63,6 +66,8 @@ input, select, textarea, button,
 }
 
 [data-theme="dark"] {
+    color-scheme: dark;
+
     /* Dark theme variables with improved contrast */
     --background-color: #121212;
     --text-color: #ffffff;

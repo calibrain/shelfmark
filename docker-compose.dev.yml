@@ -20,5 +20,6 @@ services:
       - ./.local/log:/var/log/shelfmark
       - ./.local/tmp:/tmp/shelfmark
       - ./shelfmark:/app/shelfmark:ro
+      - ./frontend-dist:/app/frontend-dist:ro
       # Required for torrent / usenet - path must match your download client's volume exactly
       # - /path/to/downloads:/path/to/downloads
