@@ -134,6 +134,30 @@ class TestOIDCLoginEndpoint:
         assert resp.status_code == 500
         assert resp.get_json()["error"] == "OIDC not configured"
 
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_login_stores_valid_return_to_in_session(self, mock_get_client, client):
+        fake_client = Mock()
+        fake_client.authorize_redirect.return_value = redirect("https://auth.example.com/authorize")
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/login?return_to=%2F%3Fq%3DSanderson")
+
+        assert resp.status_code == 302
+        with client.session_transaction() as sess:
+            assert sess["oidc_return_to"] == "/?q=Sanderson"
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_login_ignores_unsafe_return_to(self, mock_get_client, client):
+        fake_client = Mock()
+        fake_client.authorize_redirect.return_value = redirect("https://auth.example.com/authorize")
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/login?return_to=https://evil.example.com/phish")
+
+        assert resp.status_code == 302
+        with client.session_transaction() as sess:
+            assert "oidc_return_to" not in sess
+
 
 class TestOIDCCallbackEndpoint:
     @patch("shelfmark.core.oidc_routes._get_oidc_client")
@@ -157,6 +181,62 @@ class TestOIDCCallbackEndpoint:
         with client.session_transaction() as sess:
             assert sess["user_id"] == "john"
             assert sess["db_user_id"] is not None
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_redirects_to_original_url_with_query(self, mock_get_client, client):
+        fake_client = Mock()
+        fake_client.authorize_redirect.return_value = redirect("https://auth.example.com/authorize")
+        fake_client.authorize_access_token.return_value = {
+            "userinfo": {
+                "sub": "user-123",
+                "email": "john@example.com",
+                "name": "John Doe",
+                "preferred_username": "john",
+                "groups": ["users"],
+            }
+        }
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        login_resp = client.get("/api/auth/oidc/login?return_to=%2F%3Fq%3DSanderson")
+        assert login_resp.status_code == 302
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        assert resp.status_code == 302
+
+        parsed = urlparse(resp.headers["Location"])
+        assert parsed.path == "/"
+        assert parse_qs(parsed.query) == {"q": ["Sanderson"]}
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_redirects_to_original_url_with_script_root(self, mock_get_client, client):
+        fake_client = Mock()
+        fake_client.authorize_redirect.return_value = redirect("https://auth.example.com/authorize")
+        fake_client.authorize_access_token.return_value = {
+            "userinfo": {
+                "sub": "user-123",
+                "email": "john@example.com",
+                "name": "John Doe",
+                "preferred_username": "john",
+                "groups": ["users"],
+            }
+        }
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        login_resp = client.get(
+            "/api/auth/oidc/login?return_to=%2Frequests%3Fq%3DSanderson",
+            environ_overrides={"SCRIPT_NAME": "/shelfmark"},
+        )
+        assert login_resp.status_code == 302
+
+        resp = client.get(
+            "/api/auth/oidc/callback?code=abc123&state=test-state",
+            environ_overrides={"SCRIPT_NAME": "/shelfmark"},
+        )
+        assert resp.status_code == 302
+
+        parsed = urlparse(resp.headers["Location"])
+        assert parsed.path == "/shelfmark/requests"
+        assert parse_qs(parsed.query) == {"q": ["Sanderson"]}
 
     @patch("shelfmark.core.oidc_routes._get_oidc_client")
     def test_callback_sets_admin_from_groups(self, mock_get_client, client):

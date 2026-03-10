@@ -5,7 +5,7 @@ Business logic remains in oidc_auth.py.
 """
 
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from authlib.jose.errors import InvalidClaimError
 from authlib.integrations.flask_client import OAuth
@@ -23,6 +23,7 @@ from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
 oauth = OAuth()
+_RETURN_TO_SESSION_KEY = "oidc_return_to"
 
 
 def _normalize_claims(raw_claims: Any) -> dict[str, Any]:
@@ -52,7 +53,67 @@ def _login_error_url(message: str) -> str:
     """Build a login URL (with script_root) that includes an OIDC error message."""
     script_root = request.script_root.rstrip("/")
     login_url = f"{script_root}/login" if script_root else "/login"
-    return f"{login_url}?oidc_error={quote(message)}"
+    params = {"oidc_error": message}
+    return_to = _get_pending_return_to()
+    if return_to and return_to != "/":
+        params["return_to"] = return_to
+    return f"{login_url}?{urlencode(params)}"
+
+
+def _normalize_return_to(raw_return_to: Any) -> str | None:
+    """Return a safe app-relative post-login target."""
+    if not isinstance(raw_return_to, str):
+        return None
+
+    value = raw_return_to.strip()
+    if not value or not value.startswith("/") or value.startswith("//"):
+        return None
+
+    parsed = urlsplit(value)
+    if parsed.scheme or parsed.netloc:
+        return None
+
+    script_root = request.script_root.rstrip("/")
+    path = parsed.path or "/"
+    if script_root:
+        if path == script_root:
+            path = "/"
+        elif path.startswith(f"{script_root}/"):
+            path = path[len(script_root):] or "/"
+
+    if (
+        path == "/login"
+        or path.startswith("/login/")
+        or path == "/api"
+        or path.startswith("/api/")
+    ):
+        return None
+
+    return urlunsplit(("", "", path, parsed.query, parsed.fragment))
+
+
+def _get_pending_return_to(*, clear: bool = False) -> str | None:
+    """Read the pending post-login target from the session."""
+    raw_return_to = (
+        session.pop(_RETURN_TO_SESSION_KEY, None)
+        if clear
+        else session.get(_RETURN_TO_SESSION_KEY)
+    )
+    normalized = _normalize_return_to(raw_return_to)
+    if normalized is None and not clear:
+        session.pop(_RETURN_TO_SESSION_KEY, None)
+    return normalized
+
+
+def _post_login_redirect_target(return_to: str | None) -> str:
+    """Build the final redirect target, honoring script_root when present."""
+    normalized = _normalize_return_to(return_to) or "/"
+    script_root = request.script_root.rstrip("/")
+    if not script_root:
+        return normalized
+    if normalized == "/":
+        return f"{script_root}/"
+    return f"{script_root}{normalized}"
 
 
 def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
@@ -116,6 +177,11 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
         """Initiate OIDC login flow and redirect to the provider."""
         try:
             client, _ = _get_oidc_client()
+            return_to = _normalize_return_to(request.args.get("return_to"))
+            if return_to and return_to != "/":
+                session[_RETURN_TO_SESSION_KEY] = return_to
+            else:
+                session.pop(_RETURN_TO_SESSION_KEY, None)
             redirect_uri = request.url_root.rstrip("/") + "/api/auth/oidc/callback"
             return client.authorize_redirect(redirect_uri)
         except ValueError:
@@ -213,7 +279,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             session.permanent = True
 
             logger.info(f"OIDC login successful: {user['username']} (admin={is_admin})")
-            return redirect(request.script_root or "/")
+            return redirect(_post_login_redirect_target(_get_pending_return_to(clear=True)))
 
         except ValueError as e:
             logger.error(f"OIDC callback error: {e}")

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, CSSProperties } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import {
   Book,
   Release,
@@ -61,6 +61,7 @@ import { DEFAULT_LANGUAGES, DEFAULT_SUPPORTED_FORMATS } from './data/languages';
 import { buildSearchQuery } from './utils/buildSearchQuery';
 import { formatActingAsUserName } from './utils/actingAsUser';
 import { withBasePath } from './utils/basePath';
+import { buildLoginRedirectPath, getReturnToFromSearch } from './utils/authRedirect';
 import { getConfiguredMetadataProviderForContentType } from './utils/metadataProviders';
 import { getEffectiveMetadataSort } from './utils/metadataSort';
 import {
@@ -151,6 +152,7 @@ type PendingOnBehalfDownload =
     };
 
 function App() {
+  const location = useLocation();
   const { toasts, showToast, removeToast } = useToast();
   const { socket } = useSocket();
 
@@ -2359,8 +2361,10 @@ function App() {
   }
 
   const shouldRedirectFromLogin = !authRequired || isAuthenticated;
+  const postLoginPath = getReturnToFromSearch(location.search);
+  const loginRedirectPath = buildLoginRedirectPath(location);
   const appElement = authRequired && !isAuthenticated ? (
-    <Navigate to="/login" replace />
+    <Navigate to={loginRedirectPath} replace />
   ) : (
     mainAppContent
   );
@@ -2371,7 +2375,7 @@ function App() {
         path="/login"
         element={
           shouldRedirectFromLogin ? (
-            <Navigate to="/" replace />
+            <Navigate to={postLoginPath} replace />
           ) : (
             <LoginPage
               onLogin={handleLogin}

@@ -2,6 +2,7 @@ import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { LoginCredentials } from '../types';
 import { withBasePath } from '../utils/basePath';
+import { buildOidcLoginUrl } from '../utils/authRedirect';
 
 interface LoginFormProps {
   onSubmit: (credentials: LoginCredentials) => void;
@@ -229,6 +230,7 @@ export const LoginForm = ({
   const [showPasswordLogin, setShowPasswordLogin] = useState(false);
   const [searchParams] = useSearchParams();
   const oidcError = searchParams.get('oidc_error');
+  const oidcLoginUrl = buildOidcLoginUrl(searchParams.toString());
 
   // Auto-expand password form if there's an error (likely from a password attempt)
   useEffect(() => {
@@ -240,9 +242,9 @@ export const LoginForm = ({
   // Auto-redirect to OIDC provider when enabled and no errors present
   useEffect(() => {
     if (oidcAutoRedirect && isOidc && !error && !oidcError) {
-      window.location.href = withBasePath('/api/auth/oidc/login');
+      window.location.href = oidcLoginUrl;
     }
-  }, [oidcAutoRedirect, isOidc, error, oidcError]);
+  }, [oidcAutoRedirect, isOidc, error, oidcError, oidcLoginUrl]);
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -272,7 +274,7 @@ export const LoginForm = ({
       {isOidc ? (
         <>
           <a
-            href={withBasePath('/api/auth/oidc/login')}
+            href={oidcLoginUrl}
             className="w-full py-2.5 px-4 rounded-lg font-medium text-white text-center transition-colors block bg-sky-700 hover:bg-sky-800"
           >
             {oidcButtonLabel || 'Sign in with OIDC'}
