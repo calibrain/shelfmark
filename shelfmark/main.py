@@ -82,7 +82,7 @@ if BASE_PATH:
 # We run this app under Gunicorn with a gevent websocket worker (even when DEBUG=true),
 # so Socket.IO should always use gevent here.
 async_mode = 'gevent'
-socketio_cors_allowed_origins = "*" if DEBUG else None
+socketio_cors_allowed_origins = "*"
 
 # Initialize Flask-SocketIO with reverse proxy support
 socketio_path = f"{BASE_PATH}/socket.io" if BASE_PATH else "/socket.io"
