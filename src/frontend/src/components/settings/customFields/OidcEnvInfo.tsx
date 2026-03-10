@@ -2,9 +2,9 @@ import { CustomSettingsFieldRendererProps } from './types';
 
 export const OidcEnvInfo = (_props: CustomSettingsFieldRendererProps) => {
   return (
-    <div className="rounded-lg overflow-hidden border border-[var(--border-muted)]">
+    <div className="rounded-lg overflow-hidden border-hairline border-(--border-muted)">
       <div
-        className="px-3 py-1.5 text-xs font-medium opacity-60 border-b border-[var(--border-muted)]"
+        className="px-3 py-1.5 text-xs font-medium opacity-60 border-b-hairline border-(--border-muted)"
         style={{ background: 'var(--bg-soft)' }}
       >
         docker-compose.yml

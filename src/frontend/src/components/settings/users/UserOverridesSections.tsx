@@ -199,7 +199,7 @@ export const UserOverridesSections = ({
     <div className="space-y-5">
       {sectionNodes.map(({ id, node }, index) => (
         <Fragment key={id}>
-          {index > 0 && <div className="border-t border-[var(--border-muted)]" />}
+          {index > 0 && <div className="border-t-hairline border-(--border-muted)" />}
           {node}
         </Fragment>
       ))}

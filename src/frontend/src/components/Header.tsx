@@ -375,7 +375,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
         <button
           onClick={toggleDropdown}
           className={`relative p-2 rounded-full hover-action transition-colors ${
-            isDropdownOpen ? 'bg-[var(--hover-action)]' : ''
+            isDropdownOpen ? 'bg-(--hover-action)' : ''
           }`}
           aria-label="User menu"
           aria-expanded={isDropdownOpen}
@@ -397,7 +397,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
           </svg>
           {actingAsUser && (
             <span
-              className="absolute top-1 right-1 h-2 w-2 rounded-full bg-sky-500 border border-[var(--bg)]"
+              className="absolute top-1 right-1 h-2 w-2 rounded-full bg-sky-500 border-hairline border-(--bg)"
               title={`Downloading as ${formatActingAsUserName(actingAsUser)}`}
             />
           )}
@@ -406,7 +406,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
         {/* Dropdown Menu */}
         {(isDropdownOpen || isClosing) && (
           <div
-            className={`absolute right-0 mt-2 ${dropdownPanelWidthClass} rounded-lg shadow-lg border z-50 ${
+            className={`absolute right-0 mt-2 ${dropdownPanelWidthClass} rounded-lg shadow-lg border-hairline z-50 ${
               isClosing ? 'animate-fade-out-up' : shouldAnimateIn ? 'animate-fade-in-down' : ''
             }`}
             style={{
@@ -548,7 +548,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
               {/* User Footer */}
               {authRequired && isAuthenticated && username && (
                 <div
-                  className="border-t"
+                  className="border-t-hairline"
                   style={{ borderColor: 'var(--border-muted)' }}
                 >
                   <div className="px-4 py-3 flex items-center gap-2.5">
@@ -579,7 +579,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
 
               {isAdmin && onActingAsUserChange && (
                 <div
-                  className="border-t px-4 py-3 space-y-2"
+                  className="border-t-hairline px-4 py-3 space-y-2"
                   style={{ borderColor: 'var(--border-muted)' }}
                 >
                   <div className="text-xs font-medium uppercase tracking-wide opacity-70">
@@ -623,7 +623,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
 
   return (
     <header
-      className="w-full sticky top-0 z-40 backdrop-blur-sm"
+      className="w-full sticky top-0 z-40 backdrop-blur-xs"
       style={{ background: 'var(--bg)', paddingTop: 'env(safe-area-inset-top)' }}
     >
       <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -638,7 +638,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
                   src={logoUrl}
                   onClick={onLogoClick}
                   alt="Logo"
-                  className="h-10 w-10 flex-shrink-0 cursor-pointer lg:hidden"
+                  className="h-10 w-10 shrink-0 cursor-pointer lg:hidden"
                 />
               )}
 
@@ -653,7 +653,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
                   src={logoUrl}
                   onClick={onLogoClick}
                   alt="Logo"
-                  className="hidden lg:block h-12 w-12 flex-shrink-0 cursor-pointer"
+                  className="hidden lg:block h-12 w-12 shrink-0 cursor-pointer"
                 />
               )}
               <SearchBar

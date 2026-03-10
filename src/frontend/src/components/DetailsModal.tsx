@@ -135,7 +135,7 @@ export const DetailsModal = ({
         })
       : [];
   const extendedInfoEntries = [[publisherInfo.label, publisherInfo.value], ...additionalInfo];
-  const infoCardClass = 'rounded-2xl border border-[var(--border-muted)] px-4 py-3 text-sm bg-[var(--bg-soft)] sm:bg-[var(--bg)]';
+  const infoCardClass = 'rounded-2xl border-hairline border-(--border-muted) px-4 py-3 text-sm bg-(--bg-soft) sm:bg-(--bg)';
   const infoLabelClass = 'text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400';
   const infoValueClass = 'text-gray-900 dark:text-gray-100';
 
@@ -147,13 +147,13 @@ export const DetailsModal = ({
       }}
     >
       <div
-        className={`details-container w-full max-w-4xl h-full sm:h-auto ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`details-container w-full h-full sm:h-auto ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
       >
-        <div className="flex h-full sm:h-[90vh] sm:max-h-[90vh] flex-col overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border border-[var(--border-muted)] bg-[var(--bg)] sm:bg-[var(--bg-soft)] text-[var(--text)] shadow-none sm:shadow-2xl">
-          <header className="flex items-start gap-4 border-b border-[var(--border-muted)] bg-[var(--bg)] sm:bg-[var(--bg-soft)] px-5 py-4">
+        <div className="flex h-full sm:h-[90vh] sm:max-h-[90vh] flex-col overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border-hairline border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft) text-(--text) shadow-none sm:shadow-2xl">
+          <header className="flex items-start gap-4 border-b-hairline border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft) px-5 py-4">
             <div className="flex-1 space-y-1">
               <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Book</p>
               <h3 id={titleId} className="text-lg font-semibold leading-snug">
@@ -198,7 +198,7 @@ export const DetailsModal = ({
                   </div>
                 ) : (
                   <div
-                    className="flex w-full items-center justify-center rounded-xl border border-dashed border-[var(--border-muted)] bg-[var(--bg)]/60 p-6 text-sm text-gray-500 lg:h-full lg:max-w-none"
+                    className="flex w-full items-center justify-center rounded-xl border-hairline border-dashed border-(--border-muted) bg-(--bg)/60 p-6 text-sm text-gray-500 lg:h-full lg:max-w-none"
                     style={{ maxHeight: artworkMaxHeight, maxWidth: artworkMaxWidth }}
                   >
                     No cover
@@ -299,7 +299,7 @@ export const DetailsModal = ({
                             onSearchSeries(book.series_name!, book.series_id);
                             handleClose();
                           }}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors flex-shrink-0"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors shrink-0"
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
@@ -329,7 +329,7 @@ export const DetailsModal = ({
           </div>
 
           <footer
-            className="border-t border-[var(--border-muted)] bg-[var(--bg)] sm:bg-[var(--bg-soft)] px-5 py-4"
+            className="border-t-hairline border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft) px-5 py-4"
             style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

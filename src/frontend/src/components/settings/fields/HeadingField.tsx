@@ -5,7 +5,7 @@ interface HeadingFieldProps {
 }
 
 export const HeadingField = ({ field }: HeadingFieldProps) => (
-  <div className="pb-1 [&:not(:first-child)]:pt-5 [&:not(:first-child)]:mt-1 [&:not(:first-child)]:border-t [&:not(:first-child)]:border-[var(--border-muted)]">
+  <div className="pb-1 not-first:pt-5 not-first:mt-1 not-first:border-t-hairline not-first:border-(--border-muted)">
     <h3 className="text-base font-semibold mb-1">{field.title}</h3>
     {field.description && (
       <p className="text-sm opacity-70">

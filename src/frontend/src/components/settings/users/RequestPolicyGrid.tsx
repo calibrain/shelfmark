@@ -142,23 +142,23 @@ export const RequestPolicyGrid = ({
             type="button"
             onClick={onClearOverrides}
             disabled={clearOverridesDisabled}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border-muted)] bg-[var(--bg)] hover:bg-[var(--hover-surface)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border-hairline border-(--border-muted) bg-(--bg) hover:bg-(--hover-surface) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Clear all overrides
           </button>
         </div>
       )}
 
-      <div className="rounded-lg border border-[var(--border-muted)]">
+      <div className="rounded-lg border-hairline border-(--border-muted)">
         {/* Header */}
-        <div className="hidden sm:grid sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 px-3 py-2 bg-[var(--bg-soft)] text-xs font-medium opacity-60 border-b border-[var(--border-muted)] rounded-t-lg">
+        <div className="hidden sm:grid sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 px-3 py-2 bg-(--bg-soft) text-xs font-medium opacity-60 border-b-hairline border-(--border-muted) rounded-t-lg">
           <span>Source</span>
           <span>Ebook</span>
           <span>Audiobook</span>
         </div>
 
         {/* Default row */}
-        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 px-3 py-2.5 items-center bg-[var(--bg-soft)] border-b-2 border-[var(--border-muted)]">
+        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 px-3 py-2.5 items-center bg-(--bg-soft) border-b-2 border-(--border-muted)">
           <div className="min-w-0">
             <p className="text-sm font-semibold truncate">Default</p>
           </div>
@@ -178,7 +178,7 @@ export const RequestPolicyGrid = ({
               <div key={contentType} className="flex items-center gap-1.5">
                 {mobileLabel}
                 {isDisabled ? (
-                  <div className="w-full px-3 py-2 rounded-lg border border-[var(--border-muted)] bg-[var(--bg)] text-sm opacity-60 cursor-not-allowed">
+                  <div className="w-full px-3 py-2 rounded-lg border-hairline border-(--border-muted) bg-(--bg) text-sm opacity-60 cursor-not-allowed">
                     {REQUEST_POLICY_MODE_LABELS[mode]}
                   </div>
                 ) : (
@@ -221,7 +221,7 @@ export const RequestPolicyGrid = ({
             <div
               key={sourceRow.source}
               className={`grid grid-cols-1 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 px-3 py-2.5 items-center ${
-                index > 0 ? 'border-t border-[var(--border-muted)]' : ''
+                index > 0 ? 'border-t-hairline border-(--border-muted)' : ''
               }`}
             >
               <div className="min-w-0">
@@ -295,7 +295,7 @@ export const RequestPolicyGrid = ({
                       }`}
                     >
                       {rulesDisabled ? (
-                        <div className="w-full px-3 py-2 rounded-lg border border-[var(--border-muted)] bg-[var(--bg-soft)] text-sm opacity-60 cursor-not-allowed">
+                        <div className="w-full px-3 py-2 rounded-lg border-hairline border-(--border-muted) bg-(--bg-soft) text-sm opacity-60 cursor-not-allowed">
                           {REQUEST_POLICY_MODE_LABELS[effectiveMode]}
                         </div>
                       ) : (

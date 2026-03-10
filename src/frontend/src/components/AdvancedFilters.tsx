@@ -91,7 +91,7 @@ export const AdvancedFilters = ({
 
   const wrapperClassName = formClassName
     ? 'px-2'
-    : 'px-2 lg:ml-[calc(3rem+1rem)] lg:w-[calc(50vw+4rem)]';
+    : 'px-2 lg:ml-16 lg:w-[calc(50vw+4rem)]';
 
   const settingsForm = (
     <div className={wrapperClassName}>
@@ -169,7 +169,7 @@ export const AdvancedFilters = ({
   return renderWrapper ? (
     renderWrapper(settingsForm)
   ) : (
-    <div className="w-full border-b pt-6 pb-4 mb-4" style={{ borderColor: 'var(--border-muted)' }}>
+    <div className="w-full border-b-hairline pt-6 pb-4 mb-4" style={{ borderColor: 'var(--border-muted)' }}>
       <div className="w-full px-4 sm:px-6 lg:px-8">{settingsForm}</div>
     </div>
   );

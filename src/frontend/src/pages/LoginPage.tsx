@@ -22,7 +22,7 @@ export const LoginPage = ({ onLogin, error, isLoading, authMode, oidcButtonLabel
     >
       <div className="w-full max-w-md">
         <div
-          className="rounded-lg shadow-2xl p-6 border"
+          className="rounded-lg shadow-2xl p-6 border-hairline"
           style={{
             backgroundColor: 'var(--card-background)',
             borderColor: 'var(--border-color)',

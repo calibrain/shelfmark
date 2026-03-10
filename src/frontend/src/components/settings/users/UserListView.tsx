@@ -96,8 +96,7 @@ export const UserListView = ({
           <p className="text-sm opacity-60">{loadError}</p>
           <button
             onClick={onRetryLoadUsers}
-            className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
-                       bg-[var(--bg-soft)] hover:bg-[var(--hover-surface)] transition-colors"
+            className="px-4 py-2 rounded-lg text-sm font-medium border-hairline border-(--border-muted)                       bg-(--bg-soft) hover:bg-(--hover-surface) transition-colors"
           >
             Retry
           </button>
@@ -118,7 +117,7 @@ export const UserListView = ({
             return (
               <div
                 key={user.id}
-                className={`rounded-lg border border-[var(--border-muted)] bg-[var(--bg-soft)] transition-colors ${active ? '' : 'opacity-60'}`}
+                className={`rounded-lg border-hairline border-(--border-muted) shadow-sm bg-(--bg-soft) transition-colors ${active ? '' : 'opacity-60'}`}
               >
                 <div
                   role="button"
@@ -144,7 +143,7 @@ export const UserListView = ({
                       }
                     }
                   }}
-                  className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 cursor-pointer hover-surface rounded-t-lg ${isEditingRow ? 'border-b border-[var(--border-muted)]' : 'rounded-b-lg'}`}
+                  className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 cursor-pointer hover-surface rounded-t-lg ${isEditingRow ? 'border-b-hairline border-(--border-muted)' : 'rounded-b-lg'}`}
                   aria-expanded={isEditingRow}
                   aria-label={isEditingRow ? 'Collapse user editor' : `Expand ${user.username} editor`}
                 >
@@ -185,7 +184,7 @@ export const UserListView = ({
                 </div>
 
                 {isEditingRow && (
-                  <div className="p-4 space-y-5 bg-[var(--bg)] rounded-b-lg">
+                  <div className="p-4 space-y-5 bg-(--bg) rounded-b-lg">
                     {hasLoadedEditUser && editingUser ? (
                       <UserAccountCardContent
                         user={editingUser}

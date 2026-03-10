@@ -163,7 +163,7 @@ export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSele
 
     if (isDisabled) {
       return (
-        <div className="w-full px-3 py-2 rounded-lg border border-[var(--border-muted)] bg-[var(--bg-soft)] text-sm opacity-60 cursor-not-allowed">
+        <div className="w-full px-3 py-2 rounded-lg border-hairline border-(--border-muted) bg-(--bg-soft) text-sm opacity-60 cursor-not-allowed">
           {summaryFormatter()}
         </div>
       );
@@ -277,12 +277,12 @@ export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSele
                 onClick={() => toggleOption(opt.value)}
                 disabled={isDisabled}
                 className={`px-3 py-1.5 rounded-full text-sm font-medium
-                            transition-colors border
+                            transition-colors border-hairline
                             disabled:opacity-60 disabled:cursor-not-allowed
                             ${
                               isSelected
                                 ? 'bg-sky-600 text-white border-sky-600'
-                                : 'bg-transparent border-[var(--border-muted)] hover:bg-[var(--hover-surface)]'
+                                : 'bg-transparent border-(--border-muted) hover:bg-(--hover-surface)'
                             }`}
               >
                 {opt.label}

@@ -30,7 +30,7 @@ const BookmarkIcon = ({ className = 'h-4 w-4' }: { className?: string }) => (
     strokeWidth="1.5"
     stroke="currentColor"
     aria-hidden="true"
-    className={`${className} flex-shrink-0`}
+    className={`${className} shrink-0`}
   >
     <path
       strokeLinecap="round"
@@ -203,7 +203,7 @@ export const BookTargetDropdown = ({
           <button
             type="button"
             onClick={toggle}
-            className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 focus:outline-none`}
+            className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 focus:outline-hidden`}
           >
             <BookmarkIcon className="w-3 h-3" />
             Hardcover Lists{count > 0 ? ` (${count})` : ''}
@@ -217,7 +217,7 @@ export const BookTargetDropdown = ({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); toggle(); }}
-            className={`flex items-center justify-center rounded-full transition-colors duration-200 focus:outline-none ${className ?? 'p-1.5 sm:p-2 text-gray-600 dark:text-gray-200 hover-action'}`}
+            className={`flex items-center justify-center rounded-full transition-colors duration-200 focus:outline-hidden ${className ?? 'p-1.5 sm:p-2 text-gray-600 dark:text-gray-200 hover-action'}`}
             aria-label="Hardcover Lists"
             title={count > 0 ? `On ${count} Hardcover list${count > 1 ? 's' : ''}` : 'Hardcover Lists'}
           >
