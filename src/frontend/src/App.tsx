@@ -24,6 +24,7 @@ import {
   cancelDownload,
   retryDownload,
   getConfig,
+  getStatus,
   getMetadataProviders,
   getMetadataSearchConfig,
   createRequest,
@@ -80,6 +81,7 @@ import {
 import { bookFromRequestData } from './utils/requestFulfil';
 import { emitBookTargetChange, onBookTargetChange } from './utils/bookTargetEvents';
 import { bookSupportsTargets } from './utils/bookTargetLoader';
+import { wasDownloadQueuedAfterResponseError } from './utils/downloadRecovery';
 import { getDynamicOptionGroup } from './components/shared/DynamicDropdown';
 import { policyTrace } from './utils/policyTrace';
 import { SearchModeProvider } from './contexts/SearchModeContext';
@@ -136,6 +138,9 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
   }
   return fallback;
 };
+
+const CONFIRMED_DOWNLOAD_INTERRUPTED_MESSAGE =
+  'Download queued, but the proxy interrupted the response. Status will refresh shortly.';
 
 type PendingOnBehalfDownload =
   | {
@@ -1132,8 +1137,10 @@ function App() {
     async (book: Book, onBehalfOfUserId?: number): Promise<void> => {
       const source = getBrowseSource(book);
       const directContentType: ContentType = 'ebook';
+      const payload = buildReleaseDataFromDirectBook(book);
+      const requestStartedAtSeconds = Date.now() / 1000;
       try {
-        await downloadRelease(buildReleaseDataFromDirectBook(book), onBehalfOfUserId);
+        await downloadRelease(payload, onBehalfOfUserId);
         await fetchStatus();
         removeBookFromActiveList(book);
       } catch (error) {
@@ -1156,6 +1163,17 @@ function App() {
           await refreshRequestPolicy({ force: true });
           return;
         }
+        try {
+          const status = await getStatus();
+          if (wasDownloadQueuedAfterResponseError(status, payload.source_id, requestStartedAtSeconds)) {
+            await fetchStatus();
+            removeBookFromActiveList(book);
+            showToast(CONFIRMED_DOWNLOAD_INTERRUPTED_MESSAGE, 'info');
+            return;
+          }
+        } catch (verificationError) {
+          console.warn('Failed to verify download after response error:', verificationError);
+        }
         showToast(getErrorMessage(error, 'Failed to queue download'), 'error');
         throw error;
       }
@@ -1170,6 +1188,7 @@ function App() {
       releaseContentType: ContentType,
       onBehalfOfUserId?: number
     ): Promise<void> => {
+      const requestStartedAtSeconds = Date.now() / 1000;
       try {
         trackRelease(book.id, release.source_id);
         await downloadRelease(
@@ -1221,6 +1240,17 @@ function App() {
           showToast('Download blocked by policy', 'error');
           await refreshRequestPolicy({ force: true });
           return;
+        }
+        try {
+          const status = await getStatus();
+          if (wasDownloadQueuedAfterResponseError(status, release.source_id, requestStartedAtSeconds)) {
+            await fetchStatus();
+            removeBookFromActiveList(book);
+            showToast(CONFIRMED_DOWNLOAD_INTERRUPTED_MESSAGE, 'info');
+            return;
+          }
+        } catch (verificationError) {
+          console.warn('Failed to verify release download after response error:', verificationError);
         }
         showToast(getErrorMessage(error, 'Failed to queue download'), 'error');
         throw error;

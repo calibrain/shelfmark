@@ -3,6 +3,7 @@ import os
 import random
 import signal
 import socket
+import stat
 import subprocess
 import threading
 import time
@@ -27,6 +28,9 @@ from shelfmark.download.network import get_proxies, get_ssl_verify
 
 logger = setup_logger(__name__)
 
+SELENIUMBASE_RUNTIME_ROOT = "/tmp/shelfmark/seleniumbase"
+SELENIUMBASE_DOWNLOADS_DIR = os.path.join(SELENIUMBASE_RUNTIME_ROOT, "downloaded_files")
+
 # Challenge detection indicators
 CLOUDFLARE_INDICATORS = [
     "just a moment",
@@ -48,6 +52,21 @@ DISPLAY = {
     "ffmpeg_output": None,
 }
 LOCKED = threading.Lock()
+
+
+def _describe_runtime_path(path: str) -> str:
+    """Return compact ownership/mode info for a runtime path."""
+    try:
+        link_target = ""
+        if os.path.islink(path):
+            link_target = f" -> {os.readlink(path)}"
+        st = os.stat(path)
+        mode = stat.S_IMODE(st.st_mode)
+        return f"{path}{link_target} exists uid={st.st_uid} gid={st.st_gid} mode={oct(mode)}"
+    except FileNotFoundError:
+        return f"{path} missing"
+    except Exception as e:
+        return f"{path} error={type(e).__name__}: {e}"
 
 
 class _CdpWorker:
@@ -771,18 +790,30 @@ async def _create_cdp_browser(url: str) -> Any:
     logger.debug(f"Creating Pure CDP browser with args: {browser_args}")
     logger.debug(f"Browser screen size: {screen_width}x{screen_height}")
 
-    driver = await cdp_driver.start_async(
-        headless=False,
-        headed=False,
-        xvfb=True,
-        xvfb_metrics=f"{display_width},{display_height}",
-        sandbox=False,
-        lang="en",
-        incognito=True,
-        ad_block=True,
-        proxy=proxy,
-        browser_args=browser_args,
-    )
+    try:
+        driver = await cdp_driver.start_async(
+            headless=False,
+            headed=False,
+            xvfb=True,
+            xvfb_metrics=f"{display_width},{display_height}",
+            sandbox=False,
+            lang="en",
+            incognito=True,
+            ad_block=True,
+            proxy=proxy,
+            browser_args=browser_args,
+        )
+    except Exception as e:
+        logger.warning(f"Pure CDP browser startup failed: {type(e).__name__}: {e}")
+        logger.warning(
+            "SeleniumBase runtime paths: "
+            f"cwd={os.getcwd()}; "
+            f"{_describe_runtime_path(SELENIUMBASE_DOWNLOADS_DIR)}; "
+            f"{_describe_runtime_path('/app/downloaded_files')}; "
+            f"{_describe_runtime_path('downloaded_files')}; "
+            f"{_describe_runtime_path('/tmp')}"
+        )
+        raise
 
     try:
         await driver.page.set_window_rect(0, 0, screen_width, screen_height)

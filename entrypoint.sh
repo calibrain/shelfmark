@@ -202,14 +202,62 @@ change_ownership() {
   chown -R "${RUN_UID}:${RUN_GID}" "${folder}" || echo "Failed to change ownership for ${folder}, continuing..."
 }
 
+ensure_tree_writable() {
+    local folder="$1"
+
+    make_writable "$folder"
+    if [ -d "$folder" ]; then
+        chmod -R u+rwX,g+rwX "$folder" || echo "Failed to relax permissions for ${folder}, continuing..."
+    fi
+}
+
+ensure_symlinked_dir() {
+    local link_path="$1"
+    local target_path="$2"
+
+    ensure_tree_writable "$target_path"
+
+    if [ -L "$link_path" ]; then
+        local current_target
+        current_target=$(readlink "$link_path" 2>/dev/null || echo "")
+        if [ "$current_target" = "$target_path" ]; then
+            echo "$link_path already points to $target_path"
+            return 0
+        fi
+        echo "Replacing symlink $link_path -> $current_target with $target_path"
+        rm -f "$link_path" || echo "Failed to replace symlink ${link_path}, continuing..."
+    elif [ -d "$link_path" ]; then
+        echo "Moving existing scratch files from $link_path to $target_path"
+        find "$link_path" -xdev -mindepth 1 -maxdepth 1 -exec mv -t "$target_path" {} + 2>/dev/null || true
+        ensure_tree_writable "$target_path"
+
+        if ! rmdir "$link_path" 2>/dev/null; then
+            echo "Could not replace $link_path with symlink, leaving existing directory in place"
+            ensure_tree_writable "$link_path"
+            return 0
+        fi
+    elif [ -e "$link_path" ]; then
+        echo "$link_path exists and is not a directory, leaving it in place"
+        return 0
+    fi
+
+    if [ ! -e "$link_path" ]; then
+        ln -s "$target_path" "$link_path" || echo "Failed to create symlink ${link_path}, continuing..."
+    fi
+}
+
 fix_misowned /app
 fix_misowned /var/log/shelfmark
 fix_misowned /tmp/shelfmark
 
-# SeleniumBase (internal bypasser) writes a patched chromedriver binary (uc_driver)
-# into its own drivers directory. Some NAS/docker setups can apply restrictive ACLs
-# to extracted image layers that block non-root writes; ensure the runtime UID owns it.
+# Keep SeleniumBase on its default /app-based paths, but redirect the scratch
+# directories into /tmp so bypasser startup doesn't depend on image-layer writes.
 if [ "${USING_EXTERNAL_BYPASSER}" != "true" ]; then
+    ensure_symlinked_dir /app/downloaded_files /tmp/shelfmark/seleniumbase/downloaded_files
+    ensure_symlinked_dir /app/archived_files /tmp/shelfmark/seleniumbase/archived_files
+
+    # Keep SeleniumBase's bundled drivers directory writable as well for
+    # compatibility with legacy UC code paths that still probe bundled assets.
     set +e
     SELENIUMBASE_DRIVERS_DIR=$(python3 -c "import pathlib, seleniumbase; print(pathlib.Path(seleniumbase.__file__).resolve().parent / 'drivers')" 2>/dev/null)
     set -e
@@ -217,7 +265,7 @@ if [ "${USING_EXTERNAL_BYPASSER}" != "true" ]; then
     if [ -n "$SELENIUMBASE_DRIVERS_DIR" ] && [ -d "$SELENIUMBASE_DRIVERS_DIR" ]; then
         change_ownership "$SELENIUMBASE_DRIVERS_DIR"
 
-        # If the driver already exists, ensure it's executable for the runtime user.
+        # If the legacy driver already exists, ensure it's executable for the runtime user.
         if [ -f "${SELENIUMBASE_DRIVERS_DIR}/uc_driver" ]; then
             chmod +x "${SELENIUMBASE_DRIVERS_DIR}/uc_driver" || echo "Failed to chmod uc_driver, continuing..."
         fi
