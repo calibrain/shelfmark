@@ -4,7 +4,6 @@ Stores search results in CONFIG_DIR to survive container restarts.
 IRC searches are slow and resource-intensive, so we cache aggressively.
 """
 
-import hashlib
 import json
 import time
 from dataclasses import asdict
@@ -14,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from shelfmark.config import env
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.release_sources import Release, ReleaseProtocol
 
 logger = setup_logger(__name__)
@@ -28,9 +28,10 @@ DEFAULT_CACHE_TTL = 30 * 24 * 60 * 60
 _cache_lock = Lock()
 
 
-def _generate_cache_key(provider: str, provider_id: str) -> str:
-    """Generate a cache key from provider and provider_id."""
-    return f"{provider}:{provider_id}"
+def _generate_cache_key(provider: str, provider_id: str, content_type: Optional[str] = None) -> str:
+    """Generate a cache key from provider, provider_id, and content type."""
+    normalized_content_type = "audiobook" if check_audiobook(content_type) else "ebook"
+    return f"{provider}:{provider_id}:{normalized_content_type}"
 
 
 def _load_cache() -> Dict[str, Any]:
@@ -74,6 +75,7 @@ def _dict_to_release(data: Dict[str, Any]) -> Release:
 def get_cached_results(
     provider: str,
     provider_id: str,
+    content_type: Optional[str] = None,
     ttl_seconds: Optional[int] = None
 ) -> Optional[Dict[str, Any]]:
     """
@@ -82,6 +84,7 @@ def get_cached_results(
     Args:
         provider: Metadata provider name (e.g., "hardcover", "openlibrary")
         provider_id: Book ID in the provider's system
+        content_type: Search content type for cache isolation
         ttl_seconds: Cache TTL in seconds (from settings)
 
     Returns:
@@ -99,7 +102,7 @@ def get_cached_results(
     if ttl_seconds == 0:
         ttl_seconds = float('inf')
 
-    cache_key = _generate_cache_key(provider, provider_id)
+    cache_key = _generate_cache_key(provider, provider_id, content_type)
 
     with _cache_lock:
         cache = _load_cache()
@@ -113,6 +116,7 @@ def get_cached_results(
         age = time.time() - cached_at
 
         if age > ttl_seconds:
+            title = entry.get("title", cache_key)
             logger.debug(f"IRC cache expired for '{title}' (age: {age:.0f}s > TTL: {ttl_seconds}s)")
             # Don't delete here - let cleanup handle it
             return None
@@ -136,6 +140,7 @@ def cache_results(
     provider_id: str,
     title: str,
     releases: List[Release],
+    content_type: Optional[str] = None,
     online_servers: Optional[List[str]] = None
 ) -> None:
     """
@@ -146,9 +151,10 @@ def cache_results(
         provider_id: Book ID in the provider's system
         title: Book title (for logging/display)
         releases: List of Release objects from search
+        content_type: Search content type for cache isolation
         online_servers: List of online server nicks (optional)
     """
-    cache_key = _generate_cache_key(provider, provider_id)
+    cache_key = _generate_cache_key(provider, provider_id, content_type)
 
     with _cache_lock:
         cache = _load_cache()
@@ -159,6 +165,7 @@ def cache_results(
         cache["entries"][cache_key] = {
             "provider": provider,
             "provider_id": provider_id,
+            "content_type": "audiobook" if check_audiobook(content_type) else "ebook",
             "title": title,
             "releases": [_release_to_dict(r) for r in releases],
             "online_servers": list(online_servers) if online_servers else [],
@@ -169,18 +176,19 @@ def cache_results(
         logger.info(f"Cached {len(releases)} IRC releases for '{title}'")
 
 
-def invalidate_cache(provider: str, provider_id: str) -> bool:
+def invalidate_cache(provider: str, provider_id: str, content_type: Optional[str] = None) -> bool:
     """
     Remove a specific entry from the cache.
 
     Args:
         provider: Metadata provider name
         provider_id: Book ID in the provider's system
+        content_type: Search content type for cache isolation
 
     Returns:
         True if entry was found and removed
     """
-    cache_key = _generate_cache_key(provider, provider_id)
+    cache_key = _generate_cache_key(provider, provider_id, content_type)
 
     with _cache_lock:
         cache = _load_cache()

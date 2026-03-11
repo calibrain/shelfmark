@@ -37,6 +37,7 @@ const tableFieldFixture: TableFieldConfig = {
         { value: 'ebook', label: 'Ebook', childOf: 'prowlarr' },
         { value: 'audiobook', label: 'Audiobook', childOf: 'prowlarr' },
         { value: 'ebook', label: 'Ebook', childOf: 'irc' },
+        { value: 'audiobook', label: 'Audiobook', childOf: 'irc' },
       ],
     },
     {
@@ -70,7 +71,7 @@ describe('requestPolicyGridUtils', () => {
       {
         source: 'irc',
         displayName: 'IRC',
-        supportedContentTypes: ['ebook'],
+        supportedContentTypes: ['ebook', 'audiobook'],
       },
     ]);
   });
@@ -97,7 +98,7 @@ describe('requestPolicyGridUtils', () => {
       { source: 'direct_download', content_type: 'ebook', mode: 'request_release' }, // same as inherited default -> kept (explicit intent)
       { source: 'prowlarr', content_type: 'ebook', mode: 'blocked' }, // same as inherited global rule -> kept (explicit intent)
       { source: 'prowlarr', content_type: 'audiobook', mode: 'request_release' }, // meaningful override -> kept
-      { source: 'irc', content_type: 'audiobook', mode: 'blocked' }, // unsupported pair -> removed
+      { source: 'direct_download', content_type: 'audiobook', mode: 'blocked' }, // unsupported pair -> removed
     ]);
 
     const persisted = normalizeExplicitRulesForPersistence({

@@ -1,6 +1,6 @@
 """IRC DCC download handler.
 
-Handles downloading books via IRC DCC protocol.
+Handles downloading IRC releases via DCC protocol.
 """
 
 from pathlib import Path
@@ -29,7 +29,7 @@ class IRCDownloadHandler(DownloadHandler):
         progress_callback: Callable[[float], None],
         status_callback: Callable[[str, Optional[str]], None],
     ) -> Optional[str]:
-        """Download a book via IRC DCC. task.task_id contains the IRC request string."""
+        """Download a release via IRC DCC. task.task_id contains the IRC request string."""
         download_request = task.task_id
         logger.info(f"IRC download: {download_request[:60]}...")
 

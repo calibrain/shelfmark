@@ -11,14 +11,13 @@ from typing import Optional
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import is_audiobook as check_audiobook
 
 logger = setup_logger(__name__)
 
 # All recognized formats for parsing IRC result lines.
 # This comprehensive list is used to identify file extensions in results.
-# User's configured formats are used separately for filtering.
-# Note: IRC source currently only supports ebooks, but audiobook formats
-# are included for future-proofing and format detection consistency.
+# User-configured formats are used separately for filtering.
 ALL_RECOGNIZED_FORMATS = {
     # Ebook formats
     'epub', 'mobi', 'azw3', 'azw', 'pdf', 'doc', 'docx',
@@ -29,9 +28,13 @@ ALL_RECOGNIZED_FORMATS = {
 }
 
 
-def _get_supported_formats() -> set[str]:
-    """Get user's configured supported formats from settings."""
-    formats = config.get("SUPPORTED_FORMATS", ["epub", "mobi", "azw3", "fb2", "djvu", "cbz", "cbr"])
+def _get_supported_formats(content_type: Optional[str] = None) -> set[str]:
+    """Get the supported formats for the requested content type."""
+    if check_audiobook(content_type):
+        formats = config.get("SUPPORTED_AUDIOBOOK_FORMATS", ["m4b", "mp3"])
+    else:
+        formats = config.get("SUPPORTED_FORMATS", ["epub", "mobi", "azw3", "fb2", "djvu", "cbz", "cbr"])
+
     if isinstance(formats, str):
         return {fmt.strip().lower() for fmt in formats.split(",") if fmt.strip()}
     return {fmt.lower() for fmt in formats}
@@ -140,10 +143,10 @@ def parse_result_line(line: str) -> Optional[SearchResult]:
     return None
 
 
-def parse_results_file(content: str) -> list[SearchResult]:
+def parse_results_file(content: str, content_type: Optional[str] = None) -> list[SearchResult]:
     """Parse a search results file into SearchResult objects."""
     results = []
-    supported = _get_supported_formats()
+    supported = _get_supported_formats(content_type)
 
     for line in content.splitlines():
         result = parse_result_line(line)

@@ -39,7 +39,7 @@ def irc_settings():
             key="heading",
             title="IRC",
             description=(
-                "Search and download books from IRC ebook channels. "
+                "Search and download ebook and audiobook releases from IRC channels. "
                 "This source connects via IRC and uses DCC for file transfers. "
                 "Configure the connection details below to enable IRC search. "
                 "Note: DCC requires direct TCP connections to arbitrary ports, "

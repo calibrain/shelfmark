@@ -1,6 +1,6 @@
 """IRC client implementation using raw sockets.
 
-Minimal IRC client for ebook searches.
+Minimal IRC client for Shelfmark release searches.
 """
 
 import re
@@ -64,7 +64,7 @@ class IRCConnectionError(IRCError):
 
 
 class IRCClient:
-    """Minimal IRC client for per-request ebook searches."""
+    """Minimal IRC client for per-request IRC release searches."""
 
     def __init__(
         self,
