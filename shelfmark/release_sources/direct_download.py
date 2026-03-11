@@ -166,7 +166,7 @@ def search_books(query: str, filters: SearchFilters) -> List[BrowseRecord]:
 
     filters_query = ""
 
-    for value in filters.lang if filters.lang else config.BOOK_LANGUAGE or []:
+    for value in filters.lang or []:
         if value and value != "all":
             filters_query += f"&lang={quote(value)}"
 
