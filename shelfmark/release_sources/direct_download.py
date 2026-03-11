@@ -1,5 +1,6 @@
 """Direct download source - Anna's Archive/Libgen with fallback cascade."""
 
+from dataclasses import replace
 import itertools
 import json
 import re
@@ -166,7 +167,7 @@ def search_books(query: str, filters: SearchFilters) -> List[BrowseRecord]:
 
     filters_query = ""
 
-    for value in filters.lang if filters.lang else config.BOOK_LANGUAGE or []:
+    for value in filters.lang or []:
         if value and value != "all":
             filters_query += f"&lang={quote(value)}"
 
@@ -1162,6 +1163,23 @@ class DirectDownloadSource(ReleaseSource):
             return None
         return get_aa_content_type_dir(task.content_type)
 
+    def _search_books_with_language_fallback(
+        self,
+        query: str,
+        filters: SearchFilters,
+        *,
+        search_label: str,
+    ) -> List[BrowseRecord]:
+        """Retry AA queries without a language filter when filtered search returns nothing."""
+        results = search_books(query, filters)
+        if results or not filters.lang:
+            return results
+
+        logger.debug(
+            f"No {search_label} results with langs={filters.lang}, retrying without language filter"
+        )
+        return search_books(query, replace(filters, lang=None))
+
     def search(
         self,
         book: BookMetadata,
@@ -1191,7 +1209,7 @@ class DirectDownloadSource(ReleaseSource):
             logger.debug(f"Searching direct_download: source_query='{query}', langs={lang_filter}")
             filters = plan.source_filters or SearchFilters()
             filters.lang = lang_filter if lang_filter is not None else (filters.lang or [])
-            results = search_books(query, filters)
+            results = self._search_books_with_language_fallback(query, filters, search_label="manual")
             self._last_search_type = "manual" if query else "title_author"
             return [_browse_record_to_release(record) for record in results]
 
@@ -1241,6 +1259,24 @@ class DirectDownloadSource(ReleaseSource):
                 raise
             except Exception as e:
                 logger.error(f"Search error: {e}")
+
+        if not all_results and any(langs for _, langs in searches):
+            logger.debug("No title+author results with language filter, retrying without language filter")
+            for title, _langs in searches:
+                query = f"{title} {author}".strip()
+                if not query:
+                    continue
+
+                logger.debug(f"Searching direct_download: title_author='{query}', langs=[]")
+                try:
+                    for bi in search_books(query, SearchFilters()):
+                        if bi.id not in seen_ids:
+                            seen_ids.add(bi.id)
+                            all_results.append(bi)
+                except SearchUnavailable:
+                    raise
+                except Exception as e:
+                    logger.error(f"Search error: {e}")
 
         logger.info(f"Found {len(all_results)} releases via title+author")
         return [_browse_record_to_release(record) for record in all_results]

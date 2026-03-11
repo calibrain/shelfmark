@@ -132,7 +132,7 @@ export const DropdownList = ({
                   type="checkbox"
                   checked={selectedValues.includes(option.value)}
                   readOnly
-                  className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500 pointer-events-none"
+                  className="h-4 w-4 rounded-sm border-gray-300 text-sky-600 focus:ring-sky-500 pointer-events-none"
                 />
               )}
               {option.icon}

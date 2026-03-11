@@ -1,6 +1,6 @@
 """IRC release source plugin.
 
-Searches IRC ebook channels for book releases.
+Searches IRC channels for ebook and audiobook releases.
 """
 
 import tempfile
@@ -66,11 +66,11 @@ def _enforce_rate_limit() -> None:
 
 @register_source("irc")
 class IRCReleaseSource(ReleaseSource):
-    """Search IRC channels for book releases."""
+    """Search IRC channels for ebook and audiobook releases."""
 
     name = "irc"
     display_name = "IRC"
-    supported_content_types = ["ebook"]  # IRC only supports ebooks
+    supported_content_types = ["ebook", "audiobook"]
     can_be_default = False  # Exclude from default source options (requires deliberate selection)
 
     def __init__(self):
@@ -141,7 +141,7 @@ class IRCReleaseSource(ReleaseSource):
 
         # Check cache first (unless expand_search/refresh is requested)
         if not expand_search:
-            cached = get_cached_results(book.provider, book.provider_id)
+            cached = get_cached_results(book.provider, book.provider_id, content_type=content_type)
             if cached:
                 _emit_status("Using cached results", phase='complete')
                 self._online_servers = set(cached.get("online_servers", []))
@@ -199,7 +199,8 @@ class IRCReleaseSource(ReleaseSource):
                     book.provider_id,
                     book.title,
                     [],
-                    list(self._online_servers) if self._online_servers else None
+                    content_type=content_type,
+                    online_servers=list(self._online_servers) if self._online_servers else None,
                 )
                 return []
 
@@ -219,8 +220,8 @@ class IRCReleaseSource(ReleaseSource):
             connection_manager.release_connection(client)
 
             # Convert to Release objects
-            results = parse_results_file(content)
-            releases = self._convert_to_releases(results)
+            results = parse_results_file(content, content_type=content_type)
+            releases = self._convert_to_releases(results, content_type=content_type)
 
             # Cache results
             cache_results(
@@ -228,7 +229,8 @@ class IRCReleaseSource(ReleaseSource):
                 book.provider_id,
                 book.title,
                 releases,
-                list(self._online_servers) if self._online_servers else None
+                content_type=content_type,
+                online_servers=list(self._online_servers) if self._online_servers else None,
             )
 
             return releases
@@ -263,7 +265,7 @@ class IRCReleaseSource(ReleaseSource):
         return ' '.join(parts)
 
     # Format priority for sorting (lower = higher priority)
-    FORMAT_PRIORITY = {
+    EBOOK_FORMAT_PRIORITY = {
         'epub': 0,
         'mobi': 1,
         'azw3': 2,
@@ -283,10 +285,33 @@ class IRCReleaseSource(ReleaseSource):
         'zip': 16,
     }
 
-    def _convert_to_releases(self, results: List[SearchResult]) -> List[Release]:
+    AUDIOBOOK_FORMAT_PRIORITY = {
+        'm4b': 0,
+        'mp3': 1,
+        'm4a': 2,
+        'flac': 3,
+        'opus': 4,
+        'ogg': 5,
+        'aac': 6,
+        'wav': 7,
+        'wma': 8,
+        'rar': 9,
+        'zip': 10,
+    }
+
+    def _convert_to_releases(
+        self,
+        results: List[SearchResult],
+        content_type: str = "ebook",
+    ) -> List[Release]:
         """Convert parsed results to Release objects, sorted by online/format/server."""
         releases = []
         online_servers = self._online_servers if self._online_servers else set()
+        format_priority_map = (
+            self.AUDIOBOOK_FORMAT_PRIORITY
+            if content_type == "audiobook"
+            else self.EBOOK_FORMAT_PRIORITY
+        )
 
         for result in results:
             release = Release(
@@ -298,6 +323,7 @@ class IRCReleaseSource(ReleaseSource):
                 size_bytes=self._parse_size(result.size) if result.size else None,
                 protocol=ReleaseProtocol.DCC,
                 indexer=f"IRC:{result.server}",
+                content_type=content_type,
                 extra={
                     "server": result.server,
                     "author": result.author,
@@ -311,7 +337,7 @@ class IRCReleaseSource(ReleaseSource):
             server = release.extra.get("server", "")
             is_online = server in online_servers
             fmt = release.format.lower() if release.format else ""
-            format_priority = self.FORMAT_PRIORITY.get(fmt, 99)
+            format_priority = format_priority_map.get(fmt, 99)
             return (
                 0 if is_online else 1,  # Online first
                 format_priority,         # Then by format

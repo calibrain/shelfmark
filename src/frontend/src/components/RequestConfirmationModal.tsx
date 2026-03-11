@@ -134,25 +134,25 @@ export const RequestConfirmationModal = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className={`absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-150 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
+        className={`absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity duration-150 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
         onClick={handleClose}
       />
 
       <div
-        className={`relative w-full max-w-xl rounded-xl border border-[var(--border-muted)] shadow-2xl ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`relative w-full max-w-xl rounded-xl border-hairline border-(--border-muted) shadow-2xl ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         style={{ background: 'var(--bg)' }}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
       >
-        <header className="flex items-center justify-between border-b border-[var(--border-muted)] px-6 py-4">
+        <header className="flex items-center justify-between border-b-hairline border-(--border-muted) px-6 py-4">
           <h3 id={titleId} className="text-lg font-semibold">
             Request Book
           </h3>
           <button
             type="button"
             onClick={handleClose}
-            className="p-1.5 rounded-lg hover:bg-[var(--hover-surface)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-1.5 rounded-lg hover:bg-(--hover-surface) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label="Close request confirmation"
             disabled={isSubmitting}
           >
@@ -163,9 +163,9 @@ export const RequestConfirmationModal = ({
         </header>
 
         <div className="space-y-4 px-6 py-5">
-          <div className="rounded-xl border border-[var(--border-muted)] bg-[var(--bg-soft)] px-4 py-4">
+          <div className="rounded-xl border-hairline border-(--border-muted) bg-(--bg-soft) px-4 py-4">
             <div className="flex gap-4">
-              <div className="w-16 h-24 flex-shrink-0 rounded-lg overflow-hidden border border-[var(--border-muted)] bg-[var(--bg)]">
+              <div className="w-16 h-24 shrink-0 rounded-lg overflow-hidden border-hairline border-(--border-muted) bg-(--bg)">
                 {preview.preview ? (
                   <img
                     src={preview.preview}
@@ -212,7 +212,7 @@ export const RequestConfirmationModal = ({
                 onChange={(event) => setNote(truncateRequestNote(event.target.value))}
                 maxLength={MAX_REQUEST_NOTE_LENGTH}
                 rows={4}
-                className="w-full px-3 py-2 rounded-lg border border-[var(--border-muted)] bg-[var(--bg)] text-sm resize-y min-h-[96px] focus:outline-none focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500"
+                className="w-full px-3 py-2 rounded-lg border-hairline border-(--border-muted) bg-(--bg) text-sm resize-y min-h-[96px] focus:outline-hidden focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500"
                 placeholder="Add context for admins reviewing this request..."
                 disabled={isSubmitting}
               />
@@ -223,12 +223,12 @@ export const RequestConfirmationModal = ({
           )}
         </div>
 
-        <footer className="flex items-center justify-end gap-3 border-t border-[var(--border-muted)] px-6 py-4">
+        <footer className="flex items-center justify-end gap-3 border-t-hairline border-(--border-muted) px-6 py-4">
           <button
             type="button"
             onClick={handleClose}
             disabled={isSubmitting}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-[var(--bg-soft)] border border-[var(--border-muted)] hover:bg-[var(--hover-surface)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-(--bg-soft) border-hairline border-(--border-muted) hover:bg-(--hover-surface) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cancel
           </button>

@@ -245,7 +245,7 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
           <div className="flex flex-col gap-1 max-w-xs">
             {rows.map((row) => (
               <div key={row.label} className="flex gap-2">
-                <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">{row.label}:</span>
+                <span className="text-gray-400 dark:text-gray-500 shrink-0">{row.label}:</span>
                 <span className="truncate">{row.value}</span>
               </div>
             ))}
@@ -324,7 +324,7 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
         return (
           <span className="inline-flex items-center gap-1">
             <span
-              className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotColor}`}
+              className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`}
               title={protocolLabel}
             />
             {displayValue}
@@ -335,11 +335,11 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
       return (
         <div className={`flex items-center ${alignClass} text-xs text-gray-600 dark:text-gray-300 truncate gap-1.5`}>
           <span
-            className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`}
+            className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`}
             title={protocolLabel}
           />
           <span className="truncate">{displayValue}</span>
-          {peers && <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">{peers}</span>}
+          {peers && <span className="text-gray-400 dark:text-gray-500 shrink-0">{peers}</span>}
         </div>
       );
     }
@@ -403,12 +403,12 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
       // Icon sized to match visual height of format text badges
       const icon = isAudiobook ? (
         // Headphones icon for audiobook
-        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z" />
         </svg>
       ) : (
         // Book icon for ebook
-        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
         </svg>
       );
@@ -433,7 +433,7 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
       if (!primaryFormat) {
         return (
           <div className="flex items-center justify-start" title={isAudiobook ? 'Audiobook' : 'Book'}>
-            <span className={`${colorStyle.bg} ${colorStyle.text} text-[10px] sm:text-[11px] font-semibold py-0.5 rounded-lg inline-flex items-center justify-center w-[3.25rem]`}>
+            <span className={`${colorStyle.bg} ${colorStyle.text} text-[10px] sm:text-[11px] font-semibold py-0.5 rounded-lg inline-flex items-center justify-center w-13`}>
               {icon}
             </span>
           </div>
@@ -444,7 +444,7 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
       const formatBadge = (
         <span className="inline-flex items-center gap-1">
           <span
-            className={`${colorStyle.bg} ${colorStyle.text} text-[10px] sm:text-[11px] font-semibold py-0.5 rounded-lg tracking-wide whitespace-nowrap w-[3.25rem] text-center`}
+            className={`${colorStyle.bg} ${colorStyle.text} text-[10px] sm:text-[11px] font-semibold py-0.5 rounded-lg tracking-wide whitespace-nowrap w-13 text-center`}
           >
             {column.uppercase ? primaryFormat.toUpperCase() : primaryFormat}
           </span>
@@ -492,7 +492,7 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
           return (
             <span className="inline-flex items-center gap-1">
               <span
-                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isOnline ? 'bg-emerald-500' : 'bg-gray-400'}`}
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOnline ? 'bg-emerald-500' : 'bg-gray-400'}`}
                 title={isOnline ? 'Online' : 'Offline'}
               />
               {displayValue}
@@ -506,7 +506,7 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
         <div className={`flex items-center ${alignClass} text-xs text-gray-600 dark:text-gray-300 truncate`}>
           {isServerColumn && (
             <span
-              className={`w-2 h-2 rounded-full mr-1.5 flex-shrink-0 ${isOnline ? 'bg-emerald-500' : 'bg-gray-400'}`}
+              className={`w-2 h-2 rounded-full mr-1.5 shrink-0 ${isOnline ? 'bg-emerald-500' : 'bg-gray-400'}`}
               title={isOnline ? 'Online' : 'Offline'}
             />
           )}

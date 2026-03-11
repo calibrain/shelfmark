@@ -657,7 +657,7 @@ export const ActivitySidebar = ({
               <Dropdown
                 align="right"
                 widthClassName="w-auto"
-                panelClassName="min-w-[11rem]"
+                panelClassName="min-w-44"
                 renderTrigger={({ isOpen, toggle }) => (
                   <button
                     type="button"
@@ -735,7 +735,7 @@ export const ActivitySidebar = ({
         </div>
 
         {activeTab !== 'history' && (
-          <div className="mt-2 border-b border-[var(--border-muted)] -mx-4 px-4">
+          <div className="mt-2 border-b-hairline border-(--border-muted) -mx-4 px-4">
             <div className="relative flex gap-1">
               {/* Sliding indicator */}
               <div
@@ -961,7 +961,7 @@ export const ActivitySidebar = ({
 
       {(activeTab === 'downloads' || activeTab === 'all') && hasTerminalDownloadItems && clearCompletedTargets.length > 0 && (
         <div
-          className="p-3 border-t flex items-center justify-center"
+          className="p-3 border-t-hairline flex items-center justify-center"
           style={{
             borderColor: 'var(--border-muted)',
             paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
@@ -979,7 +979,7 @@ export const ActivitySidebar = ({
 
       {activeTab === 'history' && historyItems.length > 0 && (
         <div
-          className="p-3 border-t flex items-center justify-center"
+          className="p-3 border-t-hairline flex items-center justify-center"
           style={{
             borderColor: 'var(--border-muted)',
             paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
@@ -1011,7 +1011,7 @@ export const ActivitySidebar = ({
 
     return (
       <aside
-        className="hidden lg:flex fixed right-0 w-96 flex-col bg-[var(--bg-soft)] z-30 rounded-2xl shadow-lg overflow-hidden"
+        className="hidden lg:flex fixed right-0 w-96 flex-col bg-(--bg-soft) z-30 rounded-2xl shadow-lg overflow-hidden"
         style={{
           top: `${pinnedTopOffset}px`,
           height: `calc(100dvh - ${pinnedTopOffset}px - 0.75rem)`,
@@ -1028,7 +1028,7 @@ export const ActivitySidebar = ({
   return (
     <>
       <div
-        className={`fixed inset-0 bg-black/50 z-[45] transition-opacity duration-300 ${
+        className={`fixed inset-0 bg-black/50 z-45 transition-opacity duration-300 ${
           isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         onClick={onClose}

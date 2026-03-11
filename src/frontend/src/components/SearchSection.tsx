@@ -92,6 +92,7 @@ export const SearchSection = ({
           onSubmit={onSearch}
           isLoading={isLoading}
           onAdvancedToggle={onAdvancedToggle}
+          isAdvancedActive={showAdvanced}
           contentType={contentType}
           onContentTypeChange={onContentTypeChange}
           allowedContentTypes={allowedContentTypes}
@@ -100,6 +101,11 @@ export const SearchSection = ({
           onQueryTargetChange={onQueryTargetChange}
           activeQueryField={activeQueryField}
         />
+        {activeQueryTarget === 'manual' && (
+          <p className="text-xs opacity-50 px-2">
+            Manual search queries release sources directly. Some sources may return limited metadata, which can affect file naming templates.
+          </p>
+        )}
         <AdvancedFilters
           visible={showAdvanced}
           bookLanguages={bookLanguages}
@@ -115,6 +121,7 @@ export const SearchSection = ({
           onMetadataProviderChange={onMetadataProviderChange}
           contentType={contentType}
           isAdmin={isAdmin}
+          onClose={onAdvancedToggle}
         />
       </div>
     </section>

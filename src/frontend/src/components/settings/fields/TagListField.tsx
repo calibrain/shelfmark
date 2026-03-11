@@ -82,9 +82,8 @@ export const TagListField = ({ field, value, onChange, disabled, requiredTags }:
 
   return (
     <div
-      className={`w-full px-3 py-2 rounded-lg border border-[var(--border-muted)]
-                  bg-[var(--bg-soft)] text-sm
-                  focus-within:outline-none focus-within:ring-2 focus-within:ring-sky-500/50 focus-within:border-sky-500
+      className={`w-full px-3 py-2 rounded-lg border-hairline border-(--border-muted)                  bg-(--bg-soft) text-sm
+                  focus-within:outline-hidden focus-within:ring-2 focus-within:ring-sky-500/50 focus-within:border-sky-500
                   transition-colors
                   ${isDisabled ? 'opacity-60 cursor-not-allowed' : 'cursor-text'}`}
       onClick={() => {
@@ -92,16 +91,16 @@ export const TagListField = ({ field, value, onChange, disabled, requiredTags }:
         inputRef.current?.focus();
       }}
     >
-      <div className="flex flex-wrap gap-1 items-center min-h-[1.25rem]">
+      <div className="flex flex-wrap gap-1 items-center min-h-5">
         {tags.map((tag, idx) => (
           <span
             key={`${tag}-${idx}`}
             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md
-                       border border-[var(--border-muted)] bg-[var(--bg)]
+                       border-hairline border-(--border-muted) bg-(--bg)
                        max-w-full"
             title={tag}
           >
-            <span className="truncate max-w-[22rem]">{tag}</span>
+            <span className="truncate max-w-88">{tag}</span>
             {!isDisabled && !isRequired(tag) && (
               <button
                 type="button"
@@ -109,7 +108,7 @@ export const TagListField = ({ field, value, onChange, disabled, requiredTags }:
                   e.stopPropagation();
                   removeAt(idx);
                 }}
-                className="p-0.5 rounded hover:bg-[var(--hover-surface)]"
+                className="p-0.5 rounded-sm hover:bg-(--hover-surface)"
                 aria-label={`Remove ${tag}`}
               >
                 <svg
@@ -146,7 +145,7 @@ export const TagListField = ({ field, value, onChange, disabled, requiredTags }:
             }}
             onBlur={() => commitDraft()}
             placeholder={tags.length === 0 ? field.placeholder : ''}
-            className="flex-1 min-w-[4rem] bg-transparent outline-none px-1 py-0"
+            className="flex-1 min-w-16 bg-transparent outline-hidden px-1 py-0"
           />
         )}
 

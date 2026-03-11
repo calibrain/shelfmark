@@ -28,6 +28,7 @@ interface AdvancedFiltersProps {
   onMetadataProviderChange?: (provider: string) => void;
   contentType?: ContentType;
   isAdmin?: boolean;
+  onClose?: () => void;
 }
 
 const SEARCH_MODE_OPTIONS = [
@@ -50,6 +51,7 @@ export const AdvancedFilters = ({
   onMetadataProviderChange,
   contentType = 'ebook',
   isAdmin = false,
+  onClose,
 }: AdvancedFiltersProps) => {
   const { lang, content, formats } = filters;
 
@@ -91,10 +93,33 @@ export const AdvancedFilters = ({
 
   const wrapperClassName = formClassName
     ? 'px-2'
-    : 'px-2 lg:ml-[calc(3rem+1rem)] lg:w-[calc(50vw+4rem)]';
+    : 'px-2 lg:ml-16 lg:w-[calc(50vw+4rem)]';
 
   const settingsForm = (
     <div className={wrapperClassName}>
+      {onClose && (
+        <div className="flex justify-end mb-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded-full hover-action transition-colors"
+            aria-label="Close filters"
+            title="Close filters"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth="2"
+              stroke="currentColor"
+              style={{ color: 'var(--text-muted)' }}
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
       {isAdmin && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -169,7 +194,7 @@ export const AdvancedFilters = ({
   return renderWrapper ? (
     renderWrapper(settingsForm)
   ) : (
-    <div className="w-full border-b pt-6 pb-4 mb-4" style={{ borderColor: 'var(--border-muted)' }}>
+    <div className="w-full border-b-hairline pt-6 pb-4 mb-4" style={{ borderColor: 'var(--border-muted)' }}>
       <div className="w-full px-4 sm:px-6 lg:px-8">{settingsForm}</div>
     </div>
   );

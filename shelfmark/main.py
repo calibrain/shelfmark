@@ -82,7 +82,7 @@ if BASE_PATH:
 # We run this app under Gunicorn with a gevent websocket worker (even when DEBUG=true),
 # so Socket.IO should always use gevent here.
 async_mode = 'gevent'
-socketio_cors_allowed_origins = "*" if DEBUG else None
+socketio_cors_allowed_origins = "*"
 
 # Initialize Flask-SocketIO with reverse proxy support
 socketio_path = f"{BASE_PATH}/socket.io" if BASE_PATH else "/socket.io"
@@ -656,10 +656,9 @@ def proxy_auth_middleware():
 def set_security_headers(response: Response) -> Response:
     """Add baseline security headers to every response."""
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault(
         "Content-Security-Policy",
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:; frame-ancestors 'none'",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:",
     )
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     response.headers.setdefault("Cross-Origin-Embedder-Policy", "credentialless")
@@ -743,6 +742,11 @@ def index() -> Response:
     Authentication is handled by the React app itself.
     """
     return _serve_index_html()
+
+@app.route('/theme-init.js')
+def theme_init_js() -> Response:
+    """Serve the blocking theme-init script."""
+    return send_from_directory(FRONTEND_DIST, 'theme-init.js', mimetype='application/javascript')
 
 @app.route('/logo.png')
 def logo() -> Response:

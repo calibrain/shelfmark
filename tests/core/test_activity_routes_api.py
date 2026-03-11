@@ -347,13 +347,22 @@ class TestActivityRoutes:
         _set_session(client, user_id=user["username"], db_user_id=None, is_admin=False)
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            response = client.post(
-                "/api/activity/dismiss",
-                json={"item_type": "download", "item_key": "download:test-task"},
-            )
+            with patch("shelfmark.core.activity_routes.logger.warning") as mock_warning:
+                response = client.post(
+                    "/api/activity/dismiss",
+                    json={"item_type": "download", "item_key": "download:test-task"},
+                )
 
         assert response.status_code == 403
         assert response.json["code"] == "user_identity_unavailable"
+        mock_warning.assert_called_once()
+        log_message = mock_warning.call_args.args[0]
+        assert "Activity dismiss rejected" in log_message
+        assert "status=403" in log_message
+        assert "reason=User identity unavailable for activity workflow" in log_message
+        assert "path=/api/activity/dismiss" in log_message
+        assert f"user={user['username']}" in log_message
+        assert "db_user_id=-" in log_message
 
     def test_dismiss_returns_404_when_download_history_row_is_missing(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -535,15 +544,16 @@ class TestActivityRoutes:
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            response = client.post(
-                "/api/activity/dismiss-many",
-                json={
-                    "items": [
-                        {"item_type": "download", "item_key": f"download:{existing_task_id}"},
-                        {"item_type": "download", "item_key": "download:missing-bulk-task"},
-                    ]
-                },
-            )
+            with patch("shelfmark.core.activity_routes.logger.warning") as mock_warning:
+                response = client.post(
+                    "/api/activity/dismiss-many",
+                    json={
+                        "items": [
+                            {"item_type": "download", "item_key": f"download:{existing_task_id}"},
+                            {"item_type": "download", "item_key": "download:missing-bulk-task"},
+                        ]
+                    },
+                )
 
         assert response.status_code == 404
         assert response.json["error"] == "One or more activity items were not found"
@@ -552,6 +562,14 @@ class TestActivityRoutes:
             main_module,
             viewer_scope=f"user:{user['id']}",
         )
+        mock_warning.assert_called_once()
+        log_message = mock_warning.call_args.args[0]
+        assert "Activity dismiss_many rejected" in log_message
+        assert "status=404" in log_message
+        assert "reason=One or more activity items were not found" in log_message
+        assert "path=/api/activity/dismiss-many" in log_message
+        assert "item_count=2" in log_message
+        assert "missing_item_keys=download:missing-bulk-task" in log_message
 
     def test_no_auth_dismiss_many_and_history_use_shared_identity(self, main_module):
         task_id = f"no-auth-{uuid.uuid4().hex[:10]}"
@@ -663,6 +681,25 @@ class TestActivityRoutes:
 
         assert response.status_code == 403
         assert response.json["code"] == "user_identity_unavailable"
+
+    def test_clear_history_logs_identity_failure(self, main_module, client):
+        admin = _create_user(main_module, prefix="admin", role="admin")
+        _set_session(client, user_id=admin["username"], db_user_id=None, is_admin=True)
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch("shelfmark.core.activity_routes.logger.warning") as mock_warning:
+                response = client.delete("/api/activity/history")
+
+        assert response.status_code == 403
+        assert response.json["code"] == "user_identity_unavailable"
+        mock_warning.assert_called_once()
+        log_message = mock_warning.call_args.args[0]
+        assert "Activity history_clear rejected" in log_message
+        assert "status=403" in log_message
+        assert "reason=User identity unavailable for activity workflow" in log_message
+        assert "path=/api/activity/history" in log_message
+        assert f"user={admin['username']}" in log_message
+        assert "is_admin=True" in log_message
 
     def test_snapshot_backfills_undismissed_terminal_download_from_download_history(self, main_module, client):
         user = _create_user(main_module, prefix="reader")

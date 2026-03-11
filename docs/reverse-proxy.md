@@ -6,6 +6,15 @@ Shelfmark can run behind a reverse proxy at the root path (recommended) or under
 
 If you can serve Shelfmark at the root path (`https://shelfmark.example.com/`), leave `URL_BASE` empty. This is the simplest option and avoids extra subpath configuration.
 
+Define this once in your Nginx `http` block so websocket upgrades are only sent when the client actually requests them:
+
+```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+```
+
 ```nginx
 server {
     listen 443 ssl;
@@ -19,7 +28,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $connection_upgrade;
     }
 }
 ```
@@ -53,7 +62,7 @@ location /shelfmark/ {
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-Host $host;
     proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
+    proxy_set_header Connection $connection_upgrade;
     proxy_read_timeout 86400;
     proxy_send_timeout 86400;
     proxy_buffering off;
@@ -133,12 +142,24 @@ location /shelfmark/ {
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-Host $host;
     proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
+    proxy_set_header Connection $connection_upgrade;
     proxy_read_timeout 86400;
     proxy_send_timeout 86400;
     proxy_buffering off;
 }
 ```
+
+---
+
+## Troubleshooting false network errors
+
+If login, settings saves, or downloads appear to fail in the browser but the action still completes on the server, check your proxy headers first.
+
+- Do not force `Connection: upgrade` on every request. That can break normal `POST` and `PUT` responses while the backend still processes them.
+- If your proxy UI does not support conditional websocket headers, remove the forced websocket headers entirely and let Shelfmark fall back to polling.
+- Keep the standard forwarded headers: `Host`, `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` when using a subpath or OIDC.
+
+This is especially relevant for Nginx Proxy Manager or custom advanced config snippets that add websocket headers globally.
 
 ---
 

@@ -115,7 +115,7 @@ function StarRating({ rating, maxRating = 5 }: { rating: number; maxRating?: num
           <div key={index} className="relative w-4 h-4">
             {/* Empty star (gray background) */}
             <svg
-              className="absolute inset-0 w-4 h-4 text-gray-300 dark:text-gray-600"
+              className="absolute inset-0 w-4 h-4 text-zinc-300 dark:text-zinc-600"
               fill="currentColor"
               viewBox="0 0 20 20"
             >
@@ -145,7 +145,7 @@ const ReleaseThumbnail = ({ preview, title }: { preview?: string; title?: string
   if (!preview || imageError) {
     return (
       <div
-        className="w-7 h-10 sm:w-8 sm:h-12 rounded bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[7px] sm:text-[8px] font-medium text-gray-500 dark:text-gray-400 flex-shrink-0"
+        className="w-7 h-10 sm:w-8 sm:h-12 rounded-sm bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-[7px] sm:text-[8px] font-medium text-zinc-500 dark:text-zinc-400 shrink-0"
         aria-label="No cover available"
       >
         No Cover
@@ -154,9 +154,9 @@ const ReleaseThumbnail = ({ preview, title }: { preview?: string; title?: string
   }
 
   return (
-    <div className="relative w-7 h-10 sm:w-8 sm:h-12 rounded overflow-hidden bg-gray-100 dark:bg-gray-800 border border-white/40 dark:border-gray-700/70 flex-shrink-0">
+    <div className="relative w-7 h-10 sm:w-8 sm:h-12 rounded-sm overflow-hidden bg-zinc-100 dark:bg-zinc-800 border-hairline border-white/40 dark:border-zinc-700/70 shrink-0">
       {!imageLoaded && (
-        <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
+        <div className="absolute inset-0 bg-linear-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
       )}
       <img
         src={preview}
@@ -201,7 +201,7 @@ const LeadingCell = ({
 
     return (
       <div
-        className={`w-7 h-10 sm:w-8 sm:h-12 rounded-lg ${colorStyle.bg} flex items-center justify-center flex-shrink-0`}
+        className={`w-7 h-10 sm:w-8 sm:h-12 rounded-lg ${colorStyle.bg} flex items-center justify-center shrink-0`}
       >
         <span className={`text-[8px] sm:text-[9px] font-bold ${colorStyle.text} text-center leading-tight px-0.5`}>
           {text}
@@ -286,7 +286,7 @@ const ReleaseRow = ({
             )}
           </p>
           {author && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
               {author}
             </p>
           )}
@@ -332,12 +332,12 @@ const ReleaseRow = ({
               <span className="font-medium">{release.title}</span>
             )}
             {author && (
-              <span className="text-gray-500 dark:text-gray-400 font-normal"> — {author}</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-normal"> — {author}</span>
             )}
           </p>
           {/* Plugin-provided info line (format, size, indexer, seeders, etc.) */}
           {mobileColumns.length > 0 && (
-            <div className="flex items-center gap-1.5 mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+            <div className="flex items-center gap-1.5 mt-1 text-[10px] text-zinc-500 dark:text-zinc-400">
               {(() => {
                 // Pre-filter columns that will render content to avoid orphan dots
                 const columnsWithContent = mobileColumns.filter((col) => {
@@ -365,7 +365,7 @@ const ReleaseRow = ({
                 });
                 return columnsWithContent.map((col, idx) => (
                   <span key={col.key} className="flex items-center gap-1.5">
-                    {idx > 0 && <span className="text-gray-300 dark:text-gray-600">·</span>}
+                    {idx > 0 && <span className="text-zinc-300 dark:text-zinc-600">·</span>}
                     <ReleaseCell column={col} release={release} compact onlineServers={onlineServers} />
                   </span>
                 ));
@@ -390,7 +390,7 @@ const ReleaseRow = ({
 function ShimmerBlock({ className }: { className: string }) {
   return (
     <div
-      className={`rounded bg-gray-200 dark:bg-gray-800 relative overflow-hidden ${className}`}
+      className={`rounded-sm bg-zinc-200 dark:bg-zinc-800 relative overflow-hidden ${className}`}
     >
       <div
         className="absolute inset-0 dark:opacity-50"
@@ -411,7 +411,7 @@ function ReleaseSkeleton() {
   const rows = 8;
   return (
     <div
-      className="divide-y divide-gray-200/60 dark:divide-gray-800/60 overflow-hidden"
+      className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60 overflow-hidden"
       style={{
         maskImage: 'linear-gradient(to bottom, black 40%, transparent 100%)',
         WebkitMaskImage: 'linear-gradient(to bottom, black 40%, transparent 100%)',
@@ -453,7 +453,7 @@ function ReleaseSkeleton() {
               </div>
 
               {/* Action button skeleton */}
-              <ShimmerBlock className="w-8 h-8 !rounded-full" />
+              <ShimmerBlock className="w-8 h-8 rounded-full!" />
             </div>
           </div>
         </div>
@@ -466,9 +466,9 @@ function ReleaseSkeleton() {
 function EmptyState({ message }: { message: string }) {
   return (
     <div className="text-center py-12 px-4">
-      <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-800 mb-4">
+      <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-zinc-100 dark:bg-zinc-800 mb-4">
         <svg
-          className="w-7 h-7 text-gray-400"
+          className="w-7 h-7 text-zinc-400"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -481,7 +481,7 @@ function EmptyState({ message }: { message: string }) {
           />
         </svg>
       </div>
-      <p className="text-sm text-gray-500 dark:text-gray-400">{message}</p>
+      <p className="text-sm text-zinc-500 dark:text-zinc-400">{message}</p>
     </div>
   );
 }
@@ -505,10 +505,10 @@ function ErrorState({ message }: { message: string }) {
           />
         </svg>
       </div>
-      <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">
+      <h4 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 mb-2">
         Error Loading Releases
       </h4>
-      <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs mx-auto">{message}</p>
+      <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-xs mx-auto">{message}</p>
     </div>
   );
 }
@@ -1292,18 +1292,18 @@ export const ReleaseModal = ({
       }}
     >
       <div
-        className={`details-container w-full max-w-3xl h-full sm:h-auto ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`details-container w-full h-full sm:h-auto ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
       >
-        <div className="flex h-full sm:h-[90vh] sm:max-h-[90vh] flex-col overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border border-[var(--border-muted)] bg-[var(--bg)] sm:bg-[var(--bg-soft)] text-[var(--text)] shadow-none sm:shadow-2xl">
+        <div className="flex h-full sm:h-[90vh] sm:max-h-[90vh] flex-col overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border-hairline border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft) text-(--text) shadow-none sm:shadow-2xl">
           {/* Header */}
-          <header className="flex items-start gap-3 border-b border-[var(--border-muted)] px-5 py-4">
+          <header className="flex items-start gap-3 border-b-hairline border-(--border-muted) px-5 py-4">
             {/* Animated thumbnail that appears when scrolling */}
             {!isRequestMode && (
               <div
-                className="flex-shrink-0 overflow-hidden transition-[width,margin] duration-300 ease-out"
+                className="shrink-0 overflow-hidden transition-[width,margin] duration-300 ease-out"
                 style={{
                   width: showHeaderThumb ? 46 : 0,
                   marginRight: showHeaderThumb ? 0 : -12,
@@ -1319,12 +1319,12 @@ export const ReleaseModal = ({
                       alt=""
                       width={46}
                       height={68}
-                      className="rounded shadow-md object-cover object-top"
+                      className="rounded-sm shadow-md object-cover object-top"
                       style={{ width: 46, height: 68, minWidth: 46 }}
                     />
                   ) : (
                     <div
-                      className="rounded border border-dashed border-[var(--border-muted)] bg-[var(--bg)]/60 flex items-center justify-center text-[7px] text-gray-500"
+                      className="rounded-sm border-hairline border-dashed border-(--border-muted) bg-(--bg)/60 flex items-center justify-center text-[7px] text-zinc-500"
                       style={{ width: 46, height: 68, minWidth: 46 }}
                     >
                       No cover
@@ -1334,23 +1334,23 @@ export const ReleaseModal = ({
               </div>
             )}
             <div className="flex-1 space-y-1 min-w-0">
-              <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
                 Find Releases
               </p>
               <h3 id={titleId} className="text-lg font-semibold leading-snug truncate">
                 {book.provider === 'manual' ? 'Manual Query' : (book.title || 'Untitled')}
               </h3>
               {!isRequestMode && (
-                <p className="text-sm text-gray-600 dark:text-gray-300 truncate">
+                <p className="text-sm text-zinc-600 dark:text-zinc-300 truncate">
                   {book.author || 'Unknown author'}
                 </p>
               )}
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={handleClose}
-                className="rounded-full p-2 text-gray-500 transition-colors hover-action hover:text-gray-900 dark:hover:text-gray-100"
+                className="rounded-full p-2 text-zinc-500 transition-colors hover-action hover:text-zinc-900 dark:hover:text-zinc-100"
                 aria-label="Close"
               >
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -1364,34 +1364,34 @@ export const ReleaseModal = ({
           <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto">
             {/* Book summary - scrolls with content */}
             {!isRequestMode && (
-              <div ref={bookSummaryRef} className="flex gap-4 px-5 py-4 border-b border-[var(--border-muted)]">
+              <div ref={bookSummaryRef} className="flex gap-4 px-5 py-4 border-b-hairline border-(--border-muted)">
                 {book.preview ? (
                   <img
                     src={book.preview}
                     alt="Book cover"
-                    className={`rounded-lg shadow-md object-cover object-top flex-shrink-0 ${book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]'}`}
+                    className={`rounded-lg shadow-md object-cover object-top shrink-0 ${book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]'}`}
                   />
                 ) : (
-                  <div className={`rounded-lg border border-dashed border-[var(--border-muted)] bg-[var(--bg)]/60 flex items-center justify-center text-[10px] text-gray-500 flex-shrink-0 ${book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]'}`}>
+                  <div className={`rounded-lg border-hairline border-dashed border-(--border-muted) bg-(--bg)/60 flex items-center justify-center text-[10px] text-zinc-500 shrink-0 ${book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]'}`}>
                     No cover
                   </div>
                 )}
                 <div className="flex-1 min-w-0 space-y-2">
                   {/* Metadata row */}
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600 dark:text-gray-400">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-zinc-600 dark:text-zinc-400">
                     {book.year && <span>{book.year}</span>}
                     {displayFields?.starField && (
                       <span className="flex items-center gap-1.5">
                         <StarRating rating={parseFloat(displayFields.starField.value || '0')} />
                         <span>{displayFields.starField.value}</span>
                         {displayFields.ratingsField && (
-                          <span className="text-gray-400 dark:text-gray-500">({displayFields.ratingsField.value})</span>
+                          <span className="text-zinc-400 dark:text-zinc-500">({displayFields.ratingsField.value})</span>
                         )}
                       </span>
                     )}
                     {displayFields?.usersField && (
                       <span className="flex items-center gap-1">
-                        <svg className="h-3.5 w-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                        <svg className="h-3.5 w-3.5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
                         </svg>
                         {displayFields.usersField.value} readers
@@ -1404,7 +1404,7 @@ export const ReleaseModal = ({
 
                   {/* Series info */}
                   {book.series_name && (
-                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                    <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
                       <span>
                         {book.series_position != null ? (
                           <>#{Number.isInteger(book.series_position) ? book.series_position : book.series_position}{book.series_count ? ` of ${book.series_count}` : ''} in {book.series_name}</>
@@ -1432,7 +1432,7 @@ export const ReleaseModal = ({
 
                   {/* Description */}
                   {book.description && (
-                    <div className="text-sm text-gray-600 dark:text-gray-400 relative">
+                    <div className="text-sm text-zinc-600 dark:text-zinc-400 relative">
                       <p ref={descriptionRef} className={descriptionExpanded ? '' : 'line-clamp-3'}>
                         {book.description}
                         {descriptionExpanded && descriptionOverflows && (
@@ -1452,7 +1452,7 @@ export const ReleaseModal = ({
                         <button
                           type="button"
                           onClick={() => setDescriptionExpanded(true)}
-                          className="absolute bottom-0 right-0 text-emerald-600 dark:text-emerald-400 hover:underline font-medium pl-8 bg-gradient-to-r from-transparent via-[var(--bg)] to-[var(--bg)] sm:via-[var(--bg-soft)] sm:to-[var(--bg-soft)]"
+                          className="absolute bottom-0 right-0 text-emerald-600 dark:text-emerald-400 hover:underline font-medium pl-8 bg-linear-to-r from-transparent via-(--bg) to-(--bg) sm:via-(--bg-soft) sm:to-(--bg-soft)"
                         >
                           more
                         </button>
@@ -1463,7 +1463,7 @@ export const ReleaseModal = ({
                   {/* Links row */}
                   <div className="flex flex-wrap items-center gap-3 text-xs">
                     {(book.isbn_13 || book.isbn_10) && (
-                      <span className="text-gray-500 dark:text-gray-400">
+                      <span className="text-zinc-500 dark:text-zinc-400">
                         ISBN: {book.isbn_13 || book.isbn_10}
                       </span>
                     )}
@@ -1509,13 +1509,13 @@ export const ReleaseModal = ({
             )}
 
             {/* Source tabs + filters - sticky within scroll container */}
-            <div className="sticky top-0 z-10 border-b border-[var(--border-muted)] bg-[var(--bg)] sm:bg-[var(--bg-soft)]">
+            <div className="sticky top-0 z-10 border-b-hairline border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft)">
               {sourcesLoading ? (
                 <div className="flex gap-1 px-5 py-2">
-                  <div className="h-10 w-32 animate-pulse bg-gray-200 dark:bg-gray-700 rounded" />
+                  <div className="h-10 w-32 animate-pulse bg-zinc-200 dark:bg-zinc-700 rounded-sm" />
                 </div>
               ) : allTabs.length === 0 ? (
-                <div className="px-5 py-3 text-sm text-gray-500 dark:text-gray-400">
+                <div className="px-5 py-3 text-sm text-zinc-500 dark:text-zinc-400">
                   {sourcesError || 'No release sources are available for this book.'}
                 </div>
               ) : (
@@ -1538,7 +1538,7 @@ export const ReleaseModal = ({
                           onClick={() => setActiveTab(tab.name)}
                           className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${activeTab === tab.name
                               ? 'text-emerald-600 dark:text-emerald-400'
-                              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
                             }`}
                         >
                           {tab.displayName}
@@ -1563,7 +1563,7 @@ export const ReleaseModal = ({
                           return next;
                         });
                       }}
-                      className={`p-2.5 rounded-full transition-colors hover-surface text-gray-500 dark:text-gray-400 ${manualQuery.trim() ? 'text-emerald-600 dark:text-emerald-400' : ''
+                      className={`p-2.5 rounded-full transition-colors hover-surface text-zinc-500 dark:text-zinc-400 ${manualQuery.trim() ? 'text-emerald-600 dark:text-emerald-400' : ''
                         }`}
                       aria-label="Manual search query"
                       title="Manual query"
@@ -1577,13 +1577,13 @@ export const ReleaseModal = ({
                     {(allSortOptions.length > 0 || availableFormats.length > 1) && (
                       <Dropdown
                         align="right"
-                        widthClassName="w-auto flex-shrink-0"
+                        widthClassName="w-auto shrink-0"
                         panelClassName="w-48"
                         renderTrigger={({ isOpen, toggle }) => (
                           <button
                             type="button"
                             onClick={toggle}
-                            className={`relative p-2.5 rounded-full transition-colors hover-surface text-gray-500 dark:text-gray-400 ${isOpen ? 'bg-[var(--hover-surface)]' : ''
+                            className={`relative p-2.5 rounded-full transition-colors hover-surface text-zinc-500 dark:text-zinc-400 ${isOpen ? 'bg-(--hover-surface)' : ''
                               }`}
                             aria-label="Sort releases"
                           >
@@ -1608,7 +1608,7 @@ export const ReleaseModal = ({
                               }}
                               className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between hover-surface rounded ${!currentSort
                                   ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                                  : 'text-gray-700 dark:text-gray-300'
+                                  : 'text-zinc-700 dark:text-zinc-300'
                                 }`}
                             >
                               <span>Best Match (Default)</span>
@@ -1633,7 +1633,7 @@ export const ReleaseModal = ({
                                   }}
                                   className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between hover-surface rounded ${isSelected
                                       ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                                      : 'text-gray-700 dark:text-gray-300'
+                                      : 'text-zinc-700 dark:text-zinc-300'
                                     }`}
                                 >
                                   <span>{opt.label}</span>
@@ -1654,7 +1654,7 @@ export const ReleaseModal = ({
                             {availableFormats.length > 1 && (
                               <>
                                 {allSortOptions.length > 0 && (
-                                  <div className="mx-2 my-1 border-t border-gray-200 dark:border-gray-700" />
+                                  <div className="mx-2 my-1 border-t-hairline border-zinc-200 dark:border-zinc-700" />
                                 )}
                                 <button
                                   type="button"
@@ -1662,7 +1662,7 @@ export const ReleaseModal = ({
                                   className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between hover-surface rounded ${
                                     currentSort?.key === FORMAT_SORT_KEY
                                       ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                                      : 'text-gray-700 dark:text-gray-300'
+                                      : 'text-zinc-700 dark:text-zinc-300'
                                   }`}
                                 >
                                   <span>
@@ -1692,7 +1692,7 @@ export const ReleaseModal = ({
                                       className={`w-full pl-6 pr-3 py-1.5 text-left text-sm flex items-center justify-between hover-surface rounded ${
                                         isSelected
                                           ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                                          : 'text-gray-700 dark:text-gray-300'
+                                          : 'text-zinc-700 dark:text-zinc-300'
                                       }`}
                                     >
                                       <span>{fmt.toUpperCase()}</span>
@@ -1722,7 +1722,7 @@ export const ReleaseModal = ({
                       (columnConfig.supported_filters?.includes('indexer') && availableIndexers.length > 1)) && (
                       <Dropdown
                         align="right"
-                        widthClassName="w-auto flex-shrink-0"
+                        widthClassName="w-auto shrink-0"
                         panelClassName="w-56"
                         noScrollLimit
                         renderTrigger={({ isOpen, toggle }) => {
@@ -1744,8 +1744,8 @@ export const ReleaseModal = ({
                             <button
                               type="button"
                               onClick={toggle}
-                              className={`relative p-2.5 rounded-full transition-colors hover-surface text-gray-500 dark:text-gray-400 ${
-                                isOpen ? 'bg-[var(--hover-surface)]' : ''
+                              className={`relative p-2.5 rounded-full transition-colors hover-surface text-zinc-500 dark:text-zinc-400 ${
+                                isOpen ? 'bg-(--hover-surface)' : ''
                               }`}
                               aria-label="Filter releases"
                             >
@@ -1852,7 +1852,7 @@ export const ReleaseModal = ({
 
             {/* Manual query panel (below source tabs) */}
             {showManualQuery && (
-              <div className="px-5 py-3 border-b border-[var(--border-muted)] bg-[var(--bg)] sm:bg-[var(--bg-soft)]">
+              <div className="px-5 py-3 border-b-hairline border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft)">
                 <form
                   className="flex items-center gap-2"
                   onSubmit={async (e) => {
@@ -1907,7 +1907,7 @@ export const ReleaseModal = ({
                     value={manualQuery}
                     onChange={(e) => setManualQuery(e.target.value)}
                     placeholder="Type a custom search query (overrides all sources)"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border-muted)] bg-[var(--bg)] text-[var(--text)]"
+                    className="w-full px-3 py-2 text-sm rounded-lg border-hairline border-(--border-muted) bg-(--bg) text-(--text)"
                   />
                   <button
                     type="submit"
@@ -1920,7 +1920,7 @@ export const ReleaseModal = ({
                     {currentTabLoading ? 'Searching…' : 'Search'}
                   </button>
                 </form>
-                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
                   Manual query overrides ISBN/title/author/language expansion.
                 </p>
               </div>
@@ -1959,7 +1959,7 @@ export const ReleaseModal = ({
                         <button
                           type="button"
                           onClick={handleExpandSearch}
-                          className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 rounded-full hover-action transition-all duration-200"
+                          className="px-3 py-1.5 text-sm text-zinc-500 dark:text-zinc-400 rounded-full hover-action transition-all duration-200"
                         >
                           {columnConfig.action_button?.label ?? 'Expand search'}
                         </button>
@@ -1969,7 +1969,7 @@ export const ReleaseModal = ({
               ) : (
                 <>
                   {/* Key includes filter to force remount when filter changes */}
-                  <div key={`releases-${formatFilter}-${languageFilter.join(',')}`} className="divide-y divide-gray-200/60 dark:divide-gray-800/60">
+                  <div key={`releases-${formatFilter}-${languageFilter.join(',')}`} className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60">
                     {filteredReleases.map((release, index) => (
                       <ReleaseRow
                         key={`${release.source}-${release.source_id}`}
@@ -2002,7 +2002,7 @@ export const ReleaseModal = ({
                         <button
                           type="button"
                           onClick={handleExpandSearch}
-                          className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 rounded-full hover-action transition-all duration-200"
+                          className="px-3 py-1.5 text-sm text-zinc-500 dark:text-zinc-400 rounded-full hover-action transition-all duration-200"
                         >
                           {columnConfig.action_button?.label ?? 'Expand search'}
                         </button>
@@ -2019,7 +2019,7 @@ export const ReleaseModal = ({
             {/* Sticky search status indicator - stays at bottom of visible scroll area */}
             {searchStatus && searchStatus.source === activeTab && currentTabLoading && (
               <div className="sticky bottom-0 z-10 flex items-center justify-center pointer-events-none pb-4 pt-2">
-                <div className="flex items-center gap-2.5 px-4 py-2 rounded-xl bg-[var(--bg-soft)] border border-[var(--border-muted)] text-gray-500 dark:text-gray-400 text-sm shadow-lg pointer-events-auto">
+                <div className="flex items-center gap-2.5 px-4 py-2 rounded-xl bg-(--bg-soft) border-hairline border-(--border-muted) text-zinc-500 dark:text-zinc-400 text-sm shadow-lg pointer-events-auto">
                   {searchStatus.phase !== 'complete' && searchStatus.phase !== 'error' && (
                     <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                   )}

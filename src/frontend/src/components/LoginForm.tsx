@@ -2,6 +2,7 @@ import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { LoginCredentials } from '../types';
 import { withBasePath } from '../utils/basePath';
+import { buildOidcLoginUrl } from '../utils/authRedirect';
 
 interface LoginFormProps {
   onSubmit: (credentials: LoginCredentials) => void;
@@ -111,7 +112,7 @@ const PasswordLoginForm = ({
           onChange={(event) => setUsername(event.target.value)}
           onKeyDown={handleUsernameKeyDown}
           disabled={isLoading}
-          className="w-full px-4 py-2.5 rounded-lg border focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="w-full px-4 py-2.5 rounded-lg border-hairline focus:outline-hidden focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           style={{
             backgroundColor: 'var(--input-background)',
             borderColor: 'var(--border-color)',
@@ -140,7 +141,7 @@ const PasswordLoginForm = ({
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             disabled={isLoading}
-            className="w-full px-4 py-2.5 rounded-lg border focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed pr-10 transition-colors"
+            className="w-full px-4 py-2.5 rounded-lg border-hairline focus:outline-hidden focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed pr-10 transition-colors"
             style={{
               backgroundColor: 'var(--input-background)',
               borderColor: 'var(--border-color)',
@@ -168,7 +169,7 @@ const PasswordLoginForm = ({
           checked={rememberMe}
           onChange={(event) => setRememberMe(event.target.checked)}
           disabled={isLoading}
-          className="w-4 h-4 rounded focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed accent-sky-900"
+          className="w-4 h-4 rounded-sm focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed accent-sky-900"
           style={{ borderColor: 'var(--border-color)' }}
         />
         <label htmlFor="remember-me" className="ml-2 text-sm">
@@ -229,6 +230,7 @@ export const LoginForm = ({
   const [showPasswordLogin, setShowPasswordLogin] = useState(false);
   const [searchParams] = useSearchParams();
   const oidcError = searchParams.get('oidc_error');
+  const oidcLoginUrl = buildOidcLoginUrl(searchParams.toString());
 
   // Auto-expand password form if there's an error (likely from a password attempt)
   useEffect(() => {
@@ -240,9 +242,9 @@ export const LoginForm = ({
   // Auto-redirect to OIDC provider when enabled and no errors present
   useEffect(() => {
     if (oidcAutoRedirect && isOidc && !error && !oidcError) {
-      window.location.href = withBasePath('/api/auth/oidc/login');
+      window.location.href = oidcLoginUrl;
     }
-  }, [oidcAutoRedirect, isOidc, error, oidcError]);
+  }, [oidcAutoRedirect, isOidc, error, oidcError, oidcLoginUrl]);
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -272,7 +274,7 @@ export const LoginForm = ({
       {isOidc ? (
         <>
           <a
-            href={withBasePath('/api/auth/oidc/login')}
+            href={oidcLoginUrl}
             className="w-full py-2.5 px-4 rounded-lg font-medium text-white text-center transition-colors block bg-sky-700 hover:bg-sky-800"
           >
             {oidcButtonLabel || 'Sign in with OIDC'}
@@ -281,7 +283,7 @@ export const LoginForm = ({
           {!hideLocalAuth && (
             <>
               <div className="flex items-center mt-5 mb-2">
-                <div className="flex-1 border-t" style={{ borderColor: 'var(--border-color)' }} />
+                <div className="flex-1 border-t-hairline" style={{ borderColor: 'var(--border-color)' }} />
                 <button
                   type="button"
                   onClick={() => setShowPasswordLogin((prev) => !prev)}
@@ -289,7 +291,7 @@ export const LoginForm = ({
                 >
                   {showPasswordLogin ? 'Hide' : 'Use password'}
                 </button>
-                <div className="flex-1 border-t" style={{ borderColor: 'var(--border-color)' }} />
+                <div className="flex-1 border-t-hairline" style={{ borderColor: 'var(--border-color)' }} />
               </div>
 
               {showPasswordLogin && (

@@ -1,6 +1,6 @@
 """IRC release source plugin.
 
-Searches and downloads ebooks from IRC channels via DCC protocol.
+Searches and downloads ebook and audiobook releases from IRC channels via DCC protocol.
 Available when IRC server, channel, and nickname are configured in settings.
 
 Based on OpenBooks (https://github.com/evan-buss/openbooks).

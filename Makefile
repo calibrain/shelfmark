@@ -1,4 +1,4 @@
-.PHONY: help install dev build preview typecheck frontend-test clean up down docker-build refresh restart
+.PHONY: help install dev build preview typecheck frontend-test clean up down docker-build refresh restart build-serve
 
 # Frontend directory
 FRONTEND_DIR := src/frontend
@@ -14,6 +14,7 @@ help:
 	@echo "  install    - Install frontend dependencies"
 	@echo "  dev        - Start development server"
 	@echo "  build      - Build frontend for production"
+	@echo "  build-serve - Build and serve via Flask (test prod build without Docker)"
 	@echo "  preview    - Preview production build"
 	@echo "  typecheck  - Run TypeScript type checking"
 	@echo "  frontend-test - Run frontend unit tests"
@@ -40,6 +41,13 @@ dev:
 build:
 	@echo "Building frontend for production..."
 	cd $(FRONTEND_DIR) && npm run build
+
+# Build frontend and sync to frontend-dist for the running container to serve
+build-serve: build
+	@echo "Syncing build to frontend-dist..."
+	@mkdir -p frontend-dist
+	rsync -a --delete $(FRONTEND_DIR)/dist/ frontend-dist/
+	@echo "Done. Hit the Flask backend (port 8084) to test the production build."
 
 # Preview production build
 preview:

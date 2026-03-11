@@ -5,7 +5,7 @@ interface SettingsSaveBarProps {
 
 export const SettingsSaveBar = ({ onSave, isSaving }: SettingsSaveBarProps) => (
   <div
-    className="flex-shrink-0 px-6 py-4 border-t border-[var(--border-muted)] bg-[var(--bg)] animate-slide-up"
+    className="shrink-0 px-6 py-4 border-t-hairline border-(--border-muted) bg-(--bg) animate-slide-up"
     style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
   >
     <button

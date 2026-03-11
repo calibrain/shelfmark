@@ -38,8 +38,7 @@ export const UserOverridesView = ({
       <div>
         <button
           onClick={onBack}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
-                     bg-[var(--bg)] hover:bg-[var(--hover-surface)] transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border-hairline border-(--border-muted)                     bg-(--bg) hover:bg-(--hover-surface) transition-colors"
         >
           <svg
             className="w-4 h-4"

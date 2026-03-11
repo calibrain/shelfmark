@@ -194,7 +194,7 @@ export function Tooltip({
           role="tooltip"
           onMouseEnter={interactive ? handleTooltipMouseEnter : undefined}
           onMouseLeave={interactive ? handleTooltipMouseLeave : undefined}
-          className={`fixed z-[9999] ${interactive ? 'select-text cursor-auto' : 'pointer-events-none'} ${tooltipSizeClass} ${transformClass} ${className}`}
+          className={`fixed z-9999 ${interactive ? 'select-text cursor-auto' : 'pointer-events-none'} ${tooltipSizeClass} ${transformClass} ${className}`}
           style={{
             top: coords.top,
             left: coords.left,

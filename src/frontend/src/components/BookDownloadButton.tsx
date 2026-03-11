@@ -102,8 +102,8 @@ export const BookDownloadButton = ({
 
   const baseClasses =
     variant === 'icon'
-      ? 'flex items-center justify-center rounded-full transition-all duration-200 disabled:opacity-80 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-sky-500'
-      : 'inline-flex items-center justify-center gap-1.5 rounded text-white transition-all duration-200 disabled:opacity-80 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-sky-500';
+      ? 'flex items-center justify-center rounded-full transition-all duration-200 disabled:opacity-80 disabled:cursor-not-allowed focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-sky-500'
+      : 'inline-flex items-center justify-center gap-1.5 rounded-sm text-white transition-all duration-200 disabled:opacity-80 disabled:cursor-not-allowed focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-sky-500';
 
   const sizeClass = variant === 'icon' ? iconVariantSizeClasses[size] : sizeClasses[size];
   const iconSizes = variant === 'icon' ? iconVariantIconSizes[size] : undefined;

@@ -65,7 +65,7 @@ export const ConfigSetupBanner = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className={`absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-150
+        className={`absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity duration-150
                     ${isClosing ? 'opacity-0' : 'opacity-100'}`}
         onClick={handleClose}
       />
@@ -73,7 +73,7 @@ export const ConfigSetupBanner = ({
       {/* Modal */}
       <div
         className={`relative w-full max-w-lg rounded-xl
-                    border border-[var(--border-muted)] shadow-2xl
+                    border-hairline border-(--border-muted) shadow-2xl
                     overflow-hidden
                     ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         style={{ background: 'var(--bg)' }}
@@ -82,13 +82,13 @@ export const ConfigSetupBanner = ({
         aria-label="Settings Setup Information"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-muted)]">
+        <div className="flex items-center justify-between px-5 py-4 border-b-hairline border-(--border-muted)">
           <h2 className="text-lg font-semibold">
             {showContinueButton ? 'Config Volume Required' : 'New Feature: Settings Page'}
           </h2>
           <button
             onClick={handleClose}
-            className="p-1.5 rounded-lg hover:bg-[var(--hover-surface)] transition-colors"
+            className="p-1.5 rounded-lg hover:bg-(--hover-surface) transition-colors"
             aria-label="Close"
           >
             <svg
@@ -113,8 +113,8 @@ export const ConfigSetupBanner = ({
           </p>
 
           {/* Code snippet */}
-          <div className="rounded-lg overflow-hidden border border-[var(--border-muted)]">
-            <div className="px-3 py-1.5 text-xs font-medium opacity-60 border-b border-[var(--border-muted)]"
+          <div className="rounded-lg overflow-hidden border-hairline border-(--border-muted)">
+            <div className="px-3 py-1.5 text-xs font-medium opacity-60 border-b-hairline border-(--border-muted)"
                  style={{ background: 'var(--bg-soft)' }}>
               docker-compose.yml
             </div>
@@ -139,22 +139,22 @@ export const ConfigSetupBanner = ({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-[var(--border-muted)] flex justify-end gap-3">
+        <div className="px-5 py-4 border-t-hairline border-(--border-muted) flex justify-end gap-3">
           {showContinueButton ? (
             <>
               <button
                 onClick={handleClose}
                 className="px-4 py-2 rounded-lg text-sm font-medium
-                           bg-[var(--bg-soft)] border border-[var(--border-muted)]
-                           hover:bg-[var(--hover-surface)] transition-colors"
+                           bg-(--bg-soft) border-hairline border-(--border-muted)
+                           hover:bg-(--hover-surface) transition-colors"
               >
                 Close
               </button>
               <button
                 onClick={handleContinue}
                 className="px-4 py-2 rounded-lg text-sm font-medium
-                           bg-[var(--primary-color)] text-white
-                           hover:bg-[var(--primary-dark)] transition-colors"
+                           bg-(--primary-color) text-white
+                           hover:bg-(--primary-dark) transition-colors"
               >
                 Continue to Settings
               </button>
@@ -163,8 +163,8 @@ export const ConfigSetupBanner = ({
             <button
               onClick={handleClose}
               className="px-4 py-2 rounded-lg text-sm font-medium
-                         bg-[var(--primary-color)] text-white
-                         hover:bg-[var(--primary-dark)] transition-colors"
+                         bg-(--primary-color) text-white
+                         hover:bg-(--primary-dark) transition-colors"
             >
               Got it
             </button>

@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { LoginCredentials } from '../types';
 import { login, logout, checkAuth } from '../services/api';
 import { useSocket } from '../contexts/SocketContext';
+import { getReturnToFromSearch } from '../utils/authRedirect';
 
 interface UseAuthOptions {
   onLogoutSuccess?: () => void;
@@ -30,8 +31,10 @@ interface UseAuthReturn {
 
 export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
   const { onLogoutSuccess, showToast } = options;
+  const location = useLocation();
   const navigate = useNavigate();
   const { socket } = useSocket();
+  const postLoginPath = getReturnToFromSearch(location.search);
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [authRequired, setAuthRequired] = useState<boolean>(true);
@@ -132,7 +135,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
         applyAuthResponse(await checkAuth());
         refreshSocketSession();
         setLoginError(null);
-        navigate('/', { replace: true });
+        navigate(postLoginPath, { replace: true });
       } else {
         setLoginError(response.error || 'Login failed');
       }
@@ -145,7 +148,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
     } finally {
       setIsLoggingIn(false);
     }
-  }, [navigate, applyAuthResponse, refreshSocketSession]);
+  }, [navigate, applyAuthResponse, postLoginPath, refreshSocketSession]);
 
   const handleLogout = useCallback(async () => {
     try {
