@@ -39,10 +39,15 @@ def _log_activity_rejection(
     *,
     status_code: int,
     reason: str,
+    auth_mode: Any = None,
+    viewer_scope: Any = None,
     item_type: Any = None,
     item_key: Any = None,
     item_count: int | None = None,
     missing_item_keys: list[str] | None = None,
+    owner_user_id: Any = None,
+    final_status: Any = None,
+    request_id: Any = None,
 ) -> None:
     parts = [
         f"Activity {action} rejected",
@@ -54,6 +59,10 @@ def _log_activity_rejection(
         f"db_user_id={_normalize_log_field(session.get('db_user_id'))}",
         f"is_admin={bool(session.get('is_admin', False))}",
     ]
+    if auth_mode is not None:
+        parts.append(f"auth_mode={_normalize_log_field(auth_mode)}")
+    if viewer_scope is not None:
+        parts.append(f"viewer_scope={_normalize_log_field(viewer_scope)}")
     if item_type is not None:
         parts.append(f"item_type={_normalize_log_field(item_type)}")
     if item_key is not None:
@@ -62,6 +71,12 @@ def _log_activity_rejection(
         parts.append(f"item_count={item_count}")
     if missing_item_keys:
         parts.append(f"missing_item_keys={','.join(missing_item_keys)}")
+    if owner_user_id is not None:
+        parts.append(f"owner_user_id={_normalize_log_field(owner_user_id)}")
+    if final_status is not None:
+        parts.append(f"final_status={_normalize_log_field(final_status)}")
+    if request_id is not None:
+        parts.append(f"request_id={_normalize_log_field(request_id)}")
     logger.warning(" ".join(parts))
 
 
@@ -71,19 +86,29 @@ def _activity_error_response(
     status_code: int,
     error: str,
     code: str | None = None,
+    auth_mode: Any = None,
+    viewer_scope: Any = None,
     item_type: Any = None,
     item_key: Any = None,
     item_count: int | None = None,
     missing_item_keys: list[str] | None = None,
+    owner_user_id: Any = None,
+    final_status: Any = None,
+    request_id: Any = None,
 ):
     _log_activity_rejection(
         action,
         status_code=status_code,
         reason=error,
+        auth_mode=auth_mode,
+        viewer_scope=viewer_scope,
         item_type=item_type,
         item_key=item_key,
         item_count=item_count,
         missing_item_keys=missing_item_keys,
+        owner_user_id=owner_user_id,
+        final_status=final_status,
+        request_id=request_id,
     )
 
     payload: dict[str, Any] = {"error": error}
@@ -99,7 +124,12 @@ def _require_authenticated(resolve_auth_mode: Callable[[], str], *, action: str)
     if auth_mode == "none":
         return None
     if "user_id" not in session:
-        return _activity_error_response(action, status_code=401, error="Unauthorized")
+        return _activity_error_response(
+            action,
+            status_code=401,
+            error="Unauthorized",
+            auth_mode=auth_mode,
+        )
     return None
 
 
@@ -108,6 +138,7 @@ def _resolve_db_user_id(
     *,
     user_db: UserDB | None = None,
     action: str | None = None,
+    auth_mode: str | None = None,
 ):
     raw_db_user_id = session.get("db_user_id")
     if raw_db_user_id is None:
@@ -118,6 +149,7 @@ def _resolve_db_user_id(
             status_code=403,
             error="User identity unavailable for activity workflow",
             code="user_identity_unavailable",
+            auth_mode=auth_mode,
         )
     try:
         parsed_db_user_id = int(raw_db_user_id)
@@ -129,6 +161,7 @@ def _resolve_db_user_id(
             status_code=403,
             error="User identity unavailable for activity workflow",
             code="user_identity_unavailable",
+            auth_mode=auth_mode,
         )
 
     if parsed_db_user_id < 1:
@@ -139,6 +172,7 @@ def _resolve_db_user_id(
             status_code=403,
             error="User identity unavailable for activity workflow",
             code="user_identity_unavailable",
+            auth_mode=auth_mode,
         )
 
     if user_db is not None:
@@ -155,6 +189,7 @@ def _resolve_db_user_id(
                 status_code=403,
                 error="User identity unavailable for activity workflow",
                 code="user_identity_unavailable",
+                auth_mode=auth_mode,
             )
 
     return parsed_db_user_id, None
@@ -178,7 +213,8 @@ def _resolve_activity_actor(
 
     Returns (actor, error_response). On success actor is non-None.
     """
-    if resolve_auth_mode() == "none":
+    auth_mode = resolve_auth_mode()
+    if auth_mode == "none":
         return _ActorContext(
             db_user_id=None,
             is_no_auth=True,
@@ -187,7 +223,11 @@ def _resolve_activity_actor(
             viewer_scope=NOAUTH_VIEWER_SCOPE,
         ), None
 
-    db_user_id, db_gate = _resolve_db_user_id(user_db=user_db, action=action)
+    db_user_id, db_gate = _resolve_db_user_id(
+        user_db=user_db,
+        action=action,
+        auth_mode=auth_mode,
+    )
     if db_user_id is None:
         return None, db_gate
 
@@ -232,6 +272,21 @@ def _check_terminal_request(row: dict[str, Any]) -> Any | None:
     if _request_terminal_status(row) is None:
         return "Only terminal requests can be dismissed"
     return None
+
+
+def _download_row_log_context(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "owner_user_id": normalize_positive_int(row.get("user_id")),
+        "final_status": row.get("final_status"),
+        "request_id": normalize_positive_int(row.get("request_id")),
+    }
+
+
+def _request_row_log_context(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "owner_user_id": normalize_positive_int(row.get("user_id")),
+        "request_id": normalize_positive_int(row.get("id")),
+    }
 
 
 def _list_visible_requests(user_db: UserDB, *, is_admin: bool, db_user_id: int | None) -> list[dict[str, Any]]:
@@ -490,6 +545,8 @@ def register_activity_routes(
                     "dismiss",
                     status_code=400,
                     error="item_key must be in the format download:<task_id>",
+                    auth_mode=resolve_auth_mode(),
+                    viewer_scope=actor.viewer_scope,
                     item_type="download",
                     item_key=item_key,
                 )
@@ -500,6 +557,8 @@ def register_activity_routes(
                     "dismiss",
                     status_code=404,
                     error="Download not found",
+                    auth_mode=resolve_auth_mode(),
+                    viewer_scope=actor.viewer_scope,
                     item_type="download",
                     item_key=f"download:{task_id}",
                 )
@@ -510,8 +569,11 @@ def register_activity_routes(
                     "dismiss",
                     status_code=403,
                     error=ownership_error,
+                    auth_mode=resolve_auth_mode(),
+                    viewer_scope=actor.viewer_scope,
                     item_type="download",
                     item_key=f"download:{task_id}",
+                    **_download_row_log_context(existing),
                 )
             terminal_error = _check_terminal_download(existing)
             if terminal_error is not None:
@@ -519,8 +581,11 @@ def register_activity_routes(
                     "dismiss",
                     status_code=409,
                     error=terminal_error,
+                    auth_mode=resolve_auth_mode(),
+                    viewer_scope=actor.viewer_scope,
                     item_type="download",
                     item_key=f"download:{task_id}",
+                    **_download_row_log_context(existing),
                 )
 
             activity_view_state_service.dismiss(
@@ -537,6 +602,8 @@ def register_activity_routes(
                     "dismiss",
                     status_code=400,
                     error="item_key must be in the format request:<id>",
+                    auth_mode=resolve_auth_mode(),
+                    viewer_scope=actor.viewer_scope,
                     item_type="request",
                     item_key=item_key,
                 )
@@ -547,8 +614,11 @@ def register_activity_routes(
                     "dismiss",
                     status_code=404,
                     error="Request not found",
+                    auth_mode=resolve_auth_mode(),
+                    viewer_scope=actor.viewer_scope,
                     item_type="request",
                     item_key=f"request:{request_id}",
+                    request_id=request_id,
                 )
 
             ownership_error = _check_item_ownership(actor, request_row)
@@ -557,8 +627,11 @@ def register_activity_routes(
                     "dismiss",
                     status_code=403,
                     error=ownership_error,
+                    auth_mode=resolve_auth_mode(),
+                    viewer_scope=actor.viewer_scope,
                     item_type="request",
                     item_key=f"request:{request_id}",
+                    **_request_row_log_context(request_row),
                 )
             terminal_error = _check_terminal_request(request_row)
             if terminal_error is not None:
@@ -566,8 +639,11 @@ def register_activity_routes(
                     "dismiss",
                     status_code=409,
                     error=terminal_error,
+                    auth_mode=resolve_auth_mode(),
+                    viewer_scope=actor.viewer_scope,
                     item_type="request",
                     item_key=f"request:{request_id}",
+                    **_request_row_log_context(request_row),
                 )
 
             activity_view_state_service.dismiss(
@@ -581,6 +657,8 @@ def register_activity_routes(
                 "dismiss",
                 status_code=400,
                 error="item_type must be one of: download, request",
+                auth_mode=resolve_auth_mode(),
+                viewer_scope=actor.viewer_scope,
                 item_type=item_type,
                 item_key=item_key,
             )
@@ -615,10 +693,22 @@ def register_activity_routes(
 
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
-            return _activity_error_response("dismiss_many", status_code=400, error="Invalid payload")
+            return _activity_error_response(
+                "dismiss_many",
+                status_code=400,
+                error="Invalid payload",
+                auth_mode=resolve_auth_mode(),
+                viewer_scope=actor.viewer_scope,
+            )
         items = data.get("items")
         if not isinstance(items, list):
-            return _activity_error_response("dismiss_many", status_code=400, error="items must be an array")
+            return _activity_error_response(
+                "dismiss_many",
+                status_code=400,
+                error="items must be an array",
+                auth_mode=resolve_auth_mode(),
+                viewer_scope=actor.viewer_scope,
+            )
 
         dismissal_items: list[dict[str, str]] = []
         missing_item_keys: list[str] = []
@@ -629,6 +719,8 @@ def register_activity_routes(
                     "dismiss_many",
                     status_code=400,
                     error="items must contain objects",
+                    auth_mode=resolve_auth_mode(),
+                    viewer_scope=actor.viewer_scope,
                     item_count=len(items),
                 )
 
@@ -642,6 +734,8 @@ def register_activity_routes(
                         "dismiss_many",
                         status_code=400,
                         error="download item_key must be in the format download:<task_id>",
+                        auth_mode=resolve_auth_mode(),
+                        viewer_scope=actor.viewer_scope,
                         item_type="download",
                         item_key=item_key,
                         item_count=len(items),
@@ -656,9 +750,12 @@ def register_activity_routes(
                         "dismiss_many",
                         status_code=403,
                         error=ownership_error,
+                        auth_mode=resolve_auth_mode(),
+                        viewer_scope=actor.viewer_scope,
                         item_type="download",
                         item_key=f"download:{task_id}",
                         item_count=len(items),
+                        **_download_row_log_context(existing),
                     )
                 terminal_error = _check_terminal_download(existing)
                 if terminal_error is not None:
@@ -666,9 +763,12 @@ def register_activity_routes(
                         "dismiss_many",
                         status_code=409,
                         error=terminal_error,
+                        auth_mode=resolve_auth_mode(),
+                        viewer_scope=actor.viewer_scope,
                         item_type="download",
                         item_key=f"download:{task_id}",
                         item_count=len(items),
+                        **_download_row_log_context(existing),
                     )
                 dismissal_items.append({"item_type": "download", "item_key": f"download:{task_id}"})
                 continue
@@ -680,6 +780,8 @@ def register_activity_routes(
                         "dismiss_many",
                         status_code=400,
                         error="request item_key must be in the format request:<id>",
+                        auth_mode=resolve_auth_mode(),
+                        viewer_scope=actor.viewer_scope,
                         item_type="request",
                         item_key=item_key,
                         item_count=len(items),
@@ -694,9 +796,12 @@ def register_activity_routes(
                         "dismiss_many",
                         status_code=403,
                         error=ownership_error,
+                        auth_mode=resolve_auth_mode(),
+                        viewer_scope=actor.viewer_scope,
                         item_type="request",
                         item_key=f"request:{request_id}",
                         item_count=len(items),
+                        **_request_row_log_context(request_row),
                     )
                 terminal_error = _check_terminal_request(request_row)
                 if terminal_error is not None:
@@ -704,9 +809,12 @@ def register_activity_routes(
                         "dismiss_many",
                         status_code=409,
                         error=terminal_error,
+                        auth_mode=resolve_auth_mode(),
+                        viewer_scope=actor.viewer_scope,
                         item_type="request",
                         item_key=f"request:{request_id}",
                         item_count=len(items),
+                        **_request_row_log_context(request_row),
                     )
                 dismissal_items.append({"item_type": "request", "item_key": f"request:{request_id}"})
                 continue
@@ -715,6 +823,8 @@ def register_activity_routes(
                 "dismiss_many",
                 status_code=400,
                 error="item_type must be one of: download, request",
+                auth_mode=resolve_auth_mode(),
+                viewer_scope=actor.viewer_scope,
                 item_type=item_type,
                 item_key=item_key,
                 item_count=len(items),
@@ -725,6 +835,8 @@ def register_activity_routes(
                 "dismiss_many",
                 status_code=404,
                 error="One or more activity items were not found",
+                auth_mode=resolve_auth_mode(),
+                viewer_scope=actor.viewer_scope,
                 item_count=len(items),
                 missing_item_keys=missing_item_keys,
             )

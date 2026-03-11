@@ -701,6 +701,40 @@ class TestActivityRoutes:
         assert f"user={admin['username']}" in log_message
         assert "is_admin=True" in log_message
 
+    def test_dismiss_many_logs_actor_and_row_context_for_forbidden_download(self, main_module, client):
+        owner = _create_user(main_module, prefix="owner")
+        intruder = _create_user(main_module, prefix="intruder")
+        _set_session(client, user_id=intruder["username"], db_user_id=intruder["id"], is_admin=False)
+
+        _record_terminal_download(
+            main_module,
+            task_id="forbidden-download-task",
+            user_id=owner["id"],
+            username=owner["username"],
+            request_id=321,
+            final_status="complete",
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch("shelfmark.core.activity_routes.logger.warning") as mock_warning:
+                response = client.post(
+                    "/api/activity/dismiss-many",
+                    json={"items": [{"item_type": "download", "item_key": "download:forbidden-download-task"}]},
+                )
+
+        assert response.status_code == 403
+        assert response.json["error"] == "Forbidden"
+        mock_warning.assert_called_once()
+        log_message = mock_warning.call_args.args[0]
+        assert "Activity dismiss_many rejected" in log_message
+        assert "status=403" in log_message
+        assert "reason=Forbidden" in log_message
+        assert "auth_mode=builtin" in log_message
+        assert f"viewer_scope=user:{intruder['id']}" in log_message
+        assert f"owner_user_id={owner['id']}" in log_message
+        assert "final_status=complete" in log_message
+        assert "request_id=321" in log_message
+
     def test_snapshot_backfills_undismissed_terminal_download_from_download_history(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
