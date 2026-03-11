@@ -22,6 +22,10 @@
   ::file-selector-button {
     border-color: var(--color-gray-200, currentcolor);
   }
+
+  html {
+    scrollbar-gutter: stable;
+  }
 }
 
 @theme inline {
