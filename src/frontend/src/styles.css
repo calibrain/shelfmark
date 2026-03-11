@@ -515,6 +515,15 @@
         background-color: var(--hover-row);
     }
 
+    .dropdown-trigger {
+        background-color: var(--bg-soft);
+        transition: background-color 0.2s ease, color 0.2s ease, border-radius 0.15s ease;
+    }
+
+    .dropdown-trigger:hover {
+        background-color: color-mix(in srgb, var(--bg-soft) 95%, var(--text) 5%);
+    }
+
     /* Search wrapper and input - base styles */
     .search-wrapper {
         width: 100%;

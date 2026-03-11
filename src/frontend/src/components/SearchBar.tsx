@@ -26,6 +26,7 @@ interface SearchBarProps {
   onSubmit: () => void;
   isLoading?: boolean;
   onAdvancedToggle?: () => void;
+  isAdvancedActive?: boolean;
   placeholder?: string;
   inputAriaLabel?: string;
   className?: string;
@@ -33,8 +34,6 @@ interface SearchBarProps {
   controlsClassName?: string;
   clearButtonLabel?: string;
   clearButtonTitle?: string;
-  advancedButtonLabel?: string;
-  advancedButtonTitle?: string;
   searchButtonLabel?: string;
   searchButtonTitle?: string;
   autoComplete?: string;
@@ -100,6 +99,12 @@ const AudiobookIcon = () => (
   </svg>
 );
 
+const CheckIcon = ({ className = 'w-3.5 h-3.5' }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+  </svg>
+);
+
 const getDefaultPlaceholder = (
   contentType: ContentType,
   activeQueryTarget: QueryTargetOption | undefined,
@@ -147,6 +152,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
   onSubmit,
   isLoading = false,
   onAdvancedToggle,
+  isAdvancedActive = false,
   placeholder,
   inputAriaLabel = 'Search books',
   className = '',
@@ -154,8 +160,6 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
   controlsClassName = '',
   clearButtonLabel = 'Clear search input',
   clearButtonTitle = 'Clear search',
-  advancedButtonLabel = 'Search settings',
-  advancedButtonTitle = 'Search settings',
   searchButtonLabel = 'Search books',
   searchButtonTitle = 'Search',
   autoComplete = 'off',
@@ -661,7 +665,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                             ? { color: 'var(--text)', borderColor: 'var(--border-muted)' }
                             : { borderColor: 'rgb(16 185 129 / 0.7)' }}
                         >
-                          <BookIcon />
+                          {contentType === 'ebook' ? <CheckIcon /> : <BookIcon />}
                           <span>Books</span>
                         </button>
                         <button
@@ -674,7 +678,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                             ? { color: 'var(--text)', borderColor: 'var(--border-muted)' }
                             : { borderColor: 'rgb(16 185 129 / 0.7)' }}
                         >
-                          <AudiobookIcon />
+                          {contentType === 'audiobook' ? <CheckIcon /> : <AudiobookIcon />}
                           <span>Audiobooks</span>
                         </button>
                       </div>
@@ -695,19 +699,61 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                             onClick={() => handleQueryTargetSelect(target.key)}
                             title={target.description || target.label}
                             aria-label={target.label}
-                            className={`min-w-0 rounded-xl border-hairline px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+                            className={`min-w-0 rounded-xl border-hairline px-3 py-2.5 text-sm font-medium transition-colors flex items-center gap-2 ${
                               isActive ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white` : 'hover-surface'
                             }`}
                             style={isActive
                               ? { borderColor: searchMode === 'direct' ? 'rgb(3 105 161 / 0.7)' : 'rgb(16 185 129 / 0.7)' }
                               : { color: 'var(--text)', borderColor: 'var(--border-muted)' }}
                           >
+                            {isActive && <CheckIcon />}
                             <span className="block truncate">{target.label}</span>
                           </button>
                         );
                       })}
                     </div>
                   </div>
+
+                  {onAdvancedToggle && (
+                    <div className="border-t-hairline pt-3 mt-3" style={{ borderColor: 'var(--border-muted)' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsSelectorOpen(false);
+                          onAdvancedToggle();
+                        }}
+                        className={`w-full px-3 py-2.5 text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2 ${
+                          isAdvancedActive
+                            ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
+                            : 'hover-surface'
+                        }`}
+                        style={isAdvancedActive
+                          ? { borderColor: searchMode === 'direct' ? 'rgb(3 105 161 / 0.7)' : 'rgb(16 185 129 / 0.7)' }
+                          : { color: 'var(--text-muted)' }}
+                      >
+                        {isAdvancedActive ? (
+                          <CheckIcon />
+                        ) : (
+                          <svg
+                            className="w-4 h-4"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            strokeWidth="1.5"
+                            stroke="currentColor"
+                            aria-hidden="true"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"
+                            />
+                          </svg>
+                        )}
+                        Options & Filters
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -738,32 +784,6 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
               aria-hidden="true"
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-          </button>
-        )}
-        {onAdvancedToggle && (
-          <button
-            type="button"
-            onClick={onAdvancedToggle}
-            className="p-2 rounded-full hover-action flex items-center justify-center transition-colors"
-            aria-label={advancedButtonLabel}
-            title={advancedButtonTitle}
-          >
-            <svg
-              className="w-5 h-5"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth="1.5"
-              stroke="currentColor"
-              style={{ color: 'var(--text)' }}
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"
-              />
             </svg>
           </button>
         )}

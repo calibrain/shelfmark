@@ -22,6 +22,7 @@ interface HeaderProps {
   onSearchChange?: (value: string | number | boolean, label?: string) => void;
   onSearch?: () => void;
   onAdvancedToggle?: () => void;
+  isAdvancedActive?: boolean;
   isLoading?: boolean;
   onDownloadsClick?: () => void;
   onSettingsClick?: () => void;
@@ -58,6 +59,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   onSearchChange,
   onSearch,
   onAdvancedToggle,
+  isAdvancedActive = false,
   isLoading = false,
   onDownloadsClick,
   onSettingsClick,
@@ -664,6 +666,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
                 onChange={handleSearchChange}
                 onSubmit={handleHeaderSearch}
                 onAdvancedToggle={onAdvancedToggle}
+                isAdvancedActive={isAdvancedActive}
                 isLoading={isLoading}
                 contentType={contentType}
                 onContentTypeChange={onContentTypeChange}

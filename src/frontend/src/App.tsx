@@ -2057,6 +2057,7 @@ function App() {
           onLogout={handleLogoutWithCleanup}
           onSearch={handleSearchDispatch}
           onAdvancedToggle={hasAdvancedContent ? () => setShowAdvanced(!showAdvanced) : undefined}
+          isAdvancedActive={showAdvanced}
           isLoading={isSearching}
           onShowToast={showToast}
           onRemoveToast={removeToast}
@@ -2102,7 +2103,14 @@ function App() {
           onMetadataProviderChange={handleMetadataProviderChange}
           contentType={contentType}
           isAdmin={requestRoleIsAdmin}
+          onClose={() => setShowAdvanced(false)}
         />
+
+        {!isInitialState && activeQueryTarget === 'manual' && (
+          <p className="text-xs opacity-50 px-4 sm:px-6 lg:px-8 pt-2 lg:ml-16">
+            Manual search queries release sources directly. Some sources may return limited metadata, which can affect file naming templates.
+          </p>
+        )}
 
       <main
         className="relative w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-6"

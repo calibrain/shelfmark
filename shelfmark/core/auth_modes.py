@@ -75,6 +75,30 @@ def determine_auth_mode(
     return "none"
 
 
+def _load_security_config() -> dict[str, Any]:
+    """Load security settings with environment-backed values applied."""
+    from shelfmark.core.settings_registry import (
+        get_setting_value,
+        get_settings_field_map,
+        load_config_file,
+    )
+
+    try:
+        import shelfmark.config.security  # noqa: F401
+    except Exception:
+        return load_config_file("security")
+
+    config = load_config_file("security")
+    field_map = get_settings_field_map(tab_name="security")
+    if not field_map:
+        return config
+
+    resolved = dict(config)
+    for key, (field, tab_name) in field_map.items():
+        resolved[key] = get_setting_value(field, tab_name)
+    return resolved
+
+
 def load_active_auth_mode(
     cwa_db_path: Any | None,
     *,
@@ -82,9 +106,7 @@ def load_active_auth_mode(
 ) -> str:
     """Resolve active auth mode using current security config and runtime prerequisites."""
     try:
-        from shelfmark.core.settings_registry import load_config_file
-
-        security_config = load_config_file("security")
+        security_config = _load_security_config()
         return determine_auth_mode(
             security_config,
             cwa_db_path,

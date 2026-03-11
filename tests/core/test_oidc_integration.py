@@ -1,10 +1,13 @@
 """Tests for auth mode and admin policy helpers used by OIDC integration."""
 
+import sqlite3
+
 from shelfmark.core.auth_modes import (
     determine_auth_mode,
     get_settings_tab_from_path,
     get_auth_check_admin_status,
     is_settings_or_onboarding_path,
+    load_active_auth_mode,
     requires_admin_for_settings_access,
     should_restrict_settings_to_admin,
 )
@@ -59,6 +62,18 @@ class TestDetermineAuthMode:
             "OIDC_CLIENT_ID": "shelfmark",
         }
         assert determine_auth_mode(config, cwa_db_path=None, has_local_admin=False) == "none"
+
+    def test_load_active_auth_mode_reads_env_backed_cwa_setting(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+        monkeypatch.setenv("AUTH_METHOD", "cwa")
+
+        cwa_db_path = tmp_path / "app.db"
+        conn = sqlite3.connect(cwa_db_path)
+        conn.execute("create table user (name text)")
+        conn.commit()
+        conn.close()
+
+        assert load_active_auth_mode(cwa_db_path) == "cwa"
 
 
 class TestSettingsRestrictionPolicy:
