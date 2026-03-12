@@ -34,7 +34,7 @@ const ListViewThumbnail = ({ preview, title }: { preview?: string; title?: strin
   }
 
   return (
-    <div className="relative w-7 h-10 sm:w-10 sm:h-14 rounded-sm overflow-hidden bg-gray-100 dark:bg-gray-800 border-hairline border-white/40 dark:border-gray-700/70">
+    <div className="relative w-7 h-10 sm:w-10 sm:h-14 rounded-sm overflow-hidden bg-gray-100 dark:bg-gray-800 border border-white/40 dark:border-gray-700/70">
       {!imageLoaded && (
         <div className="absolute inset-0 bg-linear-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
       )}
@@ -129,7 +129,7 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
                   <h3 className="font-semibold text-xs min-[400px]:text-sm sm:text-base leading-tight line-clamp-1 sm:line-clamp-2 flex items-center gap-2" title={book.title || 'Untitled'}>
                     {showSeriesPosition && book.series_position != null && (
                       <span
-                        className="inline-flex mr-1.5 px-1.5 py-0.5 text-[10px] sm:text-xs font-bold text-white bg-emerald-600 rounded-sm border-hairline border-emerald-700 shrink-0"
+                        className="inline-flex mr-1.5 px-1.5 py-0.5 text-[10px] sm:text-xs font-bold text-white bg-emerald-600 rounded-sm border border-emerald-700 shrink-0"
                         style={{
                           boxShadow: '0 1px 4px rgba(0, 0, 0, 0.3)',
                           textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',

@@ -28,10 +28,6 @@
   }
 }
 
-@theme inline {
-  --border-width-hairline: var(--theme-border-width-hairline);
-}
-
 @utility scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -71,9 +67,6 @@
 
     :root {
         color-scheme: light;
-
-        /* Hairline border: 0.5px on retina, 1px fallback */
-        --theme-border-width-hairline: 1px;
 
         /* Light theme variables */
         --primary-color: oklch(44.3% 0.11 240.79);
@@ -117,14 +110,6 @@
 
     }
 
-    @media (-webkit-min-device-pixel-ratio: 2),
-           (min-resolution: 192dpi),
-           (min-resolution: 2dppx) {
-        :root {
-            --theme-border-width-hairline: 0.5px;
-        }
-    }
-
     /* Global scrollbar styling - thin, subtle, theme-aware */
     * {
         /* Firefox */
@@ -165,8 +150,6 @@
     /* Typography */
     html, body {
         min-height: 100vh;
-        /* Support for iOS notch/dynamic island - extend to full viewport */
-        min-height: 100dvh;
         margin: 0;
         padding: 0;
     }
@@ -197,14 +180,12 @@
         flex-direction: column;
         flex: 1;
         min-height: 100vh;
-        min-height: 100dvh;
         transition: background-color 0.2s ease;
         background-color: var(--background-color);
     }
 
     main {
         flex: 1;
-        min-height: 100%;
         background: var(--background-color);
         display: flex;
         flex-direction: column;
@@ -443,8 +424,8 @@
         .modal-overlay {
             padding: 0;
             align-items: stretch;
-            /* Extend background into iOS safe areas */
-            background: var(--bg-soft);
+            /* Match page background so iOS PWA safe areas stay consistent */
+            background: var(--background-color);
         }
 
         .details-container {

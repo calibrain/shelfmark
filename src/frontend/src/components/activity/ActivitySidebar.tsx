@@ -735,7 +735,7 @@ export const ActivitySidebar = ({
         </div>
 
         {activeTab !== 'history' && (
-          <div className="mt-2 border-b-hairline border-(--border-muted) -mx-4 px-4">
+          <div className="mt-2 border-b border-(--border-muted) -mx-4 px-4">
             <div className="relative flex gap-1">
               {/* Sliding indicator */}
               <div
@@ -961,7 +961,7 @@ export const ActivitySidebar = ({
 
       {(activeTab === 'downloads' || activeTab === 'all') && hasTerminalDownloadItems && clearCompletedTargets.length > 0 && (
         <div
-          className="p-3 border-t-hairline flex items-center justify-center"
+          className="p-3 border-t flex items-center justify-center"
           style={{
             borderColor: 'var(--border-muted)',
             paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
@@ -979,7 +979,7 @@ export const ActivitySidebar = ({
 
       {activeTab === 'history' && historyItems.length > 0 && (
         <div
-          className="p-3 border-t-hairline flex items-center justify-center"
+          className="p-3 border-t flex items-center justify-center"
           style={{
             borderColor: 'var(--border-muted)',
             paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',

@@ -11,7 +11,7 @@ interface SearchFieldRendererProps {
 }
 
 const baseInputClass =
-  'w-full px-3 py-2 rounded-md border-hairline border-(--border-muted) ' +
+  'w-full px-3 py-2 rounded-md border border-(--border-muted) ' +
   'bg-(--bg-soft) text-sm ' +
   'focus:outline-hidden focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 ' +
   'transition-colors';

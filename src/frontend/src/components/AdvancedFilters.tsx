@@ -194,7 +194,7 @@ export const AdvancedFilters = ({
   return renderWrapper ? (
     renderWrapper(settingsForm)
   ) : (
-    <div className="w-full border-b-hairline pt-6 pb-4 mb-4" style={{ borderColor: 'var(--border-muted)' }}>
+    <div className="w-full border-b pt-6 pb-4 mb-4" style={{ borderColor: 'var(--border-muted)' }}>
       <div className="w-full px-4 sm:px-6 lg:px-8">{settingsForm}</div>
     </div>
   );

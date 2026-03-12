@@ -380,7 +380,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
             <button
               onClick={handleClose}
               className="px-4 py-2 rounded-lg text-sm font-medium
-                         bg-(--bg-soft) border-hairline border-(--border-muted)                         hover:bg-(--hover-surface) transition-colors"
+                         bg-(--bg-soft) border border-(--border-muted)                         hover:bg-(--hover-surface) transition-colors"
             >
               Close
             </button>
@@ -440,7 +440,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
       {/* Modal */}
       <div
         className={`relative w-full max-w-4xl h-[85vh] max-h-[750px] rounded-xl
-                    border-hairline border-(--border-muted) shadow-2xl
+                    border border-(--border-muted) shadow-2xl
                     flex flex-col overflow-hidden
                     ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         style={{ background: 'var(--bg)' }}

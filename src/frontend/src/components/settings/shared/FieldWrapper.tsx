@@ -78,7 +78,7 @@ interface FieldWrapperProps {
 const DisabledBadge = ({ reason }: { reason?: string }) => (
   <span
     className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded
-               bg-zinc-500/20 text-zinc-400 border-hairline border-zinc-500/30"
+               bg-zinc-500/20 text-zinc-400 border border-zinc-500/30"
     title={reason || 'This setting is not available'}
   >
     <svg
@@ -103,7 +103,7 @@ const DisabledBadge = ({ reason }: { reason?: string }) => (
 const RestartRequiredBadge = () => (
   <span
     className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded
-               bg-amber-500/20 text-amber-600 dark:text-amber-400 border-hairline border-amber-500/30"
+               bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30"
     title="Changing this setting requires a container restart to take effect"
   >
     <svg
@@ -162,7 +162,7 @@ const UserOverriddenBadge = ({
     <Tooltip content={content} position="top">
       <span
         className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded
-                   bg-sky-500/15 text-sky-500 dark:text-sky-400 border-hairline border-sky-500/30"
+                   bg-sky-500/15 text-sky-500 dark:text-sky-400 border border-sky-500/30"
       >
         User overridden{count > 1 ? ` (${count})` : ''}
       </span>

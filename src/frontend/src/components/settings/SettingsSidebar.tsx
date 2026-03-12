@@ -219,7 +219,7 @@ export const SettingsSidebar = ({
                   <span className="flex-1">{item.tab.displayName}</span>
                 </button>
                 {itemIndex < sidebarItems.length - 1 && (
-                  <div className="ml-14 mr-5 border-b-hairline border-(--border-muted)" />
+                  <div className="ml-14 mr-5 border-b border-(--border-muted)" />
                 )}
               </div>
             );
@@ -251,7 +251,7 @@ export const SettingsSidebar = ({
                         <span className="flex-1 text-[15px]">{tab.displayName}</span>
                       </button>
                       {index < item.tabs.length - 1 && (
-                        <div className="ml-14 mr-5 border-b-hairline border-(--border-muted)" />
+                        <div className="ml-14 mr-5 border-b border-(--border-muted)" />
                       )}
                     </div>
                   ))}
@@ -259,7 +259,7 @@ export const SettingsSidebar = ({
               )}
 
               {itemIndex < sidebarItems.length - 1 && (
-                <div className="ml-14 mr-5 border-b-hairline border-(--border-muted)" />
+                <div className="ml-14 mr-5 border-b border-(--border-muted)" />
               )}
             </div>
           );
@@ -270,7 +270,7 @@ export const SettingsSidebar = ({
 
   // Desktop: Sidebar navigation
   return (
-    <nav className="w-60 border-r-hairline border-(--border-muted) py-2 shrink-0 overflow-y-auto">
+    <nav className="w-60 border-r border-(--border-muted) py-2 shrink-0 overflow-y-auto">
       {sidebarItems.map((item) => {
         if (item.type === 'section') {
           return (
@@ -318,7 +318,7 @@ export const SettingsSidebar = ({
             </button>
 
             {isExpanded && (
-              <div className="ml-[22px] border-l-hairline border-(--border-muted) flex flex-col gap-0.5 pl-3">
+              <div className="ml-[22px] border-l border-(--border-muted) flex flex-col gap-0.5 pl-3">
                 {item.tabs.map((tab) => (
                   <button
                     key={tab.name}

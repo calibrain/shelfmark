@@ -9,7 +9,7 @@ import { FieldWrapper } from '../shared';
 import { CreateUserFormState } from './types';
 
 const UserCardShell = ({ title, children }: { title: string; children: ReactNode }) => (
-  <div className="space-y-5 p-4 rounded-lg border-hairline border-(--border-muted) shadow-sm bg-(--bg)">
+  <div className="space-y-5 p-4 rounded-lg border border-(--border-muted) bg-(--bg)">
     <h3 className="text-sm font-medium">{title}</h3>
     {children}
   </div>
@@ -251,7 +251,7 @@ export const UserEditActions = ({
           type="button"
           onClick={onCancel}
           disabled={cancelDisabled}
-          className="px-4 py-2 rounded-lg text-sm font-medium bg-(--bg-soft) border-hairline border-(--border-muted) shadow-sm hover-action transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-lg text-sm font-medium bg-(--bg-soft) border border-(--border-muted) shadow-sm hover-action transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Cancel
         </button>
@@ -278,7 +278,7 @@ export const UserEditActions = ({
   }
 
   return (
-    <div className="flex flex-col gap-2 pt-3 border-t-hairline border-(--border-muted) sm:flex-row sm:items-center">
+    <div className="flex flex-col gap-2 pt-3 border-t border-(--border-muted) sm:flex-row sm:items-center">
       <div className="flex flex-wrap gap-2">
         <button
           onClick={onSave}
@@ -290,7 +290,7 @@ export const UserEditActions = ({
         <button
           onClick={onCancel}
           disabled={cancelDisabled}
-          className="px-4 py-2 rounded-lg text-sm font-medium border-hairline border-(--border-muted)                     bg-(--bg) hover:bg-(--hover-surface) transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-lg text-sm font-medium border border-(--border-muted)                     bg-(--bg) hover:bg-(--hover-surface) transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
           Cancel
         </button>
@@ -309,7 +309,7 @@ export const UserEditActions = ({
               <button
                 onClick={onCancelDelete}
                 disabled={deleting}
-                className="px-4 py-2 rounded-lg text-sm font-medium border-hairline border-(--border-muted)
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-(--border-muted)
                            bg-(--bg) hover:bg-(--hover-surface) transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Cancel
@@ -319,7 +319,7 @@ export const UserEditActions = ({
             <button
               onClick={onDelete}
               className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
-                         border-hairline border-red-500/40 text-red-600 hover:bg-red-500/10"
+                         border border-red-500/40 text-red-600 hover:bg-red-500/10"
             >
               Delete User
             </button>
@@ -400,7 +400,7 @@ export const UserCreateCard = ({
         </button>
         <button
           onClick={onCancel}
-          className="px-4 py-2 rounded-lg text-sm font-medium border-hairline border-(--border-muted)                     bg-(--bg) hover:bg-(--hover-surface) transition-colors"
+          className="px-4 py-2 rounded-lg text-sm font-medium border border-(--border-muted)                     bg-(--bg) hover:bg-(--hover-surface) transition-colors"
         >
           Cancel
         </button>
@@ -572,7 +572,7 @@ export const UserAccountCardContent = ({
       {preferencesContent && preferencesPlacement === 'before' && (
         <>
           {preferencesContent}
-          <div className="border-t-hairline border-(--border-muted)" />
+          <div className="border-t border-(--border-muted)" />
         </>
       )}
 
@@ -596,7 +596,7 @@ export const UserAccountCardContent = ({
 
       {preferencesContent && preferencesPlacement === 'after' && (
         <>
-          <div className="border-t-hairline border-(--border-muted)" />
+          <div className="border-t border-(--border-muted)" />
           {preferencesContent}
         </>
       )}

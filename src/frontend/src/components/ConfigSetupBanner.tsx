@@ -73,7 +73,7 @@ export const ConfigSetupBanner = ({
       {/* Modal */}
       <div
         className={`relative w-full max-w-lg rounded-xl
-                    border-hairline border-(--border-muted) shadow-2xl
+                    border border-(--border-muted) shadow-2xl
                     overflow-hidden
                     ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         style={{ background: 'var(--bg)' }}
@@ -82,7 +82,7 @@ export const ConfigSetupBanner = ({
         aria-label="Settings Setup Information"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b-hairline border-(--border-muted)">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-muted)">
           <h2 className="text-lg font-semibold">
             {showContinueButton ? 'Config Volume Required' : 'New Feature: Settings Page'}
           </h2>
@@ -113,8 +113,8 @@ export const ConfigSetupBanner = ({
           </p>
 
           {/* Code snippet */}
-          <div className="rounded-lg overflow-hidden border-hairline border-(--border-muted)">
-            <div className="px-3 py-1.5 text-xs font-medium opacity-60 border-b-hairline border-(--border-muted)"
+          <div className="rounded-lg overflow-hidden border border-(--border-muted)">
+            <div className="px-3 py-1.5 text-xs font-medium opacity-60 border-b border-(--border-muted)"
                  style={{ background: 'var(--bg-soft)' }}>
               docker-compose.yml
             </div>
@@ -139,13 +139,13 @@ export const ConfigSetupBanner = ({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t-hairline border-(--border-muted) flex justify-end gap-3">
+        <div className="px-5 py-4 border-t border-(--border-muted) flex justify-end gap-3">
           {showContinueButton ? (
             <>
               <button
                 onClick={handleClose}
                 className="px-4 py-2 rounded-lg text-sm font-medium
-                           bg-(--bg-soft) border-hairline border-(--border-muted)
+                           bg-(--bg-soft) border border-(--border-muted)
                            hover:bg-(--hover-surface) transition-colors"
               >
                 Close

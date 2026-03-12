@@ -82,7 +82,7 @@ export const TagListField = ({ field, value, onChange, disabled, requiredTags }:
 
   return (
     <div
-      className={`w-full px-3 py-2 rounded-lg border-hairline border-(--border-muted)                  bg-(--bg-soft) text-sm
+      className={`w-full px-3 py-2 rounded-lg border border-(--border-muted)                  bg-(--bg-soft) text-sm
                   focus-within:outline-hidden focus-within:ring-2 focus-within:ring-sky-500/50 focus-within:border-sky-500
                   transition-colors
                   ${isDisabled ? 'opacity-60 cursor-not-allowed' : 'cursor-text'}`}
@@ -96,7 +96,7 @@ export const TagListField = ({ field, value, onChange, disabled, requiredTags }:
           <span
             key={`${tag}-${idx}`}
             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md
-                       border-hairline border-(--border-muted) bg-(--bg)
+                       border border-(--border-muted) bg-(--bg)
                        max-w-full"
             title={tag}
           >

@@ -390,7 +390,7 @@ export const OnboardingModal = ({
             <button
               onClick={handleClose}
               className="px-4 py-2 rounded-lg text-sm font-medium
-                       bg-(--bg-soft) border-hairline border-(--border-muted)
+                       bg-(--bg-soft) border border-(--border-muted)
                        hover:bg-(--hover-surface) transition-colors"
             >
               Close
@@ -416,7 +416,7 @@ export const OnboardingModal = ({
       {/* Modal */}
       <div
         className={`relative w-full max-w-xl rounded-xl
-                    border-hairline border-(--border-muted) shadow-2xl
+                    border border-(--border-muted) shadow-2xl
                     ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         style={{ background: 'var(--bg)' }}
         role="dialog"
@@ -424,7 +424,7 @@ export const OnboardingModal = ({
         aria-label="Setup Wizard"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b-hairline border-(--border-muted)">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-(--border-muted)">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-8 h-8 rounded-full bg-sky-500/20 text-sky-500 text-sm font-medium">
               {currentStepIndex + 1}
@@ -481,7 +481,7 @@ export const OnboardingModal = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t-hairline border-(--border-muted) flex items-center justify-between h-[68px]">
+        <div className="px-6 py-4 border-t border-(--border-muted) flex items-center justify-between h-[68px]">
           <div>
             <button
               onClick={handleSkip}
@@ -499,7 +499,7 @@ export const OnboardingModal = ({
                 onClick={handleBack}
                 disabled={isSaving}
                 className="px-4 py-2 rounded-lg text-sm font-medium
-                         bg-(--bg-soft) border-hairline border-(--border-muted)
+                         bg-(--bg-soft) border border-(--border-muted)
                          hover:bg-(--hover-surface) transition-colors
                          disabled:opacity-50 disabled:cursor-not-allowed"
               >

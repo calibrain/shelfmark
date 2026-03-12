@@ -31,7 +31,7 @@ export const ActionButton = ({ field, onAction, disabled }: ActionButtonProps) =
 
   const styleClasses = {
     default:
-      'bg-(--bg-soft) border-hairline border-(--border-muted) hover:bg-(--hover-surface)',
+      'bg-(--bg-soft) border border-(--border-muted) hover:bg-(--hover-surface)',
     primary: 'bg-sky-600 text-white hover:bg-sky-700',
     danger: 'bg-red-600 text-white hover:bg-red-700',
   };

@@ -399,7 +399,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
           </svg>
           {actingAsUser && (
             <span
-              className="absolute top-1 right-1 h-2 w-2 rounded-full bg-sky-500 border-hairline border-(--bg)"
+              className="absolute top-1 right-1 h-2 w-2 rounded-full bg-sky-500 border border-(--bg)"
               title={`Downloading as ${formatActingAsUserName(actingAsUser)}`}
             />
           )}
@@ -408,7 +408,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
         {/* Dropdown Menu */}
         {(isDropdownOpen || isClosing) && (
           <div
-            className={`absolute right-0 mt-2 ${dropdownPanelWidthClass} rounded-lg shadow-lg border-hairline z-50 ${
+            className={`absolute right-0 mt-2 ${dropdownPanelWidthClass} rounded-lg shadow-lg border z-50 ${
               isClosing ? 'animate-fade-out-up' : shouldAnimateIn ? 'animate-fade-in-down' : ''
             }`}
             style={{
@@ -550,7 +550,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
               {/* User Footer */}
               {authRequired && isAuthenticated && username && (
                 <div
-                  className="border-t-hairline"
+                  className="border-t"
                   style={{ borderColor: 'var(--border-muted)' }}
                 >
                   <div className="px-4 py-3 flex items-center gap-2.5">
@@ -581,7 +581,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
 
               {isAdmin && onActingAsUserChange && (
                 <div
-                  className="border-t-hairline px-4 py-3 space-y-2"
+                  className="border-t px-4 py-3 space-y-2"
                   style={{ borderColor: 'var(--border-muted)' }}
                 >
                   <div className="text-xs font-medium uppercase tracking-wide opacity-70">

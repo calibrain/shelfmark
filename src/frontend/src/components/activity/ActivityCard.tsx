@@ -746,7 +746,7 @@ export const ActivityCard = ({
                     type="button"
                     onClick={handleReviewManualApproval}
                     disabled={isReviewSubmitting}
-                    className="px-2.5 py-1.5 rounded-md text-xs border-hairline border-(--border-muted) hover:bg-(--hover-surface) transition-colors disabled:opacity-50"
+                    className="px-2.5 py-1.5 rounded-md text-xs border border-(--border-muted) hover:bg-(--hover-surface) transition-colors disabled:opacity-50"
                   >
                     {isReviewSubmitting ? 'Working...' : 'Manually Mark as Approved'}
                   </button>
@@ -756,7 +756,7 @@ export const ActivityCard = ({
                     type="button"
                     onClick={handleReviewBrowseAlternatives}
                     disabled={isReviewSubmitting}
-                    className="px-2.5 py-1.5 rounded-md text-xs border-hairline border-(--border-muted) hover:bg-(--hover-surface) transition-colors disabled:opacity-50"
+                    className="px-2.5 py-1.5 rounded-md text-xs border border-(--border-muted) hover:bg-(--hover-surface) transition-colors disabled:opacity-50"
                   >
                     Browse Alternatives
                   </button>
@@ -776,7 +776,7 @@ export const ActivityCard = ({
                 rows={3}
                 maxLength={MAX_ADMIN_NOTE_LENGTH}
                 placeholder="Optional note shown to the user"
-                className="w-full px-2.5 py-2 rounded-md border-hairline border-(--border-muted) bg-(--bg) text-xs resize-y min-h-[72px] focus:outline-hidden focus:ring-2 focus:ring-red-500/30 focus:border-red-500"
+                className="w-full px-2.5 py-2 rounded-md border border-(--border-muted) bg-(--bg) text-xs resize-y min-h-[72px] focus:outline-hidden focus:ring-2 focus:ring-red-500/30 focus:border-red-500"
                 disabled={isRejectSubmitting}
               />
               <div className="flex items-center justify-between">

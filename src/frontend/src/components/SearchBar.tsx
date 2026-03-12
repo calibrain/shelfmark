@@ -414,7 +414,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
     Boolean(autocompleteEndpoint)
     && isAutocompleteOpen
     && textInputValue.trim().length >= autocompleteMinQueryLength;
-  const wrapperClasses = ['relative flex items-center rounded-full border-hairline', className].filter(Boolean).join(' ').trim();
+  const wrapperClasses = ['relative flex items-center rounded-full border', className].filter(Boolean).join(' ').trim();
   const controlsClasses = [
     'flex items-center gap-1 pr-2 shrink-0',
     controlsClassName,
@@ -640,7 +640,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
 
             {isSelectorOpen && (
               <div
-                className="absolute left-0 top-full z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border-hairline shadow-2xl animate-fade-in-down"
+                className="absolute left-0 top-full z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border shadow-2xl animate-fade-in-down"
                 style={{
                   background: 'var(--bg)',
                   borderColor: 'var(--border-muted)',
@@ -650,7 +650,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
               >
                 <div className="max-h-[min(24rem,calc(100vh-8rem))] overflow-y-auto p-3">
                   {showContentTypeSelector && (
-                    <div className="border-b-hairline pb-3" style={{ borderColor: 'var(--border-muted)' }}>
+                    <div className="border-b pb-3" style={{ borderColor: 'var(--border-muted)' }}>
                       <div className="px-1 pb-2 text-xs font-medium uppercase tracking-wide opacity-60">
                         Content
                       </div>
@@ -658,7 +658,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                         <button
                           type="button"
                           onClick={() => handleContentTypeSelect('ebook')}
-                          className={`flex items-center gap-2 rounded-xl border-hairline px-3 py-2.5 text-sm font-medium transition-colors ${
+                          className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
                             contentType === 'ebook' ? 'bg-emerald-600 text-white' : 'hover-surface'
                           }`}
                           style={contentType !== 'ebook'
@@ -671,7 +671,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                         <button
                           type="button"
                           onClick={() => handleContentTypeSelect('audiobook')}
-                          className={`flex items-center gap-2 rounded-xl border-hairline px-3 py-2.5 text-sm font-medium transition-colors ${
+                          className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
                             contentType === 'audiobook' ? 'bg-emerald-600 text-white' : 'hover-surface'
                           }`}
                           style={contentType !== 'audiobook'
@@ -699,7 +699,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                             onClick={() => handleQueryTargetSelect(target.key)}
                             title={target.description || target.label}
                             aria-label={target.label}
-                            className={`min-w-0 rounded-xl border-hairline px-3 py-2.5 text-sm font-medium transition-colors flex items-center gap-2 ${
+                            className={`min-w-0 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors flex items-center gap-2 ${
                               isActive ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white` : 'hover-surface'
                             }`}
                             style={isActive
@@ -715,7 +715,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                   </div>
 
                   {onAdvancedToggle && (
-                    <div className="border-t-hairline pt-3 mt-3" style={{ borderColor: 'var(--border-muted)' }}>
+                    <div className="border-t pt-3 mt-3" style={{ borderColor: 'var(--border-muted)' }}>
                       <button
                         type="button"
                         onClick={() => {
@@ -826,7 +826,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
       {selectDropdownOpen && (
         <div
           ref={selectPanelRef}
-          className="absolute top-full left-0 right-0 z-50 mt-2 rounded-2xl border-hairline shadow-xl overflow-hidden animate-fade-in-down"
+          className="absolute top-full left-0 right-0 z-50 mt-2 rounded-2xl border shadow-xl overflow-hidden animate-fade-in-down"
           style={{ background: 'var(--bg)', borderColor: 'var(--border-muted)' }}
           role="listbox"
           aria-label={effectiveInputAriaLabel}
@@ -869,7 +869,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
       {autocompleteDropdownOpen && (
         <div
           ref={autocompletePanelRef}
-          className="absolute top-full left-0 right-0 z-50 mt-2 rounded-2xl border-hairline shadow-xl overflow-hidden animate-fade-in-down"
+          className="absolute top-full left-0 right-0 z-50 mt-2 rounded-2xl border shadow-xl overflow-hidden animate-fade-in-down"
           style={{ background: 'var(--bg)', borderColor: 'var(--border-muted)' }}
           role="listbox"
           aria-label={`${effectiveInputAriaLabel} suggestions`}

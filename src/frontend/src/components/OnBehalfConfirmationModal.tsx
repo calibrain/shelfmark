@@ -93,13 +93,13 @@ export const OnBehalfConfirmationModal = ({
       />
 
       <div
-        className={`relative w-full max-w-lg rounded-xl border-hairline border-(--border-muted) shadow-2xl ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`relative w-full max-w-lg rounded-xl border border-(--border-muted) shadow-2xl ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         style={{ background: 'var(--bg)' }}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
       >
-        <header className="flex items-center justify-between border-b-hairline border-(--border-muted) px-6 py-4">
+        <header className="flex items-center justify-between border-b border-(--border-muted) px-6 py-4">
           <h3 id={titleId} className="text-lg font-semibold">
             Download as {actingAsName}?
           </h3>
@@ -120,18 +120,18 @@ export const OnBehalfConfirmationModal = ({
           <p className="text-sm opacity-90">
             This download will use {actingAsName}&apos;s output preferences and destination settings.
           </p>
-          <div className="rounded-xl border-hairline border-(--border-muted) bg-(--bg-soft) px-4 py-3">
+          <div className="rounded-xl border border-(--border-muted) bg-(--bg-soft) px-4 py-3">
             <p className="text-xs uppercase tracking-wide opacity-60">Title</p>
             <p className="text-sm font-medium mt-1 wrap-break-word">{itemTitle}</p>
           </div>
         </div>
 
-        <footer className="flex items-center justify-end gap-3 border-t-hairline border-(--border-muted) px-6 py-4">
+        <footer className="flex items-center justify-end gap-3 border-t border-(--border-muted) px-6 py-4">
           <button
             type="button"
             onClick={handleClose}
             disabled={isSubmitting}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-(--bg-soft) border-hairline border-(--border-muted) hover:bg-(--hover-surface) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-(--bg-soft) border border-(--border-muted) hover:bg-(--hover-surface) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cancel
           </button>

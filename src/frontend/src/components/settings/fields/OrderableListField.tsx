@@ -233,7 +233,7 @@ export const OrderableListField = ({
                 flex items-center gap-3 p-3 rounded-lg
                 transition-all duration-150
                 ${isDragging ? 'opacity-50 cursor-grabbing' : isPinned ? 'cursor-default' : 'cursor-grab'}
-                border-hairline border-(--border-muted)                ${isDisabled ? 'opacity-60' : !isPinned ? 'hover:bg-(--hover-surface)' : ''}
+                border border-(--border-muted)                ${isDisabled ? 'opacity-60' : !isPinned ? 'hover:bg-(--hover-surface)' : ''}
               `}
             >
               {/* Reorder Controls - hidden for pinned items */}

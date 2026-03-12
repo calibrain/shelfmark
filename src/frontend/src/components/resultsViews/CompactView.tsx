@@ -68,7 +68,7 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
           {/* Series position badge */}
           {showSeriesPosition && book.series_position != null && (
             <div
-              className="absolute top-2 left-2 z-10 px-2 py-1 text-xs font-bold text-white bg-emerald-600 rounded-md border-hairline border-emerald-700"
+              className="absolute top-2 left-2 z-10 px-2 py-1 text-xs font-bold text-white bg-emerald-600 rounded-md border border-emerald-700"
               style={{
                 boxShadow: '0 2px 8px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3)',
                 textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
@@ -177,7 +177,7 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
           {showDetailsButton ? (
             <div className="flex gap-1.5">
               <button
-                className="px-2 py-1.5 rounded-sm border-hairline text-xs shrink-0 flex items-center justify-center gap-1"
+                className="px-2 py-1.5 rounded-sm border text-xs shrink-0 flex items-center justify-center gap-1"
                 onClick={() => handleDetails(book.id)}
                 style={{ borderColor: 'var(--border-muted)' }}
                 disabled={isLoadingDetails}

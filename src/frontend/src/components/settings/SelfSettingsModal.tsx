@@ -252,13 +252,13 @@ export const SelfSettingsModal = ({
       />
 
       <div
-        className={`relative w-full max-w-3xl h-[85vh] max-h-[750px] rounded-xl border-hairline border-(--border-muted) shadow-2xl flex flex-col overflow-hidden ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`relative w-full max-w-3xl h-[85vh] max-h-[750px] rounded-xl border border-(--border-muted) shadow-2xl flex flex-col overflow-hidden ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         style={{ background: 'var(--bg)' }}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
       >
-        <header className="flex items-center justify-between border-b-hairline border-(--border-muted) px-6 py-4">
+        <header className="flex items-center justify-between border-b border-(--border-muted) px-6 py-4">
           <h3 id={titleId} className="sr-only">My Account</h3>
           {editingUser ? (
             <UserIdentityHeader
@@ -295,7 +295,7 @@ export const SelfSettingsModal = ({
               <button
                 type="button"
                 onClick={() => { void loadEditContext(); }}
-                className="px-4 py-2 rounded-lg text-sm font-medium border-hairline border-(--border-muted) bg-(--bg-soft) hover:bg-(--hover-surface) transition-colors"
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-(--border-muted) bg-(--bg-soft) hover:bg-(--hover-surface) transition-colors"
               >
                 Retry
               </button>
@@ -350,7 +350,7 @@ export const SelfSettingsModal = ({
           )}
         </div>
 
-        <footer className="flex items-center justify-end gap-3 border-t-hairline border-(--border-muted) px-6 py-4">
+        <footer className="flex items-center justify-end gap-3 border-t border-(--border-muted) px-6 py-4">
           <UserEditActions
             variant="modalFooter"
             onSave={() => {

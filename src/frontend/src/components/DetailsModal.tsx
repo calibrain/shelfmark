@@ -135,7 +135,7 @@ export const DetailsModal = ({
         })
       : [];
   const extendedInfoEntries = [[publisherInfo.label, publisherInfo.value], ...additionalInfo];
-  const infoCardClass = 'rounded-2xl border-hairline border-(--border-muted) px-4 py-3 text-sm bg-(--bg-soft) sm:bg-(--bg)';
+  const infoCardClass = 'rounded-2xl border border-(--border-muted) px-4 py-3 text-sm bg-(--bg-soft) sm:bg-(--bg)';
   const infoLabelClass = 'text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400';
   const infoValueClass = 'text-gray-900 dark:text-gray-100';
 
@@ -152,8 +152,8 @@ export const DetailsModal = ({
         aria-modal="true"
         aria-labelledby={titleId}
       >
-        <div className="flex h-full sm:h-[90vh] sm:max-h-[90vh] flex-col overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border-hairline border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft) text-(--text) shadow-none sm:shadow-2xl">
-          <header className="flex items-start gap-4 border-b-hairline border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft) px-5 py-4">
+        <div className="flex h-full sm:h-[90vh] sm:max-h-[90vh] flex-col overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft) text-(--text) shadow-none sm:shadow-2xl">
+          <header className="flex items-start gap-4 border-b border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft) px-5 py-4">
             <div className="flex-1 space-y-1">
               <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">Book</p>
               <h3 id={titleId} className="text-lg font-semibold leading-snug">
@@ -198,7 +198,7 @@ export const DetailsModal = ({
                   </div>
                 ) : (
                   <div
-                    className="flex w-full items-center justify-center rounded-xl border-hairline border-dashed border-(--border-muted) bg-(--bg)/60 p-6 text-sm text-gray-500 lg:h-full lg:max-w-none"
+                    className="flex w-full items-center justify-center rounded-xl border border-dashed border-(--border-muted) bg-(--bg)/60 p-6 text-sm text-gray-500 lg:h-full lg:max-w-none"
                     style={{ maxHeight: artworkMaxHeight, maxWidth: artworkMaxWidth }}
                   >
                     No cover
@@ -329,8 +329,7 @@ export const DetailsModal = ({
           </div>
 
           <footer
-            className="border-t-hairline border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft) px-5 py-4"
-            style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+            className="border-t border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft) px-5 py-4"
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               {/* Source link - shown for both Universal and Direct Download modes */}
@@ -352,7 +351,7 @@ export const DetailsModal = ({
                   </svg>
                 </a>
               )}
-              <div className="flex w-full flex-col gap-2 sm:ml-auto sm:w-auto sm:flex-row sm:items-center">
+              <div className="flex w-full flex-col gap-3 sm:ml-auto sm:w-auto sm:flex-row sm:items-center">
                 {hasBookTargets && book.provider_id && (
                   <BookTargetDropdown
                     provider={book.provider!}
