@@ -2124,7 +2124,7 @@ function App() {
                 bottom: 0,
                 left: 0,
                 right: '25rem',
-                zIndex: 40,
+                zIndex: 20,
               }
             : { paddingTop: `${headerHeight}px` }
         }
