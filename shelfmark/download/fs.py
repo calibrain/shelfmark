@@ -88,6 +88,7 @@ def run_blocking_io(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
 
 
 _VERIFY_IO_WAIT_SECONDS = 3.0
+_PUBLISH_VERIFY_RETRY_SECONDS = 0.25
 
 
 def _verify_transfer_size(
@@ -116,6 +117,44 @@ def _verify_transfer_size(
         raise IOError(
             f"File {action} incomplete, data loss may have occurred. "
             f"'{dest}' was {actual_size} bytes instead of expected {expected_size}."
+        )
+
+
+def _is_stale_handle_error(error: Exception) -> bool:
+    return isinstance(error, OSError) and error.errno == getattr(errno, "ESTALE", 116)
+
+
+def _verify_published_file(
+    dest: Path,
+    expected_size: int,
+    action: str,
+) -> None:
+    """Best-effort verify after publishing a temp file into place.
+
+    The temp file was already verified before publish. Some NFS mounts can report
+    a transient stale handle immediately after `os.replace()` makes the final path
+    visible, so retry once and then trust the successful publish instead of
+    turning the handoff into a false failure.
+    """
+    try:
+        _verify_transfer_size(dest, expected_size, action)
+        return
+    except OSError as error:
+        if not _is_stale_handle_error(error):
+            raise
+
+    time.sleep(_PUBLISH_VERIFY_RETRY_SECONDS)
+
+    try:
+        _verify_transfer_size(dest, expected_size, action)
+    except OSError as retry_error:
+        if not _is_stale_handle_error(retry_error):
+            raise
+        logger.warning(
+            "Skipping post-publish verification for %s after stale handle on %s: %s",
+            action,
+            dest,
+            retry_error,
         )
 
 
@@ -417,7 +456,7 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                         continue
 
                     try:
-                        _verify_transfer_size(try_path, expected_size, "move")
+                        _verify_published_file(try_path, expected_size, "move")
                     except Exception:
                         run_blocking_io(try_path.unlink, missing_ok=True)
                         raise
@@ -594,7 +633,7 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                 continue
 
             try:
-                _verify_transfer_size(try_path, expected_size, "copy")
+                _verify_published_file(try_path, expected_size, "copy")
             except Exception:
                 run_blocking_io(try_path.unlink, missing_ok=True)
                 raise

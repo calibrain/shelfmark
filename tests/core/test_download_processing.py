@@ -224,6 +224,33 @@ class TestAtomicCopy:
         assert result.exists()
         assert result.read_text() == "content"
 
+    def test_copy_tolerates_post_publish_estale(self, tmp_path, monkeypatch):
+        """Treat ESTALE on the final destination as a successful NFS publish."""
+        import errno
+
+        from shelfmark.download import fs
+
+        source = tmp_path / "source.txt"
+        source.write_text("content")
+        dest = tmp_path / "dest.txt"
+
+        original_verify = fs._verify_transfer_size
+
+        def _verify(path, expected_size, action):
+            if path == dest:
+                raise OSError(getattr(errno, "ESTALE", 116), "Stale file handle", str(path))
+            return original_verify(path, expected_size, action)
+
+        monkeypatch.setattr(fs, "_verify_transfer_size", _verify)
+        monkeypatch.setattr(fs.time, "sleep", lambda *_args, **_kwargs: None)
+
+        result = fs.atomic_copy(source, dest)
+
+        assert result == dest
+        assert dest.exists()
+        assert dest.read_text() == "content"
+        assert source.exists()
+
     def test_publish_does_not_depend_on_hardlinks(self, tmp_path, monkeypatch):
         """Temp-file publish succeeds even when hardlinks are unavailable."""
 
