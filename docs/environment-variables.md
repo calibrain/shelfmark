@@ -222,7 +222,7 @@ Choose which metadata provider to use for book searches.
 
 - **Type:** string (choice)
 - **Default:** `openlibrary`
-- **Options:** `""` (No providers enabled)
+- **Options:** `hardcover` (Hardcover), `openlibrary` (Open Library), `googlebooks` (Google Books)
 
 #### `METADATA_PROVIDER_AUDIOBOOK`
 
@@ -232,7 +232,7 @@ Metadata provider for audiobook searches. Uses the book provider if not set.
 
 - **Type:** string (choice)
 - **Default:** _empty string_
-- **Options:** `""` (Use book provider), `""` (No providers enabled)
+- **Options:** `""` (Use book provider), `hardcover` (Hardcover), `openlibrary` (Open Library), `googlebooks` (Google Books)
 
 #### `DEFAULT_RELEASE_SOURCE`
 
@@ -1260,6 +1260,7 @@ How long to keep cached search results before they expire.
 | `RTORRENT_PASSWORD` | HTTP Basic auth password | string (secret) | _none_ |
 | `RTORRENT_LABEL` | Label to assign to book downloads in rTorrent | string | `cwabd` |
 | `RTORRENT_DOWNLOAD_DIR` | Server-side directory where torrents are downloaded (optional, uses rTorrent default if not specified) | string | _none_ |
+| `PROWLARR_TORRENT_ACTION` | Remove deletes the torrent from your client immediately after import (stops seeding, files are kept); Keep leaves it in the client to continue seeding | string (choice) | `keep` |
 | `PROWLARR_USENET_CLIENT` | Choose which usenet client to use | string (choice) | _empty string_ |
 | `NZBGET_URL` | URL of your NZBGet instance | string | _none_ |
 | `NZBGET_USERNAME` | NZBGet control username | string | `nzbget` |
@@ -1500,6 +1501,16 @@ Server-side directory where torrents are downloaded (optional, uses rTorrent def
 
 - **Type:** string
 - **Default:** _none_
+
+#### `PROWLARR_TORRENT_ACTION`
+
+**Torrent Completion Action**
+
+Remove deletes the torrent from your client immediately after import (stops seeding, files are kept); Keep leaves it in the client to continue seeding
+
+- **Type:** string (choice)
+- **Default:** `keep`
+- **Options:** `keep` (Keep), `remove` (Remove)
 
 #### `PROWLARR_USENET_CLIENT`
 
