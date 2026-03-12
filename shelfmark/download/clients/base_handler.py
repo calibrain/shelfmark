@@ -38,6 +38,8 @@ class DownloadRequest:
     protocol: str
     release_name: str
     expected_hash: Optional[str]
+    seeding_time_limit: Optional[int] = None  # minutes
+    ratio_limit: Optional[float] = None
 
 
 def _diagnose_path_issue(path: str) -> str:
@@ -140,20 +142,28 @@ class ExternalClientHandler(DownloadHandler, ABC):
             return
 
         client, download_id, protocol = client_ref
-        if protocol != "usenet":
-            return
 
-        # "Move" means copy into ingest then let the usenet client delete its own files.
-        if config.get("PROWLARR_USENET_ACTION", "move") != "move":
-            return
+        if protocol == "usenet":
+            # "Move" means copy into ingest then let the usenet client delete its own files.
+            if config.get("PROWLARR_USENET_ACTION", "move") != "move":
+                return
+            try:
+                self._delete_local_download_data(client, download_id)
+                self._remove_usenet_download(client, download_id, delete_files=True, archive=True)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to cleanup usenet download {download_id} in {getattr(client, 'name', 'client')}: {e}"
+                )
 
-        try:
-            self._delete_local_download_data(client, download_id)
-            self._remove_usenet_download(client, download_id, delete_files=True, archive=True)
-        except Exception as e:
-            logger.warning(
-                f"Failed to cleanup usenet download {download_id} in {getattr(client, 'name', 'client')}: {e}"
-            )
+        elif protocol == "torrent":
+            if config.get("PROWLARR_TORRENT_ACTION", "keep") != "remove":
+                return
+            try:
+                client.remove(download_id, delete_files=False)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to remove torrent {download_id} from {getattr(client, 'name', 'client')}: {e}"
+                )
 
     def _remove_usenet_download(
         self,
@@ -553,6 +563,8 @@ class ExternalClientHandler(DownloadHandler, ABC):
                         name=request.release_name,
                         category=category,
                         expected_hash=request.expected_hash,
+                        seeding_time_limit=request.seeding_time_limit,
+                        ratio_limit=request.ratio_limit,
                     )
                 except Exception as e:
                     logger.error(f"Failed to add to {client.name}: {e}")

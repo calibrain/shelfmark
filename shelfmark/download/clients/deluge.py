@@ -237,6 +237,15 @@ class DelugeClient(DownloadClient):
             if self._download_dir:
                 options["download_location"] = self._download_dir
 
+            # Per-torrent seeding limits from indexer
+            seeding_time_limit = kwargs.get("seeding_time_limit")
+            if seeding_time_limit is not None:
+                options["seed_time_limit"] = int(seeding_time_limit)
+            ratio_limit = kwargs.get("ratio_limit")
+            if ratio_limit is not None:
+                options["stop_at_ratio"] = float(ratio_limit)
+                options["stop_at_ratio_enabled"] = True
+
             if torrent_info.is_magnet:
                 magnet_url = torrent_info.magnet_url or url
                 torrent_id = self._rpc_call("core.add_torrent_magnet", magnet_url, options)

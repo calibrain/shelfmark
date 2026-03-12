@@ -610,7 +610,17 @@ def prowlarr_clients_settings():
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "rtorrent"},
         ),
         # Note: Torrent client download path must be mounted identically in both containers.
-        # Torrents are always copied (not moved) to preserve seeding capability.
+        SelectField(
+            key="PROWLARR_TORRENT_ACTION",
+            label="Torrent Completion Action",
+            description="Remove deletes the torrent from your client immediately after import (stops seeding, files are kept); Keep leaves it in the client to continue seeding",
+            options=[
+                {"value": "keep", "label": "Keep"},
+                {"value": "remove", "label": "Remove"},
+            ],
+            default="keep",
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "notEmpty": True},
+        ),
 
         # --- Usenet Client Selection ---
         HeadingField(

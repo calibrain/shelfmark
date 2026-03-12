@@ -188,6 +188,22 @@ class TransmissionClient(DownloadClient):
             torrent_hash = torrent.hashString.lower()
             logger.info(f"Added torrent to Transmission: {torrent_hash}")
 
+            # Apply per-torrent seeding limits from indexer
+            seed_kwargs = {}
+            seeding_time_limit = kwargs.get("seeding_time_limit")
+            if seeding_time_limit is not None:
+                seed_kwargs["seed_idle_limit"] = int(seeding_time_limit)
+                seed_kwargs["seed_idle_mode"] = 1  # per-torrent
+            ratio_limit = kwargs.get("ratio_limit")
+            if ratio_limit is not None:
+                seed_kwargs["seed_ratio_limit"] = float(ratio_limit)
+                seed_kwargs["seed_ratio_mode"] = 1  # per-torrent
+            if seed_kwargs:
+                try:
+                    self._client.change_torrent(ids=torrent_hash, **seed_kwargs)
+                except Exception as e:
+                    logger.warning(f"Failed to set seeding limits for {torrent_hash}: {e}")
+
             return torrent_hash
 
         except Exception as e:

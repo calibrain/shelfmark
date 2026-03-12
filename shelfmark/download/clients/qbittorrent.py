@@ -313,6 +313,14 @@ class QBittorrentClient(DownloadClient):
             if tags:
                 add_kwargs["tags"] = ",".join(tags)
 
+            # Per-torrent seeding limits from indexer
+            seeding_time_limit = kwargs.get("seeding_time_limit")
+            if seeding_time_limit is not None:
+                add_kwargs["seeding_time_limit"] = int(seeding_time_limit)
+            ratio_limit = kwargs.get("ratio_limit")
+            if ratio_limit is not None:
+                add_kwargs["ratio_limit"] = float(ratio_limit)
+
             if torrent_data:
                 result = self._client.torrents_add(
                     torrent_files=torrent_data,

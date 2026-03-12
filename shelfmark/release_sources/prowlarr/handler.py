@@ -74,11 +74,19 @@ class ProwlarrHandler(ExternalClientHandler):
         release_name = prowlarr_result.get("title") or task.title or "Unknown"
         expected_hash = str(prowlarr_result.get("infoHash") or "").strip() or None
 
+        # Seed criteria from the indexer (Torznab attributes)
+        raw_seed_time = prowlarr_result.get("minimumSeedTime")
+        seeding_time_limit = int(raw_seed_time) if raw_seed_time is not None else None
+        raw_ratio = prowlarr_result.get("minimumRatio")
+        ratio_limit = float(raw_ratio) if raw_ratio is not None else None
+
         return DownloadRequest(
             url=download_url,
             protocol=protocol,
             release_name=release_name,
             expected_hash=expected_hash,
+            seeding_time_limit=seeding_time_limit,
+            ratio_limit=ratio_limit,
         )
 
     def _on_download_complete(self, task: DownloadTask) -> None:
