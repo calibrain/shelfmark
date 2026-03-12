@@ -61,6 +61,23 @@ def _normalize_tags(raw_tags: object) -> list[str]:
     return tags
 
 
+def _normalize_add_result(raw_result: object) -> str:
+    """Normalize qBittorrent add responses to a comparable string."""
+    if raw_result is None:
+        return ""
+
+    if isinstance(raw_result, bytes):
+        return raw_result.decode("utf-8", errors="replace").strip()
+
+    return str(raw_result).strip()
+
+
+def _is_explicit_add_failure(raw_result: object) -> bool:
+    """Detect add responses that clearly indicate failure."""
+    normalized = _normalize_add_result(raw_result).rstrip(".").lower()
+    return normalized in {"fail", "fails", "error", "errors"}
+
+
 @register_client("torrent")
 class QBittorrentClient(DownloadClient):
     """qBittorrent download client."""
@@ -291,13 +308,16 @@ class QBittorrentClient(DownloadClient):
             tags = self._tags
 
             # Ensure category exists (may already exist, which is fine)
-            try:
-                self._client.torrents_create_category(name=category)
-            except Exception as e:
-                # Conflict409Error means category exists - that's expected
-                # Log other errors but continue since download may still work
-                if "Conflict" not in type(e).__name__ and "409" not in str(e):
-                    logger.debug(f"Could not create category '{category}': {type(e).__name__}: {e}")
+            if category:
+                try:
+                    self._client.torrents_create_category(name=category)
+                except Exception as e:
+                    # Conflict409Error means category exists - that's expected
+                    # Log other errors but continue since download may still work
+                    if "Conflict" not in type(e).__name__ and "409" not in str(e):
+                        logger.debug(
+                            f"Could not create category '{category}': {type(e).__name__}: {e}"
+                        )
 
             torrent_info = extract_torrent_info(url, expected_hash=expected_hash)
             expected_hash = torrent_info.info_hash
@@ -305,9 +325,10 @@ class QBittorrentClient(DownloadClient):
 
             # Add the torrent - use file content if we have it, otherwise URL
             add_kwargs = {
-                "category": category,
                 "rename": name,
             }
+            if category:
+                add_kwargs["category"] = category
             if self._download_dir:
                 add_kwargs["save_path"] = self._download_dir
             if tags:
@@ -334,29 +355,32 @@ class QBittorrentClient(DownloadClient):
                     **add_kwargs,
                 )
 
-            logger.debug(f"qBittorrent add result: {result}")
+            result_text = _normalize_add_result(result)
+            logger.debug(f"qBittorrent add result: {result_text}")
 
-            if result == "Ok.":
-                if not expected_hash:
-                    raise Exception("Could not determine torrent hash from URL")
+            if not expected_hash:
+                raise Exception("Could not determine torrent hash from URL")
 
-                # Wait for torrent to appear in client.
-                # Use `/torrents/properties?hash=` rather than relying on `torrents/info`
-                # listing being immediately consistent.
-                for _ in range(10):
-                    loaded, error = self._is_torrent_loaded(expected_hash)
-                    if error:
-                        logger.debug(f"qBittorrent add_download: {error}")
-                    if loaded:
-                        logger.info(f"Added torrent: {expected_hash}")
-                        return expected_hash.lower()
-                    time.sleep(0.5)
+            if _is_explicit_add_failure(result):
+                raise Exception(f"Failed to add torrent: {result_text}")
 
-                # Client said Ok, trust it
-                logger.warning(f"Torrent not yet visible, returning expected hash")
-                return expected_hash
+            # Some qBittorrent-compatible clients return HTTP 200 with an empty body
+            # instead of qBittorrent's literal "Ok." response. Prefer verifying that
+            # the torrent becomes visible over trusting the response body alone.
+            for _ in range(10):
+                loaded, error = self._is_torrent_loaded(expected_hash)
+                if error:
+                    logger.debug(f"qBittorrent add_download: {error}")
+                if loaded:
+                    logger.info(f"Added torrent: {expected_hash}")
+                    return expected_hash.lower()
+                time.sleep(0.5)
 
-            raise Exception(f"Failed to add torrent: {result}")
+            logger.warning(
+                "Torrent add was not confirmed within the visibility grace period "
+                f"(response={result_text or '<empty>'}), returning expected hash"
+            )
+            return expected_hash
         except Exception as e:
             logger.error(f"qBittorrent add failed: {e}")
             raise
