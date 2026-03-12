@@ -185,6 +185,23 @@ _AUDIOBOOK_FORMAT_OPTIONS = [
     {"value": "rar", "label": "RAR"},
 ]
 
+_DOWNLOAD_TO_BROWSER_CONTENT_TYPE_OPTIONS = [
+    {
+        "value": "book",
+        "label": "Books",
+        "description": "Automatically download completed book files to this browser.",
+    },
+    {
+        "value": "audiobook",
+        "label": "Audiobooks",
+        "description": "Automatically download completed audiobook files to this browser.",
+    },
+]
+
+_DOWNLOAD_TO_BROWSER_CONTENT_TYPE_VALUES = {
+    option["value"] for option in _DOWNLOAD_TO_BROWSER_CONTENT_TYPE_OPTIONS
+}
+
 
 def _get_metadata_provider_options():
     """Build metadata provider options dynamically from enabled providers only."""
@@ -649,6 +666,41 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
     existing = load_config_file("downloads")
     effective: dict[str, Any] = dict(existing)
     effective.update(values)
+
+    if "DOWNLOAD_TO_BROWSER_CONTENT_TYPES" in effective:
+        raw_content_types = effective.get("DOWNLOAD_TO_BROWSER_CONTENT_TYPES")
+        if raw_content_types is None:
+            normalized_content_types: list[str] = []
+        elif isinstance(raw_content_types, list):
+            normalized_content_types = [
+                str(value).strip().lower()
+                for value in raw_content_types
+                if str(value).strip()
+            ]
+        else:
+            return {
+                "error": True,
+                "message": "Download to Browser must be a list.",
+                "values": values,
+            }
+
+        deduped_content_types: list[str] = []
+        for content_type in normalized_content_types:
+            if content_type not in _DOWNLOAD_TO_BROWSER_CONTENT_TYPE_VALUES:
+                allowed = ", ".join(sorted(_DOWNLOAD_TO_BROWSER_CONTENT_TYPE_VALUES))
+                return {
+                    "error": True,
+                    "message": (
+                        "Download to Browser contains an unsupported content type "
+                        f"'{content_type}'. Supported values: {allowed}"
+                    ),
+                    "values": values,
+                }
+            if content_type not in deduped_content_types:
+                deduped_content_types.append(content_type)
+
+        values["DOWNLOAD_TO_BROWSER_CONTENT_TYPES"] = deduped_content_types
+        effective["DOWNLOAD_TO_BROWSER_CONTENT_TYPES"] = deduped_content_types
 
     # Books: only validate templates when saving to a folder.
     books_output_mode = effective.get("BOOKS_OUTPUT_MODE", "folder")
@@ -1137,11 +1189,14 @@ def download_settings():
             description="Automatically open the downloads sidebar when a new download is queued.",
             default=False,
         ),
-        CheckboxField(
-            key="DOWNLOAD_TO_BROWSER",
+        MultiSelectField(
+            key="DOWNLOAD_TO_BROWSER_CONTENT_TYPES",
             label="Download to Browser",
-            description="Automatically download completed files to your browser.",
-            default=False,
+            description="Automatically download completed files to your browser for the selected content types.",
+            options=_DOWNLOAD_TO_BROWSER_CONTENT_TYPE_OPTIONS,
+            default=[],
+            variant="dropdown",
+            user_overridable=True,
         ),
         NumberField(
             key="MAX_CONCURRENT_DOWNLOADS",

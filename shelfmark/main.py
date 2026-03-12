@@ -1016,7 +1016,11 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
             "show_release_source_links": app_config.get("SHOW_RELEASE_SOURCE_LINKS", True),
             "books_output_mode": app_config.get("BOOKS_OUTPUT_MODE", "folder"),
             "auto_open_downloads_sidebar": app_config.get("AUTO_OPEN_DOWNLOADS_SIDEBAR", True),
-            "download_to_browser": app_config.get("DOWNLOAD_TO_BROWSER", False),
+            "download_to_browser_content_types": app_config.get(
+                "DOWNLOAD_TO_BROWSER_CONTENT_TYPES",
+                [],
+                user_id=db_user_id,
+            ),
             "settings_enabled": _is_config_dir_writable(),
             "onboarding_complete": _get_onboarding_complete(),
             # Default sort orders

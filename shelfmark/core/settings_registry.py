@@ -481,6 +481,7 @@ def sync_env_to_config() -> None:
             logger.debug(f"Synced {len(values_to_sync)} ENV values to {tab.name} config: {list(values_to_sync.keys())}")
 
     migrate_legacy_settings()
+    migrate_download_to_browser_settings()
     migrate_mirror_settings()
 
 
@@ -689,6 +690,57 @@ def migrate_legacy_settings() -> None:
     if migrated_sources:
         save_config_file("download_sources", migrated_sources)
         logger.info(f"Migrated content-type routing settings: {list(migrated_sources.keys())}")
+
+
+def migrate_download_to_browser_settings() -> None:
+    """Migrate the legacy download-to-browser toggle to content-type selection."""
+    downloads_config = load_config_file("downloads")
+    legacy_key = "DOWNLOAD_TO_BROWSER"
+    new_key = "DOWNLOAD_TO_BROWSER_CONTENT_TYPES"
+    config_path = _get_config_file_path("downloads")
+
+    legacy_value: Any = None
+    legacy_present = False
+
+    if legacy_key in downloads_config:
+        legacy_value = downloads_config.get(legacy_key)
+        legacy_present = True
+    elif new_key not in downloads_config and os.environ.get(new_key) is None and legacy_key in os.environ:
+        legacy_value = os.environ.get(legacy_key)
+        legacy_present = True
+
+    if not legacy_present and legacy_key not in downloads_config:
+        return
+
+    updated_downloads = dict(downloads_config)
+    changed = False
+
+    if new_key not in updated_downloads and legacy_present:
+        enabled = False
+        if isinstance(legacy_value, bool):
+            enabled = legacy_value
+        elif isinstance(legacy_value, str):
+            enabled = legacy_value.strip().lower() in {"true", "1", "yes", "on"}
+        else:
+            enabled = bool(legacy_value)
+
+        updated_downloads[new_key] = ["book", "audiobook"] if enabled else []
+        changed = True
+
+    if legacy_key in updated_downloads:
+        updated_downloads.pop(legacy_key, None)
+        changed = True
+
+    if not changed:
+        return
+
+    try:
+        _ensure_config_dir("downloads")
+        with open(config_path, "w") as f:
+            json.dump(updated_downloads, f, indent=2)
+        logger.info("Migrated download-to-browser setting to content-type selection")
+    except Exception as exc:
+        logger.error(f"Failed to migrate download-to-browser settings: {exc}")
 
 
 def get_setting_value(field: SettingsField, tab_name: str) -> Any:

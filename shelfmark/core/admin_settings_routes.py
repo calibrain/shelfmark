@@ -83,6 +83,34 @@ def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], li
                 valid[key] = normalized_search_value
                 continue
 
+            if key == "DOWNLOAD_TO_BROWSER_CONTENT_TYPES":
+                if not isinstance(value, list):
+                    errors.append(f"Invalid value for {key}: must be a list")
+                    continue
+
+                candidate_values = [
+                    str(entry).strip().lower()
+                    for entry in value
+                    if str(entry).strip()
+                ]
+                normalized_values: list[str] = []
+                has_invalid_value = False
+                for entry in candidate_values:
+                    if entry not in {"book", "audiobook"}:
+                        errors.append(
+                            f"Invalid value for {key}: unsupported content type '{entry}'"
+                        )
+                        has_invalid_value = True
+                        continue
+                    if entry not in normalized_values:
+                        normalized_values.append(entry)
+
+                if has_invalid_value:
+                    continue
+
+                valid[key] = normalized_values
+                continue
+
             valid[key] = value
 
     return valid, errors

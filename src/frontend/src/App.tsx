@@ -556,6 +556,16 @@ function App() {
   const detectChanges = useCallback((prev: StatusData, curr: StatusData) => {
     if (!prev || Object.keys(prev).length === 0) return;
 
+    const autoDownloadContentTypes = Array.isArray(config?.download_to_browser_content_types)
+      ? config.download_to_browser_content_types
+      : [];
+    const canAutoDownloadContentType = (contentType?: string): boolean => {
+      const contentTypeKey = String(contentType || '').trim().toLowerCase() === 'audiobook'
+        ? 'audiobook'
+        : 'book';
+      return autoDownloadContentTypes.includes(contentTypeKey);
+    };
+
     // Check for new items in queue
     const prevQueued = prev.queued || {};
     const currQueued = curr.queued || {};
@@ -592,7 +602,7 @@ function App() {
         showToast(`${book.title || 'Book'} completed`, 'success');
 
         // Auto-download to browser if enabled
-        if (config?.download_to_browser && book.download_path) {
+        if (book.download_path && canAutoDownloadContentType(book.content_type)) {
           const link = document.createElement('a');
           link.href = withBasePath(`/api/localdownload?id=${encodeURIComponent(bookId)}`);
           link.download = '';

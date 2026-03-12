@@ -186,6 +186,7 @@ Default language filter for searches.
 |----------|-------------|------|---------|
 | `SEARCH_MODE` | How you want to search for and download books. | string (choice) | `direct` |
 | `AA_DEFAULT_SORT` | Default sort order for search results. | string (choice) | `relevance` |
+| `SHOW_RELEASE_SOURCE_LINKS` | Show clickable release-source links in release and details modals. Metadata provider links stay enabled. | boolean | `true` |
 | `METADATA_PROVIDER` | Choose which metadata provider to use for book searches. | string (choice) | `openlibrary` |
 | `METADATA_PROVIDER_AUDIOBOOK` | Metadata provider for audiobook searches. Uses the book provider if not set. | string (choice) | _empty string_ |
 | `DEFAULT_RELEASE_SOURCE` | The release source tab to open by default in the release modal for books. | string (choice) | `direct_download` |
@@ -213,6 +214,15 @@ Default sort order for search results.
 - **Type:** string (choice)
 - **Default:** `relevance`
 - **Options:** `relevance` (Most relevant), `newest` (Newest (publication year)), `oldest` (Oldest (publication year)), `largest` (Largest (filesize)), `smallest` (Smallest (filesize)), `newest_added` (Newest (open sourced)), `oldest_added` (Oldest (open sourced))
+
+#### `SHOW_RELEASE_SOURCE_LINKS`
+
+**Show Release Source Links**
+
+Show clickable release-source links in release and details modals. Metadata provider links stay enabled.
+
+- **Type:** boolean
+- **Default:** `true`
 
 #### `METADATA_PROVIDER`
 
@@ -289,7 +299,7 @@ The release source tab to open by default in the release modal for audiobooks. U
 | `TEMPLATE_AUDIOBOOK_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title}` |
 | `HARDLINK_TORRENTS_AUDIOBOOK` | Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder. | boolean | `true` |
 | `AUTO_OPEN_DOWNLOADS_SIDEBAR` | Automatically open the downloads sidebar when a new download is queued. | boolean | `false` |
-| `DOWNLOAD_TO_BROWSER` | Automatically download completed files to your browser. | boolean | `false` |
+| `DOWNLOAD_TO_BROWSER_CONTENT_TYPES` | Automatically download completed files to your browser for the selected content types. | string (comma-separated) | _empty list_ |
 | `MAX_CONCURRENT_DOWNLOADS` | Maximum number of simultaneous downloads. | number | `3` |
 | `STATUS_TIMEOUT` | How long to keep completed/failed downloads in the queue display. | number | `3600` |
 
@@ -572,14 +582,14 @@ Automatically open the downloads sidebar when a new download is queued.
 - **Type:** boolean
 - **Default:** `false`
 
-#### `DOWNLOAD_TO_BROWSER`
+#### `DOWNLOAD_TO_BROWSER_CONTENT_TYPES`
 
 **Download to Browser**
 
-Automatically download completed files to your browser.
+Automatically download completed files to your browser for the selected content types.
 
-- **Type:** boolean
-- **Default:** `false`
+- **Type:** string (comma-separated)
+- **Default:** _empty list_
 
 #### `MAX_CONCURRENT_DOWNLOADS`
 
