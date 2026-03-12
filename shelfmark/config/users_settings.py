@@ -76,6 +76,7 @@ _SEARCH_PREFERENCE_PROVIDER_KEYS = {"METADATA_PROVIDER", "METADATA_PROVIDER_AUDI
 _SEARCH_PREFERENCE_VALIDATABLE_KEYS = {
     "SEARCH_MODE",
     "DEFAULT_RELEASE_SOURCE",
+    "DEFAULT_RELEASE_SOURCE_AUDIOBOOK",
     *_SEARCH_PREFERENCE_PROVIDER_KEYS,
 }
 
@@ -115,6 +116,18 @@ def _get_request_source_options():
             }
         )
     return options
+
+
+def _get_valid_release_source_names_for_content_type(content_type: str) -> set[str]:
+    """Return registered release source names that support the requested content type."""
+    from shelfmark.release_sources import list_available_sources
+
+    valid_sources: set[str] = set()
+    for source in list_available_sources():
+        supported_types = source.get("supported_content_types", ["ebook", "audiobook"])
+        if content_type in supported_types:
+            valid_sources.add(source["name"])
+    return valid_sources
 
 
 def _get_request_policy_rule_columns():
@@ -189,16 +202,16 @@ def validate_search_preference_value(key: str, value: Any) -> tuple[Any, str | N
             )
         return normalized_value, None
 
-    if key == "DEFAULT_RELEASE_SOURCE":
+    if key in {"DEFAULT_RELEASE_SOURCE", "DEFAULT_RELEASE_SOURCE_AUDIOBOOK"}:
         if normalized_value == "":
             return "", None
-        from shelfmark.release_sources import list_available_sources
-
-        valid_sources = {source["name"] for source in list_available_sources()}
+        valid_sources = _get_valid_release_source_names_for_content_type(
+            "audiobook" if key == "DEFAULT_RELEASE_SOURCE_AUDIOBOOK" else "ebook"
+        )
         if normalized_value not in valid_sources:
             return (
                 value,
-                "DEFAULT_RELEASE_SOURCE must be a valid release source name or empty",
+                f"{key} must be a valid release source name or empty",
             )
         return normalized_value, None
 

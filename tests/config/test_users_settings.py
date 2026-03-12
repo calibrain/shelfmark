@@ -369,8 +369,24 @@ def test_on_save_users_rejects_invalid_default_release_source_override(monkeypat
     monkeypatch.setattr(
         "shelfmark.release_sources.list_available_sources",
         lambda: [
-            {"name": "direct_download", "display_name": "Direct Download", "enabled": True},
-            {"name": "prowlarr", "display_name": "Prowlarr", "enabled": True},
+            {
+                "name": "direct_download",
+                "display_name": "Direct Download",
+                "enabled": True,
+                "supported_content_types": ["ebook"],
+            },
+            {
+                "name": "prowlarr",
+                "display_name": "Prowlarr",
+                "enabled": True,
+                "supported_content_types": ["ebook", "audiobook"],
+            },
+            {
+                "name": "audiobookbay",
+                "display_name": "AudiobookBay",
+                "enabled": True,
+                "supported_content_types": ["audiobook"],
+            },
         ],
     )
 
@@ -378,3 +394,55 @@ def test_on_save_users_rejects_invalid_default_release_source_override(monkeypat
 
     assert result["error"] is True
     assert "DEFAULT_RELEASE_SOURCE must be a valid release source name or empty" in result["message"]
+
+
+def test_on_save_users_rejects_audiobook_only_source_for_book_default(monkeypatch):
+    monkeypatch.setattr(
+        "shelfmark.release_sources.list_available_sources",
+        lambda: [
+            {
+                "name": "direct_download",
+                "display_name": "Direct Download",
+                "enabled": True,
+                "supported_content_types": ["ebook"],
+            },
+            {
+                "name": "audiobookbay",
+                "display_name": "AudiobookBay",
+                "enabled": True,
+                "supported_content_types": ["audiobook"],
+            },
+        ],
+    )
+
+    result = users_settings_module._on_save_users({"DEFAULT_RELEASE_SOURCE": "audiobookbay"})
+
+    assert result["error"] is True
+    assert "DEFAULT_RELEASE_SOURCE must be a valid release source name or empty" in result["message"]
+
+
+def test_on_save_users_rejects_book_only_source_for_audiobook_default(monkeypatch):
+    monkeypatch.setattr(
+        "shelfmark.release_sources.list_available_sources",
+        lambda: [
+            {
+                "name": "direct_download",
+                "display_name": "Direct Download",
+                "enabled": True,
+                "supported_content_types": ["ebook"],
+            },
+            {
+                "name": "audiobookbay",
+                "display_name": "AudiobookBay",
+                "enabled": True,
+                "supported_content_types": ["audiobook"],
+            },
+        ],
+    )
+
+    result = users_settings_module._on_save_users(
+        {"DEFAULT_RELEASE_SOURCE_AUDIOBOOK": "direct_download"}
+    )
+
+    assert result["error"] is True
+    assert "DEFAULT_RELEASE_SOURCE_AUDIOBOOK must be a valid release source name or empty" in result["message"]

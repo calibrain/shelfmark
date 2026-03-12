@@ -2255,6 +2255,7 @@ function App() {
             bookLanguages={bookLanguages}
             currentStatus={statusForButtonState}
             defaultReleaseSource={config?.default_release_source}
+            defaultAudiobookReleaseSource={config?.default_release_source_audiobook}
             onSearchSeries={isBrowseFulfilMode || !canSearchSeriesForBook(activeReleaseBook) ? undefined : handleSearchSeries}
             defaultShowManualQuery={isBrowseFulfilMode || activeReleaseBook?.provider === 'manual'}
             isRequestMode={isBrowseFulfilMode || activeReleaseBook?.provider === 'manual'}

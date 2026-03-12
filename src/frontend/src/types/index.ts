@@ -259,6 +259,7 @@ export interface AppConfig {
   metadata_sort_options: SortOption[];
   metadata_search_fields: MetadataSearchField[];
   default_release_source?: string;  // Default tab in ReleaseModal (e.g., 'direct_download')
+  default_release_source_audiobook?: string;  // Default tab in ReleaseModal for audiobooks
   books_output_mode: BooksOutputMode;
   auto_open_downloads_sidebar: boolean;  // Auto-open sidebar when download is queued
   download_to_browser: boolean;  // Auto-download completed files to browser

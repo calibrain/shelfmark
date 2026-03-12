@@ -210,15 +210,28 @@ def _get_metadata_provider_options_with_none():
     return [{"value": "", "label": "Use book provider"}] + _get_metadata_provider_options()
 
 
-def _get_release_source_options():
-    """Build release source options dynamically from registered sources."""
+def _get_release_source_options_for_content_type(content_type: str):
+    """Build release source options dynamically for a specific content type."""
     from shelfmark.release_sources import list_available_sources
 
     return [
         {"value": source["name"], "label": source["display_name"]}
         for source in list_available_sources()
         if source.get("can_be_default", True)
+        and content_type in source.get("supported_content_types", ["ebook", "audiobook"])
     ]
+
+
+def _get_book_release_source_options():
+    """Build default release source options for book searches."""
+    return _get_release_source_options_for_content_type("ebook")
+
+
+def _get_audiobook_release_source_options():
+    """Build default release source options for audiobook searches."""
+    return [{"value": "", "label": "Use book release source"}] + _get_release_source_options_for_content_type(
+        "audiobook"
+    )
 
 
 
@@ -455,10 +468,19 @@ def search_mode_settings():
         ),
         SelectField(
             key="DEFAULT_RELEASE_SOURCE",
-            label="Default Release Source",
-            description="The release source tab to open by default in the release modal.",
-            options=_get_release_source_options,  # Callable - evaluated lazily to avoid circular imports
+            label="Default Book Release Source",
+            description="The release source tab to open by default in the release modal for books.",
+            options=_get_book_release_source_options,  # Callable - evaluated lazily to avoid circular imports
             default="direct_download",
+            show_when={"field": "SEARCH_MODE", "value": "universal"},
+            user_overridable=True,
+        ),
+        SelectField(
+            key="DEFAULT_RELEASE_SOURCE_AUDIOBOOK",
+            label="Default Audiobook Release Source",
+            description="The release source tab to open by default in the release modal for audiobooks. Uses the book release source if not set.",
+            options=_get_audiobook_release_source_options,  # Callable - evaluated lazily to avoid circular imports
+            default="",
             show_when={"field": "SEARCH_MODE", "value": "universal"},
             user_overridable=True,
         ),

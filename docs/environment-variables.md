@@ -188,7 +188,8 @@ Default language filter for searches.
 | `AA_DEFAULT_SORT` | Default sort order for search results. | string (choice) | `relevance` |
 | `METADATA_PROVIDER` | Choose which metadata provider to use for book searches. | string (choice) | `openlibrary` |
 | `METADATA_PROVIDER_AUDIOBOOK` | Metadata provider for audiobook searches. Uses the book provider if not set. | string (choice) | _empty string_ |
-| `DEFAULT_RELEASE_SOURCE` | The release source tab to open by default in the release modal. | string (choice) | `direct_download` |
+| `DEFAULT_RELEASE_SOURCE` | The release source tab to open by default in the release modal for books. | string (choice) | `direct_download` |
+| `DEFAULT_RELEASE_SOURCE_AUDIOBOOK` | The release source tab to open by default in the release modal for audiobooks. Uses the book release source if not set. | string (choice) | _empty string_ |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -235,13 +236,23 @@ Metadata provider for audiobook searches. Uses the book provider if not set.
 
 #### `DEFAULT_RELEASE_SOURCE`
 
-**Default Release Source**
+**Default Book Release Source**
 
-The release source tab to open by default in the release modal.
+The release source tab to open by default in the release modal for books.
 
 - **Type:** string (choice)
 - **Default:** `direct_download`
-- **Options:** `direct_download` (Direct Download), `prowlarr` (Prowlarr), `audiobookbay` (AudiobookBay)
+- **Options:** `direct_download` (Direct Download), `prowlarr` (Prowlarr)
+
+#### `DEFAULT_RELEASE_SOURCE_AUDIOBOOK`
+
+**Default Audiobook Release Source**
+
+The release source tab to open by default in the release modal for audiobooks. Uses the book release source if not set.
+
+- **Type:** string (choice)
+- **Default:** _empty string_
+- **Options:** `""` (Use book release source), `prowlarr` (Prowlarr), `audiobookbay` (AudiobookBay)
 
 </details>
 

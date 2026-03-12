@@ -93,7 +93,8 @@ interface ReleaseModalProps {
   defaultLanguages: string[];
   bookLanguages: Language[];
   currentStatus: StatusData;
-  defaultReleaseSource?: string;  // Default tab to show (e.g., 'direct_download')
+  defaultReleaseSource?: string;  // Default book tab to show (e.g., 'direct_download')
+  defaultAudiobookReleaseSource?: string;  // Default audiobook tab to show
   onSearchSeries?: (seriesName: string, seriesId?: string) => void;  // Callback to search for series
   defaultShowManualQuery?: boolean;
   isRequestMode?: boolean;
@@ -529,6 +530,7 @@ export const ReleaseModal = ({
   bookLanguages,
   currentStatus,
   defaultReleaseSource,
+  defaultAudiobookReleaseSource,
   onSearchSeries,
   defaultShowManualQuery = false,
   isRequestMode = false,
@@ -538,6 +540,9 @@ export const ReleaseModal = ({
   const effectiveFormats = contentType === 'audiobook' && supportedAudiobookFormats.length > 0
     ? supportedAudiobookFormats
     : supportedFormats;
+  const preferredDefaultReleaseSource = contentType === 'audiobook'
+    ? (defaultAudiobookReleaseSource || defaultReleaseSource)
+    : defaultReleaseSource;
   const [isClosing, setIsClosing] = useState(false);
   const [isRequestingBook, setIsRequestingBook] = useState(false);
 
@@ -790,15 +795,15 @@ export const ReleaseModal = ({
           return;
         }
 
-        // Set active tab: prefer defaultReleaseSource if enabled and supports content type
+        // Set active tab: prefer the configured default source if enabled and supports content type
         if (supportedSources.length > 0) {
           const enabledSources = supportedSources.filter(s => s.enabled);
-          const defaultIsEnabled = defaultReleaseSource &&
-            enabledSources.some(s => s.name === defaultReleaseSource);
+          const defaultIsEnabled = preferredDefaultReleaseSource &&
+            enabledSources.some(s => s.name === preferredDefaultReleaseSource);
 
           let defaultSource: string;
           if (defaultIsEnabled) {
-            defaultSource = defaultReleaseSource;
+            defaultSource = preferredDefaultReleaseSource;
           } else if (enabledSources.length > 0) {
             defaultSource = enabledSources[0].name;
           } else {
@@ -822,7 +827,7 @@ export const ReleaseModal = ({
     };
 
     fetchSources();
-  }, [book, defaultReleaseSource, contentType]);
+  }, [book, preferredDefaultReleaseSource, contentType]);
 
   // Fetch releases when active tab changes (with caching)
   // Initial fetch always uses ISBN-first search; expansion is handled by handleExpandSearch
@@ -948,16 +953,16 @@ export const ReleaseModal = ({
     });
 
     // Sort so default source appears first
-    if (defaultReleaseSource) {
+    if (preferredDefaultReleaseSource) {
       enabledTabs.sort((a, b) => {
-        if (a.name === defaultReleaseSource) return -1;
-        if (b.name === defaultReleaseSource) return 1;
+        if (a.name === preferredDefaultReleaseSource) return -1;
+        if (b.name === preferredDefaultReleaseSource) return 1;
         return 0;
       });
     }
 
     return enabledTabs;
-  }, [availableSources, book?.provider, defaultReleaseSource, contentType]);
+  }, [availableSources, book?.provider, preferredDefaultReleaseSource, contentType]);
 
   // Update tab indicator position when active tab changes
   useEffect(() => {

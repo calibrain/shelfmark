@@ -981,6 +981,11 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
             "direct_download",
             user_id=db_user_id,
         )
+        default_release_source_audiobook = app_config.get(
+            "DEFAULT_RELEASE_SOURCE_AUDIOBOOK",
+            "",
+            user_id=db_user_id,
+        )
         configured_metadata_provider = app_config.get(
             "METADATA_PROVIDER",
             "",
@@ -1007,6 +1012,7 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
             "metadata_sort_options": get_provider_sort_options(metadata_ui_provider),
             "metadata_search_fields": get_provider_search_fields(metadata_ui_provider),
             "default_release_source": default_release_source,
+            "default_release_source_audiobook": default_release_source_audiobook,
             "books_output_mode": app_config.get("BOOKS_OUTPUT_MODE", "folder"),
             "auto_open_downloads_sidebar": app_config.get("AUTO_OPEN_DOWNLOADS_SIDEBAR", True),
             "download_to_browser": app_config.get("DOWNLOAD_TO_BROWSER", False),

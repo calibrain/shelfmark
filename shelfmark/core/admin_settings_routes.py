@@ -78,6 +78,7 @@ def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], li
                 "METADATA_PROVIDER",
                 "METADATA_PROVIDER_AUDIOBOOK",
                 "DEFAULT_RELEASE_SOURCE",
+                "DEFAULT_RELEASE_SOURCE_AUDIOBOOK",
             }:
                 valid[key] = normalized_search_value
                 continue
