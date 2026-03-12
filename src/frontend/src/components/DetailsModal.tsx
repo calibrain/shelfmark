@@ -12,6 +12,7 @@ interface DetailsModalProps {
   onFindDownloads?: (book: Book) => void;  // For Universal mode
   onSearchSeries?: (seriesName: string, seriesId?: string) => void;  // Callback to search for series
   buttonState: ButtonStateInfo;
+  showReleaseSourceLinks?: boolean;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -22,6 +23,7 @@ export const DetailsModal = ({
   onFindDownloads,
   onSearchSeries,
   buttonState,
+  showReleaseSourceLinks = true,
   onShowToast,
 }: DetailsModalProps) => {
   const [isQueuing, setIsQueuing] = useState(false);
@@ -91,6 +93,7 @@ export const DetailsModal = ({
 
   // Determine if this is a metadata book (Universal mode) vs a release (Direct Download)
   const isMetadata = isMetadataBook(book);
+  const showBookSourceLink = Boolean(book.source_url) && (isMetadata || showReleaseSourceLinks);
   const metadataActionText =
     isMetadata && buttonState.state === 'download' && buttonState.text === 'Get'
       ? 'Find Downloads'
@@ -333,7 +336,7 @@ export const DetailsModal = ({
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               {/* Source link - shown for both Universal and Direct Download modes */}
-              {book.source_url && (
+              {showBookSourceLink && (
                 <a
                   href={book.source_url}
                   target="_blank"

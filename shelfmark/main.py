@@ -1013,6 +1013,7 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
             "metadata_search_fields": get_provider_search_fields(metadata_ui_provider),
             "default_release_source": default_release_source,
             "default_release_source_audiobook": default_release_source_audiobook,
+            "show_release_source_links": app_config.get("SHOW_RELEASE_SOURCE_LINKS", True),
             "books_output_mode": app_config.get("BOOKS_OUTPUT_MODE", "folder"),
             "auto_open_downloads_sidebar": app_config.get("AUTO_OPEN_DOWNLOADS_SIDEBAR", True),
             "download_to_browser": app_config.get("DOWNLOAD_TO_BROWSER", False),

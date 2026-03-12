@@ -14,6 +14,7 @@ import {
   SearchStatusData,
   ContentType,
   RequestPolicyMode,
+  isMetadataBook,
 } from '../types';
 import { getReleases, getReleaseSources } from '../services/api';
 import { useSocket } from '../contexts/SocketContext';
@@ -98,6 +99,7 @@ interface ReleaseModalProps {
   onSearchSeries?: (seriesName: string, seriesId?: string) => void;  // Callback to search for series
   defaultShowManualQuery?: boolean;
   isRequestMode?: boolean;
+  showReleaseSourceLinks?: boolean;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
@@ -225,6 +227,7 @@ const ReleaseRow = ({
   gridTemplate,
   leadingCell,
   onlineServers,
+  showReleaseSourceLinks,
 }: {
   release: Release;
   index: number;
@@ -234,6 +237,7 @@ const ReleaseRow = ({
   gridTemplate: string;
   leadingCell?: LeadingCellConfig;
   onlineServers?: string[];
+  showReleaseSourceLinks: boolean;
 }) => {
   const author = release.extra?.author as string | undefined;
 
@@ -272,7 +276,7 @@ const ReleaseRow = ({
         {/* Fixed: Title and author */}
         <div className="min-w-0">
           <p className="text-sm font-medium line-clamp-2" title={release.title}>
-            {release.info_url ? (
+            {showReleaseSourceLinks && release.info_url ? (
               <a
                 href={release.info_url}
                 target="_blank"
@@ -319,7 +323,7 @@ const ReleaseRow = ({
         <div className="min-w-0">
           {/* Title and author on same line */}
           <p className="text-sm leading-tight line-clamp-2" title={release.title}>
-            {release.info_url ? (
+            {showReleaseSourceLinks && release.info_url ? (
               <a
                 href={release.info_url}
                 target="_blank"
@@ -534,6 +538,7 @@ export const ReleaseModal = ({
   onSearchSeries,
   defaultShowManualQuery = false,
   isRequestMode = false,
+  showReleaseSourceLinks = true,
   onShowToast,
 }: ReleaseModalProps) => {
   // Use audiobook formats when in audiobook mode
@@ -1281,6 +1286,7 @@ export const ReleaseModal = ({
   const providerDisplay =
     book.provider_display_name ||
     (book.provider ? book.provider.charAt(0).toUpperCase() + book.provider.slice(1) : 'Unknown');
+  const showBookSourceLink = Boolean(book.source_url) && (isMetadataBook(book) || showReleaseSourceLinks);
 
   const currentTabLoading = loadingBySource[activeTab] ?? false;
   const currentTabError = errorBySource[activeTab] ?? null;
@@ -1494,7 +1500,7 @@ export const ReleaseModal = ({
                         ISBN: {book.isbn_13 || book.isbn_10}
                       </span>
                     )}
-                    {book.source_url && (
+                    {showBookSourceLink && (
                       <a
                         href={book.source_url}
                         target="_blank"
@@ -2012,6 +2018,7 @@ export const ReleaseModal = ({
                         gridTemplate={columnConfig.grid_template}
                         leadingCell={columnConfig.leading_cell}
                         onlineServers={columnConfig.online_servers}
+                        showReleaseSourceLinks={showReleaseSourceLinks}
                       />
                     ))}
                   </div>

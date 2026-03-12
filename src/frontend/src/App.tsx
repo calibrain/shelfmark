@@ -2232,6 +2232,7 @@ function App() {
                 ? getUniversalActionButtonState(selectedBook.id)
                 : getDirectActionButtonState(selectedBook.id)
             }
+            showReleaseSourceLinks={config?.show_release_source_links !== false}
           />
         )}
 
@@ -2259,6 +2260,7 @@ function App() {
             onSearchSeries={isBrowseFulfilMode || !canSearchSeriesForBook(activeReleaseBook) ? undefined : handleSearchSeries}
             defaultShowManualQuery={isBrowseFulfilMode || activeReleaseBook?.provider === 'manual'}
             isRequestMode={isBrowseFulfilMode || activeReleaseBook?.provider === 'manual'}
+            showReleaseSourceLinks={config?.show_release_source_links !== false}
             onShowToast={showToast}
           />
         )}

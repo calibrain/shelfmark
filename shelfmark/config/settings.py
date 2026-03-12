@@ -442,6 +442,15 @@ def search_mode_settings():
             default="relevance",
             show_when={"field": "SEARCH_MODE", "value": "direct"},
         ),
+        CheckboxField(
+            key="SHOW_RELEASE_SOURCE_LINKS",
+            label="Show Release Source Links",
+            description=(
+                "Show clickable release-source links in release and details modals. "
+                "Metadata provider links stay enabled."
+            ),
+            default=True,
+        ),
         HeadingField(
             key="universal_mode_heading",
             title="Universal Mode Settings",
