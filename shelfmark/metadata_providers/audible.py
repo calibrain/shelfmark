@@ -764,7 +764,7 @@ class AudibleProvider(MetadataProvider):
 
         runtime_value = _format_runtime(item.get("lengthMinutes"))
         if runtime_value:
-            display_fields.append(DisplayField(label="Length", value=runtime_value, icon="book"))
+            display_fields.append(DisplayField(label="Length", value=runtime_value, icon="clock"))
 
         narrator_value = _format_narrator_value(narrators)
         if narrator_value:
