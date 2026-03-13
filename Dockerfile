@@ -4,7 +4,7 @@ ARG BUILDPLATFORM
 ARG BUILDARCH
 
 # Frontend build stage.
-FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:25-alpine AS frontend-builder
 
 # Helpful debug output to see what platforms BuildKit thinks it's using
 RUN echo "BUILDPLATFORM=$BUILDPLATFORM BUILDARCH=$BUILDARCH TARGETPLATFORM=$TARGETPLATFORM TARGETARCH=$TARGETARCH"
