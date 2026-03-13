@@ -4,7 +4,7 @@ import { useSearchMode } from '../../contexts/SearchModeContext';
 import { BookActionButton } from '../BookActionButton';
 import { BookTargetDropdown } from '../BookTargetDropdown';
 import { bookSupportsTargets } from '../../utils/bookTargetLoader';
-import { DisplayFieldBadges } from '../shared';
+import { DisplayFieldBadges, DisplayFieldIcon } from '../shared';
 
 const SkeletonLoader = () => (
   <div className="w-full h-full bg-linear-to-r from-gray-300 via-gray-200 to-gray-300 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
@@ -159,7 +159,15 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
 
         <div className="mt-auto flex flex-col gap-2">
           {searchMode === 'universal' && book.display_fields && book.display_fields.length > 0 ? (
-            <DisplayFieldBadges fields={book.display_fields} className="text-xs opacity-70" />
+            <>
+              <DisplayFieldBadges fields={book.display_fields.filter(f => f.icon !== 'editions' && f.icon !== 'microphone')} className="text-xs opacity-70" />
+              {book.display_fields.find(f => f.icon === 'microphone') && (
+                <div className="flex items-center gap-0.5 text-xs opacity-70">
+                  <DisplayFieldIcon icon="microphone" />
+                  <span>{book.display_fields.find(f => f.icon === 'microphone')!.value}</span>
+                </div>
+              )}
+            </>
           ) : (
             <div className="text-xs opacity-70 flex flex-wrap gap-1">
               <span>{book.language || '-'}</span>

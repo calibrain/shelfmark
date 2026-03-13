@@ -116,7 +116,7 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
               {/* Universal mode uses separate columns for each display field, direct mode uses language/format/size */}
               <div className={`grid items-center gap-2 sm:gap-y-1 sm:gap-x-0.5 w-full ${
                 searchMode === 'universal'
-                  ? 'grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:grid-cols-[auto_minmax(0,2fr)_minmax(50px,0.25fr)_minmax(80px,0.4fr)_minmax(80px,0.4fr)_auto]'
+                  ? 'grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:grid-cols-[auto_minmax(0,2fr)_minmax(50px,0.25fr)_minmax(90px,0.5fr)_minmax(90px,0.5fr)_minmax(120px,0.7fr)_auto]'
                   : 'grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:grid-cols-[auto_minmax(0,2fr)_minmax(50px,0.25fr)_minmax(60px,0.3fr)_minmax(60px,0.3fr)_minmax(60px,0.3fr)_auto]'
               }`}>
                 {/* Thumbnail */}
@@ -149,7 +149,7 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
                 {/* Mobile universal mode info */}
                 <div className="flex sm:hidden flex-col items-end text-[10px] opacity-70 leading-tight">
                   {searchMode === 'universal' && book.display_fields && book.display_fields.length > 0 ? (
-                    book.display_fields.slice(0, 2).map((field, idx) => (
+                    book.display_fields.filter(f => f.icon !== 'editions').slice(0, 2).map((field, idx) => (
                       <span key={idx} className="flex items-center gap-0.5" title={field.label}>
                         <DisplayFieldIcon icon={field.icon} />
                         <span>{field.value}</span>
@@ -171,18 +171,26 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
                 {/* Universal mode: Display fields as separate columns - Desktop only */}
                 {searchMode === 'universal' && (
                   <>
-                    {/* First display field column */}
-                    <div className="hidden sm:flex justify-center">
-                      {book.display_fields && book.display_fields[0] ? (
-                        <DisplayFieldBadge field={book.display_fields[0]} />
+                    {/* Rating column */}
+                    <div className="hidden sm:flex justify-start">
+                      {book.display_fields?.find(f => f.icon === 'star') ? (
+                        <DisplayFieldBadge field={book.display_fields.find(f => f.icon === 'star')!} />
                       ) : (
                         <span className="text-xs text-gray-500">-</span>
                       )}
                     </div>
-                    {/* Second display field column */}
-                    <div className="hidden sm:flex justify-center">
-                      {book.display_fields && book.display_fields[1] ? (
-                        <DisplayFieldBadge field={book.display_fields[1]} />
+                    {/* Length column */}
+                    <div className="hidden sm:flex justify-start">
+                      {book.display_fields?.find(f => f.icon === 'clock' || f.icon === 'book') ? (
+                        <DisplayFieldBadge field={book.display_fields.find(f => f.icon === 'clock' || f.icon === 'book')!} />
+                      ) : (
+                        <span className="text-xs text-gray-500">-</span>
+                      )}
+                    </div>
+                    {/* Narrator column */}
+                    <div className="hidden sm:flex justify-start">
+                      {book.display_fields?.find(f => f.icon === 'microphone') ? (
+                        <DisplayFieldBadge field={book.display_fields.find(f => f.icon === 'microphone')!} />
                       ) : (
                         <span className="text-xs text-gray-500">-</span>
                       )}

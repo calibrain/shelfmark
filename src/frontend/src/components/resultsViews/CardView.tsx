@@ -156,7 +156,7 @@ export const CardView = ({ book, onDetails, onDownload, onGetReleases, buttonSta
             <div className="text-xs max-sm:text-[10px] opacity-70 flex flex-wrap gap-2 max-sm:gap-1">
               <span>{book.year || '-'}</span>
               <span>•</span>
-              <DisplayFieldBadges fields={book.display_fields} />
+              <DisplayFieldBadges fields={book.display_fields.filter(f => f.icon !== 'editions')} />
             </div>
           ) : (
             <div className="text-xs max-sm:text-[10px] opacity-70 flex flex-wrap gap-2 max-sm:gap-1">

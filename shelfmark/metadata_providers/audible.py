@@ -769,7 +769,7 @@ class AudibleProvider(MetadataProvider):
         narrator_value = _format_narrator_value(narrators)
         if narrator_value:
             label = "Narrator" if len(narrators) == 1 else "Narrators"
-            display_fields.append(DisplayField(label=label, value=narrator_value, icon="users"))
+            display_fields.append(DisplayField(label=label, value=narrator_value, icon="microphone"))
 
         book_format = str(item.get("bookFormat") or "").strip()
         if book_format:
