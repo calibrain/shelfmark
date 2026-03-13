@@ -257,6 +257,7 @@ export interface BookTargetOption {
 export interface BookTargetStateResult {
   changed: boolean;
   selected: boolean;
+  deselectedTarget?: string;
 }
 
 // Search metadata providers and normalize to Book format
@@ -423,7 +424,7 @@ export const setBookTargetState = async (
   target: string,
   selected: boolean,
 ): Promise<BookTargetStateResult> => {
-  const response = await fetchJSON<{ changed?: unknown; selected?: unknown }>(
+  const response = await fetchJSON<{ changed?: unknown; selected?: unknown; deselected_target?: unknown }>(
     `${API_BASE}/metadata/book/${encodeURIComponent(provider)}/${encodeURIComponent(bookId)}/targets`,
     {
       method: 'PUT',
@@ -434,6 +435,7 @@ export const setBookTargetState = async (
   return {
     changed: response.changed === true,
     selected: response.selected === true,
+    deselectedTarget: typeof response.deselected_target === 'string' ? response.deselected_target : undefined,
   };
 };
 

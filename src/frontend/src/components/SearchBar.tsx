@@ -274,7 +274,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
 
     fetchFieldOptions(dynamicEndpoint).then((loaded) => {
       if (cancelled) return;
-      setDynamicOptions(loaded.map((o) => ({ value: o.value, label: o.label })));
+      setDynamicOptions(loaded.map((o) => ({ value: o.value, label: o.label, group: o.group })));
       setIsDynamicLoading(false);
     }).catch(() => {
       if (cancelled) return;
@@ -832,34 +832,41 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
           aria-label={effectiveInputAriaLabel}
         >
           <div className="max-h-64 overflow-y-auto py-1.5">
-            {selectOptions.map((option) => {
+            {selectOptions.map((option, index) => {
               const currentValue = typeof value === 'string' ? value : String(value ?? '');
               const isSelected = option.value === currentValue;
+              const showGroupHeader = option.group != null && (index === 0 || option.group !== selectOptions[index - 1]?.group);
               return (
-                <button
-                  type="button"
-                  key={option.value}
-                  role="option"
-                  aria-selected={isSelected}
-                  onClick={() => {
-                    onChange(option.value, option.label);
-                    setIsSelectOpen(false);
-                    setTimeout(() => onSubmitRef.current(), 0);
-                  }}
-                  className={`w-full px-5 py-2.5 text-left text-sm flex items-center gap-3 transition-colors ${
-                    isSelected ? '' : 'hover-surface'
-                  }`}
-                  style={{ color: 'var(--text)' }}
-                >
-                  <span className={`flex-1 truncate ${isSelected ? 'font-medium' : ''}`}>
-                    {option.label}
-                  </span>
-                  {isSelected && (
-                    <svg className="w-4 h-4 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                    </svg>
+                <div key={option.value}>
+                  {showGroupHeader && (
+                    <div className="px-5 pt-2 pb-1 text-xs font-medium uppercase tracking-wide opacity-60 select-none">
+                      {option.group}
+                    </div>
                   )}
-                </button>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => {
+                      onChange(option.value, option.label);
+                      setIsSelectOpen(false);
+                      setTimeout(() => onSubmitRef.current(), 0);
+                    }}
+                    className={`w-full px-5 py-2.5 text-left text-sm flex items-center gap-3 transition-colors ${
+                      isSelected ? '' : 'hover-surface'
+                    }`}
+                    style={{ color: 'var(--text)' }}
+                  >
+                    <span className={`flex-1 truncate ${isSelected ? 'font-medium' : ''}`}>
+                      {option.label}
+                    </span>
+                    {isSelected && (
+                      <svg className="w-4 h-4 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
               );
             })}
           </div>

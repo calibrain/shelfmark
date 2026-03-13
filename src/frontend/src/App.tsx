@@ -1114,18 +1114,19 @@ function App() {
   metadataConfigRef.current = activeMetadataConfig;
 
   const removeBookFromActiveList = useCallback((book: Book) => {
+    if (config?.hardcover_auto_remove_on_download === false) return;
     if (!bookSupportsTargets(book)) return;
     const activeList = searchFieldValuesRef.current.hardcover_list;
     if (!activeList) return;
     const target = String(activeList);
 
-    // Only auto-remove from lists the user owns (My Books / My Lists)
+    // Only auto-remove from lists the user owns (Reading Status / My Lists)
     const listField = metadataConfigRef.current?.search_fields.find(
       (f) => f.key === 'hardcover_list' && f.type === 'DynamicSelectSearchField',
     );
     if (listField && listField.type === 'DynamicSelectSearchField') {
       const group = getDynamicOptionGroup(listField.options_endpoint, target);
-      if (group && group !== 'My Books' && group !== 'My Lists') return;
+      if (group && group !== 'Reading Status' && group !== 'My Lists') return;
     }
 
     void setBookTargetState(book.provider!, book.provider_id!, target, false).then((result) => {
@@ -1140,7 +1141,7 @@ function App() {
         showToast(`Removed from ${listName || 'list'}`, 'info');
       }
     }).catch(() => {});
-  }, [showToast]);
+  }, [config?.hardcover_auto_remove_on_download, showToast]);
 
   const executeBookDownload = useCallback(
     async (book: Book, onBehalfOfUserId?: number): Promise<void> => {

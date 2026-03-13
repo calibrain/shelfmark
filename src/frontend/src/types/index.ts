@@ -115,6 +115,7 @@ export interface Toast {
 export interface SortOption {
   value: string;
   label: string;
+  group?: string;
 }
 
 // Search field types (mirror backend search field types)
@@ -264,6 +265,7 @@ export interface AppConfig {
   show_release_source_links: boolean;
   books_output_mode: BooksOutputMode;
   auto_open_downloads_sidebar: boolean;  // Auto-open sidebar when download is queued
+  hardcover_auto_remove_on_download: boolean;  // Auto-remove from active Hardcover list on download
   download_to_browser_content_types: string[];  // Auto-download completed files to browser for selected content types
   settings_enabled: boolean;  // Whether config directory is mounted and writable
   onboarding_complete: boolean;  // Whether the user has completed initial setup

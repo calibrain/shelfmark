@@ -104,7 +104,22 @@ query GetUserLists {
     me {
         id
         username
-        want_to_read_books: user_books_aggregate(where: {status_id: {_eq: 1}}) {
+        want_to_read_count: user_books_aggregate(where: {status_id: {_eq: 1}}) {
+            aggregate {
+                count(columns: [book_id], distinct: true)
+            }
+        }
+        currently_reading_count: user_books_aggregate(where: {status_id: {_eq: 2}}) {
+            aggregate {
+                count(columns: [book_id], distinct: true)
+            }
+        }
+        read_count: user_books_aggregate(where: {status_id: {_eq: 3}}) {
+            aggregate {
+                count(columns: [book_id], distinct: true)
+            }
+        }
+        did_not_finish_count: user_books_aggregate(where: {status_id: {_eq: 5}}) {
             aggregate {
                 count(columns: [book_id], distinct: true)
             }
@@ -371,16 +386,17 @@ query GetSeriesBooks($seriesId: Int!) {
 }
 """
 
-HARDCOVER_WANT_TO_READ_STATUS_ID = 1
 HARDCOVER_STATUS_PREFIX = "status:"
-HARDCOVER_STATUS_URL_SLUGS: dict[int, str] = {
-    1: "want-to-read",
-    2: "currently-reading",
-    3: "read",
-    5: "did-not-finish",
-}
+HARDCOVER_STATUSES: list[dict] = [
+    {"id": 1, "label": "Want to Read", "slug": "want-to-read", "query_key": "want_to_read_count"},
+    {"id": 2, "label": "Currently Reading", "slug": "currently-reading", "query_key": "currently_reading_count"},
+    {"id": 3, "label": "Read", "slug": "read", "query_key": "read_count"},
+    {"id": 5, "label": "Did Not Finish", "slug": "did-not-finish", "query_key": "did_not_finish_count"},
+]
+HARDCOVER_STATUS_URL_SLUGS: dict[int, str] = {s["id"]: s["slug"] for s in HARDCOVER_STATUSES}
+HARDCOVER_STATUS_GROUP = "Reading Status"
 HARDCOVER_LIST_ID_PREFIX = "id:"
-HARDCOVER_WRITABLE_TARGET_GROUPS = {"My Books", "My Lists"}
+HARDCOVER_WRITABLE_TARGET_GROUPS = {HARDCOVER_STATUS_GROUP, "My Lists"}
 
 
 @dataclass(frozen=True)
@@ -1539,26 +1555,27 @@ class HardcoverProvider(MetadataProvider):
             except (TypeError, ValueError):
                 return name
 
-        want_to_read_count_data = me_data.get("want_to_read_books", {})
-        want_to_read_aggregate = (
-            want_to_read_count_data.get("aggregate", {})
-            if isinstance(want_to_read_count_data, dict)
-            else {}
-        )
-        want_to_read_count = (
-            want_to_read_aggregate.get("count")
-            if isinstance(want_to_read_aggregate, dict)
-            else None
-        )
-        want_to_read_value = f"{HARDCOVER_STATUS_PREFIX}{HARDCOVER_WANT_TO_READ_STATUS_ID}"
-        seen_values.add(want_to_read_value)
-        options.append(
-            {
-                "value": want_to_read_value,
-                "label": _format_label("Want to Read", want_to_read_count),
-                "group": "My Books",
-            }
-        )
+        for status in HARDCOVER_STATUSES:
+            count_data = me_data.get(status["query_key"], {})
+            aggregate = (
+                count_data.get("aggregate", {})
+                if isinstance(count_data, dict)
+                else {}
+            )
+            count = (
+                aggregate.get("count")
+                if isinstance(aggregate, dict)
+                else None
+            )
+            value = f"{HARDCOVER_STATUS_PREFIX}{status['id']}"
+            seen_values.add(value)
+            options.append(
+                {
+                    "value": value,
+                    "label": _format_label(status["label"], count),
+                    "group": HARDCOVER_STATUS_GROUP,
+                }
+            )
 
         for list_item in me_data.get("lists", []):
             if not isinstance(list_item, dict):
@@ -1652,6 +1669,7 @@ class HardcoverProvider(MetadataProvider):
         state = self._fetch_book_target_state(book_id_int)
         status_ids_to_invalidate: set[int] = set()
         list_ids_to_invalidate: set[int] = set()
+        deselected_target: Optional[str] = None
 
         if selected_target.startswith(HARDCOVER_STATUS_PREFIX):
             status_id = self._parse_prefixed_int(selected_target, "status target")
@@ -1660,6 +1678,8 @@ class HardcoverProvider(MetadataProvider):
             if changed:
                 if previous_status_id is not None:
                     status_ids_to_invalidate.add(previous_status_id)
+                    if selected and previous_status_id != status_id:
+                        deselected_target = f"{HARDCOVER_STATUS_PREFIX}{previous_status_id}"
                 status_ids_to_invalidate.add(status_id)
         elif selected_target.startswith(HARDCOVER_LIST_ID_PREFIX):
             list_id = self._parse_prefixed_int(selected_target, "list target")
@@ -1676,7 +1696,10 @@ class HardcoverProvider(MetadataProvider):
                 list_ids=list_ids_to_invalidate,
             )
 
-        return {"changed": changed}
+        result_data: Dict[str, Any] = {"changed": changed}
+        if deselected_target:
+            result_data["deselected_target"] = deselected_target
+        return result_data
 
     @staticmethod
     def _unwrap_me_data(result: Optional[Dict]) -> Dict:
@@ -2715,5 +2738,11 @@ def hardcover_settings():
             label="Exclude Unreleased Books",
             description="Filter out books with a release year in the future",
             default=False,
+        ),
+        CheckboxField(
+            key="HARDCOVER_AUTO_REMOVE_ON_DOWNLOAD",
+            label="Auto-Remove from List on Download",
+            description="Automatically remove a book from the active Hardcover list when you download it",
+            default=True,
         ),
     ]

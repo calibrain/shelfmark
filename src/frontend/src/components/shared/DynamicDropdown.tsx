@@ -22,6 +22,7 @@ const buildOptions = (
     value: option.value,
     label: option.label,
     description: option.description,
+    group: option.group,
   }));
 };
 

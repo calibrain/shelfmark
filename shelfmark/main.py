@@ -1016,6 +1016,7 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
             "show_release_source_links": app_config.get("SHOW_RELEASE_SOURCE_LINKS", True),
             "books_output_mode": app_config.get("BOOKS_OUTPUT_MODE", "folder"),
             "auto_open_downloads_sidebar": app_config.get("AUTO_OPEN_DOWNLOADS_SIDEBAR", True),
+            "hardcover_auto_remove_on_download": app_config.get("HARDCOVER_AUTO_REMOVE_ON_DOWNLOAD", True),
             "download_to_browser_content_types": app_config.get(
                 "DOWNLOAD_TO_BROWSER_CONTENT_TYPES",
                 [],
@@ -2375,11 +2376,15 @@ def api_metadata_book_targets_update(provider: str, book_id: str) -> Union[Respo
         return jsonify({"error": "selected must be a boolean"}), 400
 
     result = prov.set_book_target_state(book_id, target, selected)
-    return jsonify({
+    response: dict = {
         "success": True,
         "changed": bool(result.get("changed", True)),
         "selected": selected,
-    })
+    }
+    deselected = result.get("deselected_target")
+    if isinstance(deselected, str) and deselected:
+        response["deselected_target"] = deselected
+    return jsonify(response)
 
 
 @app.route('/api/releases', methods=['GET'])

@@ -51,14 +51,23 @@ const renderSummary = (selectedOptions: DropdownListOption[]) => {
   );
 };
 
+const STATUS_PREFIX = 'status:';
+
+const isStatusTarget = (value: string): boolean => value.startsWith(STATUS_PREFIX);
+
 const updateOptionChecked = (
   prev: BookTargetOption[],
   target: string,
   checked: boolean,
 ): BookTargetOption[] =>
-  prev.map((option) =>
-    option.value === target ? { ...option, checked } : option,
-  );
+  prev.map((option) => {
+    if (option.value === target) return { ...option, checked };
+    // Statuses are mutually exclusive — uncheck other statuses when one is selected
+    if (checked && isStatusTarget(target) && isStatusTarget(option.value)) {
+      return { ...option, checked: false };
+    }
+    return option;
+  });
 
 export const BookTargetDropdown = ({
   provider,
@@ -136,6 +145,7 @@ export const BookTargetDropdown = ({
       value: option.value,
       label: option.label,
       description: option.description,
+      group: option.group,
       disabled: !option.writable || pendingTargets.has(option.value),
     }));
   }, [isLoading, loadError, options, pendingTargets]);
@@ -176,6 +186,16 @@ export const BookTargetDropdown = ({
             target: toggledTarget,
             selected: result.selected,
           });
+          // When a status was implicitly deselected, sync other instances
+          if (result.deselectedTarget) {
+            setOptions((prev) => updateOptionChecked(prev, result.deselectedTarget!, false));
+            emitBookTargetChange({
+              provider,
+              bookId,
+              target: result.deselectedTarget,
+              selected: false,
+            });
+          }
           const label = stripCountSuffix(toggledOption.label);
           onShowToast?.(
             `${result.selected ? 'Added to' : 'Removed from'} ${label}`,
@@ -232,7 +252,7 @@ export const BookTargetDropdown = ({
       options={dropdownOptions}
       value={selectedValues}
       onChange={handleChange}
-      placeholder={isLoading ? 'Loading…' : 'Lists & Want to Read'}
+      placeholder={isLoading ? 'Loading…' : 'Hardcover'}
       widthClassName={variant !== 'default' ? 'w-auto' : widthClassName}
       buttonClassName={variant !== 'default' ? '' : 'py-1.5 leading-none'}
       panelClassName={variant !== 'default' ? 'w-56' : undefined}
