@@ -254,29 +254,15 @@ export const DetailsModal = ({
                       </p>
                     </div>
                   )}
-                </div>
 
-                {/* Other display fields (pages, editions) - Universal mode only */}
-                {otherDisplayFields && otherDisplayFields.length > 0 && (
-                  <div className="flex flex-wrap gap-4 text-sm">
-                    {otherDisplayFields.map(field => (
-                      <span key={field.label} className="flex items-center gap-1.5">
-                        {field.icon === 'book' && (
-                          <svg className="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
-                          </svg>
-                        )}
-                        {field.icon === 'editions' && (
-                          <svg className="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 6.878V6a2.25 2.25 0 0 1 2.25-2.25h7.5A2.25 2.25 0 0 1 18 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 0 0 4.5 9v.878m13.5-3A2.25 2.25 0 0 1 19.5 9v.878m0 0a2.246 2.246 0 0 0-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0 1 21 12v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6c0-.98.626-1.813 1.5-2.122" />
-                          </svg>
-                        )}
-                        <span className="text-gray-500 dark:text-gray-400">{field.label}:</span>
-                        <span className="text-gray-900 dark:text-gray-100">{field.value}</span>
-                      </span>
-                    ))}
-                  </div>
-                )}
+                  {/* Other display fields (length, narrator, format, etc.) - Universal mode only */}
+                  {otherDisplayFields && otherDisplayFields.map(field => (
+                    <div key={field.label} className={`${infoCardClass} space-y-1`}>
+                      <p className={infoLabelClass}>{field.label}</p>
+                      <p className={infoValueClass}>{field.value}</p>
+                    </div>
+                  ))}
+                </div>
 
                 {/* ISBN - Universal mode only */}
                 {isMetadata && (book.isbn_13 || book.isbn_10) && (
