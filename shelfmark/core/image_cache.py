@@ -1,12 +1,15 @@
 """Disk-based image cache with LRU eviction."""
 
+import ipaddress
 import json
 import os
+import socket
 import threading
 import time
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
+from urllib.parse import urlparse
 
 import requests
 
@@ -466,6 +469,32 @@ class ImageCacheService:
                 'hit_rate': round(hit_rate, 1),
             }
 
+    @staticmethod
+    def _is_safe_url(url: str) -> bool:
+        """Check that a URL is safe to fetch (no SSRF to internal resources)."""
+        try:
+            parsed = urlparse(url)
+        except Exception:
+            return False
+
+        if parsed.scheme not in ('http', 'https'):
+            return False
+
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+
+        try:
+            resolved = socket.getaddrinfo(hostname, None)
+            for _, _, _, _, sockaddr in resolved:
+                ip = ipaddress.ip_address(sockaddr[0])
+                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                    return False
+        except (socket.gaierror, ValueError):
+            return False
+
+        return True
+
     def fetch_and_cache(self, cache_id: str, url: str) -> Optional[Tuple[bytes, str]]:
         """Fetch an image from URL and cache it.
 
@@ -477,6 +506,9 @@ class ImageCacheService:
             Tuple of (image_data, content_type) or None on failure
         """
         try:
+            if not self._is_safe_url(url):
+                logger.warning(f"Blocked request to disallowed URL: {url}")
+                return None
 
             response = requests.get(
                 url,

@@ -348,7 +348,11 @@ def _get_config_file_path(tab_name: str) -> Path:
     # Core settings tabs share the main settings.json file
     if tab_name in ("general", "search_mode"):
         return config_dir / "settings.json"
-    return config_dir / "plugins" / f"{tab_name}.json"
+    # Sanitize tab_name to prevent path traversal
+    safe_name = Path(tab_name).name
+    if not safe_name or safe_name != tab_name:
+        raise ValueError(f"Invalid tab name: {tab_name}")
+    return config_dir / "plugins" / f"{safe_name}.json"
 
 
 def _ensure_config_dir(tab_name: str) -> None:
