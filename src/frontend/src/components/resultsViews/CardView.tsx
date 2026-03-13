@@ -62,7 +62,7 @@ export const CardView = ({ book, onDetails, onDownload, onGetReleases, buttonSta
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="relative w-full sm:w-full max-sm:w-[120px] max-sm:h-full max-sm:shrink-0" style={{ aspectRatio: '2/3' }}>
+      <div className="relative w-full sm:w-full max-sm:w-[120px] max-sm:h-full max-sm:shrink-0" style={{ aspectRatio: book.cover_aspect === 'square' ? '1/1' : '2/3' }}>
         <div className="absolute inset-0 overflow-hidden sm:rounded-t-[.75rem] max-sm:rounded-l-[.75rem]">
           {/* Series position badge */}
           {showSeriesPosition && book.series_position != null && (

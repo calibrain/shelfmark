@@ -43,6 +43,7 @@ export interface Book {
   genres?: string[];
   source_url?: string;         // Link to book on provider's site
   display_fields?: DisplayField[];  // Provider-specific display data
+  cover_aspect?: 'portrait' | 'square';  // Cover art aspect ratio hint
   // Series info (if book is part of a series)
   series_id?: string;          // Provider-specific series ID
   series_name?: string;        // Name of the series

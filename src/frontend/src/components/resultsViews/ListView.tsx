@@ -18,14 +18,16 @@ interface ListViewProps {
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
-const ListViewThumbnail = ({ preview, title }: { preview?: string; title?: string }) => {
+const ListViewThumbnail = ({ preview, title, coverAspect }: { preview?: string; title?: string; coverAspect?: string }) => {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const isSquare = coverAspect === 'square';
+  const sizeClass = isSquare ? 'w-10 h-10 sm:w-14 sm:h-14' : 'w-7 h-10 sm:w-10 sm:h-14';
 
   if (!preview || imageError) {
     return (
       <div
-        className="w-7 h-10 sm:w-10 sm:h-14 rounded-sm bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[8px] sm:text-[9px] font-medium text-gray-500 dark:text-gray-300"
+        className={`${sizeClass} rounded-sm bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[8px] sm:text-[9px] font-medium text-gray-500 dark:text-gray-300`}
         aria-label="No cover available"
       >
         No Cover
@@ -34,14 +36,14 @@ const ListViewThumbnail = ({ preview, title }: { preview?: string; title?: strin
   }
 
   return (
-    <div className="relative w-7 h-10 sm:w-10 sm:h-14 rounded-sm overflow-hidden bg-gray-100 dark:bg-gray-800 border border-white/40 dark:border-gray-700/70">
+    <div className={`relative ${sizeClass} rounded-sm overflow-hidden bg-gray-100 dark:bg-gray-800 border border-white/40 dark:border-gray-700/70`}>
       {!imageLoaded && (
         <div className="absolute inset-0 bg-linear-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
       )}
       <img
         src={preview}
         alt={title || 'Book cover'}
-        className="w-full h-full object-cover object-top"
+        className={`w-full h-full object-cover ${isSquare ? 'object-center' : 'object-top'}`}
         loading="lazy"
         onLoad={() => setImageLoaded(true)}
         onError={() => setImageError(true)}
@@ -121,7 +123,7 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
               }`}>
                 {/* Thumbnail */}
                 <div className="flex items-center pl-1 sm:pl-3">
-                  <ListViewThumbnail preview={book.preview} title={book.title} />
+                  <ListViewThumbnail preview={book.preview} title={book.title} coverAspect={book.cover_aspect} />
                 </div>
 
                 {/* Title and Author */}

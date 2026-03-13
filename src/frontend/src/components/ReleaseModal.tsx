@@ -1318,15 +1318,15 @@ export const ReleaseModal = ({
                   <img
                     src={book.preview}
                     alt=""
-                    width={46}
-                    height={68}
-                    className="rounded-sm shadow-md object-cover object-top"
-                    style={{ width: 46, height: 68, minWidth: 46 }}
+                    width={book.cover_aspect === 'square' ? 52 : 46}
+                    height={book.cover_aspect === 'square' ? 52 : 68}
+                    className={`rounded-sm shadow-md object-cover ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'}`}
+                    style={{ width: book.cover_aspect === 'square' ? 52 : 46, height: book.cover_aspect === 'square' ? 52 : 68, minWidth: book.cover_aspect === 'square' ? 52 : 46 }}
                   />
                 ) : (
                   <div
                     className="rounded-sm border border-dashed border-(--border-muted) bg-(--bg)/60 flex items-center justify-center text-[7px] text-zinc-500"
-                    style={{ width: 46, height: 68, minWidth: 46 }}
+                    style={{ width: book.cover_aspect === 'square' ? 52 : 46, height: book.cover_aspect === 'square' ? 52 : 68, minWidth: book.cover_aspect === 'square' ? 52 : 46 }}
                   >
                     No cover
                   </div>
@@ -1338,7 +1338,7 @@ export const ReleaseModal = ({
               <div
                 className="hidden sm:block shrink-0 overflow-hidden transition-[width,margin] duration-300 ease-out"
                 style={{
-                  width: showHeaderThumb ? 46 : 0,
+                  width: showHeaderThumb ? (book.cover_aspect === 'square' ? 52 : 46) : 0,
                   marginRight: showHeaderThumb ? 0 : -12,
                 }}
               >
@@ -1350,15 +1350,15 @@ export const ReleaseModal = ({
                     <img
                       src={book.preview}
                       alt=""
-                      width={46}
-                      height={68}
-                      className="rounded-sm shadow-md object-cover object-top"
-                      style={{ width: 46, height: 68, minWidth: 46 }}
+                      width={book.cover_aspect === 'square' ? 52 : 46}
+                      height={book.cover_aspect === 'square' ? 52 : 68}
+                      className={`rounded-sm shadow-md object-cover ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'}`}
+                      style={{ width: book.cover_aspect === 'square' ? 52 : 46, height: book.cover_aspect === 'square' ? 52 : 68, minWidth: book.cover_aspect === 'square' ? 52 : 46 }}
                     />
                   ) : (
                     <div
                       className="rounded-sm border border-dashed border-(--border-muted) bg-(--bg)/60 flex items-center justify-center text-[7px] text-zinc-500"
-                      style={{ width: 46, height: 68, minWidth: 46 }}
+                      style={{ width: book.cover_aspect === 'square' ? 52 : 46, height: book.cover_aspect === 'square' ? 52 : 68, minWidth: book.cover_aspect === 'square' ? 52 : 46 }}
                     >
                       No cover
                     </div>
@@ -1402,10 +1402,10 @@ export const ReleaseModal = ({
                   <img
                     src={book.preview}
                     alt="Book cover"
-                    className={`hidden sm:block rounded-lg shadow-md object-cover object-top shrink-0 ${book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]'}`}
+                    className={`hidden sm:block rounded-lg shadow-md object-cover shrink-0 ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'} ${book.cover_aspect === 'square' ? (book.series_name ? 'w-[144px] h-[144px]' : 'w-[120px] h-[120px]') : (book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]')}`}
                   />
                 ) : (
-                  <div className={`hidden sm:flex rounded-lg border border-dashed border-(--border-muted) bg-(--bg)/60 items-center justify-center text-[10px] text-zinc-500 shrink-0 ${book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]'}`}>
+                  <div className={`hidden sm:flex rounded-lg border border-dashed border-(--border-muted) bg-(--bg)/60 items-center justify-center text-[10px] text-zinc-500 shrink-0 ${book.cover_aspect === 'square' ? (book.series_name ? 'w-[144px] h-[144px]' : 'w-[120px] h-[120px]') : (book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]')}`}>
                     No cover
                   </div>
                 )}

@@ -271,6 +271,13 @@ class AudibleProvider(MetadataProvider):
             description="Search Audible by author name",
         ),
         TextSearchField(
+            key="series",
+            label="Series",
+            description="Browse a series in reading order",
+            suggestions_endpoint="/api/metadata/field-options?provider=audible&field=series",
+            suggestions_min_query_length=2,
+        ),
+        TextSearchField(
             key="title",
             label="Title",
             description="Search Audible by title",
@@ -289,13 +296,6 @@ class AudibleProvider(MetadataProvider):
             key="keywords",
             label="Keywords",
             description="Search Audible by keywords",
-        ),
-        TextSearchField(
-            key="series",
-            label="Series",
-            description="Browse a series in reading order",
-            suggestions_endpoint="/api/metadata/field-options?provider=audible&field=series",
-            suggestions_min_query_length=2,
         ),
     ]
     capabilities = [
@@ -786,6 +786,7 @@ class AudibleProvider(MetadataProvider):
             isbn_10=isbn_10,
             isbn_13=isbn_13,
             cover_url=str(item.get("imageUrl") or "").strip() or None,
+            cover_aspect="square",
             description=_sanitize_description(item.get("description"))
             or _sanitize_description(item.get("summary")),
             publisher=str(item.get("publisher") or "").strip() or None,

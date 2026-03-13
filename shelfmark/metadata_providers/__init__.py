@@ -194,6 +194,9 @@ class BookMetadata:
     search_title: Optional[str] = None  # Cleaner title for search queries (provider-specific)
     search_author: Optional[str] = None  # Cleaner author for search queries (provider-specific)
 
+    # Cover aspect ratio hint for the frontend ("portrait" or "square")
+    cover_aspect: Optional[str] = None
+
     # Provider-specific display fields for cards/lists
     display_fields: List[DisplayField] = field(default_factory=list)
 

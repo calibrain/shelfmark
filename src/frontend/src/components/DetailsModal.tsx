@@ -128,8 +128,11 @@ export const DetailsModal = ({
   // Use provider display name from backend, fall back to capitalized provider name
   const providerDisplay = book.provider_display_name
     || (book.provider ? book.provider.charAt(0).toUpperCase() + book.provider.slice(1) : '');
+  const isSquareCover = book.cover_aspect === 'square';
   const artworkMaxHeight = 'calc(90vh - 220px)';
-  const artworkMaxWidth = 'min(45vw, 520px, calc((90vh - 220px) / 1.6))';
+  const artworkMaxWidth = isSquareCover
+    ? 'min(45vw, 400px, calc(90vh - 220px))'
+    : 'min(45vw, 520px, calc((90vh - 220px) / 1.6))';
   const additionalInfo =
     book.info && Object.keys(book.info).length > 0
       ? Object.entries(book.info).filter(([key]) => {
