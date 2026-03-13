@@ -25,7 +25,7 @@ COPY src/frontend/ ./
 RUN npm run build
 
 # Use python-slim as the base image
-FROM python:3.10-slim AS base
+FROM python:3.14-slim AS base
 
 # Add build argument for version
 ARG BUILD_VERSION

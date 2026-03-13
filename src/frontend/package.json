@@ -15,16 +15,16 @@
     "@tailwindcss/vite": "^4.2.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "react-router-dom": "^6.30.3",
+    "react-router-dom": "^7.13.1",
     "socket.io-client": "^4.7.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.1",
-    "@types/node": "^24.10.0",
+    "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.4",
-    "postcss": "^8.4.32",
+    "postcss": "^8.5.8",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.5.3",
     "vite": "^7.3.1"

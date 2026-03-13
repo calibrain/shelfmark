@@ -31,7 +31,7 @@ jobs:
         run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
       
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Log in to the Container registry
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -42,7 +42,7 @@ jobs:
 
       - name: Extract metadata for ${{ matrix.target }} image
         id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_name_suffix }}
           tags: |
@@ -58,7 +58,7 @@ jobs:
 
       - name: Build and push ${{ matrix.target }} Docker image
         id: push
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
         with:
           platforms: linux/amd64,linux/arm64
           context: .
@@ -72,7 +72,7 @@ jobs:
 
       - name: Generate artifact attestation for ${{ matrix.target }} image
         if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_name_suffix }}
           subject-digest: ${{ steps.push.outputs.digest }}
