@@ -651,8 +651,42 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                 <div className="max-h-[min(24rem,calc(100vh-8rem))] overflow-y-auto p-3">
                   {showContentTypeSelector && (
                     <div className="border-b pb-3" style={{ borderColor: 'var(--border-muted)' }}>
-                      <div className="px-1 pb-2 text-xs font-medium uppercase tracking-wide opacity-60">
-                        Content
+                      <div className="flex items-center justify-between px-1 pb-2">
+                        <span className="text-xs font-medium uppercase tracking-wide opacity-60">Content</span>
+                        {onAdvancedToggle && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsSelectorOpen(false);
+                              onAdvancedToggle();
+                            }}
+                            className={`flex items-center gap-1.5 px-4 py-2.5 -mt-1.5 -mb-0.5 -mr-1 text-xs font-medium rounded-xl transition-colors ${
+                              isAdvancedActive
+                                ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
+                                : 'hover-surface'
+                            }`}
+                            style={isAdvancedActive
+                              ? { borderColor: searchMode === 'direct' ? 'rgb(3 105 161 / 0.7)' : 'rgb(16 185 129 / 0.7)' }
+                              : { color: 'var(--text-muted)' }}
+                          >
+                            <svg
+                              className="w-3.5 h-3.5"
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              strokeWidth="1.5"
+                              stroke="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"
+                              />
+                            </svg>
+                            Options
+                          </button>
+                        )}
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <button
@@ -685,9 +719,43 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                     </div>
                   )}
 
-                  <div className={showContentTypeSelector ? 'pt-3' : ''}>
-                    <div className="px-1 pb-2 text-xs font-medium uppercase tracking-wide opacity-60">
-                      Search By
+                  <div className={showContentTypeSelector ? 'pt-2' : ''}>
+                    <div className="flex items-center justify-between px-1 pb-1.5">
+                      <span className="text-xs font-medium uppercase tracking-wide opacity-60">Search By</span>
+                      {!showContentTypeSelector && onAdvancedToggle && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsSelectorOpen(false);
+                            onAdvancedToggle();
+                          }}
+                          className={`flex items-center gap-1.5 px-4 py-2.5 -mt-1.5 -mb-0.5 -mr-1 text-xs font-medium rounded-xl transition-colors ${
+                            isAdvancedActive
+                              ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
+                              : 'hover-surface'
+                          }`}
+                          style={isAdvancedActive
+                            ? { borderColor: searchMode === 'direct' ? 'rgb(3 105 161 / 0.7)' : 'rgb(16 185 129 / 0.7)' }
+                            : { color: 'var(--text-muted)' }}
+                        >
+                          <svg
+                            className="w-3.5 h-3.5"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            strokeWidth="1.5"
+                            stroke="currentColor"
+                            aria-hidden="true"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"
+                            />
+                          </svg>
+                          Options
+                        </button>
+                      )}
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       {queryTargets.map((target) => {
@@ -699,7 +767,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                             onClick={() => handleQueryTargetSelect(target.key)}
                             title={target.description || target.label}
                             aria-label={target.label}
-                            className={`min-w-0 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors flex items-center gap-2 ${
+                            className={`min-w-0 rounded-xl border px-3 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
                               isActive ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white` : 'hover-surface'
                             }`}
                             style={isActive
@@ -714,46 +782,6 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                     </div>
                   </div>
 
-                  {onAdvancedToggle && (
-                    <div className="border-t pt-3 mt-3" style={{ borderColor: 'var(--border-muted)' }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsSelectorOpen(false);
-                          onAdvancedToggle();
-                        }}
-                        className={`w-full px-3 py-2.5 text-sm font-medium rounded-xl transition-colors flex items-center justify-center gap-2 ${
-                          isAdvancedActive
-                            ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
-                            : 'hover-surface'
-                        }`}
-                        style={isAdvancedActive
-                          ? { borderColor: searchMode === 'direct' ? 'rgb(3 105 161 / 0.7)' : 'rgb(16 185 129 / 0.7)' }
-                          : { color: 'var(--text-muted)' }}
-                      >
-                        {isAdvancedActive ? (
-                          <CheckIcon />
-                        ) : (
-                          <svg
-                            className="w-4 h-4"
-                            xmlns="http://www.w3.org/2000/svg"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            strokeWidth="1.5"
-                            stroke="currentColor"
-                            aria-hidden="true"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"
-                            />
-                          </svg>
-                        )}
-                        Options & Filters
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
             )}

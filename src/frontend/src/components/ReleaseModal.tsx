@@ -1320,15 +1320,15 @@ export const ReleaseModal = ({
                   <img
                     src={book.preview}
                     alt=""
-                    width={book.cover_aspect === 'square' ? 52 : 46}
-                    height={book.cover_aspect === 'square' ? 52 : 68}
+                    width={book.cover_aspect === 'square' ? 68 : 46}
+                    height={68}
                     className={`rounded-sm shadow-md object-cover ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'}`}
-                    style={{ width: book.cover_aspect === 'square' ? 52 : 46, height: book.cover_aspect === 'square' ? 52 : 68, minWidth: book.cover_aspect === 'square' ? 52 : 46 }}
+                    style={{ width: book.cover_aspect === 'square' ? 68 : 46, height: 68, minWidth: book.cover_aspect === 'square' ? 68 : 46 }}
                   />
                 ) : (
                   <div
                     className="rounded-sm border border-dashed border-(--border-muted) bg-(--bg)/60 flex items-center justify-center text-[7px] text-zinc-500"
-                    style={{ width: book.cover_aspect === 'square' ? 52 : 46, height: book.cover_aspect === 'square' ? 52 : 68, minWidth: book.cover_aspect === 'square' ? 52 : 46 }}
+                    style={{ width: book.cover_aspect === 'square' ? 68 : 46, height: 68, minWidth: book.cover_aspect === 'square' ? 68 : 46 }}
                   >
                     No cover
                   </div>
@@ -1340,7 +1340,7 @@ export const ReleaseModal = ({
               <div
                 className="hidden sm:block shrink-0 overflow-hidden transition-[width,margin] duration-300 ease-out"
                 style={{
-                  width: showHeaderThumb ? (book.cover_aspect === 'square' ? 52 : 46) : 0,
+                  width: showHeaderThumb ? (book.cover_aspect === 'square' ? 68 : 46) : 0,
                   marginRight: showHeaderThumb ? 0 : -12,
                 }}
               >
@@ -1352,15 +1352,15 @@ export const ReleaseModal = ({
                     <img
                       src={book.preview}
                       alt=""
-                      width={book.cover_aspect === 'square' ? 52 : 46}
-                      height={book.cover_aspect === 'square' ? 52 : 68}
+                      width={book.cover_aspect === 'square' ? 68 : 46}
+                      height={68}
                       className={`rounded-sm shadow-md object-cover ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'}`}
-                      style={{ width: book.cover_aspect === 'square' ? 52 : 46, height: book.cover_aspect === 'square' ? 52 : 68, minWidth: book.cover_aspect === 'square' ? 52 : 46 }}
+                      style={{ width: book.cover_aspect === 'square' ? 68 : 46, height: 68, minWidth: book.cover_aspect === 'square' ? 68 : 46 }}
                     />
                   ) : (
                     <div
                       className="rounded-sm border border-dashed border-(--border-muted) bg-(--bg)/60 flex items-center justify-center text-[7px] text-zinc-500"
-                      style={{ width: book.cover_aspect === 'square' ? 52 : 46, height: book.cover_aspect === 'square' ? 52 : 68, minWidth: book.cover_aspect === 'square' ? 52 : 46 }}
+                      style={{ width: book.cover_aspect === 'square' ? 68 : 46, height: 68, minWidth: book.cover_aspect === 'square' ? 68 : 46 }}
                     >
                       No cover
                     </div>
