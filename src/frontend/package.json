@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test:unit": "npm run test:unit:build && node --experimental-specifier-resolution=node --test ../../.local/frontend-test-dist/tests/**/*.node.test.js",
+    "test:unit": "npm run test:unit:build && node --experimental-specifier-resolution=node --test ../../.local/frontend-test-dist/tests/*.node.test.js",
     "test:unit:build": "rm -rf ../../.local/frontend-test-dist && tsc -p tsconfig.tests.json"
   },
   "dependencies": {
