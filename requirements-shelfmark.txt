@@ -1,4 +1,4 @@
 pyvirtualdisplay
 pyautogui
-seleniumbase==4.45.10
+seleniumbase==4.47.3
 python-xlib
