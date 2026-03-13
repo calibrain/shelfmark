@@ -1122,6 +1122,7 @@ class TestAdminDeliveryPreferences:
             "BOOKLORE_PATH_ID",
             "EMAIL_RECIPIENT",
             "DESTINATION_AUDIOBOOK",
+            "DOWNLOAD_TO_BROWSER_CONTENT_TYPES",
         ]
 
         field_keys = [field["key"] for field in data["fields"]]

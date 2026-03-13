@@ -4,7 +4,7 @@ ARG BUILDPLATFORM
 ARG BUILDARCH
 
 # Frontend build stage.
-FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:20-alpine@sha256:5bac2112f1a27db4775ce6ead86db9e0cbc087f0dbddfe3cbc11ecea122d5294 AS frontend-builder
 
 # Helpful debug output to see what platforms BuildKit thinks it's using
 RUN echo "BUILDPLATFORM=$BUILDPLATFORM BUILDARCH=$BUILDARCH TARGETPLATFORM=$TARGETPLATFORM TARGETARCH=$TARGETARCH"
@@ -25,7 +25,7 @@ COPY src/frontend/ ./
 RUN npm run build
 
 # Use python-slim as the base image
-FROM python:3.10-slim AS base
+FROM python:3.10-slim@sha256:1dc3b6808fb4739068071dc9543150ecc87be29f4f8af018c47af841578804ff AS base
 
 # Add build argument for version
 ARG BUILD_VERSION
