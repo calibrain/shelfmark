@@ -138,9 +138,7 @@ test_write() {
         return 1
     fi
 
-    if ! (
-        echo 0123456789_TEST | gosu "$USERNAME" env HOME=/app tee "$test_file" > /dev/null
-    ); then
+    if ! gosu "$USERNAME" sh -c 'echo 0123456789_TEST > "$1"' _ "$test_file"; then
         echo "Failed to write test file in $folder as $USERNAME"
         return 1
     fi
