@@ -692,7 +692,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                         <button
                           type="button"
                           onClick={() => handleContentTypeSelect('ebook')}
-                          className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                          className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
                             contentType === 'ebook' ? 'bg-emerald-600 text-white' : 'hover-surface'
                           }`}
                           style={contentType !== 'ebook'
@@ -705,7 +705,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                         <button
                           type="button"
                           onClick={() => handleContentTypeSelect('audiobook')}
-                          className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors ${
+                          className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
                             contentType === 'audiobook' ? 'bg-emerald-600 text-white' : 'hover-surface'
                           }`}
                           style={contentType !== 'audiobook'
