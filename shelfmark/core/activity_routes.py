@@ -311,6 +311,39 @@ def _parse_item_key(item_key: Any, prefix: str) -> str | None:
 _ALL_BUCKET_KEYS = (*ACTIVE_QUEUE_STATUSES, *TERMINAL_QUEUE_STATUSES)
 
 
+def _build_queue_index(queue_status: dict[str, dict[str, Any]]) -> dict[str, tuple[str, dict[str, Any]]]:
+    """Index live queue entries by task id for fast activity lookups."""
+    queue_index: dict[str, tuple[str, dict[str, Any]]] = {}
+    for bucket_key in _ALL_BUCKET_KEYS:
+        bucket = queue_status.get(bucket_key)
+        if not isinstance(bucket, dict):
+            continue
+        for task_id, payload in bucket.items():
+            normalized_bucket_key = bucket_key.value if isinstance(bucket_key, QueueStatus) else str(bucket_key)
+            queue_index[str(task_id)] = (normalized_bucket_key, payload)
+    return queue_index
+
+
+def _effective_download_row_for_activity(
+    row: dict[str, Any],
+    *,
+    has_live_queue_entry: bool,
+) -> dict[str, Any]:
+    """Treat stale persisted active rows as interrupted failures for activity APIs."""
+    final_status = str(row.get("final_status") or "").strip().lower()
+    if final_status != ACTIVE_DOWNLOAD_STATUS or has_live_queue_entry:
+        return row
+
+    effective_row = dict(row)
+    effective_row["final_status"] = QueueStatus.ERROR.value
+
+    status_message = effective_row.get("status_message")
+    if not isinstance(status_message, str) or not status_message.strip():
+        effective_row["status_message"] = "Interrupted"
+
+    return effective_row
+
+
 def _build_download_status_from_db(
     *,
     db_rows: list[dict[str, Any]],
@@ -323,15 +356,7 @@ def _build_download_status_from_db(
     Stale active rows (no queue entry) are treated as interrupted errors.
     """
     status: dict[str, dict[str, Any]] = {key: {} for key in _ALL_BUCKET_KEYS}
-
-    # Index queue items by task_id for fast lookup: task_id -> (bucket_key, payload)
-    queue_index: dict[str, tuple[str, dict[str, Any]]] = {}
-    for bucket_key in _ALL_BUCKET_KEYS:
-        bucket = queue_status.get(bucket_key)
-        if not isinstance(bucket, dict):
-            continue
-        for task_id, payload in bucket.items():
-            queue_index[str(task_id)] = (bucket_key, payload)
+    queue_index = _build_queue_index(queue_status)
 
     for row in db_rows:
         task_id = str(row.get("task_id") or "").strip()
@@ -346,9 +371,11 @@ def _build_download_status_from_db(
                 bucket_key, queue_payload = queue_entry
                 status[bucket_key][task_id] = queue_payload
             else:
-                # Stale active row — no queue entry means it was interrupted
-                download_payload = DownloadHistoryService.to_download_payload(row)
-                download_payload["status_message"] = "Interrupted"
+                effective_row = _effective_download_row_for_activity(
+                    row,
+                    has_live_queue_entry=False,
+                )
+                download_payload = DownloadHistoryService.to_download_payload(effective_row)
                 status[QueueStatus.ERROR][task_id] = download_payload
         elif final_status in VALID_TERMINAL_STATUSES:
             download_payload = DownloadHistoryService.to_download_payload(row)
@@ -563,6 +590,11 @@ def register_activity_routes(
                     item_key=f"download:{task_id}",
                 )
 
+            live_queue_index = _build_queue_index(queue_status(user_id=actor.owner_scope))
+            effective_existing = _effective_download_row_for_activity(
+                existing,
+                has_live_queue_entry=task_id in live_queue_index,
+            )
             ownership_error = _check_item_ownership(actor, existing)
             if ownership_error is not None:
                 return _activity_error_response(
@@ -573,9 +605,9 @@ def register_activity_routes(
                     viewer_scope=actor.viewer_scope,
                     item_type="download",
                     item_key=f"download:{task_id}",
-                    **_download_row_log_context(existing),
+                    **_download_row_log_context(effective_existing),
                 )
-            terminal_error = _check_terminal_download(existing)
+            terminal_error = _check_terminal_download(effective_existing)
             if terminal_error is not None:
                 return _activity_error_response(
                     "dismiss",
@@ -585,7 +617,7 @@ def register_activity_routes(
                     viewer_scope=actor.viewer_scope,
                     item_type="download",
                     item_key=f"download:{task_id}",
-                    **_download_row_log_context(existing),
+                    **_download_row_log_context(effective_existing),
                 )
 
             activity_view_state_service.dismiss(
@@ -712,6 +744,7 @@ def register_activity_routes(
 
         dismissal_items: list[dict[str, str]] = []
         missing_item_keys: list[str] = []
+        live_queue_index: dict[str, tuple[str, dict[str, Any]]] | None = None
 
         for item in items:
             if not isinstance(item, dict):
@@ -744,6 +777,12 @@ def register_activity_routes(
                 if existing is None:
                     missing_item_keys.append(f"download:{task_id}")
                     continue
+                if live_queue_index is None:
+                    live_queue_index = _build_queue_index(queue_status(user_id=actor.owner_scope))
+                effective_existing = _effective_download_row_for_activity(
+                    existing,
+                    has_live_queue_entry=task_id in live_queue_index,
+                )
                 ownership_error = _check_item_ownership(actor, existing)
                 if ownership_error is not None:
                     return _activity_error_response(
@@ -755,9 +794,9 @@ def register_activity_routes(
                         item_type="download",
                         item_key=f"download:{task_id}",
                         item_count=len(items),
-                        **_download_row_log_context(existing),
+                        **_download_row_log_context(effective_existing),
                     )
-                terminal_error = _check_terminal_download(existing)
+                terminal_error = _check_terminal_download(effective_existing)
                 if terminal_error is not None:
                     return _activity_error_response(
                         "dismiss_many",
@@ -768,7 +807,7 @@ def register_activity_routes(
                         item_type="download",
                         item_key=f"download:{task_id}",
                         item_count=len(items),
-                        **_download_row_log_context(existing),
+                        **_download_row_log_context(effective_existing),
                     )
                 dismissal_items.append({"item_type": "download", "item_key": f"download:{task_id}"})
                 continue
@@ -889,6 +928,7 @@ def register_activity_routes(
             limit=limit,
             offset=offset,
         )
+        live_queue_index = _build_queue_index(queue_status(user_id=actor.owner_scope))
         payload: list[dict[str, Any]] = []
 
         for history_row in history_rows:
@@ -913,9 +953,13 @@ def register_activity_routes(
                     if owner_user_id != actor.db_user_id:
                         raise RuntimeError(f"Viewer state out of scope for {item_key}")
 
+                effective_download_row = _effective_download_row_for_activity(
+                    download_row,
+                    has_live_queue_entry=task_id in live_queue_index,
+                )
                 payload.append(
                     DownloadHistoryService.to_history_row(
-                        download_row,
+                        effective_download_row,
                         dismissed_at=dismissed_at,
                     )
                 )

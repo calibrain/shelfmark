@@ -377,7 +377,7 @@ class TestActivityRoutes:
         assert response.status_code == 404
         assert response.json["error"] == "Download not found"
 
-    def test_dismiss_rejects_active_download(self, main_module, client):
+    def test_dismiss_rejects_live_active_download(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
@@ -396,12 +396,23 @@ class TestActivityRoutes:
             content_type="ebook",
             origin="direct",
         )
+        active_status = _sample_status_payload()
+        active_status["downloading"] = {
+            "active-dismiss-task": {
+                "id": "active-dismiss-task",
+                "title": "Active Dismiss Task",
+                "author": "Author",
+                "source": "direct_download",
+                "status_message": "Downloading",
+            }
+        }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            response = client.post(
-                "/api/activity/dismiss",
-                json={"item_type": "download", "item_key": "download:active-dismiss-task"},
-            )
+            with patch.object(main_module.backend, "queue_status", return_value=active_status):
+                response = client.post(
+                    "/api/activity/dismiss",
+                    json={"item_type": "download", "item_key": "download:active-dismiss-task"},
+                )
 
         assert response.status_code == 409
         assert response.json["error"] == "Only terminal downloads can be dismissed"
@@ -528,6 +539,44 @@ class TestActivityRoutes:
         assert rows_by_key[f"download:{first_task_id}"]["snapshot"]["download"]["author"] == "First Author"
         assert rows_by_key[f"download:{second_task_id}"]["snapshot"]["download"]["title"] == "Second Title"
         assert rows_by_key[f"download:{second_task_id}"]["snapshot"]["download"]["author"] == "Second Author"
+
+    def test_dismiss_many_accepts_stale_active_download_as_interrupted_history(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        task_id = "dismiss-many-stale-active"
+        main_module.download_history_service.record_download(
+            task_id=task_id,
+            user_id=user["id"],
+            username=user["username"],
+            request_id=None,
+            source="direct_download",
+            source_display_name="Direct Download",
+            title="Stale Active Download",
+            author="Stale Author",
+            format="epub",
+            size="1 MB",
+            preview=None,
+            content_type="ebook",
+            origin="direct",
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+                dismiss_many_response = client.post(
+                    "/api/activity/dismiss-many",
+                    json={"items": [{"item_type": "download", "item_key": f"download:{task_id}"}]},
+                )
+                history_response = client.get("/api/activity/history?limit=10&offset=0")
+
+        assert dismiss_many_response.status_code == 200
+        assert dismiss_many_response.json["status"] == "dismissed"
+        assert dismiss_many_response.json["count"] == 1
+        assert history_response.status_code == 200
+        assert len(history_response.json) == 1
+        assert history_response.json[0]["item_key"] == f"download:{task_id}"
+        assert history_response.json[0]["final_status"] == "error"
+        assert history_response.json[0]["snapshot"]["download"]["status_message"] == "Interrupted"
 
     def test_dismiss_many_returns_404_without_partial_dismiss_when_any_item_is_missing(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
