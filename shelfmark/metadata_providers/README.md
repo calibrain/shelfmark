@@ -12,6 +12,8 @@ Metadata providers allow searching for books and retrieving detailed metadata (t
 |----------|---------------|-------------|
 | **Hardcover** | Yes (API key) | Modern book tracking platform with GraphQL API. Get your key at [hardcover.app/account/api](https://hardcover.app/account/api) |
 | **Open Library** | No | Free, open-source library catalog from the Internet Archive. Rate limited to ~100 requests/minute |
+| **Google Books** | Yes (API key) | Google's book database with broad coverage and a free API key option |
+| **Audible** | No | Audiobook metadata from Audible via the [AudiMeta API](https://audimeta.de/api-docs), including regions, narrators, and series browsing |
 
 ## Core Components
 

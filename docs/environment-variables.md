@@ -21,6 +21,7 @@ This document lists all configuration options that can be set via environment va
   - [Hardcover](#metadata-providers-hardcover)
   - [Open Library](#metadata-providers-open-library)
   - [Google Books](#metadata-providers-google-books)
+  - [Audible](#metadata-providers-audible)
 - [Direct Download](#direct-download)
   - [Download Sources](#direct-download-download-sources)
   - [Cloudflare Bypass](#direct-download-cloudflare-bypass)
@@ -232,7 +233,7 @@ Choose which metadata provider to use for book searches.
 
 - **Type:** string (choice)
 - **Default:** `openlibrary`
-- **Options:** `hardcover` (Hardcover), `openlibrary` (Open Library), `googlebooks` (Google Books)
+- **Options:** `hardcover` (Hardcover), `openlibrary` (Open Library), `googlebooks` (Google Books), `audible` (Audible)
 
 #### `METADATA_PROVIDER_AUDIOBOOK`
 
@@ -242,7 +243,7 @@ Metadata provider for audiobook searches. Uses the book provider if not set.
 
 - **Type:** string (choice)
 - **Default:** _empty string_
-- **Options:** `""` (Use book provider), `hardcover` (Hardcover), `openlibrary` (Open Library), `googlebooks` (Google Books)
+- **Options:** `""` (Use book provider), `hardcover` (Hardcover), `openlibrary` (Open Library), `googlebooks` (Google Books), `audible` (Audible)
 
 #### `DEFAULT_RELEASE_SOURCE`
 
@@ -1759,6 +1760,99 @@ Default sort order for Google Books search results.
 - **Type:** string (choice)
 - **Default:** `relevance`
 - **Options:** `relevance` (Most relevant), `newest` (Newest)
+
+</details>
+
+### Metadata Providers: Audible
+
+| Variable | Description | Type | Default |
+|----------|-------------|------|---------|
+| `AUDIBLE_ENABLED` | Enable Audible as a metadata provider for book and audiobook searches | boolean | `false` |
+| `AUDIBLE_BASE_URL` | Audimeta instance URL. Defaults to the public instance. You can also point this at https://beta.audimeta.de or another compatible host. | string | `https://audimeta.de` |
+| `AUDIBLE_USER_AGENT` | User-Agent sent to AudiMeta. The public API rejects generic clients, so keep this as a meaningful identifier if you override it. | string | `Shelfmark Audible Provider/1.0 (+https://github.com/calibrain/shelfmark; metadata-provider)` |
+| `AUDIBLE_REGION` | Audible storefront region to use for searches and book lookups. | string (choice) | `us` |
+| `AUDIBLE_REQUEST_TIMEOUT` | Timeout for outgoing AudiMeta API requests. | number | `15` |
+| `AUDIBLE_USE_UPSTREAM_CACHE` | Allow AudiMeta to serve cached upstream results when available. | boolean | `true` |
+| `AUDIBLE_DEFAULT_SORT` | Default sort order for Audible search results. | string (choice) | `relevance` |
+| `AUDIBLE_EXCLUDE_UNRELEASED` | Filter out titles with a release date in the future. This is applied after search results are fetched and may reduce the number of items shown on a page. | boolean | `false` |
+
+<details>
+<summary>Detailed descriptions</summary>
+
+#### `AUDIBLE_ENABLED`
+
+**Enable Audible**
+
+Enable Audible as a metadata provider for book and audiobook searches
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `AUDIBLE_BASE_URL`
+
+**AudiMeta Base URL**
+
+Audimeta instance URL. Defaults to the public instance. You can also point this at https://beta.audimeta.de or another compatible host.
+
+- **Type:** string
+- **Default:** `https://audimeta.de`
+
+#### `AUDIBLE_USER_AGENT`
+
+**User-Agent**
+
+User-Agent sent to AudiMeta. The public API rejects generic clients, so keep this as a meaningful identifier if you override it.
+
+- **Type:** string
+- **Default:** `Shelfmark Audible Provider/1.0 (+https://github.com/calibrain/shelfmark; metadata-provider)`
+
+#### `AUDIBLE_REGION`
+
+**Default Region**
+
+Audible storefront region to use for searches and book lookups.
+
+- **Type:** string (choice)
+- **Default:** `us`
+- **Options:** `us` (United States), `ca` (Canada), `uk` (United Kingdom), `au` (Australia), `fr` (France), `de` (Germany), `jp` (Japan), `it` (Italy), `in` (India), `es` (Spain), `br` (Brazil)
+
+#### `AUDIBLE_REQUEST_TIMEOUT`
+
+**Request Timeout (seconds)**
+
+Timeout for outgoing AudiMeta API requests.
+
+- **Type:** number
+- **Default:** `15`
+- **Constraints:** min: 1, max: 60
+
+#### `AUDIBLE_USE_UPSTREAM_CACHE`
+
+**Use AudiMeta Cache**
+
+Allow AudiMeta to serve cached upstream results when available.
+
+- **Type:** boolean
+- **Default:** `true`
+
+#### `AUDIBLE_DEFAULT_SORT`
+
+**Default Sort Order**
+
+Default sort order for Audible search results.
+
+- **Type:** string (choice)
+- **Default:** `relevance`
+- **Options:** `relevance` (Most relevant), `popularity` (Best sellers), `rating` (Highest rated), `newest` (Newest), `oldest` (Oldest)
+
+#### `AUDIBLE_EXCLUDE_UNRELEASED`
+
+**Exclude Unreleased Titles**
+
+Filter out titles with a release date in the future. This is applied after search results are fetched and may reduce the number of items shown on a page.
+
+- **Type:** boolean
+- **Default:** `false`
 
 </details>
 
