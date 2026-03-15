@@ -662,11 +662,11 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                             }}
                             className={`flex items-center gap-1.5 px-4 py-2.5 -mt-1.5 -mb-0.5 -mr-1 text-xs font-medium rounded-xl transition-colors ${
                               isAdvancedActive
-                                ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
+                                ? 'bg-emerald-600 text-white'
                                 : 'hover-surface'
                             }`}
                             style={isAdvancedActive
-                              ? { borderColor: searchMode === 'direct' ? 'rgb(3 105 161 / 0.7)' : 'rgb(16 185 129 / 0.7)' }
+                              ? { borderColor: 'rgb(16 185 129 / 0.7)' }
                               : { color: 'var(--text-muted)' }}
                           >
                             <svg
