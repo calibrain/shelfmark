@@ -7,6 +7,8 @@ from typing import List, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
 
+from shelfmark.core.search_plan import ReleaseSearchVariant
+
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.metadata_providers import BookMetadata
@@ -562,13 +564,15 @@ class ProwlarrSource(ReleaseSource):
             logger.warning("Prowlarr not configured - skipping search")
             return []
 
-        queries = [v.title for v in plan.title_variants if v.title]
-        queries = [q for q in queries if q]
+        variants = [v for v in plan.title_variants if v.title]
 
-        if not queries and plan.isbn_candidates:
-            queries = list(plan.isbn_candidates)
+        if not variants and plan.isbn_candidates:
+            variants = [
+                ReleaseSearchVariant(title=isbn, author="", languages=None)
+                for isbn in plan.isbn_candidates
+            ]
 
-        if not queries:
+        if not variants:
             logger.warning("No search query available for book")
             return []
 
@@ -601,13 +605,13 @@ class ProwlarrSource(ReleaseSource):
             query_type = "title"
 
         indexer_desc = f"indexers={indexer_ids}" if indexer_ids else "all enabled indexers"
-        if len(queries) == 1:
+        if len(variants) == 1:
             logger.debug(
-                f"Searching Prowlarr: {query_type}='{queries[0]}', {indexer_desc}, categories={categories}"
+                f"Searching Prowlarr: {query_type}='{variants[0].title}', {indexer_desc}, categories={categories}"
             )
         else:
             logger.debug(
-                f"Searching Prowlarr: {query_type} ({len(queries)} variants), {indexer_desc}, categories={categories}"
+                f"Searching Prowlarr: {query_type} ({len(variants)} variants), {indexer_desc}, categories={categories}"
             )
 
         # Identify indexers that should be enriched via Torznab/Newznab.
@@ -616,9 +620,17 @@ class ProwlarrSource(ReleaseSource):
         if indexer_ids:
             non_enriched_indexer_ids = [i for i in indexer_ids if i not in enriched_indexer_ids]
 
-        def search_indexers(query: str, cats: Optional[List[int]]) -> List[dict]:
-            """Search indexers with given categories, collecting results."""
+        def search_indexers(query: str, cats: Optional[List[int]], *, enriched_query: Optional[str] = None) -> List[dict]:
+            """Search indexers with given categories, collecting results.
+
+            Args:
+                query: Query string for standard indexers (title only).
+                cats: Category filter list.
+                enriched_query: Optional query for enriched indexers (title + author).
+                    Falls back to ``query`` when not provided.
+            """
             results = []
+            eq = enriched_query or query
 
             # Search standard indexers via JSON endpoint.
             if indexer_ids:
@@ -652,14 +664,15 @@ class ProwlarrSource(ReleaseSource):
                     logger.warning(f"Search failed for all indexers: {e}")
 
             # Search enriched indexers via Torznab/Newznab for richer metadata.
+            # Use enriched_query (title + author) for better results on these indexers.
             for indexer_id in enriched_indexer_ids:
-                raw = client.torznab_search(indexer_id=indexer_id, query=query, categories=cats, search_type="book")
+                raw = client.torznab_search(indexer_id=indexer_id, query=eq, categories=cats, search_type="book")
                 if raw:
                     results.extend(raw)
                 else:
                     # Fallback to JSON search for enriched indexers if Torznab fails.
                     try:
-                        raw_fallback = client.search(query=query, indexer_ids=[indexer_id], categories=cats)
+                        raw_fallback = client.search(query=eq, indexer_ids=[indexer_id], categories=cats)
                         if raw_fallback:
                             results.extend(raw_fallback)
                     except Exception as e:
@@ -679,18 +692,21 @@ class ProwlarrSource(ReleaseSource):
             seen_keys: set[str] = set()
             all_results: List[dict] = []
 
-            for idx, query in enumerate(queries, start=1):
+            for idx, variant in enumerate(variants, start=1):
                 _check_timeout()
-                if len(queries) > 1:
-                    logger.debug(f"Prowlarr query {idx}/{len(queries)}: '{query}'")
+                query = variant.title
+                enriched_query = variant.query  # title + author
 
-                raw_results = search_indexers(query=query, cats=categories)
+                if len(variants) > 1:
+                    logger.debug(f"Prowlarr query {idx}/{len(variants)}: '{query}'")
+
+                raw_results = search_indexers(query=query, cats=categories, enriched_query=enriched_query)
 
                 # Auto-expand: if no results with categories and auto-expand enabled, retry without
                 if not raw_results and categories and auto_expand_enabled:
                     _check_timeout()
                     logger.info(f"Prowlarr: no results for query '{query}' with category filter, auto-expanding search")
-                    raw_results = search_indexers(query=query, cats=None)
+                    raw_results = search_indexers(query=query, cats=None, enriched_query=enriched_query)
                     self.last_search_type = "expanded"
 
                 for r in raw_results:
