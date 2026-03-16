@@ -288,6 +288,7 @@ export interface MetadataProvidersResponse {
   providers: MetadataProviderSummary[];
   configured_provider: string | null;
   configured_provider_audiobook: string | null;
+  configured_provider_combined: string | null;
 }
 
 export interface MetadataCapability {

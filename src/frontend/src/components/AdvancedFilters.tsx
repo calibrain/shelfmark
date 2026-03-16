@@ -22,19 +22,14 @@ interface AdvancedFiltersProps {
   formClassName?: string;
   renderWrapper?: (form: ReactNode) => ReactNode;
   searchMode: SearchMode;
-  onSearchModeChange: (mode: SearchMode) => void;
   metadataProviders?: MetadataProviderSummary[];
   activeMetadataProvider?: string | null;
   onMetadataProviderChange?: (provider: string) => void;
   contentType?: ContentType;
+  combinedMode?: boolean;
   isAdmin?: boolean;
   onClose?: () => void;
 }
-
-const SEARCH_MODE_OPTIONS = [
-  { value: 'direct', label: 'Direct', description: 'Search web sources for books and download directly. Works out of the box.' },
-  { value: 'universal', label: 'Universal', description: 'Metadata-based search with downloads from all sources. Book and Audiobook support.' },
-];
 
 export const AdvancedFilters = ({
   visible,
@@ -45,11 +40,11 @@ export const AdvancedFilters = ({
   formClassName,
   renderWrapper,
   searchMode,
-  onSearchModeChange,
   metadataProviders = [],
   activeMetadataProvider,
   onMetadataProviderChange,
   contentType = 'ebook',
+  combinedMode = false,
   isAdmin = false,
   onClose,
 }: AdvancedFiltersProps) => {
@@ -121,35 +116,19 @@ export const AdvancedFilters = ({
         </div>
       )}
       {isAdmin && (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <DropdownList
-              label="Search Mode"
-              options={SEARCH_MODE_OPTIONS}
-              value={searchMode}
-              onChange={(value) => {
-                const next = Array.isArray(value) ? value[0] ?? 'direct' : value;
-                onSearchModeChange(next === 'universal' ? 'universal' : 'direct');
-              }}
-              placeholder="Choose a mode"
-              widthClassName="w-full"
-            />
-
-            {searchMode === 'universal' && (
-              <DropdownList
-                label={contentType === 'audiobook' ? 'Audiobook Metadata Provider' : 'Book Metadata Provider'}
-                options={providerOptions}
-                value={activeMetadataProvider ?? ''}
-                onChange={(value) => {
-                  const next = Array.isArray(value) ? value[0] ?? '' : value;
-                  onMetadataProviderChange?.(next);
-                }}
-                placeholder="Choose a provider"
-                widthClassName="w-full"
-              />
-            )}
-          </div>
-        </>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <DropdownList
+            label={combinedMode ? 'Combined Metadata Provider' : contentType === 'audiobook' ? 'Audiobook Metadata Provider' : 'Book Metadata Provider'}
+            options={providerOptions}
+            value={activeMetadataProvider ?? ''}
+            onChange={(value) => {
+              const next = Array.isArray(value) ? value[0] ?? '' : value;
+              onMetadataProviderChange?.(next);
+            }}
+            placeholder="Choose a provider"
+            widthClassName="w-full"
+          />
+        </div>
       )}
 
       {searchMode === 'direct' && (

@@ -492,6 +492,7 @@ function App() {
   const [metadataProviders, setMetadataProviders] = useState<MetadataProviderSummary[]>([]);
   const [configuredMetadataProvider, setConfiguredMetadataProvider] = useState<string | null>(null);
   const [configuredAudiobookMetadataProvider, setConfiguredAudiobookMetadataProvider] = useState<string | null>(null);
+  const [configuredCombinedMetadataProvider, setConfiguredCombinedMetadataProvider] = useState<string | null>(null);
   const [activeMetadataConfig, setActiveMetadataConfig] = useState<MetadataSearchConfig | null>(null);
   const [activeQueryTarget, setActiveQueryTarget] = useState<string>('general');
   const [activeResultsSort, setActiveResultsSort] = useState('');
@@ -681,11 +682,13 @@ function App() {
         getConfig(),
         getMetadataProviders(),
       ]);
-      const activeConfiguredProvider = getConfiguredMetadataProviderForContentType({
-        contentType,
-        configuredMetadataProvider: metadataProviderState.configured_provider,
-        configuredAudiobookMetadataProvider: metadataProviderState.configured_provider_audiobook,
-      });
+      const activeConfiguredProvider = combinedMode && metadataProviderState.configured_provider_combined
+        ? metadataProviderState.configured_provider_combined
+        : getConfiguredMetadataProviderForContentType({
+            contentType,
+            configuredMetadataProvider: metadataProviderState.configured_provider,
+            configuredAudiobookMetadataProvider: metadataProviderState.configured_provider_audiobook,
+          });
       let nextMetadataConfig: MetadataSearchConfig | null = null;
 
       if (cfg.search_mode === 'universal') {
@@ -721,6 +724,7 @@ function App() {
       setMetadataProviders(metadataProviderState.providers);
       setConfiguredMetadataProvider(metadataProviderState.configured_provider);
       setConfiguredAudiobookMetadataProvider(metadataProviderState.configured_provider_audiobook);
+      setConfiguredCombinedMetadataProvider(metadataProviderState.configured_provider_combined);
       setActiveMetadataConfig(nextMetadataConfig);
 
       // Show onboarding modal on first run (settings enabled but not completed yet)
@@ -752,7 +756,7 @@ function App() {
     } catch (error) {
       console.error('Failed to load config:', error);
     }
-  }, [clearTracking, contentType, setAdvancedFilters, setBooks]);
+  }, [clearTracking, combinedMode, contentType, setAdvancedFilters, setBooks]);
 
   // Fetch config when authenticated
   useEffect(() => {
@@ -781,11 +785,13 @@ function App() {
     }
   }, [config, combinedMode, combinedModeAllowed]);
 
-  const defaultMetadataProviderForContentType = getConfiguredMetadataProviderForContentType({
-    contentType,
-    configuredMetadataProvider,
-    configuredAudiobookMetadataProvider,
-  });
+  const defaultMetadataProviderForContentType = combinedMode && configuredCombinedMetadataProvider
+    ? configuredCombinedMetadataProvider
+    : getConfiguredMetadataProviderForContentType({
+        contentType,
+        configuredMetadataProvider,
+        configuredAudiobookMetadataProvider,
+      });
   const effectiveMetadataProvider = effectiveSearchMode === 'universal'
     ? (defaultMetadataProviderForContentType || null)
     : null;
@@ -2041,27 +2047,21 @@ function App() {
     }
   }, [activeQueryOption, setSearchInput, updateAdvancedFilters, updateSearchFieldValue]);
 
-  const handleSearchModeChange = useCallback((nextMode: SearchMode) => {
-    setConfig((prev) => prev ? { ...prev, search_mode: nextMode } : prev);
-    if (nextMode !== 'universal') {
-      setCombinedMode(false);
-    }
-    updateSelfUser({ settings: { SEARCH_MODE: nextMode } })
-      .then(() => loadConfig('settings-saved'))
-      .catch((err) => console.error('Failed to save search mode:', err));
-  }, [loadConfig]);
-
   const handleMetadataProviderChange = useCallback((provider: string) => {
-    if (contentType === 'audiobook') {
+    if (combinedMode) {
+      setConfiguredCombinedMetadataProvider(provider);
+    } else if (contentType === 'audiobook') {
       setConfiguredAudiobookMetadataProvider(provider);
     } else {
       setConfiguredMetadataProvider(provider);
     }
-    const key = contentType === 'audiobook' ? 'METADATA_PROVIDER_AUDIOBOOK' : 'METADATA_PROVIDER';
+    const key = combinedMode
+      ? 'METADATA_PROVIDER_COMBINED'
+      : contentType === 'audiobook' ? 'METADATA_PROVIDER_AUDIOBOOK' : 'METADATA_PROVIDER';
     updateSelfUser({ settings: { [key]: provider } })
       .then(() => loadConfig('settings-saved'))
       .catch((err) => console.error('Failed to save metadata provider:', err));
-  }, [contentType, loadConfig]);
+  }, [combinedMode, contentType, loadConfig]);
 
   const buildCurrentSearchRequest = useCallback((sortOverride?: string) => {
     const appliedSort = effectiveSearchMode === 'universal'
@@ -2390,11 +2390,11 @@ function App() {
           filters={advancedFilters}
           onFiltersChange={updateAdvancedFilters}
           searchMode={effectiveSearchMode}
-          onSearchModeChange={handleSearchModeChange}
           metadataProviders={metadataProviders}
           activeMetadataProvider={effectiveMetadataProvider}
           onMetadataProviderChange={handleMetadataProviderChange}
           contentType={contentType}
+          combinedMode={combinedMode}
           isAdmin={requestRoleIsAdmin}
           onClose={() => setShowAdvanced(false)}
         />
@@ -2437,7 +2437,6 @@ function App() {
           onCombinedModeChange={combinedModeAllowed ? setCombinedMode : undefined}
           activeQueryField={activeQueryField}
           searchMode={effectiveSearchMode}
-          onSearchModeChange={handleSearchModeChange}
           metadataProviders={metadataProviders}
           activeMetadataProvider={effectiveMetadataProvider}
           onMetadataProviderChange={handleMetadataProviderChange}

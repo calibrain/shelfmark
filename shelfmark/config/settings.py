@@ -501,6 +501,15 @@ def search_mode_settings():
             user_overridable=True,
         ),
         SelectField(
+            key="METADATA_PROVIDER_COMBINED",
+            label="Combined Mode Metadata Provider",
+            description="Metadata provider for combined mode searches. Uses the book provider if not set.",
+            options=_get_metadata_provider_options_with_none,  # Callable - includes "Use main provider" option
+            default="",
+            show_when={"field": "SEARCH_MODE", "value": "universal"},
+            user_overridable=True,
+        ),
+        SelectField(
             key="DEFAULT_RELEASE_SOURCE",
             label="Default Book Release Source",
             description="The release source tab to open by default in the release modal for books.",

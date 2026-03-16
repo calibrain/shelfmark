@@ -1983,6 +1983,11 @@ def api_metadata_providers() -> Union[Response, Tuple[Response, int]]:
             user_id=db_user_id,
             fallback_to_main=False,
         )
+        configured_combined_metadata_provider = get_configured_provider_name(
+            content_type="combined",
+            user_id=db_user_id,
+            fallback_to_main=False,
+        )
         providers = []
         for info in list_providers():
             enabled_key = f"{info['name'].upper()}_ENABLED"
@@ -2007,6 +2012,7 @@ def api_metadata_providers() -> Union[Response, Tuple[Response, int]]:
             "providers": providers,
             "configured_provider": configured_metadata_provider or None,
             "configured_provider_audiobook": configured_audiobook_metadata_provider or None,
+            "configured_provider_combined": configured_combined_metadata_provider or None,
         })
     except Exception as e:
         logger.error_trace(f"Metadata providers error: {e}")

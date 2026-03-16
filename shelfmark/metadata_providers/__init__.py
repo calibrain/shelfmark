@@ -528,6 +528,15 @@ def get_configured_provider_name(
 
     app_config.refresh()
 
+    if content_type == "combined":
+        combined_provider = app_config.get(
+            "METADATA_PROVIDER_COMBINED",
+            "",
+            user_id=user_id,
+        )
+        if combined_provider or not fallback_to_main:
+            return combined_provider
+
     if content_type == "audiobook":
         audiobook_provider = app_config.get(
             "METADATA_PROVIDER_AUDIOBOOK",
