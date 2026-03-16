@@ -13,13 +13,15 @@ import {
 
 interface RequestConfirmationModalProps {
   payload: CreateRequestPayload | null;
+  extraPayloads?: CreateRequestPayload[];
   allowNotes: boolean;
-  onConfirm: (payload: CreateRequestPayload) => Promise<boolean>;
+  onConfirm: (payload: CreateRequestPayload, extraPayloads?: CreateRequestPayload[]) => Promise<boolean>;
   onClose: () => void;
 }
 
 export const RequestConfirmationModal = ({
   payload,
+  extraPayloads = [],
   allowNotes,
   onConfirm,
   onClose,
@@ -70,6 +72,10 @@ export const RequestConfirmationModal = ({
   const basePreview = useMemo(() => {
     return payload ? buildRequestConfirmationPreview(payload) : null;
   }, [payload]);
+
+  const extraPreviews = useMemo(() => {
+    return extraPayloads.map(buildRequestConfirmationPreview);
+  }, [extraPayloads]);
 
   const [enriched, setEnriched] = useState<RequestConfirmationPreview | null>(null);
   const enrichRef = useRef(0);
@@ -122,7 +128,7 @@ export const RequestConfirmationModal = ({
     setIsSubmitting(true);
     try {
       const nextPayload = applyRequestNoteToPayload(payload, note, allowNotes);
-      const success = await onConfirm(nextPayload);
+      const success = await onConfirm(nextPayload, extraPayloads.length > 0 ? extraPayloads : undefined);
       if (!success) {
         setIsSubmitting(false);
       }
@@ -147,7 +153,7 @@ export const RequestConfirmationModal = ({
       >
         <header className="flex items-center justify-between border-b border-(--border-muted) px-6 py-4">
           <h3 id={titleId} className="text-lg font-semibold">
-            Request Book
+            {extraPayloads.length > 0 ? 'Request Book & Audiobook' : 'Request Book'}
           </h3>
           <button
             type="button"
@@ -194,8 +200,24 @@ export const RequestConfirmationModal = ({
                     )}
                   </div>
                 )}
-                {preview.releaseLine && (
-                  <p className="text-xs opacity-60 mt-1.5">{preview.releaseLine}</p>
+                {/* Release lines — show all (primary + extras) with content type labels when combined */}
+                {(preview.releaseLine || extraPreviews.length > 0) && (
+                  <div className="mt-1.5 space-y-0.5">
+                    {preview.releaseLine && (
+                      <p className="text-xs opacity-60">
+                        {extraPreviews.length > 0 && (
+                          <span className="font-medium opacity-80">{payload.context.content_type === 'ebook' ? 'Book: ' : 'Audiobook: '}</span>
+                        )}
+                        {preview.releaseLine}
+                      </p>
+                    )}
+                    {extraPreviews.map((ep, i) => ep.releaseLine && (
+                      <p key={i} className="text-xs opacity-60">
+                        <span className="font-medium opacity-80">{extraPayloads[i]?.context.content_type === 'ebook' ? 'Book: ' : 'Audiobook: '}</span>
+                        {ep.releaseLine}
+                      </p>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>

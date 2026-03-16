@@ -22,6 +22,7 @@ from shelfmark.core.requests_service import (
     RequestServiceError,
     cancel_request,
     create_request,
+    create_requests,
     fulfil_request,
     reject_request,
 )
@@ -231,6 +232,158 @@ def _format_requester_label(user_db: UserDB, request_row: dict[str, Any]) -> str
     return _format_user_label(None, user_id)
 
 
+def _resolve_request_user_context(
+    user_db: UserDB,
+    *,
+    actor_user_id: int,
+    actor_username: str | None,
+    on_behalf_of_user_id: Any,
+) -> tuple[int, str | None, str]:
+    if on_behalf_of_user_id in (None, ""):
+        actor_label = _format_user_label(actor_username, actor_user_id)
+        return actor_user_id, actor_username, actor_label
+
+    if not session.get("is_admin", False):
+        raise RequestServiceError("Admin required", status_code=403)
+
+    try:
+        target_user_id = int(on_behalf_of_user_id)
+    except (TypeError, ValueError) as exc:
+        raise RequestServiceError("Invalid on_behalf_of_user_id", status_code=400) from exc
+
+    if target_user_id <= 0:
+        raise RequestServiceError("Invalid on_behalf_of_user_id", status_code=400)
+
+    target_user = user_db.get_user(user_id=target_user_id)
+    if not target_user:
+        raise RequestServiceError("User not found", status_code=404)
+
+    target_username = normalize_optional_text(target_user.get("username"))
+    actor_label = _format_user_label(actor_username, actor_user_id)
+    target_label = _format_user_label(target_username, target_user_id)
+    return target_user_id, target_username, f"{actor_label} on behalf of {target_label}"
+
+
+def _prepare_request_create_arguments(
+    user_db: UserDB,
+    data: dict[str, Any],
+) -> dict[str, Any]:
+    db_user_id, db_gate = _require_db_user_id()
+    if db_gate is not None or db_user_id is None:
+        raise RequestServiceError(
+            "User identity is unavailable for request workflow",
+            status_code=403,
+            code="user_identity_unavailable",
+        )
+
+    actor_username = normalize_optional_text(session.get("user_id"))
+    target_user_id, _, actor_label = _resolve_request_user_context(
+        user_db,
+        actor_user_id=db_user_id,
+        actor_username=actor_username,
+        on_behalf_of_user_id=data.get("on_behalf_of_user_id"),
+    )
+
+    context = data.get("context") or {}
+    if not isinstance(context, dict):
+        raise RequestServiceError("context must be an object", status_code=400)
+
+    source = normalize_source(context.get("source"))
+    release_data = data.get("release_data")
+    request_level = context.get("request_level")
+    if request_level is None:
+        request_level = "book" if release_data is None else "release"
+
+    book_data = data.get("book_data")
+    if not isinstance(book_data, dict):
+        raise RequestServiceError("book_data must be an object", status_code=400)
+    request_title = _resolve_title_from_book_data(book_data)
+
+    content_type = normalize_content_type(
+        context.get("content_type")
+        or data.get("content_type")
+        or book_data.get("content_type")
+    )
+    request_level, release_data = _normalize_release_result_request_payload(
+        source=source,
+        request_level=request_level,
+        book_data=book_data,
+        release_data=release_data,
+        content_type=content_type,
+    )
+
+    global_settings, user_settings, effective, requests_enabled = _resolve_effective_policy(
+        user_db,
+        db_user_id=target_user_id,
+    )
+    if not requests_enabled:
+        raise RequestServiceError(
+            "Request workflow is disabled by policy",
+            status_code=403,
+            code="requests_unavailable",
+        )
+
+    max_pending = coerce_int(
+        effective.get("MAX_PENDING_REQUESTS_PER_USER"),
+        default=20,
+    )
+    if max_pending < 1:
+        max_pending = 1
+    if max_pending > 1000:
+        max_pending = 1000
+    allow_notes = coerce_bool(effective.get("REQUESTS_ALLOW_NOTES"), default=True)
+    note_value = data.get("note") if allow_notes else None
+
+    resolved_mode = resolve_policy_mode(
+        source=source,
+        content_type=content_type,
+        global_settings=global_settings,
+        user_settings=user_settings,
+    )
+    logger.debug(
+        "request create policy actor=%s target_user_id=%s source=%s content_type=%s request_level=%s resolved_mode=%s",
+        session.get("user_id"),
+        target_user_id,
+        source,
+        content_type,
+        request_level,
+        resolved_mode.value,
+    )
+
+    if resolved_mode == PolicyMode.BLOCKED:
+        raise RequestServiceError(
+            "Requesting is blocked by policy",
+            status_code=403,
+            code="policy_blocked",
+            required_mode=PolicyMode.BLOCKED.value,
+        )
+
+    requested_level = str(request_level).strip().lower() if isinstance(request_level, str) else ""
+    if resolved_mode == PolicyMode.REQUEST_BOOK and requested_level != "book":
+        raise RequestServiceError(
+            "Policy requires book-level requests",
+            status_code=403,
+            code="policy_requires_request",
+            required_mode=PolicyMode.REQUEST_BOOK.value,
+        )
+
+    return {
+        "create_args": {
+            "user_id": target_user_id,
+            "source_hint": source,
+            "content_type": content_type,
+            "request_level": request_level,
+            "policy_mode": resolved_mode.value,
+            "book_data": book_data,
+            "release_data": release_data,
+            "note": note_value,
+            "max_pending_per_user": max_pending,
+        },
+        "actor_label": actor_label,
+        "request_title": request_title,
+    }
+
+
 def _resolve_request_source_and_format(request_row: dict[str, Any]) -> tuple[str, str | None]:
     release_data = request_row.get("release_data")
     if isinstance(release_data, dict):
@@ -385,130 +538,20 @@ def register_request_routes(
         if auth_gate is not None:
             return auth_gate
 
-        db_user_id, db_gate = _require_db_user_id()
-        if db_gate is not None or db_user_id is None:
-            return db_gate
-        actor_username = normalize_optional_text(session.get("user_id"))
-        actor_label = _format_user_label(actor_username, db_user_id)
-
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
             return jsonify({"error": "No data provided"}), 400
 
-        context = data.get("context") or {}
-        if not isinstance(context, dict):
-            return jsonify({"error": "context must be an object"}), 400
-
-        source = normalize_source(context.get("source"))
-        release_data = data.get("release_data")
-        request_level = context.get("request_level")
-        if request_level is None:
-            request_level = "book" if release_data is None else "release"
-
-        book_data = data.get("book_data")
-        if not isinstance(book_data, dict):
-            return jsonify({"error": "book_data must be an object"}), 400
-        request_title = _resolve_title_from_book_data(book_data)
-
-        content_type = normalize_content_type(
-            context.get("content_type")
-            or data.get("content_type")
-            or book_data.get("content_type")
-        )
-        request_level, release_data = _normalize_release_result_request_payload(
-            source=source,
-            request_level=request_level,
-            book_data=book_data,
-            release_data=release_data,
-            content_type=content_type,
-        )
-
-        global_settings, user_settings, effective, requests_enabled = _resolve_effective_policy(
-            user_db,
-            db_user_id=db_user_id,
-        )
-        if not requests_enabled:
-            logger.debug(
-                "Request not created for '%s' by %s: requests are disabled",
-                request_title,
-                actor_label,
-            )
-            return _error_response(
-                "Request workflow is disabled by policy",
-                403,
-                code="requests_unavailable",
-            )
-
-        max_pending = coerce_int(
-            effective.get("MAX_PENDING_REQUESTS_PER_USER"),
-            default=20,
-        )
-        if max_pending < 1:
-            max_pending = 1
-        if max_pending > 1000:
-            max_pending = 1000
-        allow_notes = coerce_bool(effective.get("REQUESTS_ALLOW_NOTES"), default=True)
-        note_value = data.get("note") if allow_notes else None
-
-        resolved_mode = resolve_policy_mode(
-            source=source,
-            content_type=content_type,
-            global_settings=global_settings,
-            user_settings=user_settings,
-        )
-        logger.debug(
-            "request create policy user=%s db_user_id=%s source=%s content_type=%s request_level=%s resolved_mode=%s",
-            session.get("user_id"),
-            db_user_id,
-            source,
-            content_type,
-            request_level,
-            resolved_mode.value,
-        )
-
-        if resolved_mode == PolicyMode.BLOCKED:
-            logger.debug(
-                "Request blocked by policy for '%s' by %s",
-                request_title,
-                actor_label,
-            )
-            return _error_response(
-                "Requesting is blocked by policy",
-                403,
-                code="policy_blocked",
-                required_mode=PolicyMode.BLOCKED.value,
-            )
-
-        if resolved_mode == PolicyMode.REQUEST_BOOK:
-            requested_level = str(request_level).strip().lower() if isinstance(request_level, str) else ""
-            if requested_level != "book":
-                logger.debug(
-                    "Request not created for '%s' by %s: policy requires book-level requests",
-                    request_title,
-                    actor_label,
-                )
-                return _error_response(
-                    "Policy requires book-level requests",
-                    403,
-                    code="policy_requires_request",
-                    required_mode=PolicyMode.REQUEST_BOOK.value,
-                )
-
         try:
-            created = create_request(
-                user_db,
-                user_id=db_user_id,
-                source_hint=source,
-                content_type=content_type,
-                request_level=request_level,
-                policy_mode=resolved_mode.value,
-                book_data=book_data,
-                release_data=release_data,
-                note=note_value,
-                max_pending_per_user=max_pending,
-            )
+            prepared = _prepare_request_create_arguments(user_db, data)
+            created = create_request(user_db, **prepared["create_args"])
         except RequestServiceError as exc:
-            return _error_response(str(exc), exc.status_code, code=exc.code)
+            return _error_response(
+                str(exc),
+                exc.status_code,
+                code=exc.code,
+                required_mode=exc.required_mode,
+            )
 
         event_payload = {
             "request_id": created["id"],
@@ -519,7 +562,7 @@ def register_request_routes(
             "Request created #%s for '%s' by %s",
             created["id"],
             event_payload["title"],
-            actor_label,
+            prepared["actor_label"],
         )
         emit_ws_event(
             ws_manager,
@@ -531,7 +574,7 @@ def register_request_routes(
             ws_manager,
             event_name="request_update",
             payload=event_payload,
-            room=f"user_{db_user_id}",
+            room=f"user_{created['user_id']}",
         )
 
         _notify_admin_for_request_event(
@@ -541,6 +584,69 @@ def register_request_routes(
         )
 
         return jsonify(created), 201
+
+    @app.route("/api/requests/batch", methods=["POST"])
+    def api_create_requests_batch():
+        auth_gate = _require_request_endpoints_available(resolve_auth_mode)
+        if auth_gate is not None:
+            return auth_gate
+
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"error": "No data provided"}), 400
+
+        raw_requests = data.get("requests")
+        if not isinstance(raw_requests, list) or len(raw_requests) == 0:
+            return jsonify({"error": "requests must contain at least one request"}), 400
+
+        try:
+            prepared_requests = [
+                _prepare_request_create_arguments(user_db, raw_request)
+                for raw_request in raw_requests
+            ]
+            created_rows = create_requests(
+                user_db,
+                requests=[prepared["create_args"] for prepared in prepared_requests],
+            )
+        except RequestServiceError as exc:
+            return _error_response(
+                str(exc),
+                exc.status_code,
+                code=exc.code,
+                required_mode=exc.required_mode,
+            )
+
+        for created, prepared in zip(created_rows, prepared_requests):
+            event_payload = {
+                "request_id": created["id"],
+                "status": created["status"],
+                "title": _resolve_request_title(created),
+            }
+            logger.info(
+                "Request created #%s for '%s' by %s",
+                created["id"],
+                event_payload["title"],
+                prepared["actor_label"],
+            )
+            emit_ws_event(
+                ws_manager,
+                event_name="new_request",
+                payload=event_payload,
+                room="admins",
+            )
+            emit_ws_event(
+                ws_manager,
+                event_name="request_update",
+                payload=event_payload,
+                room=f"user_{created['user_id']}",
+            )
+            _notify_admin_for_request_event(
+                user_db,
+                event=NotificationEvent.REQUEST_CREATED,
+                request_row=created,
+            )
+
+        return jsonify(created_rows), 201
 
     @app.route("/api/requests", methods=["GET"])
     def api_list_requests():

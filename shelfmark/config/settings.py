@@ -468,6 +468,14 @@ def search_mode_settings():
             ),
             default=True,
         ),
+        CheckboxField(
+            key="SHOW_COMBINED_SELECTOR",
+            label="Show Combined Download Selector",
+            description="Show the option to search for and download both a book and audiobook together.",
+            default=True,
+            show_when={"field": "SEARCH_MODE", "value": "universal"},
+            user_overridable=True,
+        ),
         HeadingField(
             key="universal_mode_heading",
             title="Universal Mode Settings",

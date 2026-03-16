@@ -227,6 +227,71 @@ class TestRequestRoutes:
         assert updated["user_id"] == user["id"]
         assert updated["status"] == "cancelled"
 
+    def test_admin_can_create_request_on_behalf_of_another_user(self, main_module, client):
+        admin = _create_user(main_module, prefix="admin", role="admin")
+        target_user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
+        policy = _policy(default_ebook="request_book")
+
+        payload = {
+            "book_data": {
+                "title": "Shared Request",
+                "author": "Shelfmark",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "shared-1",
+            },
+            "context": {
+                "source": "*",
+                "content_type": "ebook",
+                "request_level": "book",
+            },
+            "on_behalf_of_user_id": target_user["id"],
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
+                    resp = client.post("/api/requests", json=payload)
+
+        assert resp.status_code == 201
+        assert resp.json["user_id"] == target_user["id"]
+        created = main_module.user_db.get_request(resp.json["id"])
+        assert created is not None
+        assert created["user_id"] == target_user["id"]
+
+    def test_batch_create_requests_is_atomic(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(default_ebook="request_book", default_audiobook="request_book")
+
+        duplicate_request = {
+            "book_data": {
+                "title": "Duplicate Title",
+                "author": "Same Author",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "dup-1",
+            },
+            "context": {
+                "source": "*",
+                "content_type": "ebook",
+                "request_level": "book",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
+                    resp = client.post(
+                        "/api/requests/batch",
+                        json={"requests": [duplicate_request, duplicate_request]},
+                    )
+
+        assert resp.status_code == 409
+        assert resp.json["code"] == "duplicate_pending_request"
+        assert main_module.user_db.list_requests(user_id=user["id"]) == []
+
     def test_create_request_emits_websocket_events(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)

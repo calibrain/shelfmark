@@ -1014,6 +1014,7 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
             "default_release_source": default_release_source,
             "default_release_source_audiobook": default_release_source_audiobook,
             "show_release_source_links": app_config.get("SHOW_RELEASE_SOURCE_LINKS", True),
+            "show_combined_selector": app_config.get("SHOW_COMBINED_SELECTOR", True, user_id=db_user_id),
             "books_output_mode": app_config.get("BOOKS_OUTPUT_MODE", "folder"),
             "auto_open_downloads_sidebar": app_config.get("AUTO_OPEN_DOWNLOADS_SIDEBAR", True),
             "hardcover_auto_remove_on_download": app_config.get("HARDCOVER_AUTO_REMOVE_ON_DOWNLOAD", True),

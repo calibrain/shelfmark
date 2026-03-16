@@ -37,10 +37,12 @@ class RequestServiceError(ValueError):
         *,
         status_code: int = 400,
         code: str | None = None,
+        required_mode: str | None = None,
     ):
         super().__init__(message)
         self.status_code = status_code
         self.code = code
+        self.required_mode = required_mode
 
 
 def _normalize_match_text(value: Any) -> str:
@@ -132,6 +134,45 @@ def _normalize_admin_note(admin_note: Any) -> str | None:
     return admin_note.strip() or None
 
 
+def _prepare_request_create(
+    *,
+    user_id: int,
+    source_hint: str | None,
+    content_type: Any,
+    request_level: Any,
+    policy_mode: Any,
+    book_data: Any,
+    release_data: Any = None,
+    note: Any = None,
+) -> dict[str, Any]:
+    validated_book_data = _validate_book_data(book_data)
+    normalized_note = normalize_note(note)
+    normalized_content_type = normalize_content_type(
+        content_type or validated_book_data.get("content_type")
+    )
+    validated_book_data["content_type"] = normalized_content_type
+
+    try:
+        normalized_request_level = validate_request_level_payload(request_level, release_data)
+        normalized_policy_mode = normalize_policy_mode(policy_mode)
+    except ValueError as exc:
+        raise RequestServiceError(str(exc), status_code=400) from exc
+
+    _validate_json_blob_size("book_data", validated_book_data)
+    _validate_json_blob_size("release_data", release_data)
+
+    return {
+        "user_id": user_id,
+        "source_hint": source_hint,
+        "content_type": normalized_content_type,
+        "request_level": normalized_request_level,
+        "policy_mode": normalized_policy_mode,
+        "book_data": validated_book_data,
+        "release_data": release_data,
+        "note": normalized_note,
+    }
+
+
 def sync_delivery_states_from_queue_status(
     user_db: "UserDB",
     *,
@@ -208,21 +249,16 @@ def create_request(
     max_pending_per_user: int | None = None,
 ) -> dict[str, Any]:
     """Create a pending request after service-level validation."""
-    validated_book_data = _validate_book_data(book_data)
-    normalized_note = normalize_note(note)
-    normalized_content_type = normalize_content_type(
-        content_type or validated_book_data.get("content_type")
+    prepared_request = _prepare_request_create(
+        user_id=user_id,
+        source_hint=source_hint,
+        content_type=content_type,
+        request_level=request_level,
+        policy_mode=policy_mode,
+        book_data=book_data,
+        release_data=release_data,
+        note=note,
     )
-    validated_book_data["content_type"] = normalized_content_type
-
-    try:
-        normalized_request_level = validate_request_level_payload(request_level, release_data)
-        normalized_policy_mode = normalize_policy_mode(policy_mode)
-    except ValueError as exc:
-        raise RequestServiceError(str(exc), status_code=400) from exc
-
-    _validate_json_blob_size("book_data", validated_book_data)
-    _validate_json_blob_size("release_data", release_data)
 
     if max_pending_per_user is not None:
         pending_count = user_db.count_user_pending_requests(user_id)
@@ -236,9 +272,9 @@ def create_request(
     duplicate = _find_duplicate_pending_request(
         user_db,
         user_id=user_id,
-        title=_normalize_match_text(validated_book_data.get("title")),
-        author=_normalize_match_text(validated_book_data.get("author")),
-        content_type=normalized_content_type,
+        title=_normalize_match_text(prepared_request["book_data"].get("title")),
+        author=_normalize_match_text(prepared_request["book_data"].get("author")),
+        content_type=prepared_request["content_type"],
     )
     if duplicate is not None:
         raise RequestServiceError(
@@ -248,16 +284,85 @@ def create_request(
         )
 
     try:
-        return user_db.create_request(
+        return user_db.create_request(**prepared_request)
+    except ValueError as exc:
+        raise RequestServiceError(str(exc), status_code=400) from exc
+
+
+def create_requests(
+    user_db: "UserDB",
+    *,
+    requests: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Create multiple pending requests atomically after validation."""
+    if not isinstance(requests, list) or len(requests) == 0:
+        raise RequestServiceError("requests must contain at least one request", status_code=400)
+
+    prepared_requests: list[dict[str, Any]] = []
+    pending_counts_by_user: dict[int, int] = {}
+    seen_request_keys: set[tuple[int, str, str, str]] = set()
+
+    for request in requests:
+        if not isinstance(request, dict):
+            raise RequestServiceError("requests must contain objects", status_code=400)
+
+        user_id = int(request["user_id"])
+        prepared_request = _prepare_request_create(
             user_id=user_id,
-            source_hint=source_hint,
-            content_type=normalized_content_type,
-            request_level=normalized_request_level,
-            policy_mode=normalized_policy_mode,
-            book_data=validated_book_data,
-            release_data=release_data,
-            note=normalized_note,
+            source_hint=request.get("source_hint"),
+            content_type=request.get("content_type"),
+            request_level=request.get("request_level"),
+            policy_mode=request.get("policy_mode"),
+            book_data=request.get("book_data"),
+            release_data=request.get("release_data"),
+            note=request.get("note"),
         )
+
+        request_key = (
+            user_id,
+            _normalize_match_text(prepared_request["book_data"].get("title")),
+            _normalize_match_text(prepared_request["book_data"].get("author")),
+            prepared_request["content_type"],
+        )
+        if request_key in seen_request_keys:
+            raise RequestServiceError(
+                "Duplicate pending request exists for this title/author/content_type",
+                status_code=409,
+                code="duplicate_pending_request",
+            )
+        seen_request_keys.add(request_key)
+
+        max_pending_per_user = request.get("max_pending_per_user")
+        if max_pending_per_user is not None:
+            existing_pending = pending_counts_by_user.get(user_id)
+            if existing_pending is None:
+                existing_pending = user_db.count_user_pending_requests(user_id)
+            if existing_pending >= max_pending_per_user:
+                raise RequestServiceError(
+                    "Maximum pending requests reached for this user",
+                    status_code=409,
+                    code="max_pending_reached",
+                )
+            pending_counts_by_user[user_id] = existing_pending + 1
+
+        duplicate = _find_duplicate_pending_request(
+            user_db,
+            user_id=user_id,
+            title=request_key[1],
+            author=request_key[2],
+            content_type=request_key[3],
+        )
+        if duplicate is not None:
+            raise RequestServiceError(
+                "Duplicate pending request exists for this title/author/content_type",
+                status_code=409,
+                code="duplicate_pending_request",
+            )
+
+        prepared_requests.append(prepared_request)
+
+    try:
+        return user_db.create_requests(prepared_requests)
     except ValueError as exc:
         raise RequestServiceError(str(exc), status_code=400) from exc
 

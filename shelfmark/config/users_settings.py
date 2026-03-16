@@ -77,6 +77,7 @@ _SEARCH_PREFERENCE_VALIDATABLE_KEYS = {
     "SEARCH_MODE",
     "DEFAULT_RELEASE_SOURCE",
     "DEFAULT_RELEASE_SOURCE_AUDIOBOOK",
+    "SHOW_COMBINED_SELECTOR",
     *_SEARCH_PREFERENCE_PROVIDER_KEYS,
 }
 
@@ -214,6 +215,11 @@ def validate_search_preference_value(key: str, value: Any) -> tuple[Any, str | N
                 f"{key} must be a valid release source name or empty",
             )
         return normalized_value, None
+
+    if key == "SHOW_COMBINED_SELECTOR":
+        if isinstance(value, bool):
+            return value, None
+        return bool(value), None
 
     return value, None
 

@@ -11,6 +11,7 @@ import {
   useState,
 } from 'react';
 import { useSearchMode } from '../contexts/SearchModeContext';
+import { Tooltip } from './shared/Tooltip';
 import {
   ContentType,
   MetadataSearchField,
@@ -90,13 +91,13 @@ const autocompleteOptionsCache = new Map<string, DynamicFieldOption[]>();
 const AUTOCOMPLETE_CACHE_MAX = 100;
 
 const BookIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" aria-hidden="true">
+  <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" aria-hidden="true">
     <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
   </svg>
 );
 
 const AudiobookIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" aria-hidden="true">
+  <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" aria-hidden="true">
     <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z" />
   </svg>
 );
@@ -117,10 +118,12 @@ const getDefaultPlaceholder = (
   contentType: ContentType,
   activeQueryTarget: QueryTargetOption | undefined,
   fallback?: string,
+  isCombinedMode?: boolean,
 ): string => {
   if (fallback) return fallback;
 
   if (!activeQueryTarget || activeQueryTarget.source === 'general') {
+    if (isCombinedMode) return 'Search Books & Audiobooks (combined)';
     return contentType === 'ebook' ? 'Search Books' : 'Search Audiobooks';
   }
 
@@ -411,8 +414,13 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
   };
 
   const handleCombinedModeSelect = () => {
-    onContentTypeChange?.('ebook');
-    onCombinedModeChange?.(true);
+    if (combinedMode) {
+      // Toggle off — revert to ebook-only
+      onCombinedModeChange?.(false);
+    } else {
+      onContentTypeChange?.('ebook');
+      onCombinedModeChange?.(true);
+    }
     setIsSelectorOpen(false);
   };
 
@@ -421,7 +429,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
     setIsSelectorOpen(false);
   };
 
-  const effectivePlaceholder = getDefaultPlaceholder(contentType, activeTarget, placeholder);
+  const effectivePlaceholder = getDefaultPlaceholder(contentType, activeTarget, placeholder, combinedMode);
   const effectiveInputAriaLabel = activeTarget
     ? `${inputAriaLabel}: ${activeTarget.label}`
     : inputAriaLabel;
@@ -667,7 +675,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
               >
                 <div className="max-h-[min(24rem,calc(100vh-8rem))] overflow-y-auto p-3">
                   {showContentTypeSelector && (
-                    <div className="border-b pb-3" style={{ borderColor: 'var(--border-muted)' }}>
+                    <div className={`border-b ${onCombinedModeChange ? 'pb-0' : 'pb-3'}`} style={{ borderColor: 'var(--border-muted)' }}>
                       <div className="flex items-center justify-between px-1 pb-2">
                         <span className="text-xs font-medium uppercase tracking-wide opacity-60">Content</span>
                         {onAdvancedToggle && (
@@ -705,49 +713,69 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                           </button>
                         )}
                       </div>
-                      <div className={`grid gap-2 ${onCombinedModeChange ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                      <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={() => handleContentTypeSelect('ebook')}
                           className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                            contentType === 'ebook' && !combinedMode ? 'bg-emerald-600 text-white' : 'hover-surface'
+                            contentType === 'ebook' || combinedMode ? 'bg-emerald-600 text-white' : 'hover-surface'
                           }`}
-                          style={contentType !== 'ebook' || combinedMode
-                            ? { color: 'var(--text)', borderColor: 'var(--border-muted)' }
-                            : { borderColor: 'rgb(16 185 129 / 0.7)' }}
+                          style={contentType === 'ebook' || combinedMode
+                            ? { borderColor: 'rgb(16 185 129 / 0.7)' }
+                            : { color: 'var(--text)', borderColor: 'var(--border-muted)' }}
                         >
-                          {contentType === 'ebook' && !combinedMode ? <CheckIcon /> : <BookIcon />}
+                          {contentType === 'ebook' || combinedMode ? <CheckIcon /> : <BookIcon />}
                           <span>Books</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => handleContentTypeSelect('audiobook')}
                           className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                            contentType === 'audiobook' && !combinedMode ? 'bg-emerald-600 text-white' : 'hover-surface'
+                            contentType === 'audiobook' || combinedMode ? 'bg-emerald-600 text-white' : 'hover-surface'
                           }`}
-                          style={contentType !== 'audiobook' || combinedMode
-                            ? { color: 'var(--text)', borderColor: 'var(--border-muted)' }
-                            : { borderColor: 'rgb(16 185 129 / 0.7)' }}
+                          style={contentType === 'audiobook' || combinedMode
+                            ? { borderColor: 'rgb(16 185 129 / 0.7)' }
+                            : { color: 'var(--text)', borderColor: 'var(--border-muted)' }}
                         >
-                          {contentType === 'audiobook' && !combinedMode ? <CheckIcon /> : <AudiobookIcon />}
+                          {contentType === 'audiobook' || combinedMode ? <CheckIcon /> : <AudiobookIcon />}
                           <span>Audiobooks</span>
                         </button>
-                        {onCombinedModeChange && (
+                      </div>
+                      {onCombinedModeChange && (() => {
+                        const lineColor = combinedMode ? 'bg-emerald-500' : 'bg-(--border-muted) group-hover:bg-zinc-400 dark:group-hover:bg-zinc-500';
+                        return (
+                          <Tooltip content="Combined search" position="bottom" triggerClassName="w-full">
                           <button
                             type="button"
                             onClick={handleCombinedModeSelect}
-                            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                              combinedMode ? 'bg-emerald-600 text-white' : 'hover-surface'
-                            }`}
-                            style={!combinedMode
-                              ? { color: 'var(--text)', borderColor: 'var(--border-muted)' }
-                              : { borderColor: 'rgb(16 185 129 / 0.7)' }}
+                            className="group w-full"
+                            aria-label="Combined search"
                           >
-                            {combinedMode ? <CheckIcon /> : <BothIcon />}
-                            <span>Both</span>
+                            {/* Bracket connector: vertical drops + horizontal bar with icon */}
+                            <div className="relative flex items-end h-7">
+                              {/* Left vertical */}
+                              <div className={`absolute left-[25%] top-1.5 bottom-[11px] w-px transition-colors ${lineColor}`} />
+                              {/* Right vertical */}
+                              <div className={`absolute right-[25%] top-1.5 bottom-[11px] w-px transition-colors ${lineColor}`} />
+                              {/* Horizontal bar – left segment */}
+                              <div className={`absolute left-[25%] bottom-[11px] h-px transition-colors ${lineColor}`} style={{ width: 'calc(25% - 16px)' }} />
+                              {/* Horizontal bar – right segment */}
+                              <div className={`absolute right-[25%] bottom-[11px] h-px transition-colors ${lineColor}`} style={{ width: 'calc(25% - 16px)' }} />
+                              {/* Chain icon centered at bottom */}
+                              <div className={`mx-auto relative z-10 p-1 rounded-full transition-colors ${
+                                combinedMode
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'bg-(--bg) text-zinc-400 dark:text-zinc-500 group-hover:bg-zinc-200 dark:group-hover:bg-zinc-700 group-hover:text-zinc-600 dark:group-hover:text-zinc-300'
+                              }`}>
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" aria-hidden="true">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+                                </svg>
+                              </div>
+                            </div>
                           </button>
-                        )}
-                      </div>
+                          </Tooltip>
+                        );
+                      })()}
                     </div>
                   )}
 

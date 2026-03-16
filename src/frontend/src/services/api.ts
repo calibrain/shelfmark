@@ -49,6 +49,7 @@ const API = {
   settings: `${API_BASE}/settings`,
   requestPolicy: `${API_BASE}/request-policy`,
   requests: `${API_BASE}/requests`,
+  requestsBatch: `${API_BASE}/requests/batch`,
   adminRequests: `${API_BASE}/admin/requests`,
   adminRequestCounts: `${API_BASE}/admin/requests/count`,
   activitySnapshot: `${API_BASE}/activity/snapshot`,
@@ -588,6 +589,13 @@ export const createRequest = async (payload: CreateRequestPayload): Promise<Requ
   return fetchJSON<RequestRecord>(API.requests, {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+};
+
+export const createRequests = async (payloads: CreateRequestPayload[]): Promise<RequestRecord[]> => {
+  return fetchJSON<RequestRecord[]>(API.requestsBatch, {
+    method: 'POST',
+    body: JSON.stringify({ requests: payloads }),
   });
 };
 

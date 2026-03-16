@@ -470,6 +470,72 @@ class UserDB:
                 payload[key] = None
         return payload
 
+    def _insert_request(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        user_id: int,
+        content_type: str,
+        request_level: str,
+        policy_mode: str,
+        book_data: Dict[str, Any],
+        release_data: Optional[Dict[str, Any]] = None,
+        status: str = RequestStatus.PENDING,
+        source_hint: Optional[str] = None,
+        note: Optional[str] = None,
+        admin_note: Optional[str] = None,
+        reviewed_by: Optional[int] = None,
+        reviewed_at: Optional[str] = None,
+        delivery_state: str = DELIVERY_STATE_NONE,
+        delivery_updated_at: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        cursor = conn.execute(
+            """
+            INSERT INTO download_requests (
+                user_id,
+                status,
+                delivery_state,
+                source_hint,
+                content_type,
+                request_level,
+                policy_mode,
+                book_data,
+                release_data,
+                note,
+                admin_note,
+                reviewed_by,
+                reviewed_at,
+                delivery_updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                status,
+                delivery_state,
+                source_hint,
+                content_type,
+                request_level,
+                policy_mode,
+                self._serialize_json(book_data, "book_data"),
+                self._serialize_json(release_data, "release_data"),
+                note,
+                admin_note,
+                reviewed_by,
+                reviewed_at,
+                delivery_updated_at,
+            ),
+        )
+        request_id = cursor.lastrowid
+        row = conn.execute(
+            "SELECT * FROM download_requests WHERE id = ?",
+            (request_id,),
+        ).fetchone()
+        parsed = self._parse_request_row(row)
+        if parsed is None:
+            raise ValueError(f"Request {request_id} not found after creation")
+        return parsed
+
     def create_request(
         self,
         *,
@@ -504,53 +570,38 @@ class UserDB:
         with self._lock:
             conn = self._connect()
             try:
-                cursor = conn.execute(
-                    """
-                    INSERT INTO download_requests (
-                        user_id,
-                        status,
-                        delivery_state,
-                        source_hint,
-                        content_type,
-                        request_level,
-                        policy_mode,
-                        book_data,
-                        release_data,
-                        note,
-                        admin_note,
-                        reviewed_by,
-                        reviewed_at,
-                        delivery_updated_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        user_id,
-                        normalized_status,
-                        normalized_delivery_state,
-                        source_hint,
-                        content_type,
-                        normalized_request_level,
-                        normalized_policy_mode,
-                        self._serialize_json(book_data, "book_data"),
-                        self._serialize_json(release_data, "release_data"),
-                        note,
-                        admin_note,
-                        reviewed_by,
-                        reviewed_at,
-                        delivery_updated_at,
-                    ),
+                created = self._insert_request(
+                    conn,
+                    user_id=user_id,
+                    content_type=content_type,
+                    request_level=normalized_request_level,
+                    policy_mode=normalized_policy_mode,
+                    book_data=book_data,
+                    release_data=release_data,
+                    status=normalized_status,
+                    source_hint=source_hint,
+                    note=note,
+                    admin_note=admin_note,
+                    reviewed_by=reviewed_by,
+                    reviewed_at=reviewed_at,
+                    delivery_state=normalized_delivery_state,
+                    delivery_updated_at=delivery_updated_at,
                 )
                 conn.commit()
-                request_id = cursor.lastrowid
-                row = conn.execute(
-                    "SELECT * FROM download_requests WHERE id = ?",
-                    (request_id,),
-                ).fetchone()
-                parsed = self._parse_request_row(row)
-                if parsed is None:
-                    raise ValueError(f"Request {request_id} not found after creation")
-                return parsed
+                return created
+            finally:
+                conn.close()
+
+    def create_requests(self, requests: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Create multiple request rows atomically and return them in input order."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                created: List[Dict[str, Any]] = []
+                for request in requests:
+                    created.append(self._insert_request(conn, **request))
+                conn.commit()
+                return created
             finally:
                 conn.close()
 
