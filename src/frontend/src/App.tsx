@@ -2047,6 +2047,16 @@ function App() {
     }
   }, [activeQueryOption, setSearchInput, updateAdvancedFilters, updateSearchFieldValue]);
 
+  const handleSearchModeChange = useCallback((nextMode: SearchMode) => {
+    setConfig((prev) => prev ? { ...prev, search_mode: nextMode } : prev);
+    if (nextMode !== 'universal') {
+      setCombinedMode(false);
+    }
+    updateSelfUser({ settings: { SEARCH_MODE: nextMode } })
+      .then(() => loadConfig('settings-saved'))
+      .catch((err) => console.error('Failed to save search mode:', err));
+  }, [loadConfig]);
+
   const handleMetadataProviderChange = useCallback((provider: string) => {
     if (combinedMode) {
       setConfiguredCombinedMetadataProvider(provider);
@@ -2390,6 +2400,7 @@ function App() {
           filters={advancedFilters}
           onFiltersChange={updateAdvancedFilters}
           searchMode={effectiveSearchMode}
+          onSearchModeChange={handleSearchModeChange}
           metadataProviders={metadataProviders}
           activeMetadataProvider={effectiveMetadataProvider}
           onMetadataProviderChange={handleMetadataProviderChange}
@@ -2437,6 +2448,7 @@ function App() {
           onCombinedModeChange={combinedModeAllowed ? setCombinedMode : undefined}
           activeQueryField={activeQueryField}
           searchMode={effectiveSearchMode}
+          onSearchModeChange={handleSearchModeChange}
           metadataProviders={metadataProviders}
           activeMetadataProvider={effectiveMetadataProvider}
           onMetadataProviderChange={handleMetadataProviderChange}

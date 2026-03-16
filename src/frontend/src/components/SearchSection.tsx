@@ -34,6 +34,7 @@ interface SearchSectionProps {
   onCombinedModeChange?: (enabled: boolean) => void;
   activeQueryField?: MetadataSearchField | null;
   searchMode: SearchMode;
+  onSearchModeChange: (mode: SearchMode) => void;
   metadataProviders?: MetadataProviderSummary[];
   activeMetadataProvider?: string | null;
   onMetadataProviderChange?: (provider: string) => void;
@@ -64,6 +65,7 @@ export const SearchSection = ({
   onCombinedModeChange,
   activeQueryField,
   searchMode,
+  onSearchModeChange,
   metadataProviders,
   activeMetadataProvider,
   onMetadataProviderChange,
@@ -119,6 +121,7 @@ export const SearchSection = ({
           formClassName="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
           renderWrapper={form => form}
           searchMode={searchMode}
+          onSearchModeChange={onSearchModeChange}
           metadataProviders={metadataProviders}
           activeMetadataProvider={activeMetadataProvider}
           onMetadataProviderChange={onMetadataProviderChange}
