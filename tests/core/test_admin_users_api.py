@@ -1202,8 +1202,10 @@ class TestAdminSearchPreferences:
         assert data["tab"] == "search_mode"
         assert data["keys"] == [
             "SEARCH_MODE",
+            "SHOW_COMBINED_SELECTOR",
             "METADATA_PROVIDER",
             "METADATA_PROVIDER_AUDIOBOOK",
+            "METADATA_PROVIDER_COMBINED",
             "DEFAULT_RELEASE_SOURCE",
             "DEFAULT_RELEASE_SOURCE_AUDIOBOOK",
         ]
