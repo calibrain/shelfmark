@@ -42,6 +42,8 @@ interface HeaderProps {
   contentType?: ContentType;
   onContentTypeChange?: (type: ContentType) => void;
   allowedContentTypes?: ContentType[];
+  combinedMode?: boolean;
+  onCombinedModeChange?: (enabled: boolean) => void;
   queryTargets?: QueryTargetOption[];
   activeQueryTarget?: string;
   onQueryTargetChange?: (target: string) => void;
@@ -79,6 +81,8 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   contentType = 'ebook',
   onContentTypeChange,
   allowedContentTypes,
+  combinedMode,
+  onCombinedModeChange,
   queryTargets = [],
   activeQueryTarget = 'general',
   onQueryTargetChange,
@@ -671,6 +675,8 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
                 contentType={contentType}
                 onContentTypeChange={onContentTypeChange}
                 allowedContentTypes={allowedContentTypes}
+                combinedMode={combinedMode}
+                onCombinedModeChange={onCombinedModeChange}
                 queryTargets={queryTargets}
                 activeQueryTarget={activeQueryTarget}
                 onQueryTargetChange={onQueryTargetChange}

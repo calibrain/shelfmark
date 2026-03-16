@@ -30,6 +30,8 @@ interface SearchSectionProps {
   contentType?: ContentType;
   onContentTypeChange?: (type: ContentType) => void;
   allowedContentTypes?: ContentType[];
+  combinedMode?: boolean;
+  onCombinedModeChange?: (enabled: boolean) => void;
   activeQueryField?: MetadataSearchField | null;
   searchMode: SearchMode;
   onSearchModeChange: (mode: SearchMode) => void;
@@ -59,6 +61,8 @@ export const SearchSection = ({
   contentType = 'ebook',
   onContentTypeChange,
   allowedContentTypes,
+  combinedMode,
+  onCombinedModeChange,
   activeQueryField,
   searchMode,
   onSearchModeChange,
@@ -96,6 +100,8 @@ export const SearchSection = ({
           contentType={contentType}
           onContentTypeChange={onContentTypeChange}
           allowedContentTypes={allowedContentTypes}
+          combinedMode={combinedMode}
+          onCombinedModeChange={onCombinedModeChange}
           queryTargets={queryTargets}
           activeQueryTarget={activeQueryTarget}
           onQueryTargetChange={onQueryTargetChange}

@@ -41,6 +41,8 @@ interface SearchBarProps {
   contentType?: ContentType;
   onContentTypeChange?: (type: ContentType) => void;
   allowedContentTypes?: ContentType[];
+  combinedMode?: boolean;
+  onCombinedModeChange?: (enabled: boolean) => void;
   queryTargets?: QueryTargetOption[];
   activeQueryTarget?: string;
   onQueryTargetChange?: (target: string) => void;
@@ -96,6 +98,12 @@ const BookIcon = () => (
 const AudiobookIcon = () => (
   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" aria-hidden="true">
     <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z" />
+  </svg>
+);
+
+const BothIcon = () => (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
   </svg>
 );
 
@@ -167,6 +175,8 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
   contentType = 'ebook',
   onContentTypeChange,
   allowedContentTypes,
+  combinedMode = false,
+  onCombinedModeChange,
   queryTargets = [],
   activeQueryTarget = 'general',
   onQueryTargetChange,
@@ -396,6 +406,13 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
 
   const handleContentTypeSelect = (type: ContentType) => {
     onContentTypeChange?.(type);
+    onCombinedModeChange?.(false);
+    setIsSelectorOpen(false);
+  };
+
+  const handleCombinedModeSelect = () => {
+    onContentTypeChange?.('ebook');
+    onCombinedModeChange?.(true);
     setIsSelectorOpen(false);
   };
 
@@ -611,11 +628,11 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
               onClick={() => { setIsSelectorOpen((prev) => !prev); setIsSelectOpen(false); setIsAutocompleteOpen(false); }}
               className="flex items-center gap-1.5 pl-5 pr-2 rounded-l-full transition-colors hover-action"
               style={{ color: 'var(--text)' }}
-              aria-label={`Searching ${contentType === 'ebook' ? 'books' : 'audiobooks'} by ${activeTarget?.label ?? 'general'}. Click to change.`}
+              aria-label={`Searching ${combinedMode ? 'books and audiobooks' : contentType === 'ebook' ? 'books' : 'audiobooks'} by ${activeTarget?.label ?? 'general'}. Click to change.`}
               aria-expanded={isSelectorOpen}
               aria-haspopup="dialog"
             >
-              {contentType === 'ebook' ? <BookIcon /> : <AudiobookIcon />}
+              {combinedMode ? <BothIcon /> : contentType === 'ebook' ? <BookIcon /> : <AudiobookIcon />}
               {showActiveTargetLabel && (
                 <span className="hidden max-w-24 truncate text-sm font-medium sm:inline">
                   {activeTarget?.label}
@@ -688,33 +705,48 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                           </button>
                         )}
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className={`grid gap-2 ${onCombinedModeChange ? 'grid-cols-3' : 'grid-cols-2'}`}>
                         <button
                           type="button"
                           onClick={() => handleContentTypeSelect('ebook')}
                           className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                            contentType === 'ebook' ? 'bg-emerald-600 text-white' : 'hover-surface'
+                            contentType === 'ebook' && !combinedMode ? 'bg-emerald-600 text-white' : 'hover-surface'
                           }`}
-                          style={contentType !== 'ebook'
+                          style={contentType !== 'ebook' || combinedMode
                             ? { color: 'var(--text)', borderColor: 'var(--border-muted)' }
                             : { borderColor: 'rgb(16 185 129 / 0.7)' }}
                         >
-                          {contentType === 'ebook' ? <CheckIcon /> : <BookIcon />}
+                          {contentType === 'ebook' && !combinedMode ? <CheckIcon /> : <BookIcon />}
                           <span>Books</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => handleContentTypeSelect('audiobook')}
                           className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                            contentType === 'audiobook' ? 'bg-emerald-600 text-white' : 'hover-surface'
+                            contentType === 'audiobook' && !combinedMode ? 'bg-emerald-600 text-white' : 'hover-surface'
                           }`}
-                          style={contentType !== 'audiobook'
+                          style={contentType !== 'audiobook' || combinedMode
                             ? { color: 'var(--text)', borderColor: 'var(--border-muted)' }
                             : { borderColor: 'rgb(16 185 129 / 0.7)' }}
                         >
-                          {contentType === 'audiobook' ? <CheckIcon /> : <AudiobookIcon />}
+                          {contentType === 'audiobook' && !combinedMode ? <CheckIcon /> : <AudiobookIcon />}
                           <span>Audiobooks</span>
                         </button>
+                        {onCombinedModeChange && (
+                          <button
+                            type="button"
+                            onClick={handleCombinedModeSelect}
+                            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                              combinedMode ? 'bg-emerald-600 text-white' : 'hover-surface'
+                            }`}
+                            style={!combinedMode
+                              ? { color: 'var(--text)', borderColor: 'var(--border-muted)' }
+                              : { borderColor: 'rgb(16 185 129 / 0.7)' }}
+                          >
+                            {combinedMode ? <CheckIcon /> : <BothIcon />}
+                            <span>Both</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   )}

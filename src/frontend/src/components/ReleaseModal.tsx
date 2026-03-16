@@ -101,6 +101,12 @@ interface ReleaseModalProps {
   isRequestMode?: boolean;
   showReleaseSourceLinks?: boolean;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+  // Combined mode props
+  combinedPhase?: 'ebook' | 'audiobook' | null;
+  onCombinedNext?: (release: Release) => void;
+  onCombinedBack?: () => void;
+  onCombinedDownload?: (release: Release) => void;
+  stagedEbookRelease?: Release | null;
 }
 
 
@@ -217,6 +223,25 @@ const LeadingCell = ({
   return <ReleaseThumbnail preview={undefined} title={release.title} />;
 };
 
+// Radio indicator for selection mode
+const RadioIndicator = ({ selected }: { selected: boolean }) => (
+  <div className="flex items-center justify-center w-8 h-8 shrink-0">
+    <div
+      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+        selected
+          ? 'border-emerald-500 bg-emerald-500'
+          : 'border-zinc-300 dark:border-zinc-600'
+      }`}
+    >
+      {selected && (
+        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+        </svg>
+      )}
+    </div>
+  </div>
+);
+
 // Release row component with dynamic columns
 const ReleaseRow = ({
   release,
@@ -228,6 +253,9 @@ const ReleaseRow = ({
   leadingCell,
   onlineServers,
   showReleaseSourceLinks,
+  selectionMode = false,
+  isSelected = false,
+  onSelect,
 }: {
   release: Release;
   index: number;
@@ -238,6 +266,9 @@ const ReleaseRow = ({
   leadingCell?: LeadingCellConfig;
   onlineServers?: string[];
   showReleaseSourceLinks: boolean;
+  selectionMode?: boolean;
+  isSelected?: boolean;
+  onSelect?: () => void;
 }) => {
   const author = release.extra?.author as string | undefined;
 
@@ -257,13 +288,20 @@ const ReleaseRow = ({
     ? 'auto 1fr auto'
     : '1fr auto';
 
+  const handleRowClick = selectionMode && onSelect ? onSelect : undefined;
+
   return (
     <div
-      className="pl-5 pr-4 sm:pr-5 py-2 transition-colors duration-200 hover-row animate-pop-up will-change-transform"
+      className={`pl-5 pr-4 sm:pr-5 py-2 transition-colors duration-200 hover-row animate-pop-up will-change-transform ${
+        selectionMode ? 'cursor-pointer' : ''
+      } ${isSelected ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : ''}`}
       style={{
         animationDelay: `${index * 30}ms`,
         animationFillMode: 'both',
       }}
+      onClick={handleRowClick}
+      role={selectionMode ? 'option' : undefined}
+      aria-selected={selectionMode ? isSelected : undefined}
     >
       {/* Desktop layout with dynamic grid */}
       <div
@@ -302,14 +340,18 @@ const ReleaseRow = ({
           <ReleaseCell key={col.key} column={col} release={release} onlineServers={onlineServers} />
         ))}
 
-        {/* Fixed: Action button */}
-        <BookDownloadButton
-          buttonState={buttonState}
-          onDownload={onDownload}
-          variant="icon"
-          size="sm"
-          ariaLabel={`${buttonState.text} ${release.title}`}
-        />
+        {/* Fixed: Action button or radio indicator */}
+        {selectionMode ? (
+          <RadioIndicator selected={isSelected} />
+        ) : (
+          <BookDownloadButton
+            buttonState={buttonState}
+            onDownload={onDownload}
+            variant="icon"
+            size="sm"
+            ariaLabel={`${buttonState.text} ${release.title}`}
+          />
+        )}
       </div>
 
       {/* Mobile layout - author inline with title, info line below */}
@@ -379,13 +421,17 @@ const ReleaseRow = ({
           )}
         </div>
 
-        <BookDownloadButton
-          buttonState={buttonState}
-          onDownload={onDownload}
-          variant="icon"
-          size="sm"
-          ariaLabel={`${buttonState.text} ${release.title}`}
-        />
+        {selectionMode ? (
+          <RadioIndicator selected={isSelected} />
+        ) : (
+          <BookDownloadButton
+            buttonState={buttonState}
+            onDownload={onDownload}
+            variant="icon"
+            size="sm"
+            ariaLabel={`${buttonState.text} ${release.title}`}
+          />
+        )}
       </div>
     </div>
   );
@@ -540,6 +586,11 @@ export const ReleaseModal = ({
   isRequestMode = false,
   showReleaseSourceLinks = true,
   onShowToast,
+  combinedPhase = null,
+  onCombinedNext,
+  onCombinedBack,
+  onCombinedDownload,
+  stagedEbookRelease = null,
 }: ReleaseModalProps) => {
   // Use audiobook formats when in audiobook mode
   const effectiveFormats = contentType === 'audiobook' && supportedAudiobookFormats.length > 0
@@ -550,6 +601,8 @@ export const ReleaseModal = ({
     : defaultReleaseSource;
   const [isClosing, setIsClosing] = useState(false);
   const [isRequestingBook, setIsRequestingBook] = useState(false);
+  const [selectedRelease, setSelectedRelease] = useState<Release | null>(null);
+  const isCombinedMode = combinedPhase !== null;
 
   // Available sources from plugin registry
   const [availableSources, setAvailableSources] = useState<ReleaseSource[]>([]);
@@ -646,6 +699,11 @@ export const ReleaseModal = ({
     }
   }, [book]);
 
+  // Reset selected release when phase changes in combined mode
+  useEffect(() => {
+    setSelectedRelease(null);
+  }, [combinedPhase]);
+
   // Reset modal state when book changes to prevent stale data
   useEffect(() => {
     setDescriptionExpanded(false);
@@ -659,6 +717,7 @@ export const ReleaseModal = ({
     setLanguageFilter([LANGUAGE_OPTION_DEFAULT]);
     setIndexerFilter([]);
     indexerFilterInitializedRef.current = new Set();
+    setSelectedRelease(null);
     const baseTitle = book?.search_title || book?.title || '';
     const baseAuthor = book?.search_author || book?.author || '';
     const defaultQuery = `${baseTitle} ${baseAuthor}`.trim();
@@ -1262,6 +1321,12 @@ export const ReleaseModal = ({
         return;
       }
 
+      // In combined mode, clicking a row selects it (don't download)
+      if (isCombinedMode) {
+        setSelectedRelease(release);
+        return;
+      }
+
       const mode = getReleaseActionMode(release);
       if (mode === 'download') {
         await onDownload(book, release, contentType);
@@ -1278,7 +1343,7 @@ export const ReleaseModal = ({
       // blocked / request_book — should not be reachable (button is disabled),
       // but guard defensively.
     },
-    [book, getReleaseActionMode, onDownload, onRequestRelease, contentType, handleClose]
+    [book, isCombinedMode, getReleaseActionMode, onDownload, onRequestRelease, contentType, handleClose]
   );
 
   if (!book && !isClosing) return null;
@@ -1370,7 +1435,9 @@ export const ReleaseModal = ({
             )}
             <div className="flex-1 space-y-1 min-w-0">
               <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                Find Releases
+                {isCombinedMode
+                  ? `Step ${combinedPhase === 'ebook' ? '1' : '2'} of 2 — Select ${combinedPhase}`
+                  : 'Find Releases'}
               </p>
               <h3 id={titleId} className="text-lg font-semibold leading-snug truncate">
                 {book.provider === 'manual' ? 'Manual Query' : (book.title || 'Untitled')}
@@ -2037,6 +2104,9 @@ export const ReleaseModal = ({
                         leadingCell={columnConfig.leading_cell}
                         onlineServers={columnConfig.online_servers}
                         showReleaseSourceLinks={showReleaseSourceLinks}
+                        selectionMode={isCombinedMode}
+                        isSelected={isCombinedMode && selectedRelease?.source_id === release.source_id}
+                        onSelect={isCombinedMode ? () => setSelectedRelease(release) : undefined}
                       />
                     ))}
                   </div>
@@ -2084,6 +2154,80 @@ export const ReleaseModal = ({
               </div>
             )}
           </div>
+
+          {/* Combined mode footer */}
+          {isCombinedMode && (
+            <div className="border-t border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft) px-5 py-3">
+              <div className="flex items-center justify-between gap-3">
+                {/* Phase indicator */}
+                <div className="flex items-center gap-3 text-sm min-w-0">
+                  <span className={combinedPhase === 'ebook' ? 'font-medium text-(--text)' : 'text-zinc-400 dark:text-zinc-500'}>
+                    {combinedPhase === 'ebook' ? '\u25CF' : '\u25CB'} Ebook
+                  </span>
+                  <span className={combinedPhase === 'audiobook' ? 'font-medium text-(--text)' : 'text-zinc-400 dark:text-zinc-500'}>
+                    {combinedPhase === 'audiobook' ? '\u25CF' : '\u25CB'} Audiobook
+                  </span>
+                </div>
+
+                {/* Selection summary + action buttons */}
+                <div className="flex items-center gap-3 shrink-0">
+                  {/* Staged ebook chip (audiobook phase) */}
+                  {combinedPhase === 'audiobook' && stagedEbookRelease && (
+                    <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 rounded-full">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                      </svg>
+                      {stagedEbookRelease.format?.toUpperCase() || 'Ebook'} · {stagedEbookRelease.size || '?'}
+                    </span>
+                  )}
+
+                  {/* Current selection summary */}
+                  {selectedRelease ? (
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400 hidden sm:inline truncate max-w-[150px]">
+                      {selectedRelease.format?.toUpperCase() || 'Selected'} · {selectedRelease.size || '?'}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-zinc-400 dark:text-zinc-500 hidden sm:inline">
+                      Select a release
+                    </span>
+                  )}
+
+                  {/* Navigation buttons */}
+                  {combinedPhase === 'audiobook' && onCombinedBack && (
+                    <button
+                      type="button"
+                      onClick={onCombinedBack}
+                      className="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors hover-surface text-(--text)"
+                    >
+                      &larr; Back
+                    </button>
+                  )}
+
+                  {combinedPhase === 'ebook' && onCombinedNext && (
+                    <button
+                      type="button"
+                      onClick={() => selectedRelease && onCombinedNext(selectedRelease)}
+                      disabled={!selectedRelease}
+                      className="px-4 py-1.5 text-sm font-medium text-white rounded-lg transition-colors bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next &rarr;
+                    </button>
+                  )}
+
+                  {combinedPhase === 'audiobook' && onCombinedDownload && (
+                    <button
+                      type="button"
+                      onClick={() => selectedRelease && onCombinedDownload(selectedRelease)}
+                      disabled={!selectedRelease}
+                      className="px-4 py-1.5 text-sm font-medium text-white rounded-lg transition-colors bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Download Both
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

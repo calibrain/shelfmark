@@ -256,6 +256,7 @@ function App() {
   useEffect(() => {
     if (allowedContentTypes.length > 0 && !allowedContentTypes.includes(contentType)) {
       setContentType(allowedContentTypes[0]);
+      setCombinedMode(false);
     }
   }, [allowedContentTypes, contentType]);
 
@@ -452,6 +453,21 @@ function App() {
   // UI state
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [releaseBook, setReleaseBook] = useState<Book | null>(null);
+
+  // Combined mode state (ebook + audiobook in one transaction)
+  const [combinedMode, setCombinedMode] = useState(false);
+  const [combinedState, setCombinedState] = useState<{
+    phase: 'ebook' | 'audiobook';
+    stagedEbook?: { book: Book; release: Release };
+  } | null>(null);
+
+  // Clear combined state when combined mode is turned off
+  useEffect(() => {
+    if (!combinedMode) {
+      setCombinedState(null);
+    }
+  }, [combinedMode]);
+
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [metadataProviders, setMetadataProviders] = useState<MetadataProviderSummary[]>([]);
   const [configuredMetadataProvider, setConfiguredMetadataProvider] = useState<string | null>(null);
@@ -1431,6 +1447,11 @@ function App() {
       return;
     }
 
+    // Initialize combined state if in combined mode
+    if (combinedMode) {
+      setCombinedState({ phase: 'ebook' });
+    }
+
     if (book.provider && book.provider_id) {
       try {
         policyTrace('universal.get:open_release_modal', {
@@ -1524,6 +1545,41 @@ function App() {
   const handleReleaseModalPolicyRefresh = useCallback(() => {
     return refreshRequestPolicy({ force: true });
   }, [refreshRequestPolicy]);
+
+  // Combined mode callbacks
+  const handleCombinedNext = useCallback((release: Release) => {
+    if (!releaseBook) return;
+    setCombinedState({
+      phase: 'audiobook',
+      stagedEbook: { book: releaseBook, release },
+    });
+  }, [releaseBook]);
+
+  const handleCombinedBack = useCallback(() => {
+    setCombinedState((prev) => prev ? { ...prev, phase: 'ebook' } : null);
+  }, []);
+
+  const handleCombinedDownload = useCallback(async (audiobookRelease: Release) => {
+    if (!combinedState?.stagedEbook || !releaseBook) return;
+
+    const { release: ebookRelease } = combinedState.stagedEbook;
+
+    // Queue both downloads
+    try {
+      await executeReleaseDownload(releaseBook, ebookRelease, 'ebook');
+    } catch {
+      // Error already handled/toasted inside executeReleaseDownload
+    }
+    try {
+      await executeReleaseDownload(releaseBook, audiobookRelease, 'audiobook');
+    } catch {
+      // Error already handled/toasted inside executeReleaseDownload
+    }
+
+    // Clean up combined state and close modal
+    setCombinedState(null);
+    setReleaseBook(null);
+  }, [combinedState, releaseBook, executeReleaseDownload]);
 
   const handleRequestCancel = useCallback(
     async (requestId: number) => {
@@ -1806,6 +1862,9 @@ function App() {
 
   const handleSearchModeChange = useCallback((nextMode: SearchMode) => {
     setConfig((prev) => prev ? { ...prev, search_mode: nextMode } : prev);
+    if (nextMode !== 'universal') {
+      setCombinedMode(false);
+    }
     updateSelfUser({ settings: { SEARCH_MODE: nextMode } })
       .then(() => loadConfig('settings-saved'))
       .catch((err) => console.error('Failed to save search mode:', err));
@@ -2034,7 +2093,7 @@ function App() {
 
   const isBrowseFulfilMode = fulfillingRequest !== null;
   const activeReleaseBook = fulfillingRequest?.book ?? releaseBook;
-  const activeReleaseContentType = fulfillingRequest?.contentType ?? contentType;
+  const activeReleaseContentType = fulfillingRequest?.contentType ?? combinedState?.phase ?? contentType;
   const usePinnedMainScrollContainer = sidebarPinnedOpen;
 
   const handleReleaseModalClose = useCallback(() => {
@@ -2042,6 +2101,7 @@ function App() {
       setFulfillingRequest(null);
       return;
     }
+    setCombinedState(null);
     setReleaseBook(null);
   }, [isBrowseFulfilMode]);
 
@@ -2104,6 +2164,8 @@ function App() {
           contentType={contentType}
           onContentTypeChange={setContentType}
           allowedContentTypes={allowedContentTypes}
+          combinedMode={combinedMode}
+          onCombinedModeChange={effectiveSearchMode === 'universal' ? setCombinedMode : undefined}
           queryTargets={queryTargets}
           activeQueryTarget={activeQueryTarget}
           onQueryTargetChange={setActiveQueryTarget}
@@ -2180,6 +2242,8 @@ function App() {
           contentType={contentType}
           onContentTypeChange={setContentType}
           allowedContentTypes={allowedContentTypes}
+          combinedMode={combinedMode}
+          onCombinedModeChange={effectiveSearchMode === 'universal' ? setCombinedMode : undefined}
           activeQueryField={activeQueryField}
           searchMode={effectiveSearchMode}
           onSearchModeChange={handleSearchModeChange}
@@ -2272,6 +2336,11 @@ function App() {
             isRequestMode={isBrowseFulfilMode || activeReleaseBook?.provider === 'manual'}
             showReleaseSourceLinks={config?.show_release_source_links !== false}
             onShowToast={showToast}
+            combinedPhase={combinedState?.phase ?? null}
+            onCombinedNext={combinedState ? handleCombinedNext : undefined}
+            onCombinedBack={combinedState ? handleCombinedBack : undefined}
+            onCombinedDownload={combinedState ? handleCombinedDownload : undefined}
+            stagedEbookRelease={combinedState?.stagedEbook?.release ?? null}
           />
         )}
 
