@@ -40,6 +40,31 @@ import { getCachedReleases, setCachedReleases, invalidateCachedReleases } from '
 import { SortState, getSavedSort, saveSort, clearSort, inferDefaultDirection, sortReleases, FORMAT_SORT_KEY, sortReleasesByFormat } from '../utils/releaseSort';
 
 
+// Combined mode configuration for the ReleaseModal
+export interface CombinedModeConfig {
+  phase: 'ebook' | 'audiobook';
+  stepLabel: string;
+  ebookMode: RequestPolicyMode;
+  audiobookMode: RequestPolicyMode;
+  stagedEbookRelease: Release | null;
+  stagedAudiobookRelease: Release | null;
+  onNext?: (release: Release) => void;
+  onBack?: (audiobookRelease: Release | null) => void;
+  onDownload?: (release: Release) => void;
+}
+
+// Determine the combined download button label based on action modes
+function getCombinedDownloadLabel(
+  ebookMode: RequestPolicyMode | null | undefined,
+  audiobookMode: RequestPolicyMode | null | undefined,
+): string {
+  const ebookIsRequest = ebookMode === 'request_release' || ebookMode === 'request_book';
+  const audiobookIsRequest = audiobookMode === 'request_release' || audiobookMode === 'request_book';
+  if (ebookIsRequest && audiobookIsRequest) return 'Request Both';
+  if (ebookIsRequest || audiobookIsRequest) return 'Download & Request';
+  return 'Download Both';
+}
+
 // Default column configuration (fallback when backend doesn't provide one)
 const DEFAULT_COLUMN_CONFIG: ReleaseColumnConfig = {
   columns: [
@@ -101,17 +126,8 @@ interface ReleaseModalProps {
   isRequestMode?: boolean;
   showReleaseSourceLinks?: boolean;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
-  // Combined mode props
-  combinedPhase?: 'ebook' | 'audiobook' | null;
-  combinedCurrentStep?: number;
-  combinedTotalSteps?: number;
-  combinedEbookMode?: RequestPolicyMode | null;
-  combinedAudiobookMode?: RequestPolicyMode | null;
-  onCombinedNext?: (release: Release) => void;
-  onCombinedBack?: (audiobookRelease: Release | null) => void;
-  onCombinedDownload?: (release: Release) => void;
-  stagedEbookRelease?: Release | null;
-  stagedAudiobookRelease?: Release | null;
+  // Combined mode (ebook + audiobook in one transaction)
+  combinedMode?: CombinedModeConfig | null;
 }
 
 
@@ -245,6 +261,32 @@ const RadioIndicator = ({ selected }: { selected: boolean }) => (
       )}
     </div>
   </div>
+);
+
+// Phase indicator chip for combined mode footer
+const PhaseChip = ({ release, isActive, label }: {
+  release: Release | null;
+  isActive: boolean;
+  label: string;
+}) => (
+  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full ${
+    release
+      ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
+      : isActive
+        ? 'bg-zinc-100 dark:bg-zinc-800 text-(--text)'
+        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500'
+  }`}>
+    {release ? (
+      <>
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+        </svg>
+        {release.format?.toUpperCase() || label} · {release.size || '?'}
+      </>
+    ) : (
+      <>{isActive ? '\u25CF' : '\u25CB'} {label}</>
+    )}
+  </span>
 );
 
 // Release row component with dynamic columns
@@ -591,16 +633,7 @@ export const ReleaseModal = ({
   isRequestMode = false,
   showReleaseSourceLinks = true,
   onShowToast,
-  combinedPhase = null,
-  combinedCurrentStep = 1,
-  combinedTotalSteps = 2,
-  combinedEbookMode = null,
-  combinedAudiobookMode = null,
-  onCombinedNext,
-  onCombinedBack,
-  onCombinedDownload,
-  stagedEbookRelease = null,
-  stagedAudiobookRelease = null,
+  combinedMode = null,
 }: ReleaseModalProps) => {
   // Use audiobook formats when in audiobook mode
   const effectiveFormats = contentType === 'audiobook' && supportedAudiobookFormats.length > 0
@@ -612,7 +645,16 @@ export const ReleaseModal = ({
   const [isClosing, setIsClosing] = useState(false);
   const [isRequestingBook, setIsRequestingBook] = useState(false);
   const [selectedRelease, setSelectedRelease] = useState<Release | null>(null);
-  const isCombinedMode = combinedPhase !== null;
+  const isCombinedMode = combinedMode != null;
+  const combinedPhase = combinedMode?.phase ?? null;
+  const combinedStepLabel = combinedMode?.stepLabel ?? '';
+  const combinedEbookMode = combinedMode?.ebookMode ?? null;
+  const combinedAudiobookMode = combinedMode?.audiobookMode ?? null;
+  const stagedEbookRelease = combinedMode?.stagedEbookRelease ?? null;
+  const stagedAudiobookRelease = combinedMode?.stagedAudiobookRelease ?? null;
+  const onCombinedNext = combinedMode?.onNext;
+  const onCombinedBack = combinedMode?.onBack;
+  const onCombinedDownload = combinedMode?.onDownload;
 
   // Available sources from plugin registry
   const [availableSources, setAvailableSources] = useState<ReleaseSource[]>([]);
@@ -1456,9 +1498,7 @@ export const ReleaseModal = ({
             )}
             <div className="flex-1 space-y-1 min-w-0">
               <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-                {isCombinedMode
-                  ? `Step ${combinedCurrentStep} of ${combinedTotalSteps} — Select ${combinedPhase === 'ebook' ? 'book' : 'audiobook'}`
-                  : 'Find Releases'}
+                {isCombinedMode ? combinedStepLabel : 'Find Releases'}
               </p>
               <h3 id={titleId} className="text-lg font-semibold leading-snug truncate">
                 {book.provider === 'manual' ? 'Manual Query' : (book.title || 'Untitled')}
@@ -2182,50 +2222,16 @@ export const ReleaseModal = ({
               <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
                 {/* Phase indicators with live selection chips */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-3 text-sm min-w-0">
-                  {(() => {
-                    const ebookRelease = combinedPhase === 'ebook' ? selectedRelease : stagedEbookRelease;
-                    const audiobookRelease = combinedPhase === 'audiobook' ? selectedRelease : stagedAudiobookRelease;
-                    return (
-                      <>
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full ${
-                          ebookRelease
-                            ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
-                            : combinedPhase === 'ebook'
-                              ? 'bg-zinc-100 dark:bg-zinc-800 text-(--text)'
-                              : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500'
-                        }`}>
-                          {ebookRelease ? (
-                            <>
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                              </svg>
-                              {ebookRelease.format?.toUpperCase() || 'Book'} · {ebookRelease.size || '?'}
-                            </>
-                          ) : (
-                            <>{combinedPhase === 'ebook' ? '\u25CF' : '\u25CB'} Book</>
-                          )}
-                        </span>
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full ${
-                          audiobookRelease
-                            ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
-                            : combinedPhase === 'audiobook'
-                              ? 'bg-zinc-100 dark:bg-zinc-800 text-(--text)'
-                              : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500'
-                        }`}>
-                          {audiobookRelease ? (
-                            <>
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                              </svg>
-                              {audiobookRelease.format?.toUpperCase() || 'Audiobook'} · {audiobookRelease.size || '?'}
-                            </>
-                          ) : (
-                            <>{combinedPhase === 'audiobook' ? '\u25CF' : '\u25CB'} Audiobook</>
-                          )}
-                        </span>
-                      </>
-                    );
-                  })()}
+                  <PhaseChip
+                    release={combinedPhase === 'ebook' ? selectedRelease : stagedEbookRelease}
+                    isActive={combinedPhase === 'ebook'}
+                    label="Book"
+                  />
+                  <PhaseChip
+                    release={combinedPhase === 'audiobook' ? selectedRelease : stagedAudiobookRelease}
+                    isActive={combinedPhase === 'audiobook'}
+                    label="Audiobook"
+                  />
                 </div>
 
                 {/* Action buttons */}
@@ -2251,31 +2257,23 @@ export const ReleaseModal = ({
                     </button>
                   )}
 
-                  {onCombinedDownload && (() => {
-                    const ebookActionMode = combinedPhase === 'ebook'
-                      ? (selectedRelease ? getReleaseActionMode(selectedRelease) : combinedEbookMode)
-                      : (stagedEbookRelease ? getReleaseActionMode(stagedEbookRelease) : combinedEbookMode);
-                    const audiobookActionMode = combinedPhase === 'audiobook'
-                      ? (selectedRelease ? getReleaseActionMode(selectedRelease) : combinedAudiobookMode)
-                      : (stagedAudiobookRelease ? getReleaseActionMode(stagedAudiobookRelease) : combinedAudiobookMode);
-                    const ebookIsRequest = ebookActionMode === 'request_release' || ebookActionMode === 'request_book';
-                    const audiobookIsRequest = audiobookActionMode === 'request_release' || audiobookActionMode === 'request_book';
-                    const label = ebookIsRequest && audiobookIsRequest
-                      ? 'Request Both'
-                      : ebookIsRequest || audiobookIsRequest
-                        ? 'Download & Request'
-                        : 'Download Both';
-                    return (
-                      <button
-                        type="button"
-                        onClick={() => selectedRelease && onCombinedDownload(selectedRelease)}
-                        disabled={!selectedRelease}
-                        className="px-4 py-1.5 text-sm font-medium text-white rounded-lg transition-colors bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {label}
-                      </button>
-                    );
-                  })()}
+                  {onCombinedDownload && (
+                    <button
+                      type="button"
+                      onClick={() => selectedRelease && onCombinedDownload(selectedRelease)}
+                      disabled={!selectedRelease}
+                      className="px-4 py-1.5 text-sm font-medium text-white rounded-lg transition-colors bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {getCombinedDownloadLabel(
+                        combinedPhase === 'ebook'
+                          ? (selectedRelease ? getReleaseActionMode(selectedRelease) : combinedEbookMode)
+                          : (stagedEbookRelease ? getReleaseActionMode(stagedEbookRelease) : combinedEbookMode),
+                        combinedPhase === 'audiobook'
+                          ? (selectedRelease ? getReleaseActionMode(selectedRelease) : combinedAudiobookMode)
+                          : (stagedAudiobookRelease ? getReleaseActionMode(stagedAudiobookRelease) : combinedAudiobookMode),
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

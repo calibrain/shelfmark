@@ -123,7 +123,7 @@ const getDefaultPlaceholder = (
   if (fallback) return fallback;
 
   if (!activeQueryTarget || activeQueryTarget.source === 'general') {
-    if (isCombinedMode) return 'Search Books & Audiobooks (combined)';
+    if (isCombinedMode) return 'Search Books & Audiobooks';
     return contentType === 'ebook' ? 'Search Books' : 'Search Audiobooks';
   }
 

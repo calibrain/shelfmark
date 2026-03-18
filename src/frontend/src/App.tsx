@@ -2538,16 +2538,17 @@ function App() {
             isRequestMode={isBrowseFulfilMode || activeReleaseBook?.provider === 'manual'}
             showReleaseSourceLinks={config?.show_release_source_links !== false}
             onShowToast={showToast}
-            combinedPhase={combinedState?.phase ?? null}
-            combinedCurrentStep={combinedCurrentStep}
-            combinedTotalSteps={combinedSelectionPhases.length}
-            combinedEbookMode={combinedState?.ebookMode ?? null}
-            combinedAudiobookMode={combinedState?.audiobookMode ?? null}
-            onCombinedNext={combinedState && !combinedIsFinalStep ? handleCombinedNext : undefined}
-            onCombinedBack={combinedState && combinedHasPreviousStep ? handleCombinedBack : undefined}
-            onCombinedDownload={combinedState && combinedIsFinalStep ? handleCombinedDownload : undefined}
-            stagedEbookRelease={combinedState?.stagedEbook?.release ?? null}
-            stagedAudiobookRelease={combinedState?.stagedAudiobook ?? null}
+            combinedMode={combinedState ? {
+              phase: combinedState.phase,
+              stepLabel: `Step ${combinedCurrentStep} of ${combinedSelectionPhases.length} — Select ${combinedState.phase === 'ebook' ? 'book' : 'audiobook'}`,
+              ebookMode: combinedState.ebookMode,
+              audiobookMode: combinedState.audiobookMode,
+              stagedEbookRelease: combinedState.stagedEbook?.release ?? null,
+              stagedAudiobookRelease: combinedState.stagedAudiobook ?? null,
+              onNext: !combinedIsFinalStep ? handleCombinedNext : undefined,
+              onBack: combinedHasPreviousStep ? handleCombinedBack : undefined,
+              onDownload: combinedIsFinalStep ? handleCombinedDownload : undefined,
+            } : null}
           />
         )}
 
