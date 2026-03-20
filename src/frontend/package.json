@@ -12,7 +12,7 @@
     "test:unit:build": "rm -rf ../../.local/frontend-test-dist && tsc -p tsconfig.tests.json"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.2.1",
+    "@tailwindcss/vite": "^4.2.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.13.1",
