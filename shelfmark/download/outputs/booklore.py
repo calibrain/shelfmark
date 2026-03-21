@@ -24,6 +24,7 @@ BOOKLORE_SUPPORTED_EXTENSIONS = {".azw", ".azw3", ".cb7", ".cbr", ".cbz", ".epub
 BOOKLORE_SUPPORTED_FORMATS_LABEL = ", ".join(
     ext.lstrip(".").upper() for ext in sorted(BOOKLORE_SUPPORTED_EXTENSIONS)
 )
+BOOKLORE_DISPLAY_NAME = "Grimmory"
 
 
 class BookloreError(Exception):
@@ -67,11 +68,11 @@ def build_booklore_config(
     password = values.get("BOOKLORE_PASSWORD", "") or ""
 
     if not base_url:
-        raise BookloreError("Booklore URL is required")
+        raise BookloreError(f"{BOOKLORE_DISPLAY_NAME} URL is required")
     if not username:
-        raise BookloreError("Booklore username is required")
+        raise BookloreError(f"{BOOKLORE_DISPLAY_NAME} username is required")
     if not password:
-        raise BookloreError("Booklore password is required")
+        raise BookloreError(f"{BOOKLORE_DISPLAY_NAME} password is required")
 
     destination = _parse_destination(
         values.get("BOOKLORE_DESTINATION", BOOKLORE_DESTINATION_LIBRARY)
@@ -97,8 +98,8 @@ def build_booklore_config(
             library_id_val = values.get("BOOKLORE_LIBRARY_ID")
             path_id_val = values.get("BOOKLORE_PATH_ID")
 
-        library_id = _parse_int(library_id_val, "Booklore library ID")
-        path_id = _parse_int(path_id_val, "Booklore path ID")
+        library_id = _parse_int(library_id_val, f"{BOOKLORE_DISPLAY_NAME} library ID")
+        path_id = _parse_int(path_id_val, f"{BOOKLORE_DISPLAY_NAME} path ID")
 
     return BookloreConfig(
         base_url=base_url.rstrip("/"),
@@ -119,28 +120,28 @@ def booklore_login(booklore_config: BookloreConfig) -> str:
     try:
         response = requests.post(url, json=payload, timeout=30, verify=booklore_config.verify_tls)
     except requests.exceptions.ConnectionError as exc:
-        raise BookloreError("Could not connect to Booklore") from exc
+        raise BookloreError(f"Could not connect to {BOOKLORE_DISPLAY_NAME}") from exc
     except requests.exceptions.Timeout as exc:
-        raise BookloreError("Booklore connection timed out") from exc
+        raise BookloreError(f"{BOOKLORE_DISPLAY_NAME} connection timed out") from exc
     except requests.exceptions.RequestException as exc:
-        raise BookloreError(f"Booklore login failed: {exc}") from exc
+        raise BookloreError(f"{BOOKLORE_DISPLAY_NAME} login failed: {exc}") from exc
 
     if response.status_code in {401, 403}:
-        raise BookloreError("Booklore authentication failed")
+        raise BookloreError(f"{BOOKLORE_DISPLAY_NAME} authentication failed")
 
     try:
         response.raise_for_status()
     except requests.exceptions.HTTPError as exc:
-        raise BookloreError(f"Booklore login failed ({response.status_code})") from exc
+        raise BookloreError(f"{BOOKLORE_DISPLAY_NAME} login failed ({response.status_code})") from exc
 
     try:
         data = response.json()
     except ValueError as exc:
-        raise BookloreError("Invalid Booklore login response") from exc
+        raise BookloreError(f"Invalid {BOOKLORE_DISPLAY_NAME} login response") from exc
 
     token = data.get("accessToken")
     if not token:
-        raise BookloreError("Booklore did not return an access token")
+        raise BookloreError(f"{BOOKLORE_DISPLAY_NAME} did not return an access token")
 
     return token
 
@@ -153,12 +154,12 @@ def booklore_list_libraries(booklore_config: BookloreConfig, token: str) -> list
         response = requests.get(url, headers=headers, timeout=30, verify=booklore_config.verify_tls)
         response.raise_for_status()
     except requests.exceptions.RequestException as exc:
-        raise BookloreError(f"Failed to fetch Booklore libraries: {exc}") from exc
+        raise BookloreError(f"Failed to fetch {BOOKLORE_DISPLAY_NAME} libraries: {exc}") from exc
 
     try:
         return response.json()
     except ValueError as exc:
-        raise BookloreError("Invalid Booklore libraries response") from exc
+        raise BookloreError(f"Invalid {BOOKLORE_DISPLAY_NAME} libraries response") from exc
 
 
 def booklore_upload_file(booklore_config: BookloreConfig, token: str, file_path: Path) -> None:
@@ -189,13 +190,13 @@ def booklore_upload_file(booklore_config: BookloreConfig, token: str, file_path:
         if message:
             message = f": {message[:200]}"
         status_code = response.status_code if response is not None else "unknown"
-        raise BookloreError(f"Booklore upload failed ({status_code}){message}") from exc
+        raise BookloreError(f"{BOOKLORE_DISPLAY_NAME} upload failed ({status_code}){message}") from exc
     except requests.exceptions.ConnectionError as exc:
-        raise BookloreError("Could not connect to Booklore") from exc
+        raise BookloreError(f"Could not connect to {BOOKLORE_DISPLAY_NAME}") from exc
     except requests.exceptions.Timeout as exc:
-        raise BookloreError("Booklore upload timed out") from exc
+        raise BookloreError(f"{BOOKLORE_DISPLAY_NAME} upload timed out") from exc
     except requests.exceptions.RequestException as exc:
-        raise BookloreError(f"Booklore upload failed: {exc}") from exc
+        raise BookloreError(f"{BOOKLORE_DISPLAY_NAME} upload failed: {exc}") from exc
 
 
 def booklore_refresh_library(booklore_config: BookloreConfig, token: str) -> None:
@@ -206,7 +207,7 @@ def booklore_refresh_library(booklore_config: BookloreConfig, token: str) -> Non
         response = requests.put(url, headers=headers, timeout=30, verify=booklore_config.verify_tls)
         response.raise_for_status()
     except requests.exceptions.RequestException as exc:
-        raise BookloreError(f"Booklore refresh failed: {exc}") from exc
+        raise BookloreError(f"{BOOKLORE_DISPLAY_NAME} refresh failed: {exc}") from exc
 
 
 def _supports_booklore(task: DownloadTask) -> bool:
@@ -231,7 +232,7 @@ def _booklore_format_error(rejected_files: List[Path]) -> str:
     rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
     rejected_list = ", ".join(rejected_exts)
     return (
-        f"Booklore does not support {rejected_list}. "
+        f"{BOOKLORE_DISPLAY_NAME} does not support {rejected_list}. "
         f"Supported formats: {BOOKLORE_SUPPORTED_FORMATS_LABEL}"
     )
 
@@ -267,7 +268,7 @@ def _post_process_booklore(
         status_callback("error", str(e))
         return None
 
-    status_callback("resolving", "Preparing Booklore upload")
+    status_callback("resolving", f"Preparing {BOOKLORE_DISPLAY_NAME} upload")
 
     stage_action = STAGE_NONE
     if is_managed_workspace_path(temp_file):
@@ -314,7 +315,7 @@ def _post_process_booklore(
             if cancel_flag.is_set():
                 logger.info("Task %s: cancelled during Booklore upload", task.task_id)
                 return None
-            status_callback("resolving", f"Uploading to Booklore ({index}/{len(prepared.files)})")
+            status_callback("resolving", f"Uploading to {BOOKLORE_DISPLAY_NAME} ({index}/{len(prepared.files)})")
             booklore_upload_file(booklore_config, token, file_path)
 
         if booklore_config.refresh_after_upload:
@@ -361,9 +362,9 @@ def _post_process_booklore(
         if not maybe_run_custom_script(script_context, status_callback=status_callback):
             return None
 
-        message = "Uploaded to Booklore"
+        message = f"Uploaded to {BOOKLORE_DISPLAY_NAME}"
         if len(prepared.files) > 1:
-            message = f"Uploaded to Booklore ({len(prepared.files)} files)"
+            message = f"Uploaded to {BOOKLORE_DISPLAY_NAME} ({len(prepared.files)} files)"
         status_callback("complete", message)
         success = True
         return f"booklore://{task.task_id}"
@@ -374,7 +375,7 @@ def _post_process_booklore(
         return None
     except Exception as e:
         logger.error_trace("Task %s: unexpected error uploading to Booklore: %s", task.task_id, e)
-        status_callback("error", f"Booklore upload failed: {e}")
+        status_callback("error", f"{BOOKLORE_DISPLAY_NAME} upload failed: {e}")
         return None
     finally:
         cleanup_output_staging(
