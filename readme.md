@@ -10,7 +10,7 @@ Shelfmark is a self-hosted web interface for searching and downloading books and
 - [Calibre](https://calibre-ebook.com/)
 - [Calibre-Web](https://github.com/janeczku/calibre-web)
 - [Calibre-Web-Automated](https://github.com/crocodilestick/Calibre-Web-Automated)
-- [Booklore](https://github.com/booklore-app/booklore)
+- [Grimmory](https://github.com/grimmory-tools/grimmory)
 - [Audiobookshelf](https://github.com/advplyr/audiobookshelf)
 
 ## ✨ Features
@@ -71,7 +71,7 @@ volumes:
   - /client/path:/client/path # Optional: For Torrent/Usenet downloads, match your client directory exactly. 
 ```
 
-> **Tip**: Point the download volume to your CWA or Booklore ingest folder for automatic import.
+> **Tip**: Point the download volume to your CWA or Grimmory ingest folder for automatic import.
 
 > **Note**: CIFS shares require `nobrl` mount option to avoid database lock errors.
 
@@ -110,7 +110,7 @@ Some of the additional options available in Settings:
 - **Prowlarr** - Configure indexers and download clients to download books and audiobooks
 - **AudiobookBay** - Web scraping source for audiobook torrents (audiobooks only)
 - **IRC** - Add details for IRC book sources and download directly from the UI
-- **Library Link** - Add a link to your Calibre-Web or Booklore instance in the UI header
+- **Library Link** - Add a link to your Calibre-Web or Grimmory instance in the UI header
 - **File processing** - Customiseable download paths, file renaming and directory creation with template-based renaming
 - **Network Resilience** - Auto DNS rotation and mirror fallback when sources are unreachable. Custom proxy support (SOCK5 + HTTP/S), Tor routing.
 - **Format & Language** - Filter downloads by preferred formats, languages and sorting order
