@@ -675,7 +675,7 @@ def test_booklore_mode_uploads_and_cleans_staging(tmp_path):
     assert uploaded_files
     assert not temp_file.exists()
     assert list(staging.iterdir()) == []
-    assert any("Booklore" in (message or "") for _, message in statuses)
+    assert any("Grimmory" in (message or "") for _, message in statuses)
 
 
 def test_booklore_mode_rejects_unsupported_files(tmp_path):
@@ -723,7 +723,7 @@ def test_booklore_mode_rejects_unsupported_files(tmp_path):
 
     errors = [call for call in status_cb.call_args_list if call.args[0] == "error"]
     assert errors
-    assert "Booklore does not support" in errors[-1].args[1]
+    assert "Grimmory does not support" in errors[-1].args[1]
 
 
 @pytest.mark.parametrize("organization", ["none", "rename", "organize"])

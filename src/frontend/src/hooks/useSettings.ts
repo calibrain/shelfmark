@@ -257,7 +257,7 @@ export function useSettings(): UseSettingsReturn {
         const result = await executeSettingsAction(tabName, actionKey, currentValues);
 
         // Re-fetch settings after successful action to pick up updated options
-        // (e.g., BookLore "Test Connection" refreshes library/path lists)
+        // (e.g., Grimmory "Test Connection" refreshes library/path lists)
         if (result.success) {
           await fetchSettings({ silent: true, preserveDirtyValues: true });
         }

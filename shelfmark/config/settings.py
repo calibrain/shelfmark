@@ -385,7 +385,7 @@ def general_settings():
         TextField(
             key="CALIBRE_WEB_URL",
             label="Library URL",
-            description="Adds a navigation button to your book library (Calibre-Web Automated, Booklore, etc).",
+            description="Adds a navigation button to your book library (Calibre-Web Automated, Grimmory, etc).",
             placeholder="http://calibre-web:8083",
         ),
         TextField(
@@ -873,8 +873,8 @@ def download_settings():
                 },
                 {
                     "value": "booklore",
-                    "label": "Booklore (API)",
-                    "description": "Upload files directly to Booklore",
+                    "label": "Grimmory (API)",
+                    "description": "Upload files directly to Grimmory",
                 },
             ],
             default="folder",
@@ -957,14 +957,14 @@ def download_settings():
         ),
         HeadingField(
             key="booklore_heading",
-            title="Booklore",
-            description="Upload books directly to Booklore via API. Audiobooks always use folder mode.",
+            title="Grimmory",
+            description="Upload books directly to Grimmory (Formerly Booklore) via API. Audiobooks always use folder mode.",
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
         ),
         TextField(
             key="BOOKLORE_HOST",
-            label="Booklore URL",
-            description="Base URL of your Booklore instance",
+            label="Grimmory URL",
+            description="Base URL of your Grimmory instance",
             placeholder="http://booklore:6060",
             required=True,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
@@ -972,14 +972,14 @@ def download_settings():
         TextField(
             key="BOOKLORE_USERNAME",
             label="Username",
-            description="Booklore account username",
+            description="Grimmory account username",
             required=True,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
         ),
         PasswordField(
             key="BOOKLORE_PASSWORD",
             label="Password",
-            description="Booklore account password",
+            description="Grimmory account password",
             required=True,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
         ),
@@ -1005,7 +1005,7 @@ def download_settings():
         SelectField(
             key="BOOKLORE_LIBRARY_ID",
             label="Library",
-            description="Booklore library to upload into.",
+            description="Grimmory library to upload into.",
             options=get_booklore_library_options,
             required=True,
             user_overridable=True,
@@ -1017,7 +1017,7 @@ def download_settings():
         SelectField(
             key="BOOKLORE_PATH_ID",
             label="Path",
-            description="Booklore library path for uploads.",
+            description="Grimmory library path for uploads.",
             options=get_booklore_path_options,
             required=True,
             filter_by_field="BOOKLORE_LIBRARY_ID",
@@ -1030,7 +1030,7 @@ def download_settings():
         ActionButton(
             key="test_booklore",
             label="Test Connection",
-            description="Verify your Booklore configuration",
+            description="Verify your Grimmory configuration",
             style="primary",
             callback=test_booklore_connection,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},

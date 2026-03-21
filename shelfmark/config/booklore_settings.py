@@ -179,18 +179,18 @@ def test_booklore_connection(current_values: dict[str, Any] | None = None) -> di
     password = _get_value("BOOKLORE_PASSWORD", "") or ""
 
     if not base_url:
-        return {"success": False, "message": "Booklore URL is required"}
+        return {"success": False, "message": "Grimmory URL is required"}
     if not username:
-        return {"success": False, "message": "Booklore username is required"}
+        return {"success": False, "message": "Grimmory username is required"}
     if not password:
-        return {"success": False, "message": "Booklore password is required"}
+        return {"success": False, "message": "Grimmory password is required"}
 
     try:
         library_options, _ = _get_booklore_select_options(base_url, username, password)
 
-        message = "Connected to Booklore"
+        message = "Connected to Grimmory"
         if library_options:
-            message = f"Connected to Booklore ({len(library_options)} libraries)"
+            message = f"Connected to Grimmory ({len(library_options)} libraries)"
 
         return {"success": True, "message": message}
     except BookloreError as exc:

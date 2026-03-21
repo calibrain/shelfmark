@@ -20,7 +20,7 @@ interface UserOverridesSectionProps {
 const modeOptions = [
   { value: 'folder', label: 'Folder' },
   { value: 'email', label: 'Email (SMTP)' },
-  { value: 'booklore', label: 'BookLore (API)' },
+  { value: 'booklore', label: 'Grimmory (API)' },
 ];
 
 const fallbackOutputModeField: SelectFieldConfig = {
@@ -53,7 +53,7 @@ const fallbackBookloreLibraryField: SelectFieldConfig = {
   type: 'SelectField',
   key: 'BOOKLORE_LIBRARY_ID',
   label: 'Library',
-  description: 'BookLore library to upload into.',
+  description: 'Grimmory library to upload into.',
   value: '',
   options: [],
 };
@@ -62,7 +62,7 @@ const fallbackBooklorePathField: SelectFieldConfig = {
   type: 'SelectField',
   key: 'BOOKLORE_PATH_ID',
   label: 'Path',
-  description: 'BookLore library path for uploads.',
+  description: 'Grimmory library path for uploads.',
   value: '',
   options: [],
   filterByField: 'BOOKLORE_LIBRARY_ID',
