@@ -25,6 +25,25 @@ COMPLETED_PATH_RETRY_INTERVAL = _DEFAULT_COMPLETED_PATH_RETRY_INTERVAL
 COMPLETED_PATH_MAX_ATTEMPTS = _DEFAULT_COMPLETED_PATH_MAX_ATTEMPTS
 
 
+def _coerce_seed_time_minutes(raw_seed_time: object) -> Optional[int]:
+    """Convert Prowlarr's minimum seed time from seconds to whole minutes."""
+    if raw_seed_time is None:
+        return None
+
+    try:
+        seed_time_seconds = int(raw_seed_time)
+    except (TypeError, ValueError):
+        logger.warning(f"Invalid Prowlarr minimumSeedTime value: {raw_seed_time!r}")
+        return None
+
+    if seed_time_seconds < 0:
+        logger.warning(f"Ignoring negative Prowlarr minimumSeedTime value: {seed_time_seconds}")
+        return None
+
+    # Round up so we never under-seed when a tracker uses a non-minute boundary.
+    return (seed_time_seconds + 59) // 60
+
+
 @register_handler("prowlarr")
 class ProwlarrHandler(ExternalClientHandler):
     """Handler for Prowlarr downloads via configured torrent or usenet client."""
@@ -76,8 +95,9 @@ class ProwlarrHandler(ExternalClientHandler):
 
         # Seed criteria from the indexer (Torznab attributes)
         raw_seed_time = prowlarr_result.get("minimumSeedTime")
-        seeding_time_limit = int(raw_seed_time) if raw_seed_time is not None else None
         raw_ratio = prowlarr_result.get("minimumRatio")
+
+        seeding_time_limit = _coerce_seed_time_minutes(raw_seed_time)
         ratio_limit = float(raw_ratio) if raw_ratio is not None else None
 
         return DownloadRequest(

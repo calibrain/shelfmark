@@ -105,7 +105,7 @@ class ProwlarrClient:
 
     def get_enriched_indexer_ids(self, *, restrict_to: Optional[List[int]] = None) -> List[int]:
         """
-        Return enabled indexer IDs that should use Torznab for richer metadata.
+        Return enabled indexer IDs that benefit from extra Torznab handling.
 
         Args:
             restrict_to: Optional list of candidate indexer IDs to consider.
@@ -225,27 +225,3 @@ class ProwlarrClient:
                 if 7000 <= subcat.get("id", 0) <= 7999:
                     return True
         return False
-
-    def search(
-        self,
-        query: str,
-        indexer_ids: Optional[List[int]] = None,
-        categories: Optional[List[int]] = None,
-        limit: int = 100,
-    ) -> List[Dict[str, Any]]:
-        """Search for releases via Prowlarr."""
-        if not query:
-            return []
-
-        params: Dict[str, Any] = {"query": query, "limit": limit}
-        if indexer_ids:
-            params["indexerIds"] = indexer_ids
-        if categories:
-            params["categories"] = categories
-
-        try:
-            results = self._request("GET", "/api/v1/search", params=params)
-            return results if isinstance(results, list) else []
-        except Exception as e:
-            logger.error(f"Prowlarr search failed: {e}")
-            return []
