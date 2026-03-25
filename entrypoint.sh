@@ -126,6 +126,35 @@ fi
 USERNAME=$(getent passwd "$RUN_UID" | cut -d: -f1)
 echo "Username for UID $RUN_UID is $USERNAME"
 
+# Avoid unnecessary gosu hops when we're already running as the target user.
+# Some nested LXC setups spin on root-to-root gosu invocations.
+needs_user_switch() {
+    local current_uid
+    local current_gid
+
+    current_uid=$(id -u)
+    current_gid=$(id -g)
+
+    [ "$current_uid" != "$RUN_UID" ] || [ "$current_gid" != "$RUN_GID" ]
+}
+
+run_as_target_user() {
+    if needs_user_switch; then
+        gosu "$USERNAME" "$@"
+        return $?
+    fi
+
+    "$@"
+}
+
+exec_as_target_user() {
+    if needs_user_switch; then
+        exec gosu "$USERNAME" "$@"
+    fi
+
+    exec "$@"
+}
+
 test_write() {
     local folder=$1
     local test_file="$folder/shelfmark_TEST_WRITE"
@@ -138,7 +167,7 @@ test_write() {
         return 1
     fi
 
-    if ! gosu "$USERNAME" sh -c 'echo 0123456789_TEST > "$1"' _ "$test_file"; then
+    if ! run_as_target_user sh -c 'echo 0123456789_TEST > "$1"' _ "$test_file"; then
         echo "Failed to write test file in $folder as $USERNAME"
         return 1
     fi
@@ -400,4 +429,4 @@ echo "Setting umask to $UMASK_VALUE"
 umask $UMASK_VALUE
 
 stop_file_logging
-exec gosu "$USERNAME" env HOME=/app $command
+exec_as_target_user env HOME=/app $command
