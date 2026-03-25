@@ -247,6 +247,18 @@ export interface RequestRecord {
   username?: string;
 }
 
+export interface QueuedDownloadResult {
+  kind: 'download';
+  status: 'queued';
+  priority: number;
+  title: string;
+  source: string;
+  source_id: string | null;
+  content_type?: ContentType;
+}
+
+export type RequestSubmissionResult = RequestRecord | QueuedDownloadResult;
+
 export type BooksOutputMode = 'folder' | 'booklore' | 'email';
 
 export interface AppConfig {

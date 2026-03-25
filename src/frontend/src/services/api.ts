@@ -9,6 +9,7 @@ import {
   RequestPolicyResponse,
   CreateRequestPayload,
   RequestRecord,
+  RequestSubmissionResult,
   MetadataProvidersResponse,
   MetadataSearchConfig,
 } from '../types';
@@ -585,15 +586,15 @@ export const fetchRequestPolicy = async (): Promise<RequestPolicyResponse> => {
   return fetchJSON<RequestPolicyResponse>(API.requestPolicy);
 };
 
-export const createRequest = async (payload: CreateRequestPayload): Promise<RequestRecord> => {
-  return fetchJSON<RequestRecord>(API.requests, {
+export const createRequest = async (payload: CreateRequestPayload): Promise<RequestSubmissionResult> => {
+  return fetchJSON<RequestSubmissionResult>(API.requests, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 };
 
-export const createRequests = async (payloads: CreateRequestPayload[]): Promise<RequestRecord[]> => {
-  return fetchJSON<RequestRecord[]>(API.requestsBatch, {
+export const createRequests = async (payloads: CreateRequestPayload[]): Promise<RequestSubmissionResult[]> => {
+  return fetchJSON<RequestSubmissionResult[]>(API.requestsBatch, {
     method: 'POST',
     body: JSON.stringify({ requests: payloads }),
   });

@@ -381,6 +381,7 @@ def _prepare_request_create_arguments(
         },
         "actor_label": actor_label,
         "request_title": request_title,
+        "resolved_mode": resolved_mode,
     }
 
 
@@ -395,6 +396,69 @@ def _resolve_request_source_and_format(request_row: dict[str, Any]) -> tuple[str
         )
         return source, release_format
     return normalize_source(request_row.get("source_hint")), None
+
+
+def _build_queued_download_result(
+    *,
+    create_args: dict[str, Any],
+    request_title: str,
+) -> dict[str, Any]:
+    release_data = create_args.get("release_data")
+    source = create_args.get("source_hint")
+    source_id: str | None = None
+
+    if isinstance(release_data, dict):
+        source = release_data.get("source") or source
+        source_id = _normalize_optional_source_id(release_data.get("source_id"))
+
+    return {
+        "kind": "download",
+        "status": "queued",
+        "priority": 0,
+        "title": request_title,
+        "source": normalize_source(source),
+        "source_id": source_id,
+        "content_type": create_args.get("content_type"),
+    }
+
+
+def _queue_prepared_download_submission(
+    user_db: UserDB,
+    *,
+    queue_release: Callable[..., tuple[bool, str | None]],
+    create_args: dict[str, Any],
+    request_title: str,
+) -> dict[str, Any]:
+    release_data = create_args.get("release_data")
+    if not isinstance(release_data, dict):
+        raise RequestServiceError(
+            "Download policy requires a concrete release",
+            status_code=400,
+            code="policy_requires_download",
+            required_mode=PolicyMode.DOWNLOAD.value,
+        )
+
+    requester = user_db.get_user(user_id=create_args["user_id"])
+    if requester is None:
+        raise RequestServiceError("Requesting user not found", status_code=404)
+
+    success, error = queue_release(
+        dict(release_data),
+        0,
+        user_id=create_args["user_id"],
+        username=requester.get("username"),
+    )
+    if not success:
+        raise RequestServiceError(
+            error or "Failed to queue release",
+            status_code=409,
+            code="queue_failed",
+        )
+
+    return _build_queued_download_result(
+        create_args=create_args,
+        request_title=request_title,
+    )
 
 
 
@@ -544,6 +608,19 @@ def register_request_routes(
 
         try:
             prepared = _prepare_request_create_arguments(user_db, data)
+            if prepared["resolved_mode"] == PolicyMode.DOWNLOAD:
+                queued = _queue_prepared_download_submission(
+                    user_db,
+                    queue_release=queue_release,
+                    create_args=prepared["create_args"],
+                    request_title=prepared["request_title"],
+                )
+                logger.info(
+                    "Policy download queued for '%s' by %s",
+                    prepared["request_title"],
+                    prepared["actor_label"],
+                )
+                return jsonify(queued), 200
             created = create_request(user_db, **prepared["create_args"])
         except RequestServiceError as exc:
             return _error_response(
@@ -604,10 +681,6 @@ def register_request_routes(
                 _prepare_request_create_arguments(user_db, raw_request)
                 for raw_request in raw_requests
             ]
-            created_rows = create_requests(
-                user_db,
-                requests=[prepared["create_args"] for prepared in prepared_requests],
-            )
         except RequestServiceError as exc:
             return _error_response(
                 str(exc),
@@ -616,7 +689,34 @@ def register_request_routes(
                 required_mode=exc.required_mode,
             )
 
-        for created, prepared in zip(created_rows, prepared_requests):
+        request_prepared_items: list[tuple[int, dict[str, Any]]] = []
+        download_prepared_items: list[tuple[int, dict[str, Any]]] = []
+
+        for index, prepared in enumerate(prepared_requests):
+            if prepared["resolved_mode"] == PolicyMode.DOWNLOAD:
+                download_prepared_items.append((index, prepared))
+                continue
+
+            request_prepared_items.append((index, prepared))
+
+        created_rows: list[dict[str, Any]] = []
+        if request_prepared_items:
+            try:
+                created_rows = create_requests(
+                    user_db,
+                    requests=[prepared["create_args"] for _, prepared in request_prepared_items],
+                )
+            except RequestServiceError as exc:
+                return _error_response(
+                    str(exc),
+                    exc.status_code,
+                    code=exc.code,
+                    required_mode=exc.required_mode,
+                )
+
+        results_by_index: dict[int, dict[str, Any]] = {}
+
+        for (index, prepared), created in zip(request_prepared_items, created_rows):
             event_payload = {
                 "request_id": created["id"],
                 "status": created["status"],
@@ -645,8 +745,32 @@ def register_request_routes(
                 event=NotificationEvent.REQUEST_CREATED,
                 request_row=created,
             )
+            results_by_index[index] = created
 
-        return jsonify(created_rows), 201
+        for index, prepared in download_prepared_items:
+            try:
+                results_by_index[index] = _queue_prepared_download_submission(
+                    user_db,
+                    queue_release=queue_release,
+                    create_args=prepared["create_args"],
+                    request_title=prepared["request_title"],
+                )
+            except RequestServiceError as exc:
+                return _error_response(
+                    str(exc),
+                    exc.status_code,
+                    code=exc.code,
+                    required_mode=exc.required_mode,
+                )
+            logger.info(
+                "Policy download queued for '%s' by %s",
+                prepared["request_title"],
+                prepared["actor_label"],
+            )
+
+        ordered_results = [results_by_index[index] for index in range(len(prepared_requests))]
+        status_code = 201 if request_prepared_items else 200
+        return jsonify(ordered_results), status_code
 
     @app.route("/api/requests", methods=["GET"])
     def api_list_requests():
