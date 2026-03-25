@@ -238,6 +238,50 @@ def _detect_content_type_from_categories(categories: list, fallback: str = "book
     return "other"
 
 
+def _extract_capability_category_ids(categories: list[dict]) -> set[int]:
+    """Flatten capability categories and subcategories into a single ID set."""
+    category_ids: set[int] = set()
+
+    for category in categories:
+        if not isinstance(category, dict):
+            continue
+
+        category_id = category.get("id")
+        if isinstance(category_id, int):
+            category_ids.add(category_id)
+
+        for subcategory in category.get("subCategories", []):
+            if not isinstance(subcategory, dict):
+                continue
+            subcategory_id = subcategory.get("id")
+            if isinstance(subcategory_id, int):
+                category_ids.add(subcategory_id)
+
+    return category_ids
+
+
+def _indexer_supports_search_categories(indexer: dict, categories: Optional[List[int]]) -> bool:
+    """Return whether an indexer should be queried for the requested categories."""
+    if not categories:
+        return True
+
+    capability_categories = indexer.get("capabilities", {}).get("categories", [])
+    category_ids = _extract_capability_category_ids(capability_categories)
+    if not category_ids:
+        return True
+
+    for requested_category in categories:
+        if requested_category == 7000:
+            if any(cat_id in BOOK_CATEGORY_RANGE for cat_id in category_ids):
+                return True
+            continue
+
+        if requested_category in category_ids:
+            return True
+
+    return False
+
+
 def _prowlarr_result_to_release(
     result: dict,
     search_content_type: str = "ebook",
@@ -551,6 +595,35 @@ class ProwlarrSource(ReleaseSource):
             logger.warning(f"Failed to resolve indexer names to IDs: {e}")
             return None
 
+    def _get_search_indexer_ids(
+        self,
+        client: ProwlarrClient,
+        selected_indexer_ids: Optional[List[int]],
+        categories: Optional[List[int]],
+    ) -> List[int]:
+        """Resolve the concrete indexer IDs to query via Torznab."""
+        if selected_indexer_ids is not None:
+            return selected_indexer_ids
+
+        try:
+            enabled_indexers = client.get_enabled_indexers_detailed()
+        except Exception as e:
+            logger.warning(f"Failed to load enabled Prowlarr indexers: {e}")
+            return []
+
+        indexer_ids: List[int] = []
+        for indexer in enabled_indexers:
+            if not _indexer_supports_search_categories(indexer, categories):
+                continue
+
+            indexer_id = indexer.get("id")
+            try:
+                indexer_ids.append(int(indexer_id))
+            except (TypeError, ValueError):
+                continue
+
+        return indexer_ids
+
     def search(
         self,
         book: BookMetadata,
@@ -614,81 +687,39 @@ class ProwlarrSource(ReleaseSource):
                 f"Searching Prowlarr: {query_type} ({len(variants)} variants), {indexer_desc}, categories={categories}"
             )
 
-        # Identify indexers that should be enriched via Torznab/Newznab.
-        enriched_indexer_ids = client.get_enriched_indexer_ids(restrict_to=indexer_ids)
-        non_enriched_indexer_ids: Optional[List[int]] = None
-        if indexer_ids:
-            non_enriched_indexer_ids = [i for i in indexer_ids if i not in enriched_indexer_ids]
-
-        def search_indexers(query: str, cats: Optional[List[int]], *, enriched_query: Optional[str] = None) -> List[dict]:
-            """Search indexers with given categories, collecting results.
-
-            Args:
-                query: Query string for standard indexers (title only).
-                cats: Category filter list.
-                enriched_query: Optional query for enriched indexers (title + author).
-                    Falls back to ``query`` when not provided.
-            """
-            results = []
-            eq = enriched_query or query
-
-            # Search standard indexers via JSON endpoint.
-            if indexer_ids:
-                if non_enriched_indexer_ids:
-                    # Prefer a single request for selected indexers to reduce latency.
-                    try:
-                        raw = client.search(query=query, indexer_ids=non_enriched_indexer_ids, categories=cats)
-                        if raw:
-                            results.extend(raw)
-                    except Exception as e:
-                        logger.warning(
-                            f"Search failed for selected indexers {non_enriched_indexer_ids}: {e}. Falling back to per-indexer search."
-                        )
-
-                        for indexer_id in non_enriched_indexer_ids:
-                            try:
-                                raw = client.search(query=query, indexer_ids=[indexer_id], categories=cats)
-                                if raw:
-                                    results.extend(raw)
-                            except Exception as e:
-                                logger.warning(f"Search failed for indexer {indexer_id}: {e}")
-            else:
-                # Search all enabled indexers at once, then remove enriched results (re-fetched via Torznab).
-                try:
-                    raw = client.search(query=query, indexer_ids=None, categories=cats)
-                    if raw:
-                        if enriched_indexer_ids:
-                            raw = [r for r in raw if r.get("indexerId") not in enriched_indexer_ids]
-                        results.extend(raw)
-                except Exception as e:
-                    logger.warning(f"Search failed for all indexers: {e}")
-
-            # Search enriched indexers via Torznab/Newznab for richer metadata.
-            # Use enriched_query (title + author) for better results on these indexers.
-            for indexer_id in enriched_indexer_ids:
-                raw = client.torznab_search(indexer_id=indexer_id, query=eq, categories=cats, search_type="book")
-                if raw:
-                    results.extend(raw)
-                else:
-                    # Fallback to JSON search for enriched indexers if Torznab fails.
-                    try:
-                        raw_fallback = client.search(query=eq, indexer_ids=[indexer_id], categories=cats)
-                        if raw_fallback:
-                            results.extend(raw_fallback)
-                    except Exception as e:
-                        logger.warning(f"Fallback search failed for enriched indexer {indexer_id}: {e}")
-
-            return results
-
         try:
             auto_expand_enabled = config.get("PROWLARR_AUTO_EXPAND", False)
             deadline = time.monotonic() + PROWLARR_SEARCH_TIMEOUT_SECONDS
+            # Some indexers benefit from title+author queries and extra format detection.
+            enriched_indexer_ids = client.get_enriched_indexer_ids(restrict_to=indexer_ids)
+            enriched_indexer_ids_set = set(enriched_indexer_ids)
 
             def _check_timeout() -> None:
                 if time.monotonic() > deadline:
                     raise TimeoutError(
                         f"Prowlarr search timed out after {int(PROWLARR_SEARCH_TIMEOUT_SECONDS)}s"
                     )
+
+            def search_indexers(query: str, cats: Optional[List[int]], *, enriched_query: Optional[str] = None) -> List[dict]:
+                """Search indexers with given categories via Torznab/Newznab."""
+                results: List[dict] = []
+                target_indexer_ids = self._get_search_indexer_ids(client, indexer_ids, cats)
+                if not target_indexer_ids:
+                    return results
+
+                for indexer_id in target_indexer_ids:
+                    _check_timeout()
+                    indexer_query = enriched_query if indexer_id in enriched_indexer_ids_set and enriched_query else query
+                    raw = client.torznab_search(
+                        indexer_id=indexer_id,
+                        query=indexer_query,
+                        categories=cats,
+                        search_type="book",
+                    )
+                    if raw:
+                        results.extend(raw)
+
+                return results
             seen_keys: set[str] = set()
             all_results: List[dict] = []
 
@@ -722,7 +753,6 @@ class ProwlarrSource(ReleaseSource):
                     seen_keys.add(key)
                     all_results.append(r)
 
-            enriched_indexer_ids_set = set(enriched_indexer_ids)
             results: List[Release] = []
             enriched_source_ids: set[str] = set()
 

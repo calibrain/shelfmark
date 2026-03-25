@@ -227,6 +227,134 @@ class TestRequestRoutes:
         assert updated["user_id"] == user["id"]
         assert updated["status"] == "cancelled"
 
+    def test_download_policy_queues_release_without_creating_request(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(default_ebook="download")
+
+        payload = {
+            "book_data": {
+                "title": "Policy Download",
+                "author": "Shelfmark",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "policy-download-1",
+            },
+            "context": {
+                "source": "prowlarr",
+                "content_type": "ebook",
+                "request_level": "release",
+            },
+            "release_data": {
+                "source": "prowlarr",
+                "source_id": "policy-download-release-1",
+                "title": "Policy Download.epub",
+            },
+        }
+
+        captured: dict[str, object] = {}
+
+        def fake_queue_release(release_data, priority, user_id=None, username=None):
+            captured["release_data"] = release_data
+            captured["priority"] = priority
+            captured["user_id"] = user_id
+            captured["username"] = username
+            return True, None
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
+                    with patch.object(main_module.backend, "queue_release", side_effect=fake_queue_release):
+                        with patch("shelfmark.core.request_routes.notify_admin") as mock_notify_admin:
+                            with patch("shelfmark.core.request_routes.notify_user") as mock_notify_user:
+                                resp = client.post("/api/requests", json=payload)
+
+        assert resp.status_code == 200
+        assert resp.json["kind"] == "download"
+        assert resp.json["status"] == "queued"
+        assert resp.json["title"] == "Policy Download"
+        assert resp.json["source"] == "prowlarr"
+        assert resp.json["source_id"] == "policy-download-release-1"
+        assert captured["priority"] == 0
+        assert captured["user_id"] == user["id"]
+        assert captured["username"] == user["username"]
+        assert captured["release_data"]["source_id"] == "policy-download-release-1"
+        assert main_module.user_db.list_requests(user_id=user["id"]) == []
+        mock_notify_admin.assert_not_called()
+        mock_notify_user.assert_not_called()
+
+    def test_batch_download_policy_queues_releases_without_creating_requests(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(default_ebook="download")
+
+        payloads = [
+            {
+                "book_data": {
+                    "title": "Batch Download One",
+                    "author": "Shelfmark",
+                    "content_type": "ebook",
+                    "provider": "openlibrary",
+                    "provider_id": "batch-download-1",
+                },
+                "context": {
+                    "source": "prowlarr",
+                    "content_type": "ebook",
+                    "request_level": "release",
+                },
+                "release_data": {
+                    "source": "prowlarr",
+                    "source_id": "batch-download-release-1",
+                    "title": "Batch Download One.epub",
+                },
+            },
+            {
+                "book_data": {
+                    "title": "Batch Download Two",
+                    "author": "Shelfmark",
+                    "content_type": "ebook",
+                    "provider": "openlibrary",
+                    "provider_id": "batch-download-2",
+                },
+                "context": {
+                    "source": "prowlarr",
+                    "content_type": "ebook",
+                    "request_level": "release",
+                },
+                "release_data": {
+                    "source": "prowlarr",
+                    "source_id": "batch-download-release-2",
+                    "title": "Batch Download Two.epub",
+                },
+            },
+        ]
+
+        queued: list[tuple[str, int, int | None, str | None]] = []
+
+        def fake_queue_release(release_data, priority, user_id=None, username=None):
+            queued.append((release_data["source_id"], priority, user_id, username))
+            return True, None
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
+                    with patch.object(main_module.backend, "queue_release", side_effect=fake_queue_release):
+                        with patch("shelfmark.core.request_routes.notify_admin") as mock_notify_admin:
+                            resp = client.post("/api/requests/batch", json={"requests": payloads})
+
+        assert resp.status_code == 200
+        assert [row["kind"] for row in resp.json] == ["download", "download"]
+        assert [row["source_id"] for row in resp.json] == [
+            "batch-download-release-1",
+            "batch-download-release-2",
+        ]
+        assert queued == [
+            ("batch-download-release-1", 0, user["id"], user["username"]),
+            ("batch-download-release-2", 0, user["id"], user["username"]),
+        ]
+        assert main_module.user_db.list_requests(user_id=user["id"]) == []
+        mock_notify_admin.assert_not_called()
+
     def test_admin_can_create_request_on_behalf_of_another_user(self, main_module, client):
         admin = _create_user(main_module, prefix="admin", role="admin")
         target_user = _create_user(main_module, prefix="reader")
@@ -1248,6 +1376,38 @@ class TestRequestCreationEdgeCases:
 
         assert resp.status_code == 403
         assert resp.json["code"] == "requests_unavailable"
+
+    def test_download_policy_without_concrete_release_returns_400(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(default_ebook="download")
+
+        payload = {
+            "book_data": {
+                "title": "Needs Release Selection",
+                "author": "Shelfmark",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "needs-release-selection",
+            },
+            "context": {
+                "source": "*",
+                "content_type": "ebook",
+                "request_level": "book",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
+                    with patch.object(main_module.backend, "queue_release") as mock_queue_release:
+                        resp = client.post("/api/requests", json=payload)
+
+        assert resp.status_code == 400
+        assert resp.json["code"] == "policy_requires_download"
+        assert resp.json["required_mode"] == "download"
+        mock_queue_release.assert_not_called()
+        assert main_module.user_db.list_requests(user_id=user["id"]) == []
 
     def test_blocked_policy_returns_403(self, main_module, client):
         user = _create_user(main_module, prefix="reader")

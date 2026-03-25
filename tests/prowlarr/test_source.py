@@ -208,19 +208,38 @@ class TestDetectContentType:
         assert _detect_content_type_from_categories([{"id": 2000}], "ebook") == "other"
 
 
+class FakeTorznabClient:
+    def __init__(self):
+        self.calls: list[tuple[str, object]] = []
+        self.queries: list[str] = []
+
+    def get_enabled_indexers_detailed(self):
+        return [
+            {
+                "id": 1,
+                "enable": True,
+                "capabilities": {
+                    "categories": [
+                        {"id": 7000, "subCategories": []},
+                        {"id": 3030, "subCategories": []},
+                    ]
+                },
+            }
+        ]
+
+    def torznab_search(self, *, indexer_id: int, query: str, categories=None, search_type="book", limit=100, offset=0):
+        del indexer_id, search_type, limit, offset
+        self.calls.append((query, categories))
+        self.queries.append(query)
+        return []
+
+    def get_enriched_indexer_ids(self, restrict_to=None):
+        del restrict_to
+        return []
+
+
 class TestProwlarrLocalizedQueries:
     def test_manual_query_still_applies_content_type_categories(self, monkeypatch):
-        class FakeClient:
-            def __init__(self):
-                self.calls: list[tuple[str, object]] = []
-
-            def search(self, query: str, indexer_ids=None, categories=None):
-                self.calls.append((query, categories))
-                return []
-
-            def get_enriched_indexer_ids(self, restrict_to=None):
-                return []
-
         import shelfmark.release_sources.prowlarr.source as prowlarr_source
 
         def fake_get(key: str, default=None):
@@ -232,7 +251,7 @@ class TestProwlarrLocalizedQueries:
 
         monkeypatch.setattr(prowlarr_source.config, "get", fake_get)
 
-        fake_client = FakeClient()
+        fake_client = FakeTorznabClient()
         source = ProwlarrSource()
         monkeypatch.setattr(source, "_get_client", lambda: fake_client)
 
@@ -251,17 +270,6 @@ class TestProwlarrLocalizedQueries:
         assert fake_client.calls == [("my custom", [3030])]
 
     def test_manual_query_expand_removes_categories(self, monkeypatch):
-        class FakeClient:
-            def __init__(self):
-                self.calls: list[tuple[str, object]] = []
-
-            def search(self, query: str, indexer_ids=None, categories=None):
-                self.calls.append((query, categories))
-                return []
-
-            def get_enriched_indexer_ids(self, restrict_to=None):
-                return []
-
         import shelfmark.release_sources.prowlarr.source as prowlarr_source
 
         def fake_get(key: str, default=None):
@@ -273,7 +281,7 @@ class TestProwlarrLocalizedQueries:
 
         monkeypatch.setattr(prowlarr_source.config, "get", fake_get)
 
-        fake_client = FakeClient()
+        fake_client = FakeTorznabClient()
         source = ProwlarrSource()
         monkeypatch.setattr(source, "_get_client", lambda: fake_client)
 
@@ -292,17 +300,6 @@ class TestProwlarrLocalizedQueries:
         assert fake_client.calls == [("my custom", None)]
 
     def test_search_uses_localized_titles_when_available(self, monkeypatch):
-        class FakeClient:
-            def __init__(self):
-                self.queries: list[str] = []
-
-            def search(self, query: str, indexer_ids=None, categories=None):
-                self.queries.append(query)
-                return []
-
-            def get_enriched_indexer_ids(self, restrict_to=None):
-                return []
-
         import shelfmark.release_sources.prowlarr.source as prowlarr_source
 
         def fake_get(key: str, default=None):
@@ -314,7 +311,7 @@ class TestProwlarrLocalizedQueries:
 
         monkeypatch.setattr(prowlarr_source.config, "get", fake_get)
 
-        fake_client = FakeClient()
+        fake_client = FakeTorznabClient()
         source = ProwlarrSource()
         monkeypatch.setattr(source, "_get_client", lambda: fake_client)
 
@@ -336,17 +333,6 @@ class TestProwlarrLocalizedQueries:
         assert len(fake_client.queries) == 2
 
     def test_search_does_not_override_search_title_for_english(self, monkeypatch):
-        class FakeClient:
-            def __init__(self):
-                self.queries: list[str] = []
-
-            def search(self, query: str, indexer_ids=None, categories=None):
-                self.queries.append(query)
-                return []
-
-            def get_enriched_indexer_ids(self, restrict_to=None):
-                return []
-
         import shelfmark.release_sources.prowlarr.source as prowlarr_source
 
         def fake_get(key: str, default=None):
@@ -358,7 +344,7 @@ class TestProwlarrLocalizedQueries:
 
         monkeypatch.setattr(prowlarr_source.config, "get", fake_get)
 
-        fake_client = FakeClient()
+        fake_client = FakeTorznabClient()
         source = ProwlarrSource()
         monkeypatch.setattr(source, "_get_client", lambda: fake_client)
 

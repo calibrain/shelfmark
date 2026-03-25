@@ -4,6 +4,7 @@ import {
   Book,
   Release,
   RequestRecord,
+  RequestSubmissionResult,
   StatusData,
   AppConfig,
   ContentType,
@@ -13,6 +14,7 @@ import {
   ActingAsUserSelection,
   MetadataProviderSummary,
   MetadataSearchConfig,
+  QueuedDownloadResult,
   QueryTargetOption,
   SearchMode,
   isMetadataBook,
@@ -141,6 +143,37 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
     return error.message;
   }
   return fallback;
+};
+
+const isQueuedDownloadResult = (value: unknown): value is QueuedDownloadResult => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const row = value as Record<string, unknown>;
+  return row.kind === 'download' && row.status === 'queued';
+};
+
+const getSubmissionSuccessMessage = (
+  results: RequestSubmissionResult[],
+  fallback: string,
+): string => {
+  const queuedDownloads = results.filter(isQueuedDownloadResult);
+  if (queuedDownloads.length === 0) {
+    return fallback;
+  }
+
+  if (queuedDownloads.length === results.length) {
+    if (queuedDownloads.length === 1) {
+      const title = typeof queuedDownloads[0].title === 'string' && queuedDownloads[0].title.trim()
+        ? queuedDownloads[0].title.trim()
+        : 'Untitled';
+      return `Download queued: ${title}`;
+    }
+    return 'Downloads queued';
+  }
+
+  return 'Download queued and request submitted';
 };
 
 const CONFIRMED_DOWNLOAD_INTERRUPTED_MESSAGE =
@@ -1097,9 +1130,12 @@ function App() {
   const submitRequests = useCallback(
     async (payloads: CreateRequestPayload[], successMessage: string): Promise<boolean> => {
       try {
-        await createRequests(payloads);
+        const results = await createRequests(payloads);
         await refreshActivitySnapshot();
-        showToast(successMessage, 'success');
+        if (results.some(isQueuedDownloadResult)) {
+          await fetchStatus();
+        }
+        showToast(getSubmissionSuccessMessage(results, successMessage), 'success');
         await refreshRequestPolicy({ force: true });
         return true;
       } catch (error) {
@@ -1111,7 +1147,7 @@ function App() {
         return false;
       }
     },
-    [showToast, refreshRequestPolicy, refreshActivitySnapshot]
+    [fetchStatus, showToast, refreshRequestPolicy, refreshActivitySnapshot]
   );
 
   const openRequestConfirmation = useCallback((
