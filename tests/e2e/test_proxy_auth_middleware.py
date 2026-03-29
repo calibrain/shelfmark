@@ -18,6 +18,13 @@ def _as_response(result: Any):
     return result
 
 
+def _config_getter(values: dict[str, Any]):
+    def _get(key: str, default: Any = None, user_id: Any = None):
+        return values.get(key, default)
+
+    return _get
+
+
 @pytest.fixture(scope="module")
 def main_module():
     with patch("shelfmark.download.orchestrator.start"):
@@ -43,9 +50,10 @@ class TestProxyAuthMiddleware:
 
     def test_allows_auth_check_without_header(self, main_module):
         with patch.object(main_module, "get_auth_mode", return_value="proxy"):
-            with patch(
-                "shelfmark.core.settings_registry.load_config_file",
-                return_value={"PROXY_AUTH_USER_HEADER": "X-Auth-User"},
+            with patch.object(
+                main_module.app_config,
+                "get",
+                side_effect=_config_getter({"PROXY_AUTH_USER_HEADER": "X-Auth-User"}),
             ):
                 with main_module.app.test_request_context("/api/auth/check"):
                     result = main_module.proxy_auth_middleware()
@@ -54,11 +62,10 @@ class TestProxyAuthMiddleware:
 
     def test_sets_session_from_header(self, main_module):
         with patch.object(main_module, "get_auth_mode", return_value="proxy"):
-            with patch(
-                "shelfmark.core.settings_registry.load_config_file",
-                return_value={
-                    "PROXY_AUTH_USER_HEADER": "X-Auth-User",
-                },
+            with patch.object(
+                main_module.app_config,
+                "get",
+                side_effect=_config_getter({"PROXY_AUTH_USER_HEADER": "X-Auth-User"}),
             ):
                 with main_module.app.test_request_context(
                     "/api/releases",
@@ -84,9 +91,10 @@ class TestProxyAuthMiddleware:
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="proxy"):
-            with patch(
-                "shelfmark.core.settings_registry.load_config_file",
-                return_value={"PROXY_AUTH_USER_HEADER": "X-Auth-User"},
+            with patch.object(
+                main_module.app_config,
+                "get",
+                side_effect=_config_getter({"PROXY_AUTH_USER_HEADER": "X-Auth-User"}),
             ):
                 with main_module.app.test_request_context(
                     "/api/releases",
@@ -104,11 +112,10 @@ class TestProxyAuthMiddleware:
 
     def test_reprovisions_when_proxy_identity_changes(self, main_module):
         with patch.object(main_module, "get_auth_mode", return_value="proxy"):
-            with patch(
-                "shelfmark.core.settings_registry.load_config_file",
-                return_value={
-                    "PROXY_AUTH_USER_HEADER": "X-Auth-User",
-                },
+            with patch.object(
+                main_module.app_config,
+                "get",
+                side_effect=_config_getter({"PROXY_AUTH_USER_HEADER": "X-Auth-User"}),
             ):
                 with main_module.app.test_request_context(
                     "/api/releases",
@@ -130,11 +137,10 @@ class TestProxyAuthMiddleware:
         assert main_module.user_db.get_user(user_id=stale_user_id) is None
 
         with patch.object(main_module, "get_auth_mode", return_value="proxy"):
-            with patch(
-                "shelfmark.core.settings_registry.load_config_file",
-                return_value={
-                    "PROXY_AUTH_USER_HEADER": "X-Auth-User",
-                },
+            with patch.object(
+                main_module.app_config,
+                "get",
+                side_effect=_config_getter({"PROXY_AUTH_USER_HEADER": "X-Auth-User"}),
             ):
                 with main_module.app.test_request_context(
                     "/api/releases",
@@ -164,11 +170,10 @@ class TestProxyAuthMiddleware:
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="proxy"):
-            with patch(
-                "shelfmark.core.settings_registry.load_config_file",
-                return_value={
-                    "PROXY_AUTH_USER_HEADER": "X-Auth-User",
-                },
+            with patch.object(
+                main_module.app_config,
+                "get",
+                side_effect=_config_getter({"PROXY_AUTH_USER_HEADER": "X-Auth-User"}),
             ):
                 with main_module.app.test_request_context(
                     "/api/releases",
@@ -191,9 +196,10 @@ class TestProxyAuthMiddleware:
 
     def test_returns_401_when_header_missing_on_protected_path(self, main_module):
         with patch.object(main_module, "get_auth_mode", return_value="proxy"):
-            with patch(
-                "shelfmark.core.settings_registry.load_config_file",
-                return_value={"PROXY_AUTH_USER_HEADER": "X-Auth-User"},
+            with patch.object(
+                main_module.app_config,
+                "get",
+                side_effect=_config_getter({"PROXY_AUTH_USER_HEADER": "X-Auth-User"}),
             ):
                 with main_module.app.test_request_context("/api/releases"):
                     resp = _as_response(main_module.proxy_auth_middleware())
@@ -204,13 +210,14 @@ class TestProxyAuthMiddleware:
 
     def test_admin_group_membership(self, main_module):
         with patch.object(main_module, "get_auth_mode", return_value="proxy"):
-            with patch(
-                "shelfmark.core.settings_registry.load_config_file",
-                return_value={
+            with patch.object(
+                main_module.app_config,
+                "get",
+                side_effect=_config_getter({
                     "PROXY_AUTH_USER_HEADER": "X-Auth-User",
                     "PROXY_AUTH_ADMIN_GROUP_HEADER": "X-Auth-Groups",
                     "PROXY_AUTH_ADMIN_GROUP_NAME": "admins",
-                },
+                }),
             ):
                 with main_module.app.test_request_context(
                     "/api/releases",
@@ -259,78 +266,58 @@ class TestLoginRequiredDecorator:
 
     def test_settings_access_requires_admin_even_when_legacy_toggle_off(self, main_module, view):
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch(
-                "shelfmark.core.settings_registry.load_config_file",
-                return_value={"RESTRICT_SETTINGS_TO_ADMIN": False},
-            ):
-                with main_module.app.test_request_context("/api/settings/general"):
-                    main_module.session["user_id"] = "user"
-                    main_module.session["is_admin"] = False
-                    decorated = main_module.login_required(view)
-                    resp = _as_response(decorated())
-                    data = resp.get_json()
+            with main_module.app.test_request_context("/api/settings/general"):
+                main_module.session["user_id"] = "user"
+                main_module.session["is_admin"] = False
+                decorated = main_module.login_required(view)
+                resp = _as_response(decorated())
+                data = resp.get_json()
 
         assert resp.status_code == 403
         assert "Admin access required" in (data.get("error") or "")
 
     def test_security_tab_always_blocks_non_admin_even_when_toggle_off(self, main_module, view):
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch(
-                "shelfmark.core.settings_registry.load_config_file",
-                return_value={"RESTRICT_SETTINGS_TO_ADMIN": False},
-            ):
-                with main_module.app.test_request_context("/api/settings/security"):
-                    main_module.session["user_id"] = "user"
-                    main_module.session["is_admin"] = False
-                    decorated = main_module.login_required(view)
-                    resp = _as_response(decorated())
-                    data = resp.get_json()
+            with main_module.app.test_request_context("/api/settings/security"):
+                main_module.session["user_id"] = "user"
+                main_module.session["is_admin"] = False
+                decorated = main_module.login_required(view)
+                resp = _as_response(decorated())
+                data = resp.get_json()
 
         assert resp.status_code == 403
         assert "Admin access required" in (data.get("error") or "")
 
     def test_users_tab_always_blocks_non_admin_even_when_toggle_off(self, main_module, view):
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch(
-                "shelfmark.core.settings_registry.load_config_file",
-                return_value={"RESTRICT_SETTINGS_TO_ADMIN": False},
-            ):
-                with main_module.app.test_request_context("/api/settings/users"):
-                    main_module.session["user_id"] = "user"
-                    main_module.session["is_admin"] = False
-                    decorated = main_module.login_required(view)
-                    resp = _as_response(decorated())
-                    data = resp.get_json()
+            with main_module.app.test_request_context("/api/settings/users"):
+                main_module.session["user_id"] = "user"
+                main_module.session["is_admin"] = False
+                decorated = main_module.login_required(view)
+                resp = _as_response(decorated())
+                data = resp.get_json()
 
         assert resp.status_code == 403
         assert "Admin access required" in (data.get("error") or "")
 
     def test_proxy_admin_restriction_blocks_non_admin(self, main_module, view):
         with patch.object(main_module, "get_auth_mode", return_value="proxy"):
-            with patch(
-                "shelfmark.core.settings_registry.load_config_file",
-                return_value={"RESTRICT_SETTINGS_TO_ADMIN": True},
-            ):
-                with main_module.app.test_request_context("/api/settings/general"):
-                    main_module.session["user_id"] = "user"
-                    main_module.session["is_admin"] = False
-                    decorated = main_module.login_required(view)
-                    resp = _as_response(decorated())
-                    data = resp.get_json()
+            with main_module.app.test_request_context("/api/settings/general"):
+                main_module.session["user_id"] = "user"
+                main_module.session["is_admin"] = False
+                decorated = main_module.login_required(view)
+                resp = _as_response(decorated())
+                data = resp.get_json()
 
         assert resp.status_code == 403
         assert "Admin access required" in (data.get("error") or "")
 
     def test_cwa_admin_restriction_blocks_non_admin(self, main_module, view):
         with patch.object(main_module, "get_auth_mode", return_value="cwa"):
-            with patch(
-                "shelfmark.core.settings_registry.load_config_file",
-                return_value={"RESTRICT_SETTINGS_TO_ADMIN": True},
-            ):
-                with main_module.app.test_request_context("/api/settings/general"):
-                    main_module.session["user_id"] = "user"
-                    main_module.session["is_admin"] = False
-                    decorated = main_module.login_required(view)
-                    resp = _as_response(decorated())
+            with main_module.app.test_request_context("/api/settings/general"):
+                main_module.session["user_id"] = "user"
+                main_module.session["is_admin"] = False
+                decorated = main_module.login_required(view)
+                resp = _as_response(decorated())
 
         assert resp.status_code == 403

@@ -4,6 +4,7 @@ from typing import Any, Callable
 
 from flask import Flask, jsonify, request
 
+from shelfmark.core.config import config as app_config
 from shelfmark.config.notifications_settings import (
     build_notification_test_result,
     is_valid_notification_url,
@@ -143,16 +144,14 @@ def register_admin_settings_routes(
     @app.route("/api/admin/download-defaults", methods=["GET"])
     @require_admin
     def admin_download_defaults():
-        config = load_config_file("downloads")
         defaults = {
-            key: ("" if (value := config.get(key, field.default)) is None else value)
+            key: ("" if (value := app_config.get(key, field.default)) is None else value)
             for key, field in _get_ordered_user_overridable_fields("downloads")
         }
 
-        security_config = load_config_file("security")
-        defaults["OIDC_ADMIN_GROUP"] = security_config.get("OIDC_ADMIN_GROUP", "")
-        defaults["OIDC_USE_ADMIN_GROUP"] = security_config.get("OIDC_USE_ADMIN_GROUP", True)
-        defaults["OIDC_AUTO_PROVISION"] = security_config.get("OIDC_AUTO_PROVISION", True)
+        defaults["OIDC_ADMIN_GROUP"] = app_config.get("OIDC_ADMIN_GROUP", "")
+        defaults["OIDC_USE_ADMIN_GROUP"] = app_config.get("OIDC_USE_ADMIN_GROUP", True)
+        defaults["OIDC_AUTO_PROVISION"] = app_config.get("OIDC_AUTO_PROVISION", True)
         return jsonify(defaults)
 
     @app.route("/api/admin/booklore-options", methods=["GET"])

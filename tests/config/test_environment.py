@@ -252,6 +252,24 @@ class TestSettingsSystem:
         assert string_to_bool("0") is False
         assert string_to_bool("anything_else") is False
 
+    def test_request_policy_loader_reads_env_backed_values(self, monkeypatch):
+        """Request-policy helpers should read effective values via the config singleton."""
+        from shelfmark.core.config import config
+        from shelfmark.core.request_helpers import load_users_request_policy_settings
+
+        monkeypatch.setenv("REQUESTS_ENABLED", "true")
+        monkeypatch.setenv("REQUEST_POLICY_DEFAULT_EBOOK", "blocked")
+        config.refresh(force=True)
+
+        try:
+            settings = load_users_request_policy_settings()
+            assert settings["REQUESTS_ENABLED"] is True
+            assert settings["REQUEST_POLICY_DEFAULT_EBOOK"] == "blocked"
+        finally:
+            monkeypatch.delenv("REQUESTS_ENABLED", raising=False)
+            monkeypatch.delenv("REQUEST_POLICY_DEFAULT_EBOOK", raising=False)
+            config.refresh(force=True)
+
 
 # =============================================================================
 # Archive Handling Configuration Tests

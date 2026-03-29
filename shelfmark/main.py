@@ -549,8 +549,6 @@ def proxy_auth_middleware():
     if request.path == '/api/health':
         return None
 
-    from shelfmark.core.settings_registry import load_config_file
-
     def get_proxy_header(header_name: str) -> str | None:
         """Resolve proxy auth values from headers with WSGI env fallbacks."""
         value = request.headers.get(header_name)
@@ -569,8 +567,7 @@ def proxy_auth_middleware():
         return None
 
     try:
-        security_config = load_config_file("security")
-        user_header = security_config.get("PROXY_AUTH_USER_HEADER", "X-Auth-User")
+        user_header = app_config.get("PROXY_AUTH_USER_HEADER", "X-Auth-User")
 
         # Extract username from proxy header
         username = get_proxy_header(user_header)
@@ -586,8 +583,8 @@ def proxy_auth_middleware():
         # If an admin group is configured, derive from groups header.
         # Otherwise preserve existing DB role for known users and default
         # first-time users to admin (to avoid lockouts).
-        admin_group_header = security_config.get("PROXY_AUTH_ADMIN_GROUP_HEADER", "X-Auth-Groups")
-        admin_group_name = str(security_config.get("PROXY_AUTH_ADMIN_GROUP_NAME", "") or "").strip()
+        admin_group_header = app_config.get("PROXY_AUTH_ADMIN_GROUP_HEADER", "X-Auth-Groups")
+        admin_group_name = str(app_config.get("PROXY_AUTH_ADMIN_GROUP_NAME", "") or "").strip()
         is_admin = True
 
         if admin_group_name:
@@ -685,12 +682,9 @@ def login_required(f):
 
         # Check admin access for settings/onboarding endpoints.
         if is_settings_or_onboarding_path(request.path):
-            from shelfmark.core.settings_registry import load_config_file
-
             try:
-                users_config = load_config_file("users")
                 if (
-                    requires_admin_for_settings_access(request.path, users_config)
+                    requires_admin_for_settings_access(request.path, {})
                     and not session.get('is_admin', False)
                 ):
                     return jsonify({"error": "Admin access required"}), 403
@@ -1857,8 +1851,6 @@ def api_logout() -> Union[Response, Tuple[Response, int]]:
     Returns:
         flask.Response: JSON with success status and optional logout_url.
     """
-    from shelfmark.core.settings_registry import load_config_file
-    
     try:
         auth_mode = get_auth_mode()
         ip_address = get_client_ip()
@@ -1868,8 +1860,7 @@ def api_logout() -> Union[Response, Tuple[Response, int]]:
         
         # For proxy auth, include logout URL if configured
         if auth_mode == "proxy":
-            security_config = load_config_file("security")
-            logout_url = security_config.get("PROXY_AUTH_LOGOUT_URL", "")
+            logout_url = app_config.get("PROXY_AUTH_LOGOUT_URL", "")
             if logout_url:
                 return jsonify({"success": True, "logout_url": logout_url})
         
@@ -1887,11 +1878,7 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
         flask.Response: JSON with authentication status, whether auth is required,
         which auth mode is active, and whether user has admin privileges.
     """
-    from shelfmark.core.settings_registry import load_config_file
-
     try:
-        security_config = load_config_file("security")
-        users_config = load_config_file("users")
         auth_mode = get_auth_mode()
 
         # If no authentication is configured, access is allowed (full admin)
@@ -1906,7 +1893,7 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
         # Check if user has a valid session
         is_authenticated = 'user_id' in session
 
-        is_admin = get_auth_check_admin_status(auth_mode, users_config, session)
+        is_admin = get_auth_check_admin_status(auth_mode, {}, session)
 
         display_name = None
         if is_authenticated and session.get('db_user_id') and user_db is not None:
@@ -1927,14 +1914,14 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
         }
         
         # Add logout URL for proxy auth if configured
-        if auth_mode == "proxy" and security_config.get("PROXY_AUTH_USER_HEADER"):
-            logout_url = security_config.get("PROXY_AUTH_LOGOUT_URL", "")
+        if auth_mode == "proxy" and app_config.get("PROXY_AUTH_USER_HEADER", ""):
+            logout_url = app_config.get("PROXY_AUTH_LOGOUT_URL", "")
             if logout_url:
                 response_data["logout_url"] = logout_url
 
         # Add custom OIDC button label and SSO enforcement flags if configured
         if auth_mode == "oidc":
-            oidc_button_label = security_config.get("OIDC_BUTTON_LABEL", "")
+            oidc_button_label = app_config.get("OIDC_BUTTON_LABEL", "")
             if oidc_button_label:
                 response_data["oidc_button_label"] = oidc_button_label
             if HIDE_LOCAL_AUTH:

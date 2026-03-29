@@ -24,6 +24,13 @@ def _as_response(result: Any):
     return result
 
 
+def _config_getter(values: dict[str, Any]):
+    def _get(key: str, default: Any = None, user_id: Any = None):
+        return values.get(key, default)
+
+    return _get
+
+
 @pytest.fixture(scope="module")
 def main_module():
     """Import `shelfmark.main` with background thread startup disabled."""
@@ -37,49 +44,43 @@ def main_module():
 
 class TestGetAuthMode:
     def test_get_auth_mode_none(self, main_module):
-        with patch("shelfmark.core.settings_registry.load_config_file", return_value={"AUTH_METHOD": "none"}):
+        with patch.object(main_module.app_config, "get", side_effect=_config_getter({"AUTH_METHOD": "none"})):
             assert main_module.get_auth_mode() == "none"
 
     def test_get_auth_mode_builtin(self, main_module):
-        with patch(
-            "shelfmark.core.settings_registry.load_config_file",
-            return_value={"AUTH_METHOD": "builtin"},
-        ):
+        with patch.object(main_module.app_config, "get", side_effect=_config_getter({"AUTH_METHOD": "builtin"})):
             with patch("shelfmark.core.auth_modes.has_local_password_admin", return_value=True):
                 assert main_module.get_auth_mode() == "builtin"
 
     def test_get_auth_mode_builtin_without_local_admin_falls_back_to_none(self, main_module):
-        with patch(
-            "shelfmark.core.settings_registry.load_config_file",
-            return_value={"AUTH_METHOD": "builtin"},
-        ):
+        with patch.object(main_module.app_config, "get", side_effect=_config_getter({"AUTH_METHOD": "builtin"})):
             with patch("shelfmark.core.auth_modes.has_local_password_admin", return_value=False):
                 assert main_module.get_auth_mode() == "none"
 
     def test_get_auth_mode_proxy(self, main_module):
-        with patch(
-            "shelfmark.core.settings_registry.load_config_file",
-            return_value={"AUTH_METHOD": "proxy", "PROXY_AUTH_USER_HEADER": "X-Auth-User"},
+        with patch.object(
+            main_module.app_config,
+            "get",
+            side_effect=_config_getter({"AUTH_METHOD": "proxy", "PROXY_AUTH_USER_HEADER": "X-Auth-User"}),
         ):
             assert main_module.get_auth_mode() == "proxy"
 
     def test_get_auth_mode_cwa(self, main_module):
-        with patch("shelfmark.core.settings_registry.load_config_file", return_value={"AUTH_METHOD": "cwa"}):
+        with patch.object(main_module.app_config, "get", side_effect=_config_getter({"AUTH_METHOD": "cwa"})):
             with patch.object(main_module, "CWA_DB_PATH", object()):
                 assert main_module.get_auth_mode() == "cwa"
 
     def test_get_auth_mode_default_on_error(self, main_module):
-        with patch("shelfmark.core.settings_registry.load_config_file", side_effect=Exception("boom")):
+        with patch.object(main_module.app_config, "get", side_effect=Exception("boom")):
             assert main_module.get_auth_mode() == "none"
 
 
 class TestAuthCheckEndpoint:
     def test_auth_check_no_auth(self, main_module):
         with patch.object(main_module, "get_auth_mode", return_value="none"):
-            with patch("shelfmark.core.settings_registry.load_config_file", return_value={}):
-                with main_module.app.test_request_context("/api/auth/check"):
-                    resp = _as_response(main_module.api_auth_check())
-                    data = resp.get_json()
+            with main_module.app.test_request_context("/api/auth/check"):
+                resp = _as_response(main_module.api_auth_check())
+                data = resp.get_json()
 
         assert resp.status_code == 200
         assert data == {
@@ -91,10 +92,9 @@ class TestAuthCheckEndpoint:
 
     def test_auth_check_builtin_not_authenticated(self, main_module):
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch("shelfmark.core.settings_registry.load_config_file", return_value={}):
-                with main_module.app.test_request_context("/api/auth/check"):
-                    resp = _as_response(main_module.api_auth_check())
-                    data = resp.get_json()
+            with main_module.app.test_request_context("/api/auth/check"):
+                resp = _as_response(main_module.api_auth_check())
+                data = resp.get_json()
 
         assert resp.status_code == 200
         assert data["authenticated"] is False
@@ -105,12 +105,11 @@ class TestAuthCheckEndpoint:
 
     def test_auth_check_builtin_authenticated(self, main_module):
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch("shelfmark.core.settings_registry.load_config_file", return_value={}):
-                with main_module.app.test_request_context("/api/auth/check"):
-                    main_module.session["user_id"] = "admin"
-                    main_module.session["is_admin"] = True
-                    resp = _as_response(main_module.api_auth_check())
-                    data = resp.get_json()
+            with main_module.app.test_request_context("/api/auth/check"):
+                main_module.session["user_id"] = "admin"
+                main_module.session["is_admin"] = True
+                resp = _as_response(main_module.api_auth_check())
+                data = resp.get_json()
 
         assert resp.status_code == 200
         assert data["authenticated"] is True
@@ -121,12 +120,13 @@ class TestAuthCheckEndpoint:
 
     def test_auth_check_proxy_includes_logout_url(self, main_module):
         with patch.object(main_module, "get_auth_mode", return_value="proxy"):
-            with patch(
-                "shelfmark.core.settings_registry.load_config_file",
-                return_value={
+            with patch.object(
+                main_module.app_config,
+                "get",
+                side_effect=_config_getter({
                     "PROXY_AUTH_USER_HEADER": "X-Auth-User",
                     "PROXY_AUTH_LOGOUT_URL": "https://auth.example.com/logout",
-                },
+                }),
             ):
                 with main_module.app.test_request_context("/api/auth/check"):
                     main_module.session["user_id"] = "proxyuser"
@@ -287,9 +287,10 @@ class TestLoginEndpoint:
 class TestLogoutEndpoint:
     def test_logout_proxy_returns_logout_url(self, main_module):
         with patch.object(main_module, "get_auth_mode", return_value="proxy"):
-            with patch(
-                "shelfmark.core.settings_registry.load_config_file",
-                return_value={"PROXY_AUTH_LOGOUT_URL": "https://auth.example.com/logout"},
+            with patch.object(
+                main_module.app_config,
+                "get",
+                side_effect=_config_getter({"PROXY_AUTH_LOGOUT_URL": "https://auth.example.com/logout"}),
             ):
                 with main_module.app.test_request_context("/api/auth/logout", method="POST"):
                     main_module.session["user_id"] = "proxyuser"
@@ -302,11 +303,10 @@ class TestLogoutEndpoint:
 
     def test_logout_basic(self, main_module):
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch("shelfmark.core.settings_registry.load_config_file", return_value={}):
-                with main_module.app.test_request_context("/api/auth/logout", method="POST"):
-                    main_module.session["user_id"] = "admin"
-                    resp = _as_response(main_module.api_logout())
-                    data = resp.get_json()
+            with main_module.app.test_request_context("/api/auth/logout", method="POST"):
+                main_module.session["user_id"] = "admin"
+                resp = _as_response(main_module.api_logout())
+                data = resp.get_json()
 
         assert resp.status_code == 200
         assert data["success"] is True

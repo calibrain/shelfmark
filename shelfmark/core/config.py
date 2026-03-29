@@ -106,18 +106,9 @@ class Config:
         self._field_map.clear()
         self._cache.clear()
 
-        for tab in registry.get_all_settings_tabs():
-            for field in tab.fields:
-                # Skip action buttons and headings - they don't have values
-                if isinstance(field, (registry.ActionButton, registry.HeadingField)):
-                    continue
-
-                key = field.key
-                self._field_map[key] = (field, tab.name)
-
-                # Load current value
-                value = registry.get_setting_value(field, tab.name)
-                self._cache[key] = value
+        for key, (field, tab_name) in registry.get_settings_field_map().items():
+            self._field_map[key] = (field, tab_name)
+            self._cache[key] = registry.get_setting_value(field, tab_name)
 
         self._loaded = True
 

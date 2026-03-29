@@ -6,6 +6,7 @@ import re
 from typing import Any
 from urllib.parse import urlsplit
 
+from shelfmark.core.config import config as app_config
 from shelfmark.core.notifications import NotificationEvent, send_test_notification
 from shelfmark.core.settings_registry import (
     ActionButton,
@@ -245,8 +246,9 @@ def _on_save_notifications(values: dict[str, Any]) -> dict[str, Any]:
 
 
 def _test_admin_notification_action(current_values: dict[str, Any]) -> dict[str, Any]:
-    persisted = load_config_file("notifications")
-    effective: dict[str, Any] = dict(persisted)
+    effective: dict[str, Any] = {
+        "ADMIN_NOTIFICATION_ROUTES": app_config.get("ADMIN_NOTIFICATION_ROUTES", []),
+    }
     if isinstance(current_values, dict):
         effective.update(current_values)
 

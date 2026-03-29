@@ -17,6 +17,7 @@ from shelfmark.config.booklore_settings import (
     get_booklore_path_options,
 )
 from shelfmark.config.env import CWA_DB_PATH
+from shelfmark.core.config import config as app_config
 from shelfmark.core.admin_settings_routes import (
     register_admin_settings_routes,
     validate_user_settings,
@@ -32,7 +33,6 @@ from shelfmark.core.auth_modes import (
 )
 from shelfmark.core.cwa_user_sync import sync_cwa_users_from_rows
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
@@ -47,10 +47,12 @@ def _get_user_edit_capabilities(
         user.get("auth_source"),
         user.get("oidc_subject"),
     )
-    if security_config is None and auth_source == AUTH_SOURCE_OIDC:
-        security_config = load_config_file("security")
-
-    oidc_use_admin_group = bool((security_config or {}).get("OIDC_USE_ADMIN_GROUP", True))
+    oidc_use_admin_group = bool(
+        (security_config or {}).get(
+            "OIDC_USE_ADMIN_GROUP",
+            app_config.get("OIDC_USE_ADMIN_GROUP", True),
+        )
+    )
     role_managed_by_oidc_group = auth_source == AUTH_SOURCE_OIDC and oidc_use_admin_group
     can_edit_role = auth_source == AUTH_SOURCE_BUILTIN or (
         auth_source == AUTH_SOURCE_OIDC and not role_managed_by_oidc_group
@@ -72,8 +74,11 @@ def _sanitize_user(user: dict) -> dict:
     return sanitized
 
 
-def _oidc_role_management_message(security_config: dict[str, Any]) -> str:
-    admin_group = security_config.get("OIDC_ADMIN_GROUP", "")
+def _oidc_role_management_message(security_config: dict[str, Any] | None = None) -> str:
+    admin_group = (security_config or {}).get(
+        "OIDC_ADMIN_GROUP",
+        app_config.get("OIDC_ADMIN_GROUP", ""),
+    )
     if admin_group:
         return (
             "Admin roles for OIDC users are managed by the "
@@ -152,9 +157,8 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         """List all users."""
         users = user_db.list_users()
         auth_mode = g.auth_mode
-        security_config = load_config_file("security")
         return jsonify([
-            _serialize_user(u, auth_mode, security_config=security_config)
+            _serialize_user(u, auth_mode)
             for u in users
         ])
 
@@ -217,7 +221,6 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             _serialize_user(
                 user,
                 g.auth_mode,
-                security_config=load_config_file("security"),
             )
         ), 201
 
@@ -232,7 +235,6 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         result = _serialize_user(
             user,
             g.auth_mode,
-            security_config=load_config_file("security"),
         )
         result["settings"] = user_db.get_user_settings(user_id)
         return jsonify(result)
@@ -246,12 +248,11 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             return jsonify({"error": "User not found"}), 404
 
         data = request.get_json() or {}
-        security_config = load_config_file("security")
         auth_source = normalize_auth_source(
             user.get("auth_source"),
             user.get("oidc_subject"),
         )
-        capabilities = _get_user_edit_capabilities(user, security_config=security_config)
+        capabilities = _get_user_edit_capabilities(user)
 
         # Handle optional password update
         password = data.get("password", "")
@@ -285,7 +286,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             if auth_source == AUTH_SOURCE_OIDC:
                 return jsonify({
                     "error": "Cannot change role for OIDC user when group-based authorization is enabled",
-                    "message": _oidc_role_management_message(security_config),
+                    "message": _oidc_role_management_message(),
                 }), 400
 
             return jsonify({
@@ -347,7 +348,6 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         result = _serialize_user(
             updated,
             g.auth_mode,
-            security_config=security_config,
         )
         result["settings"] = user_db.get_user_settings(user_id)
         logger.info(f"Admin updated user {user_id}")
