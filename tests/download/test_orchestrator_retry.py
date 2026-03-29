@@ -62,6 +62,36 @@ def test_retry_download_rejects_request_linked_tasks(monkeypatch):
     mock_queue.enqueue_existing.assert_not_called()
 
 
+def test_can_retry_download_task_allows_request_postprocess_retry_when_staged_file_exists(tmp_path):
+    import shelfmark.download.orchestrator as orchestrator
+
+    staged_file = tmp_path / "requested-staged.epub"
+    staged_file.write_text("staged")
+    task = DownloadTask(
+        task_id="task-request-staged-1",
+        source="prowlarr",
+        title="Requested Retryable",
+        request_id=123,
+        staged_path=str(staged_file),
+    )
+
+    assert orchestrator.can_retry_download_task(task, QueueStatus.ERROR) is True
+
+
+def test_can_retry_download_task_blocks_request_error_retry_without_staged_file():
+    import shelfmark.download.orchestrator as orchestrator
+
+    task = DownloadTask(
+        task_id="task-request-staged-2",
+        source="prowlarr",
+        title="Requested Not Retryable",
+        request_id=123,
+        staged_path="/tmp/does-not-exist.epub",
+    )
+
+    assert orchestrator.can_retry_download_task(task, QueueStatus.ERROR) is False
+
+
 def test_finalize_download_failure_sets_terminal_error(monkeypatch):
     import shelfmark.download.orchestrator as orchestrator
 

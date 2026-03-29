@@ -84,6 +84,13 @@ class DownloadTask:
     preview: Optional[str] = None
     content_type: Optional[str] = None  # "book (fiction)", "audiobook", "magazine", etc.
     source_url: Optional[str] = None  # Original release URL used by source-specific handlers
+    retry_download_url: Optional[str] = None  # Resolved download URL for restart-safe retries
+    retry_download_protocol: Optional[str] = None  # Protocol for retry_download_url (e.g. torrent, usenet)
+    retry_release_name: Optional[str] = None  # Display name to send back to external download clients
+    retry_expected_hash: Optional[str] = None  # Optional torrent hash used to match client downloads
+    retry_ratio_limit: Optional[float] = None  # Optional post-download seeding ratio
+    retry_seeding_time_limit_minutes: Optional[int] = None  # Optional post-download seeding time limit
+    can_retry_without_staged_source: bool = True  # Whether the source can restart without a preserved staged file
 
     # Series info (for library naming templates)
     series_name: Optional[str] = None

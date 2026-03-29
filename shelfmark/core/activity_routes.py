@@ -336,6 +336,7 @@ def _effective_download_row_for_activity(
 
     effective_row = dict(row)
     effective_row["final_status"] = QueueStatus.ERROR.value
+    effective_row["retry_final_status"] = final_status
 
     status_message = effective_row.get("status_message")
     if not isinstance(status_message, str) or not status_message.strip():
@@ -364,9 +365,9 @@ def _build_download_status_from_db(
             continue
 
         final_status = row.get("final_status")
+        queue_entry = queue_index.pop(task_id, None)
 
         if final_status == ACTIVE_DOWNLOAD_STATUS:
-            queue_entry = queue_index.pop(task_id, None)
             if queue_entry is not None:
                 bucket_key, queue_payload = queue_entry
                 status[bucket_key][task_id] = queue_payload
@@ -379,6 +380,10 @@ def _build_download_status_from_db(
                 status[QueueStatus.ERROR][task_id] = download_payload
         elif final_status in VALID_TERMINAL_STATUSES:
             download_payload = DownloadHistoryService.to_download_payload(row)
+            if queue_entry is not None:
+                _, queue_payload = queue_entry
+                if isinstance(queue_payload, dict) and "retry_available" in queue_payload:
+                    download_payload["retry_available"] = bool(queue_payload.get("retry_available"))
             # For complete/cancelled the saved status_message is a stale
             # progress string (e.g. "Fetching download sources") — clear it
             # so the frontend only shows its own status label.  Error rows

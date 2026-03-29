@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import threading
@@ -74,9 +75,17 @@ class DownloadHistoryService:
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
-    @staticmethod
-    def _row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
-        return dict(row) if row is not None else None
+    @classmethod
+    def _normalize_row_dict(cls, row: dict[str, Any] | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        normalized = dict(row)
+        normalized["retry_payload"] = cls._deserialize_retry_payload(normalized.get("retry_payload"))
+        return normalized
+
+    @classmethod
+    def _row_to_dict(cls, row: sqlite3.Row | None) -> dict[str, Any] | None:
+        return cls._normalize_row_dict(dict(row) if row is not None else None)
 
     @staticmethod
     def _to_item_key(task_id: str) -> str:
@@ -88,6 +97,69 @@ class DownloadHistoryService:
         if normalized is None:
             return None
         return normalized if os.path.exists(normalized) else None
+
+    @staticmethod
+    def _serialize_retry_payload(payload: Any) -> str | None:
+        if payload is None:
+            return None
+        try:
+            return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("retry_payload must be JSON-serializable") from exc
+
+    @staticmethod
+    def _deserialize_retry_payload(value: Any) -> dict[str, Any] | None:
+        if isinstance(value, dict):
+            return dict(value)
+        normalized = normalize_optional_text(value)
+        if normalized is None:
+            return None
+        try:
+            parsed = json.loads(normalized)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    @staticmethod
+    def _has_staged_retry_source(retry_payload: dict[str, Any]) -> bool:
+        staged_path = retry_payload.get("staged_path")
+        normalized_staged_path = normalize_optional_text(staged_path)
+        if normalized_staged_path is None:
+            return False
+        return os.path.exists(normalized_staged_path)
+
+    @staticmethod
+    def _can_retry_without_staged_source(retry_payload: dict[str, Any]) -> bool:
+        return bool(retry_payload.get("can_retry_without_staged_source", True))
+
+    @staticmethod
+    def is_retry_available(row: dict[str, Any]) -> bool:
+        final_status = str(
+            row.get("retry_final_status") or row.get("final_status") or ""
+        ).strip().lower()
+        retry_payload = DownloadHistoryService._deserialize_retry_payload(row.get("retry_payload"))
+        if retry_payload is None:
+            return False
+
+        has_staged_retry_source = DownloadHistoryService._has_staged_retry_source(retry_payload)
+        can_retry_without_staged_source = (
+            DownloadHistoryService._can_retry_without_staged_source(retry_payload)
+        )
+        request_id = normalize_optional_positive_int(row.get("request_id"), "request_id")
+        if request_id is None:
+            if final_status in {ACTIVE_DOWNLOAD_STATUS, "cancelled"}:
+                return can_retry_without_staged_source
+            if final_status == "error":
+                return has_staged_retry_source or can_retry_without_staged_source
+            return False
+
+        if final_status in {ACTIVE_DOWNLOAD_STATUS, "cancelled"}:
+            return can_retry_without_staged_source
+
+        if final_status != "error":
+            return False
+
+        return has_staged_retry_source
 
     @staticmethod
     def to_download_payload(row: dict[str, Any]) -> dict[str, Any]:
@@ -107,6 +179,7 @@ class DownloadHistoryService:
             "user_id": row.get("user_id"),
             "username": row.get("username"),
             "request_id": row.get("request_id"),
+            "retry_available": DownloadHistoryService.is_retry_available(row),
         }
 
     @staticmethod
@@ -163,6 +236,7 @@ class DownloadHistoryService:
         preview: str | None,
         content_type: str | None,
         origin: str,
+        retry_payload: dict[str, Any] | None = None,
     ) -> None:
         """Record a download at queue time with final_status='active'.
 
@@ -180,6 +254,7 @@ class DownloadHistoryService:
         if normalized_title is None:
             raise ValueError("title must be a non-empty string")
         normalized_origin = _normalize_origin(origin)
+        normalized_retry_payload = self._serialize_retry_payload(retry_payload)
         recorded_at = now_utc_iso()
 
         with self._lock:
@@ -192,14 +267,15 @@ class DownloadHistoryService:
                     source, source_display_name,
                     title, author, format, size, preview, content_type,
                     origin, final_status,
-                    status_message, download_path,
+                    status_message, download_path, retry_payload,
                     queued_at, terminal_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, NULL, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, NULL, ?, ?, ?)
                 ON CONFLICT(task_id) DO UPDATE SET
                     final_status = 'active',
                     status_message = NULL,
                     download_path = NULL,
+                    retry_payload = excluded.retry_payload,
                     terminal_at = ?
                 """,
                     (
@@ -216,6 +292,7 @@ class DownloadHistoryService:
                         normalize_optional_text(preview),
                         normalize_optional_text(content_type),
                         normalized_origin,
+                        normalized_retry_payload,
                         recorded_at,
                         recorded_at,
                         recorded_at,
@@ -232,12 +309,14 @@ class DownloadHistoryService:
         final_status: str,
         status_message: str | None = None,
         download_path: str | None = None,
+        retry_payload: dict[str, Any] | None = None,
     ) -> None:
         """Update an existing download row to its terminal state."""
         normalized_task_id = _normalize_task_id(task_id)
         normalized_final_status = _normalize_final_status(final_status)
         normalized_status_message = normalize_optional_text(status_message)
         normalized_download_path = normalize_optional_text(download_path)
+        normalized_retry_payload = self._serialize_retry_payload(retry_payload)
         effective_terminal_at = now_utc_iso()
 
         with self._lock:
@@ -249,6 +328,7 @@ class DownloadHistoryService:
                     SET final_status = ?,
                         status_message = ?,
                         download_path = ?,
+                        retry_payload = COALESCE(?, retry_payload),
                         terminal_at = ?
                     WHERE task_id = ? AND final_status = 'active'
                     """,
@@ -256,6 +336,7 @@ class DownloadHistoryService:
                         normalized_final_status,
                         normalized_status_message,
                         normalized_download_path,
+                        normalized_retry_payload,
                         effective_terminal_at,
                         normalized_task_id,
                     ),
@@ -301,6 +382,11 @@ class DownloadHistoryService:
         conn = self._connect()
         try:
             rows = conn.execute(query, params).fetchall()
-            return [dict(row) for row in rows]
+            result: list[dict[str, Any]] = []
+            for row in rows:
+                normalized = self._normalize_row_dict(dict(row))
+                if normalized is not None:
+                    result.append(normalized)
+            return result
         finally:
             conn.close()

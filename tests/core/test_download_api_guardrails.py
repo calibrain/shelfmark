@@ -494,6 +494,54 @@ class TestRetryDownloadEndpointGuardrails:
         assert resp.get_json() == {"status": "queued", "book_id": "direct-task-retry-1"}
         mock_retry.assert_called_once_with("direct-task-retry-1")
 
+    def test_owner_can_retry_persisted_direct_download_when_live_task_is_missing(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+            is_admin=False,
+        )
+
+        retry_payload = {
+            "task_id": "persisted-direct-retry-1",
+            "source": "direct_download",
+            "title": "Persisted Direct Task",
+            "user_id": user["id"],
+            "username": user["username"],
+            "search_mode": "direct",
+        }
+        main_module.download_history_service.record_download(
+            task_id="persisted-direct-retry-1",
+            user_id=user["id"],
+            username=user["username"],
+            request_id=None,
+            source="direct_download",
+            source_display_name="Direct Download",
+            title="Persisted Direct Task",
+            author="Direct Author",
+            format="epub",
+            size="1 MB",
+            preview=None,
+            content_type="ebook",
+            origin="direct",
+            retry_payload=retry_payload,
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend.book_queue, "get_task", return_value=None):
+                with patch.object(
+                    main_module.backend,
+                    "retry_persisted_download",
+                    return_value=(True, None),
+                ) as mock_retry:
+                    resp = client.post("/api/download/persisted-direct-retry-1/retry")
+
+        assert resp.status_code == 200
+        assert resp.get_json() == {"status": "queued", "book_id": "persisted-direct-retry-1"}
+        assert mock_retry.call_args.args[0] == retry_payload
+        assert mock_retry.call_args.kwargs["final_status"] == "active"
+
     def test_non_owner_cannot_retry_download(self, main_module, client):
         owner = _create_user(main_module, prefix="owner")
         actor = _create_user(main_module, prefix="actor")
@@ -590,6 +638,100 @@ class TestRetryDownloadEndpointGuardrails:
         assert resp.status_code == 403
         assert resp.get_json()["code"] == "requested_download_retry_forbidden"
         mock_retry.assert_not_called()
+
+    def test_retry_allows_request_linked_postprocess_error_with_staged_file(self, main_module, client, tmp_path):
+        user = _create_user(main_module, prefix="requester")
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+            is_admin=False,
+        )
+        staged_file = tmp_path / "requested-postprocess.epub"
+        staged_file.write_text("staged")
+        task = DownloadTask(
+            task_id="requested-retry-postprocess-1",
+            source="prowlarr",
+            title="Requested Book",
+            user_id=user["id"],
+            username=user["username"],
+            request_id=123,
+            staged_path=str(staged_file),
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
+                with patch.object(
+                    main_module.backend.book_queue,
+                    "get_task_status",
+                    return_value=main_module.QueueStatus.ERROR,
+                ):
+                    with patch.object(main_module.backend, "retry_download", return_value=(True, None)) as mock_retry:
+                        resp = client.post("/api/download/requested-retry-postprocess-1/retry")
+
+        assert resp.status_code == 200
+        assert resp.get_json() == {"status": "queued", "book_id": "requested-retry-postprocess-1"}
+        mock_retry.assert_called_once_with("requested-retry-postprocess-1")
+
+    def test_retry_allows_persisted_request_postprocess_error_with_staged_file(
+        self, main_module, client, tmp_path
+    ):
+        user = _create_user(main_module, prefix="requester")
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+            is_admin=False,
+        )
+
+        staged_file = tmp_path / "persisted-request-postprocess.epub"
+        staged_file.write_text("staged")
+        retry_payload = {
+            "task_id": "persisted-request-retry-1",
+            "source": "prowlarr",
+            "title": "Persisted Requested Book",
+            "user_id": user["id"],
+            "username": user["username"],
+            "request_id": 123,
+            "search_mode": "universal",
+            "staged_path": str(staged_file),
+        }
+        main_module.download_history_service.record_download(
+            task_id="persisted-request-retry-1",
+            user_id=user["id"],
+            username=user["username"],
+            request_id=123,
+            source="prowlarr",
+            source_display_name="Prowlarr",
+            title="Persisted Requested Book",
+            author="Request Author",
+            format="epub",
+            size="1 MB",
+            preview=None,
+            content_type="ebook",
+            origin="requested",
+            retry_payload=retry_payload,
+        )
+        main_module.download_history_service.finalize_download(
+            task_id="persisted-request-retry-1",
+            final_status="error",
+            status_message="Output routing failed",
+            retry_payload=retry_payload,
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend.book_queue, "get_task", return_value=None):
+                with patch.object(
+                    main_module.backend,
+                    "retry_persisted_download",
+                    return_value=(True, None),
+                ) as mock_retry:
+                    resp = client.post("/api/download/persisted-request-retry-1/retry")
+
+        assert resp.status_code == 200
+        assert resp.get_json() == {"status": "queued", "book_id": "persisted-request-retry-1"}
+        assert mock_retry.call_args.args[0] == retry_payload
+        assert mock_retry.call_args.kwargs["final_status"] == "error"
 
     def test_retry_returns_409_for_non_retryable_state(self, main_module, client):
         user = _create_user(main_module, prefix="reader")

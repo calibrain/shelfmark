@@ -578,6 +578,57 @@ class TestActivityRoutes:
         assert history_response.json[0]["final_status"] == "error"
         assert history_response.json[0]["snapshot"]["download"]["status_message"] == "Interrupted"
 
+    def test_dismiss_many_preserves_retry_for_stale_active_requested_download_history(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        task_id = "dismiss-many-stale-requested-active"
+        retry_payload = {
+            "task_id": task_id,
+            "source": "prowlarr",
+            "title": "Interrupted Requested Download",
+            "user_id": user["id"],
+            "username": user["username"],
+            "request_id": 321,
+            "search_mode": "universal",
+            "retry_download_url": "magnet:?xt=urn:btih:dismissmany123",
+            "retry_download_protocol": "torrent",
+            "retry_release_name": "Interrupted Requested Download",
+            "can_retry_without_staged_source": True,
+        }
+        main_module.download_history_service.record_download(
+            task_id=task_id,
+            user_id=user["id"],
+            username=user["username"],
+            request_id=321,
+            source="prowlarr",
+            source_display_name="Prowlarr",
+            title="Interrupted Requested Download",
+            author="Stale Author",
+            format="epub",
+            size="1 MB",
+            preview=None,
+            content_type="ebook",
+            origin="requested",
+            retry_payload=retry_payload,
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+                dismiss_many_response = client.post(
+                    "/api/activity/dismiss-many",
+                    json={"items": [{"item_type": "download", "item_key": f"download:{task_id}"}]},
+                )
+                history_response = client.get("/api/activity/history?limit=10&offset=0")
+
+        assert dismiss_many_response.status_code == 200
+        assert dismiss_many_response.json["status"] == "dismissed"
+        assert history_response.status_code == 200
+        assert len(history_response.json) == 1
+        assert history_response.json[0]["item_key"] == f"download:{task_id}"
+        assert history_response.json[0]["snapshot"]["download"]["status_message"] == "Interrupted"
+        assert history_response.json[0]["snapshot"]["download"]["retry_available"] is True
+
     def test_dismiss_many_returns_404_without_partial_dismiss_when_any_item_is_missing(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
@@ -859,6 +910,149 @@ class TestActivityRoutes:
         assert response.status_code == 200
         assert "stale-active-task" in response.json["status"]["error"]
         assert response.json["status"]["error"]["stale-active-task"]["status_message"] == "Interrupted"
+
+    def test_snapshot_preserves_retry_for_stale_active_requested_download(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        task_id = "stale-active-requested-task"
+        retry_payload = {
+            "task_id": task_id,
+            "source": "prowlarr",
+            "title": "Stale Active Requested Task",
+            "user_id": user["id"],
+            "username": user["username"],
+            "request_id": 123,
+            "search_mode": "universal",
+            "retry_download_url": "magnet:?xt=urn:btih:staleactive123",
+            "retry_download_protocol": "torrent",
+            "retry_release_name": "Stale Active Requested Task",
+            "can_retry_without_staged_source": True,
+        }
+        main_module.download_history_service.record_download(
+            task_id=task_id,
+            user_id=user["id"],
+            username=user["username"],
+            request_id=123,
+            source="prowlarr",
+            source_display_name="Prowlarr",
+            title="Stale Active Requested Task",
+            author="Stale Author",
+            format="epub",
+            size="1 MB",
+            preview=None,
+            content_type="ebook",
+            origin="requested",
+            retry_payload=retry_payload,
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+                response = client.get("/api/activity/snapshot")
+
+        assert response.status_code == 200
+        assert response.json["status"]["error"][task_id]["status_message"] == "Interrupted"
+        assert response.json["status"]["error"][task_id]["retry_available"] is True
+
+    def test_snapshot_includes_retry_available_for_live_terminal_downloads(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        _record_terminal_download(
+            main_module,
+            task_id="retryable-terminal-task",
+            user_id=user["id"],
+            username=user["username"],
+            title="Retryable Terminal Task",
+            origin="requested",
+            request_id=123,
+            final_status="error",
+            status_message="Destination not writable",
+        )
+
+        queue_status_payload = _sample_status_payload()
+        queue_status_payload["error"]["retryable-terminal-task"] = {
+            "retry_available": True,
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_status", return_value=queue_status_payload):
+                response = client.get("/api/activity/snapshot")
+
+        assert response.status_code == 200
+        assert response.json["status"]["error"]["retryable-terminal-task"]["retry_available"] is True
+
+    def test_snapshot_reopens_request_when_error_retry_is_no_longer_available(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        request_row = main_module.user_db.create_request(
+            user_id=user["id"],
+            content_type="ebook",
+            request_level="release",
+            policy_mode="request_release",
+            book_data={
+                "title": "Retry Gone Request",
+                "author": "Retry Author",
+                "provider": "openlibrary",
+                "provider_id": "retry-gone-1",
+            },
+            release_data={
+                "source": "prowlarr",
+                "source_id": "retry-gone-task",
+                "title": "Retry Gone.epub",
+            },
+            status="fulfilled",
+            delivery_state="queued",
+        )
+        retry_payload = {
+            "task_id": "retry-gone-task",
+            "source": "prowlarr",
+            "title": "Retry Gone Request",
+            "user_id": user["id"],
+            "username": user["username"],
+            "request_id": request_row["id"],
+            "search_mode": "universal",
+            "retry_download_url": "magnet:?xt=urn:btih:abc123",
+            "retry_download_protocol": "torrent",
+            "retry_release_name": "Retry Gone Request",
+            "can_retry_without_staged_source": True,
+        }
+        main_module.download_history_service.record_download(
+            task_id="retry-gone-task",
+            user_id=user["id"],
+            username=user["username"],
+            request_id=request_row["id"],
+            source="prowlarr",
+            source_display_name="Prowlarr",
+            title="Retry Gone Request",
+            author="Retry Author",
+            format="epub",
+            size="1 MB",
+            preview=None,
+            content_type="ebook",
+            origin="requested",
+            retry_payload=retry_payload,
+        )
+        main_module.download_history_service.finalize_download(
+            task_id="retry-gone-task",
+            final_status="error",
+            status_message="Output routing failed",
+            retry_payload=retry_payload,
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+                response = client.get("/api/activity/snapshot")
+
+        assert response.status_code == 200
+        refreshed_request = main_module.user_db.get_request(request_row["id"])
+        assert refreshed_request["status"] == "pending"
+        assert refreshed_request["last_failure_reason"] == "Output routing failed"
+        assert any(
+            row["id"] == request_row["id"] and row["status"] == "pending"
+            for row in response.json["requests"]
+        )
 
     def test_snapshot_active_download_with_queue_entry_shows_in_correct_bucket(self, main_module, client):
         user = _create_user(main_module, prefix="reader")

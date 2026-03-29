@@ -5,6 +5,7 @@ from typing import Callable, Optional
 from shelfmark.core.config import config  # noqa: F401 (compat patch target in tests)
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
+from shelfmark.core.request_helpers import normalize_optional_text
 from shelfmark.download.clients import DownloadClient, get_client, list_configured_clients
 from shelfmark.download.clients.base_handler import (
     COMPLETED_PATH_MAX_ATTEMPTS as _DEFAULT_COMPLETED_PATH_MAX_ATTEMPTS,
@@ -65,6 +66,41 @@ class ProwlarrHandler(ExternalClientHandler):
     def _completed_path_max_attempts(self) -> int:
         return COMPLETED_PATH_MAX_ATTEMPTS
 
+    @classmethod
+    def _restore_download_request_from_task(cls, task: DownloadTask) -> Optional[DownloadRequest]:
+        """Rebuild a DownloadRequest when the in-memory Prowlarr cache is gone."""
+        retry_download_url = normalize_optional_text(getattr(task, "retry_download_url", None))
+        retry_download_protocol = normalize_optional_text(
+            getattr(task, "retry_download_protocol", None)
+        )
+        if retry_download_url is None or retry_download_protocol is None:
+            return None
+
+        protocol = retry_download_protocol.lower()
+        if protocol not in {"torrent", "usenet"}:
+            return None
+
+        ratio_limit = getattr(task, "retry_ratio_limit", None)
+        if not isinstance(ratio_limit, (int, float)) or isinstance(ratio_limit, bool):
+            ratio_limit = None
+
+        seeding_time_limit = getattr(task, "retry_seeding_time_limit_minutes", None)
+        if not isinstance(seeding_time_limit, int) or isinstance(seeding_time_limit, bool):
+            seeding_time_limit = None
+
+        return DownloadRequest(
+            url=retry_download_url,
+            protocol=protocol,
+            release_name=(
+                normalize_optional_text(getattr(task, "retry_release_name", None))
+                or task.title
+                or "Unknown"
+            ),
+            expected_hash=normalize_optional_text(getattr(task, "retry_expected_hash", None)),
+            seeding_time_limit=seeding_time_limit,
+            ratio_limit=float(ratio_limit) if ratio_limit is not None else None,
+        )
+
     def _resolve_download(
         self,
         task: DownloadTask,
@@ -74,9 +110,13 @@ class ProwlarrHandler(ExternalClientHandler):
         # Look up the cached release
         prowlarr_result = get_release(task.task_id)
         if not prowlarr_result:
-            logger.warning(f"Release cache miss: {task.task_id}")
-            status_callback("error", "Release not found in cache (may have expired)")
-            return None
+            restored_request = self._restore_download_request_from_task(task)
+            if restored_request is None:
+                logger.warning(f"Release cache miss: {task.task_id}")
+                status_callback("error", "Release not found in cache (may have expired)")
+                return None
+            logger.info("Restored Prowlarr download request for retry: %s", task.task_id)
+            return restored_request
 
         # Extract download URL
         download_url = get_preferred_download_url(prowlarr_result)

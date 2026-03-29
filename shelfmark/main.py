@@ -1179,6 +1179,7 @@ def _record_download_queued(task_id: str, task: Any) -> None:
             preview=normalize_optional_text(getattr(task, "preview", None)),
             content_type=normalize_optional_text(getattr(task, "content_type", None)),
             origin=origin,
+            retry_payload=backend.serialize_task_for_retry(task),
         )
     except Exception as exc:
         logger.warning("Failed to record download at queue time for task %s: %s", task_id, exc)
@@ -1225,6 +1226,7 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
                 final_status=final_status,
                 status_message=normalize_optional_text(getattr(task, "status_message", None)),
                 download_path=normalize_optional_text(getattr(task, "download_path", None)),
+                retry_payload=backend.serialize_task_for_retry(task),
             )
             finalized_download = True
         except Exception as exc:
@@ -1245,6 +1247,8 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
 
     request_id = normalize_positive_int(getattr(task, "request_id", None))
     if request_id is None:
+        return
+    if backend.can_retry_download_task(task, status):
         return
 
     raw_error_message = getattr(task, "status_message", None)
@@ -1288,6 +1292,23 @@ def _task_owned_by_actor(task: Any, *, actor_user_id: int | None, actor_username
     task_username = getattr(task, "username", None)
     if isinstance(task_username, str) and task_username.strip() and isinstance(actor_username, str):
         return task_username.strip() == actor_username.strip()
+
+    return False
+
+
+def _download_row_owned_by_actor(
+    row: dict[str, Any],
+    *,
+    actor_user_id: int | None,
+    actor_username: str | None,
+) -> bool:
+    owner_user_id = normalize_positive_int(row.get("user_id"))
+    if actor_user_id is not None and owner_user_id is not None:
+        return owner_user_id == actor_user_id
+
+    row_username = normalize_optional_text(row.get("username"))
+    if row_username is not None and isinstance(actor_username, str):
+        return row_username == actor_username.strip()
 
     return False
 
@@ -1521,28 +1542,56 @@ def api_retry_download(book_id: str) -> Union[Response, Tuple[Response, int]]:
     """Retry a failed download."""
     try:
         task = backend.book_queue.get_task(book_id)
-        if task is None:
+        history_row = None
+        if task is None and download_history_service is not None:
+            history_row = download_history_service.get_by_task_id(book_id)
+        if task is None and history_row is None:
             return jsonify({"error": "Download not found"}), 404
 
         is_admin, db_user_id, can_access_status = _resolve_status_scope()
+        actor_username = session.get("user_id")
+        normalized_actor_username = actor_username if isinstance(actor_username, str) else None
         if not is_admin:
             if not can_access_status or db_user_id is None:
                 return jsonify({"error": "User identity unavailable", "code": "user_identity_unavailable"}), 403
 
-            actor_username = session.get("user_id")
-            normalized_actor_username = actor_username if isinstance(actor_username, str) else None
-            if not _task_owned_by_actor(
-                task,
+            if task is not None:
+                if not _task_owned_by_actor(
+                    task,
+                    actor_user_id=db_user_id,
+                    actor_username=normalized_actor_username,
+                ):
+                    return jsonify({"error": "Forbidden", "code": "download_not_owned"}), 403
+            elif history_row is None or not _download_row_owned_by_actor(
+                history_row,
                 actor_user_id=db_user_id,
                 actor_username=normalized_actor_username,
             ):
                 return jsonify({"error": "Forbidden", "code": "download_not_owned"}), 403
 
-        task_status = backend.book_queue.get_task_status(book_id)
-        if getattr(task, "request_id", None) is not None and task_status != QueueStatus.CANCELLED:
-            return jsonify({"error": "Forbidden", "code": "requested_download_retry_forbidden"}), 403
+        if task is not None:
+            task_status = backend.book_queue.get_task_status(book_id)
+            if (
+                getattr(task, "request_id", None) is not None
+                and not backend.can_retry_download_task(task, task_status)
+            ):
+                return jsonify({"error": "Forbidden", "code": "requested_download_retry_forbidden"}), 403
+            success, error = backend.retry_download(book_id)
+        else:
+            assert history_row is not None
+            request_id = normalize_positive_int(history_row.get("request_id"))
+            retry_payload = history_row.get("retry_payload")
+            final_status = history_row.get("final_status")
+            if (
+                request_id is not None
+                and not download_history_service.is_retry_available(history_row)
+            ):
+                return jsonify({"error": "Forbidden", "code": "requested_download_retry_forbidden"}), 403
+            success, error = backend.retry_persisted_download(
+                retry_payload,
+                final_status=final_status,
+            )
 
-        success, error = backend.retry_download(book_id)
         if success:
             return jsonify({"status": "queued", "book_id": book_id})
 

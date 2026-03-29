@@ -108,6 +108,32 @@ class TestProwlarrHandlerDownloadErrors:
             assert recorder.last_message is not None
             assert "cache" in recorder.last_message.lower()
 
+    def test_resolve_download_uses_task_retry_fields_when_cache_is_missing(self):
+        """Generic retry fields should let restarts recover without the in-memory cache."""
+        with patch(
+            "shelfmark.release_sources.prowlarr.handler.get_release",
+            return_value=None,
+        ):
+            handler = ProwlarrHandler()
+            task = DownloadTask(
+                task_id="retry-context-release",
+                source="prowlarr",
+                title="Recovered Release",
+                retry_download_url="magnet:?xt=urn:btih:abc123",
+                retry_download_protocol="torrent",
+                retry_release_name="Recovered Release",
+                retry_seeding_time_limit_minutes=60,
+                retry_ratio_limit=1.5,
+            )
+
+            request = handler._resolve_download(task, lambda *_: None)
+
+            assert request is not None
+            assert request.url == "magnet:?xt=urn:btih:abc123"
+            assert request.protocol == "torrent"
+            assert request.seeding_time_limit == 60
+            assert request.ratio_limit == 1.5
+
     def test_download_fails_without_download_url(self):
         """Test that download fails when release has no download URL."""
         with patch(

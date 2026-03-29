@@ -55,6 +55,7 @@ export interface Book {
   authors?: string[];
   titles_by_language?: Record<string, string>;
   username?: string;
+  retry_available?: boolean;
 }
 
 // Status response types
