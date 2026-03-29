@@ -21,6 +21,13 @@ def _get_oidc_error(resp) -> str | None:
     return errors[0] if errors else None
 
 
+def _config_getter(values: dict[str, object]):
+    def _get(key: str, default: object = None, user_id: object = None):
+        return values.get(key, default)
+
+    return _get
+
+
 @pytest.fixture
 def db_path():
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -64,7 +71,7 @@ def client(app):
 
 
 class TestOIDCClientRegistration:
-    @patch("shelfmark.core.oidc_routes.load_config_file", return_value=MOCK_OIDC_CONFIG)
+    @patch("shelfmark.core.oidc_routes.app_config.get", side_effect=_config_getter(MOCK_OIDC_CONFIG))
     @patch("shelfmark.core.oidc_routes.oauth.create_client")
     @patch("shelfmark.core.oidc_routes.oauth.register")
     def test_registers_client_with_pkce_and_expected_scopes(
@@ -78,7 +85,7 @@ class TestOIDCClientRegistration:
         client_obj, config = _get_oidc_client()
 
         assert client_obj is fake_client
-        assert config["OIDC_CLIENT_ID"] == "shelfmark"
+        assert config["OIDC_DISCOVERY_URL"] == MOCK_OIDC_CONFIG["OIDC_DISCOVERY_URL"]
         kwargs = mock_register.call_args.kwargs
         assert kwargs["name"] == "shelfmark_idp"
         assert kwargs["server_metadata_url"] == MOCK_OIDC_CONFIG["OIDC_DISCOVERY_URL"]
@@ -90,7 +97,7 @@ class TestOIDCClientRegistration:
         assert "profile" in scope_str
         assert "groups" in scope_str
 
-    @patch("shelfmark.core.oidc_routes.load_config_file")
+    @patch("shelfmark.core.oidc_routes.app_config.get")
     @patch("shelfmark.core.oidc_routes.oauth.create_client")
     @patch("shelfmark.core.oidc_routes.oauth.register")
     def test_does_not_append_group_claim_when_admin_group_auth_disabled(
@@ -104,7 +111,7 @@ class TestOIDCClientRegistration:
             "OIDC_USE_ADMIN_GROUP": False,
             "OIDC_GROUP_CLAIM": "groups",
         }
-        mock_config.return_value = config
+        mock_config.side_effect = _config_getter(config)
         mock_create_client.return_value = Mock()
 
         _get_oidc_client()

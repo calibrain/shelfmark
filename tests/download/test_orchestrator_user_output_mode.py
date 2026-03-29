@@ -110,3 +110,45 @@ def test_queue_release_email_mode_without_recipient_is_queued(monkeypatch):
     task = captured["task"]
     assert task.output_mode == "email"
     assert task.output_args == {}
+
+
+def test_queue_release_persists_generic_retry_resolution_fields(monkeypatch):
+    import shelfmark.download.orchestrator as orchestrator
+
+    captured: dict[str, object] = {}
+
+    def fake_add(task):
+        captured["task"] = task
+        return True
+
+    monkeypatch.setattr(orchestrator.book_queue, "add", fake_add)
+    monkeypatch.setattr(orchestrator, "ws_manager", None)
+
+    success, error = orchestrator.queue_release(
+        {
+            "source": "prowlarr",
+            "source_id": "prowlarr-release-1",
+            "title": "Queued Prowlarr Release",
+            "download_url": "magnet:?xt=urn:btih:abc123",
+            "protocol": "torrent",
+            "indexer": "MyIndexer",
+            "extra": {
+                "minimum_ratio": 1.25,
+                "minimum_seed_time": 5400,
+                "info_hash": "ABC123",
+            },
+        },
+        user_id=42,
+        username="alice",
+    )
+
+    assert success is True
+    assert error is None
+    task = captured["task"]
+    assert task.retry_download_url == "magnet:?xt=urn:btih:abc123"
+    assert task.retry_download_protocol == "torrent"
+    assert task.retry_release_name == "Queued Prowlarr Release"
+    assert task.retry_expected_hash == "ABC123"
+    assert task.retry_ratio_limit == 1.25
+    assert task.retry_seeding_time_limit_minutes == 90
+    assert task.can_retry_without_staged_source is True

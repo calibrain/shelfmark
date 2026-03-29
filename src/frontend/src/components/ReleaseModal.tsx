@@ -1336,9 +1336,18 @@ export const ReleaseModal = ({
   const getButtonState = useCallback(
     (release: Release): ButtonStateInfo => {
       const releaseId = release.source_id;
+      const mode = getReleaseActionMode(release);
       // Check error first
       if (currentStatus.error && currentStatus.error[releaseId]) {
-        return { text: 'Failed', state: 'error' };
+        if (mode === 'request_release') {
+          return { text: 'Request', state: 'download' };
+        }
+        if (mode === 'blocked' || mode === 'request_book') {
+          return { text: 'Unavailable', state: 'blocked' };
+        }
+        return currentStatus.error[releaseId].retry_available === true
+          ? { text: 'Retry', state: 'download' }
+          : { text: 'Failed', state: 'error' };
       }
       // Check completed
       if (currentStatus.complete && currentStatus.complete[releaseId]) {
@@ -1362,8 +1371,6 @@ export const ReleaseModal = ({
       if (currentStatus.queued && currentStatus.queued[releaseId]) {
         return { text: 'Queued', state: 'queued' };
       }
-
-      const mode = getReleaseActionMode(release);
       if (mode === 'request_release') {
         return { text: 'Request', state: 'download' };
       }

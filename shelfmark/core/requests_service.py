@@ -198,6 +198,7 @@ def sync_delivery_states_from_queue_status(
         unique_request_ids_by_source.pop(source_id, None)
 
     request_delivery_states: dict[int, str] = {}
+    request_delivery_payloads: dict[int, dict[str, Any]] = {}
     for status_key in QueueStatus:
         status_bucket = queue_status.get(status_key)
         if not isinstance(status_bucket, dict):
@@ -211,22 +212,42 @@ def sync_delivery_states_from_queue_status(
             if request_id is None:
                 continue
             request_delivery_states[request_id] = status_key
+            if isinstance(task_payload, dict):
+                request_delivery_payloads[request_id] = dict(task_payload)
 
     if not request_delivery_states:
         return []
     updated: list[dict[str, Any]] = []
 
     for row in fulfilled_rows:
-        delivery_state = request_delivery_states.get(int(row["id"]))
+        request_id = int(row["id"])
+        delivery_state = request_delivery_states.get(request_id)
         if delivery_state is None:
             continue
+
+        task_payload = request_delivery_payloads.get(request_id) or {}
+        retry_available = task_payload.get("retry_available")
+        if delivery_state == QueueStatus.ERROR and retry_available is False:
+            raw_status_message = task_payload.get("status_message")
+            failure_reason = (
+                raw_status_message.strip()
+                if isinstance(raw_status_message, str) and raw_status_message.strip()
+                else "Download failed"
+            )
+            reopened = user_db.reopen_failed_request(
+                request_id,
+                failure_reason=failure_reason,
+            )
+            if reopened is not None:
+                updated.append(reopened)
+                continue
 
         if row.get("delivery_state", DELIVERY_STATE_NONE) == delivery_state:
             continue
 
         updated.append(
             user_db.update_request(
-                row["id"],
+                request_id,
                 delivery_state=delivery_state,
                 delivery_updated_at=_now_timestamp(),
             )

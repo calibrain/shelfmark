@@ -11,13 +11,13 @@ from authlib.jose.errors import InvalidClaimError
 from authlib.integrations.flask_client import OAuth
 from flask import Flask, jsonify, redirect, request, session
 
+from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.oidc_auth import (
     extract_user_info,
     parse_group_claims,
     provision_oidc_user,
 )
-from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_db import UserDB
 from shelfmark.download.network import get_ssl_verify
 
@@ -118,14 +118,13 @@ def _post_login_redirect_target(return_to: str | None) -> str:
 
 def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
     """Register and return an OIDC client from the current security config."""
-    config = load_config_file("security")
-    discovery_url = config.get("OIDC_DISCOVERY_URL", "")
-    client_id = config.get("OIDC_CLIENT_ID", "")
+    discovery_url = str(app_config.get("OIDC_DISCOVERY_URL", "") or "")
+    client_id = str(app_config.get("OIDC_CLIENT_ID", "") or "")
 
     if not discovery_url or not client_id:
         raise ValueError("OIDC not configured")
 
-    configured_scopes = config.get("OIDC_SCOPES", ["openid", "email", "profile"])
+    configured_scopes = app_config.get("OIDC_SCOPES", ["openid", "email", "profile"])
     if isinstance(configured_scopes, list):
         scope_values = [str(scope).strip() for scope in configured_scopes if str(scope).strip()]
     elif isinstance(configured_scopes, str):
@@ -136,9 +135,9 @@ def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
 
     scopes = list(dict.fromkeys(["openid"] + scope_values))
 
-    admin_group = config.get("OIDC_ADMIN_GROUP", "")
-    group_claim = config.get("OIDC_GROUP_CLAIM", "groups")
-    use_admin_group = config.get("OIDC_USE_ADMIN_GROUP", True)
+    admin_group = app_config.get("OIDC_ADMIN_GROUP", "")
+    group_claim = app_config.get("OIDC_GROUP_CLAIM", "groups")
+    use_admin_group = app_config.get("OIDC_USE_ADMIN_GROUP", True)
     if admin_group and use_admin_group and group_claim and group_claim not in scopes:
         scopes.append(group_claim)
 
@@ -151,7 +150,7 @@ def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
     oauth.register(
         name="shelfmark_idp",
         client_id=client_id,
-        client_secret=config.get("OIDC_CLIENT_SECRET", ""),
+        client_secret=app_config.get("OIDC_CLIENT_SECRET", ""),
         server_metadata_url=discovery_url,
         client_kwargs={
             "scope": " ".join(scopes),
@@ -165,7 +164,13 @@ def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
     if client is None:
         raise RuntimeError("OIDC client initialization failed")
 
-    return client, config
+    return client, {
+        "OIDC_DISCOVERY_URL": discovery_url,
+        "OIDC_GROUP_CLAIM": group_claim,
+        "OIDC_ADMIN_GROUP": admin_group,
+        "OIDC_AUTO_PROVISION": app_config.get("OIDC_AUTO_PROVISION", True),
+        "OIDC_USE_ADMIN_GROUP": use_admin_group,
+    }
 
 
 def register_oidc_routes(app: Flask, user_db: UserDB) -> None:

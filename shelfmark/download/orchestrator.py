@@ -18,6 +18,7 @@ from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask, QueueStatus, SearchMode
 from shelfmark.core.queue import book_queue
+from shelfmark.core.request_helpers import normalize_optional_text, normalize_positive_int
 from shelfmark.core.utils import transform_cover_url, is_audiobook as check_audiobook
 from shelfmark.config import env as env_config
 from shelfmark.download.fs import run_blocking_io
@@ -79,6 +80,8 @@ def _resolve_email_destination(
         return None, "Configured email recipient is invalid"
 
     return None, None
+
+
 def _parse_release_search_mode(value: Any) -> SearchMode:
     if isinstance(value, SearchMode):
         return value
@@ -90,6 +93,65 @@ def _parse_release_search_mode(value: Any) -> SearchMode:
         except ValueError as exc:
             raise ValueError(f"Invalid search_mode: {value}") from exc
     raise ValueError(f"Invalid search_mode: {value}")
+
+def _optional_number(value: Any) -> Optional[float]:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_positive_int(value: Any) -> Optional[int]:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _seed_time_seconds_to_minutes(value: Any) -> Optional[int]:
+    seed_time_seconds = _optional_positive_int(value)
+    if seed_time_seconds is None:
+        return None
+    return (seed_time_seconds + 59) // 60
+
+
+def _build_retry_resolution_fields(
+    release_data: dict[str, Any],
+) -> Dict[str, Any]:
+    """Persist generic resolved-download data needed for restart-safe retries."""
+    extra = release_data.get("extra")
+    if not isinstance(extra, dict):
+        extra = {}
+
+    protocol = normalize_optional_text(release_data.get("protocol"))
+    ratio_limit = _optional_number(release_data.get("ratio_limit"))
+    if ratio_limit is None:
+        ratio_limit = _optional_number(extra.get("minimum_ratio"))
+
+    seeding_time_limit_minutes = _optional_positive_int(
+        release_data.get("seeding_time_limit_minutes")
+    )
+    if seeding_time_limit_minutes is None:
+        seeding_time_limit_minutes = _seed_time_seconds_to_minutes(
+            extra.get("minimum_seed_time")
+        )
+
+    return {
+        "retry_download_url": normalize_optional_text(release_data.get("download_url")),
+        "retry_download_protocol": protocol.lower() if protocol is not None else None,
+        "retry_release_name": normalize_optional_text(release_data.get("title")),
+        "retry_expected_hash": normalize_optional_text(
+            release_data.get("expected_hash") or extra.get("info_hash")
+        ),
+        "retry_ratio_limit": ratio_limit,
+        "retry_seeding_time_limit_minutes": seeding_time_limit_minutes,
+        "can_retry_without_staged_source": True,
+    }
 
 
 def queue_release(
@@ -136,6 +198,7 @@ def queue_release(
 
         output_mode = "folder" if is_audiobook else books_output_mode
         output_args: Dict[str, Any] = {}
+        retry_resolution_fields = _build_retry_resolution_fields(release_data)
 
         if output_mode == "email" and not is_audiobook:
             email_to, email_error = _resolve_email_destination(user_id=user_id)
@@ -166,6 +229,7 @@ def queue_release(
             user_id=user_id,
             username=username,
             request_id=request_id,
+            **retry_resolution_fields,
         )
 
         if not book_queue.add(task):
@@ -204,7 +268,7 @@ def queue_status(user_id: Optional[int] = None) -> Dict[str, Dict[str, Any]]:
     # Convert Enum keys to strings and DownloadTask objects to dicts for JSON serialization
     return {
         status_type.value: {
-            task_id: _task_to_dict(task)
+            task_id: _task_to_dict(task, current_status=status_type)
             for task_id, task in tasks.items()
         }
         for status_type, tasks in status.items()
@@ -230,10 +294,202 @@ def get_book_data(task_id: str) -> Tuple[Optional[bytes], Optional[DownloadTask]
             task.download_path = None
         return None, task
 
-def _task_to_dict(task: DownloadTask) -> Dict[str, Any]:
+def _has_staged_retry_source(task: DownloadTask) -> bool:
+    """Whether a failed task still has a staged file available for retry."""
+    staged_path = task.staged_path.strip() if isinstance(task.staged_path, str) else ""
+    if not staged_path:
+        return False
+    try:
+        return run_blocking_io(Path(staged_path).exists)
+    except OSError:
+        return False
+
+
+def _has_fresh_retry_context(task: DownloadTask) -> bool:
+    """Whether the task can restart without relying on a staged file."""
+    return bool(getattr(task, "can_retry_without_staged_source", True))
+
+
+def can_retry_download_task(
+    task: Optional[DownloadTask],
+    status: Optional[QueueStatus],
+) -> bool:
+    """Whether the task can be manually retried from the Activity UI."""
+    if task is None or status not in (QueueStatus.ERROR, QueueStatus.CANCELLED):
+        return False
+
+    if task.request_id is None:
+        return _has_staged_retry_source(task) or _has_fresh_retry_context(task)
+
+    if status == QueueStatus.CANCELLED:
+        return _has_fresh_retry_context(task)
+
+    return _has_staged_retry_source(task)
+
+
+def serialize_task_for_retry(task: DownloadTask) -> Dict[str, Any]:
+    """Serialize the task state needed for restart-safe retries."""
+    raw_search_mode = getattr(task, "search_mode", None)
+    search_mode: Optional[str] = None
+    if isinstance(raw_search_mode, SearchMode):
+        search_mode = raw_search_mode.value
+    elif isinstance(raw_search_mode, str):
+        normalized_search_mode = raw_search_mode.strip().lower()
+        search_mode = normalized_search_mode or None
+
+    raw_output_args = getattr(task, "output_args", None)
+
+    return {
+        "task_id": getattr(task, "task_id", None),
+        "source": getattr(task, "source", None),
+        "title": getattr(task, "title", None),
+        "author": getattr(task, "author", None),
+        "year": getattr(task, "year", None),
+        "format": getattr(task, "format", None),
+        "size": getattr(task, "size", None),
+        "preview": getattr(task, "preview", None),
+        "content_type": getattr(task, "content_type", None),
+        "source_url": getattr(task, "source_url", None),
+        "series_name": getattr(task, "series_name", None),
+        "series_position": getattr(task, "series_position", None),
+        "subtitle": getattr(task, "subtitle", None),
+        "search_mode": search_mode,
+        "output_mode": getattr(task, "output_mode", None),
+        "output_args": dict(raw_output_args) if isinstance(raw_output_args, dict) else {},
+        "user_id": getattr(task, "user_id", None),
+        "username": getattr(task, "username", None),
+        "request_id": getattr(task, "request_id", None),
+        "staged_path": getattr(task, "staged_path", None),
+        "retry_download_url": getattr(task, "retry_download_url", None),
+        "retry_download_protocol": getattr(task, "retry_download_protocol", None),
+        "retry_release_name": getattr(task, "retry_release_name", None),
+        "retry_expected_hash": getattr(task, "retry_expected_hash", None),
+        "retry_ratio_limit": getattr(task, "retry_ratio_limit", None),
+        "retry_seeding_time_limit_minutes": getattr(task, "retry_seeding_time_limit_minutes", None),
+        "can_retry_without_staged_source": bool(
+            getattr(task, "can_retry_without_staged_source", True)
+        ),
+    }
+
+
+def _restore_task_from_retry_payload(payload: Any) -> Optional[DownloadTask]:
+    if not isinstance(payload, dict):
+        return None
+
+    task_id = normalize_optional_text(payload.get("task_id"))
+    source = normalize_optional_text(payload.get("source"))
+    title = normalize_optional_text(payload.get("title"))
+    if task_id is None or source is None or title is None:
+        return None
+
+    search_mode = None
+    raw_search_mode = payload.get("search_mode")
+    if raw_search_mode is not None:
+        try:
+            search_mode = _parse_release_search_mode(raw_search_mode)
+        except ValueError:
+            search_mode = None
+
+    output_args = payload.get("output_args")
+
+    return DownloadTask(
+        task_id=task_id,
+        source=source,
+        title=title,
+        author=normalize_optional_text(payload.get("author")),
+        year=normalize_optional_text(payload.get("year")),
+        format=normalize_optional_text(payload.get("format")),
+        size=normalize_optional_text(payload.get("size")),
+        preview=normalize_optional_text(payload.get("preview")),
+        content_type=normalize_optional_text(payload.get("content_type")),
+        source_url=normalize_optional_text(payload.get("source_url")),
+        series_name=normalize_optional_text(payload.get("series_name")),
+        series_position=_optional_number(payload.get("series_position")),
+        subtitle=normalize_optional_text(payload.get("subtitle")),
+        search_mode=search_mode,
+        output_mode=normalize_optional_text(payload.get("output_mode")),
+        output_args=dict(output_args) if isinstance(output_args, dict) else {},
+        user_id=normalize_positive_int(payload.get("user_id")),
+        username=normalize_optional_text(payload.get("username")),
+        request_id=normalize_positive_int(payload.get("request_id")),
+        staged_path=normalize_optional_text(payload.get("staged_path")),
+        retry_download_url=normalize_optional_text(payload.get("retry_download_url")),
+        retry_download_protocol=normalize_optional_text(payload.get("retry_download_protocol")),
+        retry_release_name=normalize_optional_text(payload.get("retry_release_name")),
+        retry_expected_hash=normalize_optional_text(payload.get("retry_expected_hash")),
+        retry_ratio_limit=_optional_number(payload.get("retry_ratio_limit")),
+        retry_seeding_time_limit_minutes=_optional_positive_int(
+            payload.get("retry_seeding_time_limit_minutes")
+        ),
+        can_retry_without_staged_source=bool(
+            payload.get("can_retry_without_staged_source", True)
+        ),
+    )
+
+
+def retry_persisted_download(
+    payload: Any,
+    *,
+    final_status: Any,
+    priority: int = -10,
+) -> Tuple[bool, Optional[str]]:
+    """Retry a persisted download row after the in-memory task has been lost."""
+    task = _restore_task_from_retry_payload(payload)
+    if task is None:
+        return False, "Download cannot be retried"
+
+    normalized_status = normalize_optional_text(final_status)
+    if normalized_status is None:
+        return False, "Download cannot be retried"
+    normalized_status = normalized_status.lower()
+    if normalized_status not in {"active", "error", "cancelled"}:
+        return False, "Download cannot be retried"
+
+    has_staged_retry_source = _has_staged_retry_source(task)
+    has_fresh_retry_context = _has_fresh_retry_context(task)
+
+    if normalized_status in {"active", "cancelled"} and not has_fresh_retry_context:
+        return False, "Download cannot be retried"
+
+    if (
+        task.request_id is not None
+        and normalized_status == "error"
+        and not has_staged_retry_source
+    ):
+        if task.request_id is not None:
+            return False, "Request-linked downloads must be retried from requests"
+
+    if (
+        task.request_id is None
+        and normalized_status == "error"
+        and not has_staged_retry_source
+        and not has_fresh_retry_context
+    ):
+        return False, "Download cannot be retried"
+
+    task.priority = priority
+    task.status_message = None
+    _clear_task_error_state(task)
+
+    if not book_queue.add(task):
+        return False, "Failed to requeue download"
+
+    book_queue.update_status_message(task.task_id, "Retrying now")
+
+    if ws_manager:
+        ws_manager.broadcast_status_update(queue_status())
+
+    return True, None
+
+
+def _task_to_dict(
+    task: DownloadTask,
+    current_status: Optional[QueueStatus] = None,
+) -> Dict[str, Any]:
     """Convert DownloadTask to dict for frontend, transforming cover URLs."""
     # Transform external preview URLs to local proxy URLs
     preview = transform_cover_url(task.preview, task.task_id)
+    retry_status = current_status or book_queue.get_task_status(task.task_id)
 
     return {
         'id': task.task_id,
@@ -254,6 +510,7 @@ def _task_to_dict(task: DownloadTask) -> Dict[str, Any]:
         'user_id': task.user_id,
         'username': task.username,
         'request_id': task.request_id,
+        'retry_available': can_retry_download_task(task, retry_status),
     }
 
 
@@ -505,8 +762,8 @@ def cancel_download(book_id: str) -> bool:
 def retry_download(book_id: str) -> Tuple[bool, Optional[str]]:
     """Retry a failed or cancelled download.
 
-    Request-linked downloads can only be retried when cancelled (errors
-    reopen the request for admin re-approval instead).
+    Request-linked downloads can only be manually retried when cancelled or
+    when a staged post-processing retry is available.
     """
     task = book_queue.get_task(book_id)
     if task is None:
@@ -516,7 +773,7 @@ def retry_download(book_id: str) -> Tuple[bool, Optional[str]]:
     if status not in (QueueStatus.ERROR, QueueStatus.CANCELLED):
         return False, "Download is not in an error or cancelled state"
 
-    if task.request_id and status != QueueStatus.CANCELLED:
+    if not can_retry_download_task(task, status):
         return False, "Request-linked downloads must be retried from requests"
 
     task.last_error_message = None

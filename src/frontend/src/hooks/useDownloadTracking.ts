@@ -36,7 +36,9 @@ export function useDownloadTracking(currentStatus: StatusData): UseDownloadTrack
   // Get button state for a book in direct mode
   const getButtonState = useCallback((bookId: string): ButtonStateInfo => {
     if (currentStatus.error && currentStatus.error[bookId]) {
-      return { text: 'Failed', state: 'error' };
+      return currentStatus.error[bookId].retry_available === true
+        ? { text: 'Retry', state: 'download' }
+        : { text: 'Failed', state: 'error' };
     }
     if (currentStatus.complete && currentStatus.complete[bookId]) {
       return { text: 'Downloaded', state: 'complete' };
@@ -105,7 +107,9 @@ export function useDownloadTracking(currentStatus: StatusData): UseDownloadTrack
           foundActiveState = true;
         } else if (currentStatus.error && currentStatus.error[releaseId]) {
           if (bestState.state === 'download') {
-            bestState = { text: 'Failed', state: 'error' };
+            bestState = currentStatus.error[releaseId].retry_available === true
+              ? { text: 'Retry', state: 'download' }
+              : { text: 'Failed', state: 'error' };
           }
         }
       }

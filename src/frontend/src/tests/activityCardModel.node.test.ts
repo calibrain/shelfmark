@@ -213,4 +213,33 @@ describe('activityCardModel', () => {
       42
     );
   });
+
+  it('shows retry for request-linked downloads when the backend marks them retryable', () => {
+    const model = buildActivityCardModel(
+      makeItem({
+        visualStatus: 'error',
+        statusLabel: 'Failed',
+        requestId: 42,
+        downloadRetryAvailable: true,
+      }),
+      false
+    );
+
+    assert.equal(model.actions.length, 2);
+    assert.equal(model.actions[0]?.kind, 'download-retry');
+    assert.equal(model.actions[1]?.kind, 'download-dismiss');
+  });
+
+  it('does not show retry for error downloads without a live retry path', () => {
+    const model = buildActivityCardModel(
+      makeItem({
+        visualStatus: 'error',
+        statusLabel: 'Failed',
+      }),
+      false
+    );
+
+    assert.equal(model.actions.length, 1);
+    assert.equal(model.actions[0]?.kind, 'download-dismiss');
+  });
 });

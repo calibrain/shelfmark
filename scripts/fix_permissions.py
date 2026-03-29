@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Fix permissions on all configured directories.
+"""List configured destination roots that may need permission repair.
 
-This script is called by the entrypoint to ensure all user-configured
-directories have correct ownership. It reads directory paths from:
-- CONFIG_DIR environment variable
-- Config files in CONFIG_DIR/plugins/
+This script is called by the entrypoint to find configured output destination
+roots from config files under CONFIG_DIR/plugins/.
 
 Outputs directory paths that need permission fixing (one per line).
 The entrypoint handles the actual chown operations.
@@ -17,7 +15,7 @@ from pathlib import Path
 
 
 def get_directories_from_config() -> set[str]:
-    """Extract all directory paths from config files."""
+    """Extract configured destination-style paths from config files."""
     directories = set()
 
     config_dir = Path(os.getenv("CONFIG_DIR", "/config"))
@@ -26,12 +24,12 @@ def get_directories_from_config() -> set[str]:
     if not plugins_dir.exists():
         return directories
 
-    # Keys that contain directory paths
+    # Keys that can point at output destination roots or legacy equivalents
     directory_keys = {
-        # Main destinations
+        # Current destination settings
         "DESTINATION",
         "DESTINATION_AUDIOBOOK",
-        # Content type routing directories
+        # Content-type routing destinations
         "AA_CONTENT_TYPE_DIR_FICTION",
         "AA_CONTENT_TYPE_DIR_NON_FICTION",
         "AA_CONTENT_TYPE_DIR_UNKNOWN",
@@ -40,7 +38,7 @@ def get_directories_from_config() -> set[str]:
         "AA_CONTENT_TYPE_DIR_STANDARDS",
         "AA_CONTENT_TYPE_DIR_MUSICAL_SCORE",
         "AA_CONTENT_TYPE_DIR_OTHER",
-        # Legacy keys (in case of old configs)
+        # Legacy path settings still recognized in older configs
         "INGEST_DIR",
         "INGEST_DIR_AUDIOBOOK",
         "INGEST_DIR_BOOK_FICTION",
@@ -73,7 +71,7 @@ def get_directories_from_config() -> set[str]:
 
 
 def main():
-    """Output all configured directories that exist."""
+    """Output configured destination roots that currently exist."""
     directories = get_directories_from_config()
 
     # Filter to directories that actually exist

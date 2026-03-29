@@ -7,6 +7,7 @@ from shelfmark.config.security_handlers import (
     on_save_security,
     test_oidc_connection,
 )
+from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import (
     register_settings,
@@ -58,7 +59,9 @@ def _on_save_security(values: Dict[str, Any]) -> Dict[str, Any]:
 
 def _test_oidc_connection(current_values: Dict[str, Any] = None) -> Dict[str, Any]:
     return test_oidc_connection(
-        load_security_config=lambda: load_config_file("security"),
+        load_security_config=lambda: {
+            "OIDC_DISCOVERY_URL": app_config.get("OIDC_DISCOVERY_URL", ""),
+        },
         current_values=current_values or {},
         logger=logger,
     )

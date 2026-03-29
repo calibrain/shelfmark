@@ -549,8 +549,6 @@ def proxy_auth_middleware():
     if request.path == '/api/health':
         return None
 
-    from shelfmark.core.settings_registry import load_config_file
-
     def get_proxy_header(header_name: str) -> str | None:
         """Resolve proxy auth values from headers with WSGI env fallbacks."""
         value = request.headers.get(header_name)
@@ -569,8 +567,7 @@ def proxy_auth_middleware():
         return None
 
     try:
-        security_config = load_config_file("security")
-        user_header = security_config.get("PROXY_AUTH_USER_HEADER", "X-Auth-User")
+        user_header = app_config.get("PROXY_AUTH_USER_HEADER", "X-Auth-User")
 
         # Extract username from proxy header
         username = get_proxy_header(user_header)
@@ -586,8 +583,8 @@ def proxy_auth_middleware():
         # If an admin group is configured, derive from groups header.
         # Otherwise preserve existing DB role for known users and default
         # first-time users to admin (to avoid lockouts).
-        admin_group_header = security_config.get("PROXY_AUTH_ADMIN_GROUP_HEADER", "X-Auth-Groups")
-        admin_group_name = str(security_config.get("PROXY_AUTH_ADMIN_GROUP_NAME", "") or "").strip()
+        admin_group_header = app_config.get("PROXY_AUTH_ADMIN_GROUP_HEADER", "X-Auth-Groups")
+        admin_group_name = str(app_config.get("PROXY_AUTH_ADMIN_GROUP_NAME", "") or "").strip()
         is_admin = True
 
         if admin_group_name:
@@ -685,12 +682,9 @@ def login_required(f):
 
         # Check admin access for settings/onboarding endpoints.
         if is_settings_or_onboarding_path(request.path):
-            from shelfmark.core.settings_registry import load_config_file
-
             try:
-                users_config = load_config_file("users")
                 if (
-                    requires_admin_for_settings_access(request.path, users_config)
+                    requires_admin_for_settings_access(request.path, {})
                     and not session.get('is_admin', False)
                 ):
                     return jsonify({"error": "Admin access required"}), 403
@@ -1185,6 +1179,7 @@ def _record_download_queued(task_id: str, task: Any) -> None:
             preview=normalize_optional_text(getattr(task, "preview", None)),
             content_type=normalize_optional_text(getattr(task, "content_type", None)),
             origin=origin,
+            retry_payload=backend.serialize_task_for_retry(task),
         )
     except Exception as exc:
         logger.warning("Failed to record download at queue time for task %s: %s", task_id, exc)
@@ -1231,6 +1226,7 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
                 final_status=final_status,
                 status_message=normalize_optional_text(getattr(task, "status_message", None)),
                 download_path=normalize_optional_text(getattr(task, "download_path", None)),
+                retry_payload=backend.serialize_task_for_retry(task),
             )
             finalized_download = True
         except Exception as exc:
@@ -1251,6 +1247,8 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
 
     request_id = normalize_positive_int(getattr(task, "request_id", None))
     if request_id is None:
+        return
+    if backend.can_retry_download_task(task, status):
         return
 
     raw_error_message = getattr(task, "status_message", None)
@@ -1294,6 +1292,23 @@ def _task_owned_by_actor(task: Any, *, actor_user_id: int | None, actor_username
     task_username = getattr(task, "username", None)
     if isinstance(task_username, str) and task_username.strip() and isinstance(actor_username, str):
         return task_username.strip() == actor_username.strip()
+
+    return False
+
+
+def _download_row_owned_by_actor(
+    row: dict[str, Any],
+    *,
+    actor_user_id: int | None,
+    actor_username: str | None,
+) -> bool:
+    owner_user_id = normalize_positive_int(row.get("user_id"))
+    if actor_user_id is not None and owner_user_id is not None:
+        return owner_user_id == actor_user_id
+
+    row_username = normalize_optional_text(row.get("username"))
+    if row_username is not None and isinstance(actor_username, str):
+        return row_username == actor_username.strip()
 
     return False
 
@@ -1527,28 +1542,56 @@ def api_retry_download(book_id: str) -> Union[Response, Tuple[Response, int]]:
     """Retry a failed download."""
     try:
         task = backend.book_queue.get_task(book_id)
-        if task is None:
+        history_row = None
+        if task is None and download_history_service is not None:
+            history_row = download_history_service.get_by_task_id(book_id)
+        if task is None and history_row is None:
             return jsonify({"error": "Download not found"}), 404
 
         is_admin, db_user_id, can_access_status = _resolve_status_scope()
+        actor_username = session.get("user_id")
+        normalized_actor_username = actor_username if isinstance(actor_username, str) else None
         if not is_admin:
             if not can_access_status or db_user_id is None:
                 return jsonify({"error": "User identity unavailable", "code": "user_identity_unavailable"}), 403
 
-            actor_username = session.get("user_id")
-            normalized_actor_username = actor_username if isinstance(actor_username, str) else None
-            if not _task_owned_by_actor(
-                task,
+            if task is not None:
+                if not _task_owned_by_actor(
+                    task,
+                    actor_user_id=db_user_id,
+                    actor_username=normalized_actor_username,
+                ):
+                    return jsonify({"error": "Forbidden", "code": "download_not_owned"}), 403
+            elif history_row is None or not _download_row_owned_by_actor(
+                history_row,
                 actor_user_id=db_user_id,
                 actor_username=normalized_actor_username,
             ):
                 return jsonify({"error": "Forbidden", "code": "download_not_owned"}), 403
 
-        task_status = backend.book_queue.get_task_status(book_id)
-        if getattr(task, "request_id", None) is not None and task_status != QueueStatus.CANCELLED:
-            return jsonify({"error": "Forbidden", "code": "requested_download_retry_forbidden"}), 403
+        if task is not None:
+            task_status = backend.book_queue.get_task_status(book_id)
+            if (
+                getattr(task, "request_id", None) is not None
+                and not backend.can_retry_download_task(task, task_status)
+            ):
+                return jsonify({"error": "Forbidden", "code": "requested_download_retry_forbidden"}), 403
+            success, error = backend.retry_download(book_id)
+        else:
+            assert history_row is not None
+            request_id = normalize_positive_int(history_row.get("request_id"))
+            retry_payload = history_row.get("retry_payload")
+            final_status = history_row.get("final_status")
+            if (
+                request_id is not None
+                and not download_history_service.is_retry_available(history_row)
+            ):
+                return jsonify({"error": "Forbidden", "code": "requested_download_retry_forbidden"}), 403
+            success, error = backend.retry_persisted_download(
+                retry_payload,
+                final_status=final_status,
+            )
 
-        success, error = backend.retry_download(book_id)
         if success:
             return jsonify({"status": "queued", "book_id": book_id})
 
@@ -1857,8 +1900,6 @@ def api_logout() -> Union[Response, Tuple[Response, int]]:
     Returns:
         flask.Response: JSON with success status and optional logout_url.
     """
-    from shelfmark.core.settings_registry import load_config_file
-    
     try:
         auth_mode = get_auth_mode()
         ip_address = get_client_ip()
@@ -1868,8 +1909,7 @@ def api_logout() -> Union[Response, Tuple[Response, int]]:
         
         # For proxy auth, include logout URL if configured
         if auth_mode == "proxy":
-            security_config = load_config_file("security")
-            logout_url = security_config.get("PROXY_AUTH_LOGOUT_URL", "")
+            logout_url = app_config.get("PROXY_AUTH_LOGOUT_URL", "")
             if logout_url:
                 return jsonify({"success": True, "logout_url": logout_url})
         
@@ -1887,11 +1927,7 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
         flask.Response: JSON with authentication status, whether auth is required,
         which auth mode is active, and whether user has admin privileges.
     """
-    from shelfmark.core.settings_registry import load_config_file
-
     try:
-        security_config = load_config_file("security")
-        users_config = load_config_file("users")
         auth_mode = get_auth_mode()
 
         # If no authentication is configured, access is allowed (full admin)
@@ -1906,7 +1942,7 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
         # Check if user has a valid session
         is_authenticated = 'user_id' in session
 
-        is_admin = get_auth_check_admin_status(auth_mode, users_config, session)
+        is_admin = get_auth_check_admin_status(auth_mode, {}, session)
 
         display_name = None
         if is_authenticated and session.get('db_user_id') and user_db is not None:
@@ -1927,14 +1963,14 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
         }
         
         # Add logout URL for proxy auth if configured
-        if auth_mode == "proxy" and security_config.get("PROXY_AUTH_USER_HEADER"):
-            logout_url = security_config.get("PROXY_AUTH_LOGOUT_URL", "")
+        if auth_mode == "proxy" and app_config.get("PROXY_AUTH_USER_HEADER", ""):
+            logout_url = app_config.get("PROXY_AUTH_LOGOUT_URL", "")
             if logout_url:
                 response_data["logout_url"] = logout_url
 
         # Add custom OIDC button label and SSO enforcement flags if configured
         if auth_mode == "oidc":
-            oidc_button_label = security_config.get("OIDC_BUTTON_LABEL", "")
+            oidc_button_label = app_config.get("OIDC_BUTTON_LABEL", "")
             if oidc_button_label:
                 response_data["oidc_button_label"] = oidc_button_label
             if HIDE_LOCAL_AUTH:

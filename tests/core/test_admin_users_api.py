@@ -152,8 +152,10 @@ class TestAdminUsersListEndpoint:
         )
 
         with patch(
-            "shelfmark.core.admin_routes.load_config_file",
-            return_value={"OIDC_USE_ADMIN_GROUP": False},
+            "shelfmark.core.admin_routes.app_config.get",
+            side_effect=lambda key, default=None, user_id=None: {
+                "OIDC_USE_ADMIN_GROUP": False,
+            }.get(key, default),
         ):
             resp = admin_client.get("/api/admin/users")
 
@@ -981,9 +983,11 @@ class TestAdminDownloadDefaults:
         """Create a temporary downloads config file."""
         import json
         from pathlib import Path
+        from shelfmark.core.config import config as app_config
 
         config_dir = str(tmp_path)
         monkeypatch.setenv("CONFIG_DIR", config_dir)
+        monkeypatch.delenv("INGEST_DIR", raising=False)
         monkeypatch.setattr("shelfmark.config.env.CONFIG_DIR", Path(config_dir))
         plugins_dir = tmp_path / "plugins"
         plugins_dir.mkdir()
@@ -996,6 +1000,9 @@ class TestAdminDownloadDefaults:
             "EMAIL_RECIPIENT": "reader@example.com",
         }
         (plugins_dir / "downloads.json").write_text(json.dumps(config))
+        app_config.refresh(force=True)
+        yield
+        app_config.refresh(force=True)
 
     def test_returns_download_defaults(self, admin_client):
         resp = admin_client.get("/api/admin/download-defaults")
@@ -1097,7 +1104,7 @@ class TestAdminDeliveryPreferences:
         (plugins_dir / "downloads.json").write_text(json.dumps(downloads_config))
 
         from shelfmark.core.config import config as app_config
-        app_config.refresh()
+        app_config.refresh(force=True)
 
     def test_returns_curated_fields_and_effective_values(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
@@ -1181,7 +1188,7 @@ class TestAdminSearchPreferences:
         (plugins_dir / "search_mode.json").write_text(json.dumps(search_mode_config))
 
         from shelfmark.core.config import config as app_config
-        app_config.refresh()
+        app_config.refresh(force=True)
 
     def test_returns_curated_fields_and_effective_values(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
@@ -1268,7 +1275,7 @@ class TestAdminNotificationPreferences:
         (plugins_dir / "notifications.json").write_text(json.dumps(notifications_config))
 
         from shelfmark.core.config import config as app_config
-        app_config.refresh()
+        app_config.refresh(force=True)
 
     def test_returns_curated_fields_and_effective_values(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
@@ -1341,7 +1348,7 @@ class TestAdminNotificationPreferencesTestAction:
         (plugins_dir / "notifications.json").write_text(json.dumps(notifications_config))
 
         from shelfmark.core.config import config as app_config
-        app_config.refresh()
+        app_config.refresh(force=True)
 
     def test_requires_admin(self, regular_client, user_db):
         user = user_db.create_user(username="alice")
@@ -1500,7 +1507,7 @@ class TestAdminEffectiveSettings:
 
         # Ensure config singleton sees the current test env/config dir.
         from shelfmark.core.config import config as app_config
-        app_config.refresh()
+        app_config.refresh(force=True)
 
     def test_returns_effective_values_with_sources(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
