@@ -56,9 +56,11 @@ _progress_lock = Lock()
 
 # Stall detection - track last activity time per download
 _last_activity: Dict[str, float] = {}
+_last_progress_value: Dict[str, float] = {}
 # De-duplicate status updates (keep-alive updates shouldn't spam clients)
 _last_status_event: Dict[str, Tuple[str, Optional[str]]] = {}
 STALL_TIMEOUT = 300  # 5 minutes without progress/status update = stalled
+COORDINATOR_LOOP_ERROR_RETRY_DELAY = 1.0
 
 def _is_plain_email_address(value: str) -> bool:
     parsed = parseaddr(value or "")[1]
@@ -687,9 +689,13 @@ def update_download_progress(book_id: str, progress: float) -> None:
     """Update download progress with throttled WebSocket broadcasts."""
     book_queue.update_progress(book_id, progress)
 
-    # Track activity for stall detection
+    # Only real progress changes should reset stall detection. Repeated keep-alive
+    # polls at the same percentage must not hide a stuck download forever.
     with _progress_lock:
-        _last_activity[book_id] = time.time()
+        last_progress = _last_progress_value.get(book_id)
+        if last_progress is None or progress != last_progress:
+            _last_activity[book_id] = time.time()
+        _last_progress_value[book_id] = progress
     
     # Broadcast progress via WebSocket with throttling
     if ws_manager:
@@ -728,13 +734,11 @@ def update_download_status(book_id: str, status: str, message: Optional[str] = N
     except ValueError:
         return
 
-    # Always update activity timestamp (used by stall detection) even if the status
-    # event is a duplicate keep-alive update.
     with _progress_lock:
-        _last_activity[book_id] = time.time()
         status_event = (status_key, message)
         if _last_status_event.get(book_id) == status_event:
             return
+        _last_activity[book_id] = time.time()
         _last_status_event[book_id] = status_event
 
     # Update status message first so terminal snapshots capture the final message
@@ -812,6 +816,7 @@ def _cleanup_progress_tracking(task_id: str) -> None:
         _progress_last_broadcast.pop(task_id, None)
         _progress_last_broadcast.pop(f"{task_id}_progress", None)
         _last_activity.pop(task_id, None)
+        _last_progress_value.pop(task_id, None)
         _last_status_event.pop(task_id, None)
 
 
@@ -892,70 +897,77 @@ def concurrent_download_loop() -> None:
         stalled_tasks: set[str] = set()  # Track tasks already cancelled due to stall
 
         while True:
-            # Clean up completed futures
-            completed_futures = [f for f in active_futures if f.done()]
-            for future in completed_futures:
-                task_id = active_futures.pop(future)
-                stalled_tasks.discard(task_id)
-                try:
-                    future.result()  # This will raise any exceptions from the worker
-                except Exception as e:
-                    logger.error_trace(f"Future exception for {task_id}: {e}")
+            try:
+                # Clean up completed futures
+                completed_futures = [f for f in active_futures if f.done()]
+                for future in completed_futures:
+                    task_id = active_futures.pop(future)
+                    stalled_tasks.discard(task_id)
+                    try:
+                        future.result()  # This will raise any exceptions from the worker
+                    except Exception as e:
+                        logger.error_trace(f"Future exception for {task_id}: {e}")
 
-            # Check for stalled downloads (no activity in STALL_TIMEOUT seconds)
-            current_time = time.time()
-            with _progress_lock:
-                for future, task_id in list(active_futures.items()):
-                    if task_id in stalled_tasks:
-                        continue
-                    last_active = _last_activity.get(task_id, current_time)
-                    if current_time - last_active > STALL_TIMEOUT:
-                        logger.warning(f"Download stalled for {task_id}, cancelling")
-                        book_queue.cancel_download(task_id)
-                        book_queue.update_status_message(task_id, f"Download stalled (no activity for {STALL_TIMEOUT}s)")
-                        stalled_tasks.add(task_id)
+                # Check for stalled downloads (no activity in STALL_TIMEOUT seconds)
+                current_time = time.time()
+                with _progress_lock:
+                    for future, task_id in list(active_futures.items()):
+                        if task_id in stalled_tasks:
+                            continue
+                        last_active = _last_activity.get(task_id, current_time)
+                        if current_time - last_active > STALL_TIMEOUT:
+                            logger.warning(f"Download stalled for {task_id}, cancelling")
+                            book_queue.cancel_download(task_id)
+                            book_queue.update_status_message(task_id, f"Download stalled (no activity for {STALL_TIMEOUT}s)")
+                            stalled_tasks.add(task_id)
 
-            # Start new downloads if we have capacity
-            while len(active_futures) < max_workers:
-                next_download = book_queue.get_next()
-                if not next_download:
-                    break
+                # Start new downloads if we have capacity
+                while len(active_futures) < max_workers:
+                    next_download = book_queue.get_next()
+                    if not next_download:
+                        break
 
-                # Stagger concurrent downloads to avoid rate limiting on shared download servers
-                # Only delay if other downloads are already active
-                if active_futures:
-                    stagger_delay = random.uniform(2, 5)
-                    logger.debug(f"Staggering download start by {stagger_delay:.1f}s")
-                    time.sleep(stagger_delay)
+                    # Stagger concurrent downloads to avoid rate limiting on shared download servers
+                    # Only delay if other downloads are already active
+                    if active_futures:
+                        stagger_delay = random.uniform(2, 5)
+                        logger.debug(f"Staggering download start by {stagger_delay:.1f}s")
+                        time.sleep(stagger_delay)
 
-                task_id, cancel_flag = next_download
+                    task_id, cancel_flag = next_download
 
-                # Submit download job to thread pool
-                future = executor.submit(_process_single_download, task_id, cancel_flag)
-                active_futures[future] = task_id
+                    # Submit download job to thread pool
+                    future = executor.submit(_process_single_download, task_id, cancel_flag)
+                    active_futures[future] = task_id
 
-            # Brief sleep to prevent busy waiting
-            time.sleep(config.MAIN_LOOP_SLEEP_TIME)
+                # Brief sleep to prevent busy waiting
+                time.sleep(config.MAIN_LOOP_SLEEP_TIME)
+            except Exception as e:
+                logger.error_trace("Download coordinator loop error: %s", e)
+                time.sleep(COORDINATOR_LOOP_ERROR_RETRY_DELAY)
 
 # Download coordinator thread (started explicitly via start())
 _coordinator_thread: Optional[threading.Thread] = None
-_started = False
+_coordinator_lock = Lock()
 
 
 def start() -> None:
     """Start the download coordinator thread. Safe to call multiple times."""
-    global _coordinator_thread, _started
+    global _coordinator_thread
 
-    if _started:
-        logger.debug("Download coordinator already started")
-        return
+    with _coordinator_lock:
+        if _coordinator_thread is not None and _coordinator_thread.is_alive():
+            logger.debug("Download coordinator already started")
+            return
 
-    _coordinator_thread = threading.Thread(
-        target=concurrent_download_loop,
-        daemon=True,
-        name="DownloadCoordinator"
-    )
-    _coordinator_thread.start()
-    _started = True
+        if _coordinator_thread is not None:
+            logger.warning("Download coordinator thread is not alive; starting a new one")
+
+        _coordinator_thread = threading.Thread(
+            target=concurrent_download_loop,
+            daemon=True,
+            name="DownloadCoordinator"
+        )
+        _coordinator_thread.start()
 
     logger.info(f"Download coordinator started with {config.MAX_CONCURRENT_DOWNLOADS} concurrent workers")
