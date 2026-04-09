@@ -5,7 +5,7 @@ These tests verify the application handles various Docker volume configurations
 correctly, including named volumes, bind mounts, permission issues, and
 edge cases that commonly cause issues in containerized deployments.
 
-Run with: docker exec test-cwabd python3 -m pytest /app/tests/config/test_docker_volumes.py -v
+Run with: uv run pytest tests/config/test_docker_volumes.py -v
 """
 
 import json

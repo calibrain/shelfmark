@@ -4,7 +4,7 @@ E2E tests for authentication endpoints.
 Tests the full authentication flow including login, logout, and auth check
 with various authentication modes.
 
-Run with: docker exec test-cwabd python3 -m pytest tests/e2e/ -v -m e2e
+Run with: uv run pytest tests/e2e/ -v -m e2e
 """
 
 import pytest

@@ -4,7 +4,7 @@ E2E Tests for Prowlarr Integration.
 These tests verify the Prowlarr release source and download client flow.
 Requires Prowlarr and a download client (qBittorrent, Transmission, etc.) to be configured.
 
-Run with: docker exec test-cwabd python3 -m pytest tests/e2e/test_prowlarr_flow.py -v -m e2e
+Run with: uv run pytest tests/e2e/test_prowlarr_flow.py -v -m e2e
 """
 
 import time

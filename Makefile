@@ -1,4 +1,4 @@
-.PHONY: help install install-python-dev dev build preview typecheck frontend-test clean up up down docker-build refresh restart build-serve python-lint python-lint-fix
+.PHONY: help install install-python-dev dev build preview typecheck frontend-test clean up up down docker-build refresh restart build-serve python-lint python-lint-fix python-format python-format-check
 
 # Frontend directory
 FRONTEND_DIR := src/frontend
@@ -18,9 +18,11 @@ help:
 	@echo "  preview    - Preview production build"
 	@echo "  typecheck  - Run TypeScript type checking"
 	@echo "  frontend-test - Run frontend unit tests"
-	@echo "  install-python-dev - Install Python dev tooling"
+	@echo "  install-python-dev - Sync Python runtime + dev tooling with uv"
 	@echo "  python-lint - Run Ruff against Python backend code"
 	@echo "  python-lint-fix - Run Ruff with safe auto-fixes"
+	@echo "  python-format - Format Python backend code with Ruff"
+	@echo "  python-format-check - Check Python backend formatting with Ruff"
 	@echo "  clean      - Remove node_modules and build artifacts"
 	@echo ""
 	@echo "Backend (Docker):"
@@ -37,8 +39,8 @@ install:
 
 # Install Python development dependencies
 install-python-dev:
-	@echo "Installing Python dev dependencies..."
-	python3 -m pip install -r requirements-dev.txt
+	@echo "Syncing Python runtime and dev tooling with uv..."
+	uv sync --locked --extra browser
 
 # Start development server
 dev:
@@ -70,11 +72,19 @@ typecheck:
 # Python linting
 python-lint:
 	@echo "Running Ruff..."
-	python3 -m ruff check shelfmark
+	uv run ruff check shelfmark
 
 python-lint-fix:
 	@echo "Running Ruff with safe auto-fixes..."
-	python3 -m ruff check shelfmark --fix
+	uv run ruff check shelfmark --fix
+
+python-format:
+	@echo "Formatting Python backend code with Ruff..."
+	uv run ruff format shelfmark
+
+python-format-check:
+	@echo "Checking Python backend formatting with Ruff..."
+	uv run ruff format --check shelfmark
 
 # Run frontend unit tests
 frontend-test:

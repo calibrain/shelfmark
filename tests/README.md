@@ -5,14 +5,17 @@ This directory contains the test suite for Shelfmark. Tests are organized by sco
 ## Quick Start
 
 ```bash
-# Run all unit tests (fast, no external dependencies)
-docker exec test-cwabd python3 -m pytest tests/ -v -m "not integration and not e2e"
+# Sync the local Python environment once
+uv sync --locked --extra browser
 
-# Run E2E API tests
-docker exec test-cwabd python3 -m pytest tests/e2e/ -v -m e2e
+# Run all unit tests locally (fast, no external dependencies)
+uv run pytest tests/ -v -m "not integration and not e2e"
 
-# Run everything except integration tests
-docker exec test-cwabd python3 -m pytest tests/ -v -m "not integration"
+# Run E2E API tests against a running app stack
+uv run pytest tests/e2e/ -v -m e2e
+
+# Run everything except integration tests locally
+uv run pytest tests/ -v -m "not integration"
 ```
 
 ## Test Structure
@@ -78,7 +81,7 @@ tests/
 Fast tests that mock external dependencies. Run these frequently during development.
 
 ```bash
-docker exec test-cwabd python3 -m pytest tests/prowlarr/ -v -m "not integration"
+uv run pytest tests/prowlarr/ -v -m "not integration"
 ```
 
 **What they test:**
@@ -98,7 +101,7 @@ docker exec test-cwabd python3 -m pytest tests/prowlarr/ -v -m "not integration"
 Test the full application through its HTTP API. Require the app to be running.
 
 ```bash
-docker exec test-cwabd python3 -m pytest tests/e2e/ -v -m e2e
+uv run pytest tests/e2e/ -v -m e2e
 ```
 
 **What they test:**
@@ -118,7 +121,7 @@ Test against real services (qBittorrent, Transmission, etc.). Require the full D
 docker compose -f docker-compose.test-clients.yml up -d
 
 # Run integration tests
-docker exec test-cwabd python3 -m pytest tests/prowlarr/ -v -m integration
+docker compose -f docker-compose.test-clients.yml exec shelfmark uv run pytest tests/prowlarr/ -v -m integration
 ```
 
 **What they test:**
@@ -138,22 +141,22 @@ docker exec test-cwabd python3 -m pytest tests/prowlarr/ -v -m integration
 
 ```bash
 # Run specific test file
-docker exec test-cwabd python3 -m pytest tests/prowlarr/test_clients.py -v
+uv run pytest tests/prowlarr/test_clients.py -v
 
 # Run specific test class
-docker exec test-cwabd python3 -m pytest tests/e2e/test_api.py::TestHealthEndpoint -v
+uv run pytest tests/e2e/test_api.py::TestHealthEndpoint -v
 
 # Run specific test
-docker exec test-cwabd python3 -m pytest tests/e2e/test_api.py::TestHealthEndpoint::test_health_returns_ok -v
+uv run pytest tests/e2e/test_api.py::TestHealthEndpoint::test_health_returns_ok -v
 
 # Run with short traceback (cleaner output)
-docker exec test-cwabd python3 -m pytest tests/ -v --tb=short -m "not integration"
+uv run pytest tests/ -v --tb=short -m "not integration"
 
 # Run and stop on first failure
-docker exec test-cwabd python3 -m pytest tests/ -v -x -m "not integration"
+uv run pytest tests/ -v -x -m "not integration"
 
 # Run with coverage (if pytest-cov installed)
-docker exec test-cwabd python3 -m pytest tests/ --cov=shelfmark -m "not integration"
+uv run pytest tests/ --cov=shelfmark -m "not integration"
 ```
 
 ## Writing New Tests
@@ -228,20 +231,20 @@ Some tests skip when external services aren't available. This is normal:
 
 ### Tests can't connect to app
 ```bash
-# Check the app is running
-docker ps | grep test-cwabd
+# Check the app/container is running
+docker ps
 
 # Check app logs
-docker logs test-cwabd
+docker logs <your-shelfmark-container>
 ```
 
 ### Import errors
 ```bash
-# Make sure you're running inside the container
-docker exec test-cwabd python3 -m pytest ...
+# Sync the local Python environment first
+uv sync --locked --extra browser
 
-# Not from your local machine
-pytest ...  # This won't work
+# Then run tests from the repo root
+uv run pytest ...
 ```
 
 ### Integration tests failing
@@ -257,5 +260,5 @@ docker ps | grep -E "qbittorrent|transmission|deluge|nzbget|sabnzbd"
 
 Restart the container to reset the in-memory queue between test runs:
 ```bash
-docker restart test-cwabd
+docker restart <your-shelfmark-container>
 ```

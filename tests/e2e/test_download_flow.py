@@ -4,7 +4,7 @@ E2E Download Flow Tests.
 These tests verify the complete download journey from search to file retrieval.
 They require external services to be available and may take longer to run.
 
-Run with: docker exec test-cwabd python3 -m pytest tests/e2e/test_download_flow.py -v -m e2e
+Run with: uv run pytest tests/e2e/test_download_flow.py -v -m e2e
 """
 
 import os

@@ -2,7 +2,7 @@
 E2E Test Configuration and Fixtures.
 
 These tests require the full application stack to be running.
-Run with: docker exec test-cwabd python3 -m pytest tests/e2e/ -v -m e2e
+Run with: uv run pytest tests/e2e/ -v -m e2e
 """
 
 import os

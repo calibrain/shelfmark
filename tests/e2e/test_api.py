@@ -3,7 +3,7 @@ E2E API Tests.
 
 Tests the full application flow through the HTTP API.
 
-Run with: docker exec test-cwabd python3 -m pytest tests/e2e/ -v -m e2e
+Run with: uv run pytest tests/e2e/ -v -m e2e
 """
 
 import pytest
