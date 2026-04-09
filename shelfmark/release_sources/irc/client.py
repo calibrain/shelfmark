@@ -74,7 +74,7 @@ class IRCClient:
         *,
         use_tls: bool = True,
         version: str = "Shelfmark 1.0",
-    ):
+    ) -> None:
         if not nick:
             msg = "IRC nickname is required"
             raise IRCError(msg)
@@ -461,9 +461,9 @@ class IRCClient:
         """Check if currently connected."""
         return self._connected and self._socket is not None
 
-    def __enter__(self):
+    def __enter__(self) -> "IRCClient":
         self.connect()
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self, *args) -> None:
         self.disconnect()

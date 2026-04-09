@@ -74,7 +74,7 @@ def _normalize_item_key(item_key: object, *, item_type: str) -> str:
 class ActivityViewStateService:
     """Service for per-viewer activity dismissal and history visibility."""
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str) -> None:
         self._db_path = db_path
         self._lock = threading.Lock()
 

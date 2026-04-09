@@ -80,7 +80,7 @@ class GoogleBooksProvider(MetadataProvider):
         ),
     ]
 
-    def __init__(self, api_key: str | None = None):
+    def __init__(self, api_key: str | None = None) -> None:
         """Initialize provider with optional API key (falls back to config)."""
         self.api_key = api_key or app_config.get("GOOGLEBOOKS_API_KEY", "")
         self.session = requests.Session()

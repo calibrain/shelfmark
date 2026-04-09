@@ -76,7 +76,7 @@ def _detect_image_type(data: bytes) -> tuple[str, str] | None:
 class ImageCacheService:
     """Persistent image cache with LRU eviction and TTL support."""
 
-    def __init__(self, cache_dir: Path, max_size_mb: int = 500, ttl_seconds: int = 0):
+    def __init__(self, cache_dir: Path, max_size_mb: int = 500, ttl_seconds: int = 0) -> None:
         """Initialize the image cache.
 
         Args:

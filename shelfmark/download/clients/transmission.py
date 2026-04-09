@@ -77,7 +77,7 @@ class TransmissionClient(DownloadClient):
     protocol = "torrent"
     name = "transmission"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize Transmission client with settings from config."""
         from transmission_rpc import Client  # noqa: PLC0415
 

@@ -1105,7 +1105,7 @@ class DirectDownloadSource(ReleaseSource):
     display_name = "Direct Download"
     supported_content_types = ["ebook"]  # Direct downloads only support ebooks
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Tracks which search method was used in the last search() call
         # "isbn" = ISBN search returned results, "title_author" = title+author was used
         self._last_search_type: str = "title_author"

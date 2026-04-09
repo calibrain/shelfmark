@@ -101,7 +101,7 @@ class SABnzbdClient(DownloadClient):
     protocol = "usenet"
     name = "sabnzbd"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize SABnzbd client with settings from config."""
         raw_url = config.get("SABNZBD_URL", "")
         if not raw_url:

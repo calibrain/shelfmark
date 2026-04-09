@@ -399,7 +399,7 @@ class DoHResolver:
     # Cache TTL in seconds (5 minutes)
     CACHE_TTL = 300
 
-    def __init__(self, provider_url: str, hostname: str, ip: str):
+    def __init__(self, provider_url: str, hostname: str, ip: str) -> None:
         """Initialize DoH resolver with specified provider."""
         self.base_url = provider_url.lower().strip()
         self.hostname = hostname  # Store the hostname for hostname-based skipping

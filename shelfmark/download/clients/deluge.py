@@ -40,7 +40,7 @@ ONE_WEEK_IN_SECONDS = 604800
 
 
 class DelugeRpcError(RuntimeError):
-    def __init__(self, message: str, code: int | None = None):
+    def __init__(self, message: str, code: int | None = None) -> None:
         super().__init__(message)
         self.code = code
 
@@ -62,7 +62,7 @@ class DelugeClient(DownloadClient):
     protocol = "torrent"
     name = "deluge"
 
-    def __init__(self):
+    def __init__(self) -> None:
         raw_host = str(config.get("DELUGE_HOST", "localhost") or "")
         raw_port = str(config.get("DELUGE_PORT", "8112") or "8112")
         password = str(config.get("DELUGE_PASSWORD", "") or "")

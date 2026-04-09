@@ -44,7 +44,7 @@ RATE_LIMIT_WINDOW_SECONDS = 60
 class RateLimiter:
     """Simple sliding window rate limiter."""
 
-    def __init__(self, max_requests: int, window_seconds: int):
+    def __init__(self, max_requests: int, window_seconds: int) -> None:
         """Initialize rate limiter with max requests per time window."""
         self.max_requests = max_requests
         self.window_seconds = window_seconds
@@ -124,7 +124,7 @@ class OpenLibraryProvider(MetadataProvider):
         ),
     ]
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize provider."""
         self.session = requests.Session()
 

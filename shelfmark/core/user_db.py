@@ -172,7 +172,7 @@ class UserDB:
 
     _VALID_AUTH_SOURCES = set(AUTH_SOURCE_SET)
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str) -> None:
         self._db_path = db_path
         self._lock = threading.Lock()
 

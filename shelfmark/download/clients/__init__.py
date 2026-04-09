@@ -148,7 +148,7 @@ class DownloadStatus:
             file_path=None,
         )
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate and normalize state."""
         # Normalize string states to enum
         if isinstance(self.state, str):
@@ -239,7 +239,7 @@ class DownloadClient(ABC):
         # Join and normalize
         return os.path.normpath(str(Path(valid[0]).joinpath(*valid[1:])))
 
-    def __init_subclass__(cls, **kwargs):
+    def __init_subclass__(cls, **kwargs) -> None:
         """Validate that subclasses define required class attributes."""
         super().__init_subclass__(**kwargs)
 

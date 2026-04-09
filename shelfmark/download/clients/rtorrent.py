@@ -52,7 +52,7 @@ class RTorrentClient(DownloadClient):
     protocol = "torrent"
     name = "rtorrent"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize rTorrent client with settings from config."""
         raw_url = config.get("RTORRENT_URL", "")
         if not raw_url:

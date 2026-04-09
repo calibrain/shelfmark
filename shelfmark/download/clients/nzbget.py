@@ -28,7 +28,7 @@ class NZBGetClient(DownloadClient):
     protocol = "usenet"
     name = "nzbget"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize NZBGet client with settings from config."""
         raw_url = config.get("NZBGET_URL", "")
         if not raw_url:

@@ -844,7 +844,7 @@ class HardcoverProvider(MetadataProvider):
         ),
     ]
 
-    def __init__(self, api_key: str | None = None):
+    def __init__(self, api_key: str | None = None) -> None:
         """Initialize provider with optional API key (falls back to config)."""
         raw_key = api_key or app_config.get("HARDCOVER_API_KEY", "")
         # Strip "Bearer " prefix if user pasted the full auth header from Hardcover
@@ -1657,7 +1657,7 @@ class HardcoverProvider(MetadataProvider):
 
         return options
 
-    def set_book_target_state(self, book_id: str, target: str, *, selected: bool) -> dict[str, Any]:
+    def set_book_target_state(self, book_id: str, target: str, selected: bool) -> dict[str, Any]:
         """Set whether a Hardcover book belongs to a status shelf or user list."""
         if not self.api_key:
             raise ValueError("Hardcover is not configured")

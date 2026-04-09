@@ -74,7 +74,7 @@ class QueueItem:
     priority: int
     added_time: float
 
-    def __lt__(self, other: "QueueItem"):
+    def __lt__(self, other: "QueueItem") -> bool:
         """Compare items for priority queue (lower priority number = higher precedence)."""
         if self.priority != other.priority:
             return self.priority < other.priority
@@ -157,7 +157,7 @@ class DownloadTask:
     last_error_type: str | None = None
     staged_path: str | None = None
 
-    def __lt__(self, other: "DownloadTask"):
+    def __lt__(self, other: "DownloadTask") -> bool:
         """Compare tasks for priority queue (lower priority number = higher precedence)."""
         if self.priority != other.priority:
             return self.priority < other.priority

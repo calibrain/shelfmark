@@ -20,7 +20,7 @@ _BOOK_CATEGORY_RANGE_END = 8000
 class ProwlarrClient:
     """Client for interacting with the Prowlarr API."""
 
-    def __init__(self, url: str, api_key: str, timeout: int = 30):
+    def __init__(self, url: str, api_key: str, timeout: int = 30) -> None:
         self.base_url = normalize_http_url(url)
         self.api_key = api_key
         self.timeout = timeout

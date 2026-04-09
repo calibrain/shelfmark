@@ -74,7 +74,7 @@ def _normalize_limit(value: object, *, default: int, minimum: int, maximum: int)
 class DownloadHistoryService:
     """Service for persisted canonical download activity rows."""
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str) -> None:
         self._db_path = db_path
         self._lock = threading.Lock()
 

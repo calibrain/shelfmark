@@ -104,7 +104,7 @@ def _extract_url_schemes(urls: Iterable[str]) -> list[str]:
 
 
 class _AppriseLogCapture(logging.Handler):
-    def __init__(self, *, thread_id: int):
+    def __init__(self, *, thread_id: int) -> None:
         super().__init__(level=logging.INFO)
         self.records: list[tuple[int, str, str, str]] = []
         self._thread_id = thread_id

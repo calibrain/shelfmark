@@ -76,7 +76,7 @@ class IRCReleaseSource(ReleaseSource):
         False  # Exclude from default source options (requires deliberate selection)
     )
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Track online servers from most recent search
         self._online_servers: set[str] | None = None
 

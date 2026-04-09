@@ -158,7 +158,7 @@ class QBittorrentClient(DownloadClient):
     protocol = "torrent"
     name = "qbittorrent"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize qBittorrent client with settings from config."""
         # Lazy import to avoid dependency issues if not using torrents
         from qbittorrentapi import Client  # noqa: PLC0415

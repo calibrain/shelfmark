@@ -26,7 +26,7 @@ class CacheEntry:
 class CacheService:
     """Thread-safe in-memory cache with TTL support."""
 
-    def __init__(self, max_size: int = 1000):
+    def __init__(self, max_size: int = 1000) -> None:
         """Initialize cache with max_size entries before eviction."""
         self._cache: dict[str, CacheEntry] = {}
         self._lock = threading.Lock()

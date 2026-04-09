@@ -80,7 +80,7 @@ def _diagnose_path_issue(path: str) -> str:
 class ExternalClientHandler(DownloadHandler, ABC):
     """Shared lifecycle handler for sources that hand off to torrent/usenet clients."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Track downloads that may need client-side cleanup after Shelfmark completes import.
         # task_id -> (client, download_id, protocol)
         self._cleanup_refs: dict[str, tuple[DownloadClient, str, str]] = {}
