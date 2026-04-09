@@ -7,7 +7,6 @@ This keeps all Prowlarr-specific data within the plugin.
 
 import time
 from threading import Lock
-from typing import Dict, Optional
 
 from shelfmark.core.logger import setup_logger
 
@@ -17,7 +16,7 @@ logger = setup_logger(__name__)
 RELEASE_CACHE_TTL = 3600
 
 # Internal cache storage: source_id -> (release_dict, timestamp)
-_cache: Dict[str, tuple] = {}
+_cache: dict[str, tuple] = {}
 _cache_lock = Lock()
 
 
@@ -33,7 +32,7 @@ def cache_release(source_id: str, release_data: dict) -> None:
         _cache[source_id] = (release_data, time.time())
 
 
-def get_release(source_id: str) -> Optional[dict]:
+def get_release(source_id: str) -> dict | None:
     """
     Get a cached release by source_id.
 

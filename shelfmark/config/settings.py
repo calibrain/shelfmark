@@ -2,10 +2,10 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 
-def _on_save_advanced(values: Dict[str, Any]) -> Dict[str, Any]:
+def _on_save_advanced(values: dict[str, Any]) -> dict[str, Any]:
     """Validate advanced settings before persisting."""
     from shelfmark.core.logger import setup_logger
 
@@ -1474,7 +1474,7 @@ def cloudflare_bypass_settings():
         ),
     ]
 
-def _on_save_mirrors(values: Dict[str, Any]) -> Dict[str, Any]:
+def _on_save_mirrors(values: dict[str, Any]) -> dict[str, Any]:
     """Normalize mirror list settings before persisting."""
     from shelfmark.core.logger import setup_logger
     from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS

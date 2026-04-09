@@ -4,7 +4,7 @@ import os
 import sqlite3
 import time
 from threading import Lock
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 # Import lazily to avoid circular imports
 _registry_module = None
@@ -60,10 +60,10 @@ class Config:
     def __init__(self):
         if self._initialized:
             return
-        self._cache: Dict[str, Any] = {}
-        self._field_map: Dict[str, tuple] = {}  # key -> (field, tab_name)
+        self._cache: dict[str, Any] = {}
+        self._field_map: dict[str, tuple] = {}  # key -> (field, tab_name)
         self._cache_lock = Lock()
-        self._user_settings_cache: Dict[int, Dict[str, Any]] = {}
+        self._user_settings_cache: dict[int, dict[str, Any]] = {}
         self._user_settings_cache_lock = Lock()
         self._user_db = None
         self._user_db_load_attempted = False
@@ -156,7 +156,7 @@ class Config:
             # Multi-user support is optional; fall back to global config when unavailable.
             return None
 
-    def _get_user_settings(self, user_id: int) -> Dict[str, Any]:
+    def _get_user_settings(self, user_id: int) -> dict[str, Any]:
         """Get cached per-user settings from user DB."""
         with self._user_settings_cache_lock:
             if user_id in self._user_settings_cache:
@@ -183,7 +183,7 @@ class Config:
         user_settings = self._get_user_settings(user_id)
         return user_settings.get(key)
 
-    def get(self, key: str, default: Any = None, user_id: Optional[int] = None) -> Any:
+    def get(self, key: str, default: Any = None, user_id: int | None = None) -> Any:
         """
         Get a setting value by key.
 
@@ -255,7 +255,7 @@ class Config:
         registry = _get_registry()
         return registry.is_value_from_env(field)
 
-    def get_all(self) -> Dict[str, Any]:
+    def get_all(self) -> dict[str, Any]:
         """
         Get all cached settings as a dictionary.
 

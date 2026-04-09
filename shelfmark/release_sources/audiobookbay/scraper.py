@@ -2,7 +2,6 @@
 
 import re
 import time
-from typing import Dict, List, Optional
 from urllib.parse import quote
 
 import requests
@@ -111,7 +110,7 @@ def search_audiobookbay(
     max_pages: int = 1,
     hostname: str = "audiobookbay.lu",
     exact_phrase: bool = False,
-) -> List[Dict[str, str]]:
+) -> list[dict[str, str]]:
     """Search AudiobookBay for audiobooks matching the query.
     
     Args:
@@ -299,7 +298,7 @@ def search_audiobookbay(
 def extract_magnet_link(
     details_url: str,
     hostname: str = "audiobookbay.lu"
-) -> Optional[str]:
+) -> str | None:
     """Extract info hash and trackers from book detail page, then construct magnet link.
     
     Args:

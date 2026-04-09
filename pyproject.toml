@@ -30,7 +30,8 @@ line-length = 100
 extend-exclude = [".local"]
 
 [tool.ruff.lint]
-select = ["F", "I"]
+select = ["F", "I", "UP"]
+ignore = ["UP035"]
 
 [tool.vulture]
 paths = ["shelfmark"]

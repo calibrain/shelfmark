@@ -2,7 +2,6 @@
 
 import zipfile
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import is_audiobook as check_audiobook
@@ -49,7 +48,7 @@ def is_archive(file_path: Path) -> bool:
     return suffix in ("zip", "rar")
 
 
-def _is_supported_file(file_path: Path, content_type: Optional[str] = None) -> bool:
+def _is_supported_file(file_path: Path, content_type: str | None = None) -> bool:
     """Check if file matches user's supported formats setting based on content type."""
     ext = file_path.suffix.lower().lstrip(".")
     if check_audiobook(content_type):
@@ -67,9 +66,9 @@ ALL_AUDIO_EXTENSIONS = {'.m4b', '.mp3', '.m4a', '.aac', '.flac', '.ogg', '.wma',
 
 
 def _filter_files(
-    extracted_files: List[Path],
-    content_type: Optional[str] = None,
-) -> Tuple[List[Path], List[Path], List[Path]]:
+    extracted_files: list[Path],
+    content_type: str | None = None,
+) -> tuple[list[Path], list[Path], list[Path]]:
     """Filter files by content type. Returns (matched, rejected_format, other)."""
     is_audiobook = check_audiobook(content_type)
     known_extensions = ALL_AUDIO_EXTENSIONS if is_audiobook else ALL_EBOOK_EXTENSIONS
@@ -92,8 +91,8 @@ def _filter_files(
 def extract_archive(
     archive_path: Path,
     output_dir: Path,
-    content_type: Optional[str] = None,
-) -> Tuple[List[Path], List[str], List[Path]]:
+    content_type: str | None = None,
+) -> tuple[list[Path], list[str], list[Path]]:
     """Extract archive and filter by content type. Returns (matched, warnings, rejected)."""
     suffix = archive_path.suffix.lower().lstrip(".")
 
@@ -139,7 +138,7 @@ def extract_archive(
 def extract_archive_raw(
     archive_path: Path,
     output_dir: Path,
-) -> Tuple[List[Path], List[str]]:
+) -> tuple[list[Path], list[str]]:
     """Extract archive without filtering (returns all extracted files)."""
     suffix = archive_path.suffix.lower().lstrip(".")
 
@@ -151,7 +150,7 @@ def extract_archive_raw(
     raise ArchiveExtractionError(f"Unsupported archive format: {suffix}")
 
 
-def _extract_files_from_archive(archive, output_dir: Path) -> List[Path]:
+def _extract_files_from_archive(archive, output_dir: Path) -> list[Path]:
     """Extract files from ZipFile or RarFile to output_dir with security checks."""
     extracted_files = []
 
@@ -189,7 +188,7 @@ def _extract_files_from_archive(archive, output_dir: Path) -> List[Path]:
     return extracted_files
 
 
-def _extract_zip(archive_path: Path, output_dir: Path) -> Tuple[List[Path], List[str]]:
+def _extract_zip(archive_path: Path, output_dir: Path) -> tuple[list[Path], list[str]]:
     """Extract files from a ZIP archive."""
     try:
         with zipfile.ZipFile(archive_path, "r") as zf:
@@ -211,7 +210,7 @@ def _extract_zip(archive_path: Path, output_dir: Path) -> Tuple[List[Path], List
         raise ArchiveExtractionError(f"Permission denied: {e}")
 
 
-def _extract_rar(archive_path: Path, output_dir: Path) -> Tuple[List[Path], List[str]]:
+def _extract_rar(archive_path: Path, output_dir: Path) -> tuple[list[Path], list[str]]:
     """Extract files from a RAR archive."""
     if not RAR_AVAILABLE:
         raise ArchiveExtractionError("RAR extraction not available - rarfile library not installed")

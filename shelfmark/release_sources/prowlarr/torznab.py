@@ -7,7 +7,7 @@ isn't available via Prowlarr's JSON search endpoint.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from defusedxml import ElementTree as DefusedElementTree
 from defusedxml.common import DefusedXmlException
@@ -20,7 +20,7 @@ def _local_name(tag: str) -> str:
     return tag
 
 
-def _coerce_int(value: Optional[str]) -> Optional[int]:
+def _coerce_int(value: str | None) -> int | None:
     if value is None:
         return None
     value = value.strip()
@@ -32,7 +32,7 @@ def _coerce_int(value: Optional[str]) -> Optional[int]:
         return None
 
 
-def _coerce_float(value: Optional[str]) -> Optional[float]:
+def _coerce_float(value: str | None) -> float | None:
     if value is None:
         return None
     value = value.strip()
@@ -44,7 +44,7 @@ def _coerce_float(value: Optional[str]) -> Optional[float]:
         return None
 
 
-def _strip_author_from_title(title: str, author: Optional[str]) -> str:
+def _strip_author_from_title(title: str, author: str | None) -> str:
     """
     Prowlarr's MyAnonamouse parser appends " by {author}" into the title while
     also emitting author/booktitle fields. Shelfmark's UI shows author
@@ -60,7 +60,7 @@ def _strip_author_from_title(title: str, author: Optional[str]) -> str:
     return title
 
 
-def parse_torznab_xml(xml_text: str) -> List[Dict[str, Any]]:
+def parse_torznab_xml(xml_text: str) -> list[dict[str, Any]]:
     """
     Parse a Torznab/Newznab XML response into a list of dicts that roughly match
     Prowlarr's JSON search results shape.
@@ -74,7 +74,7 @@ def parse_torznab_xml(xml_text: str) -> List[Dict[str, Any]]:
         return []
 
     items = root.findall(".//item")
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
 
     for item in items:
         title = (item.findtext("title") or "").strip()
@@ -89,7 +89,7 @@ def parse_torznab_xml(xml_text: str) -> List[Dict[str, Any]]:
         enclosure_type = enclosure.get("type") if enclosure is not None else None
         enclosure_url = enclosure.get("url") if enclosure is not None else None
 
-        protocol: Optional[str] = None
+        protocol: str | None = None
         if enclosure_type == "application/x-bittorrent":
             protocol = "torrent"
         elif enclosure_type == "application/x-nzb":
@@ -102,15 +102,15 @@ def parse_torznab_xml(xml_text: str) -> List[Dict[str, Any]]:
         indexer_id = _coerce_int(prowlarr_indexer_el.get("id")) if prowlarr_indexer_el is not None else None
         indexer_name = (prowlarr_indexer_el.text or "").strip() if prowlarr_indexer_el is not None else ""
 
-        categories: List[int] = []
+        categories: list[int] = []
         for cat_el in item.findall("category"):
             cat_id = _coerce_int(cat_el.text)
             if cat_id is not None:
                 categories.append(cat_id)
 
         # Collect torznab/newznab attr elements (namespaced).
-        attrs: Dict[str, str] = {}
-        tags: List[str] = []
+        attrs: dict[str, str] = {}
+        tags: list[str] = []
         for el in item.iter():
             if _local_name(el.tag) != "attr":
                 continue
@@ -126,7 +126,7 @@ def parse_torznab_xml(xml_text: str) -> List[Dict[str, Any]]:
 
         seeders = _coerce_int(attrs.get("seeders"))
         peers = _coerce_int(attrs.get("peers"))
-        leechers: Optional[int] = None
+        leechers: int | None = None
         if peers is not None and seeders is not None and peers >= seeders:
             leechers = peers - seeders
 

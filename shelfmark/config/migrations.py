@@ -1,7 +1,8 @@
 """Configuration migration helpers."""
 
 import json
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 _DEPRECATED_SETTINGS_RESTRICTION_KEYS = (
     "PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN",

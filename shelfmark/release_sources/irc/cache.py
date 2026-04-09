@@ -9,7 +9,7 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from shelfmark.config import env
 from shelfmark.core.logger import setup_logger
@@ -28,31 +28,31 @@ DEFAULT_CACHE_TTL = 30 * 24 * 60 * 60
 _cache_lock = Lock()
 
 
-def _generate_cache_key(provider: str, provider_id: str, content_type: Optional[str] = None) -> str:
+def _generate_cache_key(provider: str, provider_id: str, content_type: str | None = None) -> str:
     """Generate a cache key from provider, provider_id, and content type."""
     normalized_content_type = "audiobook" if check_audiobook(content_type) else "ebook"
     return f"{provider}:{provider_id}:{normalized_content_type}"
 
 
-def _load_cache() -> Dict[str, Any]:
+def _load_cache() -> dict[str, Any]:
     """Load cache from disk."""
     try:
         if CACHE_FILE.exists():
             return json.loads(CACHE_FILE.read_text())
-    except (json.JSONDecodeError, IOError) as e:
+    except (OSError, json.JSONDecodeError) as e:
         logger.warning(f"Failed to load IRC cache: {e}")
     return {"entries": {}, "version": 1}
 
 
-def _save_cache(cache: Dict[str, Any]) -> None:
+def _save_cache(cache: dict[str, Any]) -> None:
     """Save cache to disk."""
     try:
         CACHE_FILE.write_text(json.dumps(cache, indent=2))
-    except IOError as e:
+    except OSError as e:
         logger.error(f"Failed to save IRC cache: {e}")
 
 
-def _release_to_dict(release: Release) -> Dict[str, Any]:
+def _release_to_dict(release: Release) -> dict[str, Any]:
     """Convert Release to a JSON-serializable dict."""
     data = asdict(release)
     # Convert enum to string
@@ -61,7 +61,7 @@ def _release_to_dict(release: Release) -> Dict[str, Any]:
     return data
 
 
-def _dict_to_release(data: Dict[str, Any]) -> Release:
+def _dict_to_release(data: dict[str, Any]) -> Release:
     """Convert dict back to Release object."""
     # Convert protocol string back to enum
     if data.get("protocol"):
@@ -75,9 +75,9 @@ def _dict_to_release(data: Dict[str, Any]) -> Release:
 def get_cached_results(
     provider: str,
     provider_id: str,
-    content_type: Optional[str] = None,
-    ttl_seconds: Optional[int] = None
-) -> Optional[Dict[str, Any]]:
+    content_type: str | None = None,
+    ttl_seconds: int | None = None
+) -> dict[str, Any] | None:
     """
     Get cached search results for a book.
 
@@ -139,9 +139,9 @@ def cache_results(
     provider: str,
     provider_id: str,
     title: str,
-    releases: List[Release],
-    content_type: Optional[str] = None,
-    online_servers: Optional[List[str]] = None
+    releases: list[Release],
+    content_type: str | None = None,
+    online_servers: list[str] | None = None
 ) -> None:
     """
     Cache search results for a book.
@@ -176,7 +176,7 @@ def cache_results(
         logger.info(f"Cached {len(releases)} IRC releases for '{title}'")
 
 
-def invalidate_cache(provider: str, provider_id: str, content_type: Optional[str] = None) -> bool:
+def invalidate_cache(provider: str, provider_id: str, content_type: str | None = None) -> bool:
     """
     Remove a specific entry from the cache.
 
@@ -220,7 +220,7 @@ def clear_cache() -> int:
         return count
 
 
-def cleanup_expired(ttl_seconds: Optional[int] = None) -> int:
+def cleanup_expired(ttl_seconds: int | None = None) -> int:
     """
     Remove all expired entries from the cache.
 
@@ -257,7 +257,7 @@ def cleanup_expired(ttl_seconds: Optional[int] = None) -> int:
     return removed
 
 
-def get_cache_stats() -> Dict[str, Any]:
+def get_cache_stats() -> dict[str, Any]:
     """
     Get cache statistics.
 

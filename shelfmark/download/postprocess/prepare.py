@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
@@ -19,7 +18,7 @@ def build_output_plan(
     temp_file: Path,
     task: DownloadTask,
     output_mode: str,
-    destination: Optional[Path] = None,
+    destination: Path | None = None,
     status_callback=None,
 ) -> OutputPlan:
     """Build an output plan that describes staging behavior for file-based outputs."""
@@ -41,10 +40,10 @@ def prepare_output_files(
     task: DownloadTask,
     output_mode: str,
     status_callback,
-    destination: Optional[Path] = None,
-    output_plan: Optional[OutputPlan] = None,
+    destination: Path | None = None,
+    output_plan: OutputPlan | None = None,
     preserve_source_on_failure: bool = False,
-) -> Optional[PreparedFiles]:
+) -> PreparedFiles | None:
     if output_plan is None:
         output_plan = build_output_plan(
             temp_file,

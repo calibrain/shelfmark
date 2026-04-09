@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
-from typing import Callable, Optional
 
 from shelfmark.core.models import DownloadTask
 
-StatusCallback = Callable[[str, Optional[str]], None]
-OutputHandler = Callable[[Path, DownloadTask, Event, StatusCallback, bool], Optional[str]]
+StatusCallback = Callable[[str, str | None], None]
+OutputHandler = Callable[[Path, DownloadTask, Event, StatusCallback, bool], str | None]
 
 
 @dataclass(frozen=True)
@@ -82,7 +82,7 @@ def _derive_output_mode(task: DownloadTask) -> str:
     return _normalize_output_mode(config.get("BOOKS_OUTPUT_MODE", "folder")) or "folder"
 
 
-def resolve_output_handler(task: DownloadTask) -> Optional[OutputRegistration]:
+def resolve_output_handler(task: DownloadTask) -> OutputRegistration | None:
     load_output_handlers()
     desired_mode = _derive_output_mode(task)
 

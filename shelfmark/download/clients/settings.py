@@ -1,7 +1,7 @@
 """Shared download client settings registration."""
 
 from contextlib import contextmanager
-from typing import Any, Dict, Optional
+from typing import Any
 
 from shelfmark.core.settings_registry import (
     ActionButton,
@@ -45,7 +45,7 @@ def _transmission_session_verify_override(url: str):
         transmission_rpc_client.requests.Session = original_session_factory
 
 
-def _test_qbittorrent_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _test_qbittorrent_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     """Test the qBittorrent connection using current form values."""
     from shelfmark.core.config import config
 
@@ -75,7 +75,7 @@ def _test_qbittorrent_connection(current_values: Optional[Dict[str, Any]] = None
         return {"success": False, "message": f"Connection failed: {str(e)}"}
 
 
-def _test_transmission_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _test_transmission_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     """Test the Transmission connection using current form values."""
     from shelfmark.core.config import config
     from shelfmark.download.clients.torrent_utils import (
@@ -138,7 +138,7 @@ def _test_transmission_connection(current_values: Optional[Dict[str, Any]] = Non
         return {"success": False, "message": f"Connection failed: {str(e)}"}
 
 
-def _test_deluge_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _test_deluge_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     """Test Deluge Web UI JSON-RPC connection using current form values."""
     from urllib.parse import urlparse
 
@@ -249,7 +249,7 @@ def _test_deluge_connection(current_values: Optional[Dict[str, Any]] = None) -> 
         return {"success": False, "message": f"Connection failed: {str(e)}"}
 
 
-def _test_rtorrent_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _test_rtorrent_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     """Test the rTorrent connection using current form values."""
     import ssl
     from urllib.parse import urlparse
@@ -296,7 +296,7 @@ def _test_rtorrent_connection(current_values: Optional[Dict[str, Any]] = None) -
         return {"success": False, "message": f"Connection failed: {str(e)}"}
 
 
-def _test_nzbget_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _test_nzbget_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     """Test the NZBGet connection using current form values."""
     import requests
 
@@ -333,7 +333,7 @@ def _test_nzbget_connection(current_values: Optional[Dict[str, Any]] = None) -> 
         return {"success": False, "message": f"Connection failed: {str(e)}"}
 
 
-def _test_sabnzbd_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _test_sabnzbd_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     """Test the SABnzbd connection using current form values."""
     import requests
 

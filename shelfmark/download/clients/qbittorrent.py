@@ -2,7 +2,6 @@
 
 import time
 from types import SimpleNamespace
-from typing import Optional, Tuple
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -82,7 +81,7 @@ def _is_explicit_add_failure(raw_result: object) -> bool:
 class QBittorrentClient(DownloadClient):
     """qBittorrent download client."""
 
-    def _is_torrent_loaded(self, torrent_hash: str) -> tuple[bool, Optional[str]]:
+    def _is_torrent_loaded(self, torrent_hash: str) -> tuple[bool, str | None]:
         """Check whether qBittorrent has registered a torrent yet.
 
         Uses `/api/v2/torrents/properties?hash=<hash>`.
@@ -162,8 +161,8 @@ class QBittorrentClient(DownloadClient):
 
 
     def _get_torrents_info(
-        self, torrent_hash: Optional[str] = None
-    ) -> tuple[list[SimpleNamespace], Optional[str]]:
+        self, torrent_hash: str | None = None
+    ) -> tuple[list[SimpleNamespace], str | None]:
         """Get torrent info using GET.
 
         Behaviors:
@@ -188,7 +187,7 @@ class QBittorrentClient(DownloadClient):
             response: requests.Response,
             *,
             request_params: dict[str, str],
-        ) -> tuple[list[SimpleNamespace], Optional[str]]:
+        ) -> tuple[list[SimpleNamespace], str | None]:
             if response.status_code == 403:
                 logger.debug("qBittorrent returned 403; re-authenticating and retrying")
                 self._client.auth_log_in()
@@ -270,7 +269,7 @@ class QBittorrentClient(DownloadClient):
         url = normalize_http_url(config.get("QBITTORRENT_URL", ""))
         return client == "qbittorrent" and bool(url)
 
-    def test_connection(self) -> Tuple[bool, str]:
+    def test_connection(self) -> tuple[bool, str]:
         """Test connection to qBittorrent."""
         try:
             self._client.auth_log_in()
@@ -495,7 +494,7 @@ class QBittorrentClient(DownloadClient):
             self._log_error("remove", e)
             return False
 
-    def get_download_path(self, download_id: str) -> Optional[str]:
+    def get_download_path(self, download_id: str) -> str | None:
         """Get the path where torrent files are located.
 
         Prefer `content_path` when available.
@@ -530,7 +529,7 @@ class QBittorrentClient(DownloadClient):
             self._log_error("get_download_path", e, level="debug")
             return None
 
-    def _resolve_completed_download_path(self, torrent: SimpleNamespace) -> Optional[str]:
+    def _resolve_completed_download_path(self, torrent: SimpleNamespace) -> str | None:
         """Resolve the completed path for a torrent.
 
         Centralizes the logic shared by `get_status()` and `get_download_path()`:
@@ -557,7 +556,7 @@ class QBittorrentClient(DownloadClient):
             getattr(torrent, "name", ""),
         )
 
-    def _derive_download_path_from_files(self, download_id: str) -> Optional[str]:
+    def _derive_download_path_from_files(self, download_id: str) -> str | None:
         """Derive completed download path using `/torrents/properties` + `/torrents/files`.
 
         This mirrors how common automation apps derive the path when
@@ -614,8 +613,8 @@ class QBittorrentClient(DownloadClient):
             return None
 
     def find_existing(
-        self, url: str, category: Optional[str] = None
-    ) -> Optional[Tuple[str, DownloadStatus]]:
+        self, url: str, category: str | None = None
+    ) -> tuple[str, DownloadStatus] | None:
         """Check if a torrent for this URL already exists in qBittorrent."""
         try:
             torrent_info = extract_torrent_info(url)

@@ -6,8 +6,9 @@ routes/services and tested independently.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any
 
 
 class PolicyMode(str, Enum):

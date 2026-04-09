@@ -12,7 +12,7 @@ Requirements:
 """
 
 import base64
-from typing import Any, Optional, Tuple
+from typing import Any
 from urllib.parse import urlparse
 
 import requests
@@ -39,7 +39,7 @@ class DelugeRpcError(RuntimeError):
         self.code = code
 
 
-def _get_error_message(error: Any) -> Tuple[str, int | None]:
+def _get_error_message(error: Any) -> tuple[str, int | None]:
     if isinstance(error, dict):
         return str(error.get("message") or error), error.get("code")
     return str(error), None
@@ -206,7 +206,7 @@ class DelugeClient(DownloadClient):
         password = config.get("DELUGE_PASSWORD", "")
         return client == "deluge" and bool(host) and bool(password)
 
-    def test_connection(self) -> Tuple[bool, str]:
+    def test_connection(self) -> tuple[bool, str]:
         try:
             self._ensure_connected()
             version = self._get_daemon_version()
@@ -220,8 +220,8 @@ class DelugeClient(DownloadClient):
         self,
         url: str,
         name: str,
-        category: Optional[str] = None,
-        expected_hash: Optional[str] = None,
+        category: str | None = None,
+        expected_hash: str | None = None,
         **kwargs,
     ) -> str:
         try:
@@ -361,7 +361,7 @@ class DelugeClient(DownloadClient):
             self._log_error("remove", e)
             return False
 
-    def get_download_path(self, download_id: str) -> Optional[str]:
+    def get_download_path(self, download_id: str) -> str | None:
         try:
             self._ensure_connected()
 
@@ -383,8 +383,8 @@ class DelugeClient(DownloadClient):
             return None
 
     def find_existing(
-        self, url: str, category: Optional[str] = None
-    ) -> Optional[Tuple[str, DownloadStatus]]:
+        self, url: str, category: str | None = None
+    ) -> tuple[str, DownloadStatus] | None:
         try:
             self._ensure_connected()
 

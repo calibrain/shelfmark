@@ -8,7 +8,7 @@ import sqlite3
 import time
 from datetime import datetime, timedelta
 from functools import wraps
-from typing import Any, Dict, Tuple, Union
+from typing import Any
 
 from flask import Flask, jsonify, request, send_file, send_from_directory, session
 from flask_cors import CORS
@@ -174,7 +174,7 @@ backend.start()
 
 # Rate limiting for login attempts
 # Structure: {username: {'count': int, 'lockout_until': datetime}}
-failed_login_attempts: Dict[str, Dict[str, Any]] = {}
+failed_login_attempts: dict[str, dict[str, Any]] = {}
 MAX_LOGIN_ATTEMPTS = 10
 LOCKOUT_DURATION_MINUTES = 30
 
@@ -725,7 +725,7 @@ def _serve_index_html() -> Response:
     """Serve index.html with an adjusted base tag for subpath deployments."""
     index_path = os.path.join(FRONTEND_DIST, 'index.html')
     try:
-        with open(index_path, 'r', encoding='utf-8') as handle:
+        with open(index_path, encoding='utf-8') as handle:
             html = handle.read()
     except OSError:
         return send_from_directory(FRONTEND_DIST, 'index.html')
@@ -782,7 +782,7 @@ if DEBUG:
 
     @app.route('/api/debug', methods=['GET'])
     @login_required
-    def debug() -> Union[Response, Tuple[Response, int]]:
+    def debug() -> Response | tuple[Response, int]:
         """
         This will run the /app/genDebug.sh script, which will generate a debug zip with all the logs
         The file will be named /tmp/shelfmark-debug.zip
@@ -817,7 +817,7 @@ if DEBUG:
 
     @app.route('/api/restart', methods=['GET'])
     @login_required
-    def restart() -> Union[Response, Tuple[Response, int]]:
+    def restart() -> Response | tuple[Response, int]:
         """
         Restart the application
         """
@@ -899,7 +899,7 @@ def _serialize_release(release) -> dict:
 
 @app.route('/api/releases/download', methods=['POST'])
 @login_required
-def api_download_release() -> Union[Response, Tuple[Response, int]]:
+def api_download_release() -> Response | tuple[Response, int]:
     """
     Queue a release for download.
 
@@ -967,7 +967,7 @@ def api_download_release() -> Union[Response, Tuple[Response, int]]:
 
 @app.route('/api/config', methods=['GET'])
 @login_required
-def api_config() -> Union[Response, Tuple[Response, int]]:
+def api_config() -> Response | tuple[Response, int]:
     """
     Get application configuration for frontend.
 
@@ -1045,7 +1045,7 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/health', methods=['GET'])
-def api_health() -> Union[Response, Tuple[Response, int]]:
+def api_health() -> Response | tuple[Response, int]:
     """
     Health check endpoint for container orchestration.
     No authentication required.
@@ -1359,7 +1359,7 @@ def _emit_request_update_events(updated_requests: list[dict[str, Any]]) -> None:
 
 @app.route('/api/status', methods=['GET'])
 @login_required
-def api_status() -> Union[Response, Tuple[Response, int]]:
+def api_status() -> Response | tuple[Response, int]:
     """
     Get current download queue status.
 
@@ -1387,7 +1387,7 @@ def api_status() -> Union[Response, Tuple[Response, int]]:
 
 @app.route('/api/localdownload', methods=['GET'])
 @login_required
-def api_local_download() -> Union[Response, Tuple[Response, int]]:
+def api_local_download() -> Response | tuple[Response, int]:
     """
     Download an EPUB file from local storage if available.
 
@@ -1438,7 +1438,7 @@ def api_local_download() -> Union[Response, Tuple[Response, int]]:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/covers/<cover_id>', methods=['GET'])
-def api_cover(cover_id: str) -> Union[Response, Tuple[Response, int]]:
+def api_cover(cover_id: str) -> Response | tuple[Response, int]:
     """
     Serve a cached book cover image.
 
@@ -1512,7 +1512,7 @@ def api_cover(cover_id: str) -> Union[Response, Tuple[Response, int]]:
 
 @app.route('/api/download/<path:book_id>/cancel', methods=['DELETE'])
 @login_required
-def api_cancel_download(book_id: str) -> Union[Response, Tuple[Response, int]]:
+def api_cancel_download(book_id: str) -> Response | tuple[Response, int]:
     """
     Cancel a download.
 
@@ -1555,7 +1555,7 @@ def api_cancel_download(book_id: str) -> Union[Response, Tuple[Response, int]]:
 
 @app.route('/api/download/<path:book_id>/retry', methods=['POST'])
 @login_required
-def api_retry_download(book_id: str) -> Union[Response, Tuple[Response, int]]:
+def api_retry_download(book_id: str) -> Response | tuple[Response, int]:
     """Retry a failed download."""
     try:
         task = backend.book_queue.get_task(book_id)
@@ -1623,7 +1623,7 @@ def api_retry_download(book_id: str) -> Union[Response, Tuple[Response, int]]:
 
 @app.route('/api/queue/<path:book_id>/priority', methods=['PUT'])
 @login_required
-def api_set_priority(book_id: str) -> Union[Response, Tuple[Response, int]]:
+def api_set_priority(book_id: str) -> Response | tuple[Response, int]:
     """
     Set priority for a queued book.
 
@@ -1655,7 +1655,7 @@ def api_set_priority(book_id: str) -> Union[Response, Tuple[Response, int]]:
 
 @app.route('/api/queue/reorder', methods=['POST'])
 @login_required
-def api_reorder_queue() -> Union[Response, Tuple[Response, int]]:
+def api_reorder_queue() -> Response | tuple[Response, int]:
     """
     Bulk reorder queue by setting new priorities.
 
@@ -1690,7 +1690,7 @@ def api_reorder_queue() -> Union[Response, Tuple[Response, int]]:
 
 @app.route('/api/queue/order', methods=['GET'])
 @login_required
-def api_queue_order() -> Union[Response, Tuple[Response, int]]:
+def api_queue_order() -> Response | tuple[Response, int]:
     """
     Get current queue order for display.
 
@@ -1706,7 +1706,7 @@ def api_queue_order() -> Union[Response, Tuple[Response, int]]:
 
 @app.route('/api/downloads/active', methods=['GET'])
 @login_required
-def api_active_downloads() -> Union[Response, Tuple[Response, int]]:
+def api_active_downloads() -> Response | tuple[Response, int]:
     """
     Get list of currently active downloads.
 
@@ -1721,7 +1721,7 @@ def api_active_downloads() -> Union[Response, Tuple[Response, int]]:
         return jsonify({"error": str(e)}), 500
 
 @app.errorhandler(404)
-def not_found_error(error: Exception) -> Union[Response, Tuple[Response, int]]:
+def not_found_error(error: Exception) -> Response | tuple[Response, int]:
     """
     Handle 404 (Not Found) errors.
 
@@ -1735,7 +1735,7 @@ def not_found_error(error: Exception) -> Union[Response, Tuple[Response, int]]:
     return jsonify({"error": "Resource not found"}), 404
 
 @app.errorhandler(500)
-def internal_error(error: Exception) -> Union[Response, Tuple[Response, int]]:
+def internal_error(error: Exception) -> Response | tuple[Response, int]:
     """
     Handle 500 (Internal Server) errors.
 
@@ -1748,7 +1748,7 @@ def internal_error(error: Exception) -> Union[Response, Tuple[Response, int]]:
     logger.error_trace(f"500 error: {error}")
     return jsonify({"error": "Internal server error"}), 500
 
-def _failed_login_response(username: str, ip_address: str) -> Tuple[Response, int]:
+def _failed_login_response(username: str, ip_address: str) -> tuple[Response, int]:
     """Handle a failed login attempt by recording it and returning the appropriate response."""
     is_now_locked = record_failed_login(username, ip_address)
 
@@ -1767,7 +1767,7 @@ def _failed_login_response(username: str, ip_address: str) -> Tuple[Response, in
 
 
 @app.route('/api/auth/login', methods=['POST'])
-def api_login() -> Union[Response, Tuple[Response, int]]:
+def api_login() -> Response | tuple[Response, int]:
     """
     Login endpoint that validates credentials and creates a session.
     Supports both built-in credentials and CWA database authentication.
@@ -1909,7 +1909,7 @@ def api_login() -> Union[Response, Tuple[Response, int]]:
         return jsonify({"error": "Login failed"}), 500
 
 @app.route('/api/auth/logout', methods=['POST'])
-def api_logout() -> Union[Response, Tuple[Response, int]]:
+def api_logout() -> Response | tuple[Response, int]:
     """
     Logout endpoint that clears the session.
     For proxy auth, returns the logout URL if configured.
@@ -1936,7 +1936,7 @@ def api_logout() -> Union[Response, Tuple[Response, int]]:
         return jsonify({"error": "Logout failed"}), 500
 
 @app.route('/api/auth/check', methods=['GET'])
-def api_auth_check() -> Union[Response, Tuple[Response, int]]:
+def api_auth_check() -> Response | tuple[Response, int]:
     """
     Check if user has a valid session.
 
@@ -2008,7 +2008,7 @@ def api_auth_check() -> Union[Response, Tuple[Response, int]]:
 
 @app.route('/api/metadata/providers', methods=['GET'])
 @login_required
-def api_metadata_providers() -> Union[Response, Tuple[Response, int]]:
+def api_metadata_providers() -> Response | tuple[Response, int]:
     """
     Get list of available metadata providers.
 
@@ -2074,7 +2074,7 @@ def api_metadata_providers() -> Union[Response, Tuple[Response, int]]:
 
 @app.route('/api/metadata/config', methods=['GET'])
 @login_required
-def api_metadata_config() -> Union[Response, Tuple[Response, int]]:
+def api_metadata_config() -> Response | tuple[Response, int]:
     """Return provider-specific metadata search config for the active session."""
     try:
         from shelfmark.metadata_providers import (
@@ -2139,7 +2139,7 @@ def api_metadata_config() -> Union[Response, Tuple[Response, int]]:
 
 @app.route('/api/metadata/search', methods=['GET'])
 @login_required
-def api_metadata_search() -> Union[Response, Tuple[Response, int]]:
+def api_metadata_search() -> Response | tuple[Response, int]:
     """
     Search for books using the configured metadata provider.
 
@@ -2220,7 +2220,7 @@ def api_metadata_search() -> Union[Response, Tuple[Response, int]]:
             }), 503
 
         # Extract custom search field values from query params
-        fields: Dict[str, Any] = {}
+        fields: dict[str, Any] = {}
         for search_field in provider.search_fields:
             value = request.args.get(search_field.key)
             if value is not None:
@@ -2339,7 +2339,7 @@ def _resolve_metadata_provider(provider_name: str):
 
 @app.route('/api/metadata/book/<provider>/<book_id>', methods=['GET'])
 @login_required
-def api_metadata_book(provider: str, book_id: str) -> Union[Response, Tuple[Response, int]]:
+def api_metadata_book(provider: str, book_id: str) -> Response | tuple[Response, int]:
     """
     Get detailed book information from a metadata provider.
 
@@ -2398,7 +2398,7 @@ def _handle_target_errors(fallback_message: str):
 @app.route('/api/metadata/book/<provider>/<book_id>/targets', methods=['GET'])
 @login_required
 @_handle_target_errors("Failed to load book targets")
-def api_metadata_book_targets(provider: str, book_id: str) -> Union[Response, Tuple[Response, int]]:
+def api_metadata_book_targets(provider: str, book_id: str) -> Response | tuple[Response, int]:
     """Get provider-managed list/status targets for a specific book."""
     prov = _resolve_metadata_provider(provider)
     return jsonify({"options": prov.get_book_targets(book_id)})
@@ -2407,7 +2407,7 @@ def api_metadata_book_targets(provider: str, book_id: str) -> Union[Response, Tu
 @app.route('/api/metadata/book/<provider>/targets/batch', methods=['POST'])
 @login_required
 @_handle_target_errors("Failed to load book targets")
-def api_metadata_book_targets_batch(provider: str) -> Union[Response, Tuple[Response, int]]:
+def api_metadata_book_targets_batch(provider: str) -> Response | tuple[Response, int]:
     """Get provider-managed list/status targets for multiple books."""
     prov = _resolve_metadata_provider(provider)
 
@@ -2424,7 +2424,7 @@ def api_metadata_book_targets_batch(provider: str) -> Union[Response, Tuple[Resp
 @app.route('/api/metadata/book/<provider>/<book_id>/targets', methods=['PUT'])
 @login_required
 @_handle_target_errors("Failed to update book targets")
-def api_metadata_book_targets_update(provider: str, book_id: str) -> Union[Response, Tuple[Response, int]]:
+def api_metadata_book_targets_update(provider: str, book_id: str) -> Response | tuple[Response, int]:
     """Set whether a book belongs to a provider-managed list or shelf."""
     prov = _resolve_metadata_provider(provider)
 
@@ -2450,7 +2450,7 @@ def api_metadata_book_targets_update(provider: str, book_id: str) -> Union[Respo
 
 @app.route('/api/releases', methods=['GET'])
 @login_required
-def api_releases() -> Union[Response, Tuple[Response, int]]:
+def api_releases() -> Response | tuple[Response, int]:
     """
     Search for downloadable releases of a book.
 
@@ -2678,7 +2678,7 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
 
 @app.route('/api/release-sources', methods=['GET'])
 @login_required
-def api_release_sources() -> Union[Response, Tuple[Response, int]]:
+def api_release_sources() -> Response | tuple[Response, int]:
     """
     Get available release sources from the plugin registry.
 
@@ -2696,7 +2696,7 @@ def api_release_sources() -> Union[Response, Tuple[Response, int]]:
 
 @app.route('/api/release-sources/<source_name>/records/<path:record_id>', methods=['GET'])
 @login_required
-def api_release_source_record(source_name: str, record_id: str) -> Union[Response, Tuple[Response, int]]:
+def api_release_source_record(source_name: str, record_id: str) -> Response | tuple[Response, int]:
     """Resolve a source-native browse record for a release source."""
     try:
         from shelfmark.release_sources import get_source
@@ -2718,7 +2718,7 @@ def api_release_source_record(source_name: str, record_id: str) -> Union[Respons
 
 @app.route('/api/settings', methods=['GET'])
 @login_required
-def api_settings_get_all() -> Union[Response, Tuple[Response, int]]:
+def api_settings_get_all() -> Response | tuple[Response, int]:
     """
     Get all settings tabs with their fields and current values.
 
@@ -2744,7 +2744,7 @@ def api_settings_get_all() -> Union[Response, Tuple[Response, int]]:
 
 @app.route('/api/settings/<tab_name>', methods=['GET'])
 @login_required
-def api_settings_get_tab(tab_name: str) -> Union[Response, Tuple[Response, int]]:
+def api_settings_get_tab(tab_name: str) -> Response | tuple[Response, int]:
     """
     Get settings for a specific tab.
 
@@ -2778,7 +2778,7 @@ def api_settings_get_tab(tab_name: str) -> Union[Response, Tuple[Response, int]]
 
 @app.route('/api/settings/<tab_name>', methods=['PUT'])
 @login_required
-def api_settings_update_tab(tab_name: str) -> Union[Response, Tuple[Response, int]]:
+def api_settings_update_tab(tab_name: str) -> Response | tuple[Response, int]:
     """
     Update settings for a specific tab.
 
@@ -2828,7 +2828,7 @@ def api_settings_update_tab(tab_name: str) -> Union[Response, Tuple[Response, in
 
 @app.route('/api/settings/<tab_name>/action/<action_key>', methods=['POST'])
 @login_required
-def api_settings_execute_action(tab_name: str, action_key: str) -> Union[Response, Tuple[Response, int]]:
+def api_settings_execute_action(tab_name: str, action_key: str) -> Response | tuple[Response, int]:
     """
     Execute a settings action (e.g., test connection).
 
@@ -2872,7 +2872,7 @@ def api_settings_execute_action(tab_name: str, action_key: str) -> Union[Respons
 
 @app.route('/api/onboarding', methods=['GET'])
 @login_required
-def api_onboarding_get() -> Union[Response, Tuple[Response, int]]:
+def api_onboarding_get() -> Response | tuple[Response, int]:
     """
     Get onboarding configuration including steps, fields, and current values.
 
@@ -2893,7 +2893,7 @@ def api_onboarding_get() -> Union[Response, Tuple[Response, int]]:
 
 @app.route('/api/onboarding', methods=['POST'])
 @login_required
-def api_onboarding_save() -> Union[Response, Tuple[Response, int]]:
+def api_onboarding_save() -> Response | tuple[Response, int]:
     """
     Save onboarding settings and mark as complete.
 
@@ -2925,7 +2925,7 @@ def api_onboarding_save() -> Union[Response, Tuple[Response, int]]:
 
 @app.route('/api/onboarding/skip', methods=['POST'])
 @login_required
-def api_onboarding_skip() -> Union[Response, Tuple[Response, int]]:
+def api_onboarding_skip() -> Response | tuple[Response, int]:
     """
     Skip onboarding and mark as complete without saving any settings.
 

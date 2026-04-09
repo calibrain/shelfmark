@@ -1,6 +1,6 @@
 """Prowlarr API client for connection testing, indexer listing, and search."""
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import requests
 
@@ -29,8 +29,8 @@ class ProwlarrClient:
         self,
         method: str,
         endpoint: str,
-        params: Optional[Dict[str, Any]] = None,
-        json_data: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
+        json_data: dict[str, Any] | None = None,
     ) -> Any:
         """Make an API request to Prowlarr. Returns parsed JSON response."""
         url = self.base_url + endpoint
@@ -66,7 +66,7 @@ class ProwlarrClient:
             logger.error(f"Prowlarr API request failed: {e}")
             raise
 
-    def test_connection(self) -> Tuple[bool, str]:
+    def test_connection(self) -> tuple[bool, str]:
         """Test connection to Prowlarr. Returns (success, message)."""
         logger.info(f"Testing Prowlarr connection to: {self.base_url}")
         try:
@@ -84,7 +84,7 @@ class ProwlarrClient:
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
 
-    def get_indexers(self) -> List[Dict[str, Any]]:
+    def get_indexers(self) -> list[dict[str, Any]]:
         """Get all configured indexers."""
         try:
             indexers = self._request("GET", "/api/v1/indexer")
@@ -93,7 +93,7 @@ class ProwlarrClient:
             logger.error(f"Failed to get indexers: {e}")
             return []
 
-    def get_enabled_indexers_detailed(self) -> List[Dict[str, Any]]:
+    def get_enabled_indexers_detailed(self) -> list[dict[str, Any]]:
         """
         Get enabled indexers, including implementation metadata.
 
@@ -103,14 +103,14 @@ class ProwlarrClient:
         indexers = self.get_indexers()
         return [idx for idx in indexers if idx.get("enable", False)]
 
-    def get_enriched_indexer_ids(self, *, restrict_to: Optional[List[int]] = None) -> List[int]:
+    def get_enriched_indexer_ids(self, *, restrict_to: list[int] | None = None) -> list[int]:
         """
         Return enabled indexer IDs that benefit from extra Torznab handling.
 
         Args:
             restrict_to: Optional list of candidate indexer IDs to consider.
         """
-        enriched_ids: List[int] = []
+        enriched_ids: list[int] = []
 
         for idx in self.get_enabled_indexers_detailed():
             idx_id = idx.get("id")
@@ -131,7 +131,7 @@ class ProwlarrClient:
 
         return enriched_ids
 
-    def get_enabled_indexers(self) -> List[Dict[str, Any]]:
+    def get_enabled_indexers(self) -> list[dict[str, Any]]:
         """Get enabled indexers with book capability info."""
         indexers = self.get_indexers()
         result = []
@@ -158,11 +158,11 @@ class ProwlarrClient:
         *,
         indexer_id: int,
         query: str,
-        categories: Optional[List[int]] = None,
+        categories: list[int] | None = None,
         search_type: str = "book",
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Search a specific indexer via Prowlarr's Torznab/Newznab endpoint.
 
@@ -175,7 +175,7 @@ class ProwlarrClient:
         endpoint = f"/api/v1/indexer/{int(indexer_id)}/newznab"
         url = self.base_url + endpoint
 
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "t": search_type,
             "q": query,
             "limit": limit,
@@ -215,7 +215,7 @@ class ProwlarrClient:
             logger.error(f"Prowlarr Torznab search failed for indexer {indexer_id}: {e}")
             return []
 
-    def _has_book_categories(self, categories: List[Dict[str, Any]]) -> bool:
+    def _has_book_categories(self, categories: list[dict[str, Any]]) -> bool:
         """Check if any category or subcategory is in the book range (7000-7999)."""
         for cat in categories:
             cat_id = cat.get("id", 0)

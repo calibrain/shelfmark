@@ -15,10 +15,11 @@ import os
 import random
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union, cast
+from typing import Any, TypeVar, cast
 
 import requests
 
@@ -114,12 +115,12 @@ class DownloadStatus:
     """Status of an external download (immutable)."""
 
     progress: float  # 0-100
-    state: Union[DownloadState, str]  # Prefer DownloadState enum; strings auto-normalized
-    message: Optional[str]  # Status message
+    state: DownloadState | str  # Prefer DownloadState enum; strings auto-normalized
+    message: str | None  # Status message
     complete: bool  # True when download finished
-    file_path: Optional[str]  # Path in client's download dir (when complete)
-    download_speed: Optional[int] = None  # Bytes per second
-    eta: Optional[int] = None  # Seconds remaining
+    file_path: str | None  # Path in client's download dir (when complete)
+    download_speed: int | None = None  # Bytes per second
+    eta: int | None = None  # Seconds remaining
 
     @classmethod
     def error(cls, message: str) -> "DownloadStatus":
@@ -198,7 +199,7 @@ class DownloadClient(ABC):
 
         return f"{error_type}: {e}"
 
-    def _build_path(self, *components: str) -> Optional[str]:
+    def _build_path(self, *components: str) -> str | None:
         """
         Safely build a file path from components.
 
@@ -248,7 +249,7 @@ class DownloadClient(ABC):
         pass
 
     @abstractmethod
-    def test_connection(self) -> Tuple[bool, str]:
+    def test_connection(self) -> tuple[bool, str]:
         """
         Test connectivity to the client.
 
@@ -262,8 +263,8 @@ class DownloadClient(ABC):
         self,
         url: str,
         name: str,
-        category: Optional[str] = None,
-        expected_hash: Optional[str] = None,
+        category: str | None = None,
+        expected_hash: str | None = None,
         **kwargs: Any,
     ) -> str:
 
@@ -311,7 +312,7 @@ class DownloadClient(ABC):
         pass
 
     @abstractmethod
-    def get_download_path(self, download_id: str) -> Optional[str]:
+    def get_download_path(self, download_id: str) -> str | None:
         """
         Get the path where files were downloaded.
 
@@ -324,8 +325,8 @@ class DownloadClient(ABC):
         pass
 
     def find_existing(
-        self, url: str, category: Optional[str] = None
-    ) -> Optional[Tuple[str, DownloadStatus]]:
+        self, url: str, category: str | None = None
+    ) -> tuple[str, DownloadStatus] | None:
         """
         Check if a download for this URL already exists in the client.
 
@@ -344,7 +345,7 @@ class DownloadClient(ABC):
 
 
 # Client registry: protocol -> list of client classes
-_CLIENTS: Dict[str, List[Type[DownloadClient]]] = {}
+_CLIENTS: dict[str, list[type[DownloadClient]]] = {}
 
 
 def register_client(protocol: str):
@@ -363,7 +364,7 @@ def register_client(protocol: str):
             ...
     """
 
-    def decorator(cls: Type[DownloadClient]) -> Type[DownloadClient]:
+    def decorator(cls: type[DownloadClient]) -> type[DownloadClient]:
         if protocol not in _CLIENTS:
             _CLIENTS[protocol] = []
         _CLIENTS[protocol].append(cls)
@@ -372,7 +373,7 @@ def register_client(protocol: str):
     return decorator
 
 
-def get_client(protocol: str) -> Optional[DownloadClient]:
+def get_client(protocol: str) -> DownloadClient | None:
     """
     Get a configured client instance for the given protocol.
 
@@ -395,7 +396,7 @@ def get_client(protocol: str) -> Optional[DownloadClient]:
     return None
 
 
-def list_configured_clients() -> List[str]:
+def list_configured_clients() -> list[str]:
     """
     List protocols that have configured clients.
 
@@ -411,7 +412,7 @@ def list_configured_clients() -> List[str]:
     return result
 
 
-def get_all_clients() -> Dict[str, List[Type[DownloadClient]]]:
+def get_all_clients() -> dict[str, list[type[DownloadClient]]]:
     """
     Get all registered client classes.
 

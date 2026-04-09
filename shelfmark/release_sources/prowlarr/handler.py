@@ -1,6 +1,6 @@
 """Prowlarr download handler - resolves releases and delegates lifecycle to shared clients."""
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from shelfmark.core.config import config  # noqa: F401 (compat patch target in tests)
 from shelfmark.core.logger import setup_logger
@@ -32,7 +32,7 @@ COMPLETED_PATH_RETRY_INTERVAL = _DEFAULT_COMPLETED_PATH_RETRY_INTERVAL
 COMPLETED_PATH_MAX_ATTEMPTS = _DEFAULT_COMPLETED_PATH_MAX_ATTEMPTS
 
 
-def _coerce_seed_time_minutes(raw_seed_time: object) -> Optional[int]:
+def _coerce_seed_time_minutes(raw_seed_time: object) -> int | None:
     """Convert Prowlarr's minimum seed time from seconds to whole minutes."""
     if raw_seed_time is None:
         return None
@@ -55,7 +55,7 @@ def _coerce_seed_time_minutes(raw_seed_time: object) -> Optional[int]:
 class ProwlarrHandler(ExternalClientHandler):
     """Handler for Prowlarr downloads via configured torrent or usenet client."""
 
-    def _get_client(self, protocol: str) -> Optional[DownloadClient]:
+    def _get_client(self, protocol: str) -> DownloadClient | None:
         """Compatibility shim so module-level patching still works in tests."""
         return get_client(protocol)
 
@@ -73,7 +73,7 @@ class ProwlarrHandler(ExternalClientHandler):
         return COMPLETED_PATH_MAX_ATTEMPTS
 
     @classmethod
-    def _restore_download_request_from_task(cls, task: DownloadTask) -> Optional[DownloadRequest]:
+    def _restore_download_request_from_task(cls, task: DownloadTask) -> DownloadRequest | None:
         """Rebuild a DownloadRequest when the in-memory Prowlarr cache is gone."""
         retry_download_url = normalize_optional_text(getattr(task, "retry_download_url", None))
         retry_download_protocol = normalize_optional_text(
@@ -110,8 +110,8 @@ class ProwlarrHandler(ExternalClientHandler):
     def _resolve_download(
         self,
         task: DownloadTask,
-        status_callback: Callable[[str, Optional[str]], None],
-    ) -> Optional[DownloadRequest]:
+        status_callback: Callable[[str, str | None], None],
+    ) -> DownloadRequest | None:
         """Resolve Prowlarr cache entry into download request parameters."""
         # Look up the cached release
         prowlarr_result = get_release(task.task_id)

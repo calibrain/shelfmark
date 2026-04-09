@@ -1,6 +1,7 @@
 """Admin settings-introspection routes and settings validation helpers."""
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from flask import Flask, jsonify, request
 
@@ -65,10 +66,10 @@ def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], li
                 )
                 if invalid_count:
                     errors.append(
-                        (
+                        
                             f"Invalid value for {key}: found {invalid_count} invalid URL(s). "
                             "Use URL values with a valid scheme, e.g. discord://... or ntfys://..."
-                        )
+                        
                     )
                     continue
                 valid[key] = normalized_routes

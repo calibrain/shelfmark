@@ -10,8 +10,9 @@ import shutil
 import subprocess
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional, TypeVar, cast
+from typing import Any, Optional, TypeVar, cast
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.download.permissions_debug import log_transfer_permission_context
@@ -114,7 +115,7 @@ def _verify_transfer_size(
 
     actual_size = run_blocking_io(dest.stat).st_size
     if actual_size != expected_size:
-        raise IOError(
+        raise OSError(
             f"File {action} incomplete, data loss may have occurred. "
             f"'{dest}' was {actual_size} bytes instead of expected {expected_size}."
         )
@@ -263,7 +264,7 @@ def _is_enoent_error(error: Exception) -> bool:
 
 
 def _can_use_partial_copy_after_enoent(
-    temp_path: Optional[Path],
+    temp_path: Path | None,
     expected_size: int,
     action: str,
 ) -> bool:
@@ -421,7 +422,7 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                 run_blocking_io(try_path.unlink, missing_ok=True)
                 claimed = False
 
-            temp_path: Optional[Path] = None
+            temp_path: Path | None = None
             try:
                 try:
                     temp_path = _create_temp_path(try_path)
@@ -583,7 +584,7 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
         try_path = dest_path if attempt == 0 else parent / f"{base}_{attempt}{ext}"
         if run_blocking_io(try_path.exists):
             continue
-        temp_path: Optional[Path] = None
+        temp_path: Path | None = None
         try:
             temp_path = _create_temp_path(try_path)
             try:

@@ -5,9 +5,10 @@ import ipaddress
 import socket
 import urllib.parse
 import urllib.request
+from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 from socket import AddressFamily, SocketKind
-from typing import Any, Callable, List, Optional, Sequence, Tuple, Union, cast
+from typing import Any, cast
 
 import dns.resolver
 import requests
@@ -17,7 +18,7 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
 
 
-def _get_no_proxy_patterns() -> List[str]:
+def _get_no_proxy_patterns() -> list[str]:
     """Get list of NO_PROXY patterns from config."""
     no_proxy = app_config.get("NO_PROXY", "")
     if not no_proxy:
@@ -146,7 +147,7 @@ def _apply_ssl_warning_suppression() -> None:
 
 # DNS state - authoritative values managed by this module
 # Other modules should use get_dns_config() to read these
-CUSTOM_DNS: List[str] = []
+CUSTOM_DNS: list[str] = []
 DOH_SERVER: str = ""
 
 # Try to use gevent locks if available (for gevent worker compatibility)
@@ -174,11 +175,11 @@ _dns_switch_lock = _RLock()
 
 # DNS rotation callbacks - called when DNS provider switches in auto mode
 # Callbacks receive (provider_name: str, servers: List[str], doh_url: str)
-_dns_rotation_callbacks: List[Callable[[str, List[str], str], None]] = []
+_dns_rotation_callbacks: list[Callable[[str, list[str], str], None]] = []
 _dns_callback_lock = _RLock()
 
 
-def register_dns_rotation_callback(callback: Callable[[str, List[str], str], None]) -> None:
+def register_dns_rotation_callback(callback: Callable[[str, list[str], str], None]) -> None:
     """Register a callback to be called when DNS provider rotates.
 
     The callback receives (provider_name, servers, doh_url) as arguments.
@@ -190,7 +191,7 @@ def register_dns_rotation_callback(callback: Callable[[str, List[str], str], Non
             logger.debug(f"Registered DNS rotation callback: {callback.__name__}")
 
 
-def unregister_dns_rotation_callback(callback: Callable[[str, List[str], str], None]) -> None:
+def unregister_dns_rotation_callback(callback: Callable[[str, list[str], str], None]) -> None:
     """Unregister a previously registered DNS rotation callback."""
     with _dns_callback_lock:
         if callback in _dns_rotation_callbacks:
@@ -198,7 +199,7 @@ def unregister_dns_rotation_callback(callback: Callable[[str, List[str], str], N
             logger.debug(f"Unregistered DNS rotation callback: {callback.__name__}")
 
 
-def _notify_dns_rotation(provider_name: str, servers: List[str], doh_url: str) -> None:
+def _notify_dns_rotation(provider_name: str, servers: list[str], doh_url: str) -> None:
     """Notify all registered callbacks about DNS rotation."""
     with _dns_callback_lock:
         callbacks = _dns_rotation_callbacks.copy()
@@ -229,7 +230,7 @@ def _save_state(aa_url=None, dns_provider=None):
 
 # AA URL failover state
 _current_aa_url_index = 0
-_aa_urls: List[str] = []  # Initialized lazily in _initialize_aa_state()
+_aa_urls: list[str] = []  # Initialized lazily in _initialize_aa_state()
 _aa_base_url: str = ""  # Current active AA URL
 
 def _ensure_initialized() -> None:
@@ -319,7 +320,7 @@ def get_dns_config() -> dict:
     }
 
 # Common helper functions for DNS resolution
-def _decode_host(host: Union[str, bytes, None]) -> str:
+def _decode_host(host: str | bytes | None) -> str:
     """Convert host to string, handling bytes and None cases."""
     if host is None:
         return ""
@@ -327,7 +328,7 @@ def _decode_host(host: Union[str, bytes, None]) -> str:
         return host.decode('utf-8')
     return str(host)
 
-def _decode_port(port: Union[str, bytes, int, None]) -> int:
+def _decode_port(port: str | bytes | int | None) -> int:
     """Convert port to integer, handling various input types."""
     if port is None:
         return 0
@@ -375,7 +376,7 @@ def _is_ip_address(host_str: str) -> bool:
     except ValueError:
         return False
 
-def _aa_hostnames() -> List[str]:
+def _aa_hostnames() -> list[str]:
     """Return hostname portions for all configured AA URLs."""
     return [
         parsed.hostname for parsed in (urllib.parse.urlparse(url) for url in _aa_urls)
@@ -402,7 +403,7 @@ class DoHResolver:
         self.ip = ip              # Store IP for direct connections
         self.session = requests.Session()
         # DNS cache: {(hostname, record_type): (ip_list, timestamp)}
-        self._cache: dict[tuple[str, str], tuple[List[str], datetime]] = {}
+        self._cache: dict[tuple[str, str], tuple[list[str], datetime]] = {}
         
         # Different headers based on provider
         if 'google' in self.base_url:
@@ -414,7 +415,7 @@ class DoHResolver:
                 'Accept': 'application/dns-json',
             })
     
-    def _get_cached(self, hostname: str, record_type: str) -> Optional[List[str]]:
+    def _get_cached(self, hostname: str, record_type: str) -> list[str] | None:
         """Get cached DNS result if still valid."""
         key = (hostname, record_type)
         if key in self._cache:
@@ -427,12 +428,12 @@ class DoHResolver:
                 del self._cache[key]
         return None
     
-    def _set_cached(self, hostname: str, record_type: str, ips: List[str]) -> None:
+    def _set_cached(self, hostname: str, record_type: str, ips: list[str]) -> None:
         """Cache DNS result."""
         if ips:  # Only cache non-empty results
             self._cache[(hostname, record_type)] = (ips, datetime.now())
     
-    def resolve(self, hostname: str, record_type: str) -> List[str]:
+    def resolve(self, hostname: str, record_type: str) -> list[str]:
         """Resolve a hostname using DoH.
         
         Args:
@@ -496,13 +497,13 @@ class DoHResolver:
             logger.warning(f"DoH resolution failed for {hostname}: {e}")
             return []
 
-def create_custom_resolver(servers: Optional[List[str]] = None):
+def create_custom_resolver(servers: list[str] | None = None):
     """Create a custom DNS resolver using the specified or configured DNS servers."""
     custom_resolver = dns.resolver.Resolver()
     custom_resolver.nameservers = servers if servers is not None else CUSTOM_DNS
     return custom_resolver
 
-def resolve_with_custom_dns(resolver, hostname: str, record_type: str) -> List[str]:
+def resolve_with_custom_dns(resolver, hostname: str, record_type: str) -> list[str]:
     """Resolve hostname using custom DNS resolver."""
     try:
         answers = resolver.resolve(hostname, record_type)
@@ -513,9 +514,9 @@ def resolve_with_custom_dns(resolver, hostname: str, record_type: str) -> List[s
         return []
 
 def create_custom_getaddrinfo(
-    resolve_ipv4: Callable[[str], List[str]],
-    resolve_ipv6: Callable[[str], List[str]],
-    skip_check: Optional[Callable[[str], bool]] = None
+    resolve_ipv4: Callable[[str], list[str]],
+    resolve_ipv6: Callable[[str], list[str]],
+    skip_check: Callable[[str], bool] | None = None
 ):
     """Create a custom getaddrinfo function that uses the provided resolvers.
     
@@ -528,17 +529,17 @@ def create_custom_getaddrinfo(
         A custom getaddrinfo function
     """
     def custom_getaddrinfo(
-        host: Union[str, bytes, None],
-        port: Union[str, bytes, int, None],
+        host: str | bytes | None,
+        port: str | bytes | int | None,
         family: int = 0,
         type: int = 0,
         proto: int = 0,
         flags: int = 0
-    ) -> Sequence[Tuple[AddressFamily, SocketKind, int, str, Tuple[Any, ...]]]:
+    ) -> Sequence[tuple[AddressFamily, SocketKind, int, str, tuple[Any, ...]]]:
         host_str = _decode_host(host)
         port_int = _decode_port(port)
         
-        def _log_results(source: str, provider_label: str, res: Sequence[Tuple[AddressFamily, SocketKind, int, str, Tuple[Any, ...]]], is_bypass: bool = False) -> None:
+        def _log_results(source: str, provider_label: str, res: Sequence[tuple[AddressFamily, SocketKind, int, str, tuple[Any, ...]]], is_bypass: bool = False) -> None:
             """Emit a unified resolver log with the IPs returned.
             
             Args:
@@ -567,7 +568,7 @@ def create_custom_getaddrinfo(
             _log_results("system resolver (bypass)", "system", res, is_bypass=True)
             return res
         
-        results: list[Tuple[AddressFamily, SocketKind, int, str, Tuple[Any, ...]]] = []
+        results: list[tuple[AddressFamily, SocketKind, int, str, tuple[Any, ...]]] = []
         
         try:
             # Try IPv4 (IPv6 disabled to avoid noisy AAAA failures)
@@ -611,13 +612,13 @@ def create_system_failover_getaddrinfo():
     _switch_logged: set[str] = set()
     
     def system_failover_getaddrinfo(
-        host: Union[str, bytes, None],
-        port: Union[str, bytes, int, None],
+        host: str | bytes | None,
+        port: str | bytes | int | None,
         family: int = 0,
         type: int = 0,
         proto: int = 0,
         flags: int = 0
-    ) -> Sequence[Tuple[AddressFamily, SocketKind, int, str, Tuple[Any, ...]]]:
+    ) -> Sequence[tuple[AddressFamily, SocketKind, int, str, tuple[Any, ...]]]:
         host_str = _decode_host(host)
         try:
             return original_getaddrinfo(host, port, family, type, proto, flags)
@@ -671,10 +672,10 @@ def _init_doh_resolver_internal(doh_server: str) -> DoHResolver:
     doh_resolver = DoHResolver(doh_server, server_hostname, server_ip)
     
     # Create resolver functions
-    def resolve_ipv4(hostname: str) -> List[str]:
+    def resolve_ipv4(hostname: str) -> list[str]:
         return doh_resolver.resolve(hostname, 'A')
     
-    def resolve_ipv6(hostname: str) -> List[str]:
+    def resolve_ipv6(hostname: str) -> list[str]:
         return doh_resolver.resolve(hostname, 'AAAA')
     
     # Skip DoH resolution for the DoH server itself, IP addresses, and private addresses
@@ -693,7 +694,7 @@ def _init_doh_resolver_internal(doh_server: str) -> DoHResolver:
     return doh_resolver
 
 
-def _init_custom_resolver_internal(servers: List[str]):
+def _init_custom_resolver_internal(servers: list[str]):
     """Internal: Initialize custom DNS resolver with specified servers.
     
     Args:
@@ -702,10 +703,10 @@ def _init_custom_resolver_internal(servers: List[str]):
     custom_resolver = create_custom_resolver(servers)
     
     # Create resolver functions
-    def resolve_ipv4(hostname: str) -> List[str]:
+    def resolve_ipv4(hostname: str) -> list[str]:
         return resolve_with_custom_dns(custom_resolver, hostname, 'A')
     
-    def resolve_ipv6(hostname: str) -> List[str]:
+    def resolve_ipv6(hostname: str) -> list[str]:
         return resolve_with_custom_dns(custom_resolver, hostname, 'AAAA')
     
     # Replace socket.getaddrinfo with our custom resolver
@@ -922,7 +923,7 @@ def init_dns_resolvers():
             init_doh_resolver(DOH_SERVER)
 
 
-def _get_initial_dns_config() -> tuple[str, List[str] | None, bool]:
+def _get_initial_dns_config() -> tuple[str, list[str] | None, bool]:
     """
     Determine initial DNS configuration from config singleton.
 
@@ -960,7 +961,7 @@ def _looks_like_ip(s: str) -> bool:
     # Simple heuristic: contains only digits, dots, and colons
     return s.replace(".", "").replace(":", "").isdigit()
 
-def _build_aa_urls() -> List[str]:
+def _build_aa_urls() -> list[str]:
     """Build list of available AA URLs from centralized mirror config."""
     from shelfmark.core.mirrors import get_aa_mirrors
     return get_aa_mirrors()
@@ -1159,7 +1160,7 @@ class AAMirrorSelector:
                 return url.replace(base, self.current_base, 1)
         return url
 
-    def next_mirror_or_rotate_dns(self, allow_dns: bool = True) -> tuple[Optional[str], str]:
+    def next_mirror_or_rotate_dns(self, allow_dns: bool = True) -> tuple[str | None, str]:
         """
         Advance to next mirror; if exhausted and allowed, rotate DNS and reset to first.
         Returns (new_base, action) where action is 'mirror', 'dns', or 'exhausted'.

@@ -5,7 +5,7 @@ Uses NZBGet's JSON-RPC API directly via requests (no external dependency).
 """
 
 import json
-from typing import Any, Optional, Tuple
+from typing import Any
 
 import requests
 
@@ -51,7 +51,7 @@ class NZBGetClient(DownloadClient):
         return client == "nzbget" and bool(url)
 
     @with_retry()
-    def _rpc_call(self, method: str, params: Optional[list] = None) -> Any:
+    def _rpc_call(self, method: str, params: list | None = None) -> Any:
         """
         Make a JSON-RPC call to NZBGet.
 
@@ -90,7 +90,7 @@ class NZBGetClient(DownloadClient):
 
         return result.get("result")
 
-    def test_connection(self) -> Tuple[bool, str]:
+    def test_connection(self) -> tuple[bool, str]:
         """Test connection to NZBGet."""
         try:
             status = self._rpc_call("status")
@@ -107,8 +107,8 @@ class NZBGetClient(DownloadClient):
         self,
         url: str,
         name: str,
-        category: Optional[str] = None,
-        expected_hash: Optional[str] = None,
+        category: str | None = None,
+        expected_hash: str | None = None,
         **kwargs,
     ) -> str:
         """
@@ -303,7 +303,7 @@ class NZBGetClient(DownloadClient):
         else:
             commands = ["GroupDelete", "HistoryDelete"]
 
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
         for command in commands:
             try:
                 result = self._rpc_call("editqueue", [command, 0, "", nzb_id])
@@ -317,7 +317,7 @@ class NZBGetClient(DownloadClient):
             self._log_error("remove", last_error)
         return False
 
-    def get_download_path(self, download_id: str) -> Optional[str]:
+    def get_download_path(self, download_id: str) -> str | None:
         """
         Get the path where NZB files are located.
 

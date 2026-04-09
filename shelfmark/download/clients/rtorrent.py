@@ -5,7 +5,7 @@ Uses xmlrpc to communicate with rTorrent's RPC interface.
 """
 
 import ssl
-from typing import Any, Optional, Tuple
+from typing import Any
 from urllib.parse import urlparse
 
 from shelfmark.core.config import config
@@ -76,7 +76,7 @@ class RTorrentClient(DownloadClient):
         url = normalize_http_url(config.get("RTORRENT_URL", ""))
         return client == "rtorrent" and bool(url)
 
-    def test_connection(self) -> Tuple[bool, str]:
+    def test_connection(self) -> tuple[bool, str]:
         """Test connection to rTorrent."""
         try:
             version = self._rpc.system.client_version()
@@ -88,8 +88,8 @@ class RTorrentClient(DownloadClient):
         self,
         url: str,
         name: str,
-        category: Optional[str] = None,
-        expected_hash: Optional[str] = None,
+        category: str | None = None,
+        expected_hash: str | None = None,
         **kwargs,
     ) -> str:
         """
@@ -272,7 +272,7 @@ class RTorrentClient(DownloadClient):
             logger.error(f"rTorrent remove failed ({error_type}): {e}")
             return False
 
-    def get_download_path(self, download_id: str) -> Optional[str]:
+    def get_download_path(self, download_id: str) -> str | None:
         """
         Get the path where torrent files are located.
 
@@ -290,8 +290,8 @@ class RTorrentClient(DownloadClient):
             return None
 
     def find_existing(
-        self, url: str, category: Optional[str] = None
-    ) -> Optional[Tuple[str, DownloadStatus]]:
+        self, url: str, category: str | None = None
+    ) -> tuple[str, DownloadStatus] | None:
         """Check if a torrent for this URL already exists in rTorrent."""
         try:
             torrent_info = extract_torrent_info(url)
@@ -318,7 +318,7 @@ class RTorrentClient(DownloadClient):
         except Exception:
             return "/downloads"
 
-    def _get_torrent_path(self, download_id: str) -> Optional[str]:
+    def _get_torrent_path(self, download_id: str) -> str | None:
         """Get the file path of a torrent by hash.
 
         Uses `d.base_path` for the item output path. In the xmlrpc interface

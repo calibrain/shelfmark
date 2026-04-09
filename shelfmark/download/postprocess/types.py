@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from shelfmark.download.staging import StageAction
 
@@ -21,19 +21,19 @@ class OutputPlan:
     stage_action: StageAction
     staging_dir: Path
     allow_archive_extraction: bool
-    transfer_plan: Optional[TransferPlan] = None
+    transfer_plan: TransferPlan | None = None
 
 
 @dataclass(frozen=True)
 class PreparedFiles:
     output_plan: OutputPlan
     working_path: Path
-    files: List[Path]
-    rejected_files: List[Path]
-    cleanup_paths: List[Path]
+    files: list[Path]
+    rejected_files: list[Path]
+    cleanup_paths: list[Path]
 
 
 @dataclass(frozen=True)
 class PlanStep:
     name: str
-    details: Dict[str, Any]
+    details: dict[str, Any]

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
@@ -21,13 +20,13 @@ from shelfmark.download.staging import build_staging_dir
 logger = setup_logger("shelfmark.download.postprocess.pipeline")
 
 
-def get_supported_formats(content_type: Optional[str] = None) -> List[str]:
+def get_supported_formats(content_type: str | None = None) -> list[str]:
     if check_audiobook(content_type):
         return get_supported_audiobook_formats()
     return get_book_formats()
 
 
-def _format_not_supported_error(rejected_files: List[Path], task: DownloadTask) -> str:
+def _format_not_supported_error(rejected_files: list[Path], task: DownloadTask) -> str:
     content_type = task.content_type
     file_type_label = "audiobook" if check_audiobook(content_type) else "book"
     rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
@@ -54,7 +53,7 @@ def extract_archive_files(
     output_dir: Path,
     task: DownloadTask,
     cleanup_archive: bool,
-) -> Tuple[List[Path], List[Path], List[Path], Optional[str]]:
+) -> tuple[list[Path], list[Path], list[Path], str | None]:
     content_type = task.content_type
 
     try:
@@ -104,8 +103,8 @@ def extract_archive_files(
 
 def scan_directory_tree(
     directory: Path,
-    content_type: Optional[str],
-) -> Tuple[List[Path], List[Path], List[Path], Optional[str]]:
+    content_type: str | None,
+) -> tuple[list[Path], list[Path], list[Path], str | None]:
     """Scan a directory tree for book files, trackable-but-unsupported files, and archives."""
 
     try:
@@ -154,10 +153,10 @@ def scan_directory_tree(
         else:
             logger.debug(f"Error scanning directory tree: {error}")
 
-    def _walk_tree() -> Tuple[List[Path], List[Path], List[Path]]:
-        book_files: List[Path] = []
-        rejected_files: List[Path] = []
-        archive_files: List[Path] = []
+    def _walk_tree() -> tuple[list[Path], list[Path], list[Path]]:
+        book_files: list[Path] = []
+        rejected_files: list[Path] = []
+        archive_files: list[Path] = []
 
         for root, _, files in os.walk(directory, onerror=onerror):
             for filename in files:
@@ -193,7 +192,7 @@ def collect_directory_files(
     allow_archive_extraction: bool,
     status_callback=None,
     cleanup_archives: bool = False,
-) -> Tuple[List[Path], List[Path], List[Path], Optional[str]]:
+) -> tuple[list[Path], list[Path], list[Path], str | None]:
     content_type = task.content_type
     book_files, rejected_files, archive_files, scan_error = scan_directory_tree(directory, content_type)
     if scan_error:
@@ -234,9 +233,9 @@ def collect_directory_files(
 
         logger.info("Task %s: extracting %d archive(s)", task.task_id, len(archive_files))
 
-        all_files: List[Path] = []
-        all_errors: List[str] = []
-        cleanup_paths: List[Path] = []
+        all_files: list[Path] = []
+        all_errors: list[str] = []
+        cleanup_paths: list[Path] = []
 
         for archive in archive_files:
             extract_dir = build_staging_dir("extract", task.task_id)
@@ -285,7 +284,7 @@ def collect_staged_files(
     allow_archive_extraction: bool,
     status_callback,
     cleanup_archives: bool,
-) -> Tuple[List[Path], List[Path], List[Path], Optional[str]]:
+) -> tuple[list[Path], list[Path], list[Path], str | None]:
     if run_blocking_io(working_path.is_dir):
         if status_callback:
             status_callback("resolving", "Processing download folder")

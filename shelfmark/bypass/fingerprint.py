@@ -1,7 +1,6 @@
 """Browser fingerprint profile management for bypass stealth."""
 
 import random
-from typing import Optional
 
 from shelfmark.core.logger import setup_logger
 
@@ -21,7 +20,7 @@ COMMON_RESOLUTIONS = [
 ]
 
 # Current screen size (module-level singleton)
-_current_screen_size: Optional[tuple[int, int]] = None
+_current_screen_size: tuple[int, int] | None = None
 
 
 def get_screen_size() -> tuple[int, int]:

@@ -4,13 +4,13 @@ Handles group claim parsing, user info extraction, and user provisioning.
 Flask route handlers are registered separately in main.py.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from shelfmark.core.external_user_linking import upsert_external_user
 from shelfmark.core.user_db import UserDB
 
 
-def parse_group_claims(id_token: Dict[str, Any], group_claim: str) -> List[str]:
+def parse_group_claims(id_token: dict[str, Any], group_claim: str) -> list[str]:
     """Extract group list from an ID token claim.
 
     Supports list, comma-separated string, or pipe-separated string.
@@ -27,7 +27,7 @@ def parse_group_claims(id_token: Dict[str, Any], group_claim: str) -> List[str]:
     return []
 
 
-def extract_user_info(id_token: Dict[str, Any]) -> Dict[str, Any]:
+def extract_user_info(id_token: dict[str, Any]) -> dict[str, Any]:
     """Extract user info from OIDC ID token claims.
 
     Returns a dict with keys: oidc_subject, username, email, display_name.
@@ -48,11 +48,11 @@ def extract_user_info(id_token: Dict[str, Any]) -> Dict[str, Any]:
 
 def provision_oidc_user(
     db: UserDB,
-    user_info: Dict[str, Any],
-    is_admin: Optional[bool] = None,
+    user_info: dict[str, Any],
+    is_admin: bool | None = None,
     allow_email_link: bool = False,
     allow_create: bool = True,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Create or update a user from OIDC claims.
 
     Matching and collision handling use the shared external user linker:

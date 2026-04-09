@@ -1,6 +1,6 @@
 """AudiobookBay download handler - resolves magnet links and uses shared client lifecycle."""
 
-from typing import Callable, Optional
+from collections.abc import Callable
 from urllib.parse import urlparse
 
 from shelfmark.core.config import config
@@ -20,7 +20,7 @@ class AudiobookBayHandler(ExternalClientHandler):
     """Handler for AudiobookBay downloads via configured torrent client."""
 
     @staticmethod
-    def _resolve_detail_url(task: DownloadTask) -> Optional[str]:
+    def _resolve_detail_url(task: DownloadTask) -> str | None:
         """Resolve ABB detail URL from queued task metadata."""
         source_url = (task.source_url or "").strip()
         if source_url:
@@ -32,7 +32,7 @@ class AudiobookBayHandler(ExternalClientHandler):
             return task_id
         return None
 
-    def _get_client(self, protocol: str) -> Optional[DownloadClient]:
+    def _get_client(self, protocol: str) -> DownloadClient | None:
         """Compatibility shim so module-level patching still works in tests."""
         return get_client(protocol)
 
@@ -43,8 +43,8 @@ class AudiobookBayHandler(ExternalClientHandler):
     def _resolve_download(
         self,
         task: DownloadTask,
-        status_callback: Callable[[str, Optional[str]], None],
-    ) -> Optional[DownloadRequest]:
+        status_callback: Callable[[str, str | None], None],
+    ) -> DownloadRequest | None:
         """Resolve ABB detail page into a magnet-link download request."""
         detail_url = self._resolve_detail_url(task)
         if not detail_url:

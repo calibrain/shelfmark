@@ -23,7 +23,7 @@ def _read_debug_from_config() -> bool:
 
     if config_file.exists():
         try:
-            with open(config_file, "r") as f:
+            with open(config_file) as f:
                 config = json.load(f)
                 if "DEBUG" in config:
                     return bool(config["DEBUG"])

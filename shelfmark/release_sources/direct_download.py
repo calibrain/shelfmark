@@ -4,10 +4,10 @@ import itertools
 import json
 import re
 import time
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from threading import Event
-from typing import Callable, Dict, List, Optional
 from urllib.parse import quote
 
 import requests
@@ -41,7 +41,7 @@ from shelfmark.release_sources import (
 logger = setup_logger(__name__)
 
 _aa_slow_rotation = itertools.count()
-_url_source_types: Dict[str, str] = {}
+_url_source_types: dict[str, str] = {}
 
 if DEBUG_SKIP_SOURCES:
     logger.warning("DEBUG_SKIP_SOURCES active: skipping sources %s", DEBUG_SKIP_SOURCES)
@@ -65,7 +65,7 @@ _CF_BYPASS_REQUIRED = frozenset({"aa-slow-nowait", "aa-slow-wait", "zlib", "weli
 # Sources whose URLs come from AA page (multiple mirrors)
 _AA_PAGE_SOURCES = frozenset({"aa-slow-nowait", "aa-slow-wait"})
 
-def _get_md5_url_template(source_id: str) -> Optional[str]:
+def _get_md5_url_template(source_id: str) -> str | None:
     """Get URL template for MD5-based sources from centralized config."""
     from shelfmark.core import mirrors
 
@@ -76,7 +76,7 @@ def _get_md5_url_template(source_id: str) -> Optional[str]:
     return None
 
 
-def _get_libgen_domains() -> List[str]:
+def _get_libgen_domains() -> list[str]:
     """Get LibGen domains from centralized config."""
     from shelfmark.core import mirrors
     return mirrors.get_libgen_mirrors()
@@ -88,14 +88,14 @@ _LIBGEN_GET_PATTERNS = [
     re.compile(r'href=["\']([^"\']*get\.php\?[^"\']*md5=[^"\']*&[^"\']*key=[^"\']+)["\']', re.IGNORECASE),
 ]
 
-def _get_source_priority() -> List[Dict]:
+def _get_source_priority() -> list[dict]:
     """Get the full source priority list.
 
     Fast sources come from user config (FAST_SOURCES_DISPLAY).
     Slow sources come from user config.
     """
     # Fast sources - always first, configurable via settings/env
-    fast_sources: List[Dict] = []
+    fast_sources: list[dict] = []
     configured_fast = config.get("FAST_SOURCES_DISPLAY") or []
     has_donator_key = bool(config.get("AA_DONATOR_KEY"))
 
@@ -143,7 +143,7 @@ class SearchUnavailable(SourceUnavailableError):
     """Raised when Anna's Archive cannot be reached via any mirror/DNS."""
 
 
-def search_books(query: str, filters: SearchFilters) -> List[BrowseRecord]:
+def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
     """Search for books matching the query.
 
     Args:
@@ -258,7 +258,7 @@ def get_book_info(book_id: str, fetch_download_count: bool = True) -> BrowseReco
     return _parse_book_info_page(soup, book_id, fetch_download_count)
 
 
-def _parse_search_result_row(row: Tag) -> Optional[BrowseRecord]:
+def _parse_search_result_row(row: Tag) -> BrowseRecord | None:
     """Parse a single search result row into a browse record."""
     try:
         if row.text.strip().lower().startswith("your ad here"):
@@ -425,7 +425,7 @@ def _parse_book_info_page(soup: BeautifulSoup, book_id: str, fetch_download_coun
     return book_info
 
 
-def _find_in_divs(divs: List, text: str, is_class: bool = False) -> List[str]:
+def _find_in_divs(divs: list, text: str, is_class: bool = False) -> list[str]:
     """Find divs containing text or having a specific class."""
     results = []
     for div in divs:
@@ -437,7 +437,7 @@ def _find_in_divs(divs: List, text: str, is_class: bool = False) -> List[str]:
     return results
 
 
-def _get_next_value_div(label_div: Tag) -> Optional[Tag]:
+def _get_next_value_div(label_div: Tag) -> Tag | None:
     """Find the next sibling div that holds the value for a metadata label."""
     sibling = label_div.next_sibling
     while sibling:
@@ -447,13 +447,13 @@ def _get_next_value_div(label_div: Tag) -> Optional[Tag]:
     return None
 
 
-def _extract_book_description(soup: BeautifulSoup) -> Optional[str]:
+def _extract_book_description(soup: BeautifulSoup) -> str | None:
     """Extract the primary or alternative description from the book page."""
     container = soup.select_one(".js-md5-top-box-description")
     if not container:
         return None
 
-    alternative: Optional[str] = None
+    alternative: str | None = None
 
     label_divs = container.select("div.text-xs.text-gray-500.uppercase")
     for label_div in label_divs:
@@ -484,9 +484,9 @@ def _extract_book_description(soup: BeautifulSoup) -> Optional[str]:
     return None
 
 
-def _extract_book_metadata(metadata_divs) -> Dict[str, List[str]]:
+def _extract_book_metadata(metadata_divs) -> dict[str, list[str]]:
     """Extract metadata from book info divs."""
-    info: Dict[str, set[str]] = {}
+    info: dict[str, set[str]] = {}
 
     sub_datas = metadata_divs.find_all("div")[0]
     for sub_data in sub_datas.children:
@@ -534,7 +534,7 @@ def _friendly_source_name(link: str) -> str:
     return _get_source_info(link)[1]
 
 
-def _group_urls_by_source(urls: List[str], urls_by_source: Dict[str, List[str]]) -> None:
+def _group_urls_by_source(urls: list[str], urls_by_source: dict[str, list[str]]) -> None:
     """Group URLs into urls_by_source dict by their source type."""
     for url in urls:
         source_type = _url_source_types.get(url)
@@ -542,7 +542,7 @@ def _group_urls_by_source(urls: List[str], urls_by_source: Dict[str, List[str]])
             urls_by_source.setdefault(source_type, []).append(url)
 
 
-def _fetch_aa_page_urls(book_info: BrowseRecord, urls_by_source: Dict[str, List[str]]) -> None:
+def _fetch_aa_page_urls(book_info: BrowseRecord, urls_by_source: dict[str, list[str]]) -> None:
     """Fetch and parse AA page, populating urls_by_source dict.
 
     Groups existing book_info.download_urls by source type. If book_info
@@ -563,10 +563,10 @@ def _get_urls_for_source(
     source_id: str,
     book_info: BrowseRecord,
     selector: network.AAMirrorSelector,
-    cancel_flag: Optional[Event],
-    status_callback: Optional[Callable[[str, Optional[str]], None]],
-    urls_by_source: Dict[str, List[str]],
-) -> List[str]:
+    cancel_flag: Event | None,
+    status_callback: Callable[[str, str | None], None] | None,
+    urls_by_source: dict[str, list[str]],
+) -> list[str]:
     """Get URLs for a specific source, fetching lazily if needed."""
     # AA Fast - generate URL dynamically
     if source_id == "aa-fast":
@@ -614,12 +614,12 @@ def _try_download_url(
     source_id: str,
     book_info: BrowseRecord,
     book_path: Path,
-    progress_callback: Optional[Callable[[float], None]],
-    cancel_flag: Optional[Event],
-    status_callback: Optional[Callable[[str, Optional[str]], None]],
+    progress_callback: Callable[[float], None] | None,
+    cancel_flag: Event | None,
+    status_callback: Callable[[str, str | None], None] | None,
     selector: network.AAMirrorSelector,
     source_context: str
-) -> Optional[str]:
+) -> str | None:
     """Attempt to download from a single URL.
 
     Returns: download URL on success, None on failure.
@@ -664,10 +664,10 @@ def _try_download_url(
 
 def _get_download_urls_from_welib(
     book_id: str,
-    selector: Optional[network.AAMirrorSelector] = None,
-    cancel_flag: Optional[Event] = None,
-    status_callback: Optional[Callable[[str, Optional[str]], None]] = None
-) -> List[str]:
+    selector: network.AAMirrorSelector | None = None,
+    cancel_flag: Event | None = None,
+    status_callback: Callable[[str, str | None], None] | None = None
+) -> list[str]:
     """Get download URLs from welib.org (bypasser required)."""
     from shelfmark.core import mirrors
 
@@ -693,7 +693,7 @@ def _get_download_urls_from_welib(
     return list(dict.fromkeys(links))  # Dedupe while preserving order
 
 
-def _extract_libgen_download_url(link: str, cancel_flag: Optional[Event] = None) -> str:
+def _extract_libgen_download_url(link: str, cancel_flag: Event | None = None) -> str:
     """Extract download URL from Libgen ads.php page using direct HTTP."""
     if cancel_flag and cancel_flag.is_set():
         return ""
@@ -753,10 +753,10 @@ def _extract_libgen_download_url(link: str, cancel_flag: Optional[Event] = None)
 def _download_book(
     book_info: BrowseRecord,
     book_path: Path,
-    progress_callback: Optional[Callable[[float], None]] = None,
-    cancel_flag: Optional[Event] = None,
-    status_callback: Optional[Callable[[str, Optional[str]], None]] = None
-) -> Optional[str]:
+    progress_callback: Callable[[float], None] | None = None,
+    cancel_flag: Event | None = None,
+    status_callback: Callable[[str, str | None], None] | None = None
+) -> str | None:
     """Download a book using sources in configured priority order.
 
     Returns: Download URL if successful, None otherwise.
@@ -843,10 +843,10 @@ def _download_book(
 def _get_download_url(
     link: str,
     title: str,
-    cancel_flag: Optional[Event] = None,
-    status_callback: Optional[Callable[[str, Optional[str]], None]] = None,
-    selector: Optional[network.AAMirrorSelector] = None,
-    source_context: Optional[str] = None
+    cancel_flag: Event | None = None,
+    status_callback: Callable[[str, str | None], None] | None = None,
+    selector: network.AAMirrorSelector | None = None,
+    source_context: str | None = None
 ) -> str:
     """Extract actual download URL from various source pages.
 
@@ -906,10 +906,10 @@ def _extract_slow_download_url(
     soup: BeautifulSoup,
     link: str,
     title: str,
-    cancel_flag: Optional[Event],
+    cancel_flag: Event | None,
     status_callback,
     selector,
-    source_context: Optional[str] = None
+    source_context: str | None = None
 ) -> str:
     """Extract download URL from AA slow download pages."""
     html_str = str(soup)
@@ -1148,7 +1148,7 @@ class DirectDownloadSource(ReleaseSource):
         record_id: str,
         *,
         fetch_download_count: bool = True,
-    ) -> Optional[BrowseRecord]:
+    ) -> BrowseRecord | None:
         """Resolve a direct-download record for direct-mode info/download flows."""
         return get_book_info(record_id, fetch_download_count=fetch_download_count)
 
@@ -1156,7 +1156,7 @@ class DirectDownloadSource(ReleaseSource):
         """Direct search results already represent concrete downloadable releases."""
         return True
 
-    def get_destination_override(self, task: DownloadTask) -> Optional[Path]:
+    def get_destination_override(self, task: DownloadTask) -> Path | None:
         """Apply Anna's Archive content-type routing when configured."""
         if check_audiobook(task.content_type):
             return None
@@ -1168,7 +1168,7 @@ class DirectDownloadSource(ReleaseSource):
         filters: SearchFilters,
         *,
         search_label: str,
-    ) -> List[BrowseRecord]:
+    ) -> list[BrowseRecord]:
         """Retry AA queries without a language filter when filtered search returns nothing."""
         results = search_books(query, filters)
         if results or not filters.lang:
@@ -1185,7 +1185,7 @@ class DirectDownloadSource(ReleaseSource):
         plan: "ReleaseSearchPlan",  # noqa: F821
         expand_search: bool = False,
         content_type: str = "ebook"
-    ) -> List[Release]:
+    ) -> list[Release]:
         """
         Search for releases using the book's metadata.
 
@@ -1240,7 +1240,7 @@ class DirectDownloadSource(ReleaseSource):
 
         # Execute searches with deduplication
         seen_ids: set = set()
-        all_results: List[BrowseRecord] = []
+        all_results: list[BrowseRecord] = []
 
         for title, langs in searches:
             query = f"{title} {author}".strip()
@@ -1300,8 +1300,8 @@ class DirectDownloadHandler(DownloadHandler):
         task: DownloadTask,
         cancel_flag: Event,
         progress_callback: Callable[[float], None],
-        status_callback: Callable[[str, Optional[str]], None]
-    ) -> Optional[str]:
+        status_callback: Callable[[str, str | None], None]
+    ) -> str | None:
         """
         Execute a direct HTTP download.
 
@@ -1359,8 +1359,8 @@ class DirectDownloadHandler(DownloadHandler):
         book_info: BrowseRecord,
         cancel_flag: Event,
         progress_callback: Callable[[float], None],
-        status_callback: Callable[[str, Optional[str]], None]
-    ) -> Optional[str]:
+        status_callback: Callable[[str, str | None], None]
+    ) -> str | None:
         """
         Internal method to execute the download with fetched browse record.
 

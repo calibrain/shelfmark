@@ -2,10 +2,11 @@
 
 import json
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any
 
 from shelfmark.core.logger import setup_logger
 
@@ -20,13 +21,13 @@ class FieldBase:
     description: str = ""                 # Help text
     default: Any = None                   # Default value if not set
     required: bool = False                # Whether field must have a value
-    env_var: Optional[str] = None         # Override env var name (defaults to key)
+    env_var: str | None = None         # Override env var name (defaults to key)
     env_supported: bool = True            # Whether this setting can be set via ENV var (False = UI-only)
     user_overridable: bool = False        # Whether admins can set per-user overrides for this field
     disabled: bool = False                # Whether field is disabled/greyed out
     disabled_reason: str = ""             # Explanation shown when disabled
-    show_when: Optional[Dict[str, Any] | List[Dict[str, Any]]] = None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
-    disabled_when: Optional[Dict[str, Any]] = None  # Conditional disable: {"field": "key", "value": "expected", "reason": "..."}
+    show_when: dict[str, Any] | list[dict[str, Any]] | None = None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
+    disabled_when: dict[str, Any] | None = None  # Conditional disable: {"field": "key", "value": "expected", "reason": "..."}
     requires_restart: bool = False        # Whether changing this setting requires a container restart
     universal_only: bool = False          # Only show in Universal search mode (hide in Direct mode)
     hidden_in_ui: bool = False            # Keep field in schema/save path but hide default renderer
@@ -44,7 +45,7 @@ class FieldBase:
 class TextField(FieldBase):
     """Single-line text input."""
     placeholder: str = ""
-    max_length: Optional[int] = None
+    max_length: int | None = None
 
 
 @dataclass
@@ -56,8 +57,8 @@ class PasswordField(FieldBase):
 @dataclass
 class NumberField(FieldBase):
     """Numeric input."""
-    min_value: Optional[float] = None
-    max_value: Optional[float] = None
+    min_value: float | None = None
+    max_value: float | None = None
     step: float = 1
     default: float = 0
 
@@ -73,7 +74,7 @@ class SelectField(FieldBase):
     """Single-choice dropdown."""
     # Options can be a list or a callable that returns a list (for lazy evaluation)
     options: Any = field(default_factory=list)  # [{value: "", label: ""}] or callable
-    filter_by_field: Optional[str] = None  # Field key whose value filters options via childOf property
+    filter_by_field: str | None = None  # Field key whose value filters options via childOf property
 
 
 @dataclass
@@ -81,7 +82,7 @@ class MultiSelectField(FieldBase):
     """Multiple-choice selection."""
     # Options can be a list or a callable that returns a list (for lazy evaluation)
     options: Any = field(default_factory=list)  # [{value: "", label: ""}] or callable
-    default: List[str] = field(default_factory=list)
+    default: list[str] = field(default_factory=list)
     variant: str = "pills"  # "pills" (default) or "dropdown" for checkbox dropdown style
 
 
@@ -89,7 +90,7 @@ class MultiSelectField(FieldBase):
 class TagListField(FieldBase):
     """Editable list of free-form string values (tag/chip input)."""
     placeholder: str = ""
-    default: List[str] = field(default_factory=list)
+    default: list[str] = field(default_factory=list)
     normalize_urls: bool = True
 
 
@@ -101,7 +102,7 @@ class OrderableListField(FieldBase):
     # - isPinned: can't be reordered (but toggle may still work if not also isLocked)
     options: Any = field(default_factory=list)
     # Default value: [{id, enabled}, ...] in priority order
-    default: List[Dict[str, Any]] = field(default_factory=list)
+    default: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -112,7 +113,7 @@ class TableField(FieldBase):
     columns: Any = field(default_factory=list)  # list or callable
 
     # Value format: list of objects
-    default: List[Dict[str, Any]] = field(default_factory=list)
+    default: list[dict[str, Any]] = field(default_factory=list)
 
     add_label: str = "Add"
     empty_message: str = ""
@@ -126,18 +127,18 @@ class CustomComponentField:
     component: str                        # Frontend component registry key
     label: str = ""
     description: str = ""
-    bind_keys: List[str] = field(default_factory=list)  # Related value keys this component edits
-    value_fields: List[Any] = field(default_factory=list)  # Backing value schema for this component
+    bind_keys: list[str] = field(default_factory=list)  # Related value keys this component edits
+    value_fields: list[Any] = field(default_factory=list)  # Backing value schema for this component
     wrap_in_field_wrapper: bool = False   # Whether to render with standard FieldWrapper layout
     disabled: bool = False
     disabled_reason: str = ""
-    show_when: Optional[Dict[str, Any] | List[Dict[str, Any]]] = None
+    show_when: dict[str, Any] | list[dict[str, Any]] | None = None
     universal_only: bool = False
 
     def get_field_type(self) -> str:
         return "CustomComponentField"
 
-    def get_bind_keys(self) -> List[str]:
+    def get_bind_keys(self) -> list[str]:
         if self.bind_keys:
             return self.bind_keys
         return [getattr(f, "key") for f in self.value_fields if getattr(f, "key", None)]
@@ -149,11 +150,11 @@ class ActionButton:
     label: str                            # Button text
     description: str = ""                 # Help text
     style: str = "default"                # "default", "primary", "danger"
-    callback: Optional[Callable[..., Dict[str, Any]]] = None  # Returns {"success": bool, "message": str}
+    callback: Callable[..., dict[str, Any]] | None = None  # Returns {"success": bool, "message": str}
     disabled: bool = False                # Whether button is disabled/greyed out
     disabled_reason: str = ""             # Explanation shown when disabled
-    show_when: Optional[Dict[str, Any] | List[Dict[str, Any]]] = None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
-    disabled_when: Optional[Dict[str, Any]] = None  # Conditional disable: {"field": "key", "value": "expected", "reason": "..."}
+    show_when: dict[str, Any] | list[dict[str, Any]] | None = None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
+    disabled_when: dict[str, Any] | None = None  # Conditional disable: {"field": "key", "value": "expected", "reason": "..."}
 
     def get_field_type(self) -> str:
         return "ActionButton"
@@ -170,10 +171,10 @@ class HeadingField:
     key: str                              # Unique identifier
     title: str                            # Heading title
     description: str = ""                 # Description text (supports markdown-style links)
-    description_by_auth_mode: Optional[Dict[str, str]] = None  # Optional auth-mode specific description map
+    description_by_auth_mode: dict[str, str] | None = None  # Optional auth-mode specific description map
     link_url: str = ""                    # Optional URL for a link
     link_text: str = ""                   # Text for the link (defaults to URL if not provided)
-    show_when: Optional[Dict[str, Any] | List[Dict[str, Any]]] = None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
+    show_when: dict[str, Any] | list[dict[str, Any]] | None = None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
     universal_only: bool = False          # Only show in Universal search mode (hide in Direct mode)
 
     def get_field_type(self) -> str:
@@ -181,20 +182,20 @@ class HeadingField:
 
 
 # Type alias for all field types
-SettingsField = Union[
-    TextField,
-    PasswordField,
-    NumberField,
-    CheckboxField,
-    SelectField,
-    MultiSelectField,
-    TagListField,
-    OrderableListField,
-    TableField,
-    CustomComponentField,
-    ActionButton,
-    HeadingField,
-]
+SettingsField = (
+    TextField
+    | PasswordField
+    | NumberField
+    | CheckboxField
+    | SelectField
+    | MultiSelectField
+    | TagListField
+    | OrderableListField
+    | TableField
+    | CustomComponentField
+    | ActionButton
+    | HeadingField
+)
 
 
 @dataclass
@@ -202,10 +203,10 @@ class SettingsTab:
     """A tab/section in the settings UI."""
     name: str                             # Internal name (used in URLs)
     display_name: str                     # Display name in UI
-    fields: List[SettingsField] = field(default_factory=list)
-    icon: Optional[str] = None            # Icon name for UI
+    fields: list[SettingsField] = field(default_factory=list)
+    icon: str | None = None            # Icon name for UI
     order: int = 100                      # Sort order (lower = earlier)
-    group: Optional[str] = None           # Group name this tab belongs to
+    group: str | None = None           # Group name this tab belongs to
 
 
 @dataclass
@@ -213,20 +214,20 @@ class SettingsGroup:
     """A collapsible group of settings tabs in the UI."""
     name: str                             # Internal name
     display_name: str                     # Display name in UI
-    icon: Optional[str] = None            # Icon name for UI
+    icon: str | None = None            # Icon name for UI
     order: int = 100                      # Sort order (lower = earlier)
 
 
-_SETTINGS_REGISTRY: Dict[str, SettingsTab] = {}
-_GROUPS_REGISTRY: Dict[str, SettingsGroup] = {}
-_ON_SAVE_HANDLERS: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {}
+_SETTINGS_REGISTRY: dict[str, SettingsTab] = {}
+_GROUPS_REGISTRY: dict[str, SettingsGroup] = {}
+_ON_SAVE_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {}
 _REGISTRY_LOCK = Lock()
 
 
 def register_group(
     name: str,
     display_name: str,
-    icon: Optional[str] = None,
+    icon: str | None = None,
     order: int = 100
 ) -> None:
     with _REGISTRY_LOCK:
@@ -243,11 +244,11 @@ def register_group(
 def register_settings(
     name: str,
     display_name: str,
-    icon: Optional[str] = None,
+    icon: str | None = None,
     order: int = 100,
-    group: Optional[str] = None
+    group: str | None = None
 ):
-    def decorator(func: Callable[[], List[SettingsField]]):
+    def decorator(func: Callable[[], list[SettingsField]]):
         with _REGISTRY_LOCK:
             fields = func()
             tab = SettingsTab(
@@ -267,24 +268,24 @@ def register_settings(
 
 def register_on_save(
     tab_name: str,
-    handler: Callable[[Dict[str, Any]], Dict[str, Any]]
+    handler: Callable[[dict[str, Any]], dict[str, Any]]
 ) -> None:
     with _REGISTRY_LOCK:
         _ON_SAVE_HANDLERS[tab_name] = handler
         logger.debug(f"Registered on_save handler for tab: {tab_name}")
 
 
-def get_on_save_handler(tab_name: str) -> Optional[Callable[[Dict[str, Any]], Dict[str, Any]]]:
+def get_on_save_handler(tab_name: str) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
     """Get the on_save handler for a settings tab, if any."""
     return _ON_SAVE_HANDLERS.get(tab_name)
 
 
-def get_settings_tab(name: str) -> Optional[SettingsTab]:
+def get_settings_tab(name: str) -> SettingsTab | None:
     """Get a specific settings tab by name."""
     return _SETTINGS_REGISTRY.get(name)
 
 
-def get_all_settings_tabs() -> List[SettingsTab]:
+def get_all_settings_tabs() -> list[SettingsTab]:
     """Get all registered settings tabs, sorted by order."""
     return sorted(_SETTINGS_REGISTRY.values(), key=lambda t: (t.order, t.name))
 
@@ -303,9 +304,9 @@ def _iter_value_fields(tab: SettingsTab):
         yield settings_field
 
 
-def get_settings_field_map(tab_name: Optional[str] = None) -> Dict[str, tuple[SettingsField, str]]:
+def get_settings_field_map(tab_name: str | None = None) -> dict[str, tuple[SettingsField, str]]:
     """Return key -> (field, tab_name) map for value-bearing settings fields."""
-    tabs: List[SettingsTab]
+    tabs: list[SettingsTab]
     if tab_name:
         tab = get_settings_tab(tab_name)
         if not tab:
@@ -314,14 +315,14 @@ def get_settings_field_map(tab_name: Optional[str] = None) -> Dict[str, tuple[Se
     else:
         tabs = get_all_settings_tabs()
 
-    field_map: Dict[str, tuple[SettingsField, str]] = {}
+    field_map: dict[str, tuple[SettingsField, str]] = {}
     for tab in tabs:
         for settings_field in _iter_value_fields(tab):
             field_map[settings_field.key] = (settings_field, tab.name)
     return field_map
 
 
-def get_user_overridable_fields(tab_name: Optional[str] = None) -> Dict[str, tuple[SettingsField, str]]:
+def get_user_overridable_fields(tab_name: str | None = None) -> dict[str, tuple[SettingsField, str]]:
     """Return key -> (field, tab_name) map for fields marked user_overridable."""
     field_map = get_settings_field_map(tab_name=tab_name)
     return {
@@ -331,7 +332,7 @@ def get_user_overridable_fields(tab_name: Optional[str] = None) -> Dict[str, tup
     }
 
 
-def list_registered_settings() -> List[str]:
+def list_registered_settings() -> list[str]:
     """List all registered settings tab names."""
     return list(_SETTINGS_REGISTRY.keys())
 
@@ -361,21 +362,21 @@ def _ensure_config_dir(tab_name: str) -> None:
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
 
-def load_config_file(tab_name: str) -> Dict[str, Any]:
+def load_config_file(tab_name: str) -> dict[str, Any]:
     config_path = _get_config_file_path(tab_name)
 
     if not config_path.exists():
         return {}
 
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path) as f:
             return json.load(f)
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in config file {config_path}: {e}")
         return {}
 
 
-def save_config_file(tab_name: str, values: Dict[str, Any]) -> bool:
+def save_config_file(tab_name: str, values: dict[str, Any]) -> bool:
     try:
         _ensure_config_dir(tab_name)
         config_path = _get_config_file_path(tab_name)
@@ -810,7 +811,7 @@ def is_value_from_env(field: SettingsField) -> bool:
     return field.get_env_var_name() in os.environ
 
 
-def serialize_field(field: SettingsField, tab_name: str, include_value: bool = True) -> Dict[str, Any]:
+def serialize_field(field: SettingsField, tab_name: str, include_value: bool = True) -> dict[str, Any]:
     """
     Serialize a field for API response.
 
@@ -824,7 +825,7 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
     """
     # CustomComponentField has a custom structure - handle separately
     if isinstance(field, CustomComponentField):
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "key": field.key,
             "label": field.label,
             "type": field.get_field_type(),
@@ -854,7 +855,7 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
 
     # HeadingField has a different structure - handle separately
     if isinstance(field, HeadingField):
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "key": field.key,
             "type": field.get_field_type(),
             "title": field.title,
@@ -871,7 +872,7 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
             result["universalOnly"] = True
         return result
 
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "key": field.key,
         "label": field.label,
         "type": field.get_field_type(),
@@ -972,7 +973,7 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
     return result
 
 
-def serialize_tab(tab: SettingsTab, include_values: bool = True) -> Dict[str, Any]:
+def serialize_tab(tab: SettingsTab, include_values: bool = True) -> dict[str, Any]:
     """Serialize a settings tab for API response."""
     return {
         "name": tab.name,
@@ -984,7 +985,7 @@ def serialize_tab(tab: SettingsTab, include_values: bool = True) -> Dict[str, An
     }
 
 
-def serialize_group(group: SettingsGroup) -> Dict[str, Any]:
+def serialize_group(group: SettingsGroup) -> dict[str, Any]:
     """Serialize a settings group for API response."""
     return {
         "name": group.name,
@@ -994,12 +995,12 @@ def serialize_group(group: SettingsGroup) -> Dict[str, Any]:
     }
 
 
-def get_all_groups() -> List[SettingsGroup]:
+def get_all_groups() -> list[SettingsGroup]:
     """Get all registered settings groups, sorted by order."""
     return sorted(_GROUPS_REGISTRY.values(), key=lambda g: (g.order, g.name))
 
 
-def serialize_all_settings(include_values: bool = True) -> Dict[str, Any]:
+def serialize_all_settings(include_values: bool = True) -> dict[str, Any]:
     """Serialize all settings for API response."""
     tabs = get_all_settings_tabs()
     groups = get_all_groups()
@@ -1009,7 +1010,7 @@ def serialize_all_settings(include_values: bool = True) -> Dict[str, Any]:
     }
 
 
-def execute_action(tab_name: str, action_key: str, current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def execute_action(tab_name: str, action_key: str, current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     """
     Execute an action button's callback.
 
@@ -1105,7 +1106,7 @@ def _apply_aa_mirror_settings(config) -> None:
         logger.warning(f"Failed to apply AA mirror settings: {e}")
 
 
-def update_settings(tab_name: str, values: Dict[str, Any]) -> Dict[str, Any]:
+def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
     tab = get_settings_tab(tab_name)
     if not tab:
         return {"success": False, "message": f"Unknown settings tab: {tab_name}", "updated": [], "requiresRestart": False}

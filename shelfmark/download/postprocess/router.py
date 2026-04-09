@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from threading import Event
-from typing import Optional
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask, SearchMode
@@ -27,7 +26,7 @@ def post_process_download(
     cancel_flag: Event,
     status_callback,
     preserve_source_on_failure: bool = False,
-) -> Optional[str]:
+) -> str | None:
     """Post-process download using the selected output handler."""
 
     if task.search_mode is None:

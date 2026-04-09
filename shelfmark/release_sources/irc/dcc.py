@@ -6,10 +6,10 @@ Handles DCC SEND file transfers used by IRC bots to send files.
 import re
 import socket
 import struct
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
-from typing import Callable, Optional
 
 from shelfmark.core.logger import setup_logger
 
@@ -87,8 +87,8 @@ def parse_dcc_send(text: str) -> DCCOffer:
 def download_dcc(
     offer: DCCOffer,
     dest_path: Path,
-    progress_callback: Optional[Callable[[float], None]] = None,
-    cancel_flag: Optional[Event] = None,
+    progress_callback: Callable[[float], None] | None = None,
+    cancel_flag: Event | None = None,
     timeout: float = 30.0,
 ) -> None:
     """Download file via DCC protocol to dest_path. Raises DCCError on failure."""
@@ -98,7 +98,7 @@ def download_dcc(
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
         sock.connect(offer.address)
-    except socket.error as e:
+    except OSError as e:
         raise DCCConnectionError(f"Failed to connect to {offer.ip}:{offer.port}: {e}")
 
     try:
@@ -115,7 +115,7 @@ def download_dcc(
                 # Read chunk
                 try:
                     chunk = sock.recv(BUFFER_SIZE)
-                except socket.timeout:
+                except TimeoutError:
                     raise DCCError(f"Timeout reading from {offer.ip}:{offer.port}")
 
                 if not chunk:

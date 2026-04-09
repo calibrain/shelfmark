@@ -4,7 +4,7 @@ SABnzbd download client for Prowlarr integration.
 Uses SABnzbd's REST API directly via requests (no external dependency).
 """
 
-from typing import Any, Optional, Tuple
+from typing import Any
 from urllib.parse import urlparse
 
 import requests
@@ -23,7 +23,7 @@ from shelfmark.download.network import get_ssl_verify
 logger = setup_logger(__name__)
 
 
-def _parse_eta(eta_str: str) -> Optional[int]:
+def _parse_eta(eta_str: str) -> int | None:
     """Parse SABnzbd ETA string (format: 'H:MM:SS') to seconds."""
     if not eta_str or eta_str == "0:00:00":
         return None
@@ -36,7 +36,7 @@ def _parse_eta(eta_str: str) -> Optional[int]:
     return None
 
 
-def _parse_speed(slot: dict) -> Optional[int]:
+def _parse_speed(slot: dict) -> int | None:
     """Parse download speed from SABnzbd slot data, returning bytes/sec."""
     # Prefer kbpersec field (more reliable numeric value)
     kbpersec_str = slot.get("kbpersec", "")
@@ -125,7 +125,7 @@ class SABnzbdClient(DownloadClient):
         return client == "sabnzbd" and bool(url) and bool(api_key)
 
     @with_retry()
-    def _api_call(self, mode: str, params: Optional[dict] = None) -> Any:
+    def _api_call(self, mode: str, params: dict | None = None) -> Any:
         """
         Make an API call to SABnzbd.
 
@@ -256,7 +256,7 @@ class SABnzbdClient(DownloadClient):
 
         raise Exception("SABnzbd returned no nzo_id")
 
-    def test_connection(self) -> Tuple[bool, str]:
+    def test_connection(self) -> tuple[bool, str]:
         """Test connection to SABnzbd."""
         try:
             result = self._api_call("version")
@@ -273,8 +273,8 @@ class SABnzbdClient(DownloadClient):
         self,
         url: str,
         name: str,
-        category: Optional[str] = None,
-        expected_hash: Optional[str] = None,
+        category: str | None = None,
+        expected_hash: str | None = None,
         **kwargs,
     ) -> str:
         """
@@ -477,7 +477,7 @@ class SABnzbdClient(DownloadClient):
 
         return False
 
-    def get_download_path(self, download_id: str) -> Optional[str]:
+    def get_download_path(self, download_id: str) -> str | None:
         """
         Get the path where NZB files are located.
 
@@ -491,8 +491,8 @@ class SABnzbdClient(DownloadClient):
         return status.file_path
 
     def find_existing(
-        self, url: str, category: Optional[str] = None
-    ) -> Optional[Tuple[str, DownloadStatus]]:
+        self, url: str, category: str | None = None
+    ) -> tuple[str, DownloadStatus] | None:
         """
         Check if an NZB for this URL already exists in SABnzbd.
 

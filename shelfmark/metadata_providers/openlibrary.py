@@ -4,7 +4,7 @@ import re
 import threading
 import time
 from collections import deque
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any
 
 import requests
 
@@ -47,7 +47,7 @@ class RateLimiter:
         """Initialize rate limiter with max requests per time window."""
         self.max_requests = max_requests
         self.window_seconds = window_seconds
-        self.timestamps: Deque[float] = deque()
+        self.timestamps: deque[float] = deque()
         self.lock = threading.Lock()
 
     def wait_if_needed(self) -> None:
@@ -90,7 +90,7 @@ _rate_limiter = RateLimiter(RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW_SECONDS)
 
 # Mapping from abstract sort order to Open Library sort parameter
 # Note: Open Library only supports relevance (default), new, old, random
-SORT_MAPPING: Dict[str, Optional[str]] = {
+SORT_MAPPING: dict[str, str | None] = {
     SortOrder.RELEVANCE: None,  # Default (no sort param)
     SortOrder.NEWEST: "new",
     SortOrder.OLDEST: "old",
@@ -131,7 +131,7 @@ class OpenLibraryProvider(MetadataProvider):
         """Open Library is always available (no auth required)."""
         return True
 
-    def search(self, options: MetadataSearchOptions) -> List[BookMetadata]:
+    def search(self, options: MetadataSearchOptions) -> list[BookMetadata]:
         """Search for books using Open Library's search API."""
         # Handle ISBN search separately
         if options.search_type == SearchType.ISBN:
@@ -144,12 +144,12 @@ class OpenLibraryProvider(MetadataProvider):
         return self._search_cached(cache_key, options)
 
     @cacheable(ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="openlibrary:search")
-    def _search_cached(self, cache_key: str, options: MetadataSearchOptions) -> List[BookMetadata]:
+    def _search_cached(self, cache_key: str, options: MetadataSearchOptions) -> list[BookMetadata]:
         """Cached search implementation."""
         _rate_limiter.wait_if_needed()
 
         # Build query params
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "limit": options.limit,
             "page": options.page,
             "fields": "key,title,author_name,first_publish_year,cover_i,isbn,publisher,language,subject,ratings_average,ratings_count",
@@ -218,7 +218,7 @@ class OpenLibraryProvider(MetadataProvider):
             return []
 
     @cacheable(ttl_key="METADATA_CACHE_BOOK_TTL", ttl_default=600, key_prefix="openlibrary:book")
-    def get_book(self, book_id: str) -> Optional[BookMetadata]:
+    def get_book(self, book_id: str) -> BookMetadata | None:
         """Get book details by Open Library work ID (e.g., 'OL12345W')."""
         _rate_limiter.wait_if_needed()
 
@@ -253,7 +253,7 @@ class OpenLibraryProvider(MetadataProvider):
             return None
 
     @cacheable(ttl_key="METADATA_CACHE_BOOK_TTL", ttl_default=600, key_prefix="openlibrary:isbn")
-    def search_by_isbn(self, isbn: str) -> Optional[BookMetadata]:
+    def search_by_isbn(self, isbn: str) -> BookMetadata | None:
         """Search for a book by ISBN-10 or ISBN-13."""
         # Clean ISBN
         clean_isbn = isbn.replace("-", "").strip()
@@ -309,7 +309,7 @@ class OpenLibraryProvider(MetadataProvider):
             logger.error(f"Open Library ISBN search error: {e}")
             return None
 
-    def _parse_search_doc(self, doc: dict) -> Optional[BookMetadata]:
+    def _parse_search_doc(self, doc: dict) -> BookMetadata | None:
         """Parse a search document into BookMetadata."""
         try:
             # Extract work ID from key
@@ -378,7 +378,7 @@ class OpenLibraryProvider(MetadataProvider):
             logger.debug(f"Failed to parse Open Library search doc: {e}")
             return None
 
-    def _parse_work(self, work: dict, work_id: str) -> Optional[BookMetadata]:
+    def _parse_work(self, work: dict, work_id: str) -> BookMetadata | None:
         """Parse a work object into BookMetadata."""
         try:
             title = work.get("title")
@@ -428,7 +428,7 @@ class OpenLibraryProvider(MetadataProvider):
             logger.debug(f"Failed to parse Open Library work: {e}")
             return None
 
-    def _parse_edition(self, edition: dict, isbn: str) -> Optional[BookMetadata]:
+    def _parse_edition(self, edition: dict, isbn: str) -> BookMetadata | None:
         """Parse an edition object into BookMetadata (fallback for ISBN lookup)."""
         try:
             title = edition.get("title")
@@ -482,7 +482,7 @@ class OpenLibraryProvider(MetadataProvider):
             logger.debug(f"Failed to parse Open Library edition: {e}")
             return None
 
-    def _get_author_name(self, author_key: str) -> Optional[str]:
+    def _get_author_name(self, author_key: str) -> str | None:
         """Get author name from author key (e.g., '/authors/OL123A')."""
         _rate_limiter.wait_if_needed()
 
@@ -501,7 +501,7 @@ class OpenLibraryProvider(MetadataProvider):
             return None
 
 
-def _test_openlibrary_connection() -> Dict[str, Any]:
+def _test_openlibrary_connection() -> dict[str, Any]:
     """Test the Open Library API connection."""
     try:
         provider = OpenLibraryProvider()

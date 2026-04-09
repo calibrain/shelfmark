@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from shelfmark.core.auth_modes import AUTH_SOURCE_CWA, normalize_auth_source
 from shelfmark.core.external_user_linking import upsert_external_user

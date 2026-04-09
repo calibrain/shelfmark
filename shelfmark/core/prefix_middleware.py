@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 
 class PrefixMiddleware:
     """Strip a configured URL prefix from PATH_INFO before routing."""
 
-    def __init__(self, app, prefix: str, bypass_paths: Optional[Iterable[str]] = None) -> None:
+    def __init__(self, app, prefix: str, bypass_paths: Iterable[str] | None = None) -> None:
         self.app = app
         self.prefix = prefix.rstrip("/")
         self.bypass_paths = set(bypass_paths or [])

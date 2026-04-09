@@ -3,12 +3,13 @@ from __future__ import annotations
 import mimetypes
 import smtplib
 import ssl
+from collections.abc import Mapping
 from dataclasses import dataclass
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid, parseaddr
 from pathlib import Path
 from threading import Event
-from typing import Any, Dict, Mapping, Optional
+from typing import Any
 
 import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
@@ -104,7 +105,7 @@ def build_email_smtp_config(values: Mapping[str, Any]) -> EmailSmtpConfig:
     )
 
 
-def _get_email_settings() -> Dict[str, Any]:
+def _get_email_settings() -> dict[str, Any]:
     return {
         "EMAIL_SMTP_HOST": core_config.config.get("EMAIL_SMTP_HOST", ""),
         "EMAIL_SMTP_PORT": core_config.config.get("EMAIL_SMTP_PORT", 587),
@@ -188,7 +189,7 @@ def _create_tls_context(allow_unverified: bool) -> ssl.SSLContext:
 def test_smtp_connection(smtp_config: EmailSmtpConfig) -> None:
     """Connect and (optionally) authenticate to the SMTP server. Does not send mail."""
 
-    smtp: Optional[smtplib.SMTP] = None
+    smtp: smtplib.SMTP | None = None
     try:
         if smtp_config.security == SECURITY_SSL:
             context = _create_tls_context(smtp_config.allow_unverified_tls)
@@ -226,7 +227,7 @@ def test_smtp_connection(smtp_config: EmailSmtpConfig) -> None:
 
 
 def send_email_message(smtp_config: EmailSmtpConfig, message: EmailMessage) -> None:
-    smtp: Optional[smtplib.SMTP] = None
+    smtp: smtplib.SMTP | None = None
     try:
         if smtp_config.security == SECURITY_SSL:
             context = _create_tls_context(smtp_config.allow_unverified_tls)
@@ -275,7 +276,7 @@ def _post_process_email(
     cancel_flag: Event,
     status_callback,
     preserve_source_on_failure: bool = False,
-) -> Optional[str]:
+) -> str | None:
     from shelfmark.download.postprocess.pipeline import (
         CustomScriptContext,
         OutputPlan,
@@ -440,7 +441,7 @@ def process_email_output(
     cancel_flag: Event,
     status_callback,
     preserve_source_on_failure: bool = False,
-) -> Optional[str]:
+) -> str | None:
     return _post_process_email(
         temp_file,
         task,

@@ -1,6 +1,7 @@
 """Authentication settings registration."""
 
-from typing import Any, Callable, Dict
+from collections.abc import Callable
+from typing import Any
 
 from shelfmark.config.migrations import migrate_security_settings
 from shelfmark.config.security_handlers import (
@@ -53,11 +54,11 @@ def _migrate_security_settings() -> None:
 
 
 
-def _on_save_security(values: Dict[str, Any]) -> Dict[str, Any]:
+def _on_save_security(values: dict[str, Any]) -> dict[str, Any]:
     return on_save_security(values)
 
 
-def _test_oidc_connection(current_values: Dict[str, Any] = None) -> Dict[str, Any]:
+def _test_oidc_connection(current_values: dict[str, Any] = None) -> dict[str, Any]:
     return test_oidc_connection(
         load_security_config=lambda: {
             "OIDC_DISCOVERY_URL": app_config.get("OIDC_DISCOVERY_URL", ""),

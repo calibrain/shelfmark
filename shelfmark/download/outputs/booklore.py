@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any
 
 import requests
 
@@ -67,7 +68,7 @@ def _parse_destination(value: Any) -> str:
 
 def build_booklore_config(
     values: Mapping[str, Any],
-    user_id: Optional[int] = None,
+    user_id: int | None = None,
 ) -> BookloreConfig:
     base_url = str(values.get("BOOKLORE_HOST", "")).strip()
     username = str(values.get("BOOKLORE_USERNAME", "")).strip()
@@ -220,7 +221,7 @@ def _supports_booklore(task: DownloadTask) -> bool:
     return not check_audiobook(task.content_type)
 
 
-def _get_booklore_settings() -> Dict[str, Any]:
+def _get_booklore_settings() -> dict[str, Any]:
     return {
         "BOOKLORE_HOST": core_config.config.get("BOOKLORE_HOST", ""),
         "BOOKLORE_USERNAME": core_config.config.get("BOOKLORE_USERNAME", ""),
@@ -234,7 +235,7 @@ def _get_booklore_settings() -> Dict[str, Any]:
     }
 
 
-def _booklore_format_error(rejected_files: List[Path]) -> str:
+def _booklore_format_error(rejected_files: list[Path]) -> str:
     rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
     rejected_list = ", ".join(rejected_exts)
     return (
@@ -249,7 +250,7 @@ def _post_process_booklore(
     cancel_flag: Event,
     status_callback,
     preserve_source_on_failure: bool = False,
-) -> Optional[str]:
+) -> str | None:
     from shelfmark.download.postprocess.pipeline import (
         CustomScriptContext,
         OutputPlan,
@@ -332,7 +333,7 @@ def _post_process_booklore(
 
         logger.info("Task %s: uploaded %d file(s) to Booklore", task.task_id, len(prepared.files))
 
-        destination: Optional[Path]
+        destination: Path | None
         if len(prepared.files) == 1:
             destination = prepared.files[0].parent
         else:
@@ -401,7 +402,7 @@ def process_booklore_output(
     cancel_flag: Event,
     status_callback,
     preserve_source_on_failure: bool = False,
-) -> Optional[str]:
+) -> str | None:
     return _post_process_booklore(
         temp_file,
         task,

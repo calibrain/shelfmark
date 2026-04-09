@@ -2,9 +2,10 @@
 
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Callable, Dict, Optional, TypeVar
+from typing import Any, TypeVar
 
 from shelfmark.core.logger import setup_logger
 
@@ -25,11 +26,11 @@ class CacheService:
 
     def __init__(self, max_size: int = 1000):
         """Initialize cache with max_size entries before eviction."""
-        self._cache: Dict[str, CacheEntry] = {}
+        self._cache: dict[str, CacheEntry] = {}
         self._lock = threading.Lock()
         self._max_size = max_size
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """Get cached value if not expired."""
         with self._lock:
             entry = self._cache.get(key)
@@ -102,7 +103,7 @@ class CacheService:
         for key, _ in sorted_entries[:entries_to_remove]:
             del self._cache[key]
 
-    def stats(self) -> Dict[str, int]:
+    def stats(self) -> dict[str, int]:
         """Get cache statistics (size, max_size)."""
         with self._lock:
             return {
@@ -128,8 +129,8 @@ def cache_key(*args, **kwargs) -> str:
 
 
 def cacheable(
-    ttl: Optional[int] = None,
-    ttl_key: Optional[str] = None,
+    ttl: int | None = None,
+    ttl_key: str | None = None,
     ttl_default: int = 300,
     key_prefix: str = ""
 ):

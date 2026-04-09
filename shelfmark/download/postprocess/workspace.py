@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import List, Optional
 
 from shelfmark.config import env as env_config
 from shelfmark.core.logger import setup_logger
@@ -51,7 +50,7 @@ def is_managed_workspace_path(path: Path) -> bool:
     return is_within_tmp_dir(path)
 
 
-def _is_original_download(path: Optional[Path], task: DownloadTask) -> bool:
+def _is_original_download(path: Path | None, task: DownloadTask) -> bool:
     if not path or not task.original_download_path:
         return False
     try:
@@ -61,7 +60,7 @@ def _is_original_download(path: Optional[Path], task: DownloadTask) -> bool:
         return False
 
 
-def safe_cleanup_path(path: Optional[Path], task: DownloadTask) -> None:
+def safe_cleanup_path(path: Path | None, task: DownloadTask) -> None:
     """Remove a temp path only if it is safe and in our managed workspace."""
 
     if not path or _is_original_download(path, task):
@@ -84,7 +83,7 @@ def cleanup_output_staging(
     output_plan: OutputPlan,
     working_path: Path,
     task: DownloadTask,
-    cleanup_paths: Optional[List[Path]] = None,
+    cleanup_paths: list[Path] | None = None,
 ) -> None:
     if output_plan.stage_action != STAGE_NONE:
         cleanup_target = output_plan.staging_dir

@@ -1,6 +1,5 @@
 """Centralized mirror configuration for all download sources."""
 
-from typing import List
 
 from shelfmark.core.utils import normalize_http_url
 
@@ -50,7 +49,7 @@ def _normalize_mirror_url(url: str) -> str:
     return normalize_http_url(url, default_scheme="https")
 
 
-def get_aa_mirrors() -> List[str]:
+def get_aa_mirrors() -> list[str]:
     """
     Get Anna's Archive mirrors.
 
@@ -96,7 +95,7 @@ def get_aa_mirrors() -> List[str]:
     return mirrors
 
 
-def get_libgen_mirrors() -> List[str]:
+def get_libgen_mirrors() -> list[str]:
     """
     Get LibGen mirrors: defaults + any additional from config.
 
@@ -117,7 +116,7 @@ def get_libgen_mirrors() -> List[str]:
     return mirrors
 
 
-def get_zlib_mirrors() -> List[str]:
+def get_zlib_mirrors() -> list[str]:
     """
     Get Z-Library mirrors, with primary first.
 
@@ -171,7 +170,7 @@ def get_zlib_url_template() -> str:
     return f"{primary}/md5/{{md5}}"
 
 
-def get_welib_mirrors() -> List[str]:
+def get_welib_mirrors() -> list[str]:
     """
     Get Welib mirrors, with primary first.
 

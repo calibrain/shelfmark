@@ -7,7 +7,7 @@ import threading
 import time
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 from urllib.parse import urlparse
 
 import requests
@@ -44,7 +44,7 @@ NEGATIVE_CACHE_TTL = 3600
 TRANSIENT_CACHE_TTL = 60
 
 
-def _detect_image_type(data: bytes) -> Optional[Tuple[str, str]]:
+def _detect_image_type(data: bytes) -> tuple[str, str] | None:
     """Detect image type from magic bytes.
 
     Args:
@@ -80,7 +80,7 @@ class ImageCacheService:
         self.ttl_seconds = ttl_seconds
         self.index_path = cache_dir / "cache_index.json"
         self._lock = threading.RLock()
-        self._index: Dict[str, Dict[str, Any]] = {}
+        self._index: dict[str, dict[str, Any]] = {}
 
         # Stats tracking
         self._hits = 0
@@ -100,9 +100,9 @@ class ImageCacheService:
             return
 
         try:
-            with open(self.index_path, 'r') as f:
+            with open(self.index_path) as f:
                 self._index = json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             self._index = {}
 
     def _sync_index_with_files(self) -> None:
@@ -117,7 +117,7 @@ class ImageCacheService:
         removed_count = 0
 
         # Build set of files that exist on disk
-        existing_files: Dict[str, Path] = {}
+        existing_files: dict[str, Path] = {}
         for file_path in self.cache_dir.iterdir():
             if not file_path.is_file():
                 continue
@@ -139,7 +139,7 @@ class ImageCacheService:
                     header = f.read(16)
                 detected = _detect_image_type(header)
                 content_type = detected[0] if detected else f'image/{ext}'
-            except IOError:
+            except OSError:
                 content_type = f'image/{ext}'
 
             self._index[cache_id] = {
@@ -174,20 +174,20 @@ class ImageCacheService:
             with open(temp_path, 'w') as f:
                 json.dump(self._index, f)
             temp_path.rename(self.index_path)
-        except IOError:
+        except OSError:
             pass
 
     def _get_image_path(self, cache_id: str, ext: str) -> Path:
         """Get the file path for a cached image."""
         return self.cache_dir / f"{cache_id}.{ext}"
 
-    def _is_expired(self, entry: Dict[str, Any]) -> bool:
+    def _is_expired(self, entry: dict[str, Any]) -> bool:
         """Check if a cache entry is expired."""
         if self.ttl_seconds == 0:
             return False
         return (time.time() - entry.get('cached_at', 0)) > self.ttl_seconds
 
-    def _is_negative_expired(self, entry: Dict[str, Any]) -> bool:
+    def _is_negative_expired(self, entry: dict[str, Any]) -> bool:
         """Check if a negative cache entry is expired.
 
         Transient failures (timeouts) expire after TRANSIENT_CACHE_TTL (60s).
@@ -232,7 +232,7 @@ class ImageCacheService:
             try:
                 if image_path.exists():
                     image_path.unlink()
-            except IOError:
+            except OSError:
                 pass
 
             # Update tracking
@@ -243,7 +243,7 @@ class ImageCacheService:
         if evicted_count > 0:
             self._save_index()
 
-    def get(self, cache_id: str) -> Optional[Tuple[bytes, str]]:
+    def get(self, cache_id: str) -> tuple[bytes, str] | None:
         """Get a cached image.
 
         Args:
@@ -282,7 +282,7 @@ class ImageCacheService:
                 try:
                     if image_path.exists():
                         image_path.unlink()
-                except IOError:
+                except OSError:
                     pass
                 del self._index[cache_id]
                 self._save_index()
@@ -312,7 +312,7 @@ class ImageCacheService:
                 self._hits += 1
                 return data, content_type
 
-            except IOError:
+            except OSError:
                 self._misses += 1
                 return None
 
@@ -355,7 +355,7 @@ class ImageCacheService:
             try:
                 with open(image_path, 'wb') as f:
                     f.write(data)
-            except IOError:
+            except OSError:
                 return False
 
             # Update index
@@ -407,7 +407,7 @@ class ImageCacheService:
                 try:
                     if image_path.exists():
                         image_path.unlink()
-                except IOError:
+                except OSError:
                     pass
 
             del self._index[cache_id]
@@ -431,7 +431,7 @@ class ImageCacheService:
                     try:
                         if image_path.exists():
                             image_path.unlink()
-                    except IOError:
+                    except OSError:
                         pass
 
             # Clear index
@@ -444,7 +444,7 @@ class ImageCacheService:
 
             return count
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         """Get cache statistics.
 
         Returns:
@@ -494,7 +494,7 @@ class ImageCacheService:
 
         return True
 
-    def fetch_and_cache(self, cache_id: str, url: str) -> Optional[Tuple[bytes, str]]:
+    def fetch_and_cache(self, cache_id: str, url: str) -> tuple[bytes, str] | None:
         """Fetch an image from URL and cache it.
 
         Args:
@@ -563,7 +563,7 @@ class ImageCacheService:
 
 
 # Singleton instance (initialized lazily when config is available)
-_instance: Optional[ImageCacheService] = None
+_instance: ImageCacheService | None = None
 _instance_lock = threading.Lock()
 
 

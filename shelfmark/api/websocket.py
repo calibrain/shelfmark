@@ -2,7 +2,8 @@
 
 import logging
 import threading
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 
 from flask_socketio import SocketIO, join_room, leave_room
 
@@ -13,14 +14,14 @@ class WebSocketManager:
     """Manages WebSocket connections and broadcasts."""
 
     def __init__(self):
-        self.socketio: Optional[SocketIO] = None
+        self.socketio: SocketIO | None = None
         self._enabled = False
         self._connection_count = 0
         self._connection_lock = threading.Lock()
-        self._user_rooms: Dict[str, int] = {}  # room_name -> ref count
-        self._sid_rooms: Dict[str, str] = {}  # sid -> room_name
+        self._user_rooms: dict[str, int] = {}  # room_name -> ref count
+        self._sid_rooms: dict[str, str] = {}  # sid -> room_name
         self._rooms_lock = threading.Lock()
-        self._queue_status_fn: Optional[Callable] = None  # Reference to queue_status()
+        self._queue_status_fn: Callable | None = None  # Reference to queue_status()
 
     def init_app(self, app, socketio: SocketIO):
         """Initialize the WebSocket manager with Flask-SocketIO instance."""
@@ -62,7 +63,7 @@ class WebSocketManager:
         else:
             self._user_rooms[room] = count
 
-    def _set_sid_room_locked(self, sid: str, room: Optional[str]):
+    def _set_sid_room_locked(self, sid: str, room: str | None):
         current_room = self._sid_rooms.get(sid)
         if current_room == room:
             return
@@ -79,9 +80,9 @@ class WebSocketManager:
             if room.startswith("user_"):
                 self._increment_user_room_locked(room)
 
-    def sync_user_room(self, sid: str, is_admin: bool, db_user_id: Optional[int] = None):
+    def sync_user_room(self, sid: str, is_admin: bool, db_user_id: int | None = None):
         """Ensure a SID is in exactly one room matching the current session scope."""
-        room: Optional[str] = None
+        room: str | None = None
         if is_admin:
             room = "admins"
         elif db_user_id is not None:
@@ -90,17 +91,17 @@ class WebSocketManager:
         with self._rooms_lock:
             self._set_sid_room_locked(sid, room)
 
-    def join_user_room(self, sid: str, is_admin: bool, db_user_id: Optional[int] = None):
+    def join_user_room(self, sid: str, is_admin: bool, db_user_id: int | None = None):
         """Join the appropriate room based on user role."""
         self.sync_user_room(sid, is_admin, db_user_id)
 
-    def leave_user_room(self, sid: str, is_admin: bool = False, db_user_id: Optional[int] = None):
+    def leave_user_room(self, sid: str, is_admin: bool = False, db_user_id: int | None = None):
         """Leave whichever room the SID currently belongs to."""
         del is_admin, db_user_id  # Backward-compatible signature; routing is SID-based.
         with self._rooms_lock:
             self._set_sid_room_locked(sid, None)
 
-    def broadcast_status_update(self, status_data: Dict[str, Any]):
+    def broadcast_status_update(self, status_data: dict[str, Any]):
         """Broadcast status update to all connected clients, filtered by user room."""
         if not self.is_enabled():
             return
@@ -127,7 +128,7 @@ class WebSocketManager:
         except Exception as e:
             logger.error(f"Error broadcasting status update: {e}")
 
-    def broadcast_download_progress(self, book_id: str, progress: float, status: str, user_id: Optional[int] = None):
+    def broadcast_download_progress(self, book_id: str, progress: float, status: str, user_id: int | None = None):
         """Broadcast download progress update for a specific book."""
         if not self.is_enabled():
             return

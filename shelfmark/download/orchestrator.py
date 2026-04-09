@@ -12,7 +12,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from email.utils import parseaddr
 from pathlib import Path
 from threading import Event, Lock
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -51,14 +51,14 @@ except ImportError:
     WEBSOCKET_AVAILABLE = False
 
 # Progress update throttling - track last broadcast time per book
-_progress_last_broadcast: Dict[str, float] = {}
+_progress_last_broadcast: dict[str, float] = {}
 _progress_lock = Lock()
 
 # Stall detection - track last activity time per download
-_last_activity: Dict[str, float] = {}
-_last_progress_value: Dict[str, float] = {}
+_last_activity: dict[str, float] = {}
+_last_progress_value: dict[str, float] = {}
 # De-duplicate status updates (keep-alive updates shouldn't spam clients)
-_last_status_event: Dict[str, Tuple[str, Optional[str]]] = {}
+_last_status_event: dict[str, tuple[str, str | None]] = {}
 STALL_TIMEOUT = 300  # 5 minutes without progress/status update = stalled
 COORDINATOR_LOOP_ERROR_RETRY_DELAY = 1.0
 
@@ -68,8 +68,8 @@ def _is_plain_email_address(value: str) -> bool:
 
 
 def _resolve_email_destination(
-    user_id: Optional[int] = None,
-) -> Tuple[Optional[str], Optional[str]]:
+    user_id: int | None = None,
+) -> tuple[str | None, str | None]:
     """Resolve the destination email address for email output mode.
 
     Returns:
@@ -96,7 +96,7 @@ def _parse_release_search_mode(value: Any) -> SearchMode:
             raise ValueError(f"Invalid search_mode: {value}") from exc
     raise ValueError(f"Invalid search_mode: {value}")
 
-def _optional_number(value: Any) -> Optional[float]:
+def _optional_number(value: Any) -> float | None:
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
     try:
@@ -105,7 +105,7 @@ def _optional_number(value: Any) -> Optional[float]:
         return None
 
 
-def _optional_positive_int(value: Any) -> Optional[int]:
+def _optional_positive_int(value: Any) -> int | None:
     if isinstance(value, bool):
         return None
     try:
@@ -115,7 +115,7 @@ def _optional_positive_int(value: Any) -> Optional[int]:
     return parsed if parsed > 0 else None
 
 
-def _seed_time_seconds_to_minutes(value: Any) -> Optional[int]:
+def _seed_time_seconds_to_minutes(value: Any) -> int | None:
     seed_time_seconds = _optional_positive_int(value)
     if seed_time_seconds is None:
         return None
@@ -124,7 +124,7 @@ def _seed_time_seconds_to_minutes(value: Any) -> Optional[int]:
 
 def _build_retry_resolution_fields(
     release_data: dict[str, Any],
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Persist generic resolved-download data needed for restart-safe retries."""
     extra = release_data.get("extra")
     if not isinstance(extra, dict):
@@ -159,15 +159,15 @@ def _build_retry_resolution_fields(
 def queue_release(
     release_data: dict,
     priority: int = 0,
-    user_id: Optional[int] = None,
-    username: Optional[str] = None,
-) -> Tuple[bool, Optional[str]]:
+    user_id: int | None = None,
+    username: str | None = None,
+) -> tuple[bool, str | None]:
     """Add a release to the download queue. Returns (success, error_message)."""
     try:
         source = release_data['source']
         extra = release_data.get('extra', {})
         raw_request_id = release_data.get('_request_id')
-        request_id: Optional[int] = None
+        request_id: int | None = None
         if isinstance(raw_request_id, int) and raw_request_id > 0:
             request_id = raw_request_id
         search_mode = _parse_release_search_mode(release_data.get("search_mode"))
@@ -199,7 +199,7 @@ def queue_release(
         is_audiobook = check_audiobook(content_type)
 
         output_mode = "folder" if is_audiobook else books_output_mode
-        output_args: Dict[str, Any] = {}
+        output_args: dict[str, Any] = {}
         retry_resolution_fields = _build_retry_resolution_fields(release_data)
 
         if output_mode == "email" and not is_audiobook:
@@ -259,7 +259,7 @@ def queue_release(
         logger.error_trace(error_msg)
         return False, error_msg
 
-def queue_status(user_id: Optional[int] = None) -> Dict[str, Dict[str, Any]]:
+def queue_status(user_id: int | None = None) -> dict[str, dict[str, Any]]:
     """Get current status of the download queue."""
     status = book_queue.get_status(user_id=user_id)
     for _, tasks in status.items():
@@ -276,7 +276,7 @@ def queue_status(user_id: Optional[int] = None) -> Dict[str, Dict[str, Any]]:
         for status_type, tasks in status.items()
     }
 
-def get_book_data(task_id: str) -> Tuple[Optional[bytes], Optional[DownloadTask]]:
+def get_book_data(task_id: str) -> tuple[bytes | None, DownloadTask | None]:
     """Get downloaded file data for a specific task."""
     task = None
     try:
@@ -313,8 +313,8 @@ def _has_fresh_retry_context(task: DownloadTask) -> bool:
 
 
 def can_retry_download_task(
-    task: Optional[DownloadTask],
-    status: Optional[QueueStatus],
+    task: DownloadTask | None,
+    status: QueueStatus | None,
 ) -> bool:
     """Whether the task can be manually retried from the Activity UI."""
     if task is None or status not in (QueueStatus.ERROR, QueueStatus.CANCELLED):
@@ -329,10 +329,10 @@ def can_retry_download_task(
     return _has_staged_retry_source(task)
 
 
-def serialize_task_for_retry(task: DownloadTask) -> Dict[str, Any]:
+def serialize_task_for_retry(task: DownloadTask) -> dict[str, Any]:
     """Serialize the task state needed for restart-safe retries."""
     raw_search_mode = getattr(task, "search_mode", None)
-    search_mode: Optional[str] = None
+    search_mode: str | None = None
     if isinstance(raw_search_mode, SearchMode):
         search_mode = raw_search_mode.value
     elif isinstance(raw_search_mode, str):
@@ -374,7 +374,7 @@ def serialize_task_for_retry(task: DownloadTask) -> Dict[str, Any]:
     }
 
 
-def _restore_task_from_retry_payload(payload: Any) -> Optional[DownloadTask]:
+def _restore_task_from_retry_payload(payload: Any) -> DownloadTask | None:
     if not isinstance(payload, dict):
         return None
 
@@ -434,7 +434,7 @@ def retry_persisted_download(
     *,
     final_status: Any,
     priority: int = -10,
-) -> Tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """Retry a persisted download row after the in-memory task has been lost."""
     task = _restore_task_from_retry_payload(payload)
     if task is None:
@@ -486,8 +486,8 @@ def retry_persisted_download(
 
 def _task_to_dict(
     task: DownloadTask,
-    current_status: Optional[QueueStatus] = None,
-) -> Dict[str, Any]:
+    current_status: QueueStatus | None = None,
+) -> dict[str, Any]:
     """Convert DownloadTask to dict for frontend, transforming cover URLs."""
     # Transform external preview URLs to local proxy URLs
     preview = transform_cover_url(task.preview, task.task_id)
@@ -524,8 +524,8 @@ def _clear_task_error_state(task: DownloadTask) -> None:
 def _capture_task_error(
     task: DownloadTask,
     *,
-    message: Optional[str] = None,
-    exc_type: Optional[str] = None,
+    message: str | None = None,
+    exc_type: str | None = None,
 ) -> None:
     if isinstance(message, str):
         normalized = message.strip()
@@ -546,7 +546,7 @@ def _format_download_exception_message(exc: Exception) -> str:
     return f"Download failed: {type(exc).__name__}"
 
 
-def _download_task(task_id: str, cancel_flag: Event) -> Optional[str]:
+def _download_task(task_id: str, cancel_flag: Event) -> str | None:
     """Download a task via appropriate handler, then post-process to ingest."""
     try:
         # Check for cancellation before starting
@@ -570,7 +570,7 @@ def _download_task(task_id: str, cancel_flag: Event) -> Optional[str]:
         def progress_callback(progress: float) -> None:
             update_download_progress(task_id, progress)
 
-        def status_callback(status: str, message: Optional[str] = None) -> None:
+        def status_callback(status: str, message: str | None = None) -> None:
             status_key = status.lower()
             if status_key == "error":
                 _capture_task_error(
@@ -591,7 +591,7 @@ def _download_task(task_id: str, cancel_flag: Event) -> Optional[str]:
 
         # Get the download handler based on the task's source
         handler = get_handler(task.source)
-        temp_file: Optional[Path] = None
+        temp_file: Path | None = None
 
         if task.staged_path:
             staged_file = Path(task.staged_path)
@@ -726,7 +726,7 @@ def update_download_progress(book_id: str, progress: float) -> None:
             task_user_id = task.user_id if task else None
             ws_manager.broadcast_download_progress(book_id, progress, 'downloading', user_id=task_user_id)
 
-def update_download_status(book_id: str, status: str, message: Optional[str] = None) -> None:
+def update_download_status(book_id: str, status: str, message: str | None = None) -> None:
     """Update download status with optional message for UI display."""
     status_key = status.lower()
     try:
@@ -763,7 +763,7 @@ def cancel_download(book_id: str) -> bool:
     return result
 
 
-def retry_download(book_id: str) -> Tuple[bool, Optional[str]]:
+def retry_download(book_id: str) -> tuple[bool, str | None]:
     """Retry a failed or cancelled download.
 
     Request-linked downloads can only be manually retried when cancelled or
@@ -798,15 +798,15 @@ def set_book_priority(book_id: str, priority: int) -> bool:
     """Set priority for a queued book (lower = higher priority)."""
     return book_queue.set_priority(book_id, priority)
 
-def reorder_queue(book_priorities: Dict[str, int]) -> bool:
+def reorder_queue(book_priorities: dict[str, int]) -> bool:
     """Bulk reorder queue by mapping book_id to new priority."""
     return book_queue.reorder_queue(book_priorities)
 
-def get_queue_order() -> List[Dict[str, Any]]:
+def get_queue_order() -> list[dict[str, Any]]:
     """Get current queue order for display."""
     return book_queue.get_queue_order()
 
-def get_active_downloads() -> List[str]:
+def get_active_downloads() -> list[str]:
     """Get list of currently active downloads."""
     return book_queue.get_active_downloads()
 
@@ -893,7 +893,7 @@ def concurrent_download_loop() -> None:
     logger.info(f"Starting concurrent download loop with {max_workers} workers")
 
     with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="Download") as executor:
-        active_futures: Dict[Future, str] = {}  # Track active download futures
+        active_futures: dict[Future, str] = {}  # Track active download futures
         stalled_tasks: set[str] = set()  # Track tasks already cancelled due to stall
 
         while True:
@@ -947,7 +947,7 @@ def concurrent_download_loop() -> None:
                 time.sleep(COORDINATOR_LOOP_ERROR_RETRY_DELAY)
 
 # Download coordinator thread (started explicitly via start())
-_coordinator_thread: Optional[threading.Thread] = None
+_coordinator_thread: threading.Thread | None = None
 _coordinator_lock = Lock()
 
 

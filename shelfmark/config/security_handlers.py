@@ -1,7 +1,8 @@
 """Operational handlers for security settings (save/actions)."""
 
 import os
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from shelfmark.core.user_db import UserDB
 from shelfmark.core.utils import normalize_http_url

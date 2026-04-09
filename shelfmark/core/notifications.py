@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Iterable, Iterator
+from typing import Any
 from urllib.parse import urlsplit
 
 try:

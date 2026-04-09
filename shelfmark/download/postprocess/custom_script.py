@@ -5,7 +5,7 @@ import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
@@ -50,7 +50,7 @@ class CustomScriptExecution:
     destination: Path
     mode: str
     phase: str
-    payload_json: Optional[str] = None
+    payload_json: str | None = None
 
 
 @dataclass(frozen=True)
@@ -66,11 +66,11 @@ class CustomScriptContext:
     task: DownloadTask
     phase: str
     output_mode: str
-    destination: Optional[Path] = None
+    destination: Path | None = None
     final_paths: list[Path] = field(default_factory=list)
-    target_path: Optional[Path] = None
-    organization_mode: Optional[str] = None
-    transfer: Optional[CustomScriptTransferSummary] = None
+    target_path: Path | None = None
+    organization_mode: str | None = None
+    transfer: CustomScriptTransferSummary | None = None
     output_details: dict[str, Any] = field(default_factory=dict)
 
 
@@ -81,7 +81,7 @@ def prepare_custom_script_execution(
     destination: Path,
     path_mode: str,
     phase: str,
-    payload: Optional[dict[str, Any]] = None,
+    payload: dict[str, Any] | None = None,
 ) -> CustomScriptExecution:
     mode = (path_mode or "absolute").strip().lower()
     if mode != "relative":
@@ -106,7 +106,7 @@ def run_custom_script(
     status_callback,
     timeout_seconds: int = DEFAULT_CUSTOM_SCRIPT_TIMEOUT_SECONDS,
 ) -> bool:
-    cwd: Optional[str] = None
+    cwd: str | None = None
     if execution.mode == "relative":
         # Make relative paths unambiguous by running the script from the destination folder.
         cwd = str(execution.destination)
@@ -168,10 +168,10 @@ def run_custom_script(
 
 def _choose_custom_script_target(
     *,
-    explicit_target: Optional[Path],
-    destination: Optional[Path],
+    explicit_target: Path | None,
+    destination: Path | None,
     final_paths: list[Path],
-) -> Optional[Path]:
+) -> Path | None:
     if explicit_target is not None:
         return explicit_target
 
@@ -234,7 +234,7 @@ def maybe_run_custom_script(
     context: CustomScriptContext,
     *,
     status_callback,
-    steps: Optional[list[PlanStep]] = None,
+    steps: list[PlanStep] | None = None,
 ) -> bool:
     """Run the custom script hook (if configured).
 
@@ -261,7 +261,7 @@ def maybe_run_custom_script(
 
     path_mode = core_config.config.get("CUSTOM_SCRIPT_PATH_MODE", "absolute")
 
-    payload: Optional[dict[str, Any]] = None
+    payload: dict[str, Any] | None = None
     if core_config.config.get("CUSTOM_SCRIPT_JSON_PAYLOAD", False):
         payload = _build_custom_script_payload(context, target_path=target_path)
 

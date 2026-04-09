@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
@@ -57,7 +56,7 @@ def build_metadata_dict(task: DownloadTask) -> dict:
     }
 
 
-def build_file_metadata(task: DownloadTask, source_file: Path, part_number: Optional[str] = None) -> dict:
+def build_file_metadata(task: DownloadTask, source_file: Path, part_number: str | None = None) -> dict:
     metadata = build_metadata_dict(task)
     metadata["OriginalName"] = source_file.stem
     if part_number is not None:
@@ -68,7 +67,7 @@ def build_file_metadata(task: DownloadTask, source_file: Path, part_number: Opti
 def resolve_hardlink_source(
     temp_file: Path,
     task: DownloadTask,
-    destination: Optional[Path],
+    destination: Path | None,
     status_callback=None,
 ) -> TransferPlan:
     """Resolve hardlink eligibility and source path for transfers."""
@@ -128,7 +127,7 @@ def _transfer_single_file(
     is_torrent: bool,
     preserve_source: bool = False,
     max_attempts: int = 100,
-) -> Tuple[Path, str]:
+) -> tuple[Path, str]:
     if use_hardlink:
         final_path = atomic_hardlink(source_path, dest_path, max_attempts=max_attempts)
         try:
@@ -145,14 +144,14 @@ def _transfer_single_file(
 
 
 def transfer_book_files(
-    book_files: List[Path],
+    book_files: list[Path],
     destination: Path,
     task: DownloadTask,
     use_hardlink: bool,
     is_torrent: bool,
     preserve_source: bool = False,
-    organization_mode: Optional[str] = None,
-) -> Tuple[List[Path], Optional[str], Dict[str, int]]:
+    organization_mode: str | None = None,
+) -> tuple[list[Path], str | None, dict[str, int]]:
     if not book_files:
         return [], "No book files found", {"hardlink": 0, "copy": 0, "move": 0}
 
@@ -160,8 +159,8 @@ def transfer_book_files(
     organization_mode = organization_mode or get_file_organization(is_audiobook)
     max_attempts = _max_attempts_for_batch(len(book_files))
 
-    final_paths: List[Path] = []
-    op_counts: Dict[str, int] = {"hardlink": 0, "copy": 0, "move": 0}
+    final_paths: list[Path] = []
+    op_counts: dict[str, int] = {"hardlink": 0, "copy": 0, "move": 0}
 
     if organization_mode == "organize":
         template = get_template(is_audiobook, "organize")
@@ -259,8 +258,8 @@ def process_directory(
     ingest_dir: Path,
     task: DownloadTask,
     allow_archive_extraction: bool = True,
-    use_hardlink: Optional[bool] = None,
-) -> Tuple[List[Path], Optional[str]]:
+    use_hardlink: bool | None = None,
+) -> tuple[list[Path], str | None]:
     """Process staged directory: find book files, extract archives, move to ingest."""
 
     try:
@@ -314,10 +313,10 @@ def transfer_file_to_library(
     template: str,
     metadata: dict,
     task: DownloadTask,
-    temp_file: Optional[Path],
+    temp_file: Path | None,
     status_callback,
     use_hardlink: bool,
-) -> Optional[str]:
+) -> str | None:
     extension = source_path.suffix.lstrip(".") or task.format
     template_metadata = dict(metadata)
     template_metadata.setdefault("OriginalName", source_path.stem)
@@ -353,10 +352,10 @@ def transfer_directory_to_library(
     template: str,
     metadata: dict,
     task: DownloadTask,
-    temp_file: Optional[Path],
+    temp_file: Path | None,
     status_callback,
     use_hardlink: bool,
-) -> Optional[str]:
+) -> str | None:
     content_type = task.content_type.lower() if task.content_type else None
     source_files, _, _, scan_error = scan_directory_tree(source_dir, content_type)
     if scan_error:
@@ -383,8 +382,8 @@ def transfer_directory_to_library(
     run_blocking_io(base_library_path.parent.mkdir, parents=True, exist_ok=True)
 
     is_torrent = is_torrent_source(source_dir, task)
-    transferred_paths: List[Path] = []
-    op_counts: Dict[str, int] = {"hardlink": 0, "copy": 0, "move": 0}
+    transferred_paths: list[Path] = []
+    op_counts: dict[str, int] = {"hardlink": 0, "copy": 0, "move": 0}
     max_attempts = _max_attempts_for_batch(len(source_files))
 
     if len(source_files) == 1:

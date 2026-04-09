@@ -2,9 +2,9 @@
 
 import random
 import time
+from collections.abc import Callable
 from io import BytesIO
 from threading import Event, Thread
-from typing import Callable, Optional
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -122,7 +122,7 @@ DOWNLOAD_HEADERS = {
 }
 
 
-def parse_size_string(size: str) -> Optional[float]:
+def parse_size_string(size: str) -> float | None:
     """Parse a human-readable size string (e.g., '10.5 MB') into bytes."""
     if not size:
         return None
@@ -141,7 +141,7 @@ def _backoff_delay(attempt: int, base: float = 0.25, cap: float = 3.0) -> float:
     return min(cap, base * (2 ** (attempt - 1))) + random.random() * base
 
 
-def _get_status_code(e: Exception) -> Optional[int]:
+def _get_status_code(e: Exception) -> int | None:
     """Extract HTTP status code from an exception, or None if not applicable."""
     if isinstance(e, requests.exceptions.HTTPError) and e.response is not None:
         return e.response.status_code
@@ -155,7 +155,7 @@ def _is_retryable_error(e: Exception) -> bool:
     return status is not None and status in RETRYABLE_CODES
 
 
-def _try_rotation(original_url: str, current_url: str, selector: network.AAMirrorSelector) -> Optional[str]:
+def _try_rotation(original_url: str, current_url: str, selector: network.AAMirrorSelector) -> str | None:
     """Try mirror/DNS rotation. Returns new URL or None."""
     if current_url.startswith(network.get_aa_base_url()):
         new_base, action = selector.next_mirror_or_rotate_dns()
@@ -171,15 +171,15 @@ def _try_rotation(original_url: str, current_url: str, selector: network.AAMirro
 
 def html_get_page(
     url: str,
-    retry: Optional[int] = None,
+    retry: int | None = None,
     use_bypasser: bool = False,
-    selector: Optional[network.AAMirrorSelector] = None,
-    cancel_flag: Optional[Event] = None,
-    status_callback: Optional[Callable[[str, Optional[str]], None]] = None,
+    selector: network.AAMirrorSelector | None = None,
+    cancel_flag: Event | None = None,
+    status_callback: Callable[[str, str | None], None] | None = None,
     allow_bypasser_fallback: bool = True,
     include_response_url: bool = False,
     success_delay: float = 1.0,
-    session: Optional[requests.Session] = None,
+    session: requests.Session | None = None,
 ) -> str | tuple[str, str]:
     """Fetch HTML content from a URL with retry mechanism.
 
@@ -213,7 +213,7 @@ def html_get_page(
                 if status_callback:
                     status_callback("resolving", "Bypassing protection...")
                 heartbeat_stop = Event()
-                heartbeat_thread: Optional[Thread] = None
+                heartbeat_thread: Thread | None = None
                 if status_callback:
                     def _heartbeat() -> None:
                         # Keep the download "alive" during long bypass operations so the orchestrator
@@ -371,12 +371,12 @@ def html_get_page(
 def download_url(
     link: str,
     size: str = "",
-    progress_callback: Optional[Callable[[float], None]] = None,
-    cancel_flag: Optional[Event] = None,
-    _selector: Optional[network.AAMirrorSelector] = None,
-    status_callback: Optional[Callable[[str, Optional[str]], None]] = None,
-    referer: Optional[str] = None,
-) -> Optional[BytesIO]:
+    progress_callback: Callable[[float], None] | None = None,
+    cancel_flag: Event | None = None,
+    _selector: network.AAMirrorSelector | None = None,
+    status_callback: Callable[[str, str | None], None] | None = None,
+    referer: str | None = None,
+) -> BytesIO | None:
     """Download content from URL with automatic retry and resume support."""
     selector = _selector or network.AAMirrorSelector()
     current_url = selector.rewrite(link)
@@ -500,10 +500,10 @@ def _try_resume(
     buffer: BytesIO,
     start_byte: int,
     total_size: float,
-    progress_callback: Optional[Callable[[float], None]],
-    cancel_flag: Optional[Event],
-    base_headers: Optional[dict] = None,
-) -> Optional[BytesIO]:
+    progress_callback: Callable[[float], None] | None,
+    cancel_flag: Event | None,
+    base_headers: dict | None = None,
+) -> BytesIO | None:
     """Try to resume an interrupted download."""
     for attempt in range(MAX_RESUME_ATTEMPTS):
         logger.info(f"Resuming from {start_byte} bytes (attempt {attempt + 1}/{MAX_RESUME_ATTEMPTS})")

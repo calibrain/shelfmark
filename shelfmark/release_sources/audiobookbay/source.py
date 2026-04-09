@@ -2,7 +2,7 @@
 
 import hashlib
 import re
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
@@ -65,7 +65,7 @@ LANGUAGE_MAP = {
 }
 
 
-def _split_title_and_author(raw_title: str) -> tuple[str, Optional[str]]:
+def _split_title_and_author(raw_title: str) -> tuple[str, str | None]:
     """Split titles in the form 'Title - Author' into title and author.
 
     Args:
@@ -90,7 +90,7 @@ def _split_title_and_author(raw_title: str) -> tuple[str, Optional[str]]:
     return title_part, author_part
 
 
-def _map_language(language: str) -> Optional[str]:
+def _map_language(language: str) -> str | None:
     """Map language name to ISO 639-1 code.
     
     Args:
@@ -106,7 +106,7 @@ def _map_language(language: str) -> Optional[str]:
     return LANGUAGE_MAP.get(lang_lower, lang_lower)
 
 
-def _parse_bitrate_to_kbps(bitrate: Optional[str]) -> Optional[int]:
+def _parse_bitrate_to_kbps(bitrate: str | None) -> int | None:
     """Parse bitrate string to an integer Kbps value.
 
     Args:
@@ -147,7 +147,7 @@ class AudiobookBaySource(ReleaseSource):
         plan: "ReleaseSearchPlan",
         expand_search: bool = False,
         content_type: str = "ebook"
-    ) -> List[Release]:
+    ) -> list[Release]:
         """Search AudiobookBay for audiobook releases.
         
         Args:

@@ -6,7 +6,7 @@ Searches IRC channels for ebook and audiobook releases.
 import tempfile
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
@@ -75,7 +75,7 @@ class IRCReleaseSource(ReleaseSource):
 
     def __init__(self):
         # Track online servers from most recent search
-        self._online_servers: Optional[set[str]] = None
+        self._online_servers: set[str] | None = None
 
     def is_available(self) -> bool:
         """Check if IRC is configured (server, channel, and nick are set)."""
@@ -127,7 +127,7 @@ class IRCReleaseSource(ReleaseSource):
         plan: "ReleaseSearchPlan",
         expand_search: bool = False,
         content_type: str = "ebook"
-    ) -> List[Release]:
+    ) -> list[Release]:
         """Search IRC for books matching metadata.
 
         The expand_search parameter is repurposed for IRC as a "refresh" flag.
@@ -301,9 +301,9 @@ class IRCReleaseSource(ReleaseSource):
 
     def _convert_to_releases(
         self,
-        results: List[SearchResult],
+        results: list[SearchResult],
         content_type: str = "ebook",
-    ) -> List[Release]:
+    ) -> list[Release]:
         """Convert parsed results to Release objects, sorted by online/format/server."""
         releases = []
         online_servers = self._online_servers if self._online_servers else set()
@@ -349,7 +349,7 @@ class IRCReleaseSource(ReleaseSource):
         return releases
 
     @staticmethod
-    def _parse_size(size_str: str) -> Optional[int]:
+    def _parse_size(size_str: str) -> int | None:
         """Parse human-readable size (e.g., '1.2MB', '500K') to bytes."""
         if not size_str:
             return None

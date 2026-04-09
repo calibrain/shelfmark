@@ -46,7 +46,7 @@ class IRCConnectionManager:
         self._channels: dict[str, str] = {}  # connection_key -> joined channel
         self._connecting: dict[str, bool] = {}  # Track keys currently being connected
         self._conn_lock = threading.Lock()
-        self._cleanup_thread: Optional[threading.Thread] = None
+        self._cleanup_thread: threading.Thread | None = None
         self._running = True
         self._initialized = True
 

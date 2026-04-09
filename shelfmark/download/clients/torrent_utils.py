@@ -4,7 +4,6 @@ import base64
 import hashlib
 import re
 from dataclasses import dataclass
-from typing import Optional, Tuple
 from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
@@ -20,19 +19,19 @@ logger = setup_logger(__name__)
 class TorrentInfo:
     """Parsed information from a torrent URL."""
 
-    info_hash: Optional[str]
+    info_hash: str | None
     """Lowercase hex info_hash (32 or 40 chars), or None if extraction failed."""
 
-    torrent_data: Optional[bytes]
+    torrent_data: bytes | None
     """Raw .torrent file content, only populated for .torrent URLs."""
 
     is_magnet: bool
     """True if the URL was a magnet link."""
 
-    magnet_url: Optional[str] = None
+    magnet_url: str | None = None
     """The actual magnet URL, if available."""
 
-    def with_info_hash(self, info_hash: Optional[str]) -> "TorrentInfo":
+    def with_info_hash(self, info_hash: str | None) -> "TorrentInfo":
         """Return a copy with the info_hash replaced when provided."""
         if info_hash:
             return TorrentInfo(
@@ -47,7 +46,7 @@ class TorrentInfo:
 def extract_torrent_info(
     url: str,
     fetch_torrent: bool = True,
-    expected_hash: Optional[str] = None,
+    expected_hash: str | None = None,
 ) -> TorrentInfo:
     """Extract info_hash from magnet link or .torrent URL.
 
@@ -136,7 +135,7 @@ def extract_torrent_info(
         return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
 
 
-def parse_transmission_url(url: str) -> Tuple[str, str, int, str]:
+def parse_transmission_url(url: str) -> tuple[str, str, int, str]:
     """Parse Transmission URL into (protocol, host, port, path)."""
     parsed = urlparse(url)
     protocol = (parsed.scheme or "http").lower()
@@ -220,7 +219,7 @@ def bencode_encode(data) -> bytes:
         )
 
 
-def extract_info_hash_from_torrent(torrent_data: bytes) -> Optional[str]:
+def extract_info_hash_from_torrent(torrent_data: bytes) -> str | None:
     """Extract info_hash from .torrent file data."""
     try:
         decoded, _ = bencode_decode(torrent_data)
@@ -237,7 +236,7 @@ def extract_info_hash_from_torrent(torrent_data: bytes) -> Optional[str]:
         return None
 
 
-def extract_hash_from_magnet(magnet_url: str) -> Optional[str]:
+def extract_hash_from_magnet(magnet_url: str) -> str | None:
     """Extract info_hash from a magnet URL."""
     if not magnet_url.startswith("magnet:"):
         return None
@@ -245,12 +244,12 @@ def extract_hash_from_magnet(magnet_url: str) -> Optional[str]:
     parsed = urlparse(magnet_url)
     params = parse_qs(parsed.query)
 
-    def extract_btmh(value: str) -> Optional[str]:
+    def extract_btmh(value: str) -> str | None:
         raw_value = value.strip()
         if not raw_value:
             return None
 
-        data: Optional[bytes] = None
+        data: bytes | None = None
         if re.fullmatch(r"[a-fA-F0-9]+", raw_value):
             if len(raw_value) % 2 != 0:
                 return None

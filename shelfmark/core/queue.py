@@ -2,10 +2,11 @@
 
 import queue
 import time
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Event, Lock
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
@@ -25,10 +26,8 @@ class BookQueue:
         self._status_timestamps: dict[str, datetime] = {}  # Track when each status was last updated
         self._cancel_flags: dict[str, Event] = {}  # Cancellation flags for active downloads
         self._active_downloads: dict[str, bool] = {}  # Track currently downloading tasks
-        self._terminal_status_hook: Optional[
-            Callable[[str, QueueStatus, DownloadTask], None]
-        ] = None
-        self._queue_hook: Optional[Callable[[str, DownloadTask], None]] = None
+        self._terminal_status_hook: Callable[[str, QueueStatus, DownloadTask], None] | None = None
+        self._queue_hook: Callable[[str, DownloadTask], None] | None = None
 
     @property
     def _status_timeout(self) -> timedelta:
@@ -37,7 +36,7 @@ class BookQueue:
 
     def add(self, task: DownloadTask) -> bool:
         """Add a download task to the queue. Returns False if already exists."""
-        hook: Optional[Callable[[str, DownloadTask], None]] = None
+        hook: Callable[[str, DownloadTask], None] | None = None
         with self._lock:
             task_id = task.task_id
 
@@ -62,7 +61,7 @@ class BookQueue:
                 logger.warning("Queue hook failed while adding task %s: %s", task_id, exc)
         return True
 
-    def get_next(self) -> Optional[Tuple[str, Event]]:
+    def get_next(self) -> tuple[str, Event] | None:
         """Get next task ID from queue with cancellation flag."""
         # Use iterative approach to avoid stack overflow if many items are cancelled
         while True:
@@ -84,12 +83,12 @@ class BookQueue:
             except queue.Empty:
                 return None
 
-    def get_task(self, task_id: str) -> Optional[DownloadTask]:
+    def get_task(self, task_id: str) -> DownloadTask | None:
         """Get a task by its ID."""
         with self._lock:
             return self._task_data.get(task_id)
 
-    def get_task_status(self, task_id: str) -> Optional[QueueStatus]:
+    def get_task_status(self, task_id: str) -> QueueStatus | None:
         """Get queue status for a task id."""
         with self._lock:
             return self._status.get(task_id)
@@ -101,7 +100,7 @@ class BookQueue:
 
     def set_terminal_status_hook(
         self,
-        hook: Optional[Callable[[str, QueueStatus, DownloadTask], None]],
+        hook: Callable[[str, QueueStatus, DownloadTask], None] | None,
     ) -> None:
         """Register a callback invoked when a task first enters a terminal status."""
         with self._lock:
@@ -109,7 +108,7 @@ class BookQueue:
 
     def set_queue_hook(
         self,
-        hook: Optional[Callable[[str, DownloadTask], None]],
+        hook: Callable[[str, DownloadTask], None] | None,
     ) -> None:
         """Register a callback invoked when a task is added to the queue."""
         with self._lock:
@@ -117,8 +116,8 @@ class BookQueue:
 
     def update_status(self, book_id: str, status: QueueStatus) -> None:
         """Update status of a book in the queue."""
-        hook: Optional[Callable[[str, QueueStatus, DownloadTask], None]] = None
-        hook_task: Optional[DownloadTask] = None
+        hook: Callable[[str, QueueStatus, DownloadTask], None] | None = None
+        hook_task: DownloadTask | None = None
         with self._lock:
             previous_status = self._status.get(book_id)
             self._update_status(book_id, status)
@@ -159,7 +158,7 @@ class BookQueue:
             if task_id in self._task_data:
                 self._task_data[task_id].status_message = message
 
-    def get_status(self, user_id: Optional[int] = None) -> Dict[QueueStatus, Dict[str, DownloadTask]]:
+    def get_status(self, user_id: int | None = None) -> dict[QueueStatus, dict[str, DownloadTask]]:
         """Get current queue status grouped by status.
 
         Args:
@@ -168,7 +167,7 @@ class BookQueue:
         """
         self.refresh()
         with self._lock:
-            result: Dict[QueueStatus, Dict[str, DownloadTask]] = {status: {} for status in QueueStatus}
+            result: dict[QueueStatus, dict[str, DownloadTask]] = {status: {} for status in QueueStatus}
             for task_id, status in self._status.items():
                 if task_id in self._task_data:
                     task = self._task_data[task_id]
@@ -177,7 +176,7 @@ class BookQueue:
                     result[status][task_id] = task
             return result
 
-    def get_queue_order(self) -> List[Dict[str, Any]]:
+    def get_queue_order(self) -> list[dict[str, Any]]:
         """Get current queue order for display."""
         with self._lock:
             queue_items = []
@@ -256,13 +255,13 @@ class BookQueue:
 
             return found
 
-    def enqueue_existing(self, task_id: str, *, priority: Optional[int] = None) -> bool:
+    def enqueue_existing(self, task_id: str, *, priority: int | None = None) -> bool:
         """Requeue an existing task regardless of current status.
 
         This is used for retries where task metadata should be preserved.
         """
-        hook: Optional[Callable[[str, DownloadTask], None]] = None
-        hook_task: Optional[DownloadTask] = None
+        hook: Callable[[str, DownloadTask], None] | None = None
+        hook_task: DownloadTask | None = None
         with self._lock:
             task = self._task_data.get(task_id)
             if task is None:
@@ -301,7 +300,7 @@ class BookQueue:
                 logger.warning("Queue hook failed while requeueing task %s: %s", task_id, exc)
         return True
 
-    def reorder_queue(self, task_priorities: Dict[str, int]) -> bool:
+    def reorder_queue(self, task_priorities: dict[str, int]) -> bool:
         """Bulk reorder queue by mapping task_id to new priority."""
         with self._lock:
             # Extract all items from queue
@@ -327,7 +326,7 @@ class BookQueue:
 
             return True
 
-    def get_active_downloads(self) -> List[str]:
+    def get_active_downloads(self) -> list[str]:
         """Get list of currently active download task IDs."""
         with self._lock:
             return list(self._active_downloads.keys())

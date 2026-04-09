@@ -5,14 +5,14 @@ import time
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 def build_filename(
     title: str,
-    author: Optional[str] = None,
-    year: Optional[str] = None,
-    fmt: Optional[str] = None,
+    author: str | None = None,
+    year: str | None = None,
+    fmt: str | None = None,
 ) -> str:
     parts = []
     if author:
@@ -77,53 +77,53 @@ class DownloadTask:
     title: str                                  # Display title for queue sidebar
 
     # Display info for queue sidebar
-    author: Optional[str] = None
-    year: Optional[str] = None
-    format: Optional[str] = None
-    size: Optional[str] = None
-    preview: Optional[str] = None
-    content_type: Optional[str] = None  # "book (fiction)", "audiobook", "magazine", etc.
-    source_url: Optional[str] = None  # Original release URL used by source-specific handlers
-    retry_download_url: Optional[str] = None  # Resolved download URL for restart-safe retries
-    retry_download_protocol: Optional[str] = None  # Protocol for retry_download_url (e.g. torrent, usenet)
-    retry_release_name: Optional[str] = None  # Display name to send back to external download clients
-    retry_expected_hash: Optional[str] = None  # Optional torrent hash used to match client downloads
-    retry_ratio_limit: Optional[float] = None  # Optional post-download seeding ratio
-    retry_seeding_time_limit_minutes: Optional[int] = None  # Optional post-download seeding time limit
+    author: str | None = None
+    year: str | None = None
+    format: str | None = None
+    size: str | None = None
+    preview: str | None = None
+    content_type: str | None = None  # "book (fiction)", "audiobook", "magazine", etc.
+    source_url: str | None = None  # Original release URL used by source-specific handlers
+    retry_download_url: str | None = None  # Resolved download URL for restart-safe retries
+    retry_download_protocol: str | None = None  # Protocol for retry_download_url (e.g. torrent, usenet)
+    retry_release_name: str | None = None  # Display name to send back to external download clients
+    retry_expected_hash: str | None = None  # Optional torrent hash used to match client downloads
+    retry_ratio_limit: float | None = None  # Optional post-download seeding ratio
+    retry_seeding_time_limit_minutes: int | None = None  # Optional post-download seeding time limit
     can_retry_without_staged_source: bool = True  # Whether the source can restart without a preserved staged file
 
     # Series info (for library naming templates)
-    series_name: Optional[str] = None
-    series_position: Optional[float] = None  # Float for novellas (e.g., 1.5)
-    subtitle: Optional[str] = None  # Book subtitle for naming templates
+    series_name: str | None = None
+    series_position: float | None = None  # Float for novellas (e.g., 1.5)
+    subtitle: str | None = None  # Book subtitle for naming templates
 
     # Hardlinking support
-    original_download_path: Optional[str] = None  # Path in download client (for hardlinking)
+    original_download_path: str | None = None  # Path in download client (for hardlinking)
 
     # Search mode - determines post-download processing behavior
     # See SearchMode enum for behavioral differences
-    search_mode: Optional[SearchMode] = None
+    search_mode: SearchMode | None = None
 
     # Output selection for post-processing.
     # This is captured at queue time so in-flight tasks are not affected if the user changes settings later.
-    output_mode: Optional[str] = None  # e.g. "folder", "booklore", "email"
-    output_args: Dict[str, Any] = field(default_factory=dict)  # Per-output parameters (e.g. email recipient)
+    output_mode: str | None = None  # e.g. "folder", "booklore", "email"
+    output_args: dict[str, Any] = field(default_factory=dict)  # Per-output parameters (e.g. email recipient)
 
     # User association (multi-user support)
-    user_id: Optional[int] = None  # DB user ID who queued this download
-    username: Optional[str] = None  # Username for {User} template variable
-    request_id: Optional[int] = None  # Origin request ID when queued from request fulfilment
+    user_id: int | None = None  # DB user ID who queued this download
+    username: str | None = None  # Username for {User} template variable
+    request_id: int | None = None  # Origin request ID when queued from request fulfilment
 
     # Runtime state
     priority: int = 0
     added_time: float = field(default_factory=time.time)
     progress: float = 0.0
     status: QueueStatus = QueueStatus.QUEUED
-    status_message: Optional[str] = None
-    download_path: Optional[str] = None
-    last_error_message: Optional[str] = None
-    last_error_type: Optional[str] = None
-    staged_path: Optional[str] = None
+    status_message: str | None = None
+    download_path: str | None = None
+    last_error_message: str | None = None
+    last_error_type: str | None = None
+    staged_path: str | None = None
 
     def __lt__(self, other):
         """Compare tasks for priority queue (lower priority number = higher precedence)."""
@@ -141,10 +141,10 @@ class DownloadTask:
 @dataclass
 class SearchFilters:
     """Filters for book search queries."""
-    isbn: Optional[List[str]] = None
-    author: Optional[List[str]] = None
-    title: Optional[List[str]] = None
-    lang: Optional[List[str]] = None
-    sort: Optional[str] = None
-    content: Optional[List[str]] = None
-    format: Optional[List[str]] = None
+    isbn: list[str] | None = None
+    author: list[str] | None = None
+    title: list[str] | None = None
+    lang: list[str] | None = None
+    sort: str | None = None
+    content: list[str] | None = None
+    format: list[str] | None = None

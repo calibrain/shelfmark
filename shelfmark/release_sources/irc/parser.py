@@ -7,7 +7,6 @@ import re
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -28,7 +27,7 @@ ALL_RECOGNIZED_FORMATS = {
 }
 
 
-def _get_supported_formats(content_type: Optional[str] = None) -> set[str]:
+def _get_supported_formats(content_type: str | None = None) -> set[str]:
     """Get the supported formats for the requested content type."""
     if check_audiobook(content_type):
         formats = config.get("SUPPORTED_AUDIOBOOK_FORMATS", ["m4b", "mp3"])
@@ -63,7 +62,7 @@ class SearchResult:
     author: str           # Author name
     title: str            # Book title
     format: str           # File format (epub, mobi, etc)
-    size: Optional[str]   # Human-readable size
+    size: str | None   # Human-readable size
     full_line: str        # Original line for download request
 
     @property
@@ -77,7 +76,7 @@ class SearchResult:
         return f"{self.author} - {self.title}"
 
 
-def parse_result_line(line: str) -> Optional[SearchResult]:
+def parse_result_line(line: str) -> SearchResult | None:
     """Parse a single search result line. Returns None if unparseable."""
     line = line.strip()
 
@@ -143,7 +142,7 @@ def parse_result_line(line: str) -> Optional[SearchResult]:
     return None
 
 
-def parse_results_file(content: str, content_type: Optional[str] = None) -> list[SearchResult]:
+def parse_results_file(content: str, content_type: str | None = None) -> list[SearchResult]:
     """Parse a search results file into SearchResult objects."""
     results = []
     supported = _get_supported_formats(content_type)

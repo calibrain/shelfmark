@@ -4,8 +4,9 @@ Transmission download client for Prowlarr integration.
 Uses the transmission-rpc library to communicate with Transmission's RPC API.
 """
 
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Iterator, Optional, Tuple
+from typing import Any
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -128,7 +129,7 @@ class TransmissionClient(DownloadClient):
         url = normalize_http_url(config.get("TRANSMISSION_URL", ""))
         return client == "transmission" and bool(url)
 
-    def test_connection(self) -> Tuple[bool, str]:
+    def test_connection(self) -> tuple[bool, str]:
         """Test connection to Transmission."""
         try:
             session = self._client.get_session()
@@ -141,8 +142,8 @@ class TransmissionClient(DownloadClient):
         self,
         url: str,
         name: str,
-        category: Optional[str] = None,
-        expected_hash: Optional[str] = None,
+        category: str | None = None,
+        expected_hash: str | None = None,
         **kwargs,
     ) -> str:
         """
@@ -312,7 +313,7 @@ class TransmissionClient(DownloadClient):
             self._log_error("remove", e)
             return False
 
-    def get_download_path(self, download_id: str) -> Optional[str]:
+    def get_download_path(self, download_id: str) -> str | None:
         """
         Get the path where torrent files are located.
 
@@ -336,8 +337,8 @@ class TransmissionClient(DownloadClient):
             return None
 
     def find_existing(
-        self, url: str, category: Optional[str] = None
-    ) -> Optional[Tuple[str, DownloadStatus]]:
+        self, url: str, category: str | None = None
+    ) -> tuple[str, DownloadStatus] | None:
         """Check if a torrent for this URL already exists in Transmission."""
         try:
             torrent_info = extract_torrent_info(url)

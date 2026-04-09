@@ -1,11 +1,12 @@
 """Release source plugin system - base classes and registry."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from threading import Event
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Type
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
@@ -32,23 +33,23 @@ class BrowseRecord:
     id: str
     title: str
     source: str
-    preview: Optional[str] = None
-    author: Optional[str] = None
-    publisher: Optional[str] = None
-    year: Optional[str] = None
-    language: Optional[str] = None
-    content: Optional[str] = None
-    format: Optional[str] = None
-    size: Optional[str] = None
-    info: Optional[Dict[str, List[str]]] = None
-    description: Optional[str] = None
-    download_urls: List[str] = field(default_factory=list)
-    download_path: Optional[str] = None
+    preview: str | None = None
+    author: str | None = None
+    publisher: str | None = None
+    year: str | None = None
+    language: str | None = None
+    content: str | None = None
+    format: str | None = None
+    size: str | None = None
+    info: dict[str, list[str]] | None = None
+    description: str | None = None
+    download_urls: list[str] = field(default_factory=list)
+    download_path: str | None = None
     priority: int = 0
-    progress: Optional[float] = None
-    status_message: Optional[str] = None
-    added_time: Optional[float] = None
-    source_url: Optional[str] = None
+    progress: float | None = None
+    status_message: str | None = None
+    added_time: float | None = None
+    source_url: str | None = None
 
 
 @dataclass
@@ -57,18 +58,18 @@ class Release:
     source: str                      # "direct", "prowlarr", "irc", etc.
     source_id: str                   # ID within that source
     title: str
-    format: Optional[str] = None
-    language: Optional[str] = None   # ISO 639-1 code (e.g., "en", "de", "fr")
-    size: Optional[str] = None
-    size_bytes: Optional[int] = None
-    download_url: Optional[str] = None
-    info_url: Optional[str] = None   # Link to release info page (e.g., tracker) - makes title clickable
-    protocol: Optional[ReleaseProtocol] = None
-    indexer: Optional[str] = None    # Source name for display
-    seeders: Optional[int] = None    # For torrents
-    peers: Optional[str] = None      # For torrents: "seeders/leechers" display string
-    content_type: Optional[str] = None  # "ebook" or "audiobook" - preserved from search
-    extra: Dict = field(default_factory=dict)  # Source-specific metadata
+    format: str | None = None
+    language: str | None = None   # ISO 639-1 code (e.g., "en", "de", "fr")
+    size: str | None = None
+    size_bytes: int | None = None
+    download_url: str | None = None
+    info_url: str | None = None   # Link to release info page (e.g., tracker) - makes title clickable
+    protocol: ReleaseProtocol | None = None
+    indexer: str | None = None    # Source name for display
+    seeders: int | None = None    # For torrents
+    peers: str | None = None      # For torrents: "seeders/leechers" display string
+    content_type: str | None = None  # "ebook" or "audiobook" - preserved from search
+    extra: dict = field(default_factory=dict)  # Source-specific metadata
 
 
 @dataclass
@@ -76,10 +77,10 @@ class DownloadProgress:
     """DEPRECATED: Use progress_callback and status_callback instead."""
     status: str                      # "queued", "resolving", "downloading", "complete", "failed"
     progress: float                  # 0-100
-    status_message: Optional[str] = None
-    download_speed: Optional[int] = None
-    eta: Optional[int] = None
-    save_path: Optional[str] = None
+    status_message: str | None = None
+    download_speed: int | None = None
+    eta: int | None = None
+    save_path: str | None = None
 
 
 # --- Column Schema for Plugin-Driven UI ---
@@ -120,11 +121,11 @@ class ColumnSchema:
     align: ColumnAlign = ColumnAlign.LEFT
     width: str = "auto"                           # CSS width (e.g., "80px", "minmax(0,2fr)")
     hide_mobile: bool = False                     # Hide on small screens
-    color_hint: Optional[ColumnColorHint] = None  # For BADGE render type
+    color_hint: ColumnColorHint | None = None  # For BADGE render type
     fallback: str = "-"                           # Value to show when data is missing
     uppercase: bool = False                       # Force uppercase display
     sortable: bool = False                        # Show in sort dropdown (opt-in)
-    sort_key: Optional[str] = None                # Field to sort by (defaults to `key` if None)
+    sort_key: str | None = None                # Field to sort by (defaults to `key` if None)
 
 
 class LeadingCellType(str, Enum):
@@ -138,8 +139,8 @@ class LeadingCellType(str, Enum):
 class LeadingCellConfig:
     """Configuration for the leading cell in release rows."""
     type: LeadingCellType = LeadingCellType.THUMBNAIL
-    key: Optional[str] = None                     # Field path for data (e.g., "extra.preview" or "extra.download_type")
-    color_hint: Optional[ColumnColorHint] = None  # For badge type - maps values to colors
+    key: str | None = None                     # Field path for data (e.g., "extra.preview" or "extra.download_type")
+    color_hint: ColumnColorHint | None = None  # For badge type - maps values to colors
     uppercase: bool = False                       # Force uppercase for badge text
 
 
@@ -160,21 +161,21 @@ class SourceActionButton:
 @dataclass
 class ReleaseColumnConfig:
     """Complete column configuration for a release source."""
-    columns: List[ColumnSchema]
+    columns: list[ColumnSchema]
     grid_template: str = "minmax(0,2fr) 60px 80px 80px"  # CSS grid-template-columns
-    leading_cell: Optional[LeadingCellConfig] = None     # Defaults to thumbnail mode if None
-    online_servers: Optional[List[str]] = None           # For IRC: list of currently online server nicks
-    available_indexers: Optional[List[str]] = None       # For Prowlarr: list of all enabled indexer names
-    default_indexers: Optional[List[str]] = None         # For Prowlarr: indexers selected in settings (pre-selected in filter)
-    cache_ttl_seconds: Optional[int] = None              # How long to cache results (default: 5 min)
-    supported_filters: Optional[List[str]] = None        # Which filters this source supports: ["format", "language", "indexer"]
-    extra_sort_options: Optional[List[SortOption]] = None # Additional sort options not tied to a column
-    action_button: Optional[SourceActionButton] = None   # Custom action button (replaces default expand search)
+    leading_cell: LeadingCellConfig | None = None     # Defaults to thumbnail mode if None
+    online_servers: list[str] | None = None           # For IRC: list of currently online server nicks
+    available_indexers: list[str] | None = None       # For Prowlarr: list of all enabled indexer names
+    default_indexers: list[str] | None = None         # For Prowlarr: indexers selected in settings (pre-selected in filter)
+    cache_ttl_seconds: int | None = None              # How long to cache results (default: 5 min)
+    supported_filters: list[str] | None = None        # Which filters this source supports: ["format", "language", "indexer"]
+    extra_sort_options: list[SortOption] | None = None # Additional sort options not tied to a column
+    action_button: SourceActionButton | None = None   # Custom action button (replaces default expand search)
 
 
-def serialize_column_config(config: ReleaseColumnConfig) -> Dict[str, Any]:
+def serialize_column_config(config: ReleaseColumnConfig) -> dict[str, Any]:
     """Serialize column configuration for API response."""
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "columns": [
             {
                 "key": col.key,
@@ -288,7 +289,7 @@ class ReleaseSource(ABC):
     """Interface for searching a release source."""
     name: str                        # "direct", "prowlarr"
     display_name: str                # "Direct Download", "Prowlarr"
-    supported_content_types: List[str] = ["ebook", "audiobook"]  # Content types this source supports
+    supported_content_types: list[str] = ["ebook", "audiobook"]  # Content types this source supports
     can_be_default: bool = True      # Whether this source can be selected as default in settings
 
     @abstractmethod
@@ -298,7 +299,7 @@ class ReleaseSource(ABC):
         plan: "ReleaseSearchPlan",
         expand_search: bool = False,
         content_type: str = "ebook"
-    ) -> List[Release]:
+    ) -> list[Release]:
         """Search for releases of a book."""
         pass
 
@@ -316,7 +317,7 @@ class ReleaseSource(ABC):
         record_id: str,
         *,
         fetch_download_count: bool = True,
-    ) -> Optional[BrowseRecord]:
+    ) -> BrowseRecord | None:
         """Resolve a source-native record for browse flows."""
         raise NotImplementedError(f"{self.display_name} does not support record lookup")
 
@@ -324,7 +325,7 @@ class ReleaseSource(ABC):
         """Whether source-native browse results already represent concrete releases."""
         return False
 
-    def get_destination_override(self, task: DownloadTask) -> Optional[Path]:
+    def get_destination_override(self, task: DownloadTask) -> Path | None:
         """Return a source-specific destination override for a queued download."""
         return None
 
@@ -346,8 +347,8 @@ class DownloadHandler(ABC):
         task: DownloadTask,
         cancel_flag: Event,
         progress_callback: Callable[[float], None],
-        status_callback: Callable[[str, Optional[str]], None]
-    ) -> Optional[str]:
+        status_callback: Callable[[str, str | None], None]
+    ) -> str | None:
         """Execute download and return a path to the downloaded payload."""
         pass
 
@@ -367,8 +368,8 @@ class DownloadHandler(ABC):
 
 # --- Registry ---
 
-_SOURCES: Dict[str, Type[ReleaseSource]] = {}
-_HANDLERS: Dict[str, Type[DownloadHandler]] = {}
+_SOURCES: dict[str, type[ReleaseSource]] = {}
+_HANDLERS: dict[str, type[DownloadHandler]] = {}
 
 
 def register_source(name: str):
@@ -401,7 +402,7 @@ def get_handler(name: str) -> DownloadHandler:
     return _HANDLERS[name]()
 
 
-def list_available_sources() -> List[dict]:
+def list_available_sources() -> list[dict]:
     """List all registered sources with their availability status."""
     result = []
     for name, src_class in _SOURCES.items():
@@ -427,8 +428,8 @@ def get_source_display_name(name: str) -> str:
 def browse_record_to_book_metadata(
     record: BrowseRecord,
     *,
-    title_override: Optional[str] = None,
-    author_override: Optional[str] = None,
+    title_override: str | None = None,
+    author_override: str | None = None,
 ) -> BookMetadata:
     """Convert a source-native browse record into generic book metadata."""
     resolved_title = title_override or str(record.title or "").strip() or "Unknown title"

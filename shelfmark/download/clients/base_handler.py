@@ -3,10 +3,10 @@
 import shutil
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
-from typing import Callable, Optional
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -37,9 +37,9 @@ class DownloadRequest:
     url: str
     protocol: str
     release_name: str
-    expected_hash: Optional[str]
-    seeding_time_limit: Optional[int] = None  # minutes
-    ratio_limit: Optional[float] = None
+    expected_hash: str | None
+    seeding_time_limit: int | None = None  # minutes
+    ratio_limit: float | None = None
 
 
 def _diagnose_path_issue(path: str) -> str:
@@ -88,15 +88,15 @@ class ExternalClientHandler(DownloadHandler, ABC):
     def _resolve_download(
         self,
         task: DownloadTask,
-        status_callback: Callable[[str, Optional[str]], None],
-    ) -> Optional[DownloadRequest]:
+        status_callback: Callable[[str, str | None], None],
+    ) -> DownloadRequest | None:
         """Resolve source-specific task metadata into a client download request."""
 
     def _on_download_complete(self, task: DownloadTask) -> None:
         """Hook called after successful completion; override for source cleanup."""
         return
 
-    def _get_client(self, protocol: str) -> Optional[DownloadClient]:
+    def _get_client(self, protocol: str) -> DownloadClient | None:
         """Resolve the active client for a protocol."""
         return get_client(protocol)
 
@@ -116,7 +116,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         """Maximum attempts when waiting for completed files."""
         return COMPLETED_PATH_MAX_ATTEMPTS
 
-    def _get_category_for_task(self, client: DownloadClient, task: DownloadTask) -> Optional[str]:
+    def _get_category_for_task(self, client: DownloadClient, task: DownloadTask) -> str | None:
         """Get audiobook category if configured and applicable, else None for default."""
         if not is_audiobook(task.content_type):
             return None
@@ -258,7 +258,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         client: DownloadClient,
         download_id: str,
         protocol: str,
-        status_callback: Callable[[str, Optional[str]], None],
+        status_callback: Callable[[str, str | None], None],
     ) -> None:
         if protocol == "usenet":
             logger.info(f"Download cancelled, removing from {client.name}: {download_id}")
@@ -281,7 +281,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         download_id: str,
         *,
         log_details: bool,
-    ) -> tuple[Optional[Path], Optional[str]]:
+    ) -> tuple[Path | None, str | None]:
         """Resolve and validate the completed download path once."""
         try:
             raw_path = client.get_download_path(download_id)
@@ -421,11 +421,11 @@ class ExternalClientHandler(DownloadHandler, ABC):
         client: DownloadClient,
         download_id: str,
         *,
-        cancel_flag: Optional[Event],
-        status_callback: Callable[[str, Optional[str]], None],
-    ) -> tuple[Optional[Path], Optional[str]]:
+        cancel_flag: Event | None,
+        status_callback: Callable[[str, str | None], None],
+    ) -> tuple[Path | None, str | None]:
         """Wait briefly for completed files to appear on disk."""
-        last_error: Optional[str] = None
+        last_error: str | None = None
         max_attempts = self._completed_path_max_attempts()
         retry_interval = self._completed_path_retry_interval()
 
@@ -485,8 +485,8 @@ class ExternalClientHandler(DownloadHandler, ABC):
         task: DownloadTask,
         cancel_flag: Event,
         progress_callback: Callable[[float], None],
-        status_callback: Callable[[str, Optional[str]], None],
-    ) -> Optional[str]:
+        status_callback: Callable[[str, str | None], None],
+    ) -> str | None:
         """Execute download via configured torrent/usenet client. Returns file path or None."""
         try:
             if cancel_flag.is_set():
@@ -597,8 +597,8 @@ class ExternalClientHandler(DownloadHandler, ABC):
         task: DownloadTask,
         cancel_flag: Event,
         progress_callback: Callable[[float], None],
-        status_callback: Callable[[str, Optional[str]], None],
-    ) -> Optional[str]:
+        status_callback: Callable[[str, str | None], None],
+    ) -> str | None:
         """Poll the download client for progress and handle completion."""
         poll_interval = self._poll_interval()
         # Track consecutive "not found" errors - torrents may take time to appear in client
@@ -735,8 +735,8 @@ class ExternalClientHandler(DownloadHandler, ABC):
         source_path: Path,
         protocol: str,
         task: DownloadTask,
-        status_callback: Callable[[str, Optional[str]], None],
-    ) -> Optional[str]:
+        status_callback: Callable[[str, str | None], None],
+    ) -> str | None:
         """Handle a completed download and return its path.
 
         For external download clients (torrents/usenet), staging large payloads into TMP_DIR

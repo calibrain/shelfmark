@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any
 
 
 class SearchType(str, Enum):
@@ -25,7 +25,7 @@ class SortOrder(str, Enum):
 
 
 # Display labels for sort options
-SORT_LABELS: Dict[SortOrder, str] = {
+SORT_LABELS: dict[SortOrder, str] = {
     SortOrder.RELEVANCE: "Most relevant",
     SortOrder.POPULARITY: "Most popular",
     SortOrder.RATING: "Highest rated",
@@ -39,8 +39,8 @@ SORT_LABELS: Dict[SortOrder, str] = {
 class MetadataCapability:
     """Declarative provider capability consumed by shared UI code."""
     key: str
-    field_key: Optional[str] = None
-    sort: Optional[SortOrder] = None
+    field_key: str | None = None
+    sort: SortOrder | None = None
 
 
 @dataclass
@@ -50,7 +50,7 @@ class TextSearchField:
     label: str                            # Display label in UI
     placeholder: str = ""                 # Placeholder text
     description: str = ""                 # Help text
-    suggestions_endpoint: Optional[str] = None  # Remote suggestions endpoint for typeahead
+    suggestions_endpoint: str | None = None  # Remote suggestions endpoint for typeahead
     suggestions_min_query_length: int = 2       # Minimum chars before requesting suggestions
 
 
@@ -61,8 +61,8 @@ class NumberSearchField:
     label: str
     placeholder: str = ""
     description: str = ""
-    min_value: Optional[int] = None
-    max_value: Optional[int] = None
+    min_value: int | None = None
+    max_value: int | None = None
     step: int = 1
 
 
@@ -71,7 +71,7 @@ class SelectSearchField:
     """Single-choice dropdown search field."""
     key: str
     label: str
-    options: List[Dict[str, str]] = field(default_factory=list)  # [{value: "", label: ""}]
+    options: list[dict[str, str]] = field(default_factory=list)  # [{value: "", label: ""}]
     placeholder: str = ""
     description: str = ""
 
@@ -96,18 +96,18 @@ class DynamicSelectSearchField:
 
 
 # Type alias for all search field types
-SearchField = Union[
-    TextSearchField,
-    NumberSearchField,
-    SelectSearchField,
-    CheckboxSearchField,
-    DynamicSelectSearchField,
-]
+SearchField = (
+    TextSearchField
+    | NumberSearchField
+    | SelectSearchField
+    | CheckboxSearchField
+    | DynamicSelectSearchField
+)
 
 
-def serialize_metadata_capability(capability: MetadataCapability) -> Dict[str, Any]:
+def serialize_metadata_capability(capability: MetadataCapability) -> dict[str, Any]:
     """Serialize a provider capability for API responses."""
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "key": capability.key,
     }
 
@@ -120,9 +120,9 @@ def serialize_metadata_capability(capability: MetadataCapability) -> Dict[str, A
     return result
 
 
-def serialize_search_field(search_field: SearchField) -> Dict[str, Any]:
+def serialize_search_field(search_field: SearchField) -> dict[str, Any]:
     """Serialize a search field to dict for API response."""
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "key": search_field.key,
         "label": search_field.label,
         "type": search_field.__class__.__name__,
@@ -154,11 +154,11 @@ class MetadataSearchOptions:
     """Options for metadata search queries across all providers."""
     query: str
     search_type: SearchType = SearchType.GENERAL
-    language: Optional[str] = None  # ISO 639-1 code (e.g., "en", "fr")
+    language: str | None = None  # ISO 639-1 code (e.g., "en", "fr")
     sort: SortOrder = SortOrder.RELEVANCE
     limit: int = 40
     page: int = 1
-    fields: Dict[str, Any] = field(default_factory=dict)  # Custom search field values
+    fields: dict[str, Any] = field(default_factory=dict)  # Custom search field values
 
 
 @dataclass
@@ -166,7 +166,7 @@ class DisplayField:
     """A display field for metadata cards (ratings, page counts, etc.)."""
     label: str                       # e.g., "Rating", "Pages", "Readers"
     value: str                       # e.g., "4.5", "496", "8,041"
-    icon: Optional[str] = None       # Icon name: "star", "book", "users", "editions"
+    icon: str | None = None       # Icon name: "star", "book", "users", "editions"
 
 
 @dataclass
@@ -177,45 +177,45 @@ class BookMetadata:
     title: str
 
     # Provider display name for UI (e.g., "Open Library" instead of "openlibrary")
-    provider_display_name: Optional[str] = None
+    provider_display_name: str | None = None
 
     # Optional - not all providers have all fields
-    authors: List[str] = field(default_factory=list)
-    isbn_10: Optional[str] = None
-    isbn_13: Optional[str] = None
-    cover_url: Optional[str] = None
-    description: Optional[str] = None
-    publisher: Optional[str] = None
-    publish_year: Optional[int] = None
-    language: Optional[str] = None
-    genres: List[str] = field(default_factory=list)
-    source_url: Optional[str] = None  # Link to book on provider's site
-    subtitle: Optional[str] = None  # Book subtitle, if any
-    search_title: Optional[str] = None  # Cleaner title for search queries (provider-specific)
-    search_author: Optional[str] = None  # Cleaner author for search queries (provider-specific)
+    authors: list[str] = field(default_factory=list)
+    isbn_10: str | None = None
+    isbn_13: str | None = None
+    cover_url: str | None = None
+    description: str | None = None
+    publisher: str | None = None
+    publish_year: int | None = None
+    language: str | None = None
+    genres: list[str] = field(default_factory=list)
+    source_url: str | None = None  # Link to book on provider's site
+    subtitle: str | None = None  # Book subtitle, if any
+    search_title: str | None = None  # Cleaner title for search queries (provider-specific)
+    search_author: str | None = None  # Cleaner author for search queries (provider-specific)
 
     # Cover aspect ratio hint for the frontend ("portrait" or "square")
-    cover_aspect: Optional[str] = None
+    cover_aspect: str | None = None
 
     # Provider-specific display fields for cards/lists
-    display_fields: List[DisplayField] = field(default_factory=list)
+    display_fields: list[DisplayField] = field(default_factory=list)
 
     # Series info (if book is part of a series)
-    series_id: Optional[str] = None        # Provider-specific series ID
-    series_name: Optional[str] = None      # Name of the series
-    series_position: Optional[float] = None  # This book's position (e.g., 3, 1.5 for novellas)
-    series_count: Optional[int] = None     # Total books in the series
+    series_id: str | None = None        # Provider-specific series ID
+    series_name: str | None = None      # Name of the series
+    series_position: float | None = None  # This book's position (e.g., 3, 1.5 for novellas)
+    series_count: int | None = None     # Total books in the series
 
     # Alternative titles by language (for localized searches)
     # Maps language code (e.g., "de", "German") to localized title
-    titles_by_language: Dict[str, str] = field(default_factory=dict)
+    titles_by_language: dict[str, str] = field(default_factory=dict)
 
 
 def group_languages_by_localized_title(
     base_title: str,
-    languages: Optional[List[str]],
-    titles_by_language: Optional[Dict[str, str]] = None,
-) -> List[tuple[str, Optional[List[str]]]]:
+    languages: list[str] | None,
+    titles_by_language: dict[str, str] | None = None,
+) -> list[tuple[str, list[str] | None]]:
     """Group language codes by localized title.
 
     Release sources that support language filtering (e.g., Anna's Archive)
@@ -244,7 +244,7 @@ def group_languages_by_localized_title(
     if not titles_by_language:
         return [(base_title, normalized_langs)]
 
-    title_to_langs: Dict[str, List[str]] = {}
+    title_to_langs: dict[str, list[str]] = {}
     for lang in normalized_langs:
         localized_title = titles_by_language.get(lang) or base_title
         title_to_langs.setdefault(localized_title, []).append(lang)
@@ -254,10 +254,10 @@ def group_languages_by_localized_title(
 
 def build_localized_search_titles(
     base_title: str,
-    languages: Optional[List[str]],
-    titles_by_language: Optional[Dict[str, str]] = None,
-    excluded_languages: Optional[set[str]] = None,
-) -> List[str]:
+    languages: list[str] | None,
+    titles_by_language: dict[str, str] | None = None,
+    excluded_languages: set[str] | None = None,
+) -> list[str]:
     """Build a list of titles to search for, including localized editions.
 
     This is useful for release sources that *can't* pass language filters to
@@ -278,7 +278,7 @@ def build_localized_search_titles(
     if not base_title:
         return []
 
-    titles: List[str] = [base_title]
+    titles: list[str] = [base_title]
     seen = {base_title}
 
     if not languages or not titles_by_language:
@@ -309,12 +309,12 @@ def build_localized_search_titles(
 @dataclass
 class SearchResult:
     """Result from a metadata search with pagination info."""
-    books: List[BookMetadata]
+    books: list[BookMetadata]
     page: int = 1
     total_found: int = 0  # Total matching results (if known)
     has_more: bool = False  # True if more results available
-    source_url: Optional[str] = None  # External URL for the result set (e.g. Hardcover list page)
-    source_title: Optional[str] = None  # Display title for the result set (e.g. list name)
+    source_url: str | None = None  # External URL for the result set (e.g. Hardcover list page)
+    source_title: str | None = None  # Display title for the result set (e.g. list name)
 
 
 class MetadataProvider(ABC):
@@ -334,22 +334,22 @@ class MetadataProvider(ABC):
     name: str
     display_name: str
     requires_auth: bool
-    supported_sorts: List[SortOrder] = [SortOrder.RELEVANCE]
-    search_fields: List[SearchField] = []
-    capabilities: List[MetadataCapability] = []
+    supported_sorts: list[SortOrder] = [SortOrder.RELEVANCE]
+    search_fields: list[SearchField] = []
+    capabilities: list[MetadataCapability] = []
 
     @abstractmethod
-    def search(self, options: MetadataSearchOptions) -> List[BookMetadata]:
+    def search(self, options: MetadataSearchOptions) -> list[BookMetadata]:
         """Search for books using the provided options."""
         pass
 
     @abstractmethod
-    def get_book(self, book_id: str) -> Optional[BookMetadata]:
+    def get_book(self, book_id: str) -> BookMetadata | None:
         """Get a specific book by provider ID."""
         pass
 
     @abstractmethod
-    def search_by_isbn(self, isbn: str) -> Optional[BookMetadata]:
+    def search_by_isbn(self, isbn: str) -> BookMetadata | None:
         """Search for a book by ISBN."""
         pass
 
@@ -373,22 +373,22 @@ class MetadataProvider(ABC):
     def get_search_field_options(
         self,
         field_key: str,
-        query: Optional[str] = None,
-    ) -> List[Dict[str, str]]:
+        query: str | None = None,
+    ) -> list[dict[str, str]]:
         """Get dynamic options for a provider-specific search field."""
         return []
 
-    def get_book_targets(self, book_id: str) -> List[Dict[str, Any]]:
+    def get_book_targets(self, book_id: str) -> list[dict[str, Any]]:
         """Get provider-managed list or status targets for a specific book."""
         raise NotImplementedError(f"{self.display_name} does not support book targets")
 
-    def get_book_targets_batch(self, book_ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+    def get_book_targets_batch(self, book_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
         """Get provider-managed targets for multiple books.
 
         Returns a dict mapping each book_id to its list of target options.
         Default implementation calls get_book_targets per book.
         """
-        results: Dict[str, List[Dict[str, Any]]] = {}
+        results: dict[str, list[dict[str, Any]]] = {}
         for book_id in book_ids:
             try:
                 results[book_id] = self.get_book_targets(book_id)
@@ -401,7 +401,7 @@ class MetadataProvider(ABC):
         book_id: str,
         target: str,
         selected: bool,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Set whether a book belongs to a provider-managed list or shelf.
 
         Returns a dict with at least ``{"changed": bool}``.
@@ -410,8 +410,8 @@ class MetadataProvider(ABC):
 
 
 # Provider registry
-_PROVIDERS: Dict[str, Type[MetadataProvider]] = {}
-_PROVIDER_KWARGS_FACTORIES: Dict[str, Any] = {}  # Callable[[], Dict]
+_PROVIDERS: dict[str, type[MetadataProvider]] = {}
+_PROVIDER_KWARGS_FACTORIES: dict[str, Any] = {}  # Callable[[], Dict]
 
 
 def register_provider(name: str):
@@ -448,7 +448,7 @@ def get_provider(name: str, **kwargs) -> MetadataProvider:
     return _PROVIDERS[name](**kwargs)
 
 
-def list_providers() -> List[dict]:
+def list_providers() -> list[dict]:
     """For settings UI - list available providers with their requirements."""
     return [
         {"name": n, "display_name": c.display_name, "requires_auth": c.requires_auth}
@@ -456,7 +456,7 @@ def list_providers() -> List[dict]:
     ]
 
 
-def get_provider_kwargs(provider_name: str) -> Dict:
+def get_provider_kwargs(provider_name: str) -> dict:
     """Get provider-specific initialization kwargs from registered factory."""
     factory = _PROVIDER_KWARGS_FACTORIES.get(provider_name)
     if factory:
@@ -481,15 +481,15 @@ def is_provider_enabled(provider_name: str) -> bool:
     return app_config.get(enabled_key, False) is True
 
 
-def get_enabled_providers() -> List[str]:
+def get_enabled_providers() -> list[str]:
     """Get list of all enabled provider names."""
     return [name for name in _PROVIDERS if is_provider_enabled(name)]
 
 
 def get_configured_provider(
     content_type: str = "ebook",
-    user_id: Optional[int] = None,
-) -> Optional[MetadataProvider]:
+    user_id: int | None = None,
+) -> MetadataProvider | None:
     """Get the currently configured metadata provider for the content type."""
     from shelfmark.core.config import config as app_config
 
@@ -520,7 +520,7 @@ def get_configured_provider(
 
 def get_configured_provider_name(
     content_type: str = "ebook",
-    user_id: Optional[int] = None,
+    user_id: int | None = None,
     fallback_to_main: bool = True,
 ) -> str:
     """Get the configured metadata provider name for a content type."""
@@ -550,9 +550,9 @@ def get_configured_provider_name(
 
 
 def get_provider_sort_options(
-    provider_name: Optional[str] = None,
-    user_id: Optional[int] = None,
-) -> List[Dict[str, str]]:
+    provider_name: str | None = None,
+    user_id: int | None = None,
+) -> list[dict[str, str]]:
     """Get sort options for a metadata provider as {value, label} dicts."""
     if provider_name is None:
         provider_name = get_configured_provider_name(user_id=user_id)
@@ -570,9 +570,9 @@ def get_provider_sort_options(
 
 
 def get_provider_search_fields(
-    provider_name: Optional[str] = None,
-    user_id: Optional[int] = None,
-) -> List[Dict[str, Any]]:
+    provider_name: str | None = None,
+    user_id: int | None = None,
+) -> list[dict[str, Any]]:
     """Get search fields for a metadata provider as serialized dicts."""
     if provider_name is None:
         provider_name = get_configured_provider_name(user_id=user_id)
@@ -587,9 +587,9 @@ def get_provider_search_fields(
 
 
 def get_provider_capabilities(
-    provider_name: Optional[str] = None,
-    user_id: Optional[int] = None,
-) -> List[Dict[str, Any]]:
+    provider_name: str | None = None,
+    user_id: int | None = None,
+) -> list[dict[str, Any]]:
     """Get declarative capabilities for a metadata provider."""
     if provider_name is None:
         provider_name = get_configured_provider_name(user_id=user_id)
@@ -604,8 +604,8 @@ def get_provider_capabilities(
 
 
 def get_provider_default_sort(
-    provider_name: Optional[str] = None,
-    user_id: Optional[int] = None,
+    provider_name: str | None = None,
+    user_id: int | None = None,
 ) -> str:
     """Get the default sort order for a metadata provider."""
     from shelfmark.core.config import config as app_config
@@ -667,4 +667,3 @@ try:
     from shelfmark.metadata_providers import googlebooks  # noqa: F401, E402
 except ImportError:
     pass  # Google Books provider is optional
-

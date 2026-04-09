@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from shelfmark.core.activity_view_state_service import user_viewer_scope
 from shelfmark.core.auth_modes import AUTH_SOURCE_BUILTIN, AUTH_SOURCE_SET
@@ -115,7 +115,7 @@ WHERE dismissed_at IS NOT NULL;
 """
 
 
-def get_users_db_path(config_dir: Optional[str] = None) -> str:
+def get_users_db_path(config_dir: str | None = None) -> str:
     """Return the configured users database path."""
     root = config_dir or os.environ.get("CONFIG_DIR", "/config")
     return os.path.join(root, "users.db")
@@ -124,7 +124,7 @@ def get_users_db_path(config_dir: Optional[str] = None) -> str:
 def sync_builtin_admin_user(
     username: str,
     password_hash: str,
-    db_path: Optional[str] = None,
+    db_path: str | None = None,
 ) -> None:
     """Ensure a local admin user exists for configured builtin credentials."""
     normalized_username = (username or "").strip()
@@ -265,13 +265,13 @@ class UserDB:
     def create_user(
         self,
         username: str,
-        email: Optional[str] = None,
-        display_name: Optional[str] = None,
-        password_hash: Optional[str] = None,
-        oidc_subject: Optional[str] = None,
+        email: str | None = None,
+        display_name: str | None = None,
+        password_hash: str | None = None,
+        oidc_subject: str | None = None,
         auth_source: str = "builtin",
         role: str = "user",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create a new user. Raises ValueError if username or oidc_subject already exists."""
         if auth_source not in self._VALID_AUTH_SOURCES:
             raise ValueError(f"Invalid auth_source: {auth_source}")
@@ -303,10 +303,10 @@ class UserDB:
 
     def get_user(
         self,
-        user_id: Optional[int] = None,
-        username: Optional[str] = None,
-        oidc_subject: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
+        user_id: int | None = None,
+        username: str | None = None,
+        oidc_subject: str | None = None,
+    ) -> dict[str, Any] | None:
         """Get a user by id, username, or oidc_subject. Returns None if not found."""
         conn = self._connect()
         try:
@@ -326,7 +326,7 @@ class UserDB:
         finally:
             conn.close()
 
-    def _get_user_by_id(self, conn: sqlite3.Connection, user_id: int) -> Optional[Dict[str, Any]]:
+    def _get_user_by_id(self, conn: sqlite3.Connection, user_id: int) -> dict[str, Any] | None:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         return dict(row) if row else None
 
@@ -391,7 +391,7 @@ class UserDB:
             finally:
                 conn.close()
 
-    def list_users(self) -> List[Dict[str, Any]]:
+    def list_users(self) -> list[dict[str, Any]]:
         """List all users."""
         conn = self._connect()
         try:
@@ -413,7 +413,7 @@ class UserDB:
         finally:
             conn.close()
 
-    def get_user_settings(self, user_id: int) -> Dict[str, Any]:
+    def get_user_settings(self, user_id: int) -> dict[str, Any]:
         """Get per-user settings. Returns empty dict if none set."""
         conn = self._connect()
         try:
@@ -426,7 +426,7 @@ class UserDB:
         finally:
             conn.close()
 
-    def set_user_settings(self, user_id: int, settings: Dict[str, Any]) -> None:
+    def set_user_settings(self, user_id: int, settings: dict[str, Any]) -> None:
         """Merge settings into user's existing settings."""
         with self._lock:
             conn = self._connect()
@@ -453,7 +453,7 @@ class UserDB:
                 conn.close()
 
     @staticmethod
-    def _serialize_json(value: Any, field: str) -> Optional[str]:
+    def _serialize_json(value: Any, field: str) -> str | None:
         if value is None:
             return None
         try:
@@ -462,7 +462,7 @@ class UserDB:
             raise ValueError(f"{field} must be JSON-serializable") from exc
 
     @staticmethod
-    def _parse_request_row(row: Optional[sqlite3.Row]) -> Optional[Dict[str, Any]]:
+    def _parse_request_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
         if row is None:
             return None
 
@@ -486,17 +486,17 @@ class UserDB:
         content_type: str,
         request_level: str,
         policy_mode: str,
-        book_data: Dict[str, Any],
-        release_data: Optional[Dict[str, Any]] = None,
+        book_data: dict[str, Any],
+        release_data: dict[str, Any] | None = None,
         status: str = RequestStatus.PENDING,
-        source_hint: Optional[str] = None,
-        note: Optional[str] = None,
-        admin_note: Optional[str] = None,
-        reviewed_by: Optional[int] = None,
-        reviewed_at: Optional[str] = None,
+        source_hint: str | None = None,
+        note: str | None = None,
+        admin_note: str | None = None,
+        reviewed_by: int | None = None,
+        reviewed_at: str | None = None,
         delivery_state: str = DELIVERY_STATE_NONE,
-        delivery_updated_at: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        delivery_updated_at: str | None = None,
+    ) -> dict[str, Any]:
         cursor = conn.execute(
             """
             INSERT INTO download_requests (
@@ -551,17 +551,17 @@ class UserDB:
         content_type: str,
         request_level: str,
         policy_mode: str,
-        book_data: Dict[str, Any],
-        release_data: Optional[Dict[str, Any]] = None,
+        book_data: dict[str, Any],
+        release_data: dict[str, Any] | None = None,
         status: str = RequestStatus.PENDING,
-        source_hint: Optional[str] = None,
-        note: Optional[str] = None,
-        admin_note: Optional[str] = None,
-        reviewed_by: Optional[int] = None,
-        reviewed_at: Optional[str] = None,
+        source_hint: str | None = None,
+        note: str | None = None,
+        admin_note: str | None = None,
+        reviewed_by: int | None = None,
+        reviewed_at: str | None = None,
         delivery_state: str = DELIVERY_STATE_NONE,
-        delivery_updated_at: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        delivery_updated_at: str | None = None,
+    ) -> dict[str, Any]:
         """Create a download request row and return the created record."""
         if not isinstance(book_data, dict):
             raise ValueError("book_data must be an object")
@@ -600,12 +600,12 @@ class UserDB:
             finally:
                 conn.close()
 
-    def create_requests(self, requests: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def create_requests(self, requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Create multiple request rows atomically and return them in input order."""
         with self._lock:
             conn = self._connect()
             try:
-                created: List[Dict[str, Any]] = []
+                created: list[dict[str, Any]] = []
                 for request in requests:
                     created.append(self._insert_request(conn, **request))
                 conn.commit()
@@ -613,7 +613,7 @@ class UserDB:
             finally:
                 conn.close()
 
-    def get_request(self, request_id: int) -> Optional[Dict[str, Any]]:
+    def get_request(self, request_id: int) -> dict[str, Any] | None:
         """Get a request row by ID."""
         conn = self._connect()
         try:
@@ -628,14 +628,14 @@ class UserDB:
     def list_requests(
         self,
         *,
-        user_id: Optional[int] = None,
-        status: Optional[str] = None,
-        limit: Optional[int] = None,
+        user_id: int | None = None,
+        status: str | None = None,
+        limit: int | None = None,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """List requests with optional user/status filters."""
-        where_clauses: List[str] = []
-        params: List[Any] = []
+        where_clauses: list[str] = []
+        params: list[Any] = []
 
         if user_id is not None:
             where_clauses.append("user_id = ?")
@@ -663,7 +663,7 @@ class UserDB:
         conn = self._connect()
         try:
             rows = conn.execute(query, params).fetchall()
-            results: List[Dict[str, Any]] = []
+            results: list[dict[str, Any]] = []
             for row in rows:
                 parsed = self._parse_request_row(row)
                 if parsed is not None:
@@ -692,9 +692,9 @@ class UserDB:
     def update_request(
         self,
         request_id: int,
-        expected_current_status: Optional[str] = None,
+        expected_current_status: str | None = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Update request fields and return the updated record."""
         if not kwargs:
             request = self.get_request(request_id)
@@ -788,8 +788,8 @@ class UserDB:
         self,
         request_id: int,
         *,
-        failure_reason: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
+        failure_reason: str | None = None,
+    ) -> dict[str, Any] | None:
         """Reopen a failed fulfilled request so admins can re-approve it."""
         normalized_failure_reason = None
         if isinstance(failure_reason, str):
@@ -848,9 +848,9 @@ class UserDB:
         self,
         request_id: int,
         *,
-        release_data: Optional[Dict[str, Any]],
-        last_failure_reason: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        release_data: dict[str, Any] | None,
+        last_failure_reason: str | None = None,
+    ) -> dict[str, Any]:
         """Restore a request to pending after fulfilment claimed it but queueing failed."""
         with self._lock:
             conn = self._connect()

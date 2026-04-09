@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
-from typing import Any, List, Optional
+from typing import Any
 
 import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
@@ -30,7 +30,7 @@ class _ProcessingPlan:
     allow_archive_extraction: bool
     stage_action: StageAction
     staging_dir: Path
-    hardlink_source: Optional[Path]
+    hardlink_source: Path | None
     output_mode: str = FOLDER_OUTPUT_MODE
 
 
@@ -42,7 +42,7 @@ def _build_processing_plan(
     temp_file: Path,
     task: DownloadTask,
     status_callback,
-) -> Optional[_ProcessingPlan]:
+) -> _ProcessingPlan | None:
     from shelfmark.download.postprocess.pipeline import (
         build_output_plan,
         get_final_destination,
@@ -88,7 +88,7 @@ def process_folder_output(
     cancel_flag: Event,
     status_callback,
     preserve_source_on_failure: bool = False,
-) -> Optional[str]:
+) -> str | None:
     """Post-process download to the configured folder destination."""
     from shelfmark.download.postprocess.pipeline import (
         CustomScriptContext,
@@ -127,7 +127,7 @@ def process_folder_output(
     if not prepared:
         return None
 
-    steps: List[Any] = []
+    steps: list[Any] = []
     if prepared.output_plan.stage_action != STAGE_NONE:
         step_name = f"stage_{prepared.output_plan.stage_action}"
         record_step(steps, step_name, source=str(temp_file), dest=str(prepared.output_plan.staging_dir))

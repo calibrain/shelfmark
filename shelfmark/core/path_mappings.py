@@ -9,9 +9,10 @@ A mapping rewrites a remote path prefix into a local path prefix.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -122,7 +123,7 @@ def remap_remote_to_local(*, mappings: Iterable[RemotePathMapping], host: str, r
     return remapped
 
 
-def get_client_host_identifier(client: Any) -> Optional[str]:
+def get_client_host_identifier(client: Any) -> str | None:
     """Return a stable identifier used by the mapping UI.
 
     Sonarr uses the download client's configured host. Shelfmark currently uses

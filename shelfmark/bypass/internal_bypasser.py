@@ -10,7 +10,7 @@ import time
 import traceback
 from datetime import datetime
 from threading import Event
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 import requests
@@ -71,8 +71,8 @@ def _describe_runtime_path(path: str) -> str:
 
 class _CdpWorker:
     def __init__(self) -> None:
-        self._thread: Optional[threading.Thread] = None
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._thread: threading.Thread | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._ready = threading.Event()
         self._lock = threading.Lock()
 
@@ -107,7 +107,7 @@ class _CdpWorker:
         if not self._ready.wait(timeout=10):
             raise RuntimeError("CDP worker loop failed to start")
 
-    def run(self, coro: Any, timeout: Optional[float] = None) -> Any:
+    def run(self, coro: Any, timeout: float | None = None) -> Any:
         self.start()
         if not self._loop or self._loop.is_closed():
             raise RuntimeError("CDP worker loop not available")
@@ -151,7 +151,7 @@ def _store_extracted_cookies(
     *,
     url: str,
     cookies: list[Any],
-    user_agent: Optional[str] = None,
+    user_agent: str | None = None,
 ) -> None:
     """Store filtered bypass cookies (and optional UA) for a URL domain."""
     parsed = urlparse(url)
@@ -243,7 +243,7 @@ def has_valid_cf_cookies(domain: str) -> bool:
     return bool(get_cf_cookies_for_domain(domain))
 
 
-def get_cf_user_agent_for_domain(domain: str) -> Optional[str]:
+def get_cf_user_agent_for_domain(domain: str) -> str | None:
     """Get the User-Agent that was used during bypass for a domain."""
     if not domain:
         return None
@@ -333,7 +333,7 @@ async def _get_page_info(page) -> tuple[str, str, str]:
     return title, body, current_url
 
 
-def _check_indicators(title: str, body: str, indicators: list[str]) -> Optional[str]:
+def _check_indicators(title: str, body: str, indicators: list[str]) -> str | None:
     """Check if any indicator is present in title or body. Returns the found indicator or None."""
     for indicator in indicators:
         if indicator in title or indicator in body:
@@ -546,14 +546,14 @@ BYPASS_METHODS = [
 MAX_CONSECUTIVE_SAME_CHALLENGE = 3
 
 
-def _check_cancellation(cancel_flag: Optional[Event], message: str) -> None:
+def _check_cancellation(cancel_flag: Event | None, message: str) -> None:
     """Check if cancellation was requested and raise if so."""
     if cancel_flag and cancel_flag.is_set():
         logger.info(message)
         raise BypassCancelledException("Bypass cancelled")
 
 
-async def _bypass(page, max_retries: Optional[int] = None, cancel_flag: Optional[Event] = None) -> bool:
+async def _bypass(page, max_retries: int | None = None, cancel_flag: Event | None = None) -> bool:
     """Attempt to bypass Cloudflare/DDOS-Guard protection using multiple methods."""
     max_retries = max_retries if max_retries is not None else app_config.MAX_RETRY
 
@@ -689,7 +689,7 @@ def _build_host_resolver_rules() -> list[str]:
 DRIVER_RESET_ERRORS = {"ProtocolException", "RuntimeError", "TimeoutError"}
 
 
-async def _get(url: str, driver, cancel_flag: Optional[Event] = None) -> str:
+async def _get(url: str, driver, cancel_flag: Event | None = None) -> str:
     """Fetch URL with Cloudflare bypass using a CDP browser."""
     _check_cancellation(cancel_flag, "Bypass cancelled before starting")
 
@@ -727,7 +727,7 @@ async def _get(url: str, driver, cancel_flag: Optional[Event] = None) -> str:
     return ""
 
 
-def get(url: str, retry: Optional[int] = None, cancel_flag: Optional[Event] = None) -> str:
+def get(url: str, retry: int | None = None, cancel_flag: Event | None = None) -> str:
     """Fetch a URL with protection bypass. Creates fresh Chrome instance for each bypass."""
     retry = retry if retry is not None else app_config.MAX_RETRY
 
@@ -770,7 +770,7 @@ def get(url: str, retry: Optional[int] = None, cancel_flag: Optional[Event] = No
 
         return _CDP_WORKER.run(_run_bypass())
 
-def _get_proxy_string(url: str) -> Optional[str]:
+def _get_proxy_string(url: str) -> str | None:
     """Return a single proxy string for CDP, honoring NO_PROXY."""
     proxies = get_proxies(url)
     if not proxies:
@@ -948,7 +948,7 @@ def _stop_ffmpeg_recording() -> None:
     DISPLAY["ffmpeg_output"] = None
 
 
-def _try_with_cached_cookies(url: str, hostname: str) -> Optional[str]:
+def _try_with_cached_cookies(url: str, hostname: str) -> str | None:
     """Attempt request with cached cookies before using Chrome."""
     cookies = get_cf_cookies_for_domain(hostname)
     if not cookies:
@@ -973,9 +973,9 @@ def _try_with_cached_cookies(url: str, hostname: str) -> Optional[str]:
 
 def get_bypassed_page(
     url: str,
-    selector: Optional[network.AAMirrorSelector] = None,
-    cancel_flag: Optional[Event] = None
-) -> Optional[str]:
+    selector: network.AAMirrorSelector | None = None,
+    cancel_flag: Event | None = None
+) -> str | None:
     """Fetch HTML content from a URL using the internal Cloudflare Bypasser."""
     sel = selector or network.AAMirrorSelector()
     attempt_url = sel.rewrite(url)

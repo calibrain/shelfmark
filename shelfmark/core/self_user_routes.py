@@ -1,7 +1,8 @@
 """Self-service user account routes."""
 
+from collections.abc import Callable, Mapping
 from functools import wraps
-from typing import Any, Callable, Mapping
+from typing import Any
 
 from flask import Flask, g, jsonify, request, session
 from werkzeug.security import generate_password_hash

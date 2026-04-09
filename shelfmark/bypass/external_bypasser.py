@@ -29,7 +29,7 @@ BACKOFF_BASE = 1.0
 BACKOFF_CAP = 10.0
 
 
-def _fetch_via_bypasser(target_url: str) -> Optional[str]:
+def _fetch_via_bypasser(target_url: str) -> str | None:
     """Make a single request to the external bypasser service. Returns HTML or None."""
     raw_bypasser_url = config.get("EXT_BYPASSER_URL", "http://flaresolverr:8191")
     bypasser_path = config.get("EXT_BYPASSER_PATH", "/v1")
@@ -80,14 +80,14 @@ def _fetch_via_bypasser(target_url: str) -> Optional[str]:
     return None
 
 
-def _check_cancelled(cancel_flag: Optional[Event], context: str) -> None:
+def _check_cancelled(cancel_flag: Event | None, context: str) -> None:
     """Check if operation was cancelled and raise exception if so."""
     if cancel_flag and cancel_flag.is_set():
         logger.info(f"External bypasser cancelled {context}")
         raise BypassCancelledException("Bypass cancelled")
 
 
-def _sleep_with_cancellation(seconds: float, cancel_flag: Optional[Event]) -> None:
+def _sleep_with_cancellation(seconds: float, cancel_flag: Event | None) -> None:
     """Sleep for the specified duration, checking for cancellation each second."""
     for _ in range(int(seconds)):
         _check_cancelled(cancel_flag, "during backoff")
@@ -100,8 +100,8 @@ def _sleep_with_cancellation(seconds: float, cancel_flag: Optional[Event]) -> No
 def get_bypassed_page(
     url: str,
     selector: Optional["network.AAMirrorSelector"] = None,
-    cancel_flag: Optional[Event] = None
-) -> Optional[str]:
+    cancel_flag: Event | None = None
+) -> str | None:
     """Fetch HTML via external bypasser with retries and mirror rotation."""
     from shelfmark.download import network as network_module
 

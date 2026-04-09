@@ -2,8 +2,8 @@
 
 import os
 import re
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping, Optional, Union
 
 from shelfmark.core.logger import setup_logger
 
@@ -31,7 +31,7 @@ BRACE_PATTERN = re.compile(r'\{([^}]+)\}')
 INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 
-def _sanitize(name: Optional[str], max_length: int = 245) -> str:
+def _sanitize(name: str | None, max_length: int = 245) -> str:
     """Sanitize a string for filesystem use."""
     if not name:
         return ""
@@ -42,7 +42,7 @@ def _sanitize(name: Optional[str], max_length: int = 245) -> str:
     return sanitized[:max_length]
 
 
-def sanitize_filename(name: Optional[str], max_length: int = 245) -> str:
+def sanitize_filename(name: str | None, max_length: int = 245) -> str:
     """Sanitize a string for use as a filename or path component."""
     return _sanitize(name, max_length)
 
@@ -51,7 +51,7 @@ def sanitize_filename(name: Optional[str], max_length: int = 245) -> str:
 sanitize_path_component = sanitize_filename
 
 
-def format_series_position(position: Optional[Union[str, int, float]]) -> str:
+def format_series_position(position: str | int | float | None) -> str:
     if position is None:
         return ""
 
@@ -66,7 +66,7 @@ def format_series_position(position: Optional[Union[str, int, float]]) -> str:
 PAD_NUMBERS_PATTERN = re.compile(r'\d+')
 
 
-def natural_sort_key(path: Union[str, Path]) -> str:
+def natural_sort_key(path: str | Path) -> str:
     """Generate a sort key with padded numbers for natural sorting."""
     filename = Path(path).name.lower()
     return PAD_NUMBERS_PATTERN.sub(lambda m: m.group().zfill(9), filename)
@@ -89,7 +89,7 @@ def assign_part_numbers(
 
 def parse_naming_template(
     template: str,
-    metadata: Mapping[str, Optional[Union[str, int, float]]],
+    metadata: Mapping[str, str | int | float | None],
     *,
     allow_path_separators: bool = True,
 ) -> str:
@@ -99,7 +99,7 @@ def parse_naming_template(
     # Normalize metadata keys to lowercase for case-insensitive matching
     normalized = {k.lower(): v for k, v in metadata.items()}
 
-    def find_token(content: str) -> tuple[Optional[str], int]:
+    def find_token(content: str) -> tuple[str | None, int]:
         content_lower = content.lower()
         for token in KNOWN_TOKENS:
             idx = content_lower.find(token)
@@ -115,7 +115,7 @@ def parse_naming_template(
             return ""
         return str(value).strip()
 
-    def render_block(content: str) -> Optional[str]:
+    def render_block(content: str) -> str | None:
         token, idx = find_token(content)
         if token is None:
             return None
@@ -192,8 +192,8 @@ def parse_naming_template(
 def build_library_path(
     base_path: str,
     template: str,
-    metadata: Mapping[str, Optional[Union[str, int, float]]],
-    extension: Optional[str] = None,
+    metadata: Mapping[str, str | int | float | None],
+    extension: str | None = None,
 ) -> Path:
     relative = parse_naming_template(template, metadata, allow_path_separators=True)
 
@@ -223,12 +223,12 @@ def build_library_path(
     return full_path
 
 
-def same_filesystem(path1: Union[str, Path], path2: Union[str, Path]) -> bool:
+def same_filesystem(path1: str | Path, path2: str | Path) -> bool:
     """Check if two paths are on the same filesystem."""
     path1 = Path(path1)
     path2 = Path(path2)
 
-    def get_device(p: Path) -> Optional[int]:
+    def get_device(p: Path) -> int | None:
         try:
             while not p.exists():
                 p = p.parent

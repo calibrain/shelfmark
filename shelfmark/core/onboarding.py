@@ -8,7 +8,7 @@ Reuses field definitions from the settings registry where possible.
 import json
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import (
@@ -45,7 +45,7 @@ def is_onboarding_complete() -> bool:
         return False
 
     try:
-        with open(config_file, 'r') as f:
+        with open(config_file) as f:
             config = json.load(f)
             return config.get(ONBOARDING_STORAGE_KEY, False)
     except (json.JSONDecodeError, OSError) as e:
@@ -62,7 +62,7 @@ def mark_onboarding_complete() -> bool:
         return False
 
 
-def _get_field_from_tab(tab_name: str, field_key: str) -> Optional[SettingsField]:
+def _get_field_from_tab(tab_name: str, field_key: str) -> SettingsField | None:
     """
     Extract a specific field from a registered settings tab.
 
@@ -100,9 +100,9 @@ def _clone_field_with_overrides(field: SettingsField, **overrides) -> SettingsFi
 # =============================================================================
 
 
-def get_search_mode_fields() -> List[SettingsField]:
+def get_search_mode_fields() -> list[SettingsField]:
     """Step 1: Choose search mode - uses actual SEARCH_MODE field from settings."""
-    fields: List[SettingsField] = [
+    fields: list[SettingsField] = [
         HeadingField(
             key="welcome_heading",
             title="Welcome to Shelfmark",
@@ -122,9 +122,9 @@ def get_search_mode_fields() -> List[SettingsField]:
     return fields
 
 
-def get_metadata_provider_fields() -> List[SettingsField]:
+def get_metadata_provider_fields() -> list[SettingsField]:
     """Step 2: Choose metadata provider - uses actual METADATA_PROVIDER field."""
-    fields: List[SettingsField] = [
+    fields: list[SettingsField] = [
         HeadingField(
             key="metadata_heading",
             title="Metadata Provider",
@@ -164,9 +164,9 @@ def get_metadata_provider_fields() -> List[SettingsField]:
     return fields
 
 
-def get_hardcover_setup_fields() -> List[SettingsField]:
+def get_hardcover_setup_fields() -> list[SettingsField]:
     """Step 3a: Configure Hardcover - uses actual API key and test connection fields."""
-    fields: List[SettingsField] = [
+    fields: list[SettingsField] = [
         HeadingField(
             key="hardcover_setup_heading",
             title="Hardcover Setup",
@@ -189,9 +189,9 @@ def get_hardcover_setup_fields() -> List[SettingsField]:
     return fields
 
 
-def get_googlebooks_setup_fields() -> List[SettingsField]:
+def get_googlebooks_setup_fields() -> list[SettingsField]:
     """Step 3b: Configure Google Books - uses actual API key and test connection fields."""
-    fields: List[SettingsField] = [
+    fields: list[SettingsField] = [
         HeadingField(
             key="googlebooks_setup_heading",
             title="Google Books Setup",
@@ -214,9 +214,9 @@ def get_googlebooks_setup_fields() -> List[SettingsField]:
     return fields
 
 
-def get_prowlarr_fields() -> List[SettingsField]:
+def get_prowlarr_fields() -> list[SettingsField]:
     """Step 4: Configure Prowlarr connection - uses actual Prowlarr fields."""
-    fields: List[SettingsField] = [
+    fields: list[SettingsField] = [
         HeadingField(
             key="prowlarr_heading",
             title="Prowlarr Integration (Optional)",
@@ -234,9 +234,9 @@ def get_prowlarr_fields() -> List[SettingsField]:
     return fields
 
 
-def get_prowlarr_indexers_fields() -> List[SettingsField]:
+def get_prowlarr_indexers_fields() -> list[SettingsField]:
     """Step 5: Select Prowlarr indexers to search."""
-    fields: List[SettingsField] = [
+    fields: list[SettingsField] = [
         HeadingField(
             key="prowlarr_indexers_heading",
             title="Select Indexers",
@@ -316,7 +316,7 @@ ONBOARDING_STEPS = [
 ]
 
 
-def get_onboarding_config() -> Dict[str, Any]:
+def get_onboarding_config() -> dict[str, Any]:
     """
     Get the full onboarding configuration including steps and current values.
     """
@@ -359,7 +359,7 @@ def get_onboarding_config() -> Dict[str, Any]:
     }
 
 
-def save_onboarding_settings(values: Dict[str, Any]) -> Dict[str, Any]:
+def save_onboarding_settings(values: dict[str, Any]) -> dict[str, Any]:
     """
     Save onboarding settings and mark as complete.
 
@@ -371,7 +371,7 @@ def save_onboarding_settings(values: Dict[str, Any]) -> Dict[str, Any]:
     """
     try:
         # Group values by their target tab
-        tab_values: Dict[str, Dict[str, Any]] = {}
+        tab_values: dict[str, dict[str, Any]] = {}
 
         for step_config in ONBOARDING_STEPS:
             tab_name = step_config["tab"]

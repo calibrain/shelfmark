@@ -7,9 +7,9 @@ import re
 import socket
 import ssl
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Iterator, Optional
 
 from shelfmark.core.logger import setup_logger
 
@@ -45,10 +45,10 @@ class IRCEvent(Enum):
 class IRCMessage:
     """Parsed IRC message."""
     raw: str
-    prefix: Optional[str] = None
+    prefix: str | None = None
     command: str = ""
     params: list[str] = field(default_factory=list)
-    trailing: Optional[str] = None
+    trailing: str | None = None
     event: IRCEvent = IRCEvent.MESSAGE
 
 
@@ -85,7 +85,7 @@ class IRCClient:
         self.use_tls = use_tls
         self.version = version
 
-        self._socket: Optional[socket.socket] = None
+        self._socket: socket.socket | None = None
         self._buffer = ""
         self._connected = False
 
@@ -112,7 +112,7 @@ class IRCClient:
             sock.connect((self.server, self.port))
             self._socket = sock
 
-        except socket.error as e:
+        except OSError as e:
             raise IRCConnectionError(f"Failed to connect: {e}")
 
         # Send authentication (USER before NICK per IRC protocol)
@@ -133,7 +133,7 @@ class IRCClient:
                 if not data:
                     raise IRCConnectionError("Connection closed during registration")
                 self._buffer += data.decode('utf-8', errors='replace')
-            except socket.timeout:
+            except TimeoutError:
                 continue
 
             # Process lines looking for 001 or errors
@@ -205,7 +205,7 @@ class IRCClient:
                         if not data:
                             break
                         self._buffer += data.decode('utf-8', errors='replace')
-                    except socket.timeout:
+                    except TimeoutError:
                         continue  # No data yet, check time and retry
 
                     # Process any complete lines in buffer
@@ -272,7 +272,7 @@ class IRCClient:
         if not self._socket:
             raise IRCError("Not connected")
 
-        data = f"{message}\r\n".encode('utf-8')
+        data = f"{message}\r\n".encode()
         self._socket.sendall(data)
 
     def _recv_lines(self) -> Iterator[str]:
@@ -290,9 +290,9 @@ class IRCClient:
                 if not data:
                     return  # Connection closed
                 self._buffer += data.decode('utf-8', errors='replace')
-            except socket.timeout:
+            except TimeoutError:
                 continue  # Keep waiting
-            except socket.error as e:
+            except OSError as e:
                 logger.warning(f"Socket error: {e}")
                 return  # Connection error
 
@@ -399,7 +399,7 @@ class IRCClient:
         self,
         timeout: float = 60.0,
         result_type: bool = False,
-    ) -> Optional[DCCOffer]:
+    ) -> DCCOffer | None:
         """Wait for a DCC SEND offer. Returns None on timeout or no results."""
         target_event = IRCEvent.SEARCH_RESULT if result_type else IRCEvent.BOOK_RESULT
         start = time.time()

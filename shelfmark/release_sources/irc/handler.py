@@ -3,9 +3,9 @@
 Handles downloading IRC releases via DCC protocol.
 """
 
+from collections.abc import Callable
 from pathlib import Path
 from threading import Event
-from typing import Callable, Optional
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -27,8 +27,8 @@ class IRCDownloadHandler(DownloadHandler):
         task: DownloadTask,
         cancel_flag: Event,
         progress_callback: Callable[[float], None],
-        status_callback: Callable[[str, Optional[str]], None],
-    ) -> Optional[str]:
+        status_callback: Callable[[str, str | None], None],
+    ) -> str | None:
         """Download a release via IRC DCC. task.task_id contains the IRC request string."""
         download_request = task.task_id
         logger.info(f"IRC download: {download_request[:60]}...")

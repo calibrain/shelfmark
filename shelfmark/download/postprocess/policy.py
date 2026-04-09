@@ -15,12 +15,10 @@ circular imports (`archive` is used by the pipeline).
 
 from __future__ import annotations
 
-from typing import List
-
 import shelfmark.core.config as core_config
 
 
-def get_supported_formats() -> List[str]:
+def get_supported_formats() -> list[str]:
     """Get current supported formats from config singleton."""
 
     formats = core_config.config.get(
@@ -35,7 +33,7 @@ def get_supported_formats() -> List[str]:
     return [fmt.lower() for fmt in formats]
 
 
-def get_supported_audiobook_formats() -> List[str]:
+def get_supported_audiobook_formats() -> list[str]:
     """Get current supported audiobook formats from config singleton."""
 
     formats = core_config.config.get("SUPPORTED_AUDIOBOOK_FORMATS", ["m4b", "mp3"])

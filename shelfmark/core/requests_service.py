@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.models import QueueStatus
 from shelfmark.core.request_helpers import extract_release_source_id, normalize_positive_int
@@ -95,7 +96,7 @@ def _validate_json_blob_size(field: str, payload: Any) -> None:
 
 
 def _find_duplicate_pending_request(
-    user_db: "UserDB",
+    user_db: UserDB,
     *,
     user_id: int,
     title: str,
@@ -170,7 +171,7 @@ def _prepare_request_create(
 
 
 def sync_delivery_states_from_queue_status(
-    user_db: "UserDB",
+    user_db: UserDB,
     *,
     queue_status: dict[str, dict[str, Any]],
     user_id: int | None = None,
@@ -253,7 +254,7 @@ def sync_delivery_states_from_queue_status(
 
 
 def create_request(
-    user_db: "UserDB",
+    user_db: UserDB,
     *,
     user_id: int,
     source_hint: str | None,
@@ -307,7 +308,7 @@ def create_request(
 
 
 def create_requests(
-    user_db: "UserDB",
+    user_db: UserDB,
     *,
     requests: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -385,7 +386,7 @@ def create_requests(
 
 
 def ensure_request_access(
-    user_db: "UserDB",
+    user_db: UserDB,
     *,
     request_id: int,
     actor_user_id: int | None,
@@ -413,7 +414,7 @@ def _require_pending(request_row: dict[str, Any]) -> None:
 
 
 def cancel_request(
-    user_db: "UserDB",
+    user_db: UserDB,
     *,
     request_id: int,
     actor_user_id: int,
@@ -438,7 +439,7 @@ def cancel_request(
 
 
 def reject_request(
-    user_db: "UserDB",
+    user_db: UserDB,
     *,
     request_id: int,
     admin_user_id: int,
@@ -469,7 +470,7 @@ def reject_request(
 
 
 def fulfil_request(
-    user_db: "UserDB",
+    user_db: UserDB,
     *,
     request_id: int,
     admin_user_id: int,
@@ -575,7 +576,7 @@ def fulfil_request(
 
 
 def reopen_failed_request(
-    user_db: "UserDB",
+    user_db: UserDB,
     *,
     request_id: int,
     failure_reason: str | None = None,
