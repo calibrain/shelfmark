@@ -39,7 +39,7 @@ def _log_path_permissions(probe: Path, label: str) -> None:
             _run_io(probe.exists),
             _run_io(probe.is_dir),
         )
-    except Exception as stat_error:  # noqa: BLE001
+    except Exception as stat_error:
         logger.debug(
             "Path permissions (%s): stat failed for %s: %s", label, probe, stat_error
         )
@@ -54,32 +54,32 @@ def _run_io(
     so we only import `run_blocking_io` lazily at call-time.
     """
     try:
-        from shelfmark.download.fs import run_blocking_io as _run_blocking_io  # noqa: PLC0415
-    except Exception:  # noqa: BLE001
+        from shelfmark.download.fs import run_blocking_io as _run_blocking_io
+    except Exception:
         return func(*args, **kwargs)
 
     try:
         return _run_blocking_io(func, *args, **kwargs)
-    except Exception:  # noqa: BLE001
+    except Exception:
         # Fall back to direct call if threadpool offload is unavailable.
         return func(*args, **kwargs)
 
 
 def _format_uid(uid: int) -> str:
     try:
-        import pwd  # noqa: PLC0415
+        import pwd
 
         return pwd.getpwuid(uid).pw_name
-    except Exception:  # noqa: BLE001
+    except Exception:
         return str(uid)
 
 
 def _format_gid(gid: int) -> str:
     try:
-        import grp  # noqa: PLC0415
+        import grp
 
         return grp.getgrgid(gid).gr_name
-    except Exception:  # noqa: BLE001
+    except Exception:
         return str(gid)
 
 
@@ -107,13 +107,13 @@ def log_path_permission_context(label: str, path: Path) -> None:
         for probe in [path, path.parent]:
             try:
                 resolved = _run_io(probe.resolve)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 resolved = probe
 
             try:
                 st = _run_io(probe.stat)
                 logger.debug(
-                    "Path permissions (%s): path=%s resolved=%s mode=%s owner=%s(%d) group=%s(%d) dir=%s symlink=%s",  # noqa: E501
+                    "Path permissions (%s): path=%s resolved=%s mode=%s owner=%s(%d) group=%s(%d) dir=%s symlink=%s",
                     probe,
                     resolved,
                     oct(st.st_mode & 0o777),
@@ -124,14 +124,14 @@ def log_path_permission_context(label: str, path: Path) -> None:
                     _run_io(probe.is_dir),
                     _run_io(probe.is_symlink),
                 )
-            except Exception as stat_error:  # noqa: BLE001
+            except Exception as stat_error:
                 logger.debug(
                     "Path permissions (%s): stat failed for %s: %s",
                     label,
                     probe,
                     stat_error,
                 )
-    except Exception as context_error:  # noqa: BLE001
+    except Exception as context_error:
         logger.debug(
             "Permission context (%s): failed to collect: %s", label, context_error
         )
@@ -160,7 +160,7 @@ def log_transfer_permission_context(
 
         for probe in [source, dest, dest.parent]:
             _log_path_permissions(probe, label)
-    except Exception as context_error:  # noqa: BLE001
+    except Exception as context_error:
         logger.debug(
             "Permission context (%s): failed to collect: %s", label, context_error
         )

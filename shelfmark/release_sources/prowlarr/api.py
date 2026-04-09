@@ -57,7 +57,7 @@ class ProwlarrClient:
                 try:
                     error_body = response.text[:500]
                     logger.error("Prowlarr API error response: %s", error_body)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
 
             response.raise_for_status()
@@ -91,7 +91,7 @@ class ProwlarrClient:
             if e.response is not None and e.response.status_code == _HTTP_STATUS_UNAUTHORIZED:
                 return False, "Invalid API key"
             return False, f"HTTP error {status}"
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return False, f"Connection failed: {e!s}"
         else:
             logger.info("Prowlarr connection successful: version %s", version)
@@ -220,7 +220,7 @@ class ProwlarrClient:
                 try:
                     error_body = response.text[:500]
                     logger.error("Prowlarr Torznab error response: %s", error_body)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
             response.raise_for_status()
 

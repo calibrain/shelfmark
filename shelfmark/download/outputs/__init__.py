@@ -48,11 +48,9 @@ def load_output_handlers() -> None:
     if _OUTPUTS_LOADED:
         return
 
-    from . import (  # noqa: PLC0415
-        booklore,  # noqa: F401
-        email,  # noqa: F401
-        folder,  # noqa: F401
-    )
+    from . import booklore as booklore
+    from . import email as email
+    from . import folder as folder
 
     _OUTPUTS_LOADED = True
 
@@ -72,8 +70,8 @@ def _derive_output_mode(task: DownloadTask) -> str:
         return mode
 
     # Legacy / defensive fallback: derive from current config.
-    from shelfmark.core.config import config  # noqa: PLC0415
-    from shelfmark.core.utils import is_audiobook as check_audiobook  # noqa: PLC0415
+    from shelfmark.core.config import config
+    from shelfmark.core.utils import is_audiobook as check_audiobook
 
     if check_audiobook(getattr(task, "content_type", None)):
         return "folder"

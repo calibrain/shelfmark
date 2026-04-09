@@ -88,7 +88,7 @@ class IRCConnectionManager:
                     logger.info("Closing idle IRC connection: %s", key)
                     try:
                         client.disconnect()
-                    except Exception as e:  # noqa: BLE001
+                    except Exception as e:
                         logger.debug("Error closing idle connection: %s", e)
 
     def get_connection(
@@ -221,7 +221,7 @@ class IRCConnectionManager:
 
         try:
             client.disconnect()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.debug("Error closing connection: %s", e)
 
         logger.debug("Closed IRC connection: %s", key)
@@ -243,7 +243,7 @@ class IRCConnectionManager:
         """Disconnect one IRC client and log failures."""
         try:
             client.disconnect()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.debug("Error closing connection %s: %s", key, e)
 
 

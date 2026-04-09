@@ -114,7 +114,7 @@ class QBittorrentClient(DownloadClient):
             A false result with no error means "not loaded yet".
 
         """
-        import requests  # noqa: PLC0415
+        import requests
 
         url = f"{self._base_url}/api/v2/torrents/properties"
         params = {"hash": torrent_hash}
@@ -150,7 +150,7 @@ class QBittorrentClient(DownloadClient):
             return False, f"Cannot connect to qBittorrent at {self._base_url}"
         except requests.exceptions.Timeout:
             return False, f"qBittorrent request timed out at {self._base_url}"
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return False, f"qBittorrent API error: {type(e).__name__}: {e}"
         else:
             return True, None
@@ -161,7 +161,7 @@ class QBittorrentClient(DownloadClient):
     def __init__(self) -> None:
         """Initialize qBittorrent client with settings from config."""
         # Lazy import to avoid dependency issues if not using torrents
-        from qbittorrentapi import Client  # noqa: PLC0415
+        from qbittorrentapi import Client
 
         raw_url = config.get("QBITTORRENT_URL", "")
         if not raw_url:
@@ -201,7 +201,7 @@ class QBittorrentClient(DownloadClient):
             (torrents, error_message)
 
         """
-        import requests  # noqa: PLC0415
+        import requests
 
         url = f"{self._base_url}/api/v2/torrents/info"
 
@@ -280,7 +280,7 @@ class QBittorrentClient(DownloadClient):
         except requests.exceptions.Timeout:
             logger.warning("qBittorrent request timed out at %s", self._base_url)
             return [], f"qBittorrent request timed out at {self._base_url}"
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.debug("Failed to get torrents info: %s", e)
             # requests raises InvalidSchema when the base URL doesn't include http(s)
             if type(e).__name__ == "InvalidSchema":
@@ -305,7 +305,7 @@ class QBittorrentClient(DownloadClient):
         try:
             self._client.auth_log_in()
             api_version = self._client.app.web_api_version
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to qBittorrent (API v{api_version})"
@@ -342,7 +342,7 @@ class QBittorrentClient(DownloadClient):
             if category:
                 try:
                     self._client.torrents_create_category(name=category)
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     # Conflict409Error means category exists - that's expected
                     # Log other errors but continue since download may still work
                     if "Conflict" not in type(e).__name__ and "409" not in str(e):
@@ -411,7 +411,7 @@ class QBittorrentClient(DownloadClient):
                 time.sleep(0.5)
 
             logger.warning(
-                "Torrent add was not confirmed within the visibility grace period (response=%s), returning expected hash",  # noqa: E501
+                "Torrent add was not confirmed within the visibility grace period (response=%s), returning expected hash",
             )
         except Exception:
             logger.exception("qBittorrent add failed")
@@ -511,7 +511,7 @@ class QBittorrentClient(DownloadClient):
                 download_speed=torrent_speed,
                 eta=eta,
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, *, delete_files: bool = False) -> bool:
@@ -533,7 +533,7 @@ class QBittorrentClient(DownloadClient):
                 f"Removed torrent from qBittorrent: {download_id}"
                 + (" (with files)" if delete_files else "")
             )
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self._log_error("remove", e)
             return False
         else:
@@ -569,7 +569,7 @@ class QBittorrentClient(DownloadClient):
                 return None
 
             return self._resolve_completed_download_path(torrent)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self._log_error("get_download_path", e, level="debug")
             return None
 
@@ -605,9 +605,9 @@ class QBittorrentClient(DownloadClient):
         This mirrors how common automation apps derive the path when
         `content_path` isn't provided.
         """
-        import os  # noqa: PLC0415
+        import os
 
-        import requests  # noqa: PLC0415
+        import requests
 
         def get_with_auth(url: str, params: dict[str, str]) -> requests.Response:
             self._client.auth_log_in()
@@ -651,7 +651,7 @@ class QBittorrentClient(DownloadClient):
                 return None
 
             return os.path.normpath(str(Path(save_path) / top_level))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.debug(
                 "qBittorrent could not derive path from files: %s: %s",
                 type(e).__name__,
@@ -685,7 +685,7 @@ class QBittorrentClient(DownloadClient):
             if torrent and isinstance(getattr(torrent, "hash", None), str):
                 torrent_hash = torrent.hash
                 return (torrent_hash.lower(), self.get_status(torrent_hash.lower()))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.debug("Error checking for existing torrent: %s", e)
             return None
         else:

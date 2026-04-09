@@ -170,7 +170,7 @@ def _source_results_are_releases(source: str) -> bool:
     normalized_source = normalize_source(source)
     if normalized_source in {"", "*"}:
         return False
-    from shelfmark.release_sources import source_results_are_releases  # noqa: PLC0415
+    from shelfmark.release_sources import source_results_are_releases
 
     return source_results_are_releases(normalized_source)
 
@@ -359,7 +359,7 @@ def _prepare_request_create_arguments(
         user_settings=user_settings,
     )
     logger.debug(
-        "request create policy actor=%s target_user_id=%s source=%s content_type=%s request_level=%s resolved_mode=%s",  # noqa: E501
+        "request create policy actor=%s target_user_id=%s source=%s content_type=%s request_level=%s resolved_mode=%s",
         target_user_id,
         source,
         content_type,
@@ -516,7 +516,7 @@ def _notify_admin_for_request_event(
     owner_user_id = normalize_positive_int(request_row.get("user_id"))
     try:
         notify_admin(event, context)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning(
             "Failed to trigger admin notification for request event '%s': %s",
             event.value,
@@ -526,7 +526,7 @@ def _notify_admin_for_request_event(
         return
     try:
         notify_user(owner_user_id, event, context)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning(
             "Failed to trigger user notification for request event '%s' (user_id=%s): %s",
             event.value,
@@ -580,7 +580,7 @@ def register_request_routes(
         )
 
         source_capabilities = get_source_content_type_capabilities()
-        from shelfmark.release_sources import source_results_are_releases  # noqa: PLC0415
+        from shelfmark.release_sources import source_results_are_releases
 
         source_modes = []
         for source_name in sorted(source_capabilities):

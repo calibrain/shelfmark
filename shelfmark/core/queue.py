@@ -73,7 +73,7 @@ class BookQueue:
         if hook is not None:
             try:
                 hook(task_id, task)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning(
                     "Queue hook failed while adding task %s: %s", task_id, exc
                 )
@@ -322,7 +322,7 @@ class BookQueue:
         if hook is not None and hook_task is not None:
             try:
                 hook(task_id, hook_task)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning(
                     "Queue hook failed while requeueing task %s: %s", task_id, exc
                 )

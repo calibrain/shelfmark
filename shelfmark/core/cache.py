@@ -132,7 +132,7 @@ def cacheable(
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             # Check if metadata caching is enabled
-            from shelfmark.core.config import config  # noqa: PLC0415
+            from shelfmark.core.config import config
 
             if not config.get("METADATA_CACHE_ENABLED", True):
                 # Caching disabled, execute function directly

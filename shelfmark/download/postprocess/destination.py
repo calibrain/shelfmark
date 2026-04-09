@@ -57,7 +57,7 @@ def validate_destination(
         )
         run_blocking_io(test_path.write_text, test_content)
         run_blocking_io(test_path.unlink, missing_ok=True)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.debug("Destination write probe path: %s", test_path)
         log_path_permission_context("destination_write_probe", destination)
         logger.warning("Destination not writable: %s (%s)", destination, exc)

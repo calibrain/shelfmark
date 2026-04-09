@@ -3,6 +3,7 @@
 import os
 import sqlite3
 import time
+from importlib import import_module
 from pathlib import Path
 from threading import Lock
 from types import ModuleType
@@ -23,7 +24,7 @@ def _get_registry() -> ModuleType:
     """Lazy import of settings registry to avoid circular imports."""
     global _registry_module
     if _registry_module is None:
-        from shelfmark.core import settings_registry  # noqa: PLC0415
+        from shelfmark.core import settings_registry
 
         _registry_module = settings_registry
     return _registry_module
@@ -33,7 +34,7 @@ def _get_env() -> ModuleType:
     """Lazy import of env module for fallback values."""
     global _env_module
     if _env_module is None:
-        from shelfmark.config import env  # noqa: PLC0415
+        from shelfmark.config import env
 
         _env_module = env
     return _env_module
@@ -43,7 +44,7 @@ def _get_user_db_module() -> type["UserDB"]:
     """Lazy import of user DB module to avoid optional dependency loops."""
     global _user_db_module
     if _user_db_module is None:
-        from shelfmark.core.user_db import UserDB  # noqa: PLC0415
+        from shelfmark.core.user_db import UserDB
 
         _user_db_module = UserDB
     return _user_db_module
@@ -95,12 +96,12 @@ class Config:
         # Ensure all settings modules are imported before loading
         # This handles cases where config is accessed before settings are registered
         try:
-            import shelfmark.config.notifications_settings  # noqa: PLC0415
-            import shelfmark.config.security  # noqa: PLC0415
-            import shelfmark.config.settings  # noqa: PLC0415
-            import shelfmark.config.users_settings  # noqa: PLC0415
-            import shelfmark.metadata_providers  # noqa: PLC0415
-            import shelfmark.release_sources  # noqa: F401, PLC0415
+            import_module("shelfmark.config.notifications_settings")
+            import_module("shelfmark.config.security")
+            import_module("shelfmark.config.settings")
+            import_module("shelfmark.config.users_settings")
+            import_module("shelfmark.metadata_providers")
+            import_module("shelfmark.release_sources")
         except ImportError:
             pass
 
@@ -162,7 +163,7 @@ class Config:
             db_path = str(Path(os.environ.get("CONFIG_DIR", "/config")) / "users.db")
             user_db = user_db_cls(db_path)
             user_db.initialize()
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Multi-user support is optional; fall back to global config when unavailable.
             return None
         else:

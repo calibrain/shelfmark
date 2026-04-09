@@ -207,7 +207,7 @@ class DelugeClient(DownloadClient):
             methods = self._rpc_call("system.listMethods")
             if isinstance(methods, list) and "daemon.get_version" in methods:
                 return self._rpc_call("daemon.get_version")
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Fall back to daemon.info to preserve existing behavior.
             pass
 
@@ -224,7 +224,7 @@ class DelugeClient(DownloadClient):
                 self._rpc_call("label.add", label)
 
             self._rpc_call("label.set_torrent", torrent_id, label)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.debug(
                 "Could not set Deluge label '%s' for %s: %s", label, torrent_id, e
             )
@@ -240,7 +240,7 @@ class DelugeClient(DownloadClient):
         try:
             self._ensure_connected()
             version = self._get_daemon_version()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self._authenticated = False
             self._connected = False
             return False, f"Connection failed: {e!s}"
@@ -362,7 +362,7 @@ class DelugeClient(DownloadClient):
             if eta is not None:
                 try:
                     eta = int(eta)
-                except Exception:  # noqa: BLE001
+                except Exception:
                     eta = None
 
             if eta is not None and (eta < 0 or eta > ONE_WEEK_IN_SECONDS):
@@ -386,7 +386,7 @@ class DelugeClient(DownloadClient):
                 eta=eta,
             )
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, *, delete_files: bool = False) -> bool:
@@ -401,7 +401,7 @@ class DelugeClient(DownloadClient):
                 )
                 return True
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self._log_error("remove", e)
             return False
         else:
@@ -423,7 +423,7 @@ class DelugeClient(DownloadClient):
                     str(status.get("name", "")),
                 )
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self._log_error("get_download_path", e, level="debug")
             return None
         else:
@@ -449,7 +449,7 @@ class DelugeClient(DownloadClient):
                 full_status = self.get_status(torrent_info.info_hash)
                 return (torrent_info.info_hash, full_status)
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self._authenticated = False
             self._connected = False
             logger.debug("Error checking for existing torrent: %s", e)

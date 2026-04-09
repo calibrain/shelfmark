@@ -32,7 +32,7 @@ def emit_ws_event(
         if socketio is None or not callable(is_enabled) or not is_enabled():
             return
         socketio.emit(event_name, payload, to=room)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         _logger.warning(
             "Failed to emit WebSocket event '%s' to room '%s': %s",
             event_name,
@@ -43,7 +43,7 @@ def emit_ws_event(
 
 def load_users_request_policy_settings() -> dict[str, Any]:
     """Load global request-policy settings from the users config file."""
-    from shelfmark.core.request_policy import REQUEST_POLICY_KEYS  # noqa: PLC0415
+    from shelfmark.core.request_policy import REQUEST_POLICY_KEYS
 
     return {key: app_config.get(key) for key in REQUEST_POLICY_KEYS}
 

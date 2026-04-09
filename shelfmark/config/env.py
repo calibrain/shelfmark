@@ -79,7 +79,7 @@ def _is_config_dir_writable() -> bool:
 
 def is_covers_cache_enabled() -> bool:
     """Check if cover caching is enabled (requires setting + writable config dir)."""
-    from shelfmark.core.config import config  # noqa: PLC0415
+    from shelfmark.core.config import config
 
     setting_enabled = config.get("COVERS_CACHE_ENABLED", True)
     return setting_enabled and _is_config_dir_writable()

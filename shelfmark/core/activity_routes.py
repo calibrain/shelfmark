@@ -191,7 +191,7 @@ def _resolve_db_user_id(
     if user_db is not None:
         try:
             db_user = user_db.get_user(user_id=parsed_db_user_id)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning(
                 "Failed to validate activity db identity %s: %s", parsed_db_user_id, exc
             )

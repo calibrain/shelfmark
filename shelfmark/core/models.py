@@ -132,7 +132,7 @@ class DownloadTask:
     search_mode: SearchMode | None = None
 
     # Output selection for post-processing.
-    # This is captured at queue time so in-flight tasks are not affected if the user changes settings later.  # noqa: E501
+    # This is captured at queue time so in-flight tasks are not affected if the user changes settings later.
     output_mode: str | None = None
 
     output_args: dict[str, Any] = field(

@@ -43,7 +43,7 @@ def _get_internal_bypasser() -> ModuleType:
     global _internal_bypasser
     if _internal_bypasser is None:
         try:
-            from shelfmark.bypass import internal_bypasser  # noqa: PLC0415
+            from shelfmark.bypass import internal_bypasser
 
             _internal_bypasser = internal_bypasser
         except ImportError as e:
@@ -61,7 +61,7 @@ def _get_external_bypasser() -> ModuleType:
     global _external_bypasser
     if _external_bypasser is None:
         try:
-            from shelfmark.bypass import external_bypasser  # noqa: PLC0415
+            from shelfmark.bypass import external_bypasser
 
             _external_bypasser = external_bypasser
         except ImportError as e:
@@ -145,7 +145,7 @@ CONNECTION_ERRORS = (
     requests.exceptions.ChunkedEncodingError,
 )
 DOWNLOAD_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",  # noqa: E501
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
     "Accept-Language": "en-US,en;q=0.5",
     "Accept-Encoding": "gzip, deflate, br",
     "Connection": "keep-alive",
@@ -248,7 +248,7 @@ def html_get_page(
             return _result("", current_url)
 
         try:
-            if use_bypasser_now and _is_cf_bypass_enabled():  # noqa: E501
+            if use_bypasser_now and _is_cf_bypass_enabled():
                 if status_callback:
                     status_callback("resolving", "Bypassing protection...")
                 heartbeat_stop = Event()
@@ -257,12 +257,12 @@ def html_get_page(
 
                     def _heartbeat(stop_event: Event = heartbeat_stop) -> None:
                         # Keep the download "alive" during long bypass operations so the orchestrator
-                        # doesn't flag it as stalled.  # noqa: E501
+                        # doesn't flag it as stalled.
                             if cancel_flag and cancel_flag.is_set():
                                 return
                             try:
                                 status_callback("resolving", "Bypassing protection...")
-                            except Exception:  # noqa: BLE001
+                            except Exception:
                                 return
 
                     heartbeat_thread = Thread(
@@ -272,7 +272,7 @@ def html_get_page(
                 try:
                     result = get_bypassed_page(current_url, selector, cancel_flag)
                     return _result(result or "", current_url)
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     logger.warning("Bypasser error: %s: %s", type(e).__name__, e)
                     return _result("", current_url)
                 finally:
@@ -529,7 +529,7 @@ def download_url(
                         time.sleep(0.5)
                         # Retry with fresh cookies (don't increment attempt)
                         continue
-                    except Exception as cookie_err:  # noqa: BLE001
+                    except Exception as cookie_err:
                         logger.warning(
                             "Z-Library cookie refresh failed: %s", cookie_err
                         )

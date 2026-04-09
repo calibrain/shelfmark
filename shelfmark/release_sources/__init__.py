@@ -526,9 +526,7 @@ def source_results_are_releases(name: str) -> bool:
 
 # Import source implementations to trigger registration
 # These must be imported AFTER the base classes and registry are defined
-from shelfmark.release_sources import (
-    audiobookbay,  # noqa: F401
-    direct_download,  # noqa: F401
-    irc,  # noqa: F401
-    prowlarr,  # noqa: F401
-)
+from shelfmark.release_sources import audiobookbay as audiobookbay
+from shelfmark.release_sources import direct_download as direct_download
+from shelfmark.release_sources import irc as irc
+from shelfmark.release_sources import prowlarr as prowlarr

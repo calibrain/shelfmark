@@ -97,7 +97,7 @@ def get_cached_results(
         or None if not cached or expired
 
     """
-    from shelfmark.core.config import config  # noqa: PLC0415
+    from shelfmark.core.config import config
 
     if ttl_seconds is None:
         ttl_value = config.get("IRC_CACHE_TTL", DEFAULT_CACHE_TTL)
@@ -245,7 +245,7 @@ def cleanup_expired(ttl_seconds: int | None = None) -> int:
         Number of entries removed
 
     """
-    from shelfmark.core.config import config  # noqa: PLC0415
+    from shelfmark.core.config import config
 
     if ttl_seconds is None:
         ttl_value = config.get("IRC_CACHE_TTL", DEFAULT_CACHE_TTL)
@@ -283,7 +283,7 @@ def get_cache_stats() -> dict[str, Any]:
         Dict with cache stats
 
     """
-    from shelfmark.core.config import config  # noqa: PLC0415
+    from shelfmark.core.config import config
 
     ttl_value = config.get("IRC_CACHE_TTL", DEFAULT_CACHE_TTL)
     # Config values are stored as strings, convert to int

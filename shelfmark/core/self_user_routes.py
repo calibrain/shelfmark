@@ -189,7 +189,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
                 )
             except ValueError:
                 return jsonify({"error": "Downloads settings tab not found"}), 500
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning(
                     "Failed to build user delivery preferences for user_id=%s: %s",
                     user_id,
@@ -205,7 +205,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
                 )
             except ValueError:
                 return jsonify({"error": "Search mode settings tab not found"}), 500
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning(
                     "Failed to build user search preferences for user_id=%s: %s",
                     user_id,
@@ -221,7 +221,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
                 )
             except ValueError:
                 return jsonify({"error": "Notifications settings tab not found"}), 500
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning(
                     "Failed to build user notification preferences for user_id=%s: %s",
                     user_id,
@@ -385,10 +385,10 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
 
             user_db.set_user_settings(user_id, validated_settings)
             try:
-                from shelfmark.core.config import config as app_config  # noqa: PLC0415
+                from shelfmark.core.config import config as app_config
 
                 app_config.refresh(force=True)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
         updated = user_db.get_user(user_id=user_id)

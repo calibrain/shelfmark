@@ -12,7 +12,7 @@ def _get_config() -> ModuleType:
     """Lazy import of config module to avoid circular imports."""
     global _config_module
     if _config_module is None:
-        from shelfmark.core.config import config  # noqa: PLC0415
+        from shelfmark.core.config import config
 
         _config_module = config
     return _config_module

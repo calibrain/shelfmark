@@ -96,7 +96,7 @@ def resolve_hardlink_source(
             source_path = hardlink_source
         elif hardlink_source_exists:
             logger.warning(
-                "Cannot hardlink: %s and %s are on different filesystems. Falling back to copy. To fix: ensure torrent client downloads to same filesystem as destination.",  # noqa: E501
+                "Cannot hardlink: %s and %s are on different filesystems. Falling back to copy. To fix: ensure torrent client downloads to same filesystem as destination.",
                 destination,
             )
             if status_callback:
@@ -127,7 +127,7 @@ def is_torrent_source(source_path: Path, task: DownloadTask) -> bool:
             return os.path.normpath(str(source_path)) == os.path.normpath(
                 str(original_path)
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
 
@@ -328,7 +328,7 @@ def process_directory(
 
         processed_paths = final_paths
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.error_trace(
             "Task %s: error processing directory %s: %s", task.task_id, directory, exc
         )

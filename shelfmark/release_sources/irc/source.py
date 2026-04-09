@@ -137,7 +137,7 @@ class IRCReleaseSource(ReleaseSource):
         The expand_search parameter is repurposed for IRC as a "refresh" flag.
         When True, it bypasses the cache and forces a fresh search.
         """
-        from .cache import cache_results, get_cached_results  # noqa: PLC0415
+        from .cache import cache_results, get_cached_results
 
         if not self.is_available():
             logger.debug("IRC source is disabled, skipping search")

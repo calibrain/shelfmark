@@ -269,7 +269,7 @@ def queue_release(
         error_msg = f"Missing required field in release data: {e}"
         logger.warning(error_msg)
         return False, error_msg
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         error_msg = f"Error queueing release: {e}"
         logger.error_trace(error_msg)
         return False, error_msg
@@ -311,7 +311,7 @@ def get_book_data(task_id: str) -> tuple[bytes | None, DownloadTask | None]:
 
         with Path(path).open("rb") as f:
             return f.read(), task
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.error_trace(f"Error getting book data: {e}")
         if task:
             task.download_path = None
@@ -689,14 +689,14 @@ def _download_task(task_id: str, cancel_flag: Event) -> str | None:
 
         try:
             handler.post_process_cleanup(task, success=bool(result))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.warning("Post-processing cleanup hook failed for %s: %s", task_id, e)
 
         if result:
             task.staged_path = None
             _clear_task_error_state(task)
 
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         if cancel_flag.is_set():
             logger.info("Task %s: cancelled during error handling", task_id)
         else:
@@ -903,7 +903,7 @@ def _process_single_download(task_id: str, cancel_flag: Event) -> None:
         if ws_manager:
             ws_manager.broadcast_status_update(queue_status())
 
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         # Clean up progress tracking even on error
         _cleanup_progress_tracking(task_id)
 
@@ -946,7 +946,7 @@ def concurrent_download_loop() -> None:
                     stalled_tasks.discard(task_id)
                     try:
                         future.result()  # This will raise any exceptions from the worker
-                    except Exception as e:  # noqa: BLE001
+                    except Exception as e:
                         logger.error_trace(f"Future exception for {task_id}: {e}")
 
                 # Check for stalled downloads (no activity in STALL_TIMEOUT seconds)
@@ -992,7 +992,7 @@ def concurrent_download_loop() -> None:
 
                 # Brief sleep to prevent busy waiting
                 time.sleep(config.MAIN_LOOP_SLEEP_TIME)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 logger.error_trace("Download coordinator loop error: %s", e)
                 time.sleep(COORDINATOR_LOOP_ERROR_RETRY_DELAY)
 

@@ -493,7 +493,7 @@ class ImageCacheService:
         """Check that a URL is safe to fetch (no SSRF to internal resources)."""
         try:
             parsed = urlparse(url)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
 
         if parsed.scheme not in ("http", "https"):
@@ -583,7 +583,7 @@ class ImageCacheService:
             is_404 = e.response is not None and e.response.status_code == HTTP_NOT_FOUND
             self.put_negative(cache_id, transient=not is_404)
             return None
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         else:
             return cached_data
@@ -604,8 +604,8 @@ def get_image_cache() -> ImageCacheService:
     if _instance is None:
         with _instance_lock:
             if _instance is None:
-                from shelfmark.config.env import CONFIG_DIR  # noqa: PLC0415
-                from shelfmark.core.config import config  # noqa: PLC0415
+                from shelfmark.config.env import CONFIG_DIR
+                from shelfmark.core.config import config
 
                 cache_dir = CONFIG_DIR / "covers"
                 max_size_mb = config.get("COVERS_CACHE_MAX_SIZE_MB", 500)

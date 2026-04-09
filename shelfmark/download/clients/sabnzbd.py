@@ -81,7 +81,7 @@ class SABnzbdClient(DownloadClient):
         This helps when SABnzbd reports a nested path (e.g. sorting/post-processing)
         but we want the root folder for the completed job.
         """
-        from pathlib import Path  # noqa: PLC0415
+        from pathlib import Path
 
         storage = storage or ""
         title = (title or "").strip()
@@ -289,7 +289,7 @@ class SABnzbdClient(DownloadClient):
             return False, "Could not connect to SABnzbd"
         except requests.exceptions.Timeout:
             return False, "Connection timed out"
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to SABnzbd {version}"
@@ -327,7 +327,7 @@ class SABnzbdClient(DownloadClient):
             result = self._api_post_file(nzb_content, nzb_filename, name, category)
             nzo_id = self._extract_nzo_id(result)
             logger.info("Added NZB to SABnzbd: %s", nzo_id)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.warning("SABnzbd addfile failed, falling back to addurl: %s", e)
         else:
             return nzo_id
@@ -459,7 +459,7 @@ class SABnzbdClient(DownloadClient):
                 "SABnzbd: download %s not found in queue or history", download_id
             )
             return DownloadStatus.error("Download not found")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(
@@ -491,7 +491,7 @@ class SABnzbdClient(DownloadClient):
             if result.get("status"):
                 logger.info("Removed NZB from SABnzbd queue: %s", download_id)
                 return True
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.debug("SABnzbd queue delete skipped for %s: %s", download_id, e)
 
         # If not in queue (or queue delete failed), try to remove from history.
@@ -510,7 +510,7 @@ class SABnzbdClient(DownloadClient):
                 action = "archived" if archive else "removed"
                 logger.info("NZB %s from SABnzbd history: %s", action, download_id)
                 return True
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self._log_error("remove", e)
             return False
 
@@ -549,7 +549,7 @@ class SABnzbdClient(DownloadClient):
         """
         try:
             # Extract NZB name from URL (last path component without extension)
-            from urllib.parse import unquote, urlparse  # noqa: PLC0415
+            from urllib.parse import unquote, urlparse
 
             parsed = urlparse(url)
             path = unquote(parsed.path)
@@ -599,7 +599,7 @@ class SABnzbdClient(DownloadClient):
                         )
                         return (nzo_id, status)
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.debug("Error checking for existing NZB: %s", e)
             return None
         else:

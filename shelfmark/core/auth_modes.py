@@ -24,14 +24,14 @@ def has_local_password_admin(user_db: object | None = None) -> bool:
     try:
         db = user_db
         if db is None:
-            from shelfmark.core.user_db import UserDB  # noqa: PLC0415
+            from shelfmark.core.user_db import UserDB
 
             config_root = os.environ.get("CONFIG_DIR", "/config")
             db = UserDB(str(Path(config_root) / "users.db"))
             db.initialize()
 
         return db.has_admin_with_password()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return False
 
 
@@ -84,7 +84,7 @@ def load_active_auth_mode(
 ) -> str:
     """Resolve active auth mode using current security config and runtime prerequisites."""
     try:
-        from shelfmark.core.config import config as app_config  # noqa: PLC0415
+        from shelfmark.core.config import config as app_config
 
         security_config = {
             "AUTH_METHOD": app_config.get("AUTH_METHOD", "none"),
@@ -97,7 +97,7 @@ def load_active_auth_mode(
             cwa_db_path,
             has_local_admin=has_local_password_admin(user_db),
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         return "none"
 
 

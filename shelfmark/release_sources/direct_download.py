@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from threading import Event
-from typing import NoReturn
+from typing import TYPE_CHECKING, NoReturn
 from urllib.parse import quote
 
 import requests
@@ -38,6 +38,9 @@ from shelfmark.release_sources import (
     register_handler,
     register_source,
 )
+
+if TYPE_CHECKING:
+    from shelfmark.core.search_plan import ReleaseSearchPlan
 
 logger = setup_logger(__name__)
 
@@ -1193,7 +1196,7 @@ class DirectDownloadSource(ReleaseSource):
     def search(
         self,
         book: BookMetadata,
-        plan: "ReleaseSearchPlan",  # noqa: F821
+        plan: "ReleaseSearchPlan",
         *,
         expand_search: bool = False,
         content_type: str = "ebook"

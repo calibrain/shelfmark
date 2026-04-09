@@ -399,7 +399,7 @@ def list_registered_settings() -> list[str]:
 
 def _get_config_dir() -> Path:
     """Get the config directory path."""
-    from shelfmark.config.env import CONFIG_DIR  # noqa: PLC0415
+    from shelfmark.config.env import CONFIG_DIR
 
     return Path(CONFIG_DIR)
 
@@ -569,10 +569,10 @@ def migrate_mirror_settings() -> None:
 
     Also handles legacy migration from AA_ADDITIONAL_URLS.
     """
-    import hashlib  # noqa: PLC0415
+    import hashlib
 
-    from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS  # noqa: PLC0415
-    from shelfmark.core.utils import normalize_http_url  # noqa: PLC0415
+    from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS
+    from shelfmark.core.utils import normalize_http_url
 
     def _normalize_list(values: list[str]) -> list[str]:
         out: list[str] = []
@@ -1130,7 +1130,7 @@ def execute_action(
         Dict with "success" (bool) and "message" (str).
 
     """
-    import inspect  # noqa: PLC0415
+    import inspect
 
     tab = get_settings_tab(tab_name)
     if not tab:
@@ -1166,7 +1166,7 @@ def _sync_metadata_provider_selection() -> None:
     the first enabled provider if the current selection is invalid.
     """
     try:
-        from shelfmark.metadata_providers import sync_metadata_provider_selection  # noqa: PLC0415
+        from shelfmark.metadata_providers import sync_metadata_provider_selection
 
         sync_metadata_provider_selection()
     except ImportError:
@@ -1180,7 +1180,7 @@ def _apply_dns_settings(config: "Config") -> None:
     a container restart.
     """
     try:
-        from shelfmark.download import network  # noqa: PLC0415
+        from shelfmark.download import network
 
         provider = config.get("CUSTOM_DNS", "auto")
         use_doh = config.get("USE_DOH", False)
@@ -1195,7 +1195,7 @@ def _apply_dns_settings(config: "Config") -> None:
         network.set_dns_provider(provider, manual_servers, use_doh=use_doh)
     except ImportError:
         pass  # Network module not available
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.warning("Failed to apply DNS settings: %s", e)
 
 
@@ -1206,13 +1206,13 @@ def _apply_aa_mirror_settings(config: "Config") -> None:
     without requiring a container restart.
     """
     try:
-        from shelfmark.download import network  # noqa: PLC0415
+        from shelfmark.download import network
 
         # Reload AA mirror list and configured base URL from refreshed config.
         network.init_aa(force=True)
     except ImportError:
         pass  # Network module not available
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.warning("Failed to apply AA mirror settings: %s", e)
 
 
@@ -1297,7 +1297,7 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
         # Refresh the config singleton so live settings take effect immediately
         config_obj = None
         try:
-            from shelfmark.core.config import config as config_obj  # noqa: PLC0415
+            from shelfmark.core.config import config as config_obj
 
             config_obj.refresh()
         except ImportError:
@@ -1319,12 +1319,12 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
             and "CERTIFICATE_VALIDATION" in values_to_save
         ):
             try:
-                from shelfmark.download.network import (  # noqa: PLC0415
+                from shelfmark.download.network import (
                     _apply_ssl_warning_suppression,
                 )
 
                 _apply_ssl_warning_suppression()
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 logger.warning("Failed to apply certificate validation setting: %s", e)
 
         # Apply AA mirror settings changes live (mirrors tab)

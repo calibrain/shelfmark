@@ -88,7 +88,7 @@ class RTorrentClient(DownloadClient):
         """Test connection to rTorrent."""
         try:
             version = self._rpc.system.client_version()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to rTorrent {version}"
@@ -217,7 +217,7 @@ class RTorrentClient(DownloadClient):
 
             try:
                 state = int(state)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 state = 0
 
             complete = bool(complete)
@@ -306,7 +306,7 @@ class RTorrentClient(DownloadClient):
         """
         try:
             return self._get_torrent_path(download_id)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             error_type = type(e).__name__
             logger.debug("rTorrent get_download_path failed (%s): %s", error_type, e)
             return None
@@ -324,9 +324,9 @@ class RTorrentClient(DownloadClient):
                 status = self.get_status(torrent_info.info_hash)
                 if status.state != DownloadStatus.error("").state:
                     return (torrent_info.info_hash, status)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.debug("Error checking for existing torrent: %s", e)
             return None
         else:
@@ -336,7 +336,7 @@ class RTorrentClient(DownloadClient):
         """Get the download directory from rTorrent config."""
         try:
             return self._rpc.directory.default()
-        except Exception:  # noqa: BLE001
+        except Exception:
             return "/downloads"
 
     def _get_torrent_path(self, download_id: str) -> str | None:
@@ -358,7 +358,7 @@ class RTorrentClient(DownloadClient):
             if not details:
                 return None
             path = details[0][0]
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         else:
             return path or None

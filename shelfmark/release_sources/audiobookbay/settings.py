@@ -24,7 +24,7 @@ def audiobookbay_config_settings() -> list[SettingsField]:
         TextField(
             key="ABB_HOSTNAME",
             label="Hostname",
-            description="AudiobookBay domain (e.g., audiobookbay.lu, audiobookbay.is). Required to enable searches.",  # noqa: E501
+            description="AudiobookBay domain (e.g., audiobookbay.lu, audiobookbay.is). Required to enable searches.",
             default="",
             required=True,
             show_when={"field": "ABB_ENABLED", "value": True},
@@ -41,7 +41,7 @@ def audiobookbay_config_settings() -> list[SettingsField]:
         CheckboxField(
             key="ABB_EXACT_PHRASE",
             label="Prefer Exact-Phrase Search",
-            description="Wrap generated queries in quotes for stricter matching. If no results are found, Shelfmark retries without quotes.",  # noqa: E501
+            description="Wrap generated queries in quotes for stricter matching. If no results are found, Shelfmark retries without quotes.",
             show_when={"field": "ABB_ENABLED", "value": True},
         ),
         NumberField(

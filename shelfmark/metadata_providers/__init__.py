@@ -514,7 +514,7 @@ def is_provider_registered(provider_name: str) -> bool:
 
 def is_provider_enabled(provider_name: str) -> bool:
     """Check if a provider is enabled in settings."""
-    from shelfmark.core.config import config as app_config  # noqa: PLC0415
+    from shelfmark.core.config import config as app_config
 
     # Refresh config to get latest settings
     app_config.refresh()
@@ -534,7 +534,7 @@ def get_configured_provider(
     user_id: int | None = None,
 ) -> MetadataProvider | None:
     """Get the currently configured metadata provider for the content type."""
-    from shelfmark.core.config import config as app_config  # noqa: PLC0415
+    from shelfmark.core.config import config as app_config
 
     # Refresh config to ensure we have the latest saved settings
     app_config.refresh()
@@ -570,7 +570,7 @@ def get_configured_provider_name(
     fallback_to_main: bool = True,
 ) -> str:
     """Get the configured metadata provider name for a content type."""
-    from shelfmark.core.config import config as app_config  # noqa: PLC0415
+    from shelfmark.core.config import config as app_config
 
     app_config.refresh()
 
@@ -654,7 +654,7 @@ def get_provider_default_sort(
     user_id: int | None = None,
 ) -> str:
     """Get the default sort order for a metadata provider."""
-    from shelfmark.core.config import config as app_config  # noqa: PLC0415
+    from shelfmark.core.config import config as app_config
 
     if provider_name is None:
         provider_name = get_configured_provider_name(user_id=user_id)
@@ -674,8 +674,8 @@ def sync_metadata_provider_selection() -> None:
     auto-select the first enabled provider. This should be called after
     enabling/disabling a provider.
     """
-    from shelfmark.core.config import config as app_config  # noqa: PLC0415
-    from shelfmark.core.settings_registry import load_config_file, save_config_file  # noqa: PLC0415
+    from shelfmark.core.config import config as app_config
+    from shelfmark.core.settings_registry import load_config_file, save_config_file
 
     app_config.refresh()
 
@@ -700,10 +700,10 @@ def sync_metadata_provider_selection() -> None:
 # Import provider implementations to trigger registration
 # These must be imported AFTER the base classes and registry are defined
 with suppress(ImportError):
-    from shelfmark.metadata_providers import hardcover  # noqa: F401
+    from shelfmark.metadata_providers import hardcover as hardcover
 
 with suppress(ImportError):
-    from shelfmark.metadata_providers import openlibrary  # noqa: F401
+    from shelfmark.metadata_providers import openlibrary as openlibrary
 
 with suppress(ImportError):
-    from shelfmark.metadata_providers import googlebooks  # noqa: F401
+    from shelfmark.metadata_providers import googlebooks as googlebooks

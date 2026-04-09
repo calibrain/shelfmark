@@ -41,7 +41,7 @@ def test_email_connection(
         test_smtp_connection(smtp_config)
     except EmailOutputError as exc:
         return {"success": False, "message": str(exc)}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return {"success": False, "message": f"SMTP test failed: {exc}"}
     else:
         return {"success": True, "message": "Connected to SMTP server"}

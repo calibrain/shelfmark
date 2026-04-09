@@ -150,7 +150,7 @@ def extract_torrent_info(
                         is_magnet=True,
                         magnet_url=text_content,
                     )
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass  # Not text, continue with torrent parsing
 
         info_hash = extract_info_hash_from_torrent(torrent_data) or expected_hash
@@ -161,7 +161,7 @@ def extract_torrent_info(
         return TorrentInfo(
             info_hash=info_hash, torrent_data=torrent_data, is_magnet=False
         )
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.debug("Could not fetch torrent file: %s", e)
         return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
 
@@ -262,7 +262,7 @@ def extract_info_hash_from_torrent(torrent_data: bytes) -> str | None:
         if isinstance(info_dict, dict) and b"pieces" in info_dict:
             return hashlib.sha1(info_bencoded).hexdigest().lower()
         return hashlib.sha256(info_bencoded).hexdigest().lower()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.debug("Failed to parse torrent file: %s", e)
         return None
 
@@ -292,7 +292,7 @@ def extract_hash_from_magnet(magnet_url: str) -> str | None:
             padded = raw_value.upper() + "=" * (-len(raw_value) % 8)
             try:
                 data = base64.b32decode(padded, casefold=True)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return None
 
         if not data:
@@ -326,7 +326,7 @@ def extract_hash_from_magnet(magnet_url: str) -> str | None:
             if re.match(r"^[A-Z2-7]{32}$", hash_value.upper()):
                 try:
                     return base64.b32decode(hash_value.upper()).hex().lower()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     pass
 
             # Fallback: return as-is

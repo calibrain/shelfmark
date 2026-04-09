@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 
-from shelfmark.core.config import config  # noqa: F401 (compat patch target in tests)
+from shelfmark.core.config import config as config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
 from shelfmark.core.request_helpers import normalize_optional_text

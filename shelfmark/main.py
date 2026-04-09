@@ -9,6 +9,7 @@ import time
 from contextlib import suppress
 from datetime import datetime, timedelta
 from functools import wraps
+from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, NoReturn
 
@@ -140,8 +141,8 @@ logger.info("Socket.IO CORS allowed origins: %s", socketio_cors_allowed_origins)
 # This prevents a race condition where the download loop could try to process
 # a queued task before its handler (e.g., prowlarr) is registered.
 try:
-    import shelfmark.metadata_providers
-    import shelfmark.release_sources  # noqa: F401
+    import_module("shelfmark.metadata_providers")
+    import_module("shelfmark.release_sources")
     logger.debug("Plugin modules loaded successfully")
 except ImportError as e:
     logger.warning("Failed to import plugin modules: %s", e)
@@ -166,7 +167,7 @@ try:
     user_db.initialize()
     download_history_service = DownloadHistoryService(_user_db_path)
     activity_view_state_service = ActivityViewStateService(_user_db_path)
-    import shelfmark.config.users_settings as _  # noqa: F401 - registers users tab
+    import_module("shelfmark.config.users_settings")
     from shelfmark.core.admin_routes import register_admin_routes
     from shelfmark.core.oidc_routes import register_oidc_routes
     from shelfmark.core.self_user_routes import register_self_user_routes
@@ -2737,13 +2738,13 @@ def api_settings_get_all() -> Response | tuple[Response, int]:
 
     """
     try:
-        import shelfmark.config.notifications_settings
-        import shelfmark.config.security
+        import_module("shelfmark.config.notifications_settings")
+        import_module("shelfmark.config.security")
 
         # Ensure settings are registered by importing settings modules
         # This triggers the @register_settings decorators
-        import shelfmark.config.settings
-        import shelfmark.config.users_settings  # noqa: F401
+        import_module("shelfmark.config.settings")
+        import_module("shelfmark.config.users_settings")
         from shelfmark.core.settings_registry import serialize_all_settings
 
         data = serialize_all_settings(include_values=True)
@@ -2766,12 +2767,12 @@ def api_settings_get_tab(tab_name: str) -> Response | tuple[Response, int]:
 
     """
     try:
-        import shelfmark.config.notifications_settings
-        import shelfmark.config.security
+        import_module("shelfmark.config.notifications_settings")
+        import_module("shelfmark.config.security")
 
         # Ensure settings are registered
-        import shelfmark.config.settings
-        import shelfmark.config.users_settings  # noqa: F401
+        import_module("shelfmark.config.settings")
+        import_module("shelfmark.config.users_settings")
         from shelfmark.core.settings_registry import (
             get_settings_tab,
             serialize_tab,
@@ -2803,12 +2804,12 @@ def api_settings_update_tab(tab_name: str) -> Response | tuple[Response, int]:
 
     """
     try:
-        import shelfmark.config.notifications_settings
-        import shelfmark.config.security
+        import_module("shelfmark.config.notifications_settings")
+        import_module("shelfmark.config.security")
 
         # Ensure settings are registered
-        import shelfmark.config.settings
-        import shelfmark.config.users_settings  # noqa: F401
+        import_module("shelfmark.config.settings")
+        import_module("shelfmark.config.users_settings")
         from shelfmark.core.settings_registry import (
             get_settings_tab,
             update_settings,
@@ -2853,12 +2854,12 @@ def api_settings_execute_action(tab_name: str, action_key: str) -> Response | tu
 
     """
     try:
-        import shelfmark.config.notifications_settings
-        import shelfmark.config.security
+        import_module("shelfmark.config.notifications_settings")
+        import_module("shelfmark.config.security")
 
         # Ensure settings are registered
-        import shelfmark.config.settings
-        import shelfmark.config.users_settings  # noqa: F401
+        import_module("shelfmark.config.settings")
+        import_module("shelfmark.config.users_settings")
         from shelfmark.core.settings_registry import execute_action
 
         # Get current form values if provided (for testing with unsaved values)
@@ -2890,7 +2891,7 @@ def api_onboarding_get() -> Response | tuple[Response, int]:
     """
     try:
         # Ensure settings are registered
-        import shelfmark.config.settings  # noqa: F401
+        import_module("shelfmark.config.settings")
         from shelfmark.core.onboarding import get_onboarding_config
 
         config = get_onboarding_config()
@@ -2914,7 +2915,7 @@ def api_onboarding_save() -> Response | tuple[Response, int]:
     """
     try:
         # Ensure settings are registered
-        import shelfmark.config.settings  # noqa: F401
+        import_module("shelfmark.config.settings")
         from shelfmark.core.onboarding import save_onboarding_settings
 
         data = request.get_json()

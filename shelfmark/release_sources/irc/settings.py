@@ -17,7 +17,7 @@ from shelfmark.core.settings_registry import (
 
 def _clear_irc_cache() -> dict[str, str | int | bool]:
     """Clear all cached IRC search results."""
-    from shelfmark.release_sources.irc.cache import clear_cache, get_cache_stats  # noqa: PLC0415
+    from shelfmark.release_sources.irc.cache import clear_cache, get_cache_stats
 
     stats = get_cache_stats()
     count = clear_cache()
@@ -66,7 +66,7 @@ def irc_settings() -> list[SettingsField]:
             key="IRC_USE_TLS",
             label="Use TLS",
             default=True,
-            description="Enable TLS/SSL encryption for the IRC connection. Disable for servers that don't support TLS.",  # noqa: E501
+            description="Enable TLS/SSL encryption for the IRC connection. Disable for servers that don't support TLS.",
         ),
         TextField(
             key="IRC_CHANNEL",

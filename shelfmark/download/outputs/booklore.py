@@ -299,7 +299,7 @@ def _post_process_booklore(
     *,
     preserve_source_on_failure: bool = False,
 ) -> str | None:
-    from shelfmark.download.postprocess.pipeline import (  # noqa: PLC0415
+    from shelfmark.download.postprocess.pipeline import (
         CustomScriptContext,
         OutputPlan,
         cleanup_output_staging,
@@ -453,7 +453,7 @@ def _post_process_booklore(
         logger.warning("Task %s: Booklore upload failed: %s", task.task_id, e)
         status_callback("error", str(e))
         return None
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         logger.error_trace(
             "Task %s: unexpected error uploading to Booklore: %s", task.task_id, e
         )

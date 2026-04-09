@@ -131,7 +131,7 @@ def build_user_notification_test_response(
     user_id: int,
     payload: object,
 ) -> tuple[dict[str, Any], int]:
-    from shelfmark.core.config import config as app_config  # noqa: PLC0415
+    from shelfmark.core.config import config as app_config
 
     routes_input = app_config.get("USER_NOTIFICATION_ROUTES", [], user_id=user_id)
     if isinstance(payload, dict):
@@ -168,7 +168,7 @@ def register_admin_settings_routes(
     @app.route("/api/admin/booklore-options", methods=["GET"])
     @require_admin
     def admin_booklore_options() -> Response | tuple[Response, int]:
-        from shelfmark.core import admin_routes  # noqa: PLC0415
+        from shelfmark.core import admin_routes
 
         return jsonify(
             {
@@ -280,8 +280,8 @@ def register_admin_settings_routes(
         if not user:
             return jsonify({"error": "User not found"}), 404
 
-        from shelfmark.core.config import config as app_config  # noqa: PLC0415
-        from shelfmark.core.settings_registry import is_value_from_env  # noqa: PLC0415
+        from shelfmark.core.config import config as app_config
+        from shelfmark.core.settings_registry import is_value_from_env
 
         field_map = _get_settings_registry().get_user_overridable_fields()
         user_settings = user_db.get_user_settings(user_id)

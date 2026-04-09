@@ -443,11 +443,9 @@ def get_all_clients() -> dict[str, list[type[DownloadClient]]]:
 
 # Import client implementations to trigger registration
 # These imports are at the bottom to avoid circular imports
-from shelfmark.download.clients import (
-    deluge,  # noqa: F401
-    nzbget,  # noqa: F401
-    qbittorrent,  # noqa: F401
-    rtorrent,  # noqa: F401
-    sabnzbd,  # noqa: F401
-    transmission,  # noqa: F401
-)
+from shelfmark.download.clients import deluge as deluge
+from shelfmark.download.clients import nzbget as nzbget
+from shelfmark.download.clients import qbittorrent as qbittorrent
+from shelfmark.download.clients import rtorrent as rtorrent
+from shelfmark.download.clients import sabnzbd as sabnzbd
+from shelfmark.download.clients import transmission as transmission

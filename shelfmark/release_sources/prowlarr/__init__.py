@@ -8,21 +8,27 @@ Includes:
 - ProwlarrHandler: Download handling via external clients
 """
 
+from importlib import import_module
+
 # Import submodules to trigger decorator registration
 from shelfmark.release_sources.prowlarr import (
-    handler,  # noqa: F401
-    settings,  # noqa: F401
-    source,  # noqa: F401
+    handler as handler,
+)
+from shelfmark.release_sources.prowlarr import (
+    settings as settings,
+)
+from shelfmark.release_sources.prowlarr import (
+    source as source,
 )
 
 # Import shared download clients/settings to trigger registration.
 # This is in a try/except to handle optional dependencies gracefully.
 try:
-    from shelfmark.download import clients  # noqa: F401
-    from shelfmark.download.clients import settings as client_settings  # noqa: F401
+    import_module("shelfmark.download.clients")
+    import_module("shelfmark.download.clients.settings")
 except ImportError as e:
     import logging
 
     logging.getLogger(__name__).debug(
-        logging.getLogger(__name__).debug("Download clients not loaded: %s", e)
+        "Download clients not loaded: %s", e
     )

@@ -126,7 +126,7 @@ def _apply_ssl_warning_suppression() -> None:
     default case is a complete no-op (zero behavioural change for users who
     never touch the setting).
     """
-    global _ssl_warnings_suppressed  # noqa: PLW0603
+    global _ssl_warnings_suppressed
     import urllib3
 
     mode = app_config.get("CERTIFICATE_VALIDATION", "enabled")

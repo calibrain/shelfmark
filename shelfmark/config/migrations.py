@@ -101,7 +101,7 @@ def migrate_security_settings(
                 save_users_config({"RESTRICT_SETTINGS_TO_ADMIN": legacy_restrict})
                 migrated_users = True
                 logger.info(
-                    "Migrated legacy settings-admin restriction to users.RESTRICT_SETTINGS_TO_ADMIN=%s",  # noqa: E501
+                    "Migrated legacy settings-admin restriction to users.RESTRICT_SETTINGS_TO_ADMIN=%s",
                 )
 
         for deprecated_key in _DEPRECATED_SETTINGS_RESTRICTION_KEYS:

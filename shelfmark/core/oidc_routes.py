@@ -36,7 +36,7 @@ def _normalize_claims(raw_claims: object) -> dict[str, Any]:
         return raw_claims.to_dict()  # type: ignore[no-any-return]
     try:
         return dict(raw_claims)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return {}
 
 
@@ -218,14 +218,14 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
                     metadata = client.load_server_metadata()
                     if isinstance(metadata, dict):
                         provider_issuer = str(metadata.get("issuer", ""))
-                except Exception as metadata_error:  # noqa: BLE001
+                except Exception as metadata_error:
                     logger.debug(
                         "OIDC metadata lookup failed during claim diagnostics: %s",
                         metadata_error,
                     )
 
                 logger.exception(
-                    "OIDC callback claim validation failed: claim=%s discovery_url=%s provider_issuer=%s",  # noqa: E501
+                    "OIDC callback claim validation failed: claim=%s discovery_url=%s provider_issuer=%s",
                     discovery_url or "<unset>",
                     provider_issuer or "<unknown>",
                 )

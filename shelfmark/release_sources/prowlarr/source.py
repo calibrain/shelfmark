@@ -490,7 +490,7 @@ class ProwlarrSource(ReleaseSource):
                 default_indexers = (
                     sorted(selected_indexer_names) if selected_indexer_names else None
                 )
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 logger.warning("Failed to fetch indexer list for column config: %s", e)
 
         return ReleaseColumnConfig(
@@ -625,7 +625,7 @@ class ProwlarrSource(ReleaseSource):
                 if idx_id is not None:
                     with suppress(TypeError, ValueError):
                         ids.append(int(idx_id))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.warning("Failed to resolve indexer names to IDs: %s", e)
             return None
         else:
@@ -643,7 +643,7 @@ class ProwlarrSource(ReleaseSource):
 
         try:
             enabled_indexers = client.get_enabled_indexers_detailed()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             logger.warning("Failed to load enabled Prowlarr indexers: %s", e)
             return []
 
@@ -805,7 +805,7 @@ class ProwlarrSource(ReleaseSource):
                 if not raw_results and categories and auto_expand_enabled:
                     _check_timeout()
                     logger.info(
-                        "Prowlarr: no results for query '%s' with category filter, auto-expanding search",  # noqa: E501
+                        "Prowlarr: no results for query '%s' with category filter, auto-expanding search",
                     )
                     raw_results = search_indexers(
                         query=query, cats=None, enriched_query=enriched_query

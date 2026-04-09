@@ -32,7 +32,7 @@ def is_within_tmp_dir(path: Path) -> bool:
             and tmp_dir not in path.parents
         ):
             return False
-    except Exception:  # noqa: BLE001
+    except Exception:
         # Fall back to the slower resolve-based check below.
         pass
 

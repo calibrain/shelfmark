@@ -1,5 +1,6 @@
 """Shared helpers for user-overridable settings metadata and payloads."""
 
+from importlib import import_module
 from types import ModuleType
 from typing import Any
 
@@ -9,11 +10,11 @@ from shelfmark.core.user_db import UserDB
 
 def get_settings_registry() -> ModuleType:
     # Ensure settings modules are loaded before reading registry metadata.
-    import shelfmark.config.notifications_settings  # noqa: PLC0415
-    import shelfmark.config.security  # noqa: PLC0415
-    import shelfmark.config.settings  # noqa: PLC0415
-    import shelfmark.config.users_settings  # noqa: F401, PLC0415
-    from shelfmark.core import settings_registry  # noqa: PLC0415
+    import_module("shelfmark.config.notifications_settings")
+    import_module("shelfmark.config.security")
+    import_module("shelfmark.config.settings")
+    import_module("shelfmark.config.users_settings")
+    from shelfmark.core import settings_registry
 
     return settings_registry
 
@@ -30,7 +31,7 @@ def get_ordered_user_overridable_fields(tab_name: str) -> list[tuple[str, Any]]:
 def build_user_preferences_payload(
     user_db: UserDB, user_id: int, tab_name: str
 ) -> dict[str, Any]:
-    from shelfmark.core.config import config as app_config  # noqa: PLC0415
+    from shelfmark.core.config import config as app_config
 
     settings_registry = get_settings_registry()
     ordered_fields = get_ordered_user_overridable_fields(tab_name)

@@ -45,12 +45,12 @@ def _build_processing_plan(
     task: DownloadTask,
     status_callback: StatusCallback,
 ) -> _ProcessingPlan | None:
-    from shelfmark.download.postprocess.pipeline import (  # noqa: PLC0415
+    from shelfmark.download.postprocess.pipeline import (
         build_output_plan,
         get_final_destination,
         validate_destination,
     )
-    from shelfmark.download.postprocess.policy import get_file_organization  # noqa: PLC0415
+    from shelfmark.download.postprocess.policy import get_file_organization
 
     is_audiobook = check_audiobook(task.content_type)
     organization_mode = get_file_organization(is_audiobook=is_audiobook)
@@ -93,7 +93,7 @@ def process_folder_output(
     preserve_source_on_failure: bool = False,
 ) -> str | None:
     """Post-process download to the configured folder destination."""
-    from shelfmark.download.postprocess.pipeline import (  # noqa: PLC0415
+    from shelfmark.download.postprocess.pipeline import (
         CustomScriptContext,
         CustomScriptTransferSummary,
         cleanup_output_staging,
@@ -110,7 +110,7 @@ def process_folder_output(
         return None
 
     logger.debug(
-        "Processing plan for task %s: mode=%s destination=%s hardlink=%s stage_action=%s extract_archives=%s",  # noqa: E501
+        "Processing plan for task %s: mode=%s destination=%s hardlink=%s stage_action=%s extract_archives=%s",
         plan.organization_mode,
         plan.destination,
         plan.use_hardlink,

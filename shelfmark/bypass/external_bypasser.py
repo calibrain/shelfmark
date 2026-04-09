@@ -128,7 +128,7 @@ def get_bypassed_page(
     cancel_flag: Event | None = None,
 ) -> str | None:
     """Fetch HTML via external bypasser with retries and mirror rotation."""
-    from shelfmark.download import network as network_module  # noqa: PLC0415
+    from shelfmark.download import network as network_module
 
     sel = selector or network_module.AAMirrorSelector()
 
