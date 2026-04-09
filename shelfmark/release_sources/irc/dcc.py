@@ -99,7 +99,7 @@ def download_dcc(
         sock.settimeout(timeout)
         sock.connect(offer.address)
     except OSError as e:
-        raise DCCConnectionError(f"Failed to connect to {offer.ip}:{offer.port}: {e}")
+        raise DCCConnectionError(f"Failed to connect to {offer.ip}:{offer.port}: {e}") from e
 
     try:
         received = 0
@@ -115,8 +115,8 @@ def download_dcc(
                 # Read chunk
                 try:
                     chunk = sock.recv(BUFFER_SIZE)
-                except TimeoutError:
-                    raise DCCError(f"Timeout reading from {offer.ip}:{offer.port}")
+                except TimeoutError as e:
+                    raise DCCError(f"Timeout reading from {offer.ip}:{offer.port}") from e
 
                 if not chunk:
                     # Connection closed prematurely

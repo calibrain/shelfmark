@@ -404,7 +404,7 @@ class QBittorrentClient(DownloadClient):
                     t
                     for t in torrents
                     if isinstance(getattr(t, "hash", None), str)
-                    and _hashes_match(getattr(t, "hash"), download_id)
+                    and _hashes_match(t.hash, download_id)
                 ),
                 None,
             )
@@ -517,7 +517,7 @@ class QBittorrentClient(DownloadClient):
                     t
                     for t in torrents
                     if isinstance(getattr(t, "hash", None), str)
-                    and _hashes_match(getattr(t, "hash"), download_id)
+                    and _hashes_match(t.hash, download_id)
                 ),
                 None,
             )
@@ -631,12 +631,12 @@ class QBittorrentClient(DownloadClient):
                     t
                     for t in torrents
                     if isinstance(getattr(t, "hash", None), str)
-                    and _hashes_match(getattr(t, "hash"), torrent_info.info_hash)
+                    and _hashes_match(t.hash, torrent_info.info_hash)
                 ),
                 None,
             )
             if torrent and isinstance(getattr(torrent, "hash", None), str):
-                torrent_hash = getattr(torrent, "hash")
+                torrent_hash = torrent.hash
                 return (torrent_hash.lower(), self.get_status(torrent_hash.lower()))
 
             return None

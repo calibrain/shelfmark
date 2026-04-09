@@ -717,7 +717,11 @@ def register_request_routes(
 
         results_by_index: dict[int, dict[str, Any]] = {}
 
-        for (index, prepared), created in zip(request_prepared_items, created_rows):
+        for (index, prepared), created in zip(
+            request_prepared_items,
+            created_rows,
+            strict=True,
+        ):
             event_payload = {
                 "request_id": created["id"],
                 "status": created["status"],

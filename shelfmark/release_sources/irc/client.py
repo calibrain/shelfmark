@@ -113,7 +113,7 @@ class IRCClient:
             self._socket = sock
 
         except OSError as e:
-            raise IRCConnectionError(f"Failed to connect: {e}")
+            raise IRCConnectionError(f"Failed to connect: {e}") from e
 
         # Send authentication (USER before NICK per IRC protocol)
         self._send(f"USER {self.nick} 0 * :{self.nick}")

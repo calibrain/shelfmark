@@ -911,7 +911,7 @@ def concurrent_download_loop() -> None:
                 # Check for stalled downloads (no activity in STALL_TIMEOUT seconds)
                 current_time = time.time()
                 with _progress_lock:
-                    for future, task_id in list(active_futures.items()):
+                    for _future, task_id in list(active_futures.items()):
                         if task_id in stalled_tasks:
                             continue
                         last_active = _last_activity.get(task_id, current_time)

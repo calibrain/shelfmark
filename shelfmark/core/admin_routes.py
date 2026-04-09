@@ -37,6 +37,13 @@ from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
 
+__all__ = [
+    "get_booklore_library_options",
+    "get_booklore_path_options",
+    "register_admin_routes",
+    "validate_user_settings",
+]
+
 
 def _get_user_edit_capabilities(
     user: dict[str, Any],

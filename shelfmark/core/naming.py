@@ -211,8 +211,10 @@ def build_library_path(
     # Verify the path is within the base directory
     try:
         full_path.relative_to(base)
-    except ValueError:
-        raise ValueError("Path traversal detected: template would escape library directory")
+    except ValueError as exc:
+        raise ValueError(
+            "Path traversal detected: template would escape library directory"
+        ) from exc
 
     if extension:
         ext = extension.lstrip('.')

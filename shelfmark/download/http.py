@@ -215,10 +215,10 @@ def html_get_page(
                 heartbeat_stop = Event()
                 heartbeat_thread: Thread | None = None
                 if status_callback:
-                    def _heartbeat() -> None:
+                    def _heartbeat(stop_event: Event = heartbeat_stop) -> None:
                         # Keep the download "alive" during long bypass operations so the orchestrator
                         # doesn't flag it as stalled.
-                        while not heartbeat_stop.wait(timeout=30):
+                        while not stop_event.wait(timeout=30):
                             if cancel_flag and cancel_flag.is_set():
                                 return
                             try:

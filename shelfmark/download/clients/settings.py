@@ -120,7 +120,7 @@ def _test_transmission_connection(current_values: dict[str, Any] | None = None) 
                 client = Client(**client_kwargs)
             if protocol == "https" and hasattr(client, "protocol"):
                 try:
-                    setattr(client, "protocol", protocol)
+                    client.protocol = protocol
                 except Exception:
                     pass
 

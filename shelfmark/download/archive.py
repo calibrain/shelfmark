@@ -205,9 +205,9 @@ def _extract_zip(archive_path: Path, output_dir: Path) -> tuple[list[Path], list
             return _extract_files_from_archive(zf, output_dir), []
 
     except zipfile.BadZipFile as e:
-        raise CorruptedArchiveError(f"Invalid or corrupted ZIP: {e}")
+        raise CorruptedArchiveError(f"Invalid or corrupted ZIP: {e}") from e
     except PermissionError as e:
-        raise ArchiveExtractionError(f"Permission denied: {e}")
+        raise ArchiveExtractionError(f"Permission denied: {e}") from e
 
 
 def _extract_rar(archive_path: Path, output_dir: Path) -> tuple[list[Path], list[str]]:
@@ -227,10 +227,9 @@ def _extract_rar(archive_path: Path, output_dir: Path) -> tuple[list[Path], list
             return _extract_files_from_archive(rf, output_dir), []
 
     except rarfile.BadRarFile as e:
-        raise CorruptedArchiveError(f"Invalid or corrupted RAR: {e}")
-    except rarfile.RarCannotExec:
-        raise ArchiveExtractionError("unrar binary not found - install unrar package")
+        raise CorruptedArchiveError(f"Invalid or corrupted RAR: {e}") from e
+    except rarfile.RarCannotExec as e:
+        raise ArchiveExtractionError("unrar binary not found - install unrar package") from e
     except PermissionError as e:
-        raise ArchiveExtractionError(f"Permission denied: {e}")
-
+        raise ArchiveExtractionError(f"Permission denied: {e}") from e
 

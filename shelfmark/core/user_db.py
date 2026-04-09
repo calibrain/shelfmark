@@ -297,7 +297,7 @@ class UserDB:
                 user_id = cursor.lastrowid
                 return self._get_user_by_id(conn, user_id)
             except sqlite3.IntegrityError as e:
-                raise ValueError(f"User already exists: {e}")
+                raise ValueError(f"User already exists: {e}") from e
             finally:
                 conn.close()
 

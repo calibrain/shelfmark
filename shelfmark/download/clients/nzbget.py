@@ -170,7 +170,7 @@ class NZBGetClient(DownloadClient):
             raise Exception("NZBGet returned invalid ID")
         except requests.RequestException as e:
             logger.error(f"Failed to fetch NZB from URL: {e}")
-            raise Exception(f"Failed to fetch NZB: {e}")
+            raise RuntimeError(f"Failed to fetch NZB: {e}") from e
         except Exception as e:
             logger.error(f"NZBGet add failed: {e}")
             raise

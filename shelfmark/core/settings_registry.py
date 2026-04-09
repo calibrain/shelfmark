@@ -141,7 +141,7 @@ class CustomComponentField:
     def get_bind_keys(self) -> list[str]:
         if self.bind_keys:
             return self.bind_keys
-        return [getattr(f, "key") for f in self.value_fields if getattr(f, "key", None)]
+        return [f.key for f in self.value_fields if getattr(f, "key", None)]
 
 
 @dataclass

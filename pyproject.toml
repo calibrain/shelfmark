@@ -30,7 +30,7 @@ line-length = 100
 extend-exclude = [".local"]
 
 [tool.ruff.lint]
-select = ["F", "I", "UP"]
+select = ["F", "I", "UP", "B"]
 ignore = ["UP035"]
 
 [tool.vulture]

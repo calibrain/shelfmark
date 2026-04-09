@@ -115,7 +115,7 @@ class TransmissionClient(DownloadClient):
             # Some versions expose protocol as an attribute rather than kwarg.
             if protocol == "https" and hasattr(self._client, "protocol"):
                 try:
-                    setattr(self._client, "protocol", protocol)
+                    self._client.protocol = protocol
                 except Exception:
                     pass
         _apply_transmission_ssl_verify(self._client, url)

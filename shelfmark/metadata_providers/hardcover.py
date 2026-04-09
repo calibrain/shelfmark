@@ -2317,20 +2317,20 @@ class HardcoverProvider(MetadataProvider):
 
             return data.get("data")
 
-        except requests.Timeout:
+        except requests.Timeout as e:
             logger.warning("Hardcover API request timed out")
             if raise_on_error:
-                raise RuntimeError("Hardcover API request timed out")
+                raise RuntimeError("Hardcover API request timed out") from e
             return None
         except requests.HTTPError as e:
             if e.response.status_code == 401:
                 logger.error("Hardcover API key is invalid")
                 if raise_on_error:
-                    raise RuntimeError("Hardcover API key is invalid")
+                    raise RuntimeError("Hardcover API key is invalid") from e
             else:
                 logger.error(f"Hardcover API HTTP error: {e}")
                 if raise_on_error:
-                    raise RuntimeError(f"Hardcover API HTTP error: {e}")
+                    raise RuntimeError(f"Hardcover API HTTP error: {e}") from e
             return None
         except HardcoverGraphQLError:
             raise
@@ -2365,7 +2365,7 @@ class HardcoverProvider(MetadataProvider):
 
             # If we have parallel arrays, filter to only "Author" contributions
             if contribution_types and len(contribution_types) == len(author_names):
-                for name, contrib_type in zip(author_names, contribution_types):
+                for name, contrib_type in zip(author_names, contribution_types, strict=True):
                     if contrib_type == "Author":
                         authors.append(name)
             elif author_names:
