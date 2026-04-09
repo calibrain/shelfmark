@@ -287,8 +287,8 @@ def search_audiobookbay(
             # Rate limiting delay between pages
             if page < max_pages and rate_limit_delay > 0:
                 time.sleep(rate_limit_delay)
-        except Exception as e:
-            logger.error(f"Unexpected error on page {page}: {e}")
+        except Exception:
+            logger.exception("Unexpected error on page %s", page)
             break
     
     logger.info(f"Found {len(results)} results for query '{query}'")
@@ -388,10 +388,12 @@ def extract_magnet_link(
             for tracker in trackers
         )
         magnet_link = f"magnet:?xt=urn:btih:{info_hash}&{tracker_params}"
-        
+
         logger.debug(f"Generated Magnet Link: {magnet_link[:100]}...")
-        return magnet_link
         
-    except Exception as e:
-        logger.error(f"Failed to extract magnet link: {e}")
+    except Exception:
+        logger.exception("Failed to extract magnet link")
         return None
+
+    else:
+        return magnet_link

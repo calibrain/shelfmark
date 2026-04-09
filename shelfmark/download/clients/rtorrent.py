@@ -39,6 +39,10 @@ def _create_rtorrent_server_proxy(url: str) -> Any:
     return xmlrpc_client.ServerProxy(url)
 
 
+def _raise_runtime_error(message: str):
+    raise RuntimeError(message)
+
+
 @register_client("torrent")
 class RTorrentClient(DownloadClient):
     """rTorrent download client using xmlrpc."""
@@ -80,9 +84,10 @@ class RTorrentClient(DownloadClient):
         """Test connection to rTorrent."""
         try:
             version = self._rpc.system.client_version()
-            return True, f"Connected to rTorrent {version}"
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
+        else:
+            return True, f"Connected to rTorrent {version}"
 
     def add_download(
         self,
@@ -134,14 +139,15 @@ class RTorrentClient(DownloadClient):
 
             torrent_hash = torrent_info.info_hash or expected_hash
             if not torrent_hash:
-                raise Exception("Could not determine torrent hash from URL")
+                _raise_runtime_error("Could not determine torrent hash from URL")
 
             logger.debug(f"Added torrent to rTorrent: {torrent_hash}")
-            return torrent_hash
 
-        except Exception as e:
-            logger.error(f"rTorrent add failed: {e}")
+        except Exception:
+            logger.exception("rTorrent add failed")
             raise
+        else:
+            return torrent_hash
 
     def get_status(self, download_id: str) -> DownloadStatus:
         """
@@ -237,7 +243,7 @@ class RTorrentClient(DownloadClient):
 
         except Exception as e:
             error_type = type(e).__name__
-            logger.error(f"rTorrent get_status failed ({error_type}): {e}")
+            logger.exception(f"rTorrent get_status failed ({error_type})")
             return DownloadStatus.error(f"{error_type}: {e}")
 
     def remove(self, download_id: str, delete_files: bool = False) -> bool:
@@ -263,11 +269,12 @@ class RTorrentClient(DownloadClient):
                 f"Removed torrent from rTorrent: {download_id}"
                 + (" (with files)" if delete_files else "")
             )
-            return True
         except Exception as e:
             error_type = type(e).__name__
-            logger.error(f"rTorrent remove failed ({error_type}): {e}")
+            logger.exception(f"rTorrent remove failed ({error_type})")
             return False
+        else:
+            return True
 
     def get_download_path(self, download_id: str) -> str | None:
         """
@@ -301,10 +308,10 @@ class RTorrentClient(DownloadClient):
                     return (torrent_info.info_hash, status)
             except Exception:
                 pass
-
-            return None
         except Exception as e:
             logger.debug(f"Error checking for existing torrent: {e}")
+            return None
+        else:
             return None
 
     def _get_download_dir(self) -> str:
@@ -333,6 +340,7 @@ class RTorrentClient(DownloadClient):
             if not details:
                 return None
             path = details[0][0]
-            return path or None
         except Exception:
             return None
+        else:
+            return path or None

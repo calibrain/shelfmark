@@ -124,14 +124,14 @@ class IRCDownloadHandler(DownloadHandler):
             return str(staging_path)
 
         except DCCError as e:
-            logger.error(f"DCC error: {e}")
+            logger.exception("DCC error")
             status_callback("error", str(e))
             if client:
                 connection_manager.close_connection(client)
             return None
 
         except Exception as e:
-            logger.error(f"Download failed: {e}")
+            logger.exception("Download failed")
             status_callback("error", f"Download failed: {e}")
             if client:
                 connection_manager.close_connection(client)

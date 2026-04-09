@@ -565,9 +565,9 @@ class UserDB:
     ) -> dict[str, Any]:
         """Create a download request row and return the created record."""
         if not isinstance(book_data, dict):
-            raise ValueError("book_data must be an object")
+            raise TypeError("book_data must be an object")
         if release_data is not None and not isinstance(release_data, dict):
-            raise ValueError("release_data must be an object when provided")
+            raise TypeError("release_data must be an object when provided")
         if not content_type:
             raise ValueError("content_type is required")
 
@@ -743,7 +743,7 @@ class UserDB:
                 if "delivery_updated_at" in updates:
                     delivery_updated_at = updates["delivery_updated_at"]
                     if delivery_updated_at is not None and not isinstance(delivery_updated_at, str):
-                        raise ValueError("delivery_updated_at must be a string when provided")
+                        raise TypeError("delivery_updated_at must be a string when provided")
 
                 if "content_type" in updates and not updates["content_type"]:
                     raise ValueError("content_type is required")
@@ -753,12 +753,12 @@ class UserDB:
 
                 if "book_data" in updates:
                     if not isinstance(updates["book_data"], dict):
-                        raise ValueError("book_data must be an object")
+                        raise TypeError("book_data must be an object")
                     updates["book_data"] = self._serialize_json(updates["book_data"], "book_data")
 
                 if "release_data" in updates:
                     if updates["release_data"] is not None and not isinstance(updates["release_data"], dict):
-                        raise ValueError("release_data must be an object when provided")
+                        raise TypeError("release_data must be an object when provided")
                     updates["release_data"] = self._serialize_json(
                         updates["release_data"],
                         "release_data",

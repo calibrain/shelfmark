@@ -364,17 +364,19 @@ def _is_local_address(host_str: str) -> bool:
     # Check for private/loopback/link-local IP addresses
     try:
         addr = ipaddress.ip_address(host_str)
-        return addr.is_private or addr.is_loopback or addr.is_link_local
     except ValueError:
         return False
+    else:
+        return addr.is_private or addr.is_loopback or addr.is_link_local
 
 def _is_ip_address(host_str: str) -> bool:
     """Check if a string is a valid IP address (IPv4 or IPv6)."""
     try:
         ipaddress.ip_address(host_str)
-        return True
     except ValueError:
         return False
+    else:
+        return True
 
 def _aa_hostnames() -> list[str]:
     """Return hostname portions for all configured AA URLs."""
@@ -490,11 +492,11 @@ class DoHResolver:
             self._set_cached(hostname, record_type, answers)
             
             # Don't log here - the caller (custom_getaddrinfo) will log the final result
-            return answers
-            
         except Exception as e:
             logger.warning(f"DoH resolution failed for {hostname}: {e}")
             return []
+        else:
+            return answers
 
 def create_custom_resolver(servers: list[str] | None = None):
     """Create a custom DNS resolver using the specified or configured DNS servers."""
@@ -593,14 +595,15 @@ def create_custom_getaddrinfo(
         try:
             res = original_getaddrinfo(host, port, family, type, proto, flags)
             _log_results("system resolver (fallback)", "system", res)
-            return res
-        except Exception as e:
-            logger.error(f"System DNS resolution also failed for {host_str}: {e}")
+        except Exception:
+            logger.exception(f"System DNS resolution also failed for {host_str}")
             # Last resort: Try to connect to the hostname directly
             if family == 0 or family == socket.AF_INET:
                 logger.warning(f"Using direct hostname as last resort for {host_str}")
                 return [(socket.AF_INET, cast(SocketKind, type), proto, '', (host_str, port_int))]
             raise  # Re-raise the exception if we can't provide a last resort
+        else:
+            return res
     
     return custom_getaddrinfo
 
@@ -658,8 +661,8 @@ def _init_doh_resolver_internal(doh_server: str) -> DoHResolver:
         
         # Restore custom getaddrinfo if it was previously set
         socket.getaddrinfo = temp_getaddrinfo
-    except Exception as e:
-        logger.error(f"Failed to resolve DoH server {server_hostname}: {e}")
+    except Exception:
+        logger.exception(f"Failed to resolve DoH server {server_hostname}")
         # Fall back to a known public DNS if resolution fails
         server_ip = "1.1.1.1"
         logger.info(f"Using fallback IP for DoH server: {server_ip}")
@@ -1015,34 +1018,30 @@ def init_dns(force: bool = False) -> None:
         # Double-check after acquiring lock
         if _dns_initialized and not force:
             return
-        # Do work first, set flag after to prevent race conditions
-        try:
-            logger.debug(f"Initializing DNS (using {'gevent' if _using_gevent_locks else 'threading'} locks)")
-            state = _load_state()
+        # Do work first, set flag after to prevent race conditions.
+        logger.debug(f"Initializing DNS (using {'gevent' if _using_gevent_locks else 'threading'} locks)")
+        state = _load_state()
 
-            # Get initial DNS configuration from environment
-            provider, manual_servers, use_doh = _get_initial_dns_config()
+        # Get initial DNS configuration from environment
+        provider, manual_servers, use_doh = _get_initial_dns_config()
 
-            if provider == "auto":
-                # Auto mode: check for persisted provider from previous rotation
-                persisted = state.get('dns_provider') if state else None
-                if persisted:
-                    for i, (name, _, _) in enumerate(DNS_PROVIDERS):
-                        if name == persisted:
-                            _current_dns_index = i
-                            logger.info(f"Restored DNS provider from state: {name}")
-                            break
-                # Use init_dns_resolvers() for auto mode to preserve rotation capability
-                init_dns_resolvers()
-            else:
-                # Non-auto mode: use set_dns_provider() for consistent initialization
-                set_dns_provider(provider, manual_servers, use_doh=use_doh)
+        if provider == "auto":
+            # Auto mode: check for persisted provider from previous rotation
+            persisted = state.get('dns_provider') if state else None
+            if persisted:
+                for i, (name, _, _) in enumerate(DNS_PROVIDERS):
+                    if name == persisted:
+                        _current_dns_index = i
+                        logger.info(f"Restored DNS provider from state: {name}")
+                        break
+            # Use init_dns_resolvers() for auto mode to preserve rotation capability
+            init_dns_resolvers()
+        else:
+            # Non-auto mode: use set_dns_provider() for consistent initialization
+            set_dns_provider(provider, manual_servers, use_doh=use_doh)
 
-            # Only set flag AFTER work completes successfully
-            _dns_initialized = True
-        except Exception:
-            # Flag stays False so retry is possible
-            raise
+        # Only set flag AFTER work completes successfully.
+        _dns_initialized = True
 
 def init_aa(force: bool = False) -> None:
     """Initialize AA mirror selection."""
@@ -1053,15 +1052,11 @@ def init_aa(force: bool = False) -> None:
         # Double-check after acquiring lock
         if _aa_initialized and not force:
             return
-        # Do work first, set flag after to prevent race conditions
-        try:
-            state = _load_state()
-            _initialize_aa_state()
-            # Only set flag AFTER work completes successfully
-            _aa_initialized = True
-        except Exception:
-            # Flag stays False so retry is possible
-            raise
+        # Do work first, set flag after to prevent race conditions.
+        state = _load_state()
+        _initialize_aa_state()
+        # Only set flag AFTER work completes successfully.
+        _aa_initialized = True
 
 def init(force: bool = False) -> None:
     """
@@ -1078,16 +1073,12 @@ def init(force: bool = False) -> None:
         if _initialized and not force:
             return
         # Do the work first, then set flag to prevent race conditions
-        # where another thread sees _initialized=True but _aa_base_url is still empty
-        try:
-            init_dns(force=force)
-            init_aa(force=force)
-            _apply_ssl_warning_suppression()
-            # Only set flag AFTER work completes successfully
-            _initialized = True
-        except Exception:
-            # Flag stays False so retry is possible
-            raise
+        # where another thread sees _initialized=True but _aa_base_url is still empty.
+        init_dns(force=force)
+        init_aa(force=force)
+        _apply_ssl_warning_suppression()
+        # Only set flag AFTER work completes successfully.
+        _initialized = True
 
 def get_aa_base_url():
     """Get current AA base URL."""

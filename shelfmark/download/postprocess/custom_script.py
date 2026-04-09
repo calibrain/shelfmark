@@ -136,17 +136,16 @@ def run_custom_script(
         )
         if result.stdout:
             logger.debug("Task %s: custom script stdout: %s", task_id, result.stdout.strip())
-        return True
     except FileNotFoundError:
-        logger.error("Task %s: custom script not found: %s", task_id, execution.script_path)
+        logger.exception("Task %s: custom script not found: %s", task_id, execution.script_path)
         status_callback("error", f"Custom script not found: {execution.script_path}")
         return False
     except PermissionError:
-        logger.error("Task %s: custom script not executable: %s", task_id, execution.script_path)
+        logger.exception("Task %s: custom script not executable: %s", task_id, execution.script_path)
         status_callback("error", f"Custom script not executable: {execution.script_path}")
         return False
     except subprocess.TimeoutExpired:
-        logger.error(
+        logger.exception(
             "Task %s: custom script timed out after %ss: %s",
             task_id,
             timeout_seconds,
@@ -156,7 +155,7 @@ def run_custom_script(
         return False
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.strip() if exc.stderr else "No error output"
-        logger.error(
+        logger.exception(
             "Task %s: custom script failed (exit code %s): %s",
             task_id,
             exc.returncode,
@@ -164,6 +163,8 @@ def run_custom_script(
         )
         status_callback("error", f"Custom script failed: {stderr[:100]}")
         return False
+    else:
+        return True
 
 
 def _choose_custom_script_target(

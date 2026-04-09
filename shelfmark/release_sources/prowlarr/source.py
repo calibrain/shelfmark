@@ -34,6 +34,10 @@ from shelfmark.release_sources.prowlarr.utils import get_preferred_download_url,
 logger = setup_logger(__name__)
 
 
+def _raise_timeout_error(message: str):
+    raise TimeoutError(message)
+
+
 def _parse_size(size_bytes: int | None) -> str | None:
     """Convert bytes to human-readable size string."""
     if size_bytes is None or size_bytes <= 0:
@@ -557,10 +561,11 @@ class ProwlarrSource(ReleaseSource):
             else:
                 # Comma-separated string from env var
                 ids = [int(x.strip()) for x in selected.split(",") if x.strip()]
-            return ids or None
         except (ValueError, TypeError) as e:
             logger.warning(f"Invalid PROWLARR_INDEXERS format: {selected} ({e})")
             return None
+        else:
+            return ids or None
 
     def _resolve_indexer_ids_from_names(
         self, client: ProwlarrClient, names: list[str]
@@ -587,11 +592,11 @@ class ProwlarrSource(ReleaseSource):
                 if idx_id is not None:
                     with suppress(TypeError, ValueError):
                         ids.append(int(idx_id))
-
-            return ids or None
         except Exception as e:
             logger.warning(f"Failed to resolve indexer names to IDs: {e}")
             return None
+        else:
+            return ids or None
 
     def _get_search_indexer_ids(
         self,
@@ -694,7 +699,7 @@ class ProwlarrSource(ReleaseSource):
 
             def _check_timeout() -> None:
                 if time.monotonic() > deadline:
-                    raise TimeoutError(
+                    _raise_timeout_error(
                         f"Prowlarr search timed out after {int(PROWLARR_SEARCH_TIMEOUT_SECONDS)}s"
                     )
 
@@ -784,14 +789,14 @@ class ProwlarrSource(ReleaseSource):
             else:
                 logger.debug("Prowlarr: no results found")
 
-            return results
-
         except TimeoutError as e:
             logger.warning(f"Prowlarr search timed out: {e}")
             raise
-        except Exception as e:
-            logger.error(f"Prowlarr search failed: {e}")
+        except Exception:
+            logger.exception("Prowlarr search failed")
             return []
+        else:
+            return results
 
     def is_available(self) -> bool:
         """Check if Prowlarr is enabled and configured."""

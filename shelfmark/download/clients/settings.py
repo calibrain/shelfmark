@@ -17,6 +17,9 @@ from shelfmark.download.network import get_ssl_verify
 
 # ==================== Test Connection Callbacks ====================
 
+def _raise_runtime_error(message: str):
+    raise RuntimeError(message)
+
 @contextmanager
 def _transmission_session_verify_override(url: str):
     """Ensure transmission-rpc constructor uses the configured TLS verify mode."""
@@ -68,11 +71,12 @@ def _test_qbittorrent_connection(current_values: dict[str, Any] | None = None) -
         client = Client(host=url, username=username, password=password, VERIFY_WEBUI_CERTIFICATE=get_ssl_verify(url))
         client.auth_log_in()
         api_version = client.app.web_api_version
-        return {"success": True, "message": f"Connected to qBittorrent (API v{api_version})"}
     except ImportError:
         return {"success": False, "message": "qbittorrent-api package not installed"}
     except Exception as e:
         return {"success": False, "message": f"Connection failed: {str(e)}"}
+    else:
+        return {"success": True, "message": f"Connected to qBittorrent (API v{api_version})"}
 
 
 def _test_transmission_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -129,11 +133,12 @@ def _test_transmission_connection(current_values: dict[str, Any] | None = None) 
 
         session = client.get_session()
         version = session.version
-        return {"success": True, "message": f"Connected to Transmission {version}"}
     except ImportError:
         return {"success": False, "message": "transmission-rpc package not installed"}
     except Exception as e:
         return {"success": False, "message": f"Connection failed: {str(e)}"}
+    else:
+        return {"success": True, "message": f"Connected to Transmission {version}"}
 
 
 def _test_deluge_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -193,8 +198,8 @@ def _test_deluge_connection(current_values: dict[str, Any] | None = None) -> dic
         if data.get("error"):
             error = data["error"]
             if isinstance(error, dict):
-                raise Exception(error.get("message") or str(error))
-            raise Exception(str(error))
+                raise RuntimeError(error.get("message") or str(error))
+            raise RuntimeError(str(error))
         return data.get("result")
 
     def get_daemon_version(session: requests.Session, rpc_id: int) -> Any:
@@ -237,14 +242,14 @@ def _test_deluge_connection(current_values: dict[str, Any] | None = None) -> dic
                 }
 
         version = get_daemon_version(session, 6)
-        return {"success": True, "message": f"Connected to Deluge {version}"}
-
     except requests.exceptions.ConnectionError:
         return {"success": False, "message": "Could not connect to Deluge Web UI"}
     except requests.exceptions.Timeout:
         return {"success": False, "message": "Connection timed out"}
     except Exception as e:
         return {"success": False, "message": f"Connection failed: {str(e)}"}
+    else:
+        return {"success": True, "message": f"Connected to Deluge {version}"}
 
 
 def _test_rtorrent_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -289,9 +294,10 @@ def _test_rtorrent_connection(current_values: dict[str, Any] | None = None) -> d
             rpc = xmlrpc_client.ServerProxy(rpc_url)
 
         version = rpc.system.client_version()
-        return {"success": True, "message": f"Connected to rTorrent {version}"}
     except Exception as e:
         return {"success": False, "message": f"Connection failed: {str(e)}"}
+    else:
+        return {"success": True, "message": f"Connected to rTorrent {version}"}
 
 
 def _test_nzbget_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -320,15 +326,16 @@ def _test_nzbget_connection(current_values: dict[str, Any] | None = None) -> dic
         response.raise_for_status()
         result = response.json()
         if "error" in result and result["error"]:
-            raise Exception(result["error"].get("message", "RPC error"))
+            _raise_runtime_error(result["error"].get("message", "RPC error"))
         version = result.get("result", {}).get("Version", "unknown")
-        return {"success": True, "message": f"Connected to NZBGet {version}"}
     except requests.exceptions.ConnectionError:
         return {"success": False, "message": "Could not connect to NZBGet"}
     except requests.exceptions.Timeout:
         return {"success": False, "message": "Connection timed out"}
     except Exception as e:
         return {"success": False, "message": f"Connection failed: {str(e)}"}
+    else:
+        return {"success": True, "message": f"Connected to NZBGet {version}"}
 
 
 def _test_sabnzbd_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -358,13 +365,14 @@ def _test_sabnzbd_connection(current_values: dict[str, Any] | None = None) -> di
         response.raise_for_status()
         result = response.json()
         version = result.get("version", "unknown")
-        return {"success": True, "message": f"Connected to SABnzbd {version}"}
     except requests.exceptions.ConnectionError:
         return {"success": False, "message": "Could not connect to SABnzbd"}
     except requests.exceptions.Timeout:
         return {"success": False, "message": "Connection timed out"}
     except Exception as e:
         return {"success": False, "message": f"Connection failed: {str(e)}"}
+    else:
+        return {"success": True, "message": f"Connected to SABnzbd {version}"}
 
 
 # ==================== Download Clients Tab ====================

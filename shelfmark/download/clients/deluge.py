@@ -46,6 +46,10 @@ def _get_error_message(error: Any) -> tuple[str, int | None]:
     return str(error), None
 
 
+def _raise_runtime_error(message: str):
+    raise RuntimeError(message)
+
+
 @register_client("torrent")
 class DelugeClient(DownloadClient):
     """Deluge download client using Deluge Web UI JSON-RPC."""
@@ -209,11 +213,12 @@ class DelugeClient(DownloadClient):
         try:
             self._ensure_connected()
             version = self._get_daemon_version()
-            return True, f"Connected to Deluge {version}"
         except Exception as e:
             self._authenticated = False
             self._connected = False
             return False, f"Connection failed: {str(e)}"
+        else:
+            return True, f"Connected to Deluge {version}"
 
     def add_download(
         self,
@@ -230,7 +235,7 @@ class DelugeClient(DownloadClient):
 
             torrent_info = extract_torrent_info(url, expected_hash=expected_hash)
             if not torrent_info.is_magnet and not torrent_info.torrent_data:
-                raise Exception("Failed to fetch torrent file")
+                _raise_runtime_error("Failed to fetch torrent file")
 
             options: dict[str, Any] = {}
             if self._download_dir:
@@ -251,7 +256,7 @@ class DelugeClient(DownloadClient):
             else:
                 torrent_data = torrent_info.torrent_data
                 if torrent_data is None:
-                    raise Exception("Failed to fetch torrent file")
+                    _raise_runtime_error("Failed to fetch torrent file")
 
                 torrent_data_bytes: bytes = torrent_data
                 filedump = base64.b64encode(torrent_data_bytes).decode("ascii")
@@ -263,19 +268,20 @@ class DelugeClient(DownloadClient):
                 )
 
             if not torrent_id:
-                raise Exception("Deluge returned no torrent ID")
+                _raise_runtime_error("Deluge returned no torrent ID")
 
             torrent_id = str(torrent_id).lower()
             self._try_set_label(torrent_id, category_value)
 
             logger.info(f"Added torrent to Deluge: {torrent_id}")
-            return torrent_id
 
-        except Exception as e:
+        except Exception:
             self._authenticated = False
             self._connected = False
-            logger.error(f"Deluge add failed: {e}")
+            logger.exception("Deluge add failed")
             raise
+        else:
+            return torrent_id
 
     def get_status(self, download_id: str) -> DownloadStatus:
         try:
@@ -354,10 +360,11 @@ class DelugeClient(DownloadClient):
                     + (" (with files)" if delete_files else "")
                 )
                 return True
-            return False
 
         except Exception as e:
             self._log_error("remove", e)
+            return False
+        else:
             return False
 
     def get_download_path(self, download_id: str) -> str | None:
@@ -375,10 +382,11 @@ class DelugeClient(DownloadClient):
                     str(status.get("save_path", "")),
                     str(status.get("name", "")),
                 )
-            return None
 
         except Exception as e:
             self._log_error("get_download_path", e, level="debug")
+            return None
+        else:
             return None
 
     def find_existing(
@@ -401,10 +409,10 @@ class DelugeClient(DownloadClient):
                 full_status = self.get_status(torrent_info.info_hash)
                 return (torrent_info.info_hash, full_status)
 
-            return None
-
         except Exception as e:
             self._authenticated = False
             self._connected = False
             logger.debug(f"Error checking for existing torrent: {e}")
+            return None
+        else:
             return None

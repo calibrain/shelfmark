@@ -40,6 +40,10 @@ from shelfmark.release_sources import (
 
 logger = setup_logger(__name__)
 
+
+def _raise_runtime_error(message: str):
+    raise RuntimeError(message)
+
 _aa_slow_rotation = itertools.count()
 _url_source_types: dict[str, str] = {}
 
@@ -212,7 +216,7 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
 
     if not tbody:
         logger.warning(f"No results table found for query: {query}")
-        raise Exception("No books found. Please try another query.")
+        raise RuntimeError("No books found. Please try another query.")
 
     books = []
     if isinstance(tbody, Tag):
@@ -287,7 +291,7 @@ def _parse_book_info_page(soup: BeautifulSoup, book_id: str, fetch_download_coun
     data = soup.select_one("body > main > div:nth-of-type(1)")
 
     if not data:
-        raise Exception(f"Failed to parse book info for ID: {book_id}")
+        raise RuntimeError(f"Failed to parse book info for ID: {book_id}")
 
     preview: str = ""
 
@@ -626,7 +630,7 @@ def _try_download_url(
 
         download_url = _get_download_url(url, book_info.title, cancel_flag, status_callback, selector, source_context)
         if not download_url:
-            raise Exception("No download URL resolved")
+            _raise_runtime_error("No download URL resolved")
 
         logger.info(f"Resolved download URL [{source_id}]: {download_url}")
 
@@ -637,23 +641,23 @@ def _try_download_url(
         )
 
         if not data:
-            raise Exception("No data received from download")
+            _raise_runtime_error("No data received from download")
 
         file_size = data.tell()
         if file_size < _MIN_VALID_FILE_SIZE:
             logger.warning(f"Downloaded file too small ({file_size} bytes), likely an error page")
-            raise Exception(f"File too small ({file_size} bytes)")
+            _raise_runtime_error(f"File too small ({file_size} bytes)")
 
         logger.debug(f"Download finished ({file_size} bytes). Writing to {book_path}")
         data.seek(0)
         with book_path.open("wb") as f:
             f.write(data.getbuffer())
 
-        return download_url
-
     except Exception as e:
         logger.warning(f"Failed to download from {url} (source={source_id}): {e}")
         return None
+    else:
+        return download_url
 
 
 def _get_download_urls_from_welib(
@@ -734,14 +738,14 @@ def _extract_libgen_download_url(link: str, cancel_flag: Event | None = None) ->
             download_url = f"{base_url}/{download_url.lstrip('/')}"
 
         logger.debug(f"Libgen fast: extracted {download_url}")
-        return download_url
-
     except requests.exceptions.RequestException as e:
         logger.debug(f"Libgen fast: request failed: {e}")
         return ""
     except Exception as e:
         logger.warning(f"Libgen fast: unexpected error: {e}")
         return ""
+    else:
+        return download_url
 
 
 def _download_book(
@@ -1255,8 +1259,8 @@ class DirectDownloadSource(ReleaseSource):
                         all_results.append(bi)
             except SearchUnavailable:
                 raise
-            except Exception as e:
-                logger.error(f"Search error: {e}")
+            except Exception:
+                logger.exception("Search error")
 
         if not all_results and any(langs for _, langs in searches):
             logger.debug("No title+author results with language filter, retrying without language filter")
@@ -1273,8 +1277,8 @@ class DirectDownloadSource(ReleaseSource):
                             all_results.append(bi)
                 except SearchUnavailable:
                     raise
-                except Exception as e:
-                    logger.error(f"Search error: {e}")
+                except Exception:
+                    logger.exception("Search error")
 
         logger.info(f"Found {len(all_results)} releases via title+author")
         return [_browse_record_to_release(record) for record in all_results]
@@ -1349,7 +1353,7 @@ class DirectDownloadHandler(DownloadHandler):
                 logger.info(f"Download cancelled during error handling: {task.task_id}")
                 status_callback("cancelled", "Cancelled")
             else:
-                logger.error(f"Error downloading book: {e}")
+                logger.exception("Error downloading book")
                 status_callback("error", str(e))
             return None
 
@@ -1414,12 +1418,12 @@ class DirectDownloadHandler(DownloadHandler):
             # Return temp path - orchestrator handles post-processing (archive extraction, ingest)
             return str(book_path)
 
-        except Exception as e:
+        except Exception:
             if cancel_flag.is_set():
                 logger.info(f"Download cancelled during error handling: {book_info.id}")
                 status_callback("cancelled", "Cancelled")
             else:
-                logger.error(f"Error downloading book: {e}")
+                logger.exception("Error downloading book")
             return None
 
     def cancel(self, task_id: str) -> bool:

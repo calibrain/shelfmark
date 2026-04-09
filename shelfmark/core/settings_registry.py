@@ -371,8 +371,8 @@ def load_config_file(tab_name: str) -> dict[str, Any]:
     try:
         with config_path.open() as f:
             return json.load(f)
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in config file {config_path}: {e}")
+    except json.JSONDecodeError:
+        logger.exception(f"Invalid JSON in config file {config_path}")
         return {}
 
 
@@ -389,10 +389,11 @@ def save_config_file(tab_name: str, values: dict[str, Any]) -> bool:
             json.dump(existing, f, indent=2)
 
         logger.info(f"Saved settings to {config_path}")
-        return True
-    except Exception as e:
-        logger.error(f"Error saving config file for {tab_name}: {e}")
+    except Exception:
+        logger.exception(f"Error saving config file for {tab_name}")
         return False
+    else:
+        return True
 
 
 def initialize_default_configs() -> bool:
@@ -446,17 +447,17 @@ def initialize_default_configs() -> bool:
                     with config_path.open('w') as f:
                         json.dump(defaults, f, indent=2)
                     initialized_tabs.append(tab.name)
-                except Exception as e:
-                    logger.error(f"Failed to initialize config for {tab.name}: {e}")
+                except Exception:
+                    logger.exception(f"Failed to initialize config for {tab.name}")
 
         if initialized_tabs:
             logger.info(f"Initialized default configs for: {initialized_tabs}")
 
-        return True
-
-    except Exception as e:
-        logger.error(f"Error during config initialization: {e}")
+    except Exception:
+        logger.exception("Error during config initialization")
         return False
+    else:
+        return True
 
 
 def sync_env_to_config() -> None:
@@ -743,8 +744,8 @@ def migrate_download_to_browser_settings() -> None:
         with config_path.open("w") as f:
             json.dump(updated_downloads, f, indent=2)
         logger.info("Migrated download-to-browser setting to content-type selection")
-    except Exception as exc:
-        logger.error(f"Failed to migrate download-to-browser settings: {exc}")
+    except Exception:
+        logger.exception("Failed to migrate download-to-browser settings")
 
 
 def get_setting_value(field: SettingsField, tab_name: str) -> Any:
@@ -1034,7 +1035,7 @@ def execute_action(tab_name: str, action_key: str, current_values: dict[str, Any
                         return settings_field.callback(current_values=current_values or {})
                     return settings_field.callback()
                 except Exception as e:
-                    logger.error(f"Action {action_key} failed: {e}")
+                    logger.exception(f"Action {action_key} failed")
                     return {"success": False, "message": str(e)}
             else:
                 return {"success": False, "message": "Action has no callback defined"}
@@ -1158,7 +1159,7 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
             # Use the transformed values
             values_to_save = result.get("values", values_to_save)
         except Exception as e:
-            logger.error(f"on_save handler for {tab_name} failed: {e}")
+            logger.exception(f"on_save handler for {tab_name} failed")
             return {
                 "success": False,
                 "message": f"Save handler error: {str(e)}",

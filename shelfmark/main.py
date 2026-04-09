@@ -79,6 +79,10 @@ from shelfmark.release_sources import SourceUnavailableError, get_source_display
 
 logger = setup_logger(__name__)
 
+
+def _raise_runtime_error(message: str):
+    raise RuntimeError(message)
+
 # Project root is one level up from this package
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 FRONTEND_DIST = PROJECT_ROOT / 'frontend-dist'
@@ -653,17 +657,16 @@ def proxy_auth_middleware():
                     context="proxy_request",
                 )
                 if db_user is None:
-                    raise RuntimeError("Unexpected proxy user sync result: no user returned")
+                    _raise_runtime_error("Unexpected proxy user sync result: no user returned")
 
                 session['db_user_id'] = db_user["id"]
 
         session.permanent = False
-
-        return None
-        
-    except Exception as e:
-        logger.error(f"Proxy auth middleware error: {e}")
+    except Exception:
+        logger.exception("Proxy auth middleware error")
         return jsonify({"error": "Authentication error"}), 500
+    else:
+        return None
 
 @app.after_request
 def set_security_headers(response: Response) -> Response:
@@ -705,8 +708,8 @@ def login_required(f):
                 ):
                     return jsonify({"error": "Admin access required"}), 403
 
-            except Exception as e:
-                logger.error(f"Admin access check error: {e}")
+            except Exception:
+                logger.exception("Admin access check error")
                 return jsonify({"error": "Internal Server Error"}), 500
 
         return f(*args, **kwargs)
@@ -795,7 +798,7 @@ if DEBUG:
             time.sleep(1)
             result = subprocess.run(['/app/genDebug.sh'], capture_output=True, text=True, check=True)
             if result.returncode != 0:
-                raise Exception(f"Debug script failed: {result.stderr}")
+                _raise_runtime_error(f"Debug script failed: {result.stderr}")
             logger.info(f"Debug script executed: {result.stdout}")
             debug_file_path = result.stdout.strip().split('\n')[-1]
             if not Path(debug_file_path).exists():
@@ -1504,11 +1507,11 @@ def api_cover(cover_id: str) -> Response | tuple[Response, int]:
         )
         response.headers['Cache-Control'] = 'public, max-age=86400'
         response.headers['X-Cache'] = 'MISS'
-        return response
-
     except Exception as e:
         logger.error_trace(f"Cover fetch error: {e}")
         return jsonify({"error": str(e)}), 500
+    else:
+        return response
 
 
 @app.route('/api/download/<path:book_id>/cancel', methods=['DELETE'])
@@ -2514,12 +2517,13 @@ def api_releases() -> Response | tuple[Response, int]:
                 )
 
                 releases = source.search(book, plan, expand_search=expand_search, content_type=content_type)
-                return source, releases, None
             except ValueError:
                 return None, [], f"Unknown source: {source_name}"
             except Exception as e:
                 logger.warning(f"Release search failed for source {source_name}: {e}")
                 return None, [], f"{source_name}: {str(e)}"
+            else:
+                return source, releases, None
 
         provider = request.args.get('provider', '').strip()
         book_id = request.args.get('book_id', '').strip()
@@ -2982,8 +2986,8 @@ def handle_connect():
         user_id = None if is_admin else db_user_id
         status = backend.queue_status(user_id=user_id)
         emit('status_update', status)
-    except Exception as e:
-        logger.error(f"Error sending initial status: {e}")
+    except Exception:
+        logger.exception("Error sending initial status")
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -3010,8 +3014,8 @@ def handle_status_request():
         user_id = None if is_admin else db_user_id
         status = backend.queue_status(user_id=user_id)
         emit('status_update', status)
-    except Exception as e:
-        logger.error(f"Error handling status request: {e}")
+    except Exception:
+        logger.exception("Error handling status request")
         emit('error', {'message': 'Failed to get status'})
 
 logger.log_resource_usage()

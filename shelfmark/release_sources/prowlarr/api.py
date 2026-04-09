@@ -57,13 +57,13 @@ class ProwlarrClient:
             return response.json()
 
         except requests.exceptions.JSONDecodeError as e:
-            logger.error(f"Invalid JSON response from Prowlarr: {e}")
+            logger.exception("Invalid JSON response from Prowlarr")
             raise ValueError(f"Invalid JSON response: {e}") from e
         except requests.exceptions.HTTPError as e:
-            logger.error(f"Prowlarr API HTTP error: {e.response.status_code} {e.response.reason}")
+            logger.exception(f"Prowlarr API HTTP error: {e.response.status_code} {e.response.reason}")
             raise
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Prowlarr API request failed: {e}")
+        except requests.exceptions.RequestException:
+            logger.exception("Prowlarr API request failed")
             raise
 
     def test_connection(self) -> tuple[bool, str]:
@@ -72,8 +72,6 @@ class ProwlarrClient:
         try:
             data = self._request("GET", "/api/v1/system/status")
             version = data.get("version", "unknown")
-            logger.info(f"Prowlarr connection successful: version {version}")
-            return True, f"Connected to Prowlarr {version}"
         except requests.exceptions.ConnectionError:
             return False, "Could not connect to Prowlarr. Check the URL."
         except requests.exceptions.HTTPError as e:
@@ -83,13 +81,16 @@ class ProwlarrClient:
             return False, f"HTTP error {status}"
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
+        else:
+            logger.info(f"Prowlarr connection successful: version {version}")
+            return True, f"Connected to Prowlarr {version}"
 
     def get_indexers(self) -> list[dict[str, Any]]:
         """Get all configured indexers."""
         try:
             return self._request("GET", "/api/v1/indexer")
-        except Exception as e:
-            logger.error(f"Failed to get indexers: {e}")
+        except Exception:
+            logger.exception("Failed to get indexers")
             return []
 
     def get_enabled_indexers_detailed(self) -> list[dict[str, Any]]:
@@ -209,10 +210,11 @@ class ProwlarrClient:
             for r in results:
                 if r.get("indexerId") is None:
                     r["indexerId"] = int(indexer_id)
-            return results
-        except Exception as e:
-            logger.error(f"Prowlarr Torznab search failed for indexer {indexer_id}: {e}")
+        except Exception:
+            logger.exception("Prowlarr Torznab search failed for indexer %s", indexer_id)
             return []
+        else:
+            return results
 
     def _has_book_categories(self, categories: list[dict[str, Any]]) -> bool:
         """Check if any category or subcategory is in the book range (7000-7999)."""

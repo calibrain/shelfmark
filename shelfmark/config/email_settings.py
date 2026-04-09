@@ -38,9 +38,9 @@ def test_email_connection(current_values: dict[str, Any] | None = None) -> dict[
     try:
         smtp_config = build_email_smtp_config(settings)
         test_smtp_connection(smtp_config)
-        return {"success": True, "message": "Connected to SMTP server"}
     except EmailOutputError as exc:
         return {"success": False, "message": str(exc)}
     except Exception as exc:
         return {"success": False, "message": f"SMTP test failed: {exc}"}
-
+    else:
+        return {"success": True, "message": "Connected to SMTP server"}

@@ -97,7 +97,7 @@ class NZBGetClient(DownloadClient):
 
         result = response.json()
         if "error" in result and result["error"]:
-            raise Exception(result["error"].get("message", "RPC error"))
+            raise RuntimeError(result["error"].get("message", "RPC error"))
 
         return result.get("result")
 
@@ -106,13 +106,14 @@ class NZBGetClient(DownloadClient):
         try:
             status = self._rpc_call("status")
             version = status.get("Version", "unknown")
-            return True, f"Connected to NZBGet {version}"
         except requests.exceptions.ConnectionError:
             return False, "Could not connect to NZBGet"
         except requests.exceptions.Timeout:
             return False, "Connection timed out"
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
+        else:
+            return True, f"Connected to NZBGet {version}"
 
     def add_download(
         self,
@@ -144,6 +145,9 @@ class NZBGetClient(DownloadClient):
 
         # Use configured category if not explicitly provided
         category = category or self._category
+
+        def _raise_invalid_nzb_id() -> None:
+            raise RuntimeError("NZBGet returned invalid ID")
 
         try:
             # Fetch NZB content from the URL (handles Prowlarr proxy redirects)
@@ -178,12 +182,12 @@ class NZBGetClient(DownloadClient):
                 logger.info(f"Added NZB to NZBGet: {nzb_id}")
                 return str(nzb_id)
 
-            raise Exception("NZBGet returned invalid ID")
+            _raise_invalid_nzb_id()
         except requests.RequestException as e:
-            logger.error(f"Failed to fetch NZB from URL: {e}")
+            logger.exception("Failed to fetch NZB from URL")
             raise RuntimeError(f"Failed to fetch NZB: {e}") from e
-        except Exception as e:
-            logger.error(f"NZBGet add failed: {e}")
+        except Exception:
+            logger.exception("NZBGet add failed")
             raise
 
     def get_status(self, download_id: str) -> DownloadStatus:

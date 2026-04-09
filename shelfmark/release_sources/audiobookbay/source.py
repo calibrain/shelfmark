@@ -297,13 +297,14 @@ class AudiobookBaySource(ReleaseSource):
                 except Exception as e:
                     logger.warning(f"Failed to create release from result: {e}")
                     continue
-            
+
+        except Exception:
+            logger.exception("AudiobookBay search error")
+            return []
+
+        else:
             logger.info(f"Found {len(releases)} releases from AudiobookBay")
             return releases
-            
-        except Exception as e:
-            logger.error(f"AudiobookBay search error: {e}")
-            return []
     
     def is_available(self) -> bool:
         """Check if AudiobookBay source is enabled and configured."""

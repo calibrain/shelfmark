@@ -374,7 +374,7 @@ def _post_process_booklore(
             message = f"Uploaded to {BOOKLORE_DISPLAY_NAME} ({len(prepared.files)} files)"
         status_callback("complete", message)
         success = True
-        return f"booklore://{task.task_id}"
+        output_path = f"booklore://{task.task_id}"
 
     except BookloreError as e:
         logger.warning("Task %s: Booklore upload failed: %s", task.task_id, e)
@@ -384,6 +384,8 @@ def _post_process_booklore(
         logger.error_trace("Task %s: unexpected error uploading to Booklore: %s", task.task_id, e)
         status_callback("error", f"{BOOKLORE_DISPLAY_NAME} upload failed: {e}")
         return None
+    else:
+        return output_path
     finally:
         cleanup_output_staging(
             prepared.output_plan,

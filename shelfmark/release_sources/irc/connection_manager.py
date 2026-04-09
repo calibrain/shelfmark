@@ -175,13 +175,14 @@ class IRCConnectionManager:
                 self._last_used[key] = time.time()
                 self._channels[key] = channel
                 self._connecting.pop(key, None)
-
-            return client
         except Exception:
             # Clear connecting flag on failure
             with self._conn_lock:
                 self._connecting.pop(key, None)
             raise
+
+        else:
+            return client
 
     def release_connection(self, client: IRCClient) -> None:
         """Mark a connection as available for reuse.

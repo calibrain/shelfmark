@@ -185,6 +185,7 @@ class OpenLibraryProvider(MetadataProvider):
         if options.language:
             params["lang"] = options.language
 
+        books: list[BookMetadata] = []
         try:
             response = self.session.get(
                 f"{OPENLIBRARY_BASE_URL}/search.json",
@@ -195,14 +196,12 @@ class OpenLibraryProvider(MetadataProvider):
             response.raise_for_status()
             data = response.json()
 
-            books = []
             for doc in data.get("docs", []):
                 book = self._parse_search_doc(doc)
                 if book:
                     books.append(book)
 
             logger.info(f"Open Library search '{options.query}' returned {len(books)} results")
-            return books
 
         except requests.Timeout:
             logger.warning("Open Library search timed out")
@@ -211,11 +210,12 @@ class OpenLibraryProvider(MetadataProvider):
             if e.response.status_code == 503:
                 logger.warning("Open Library service unavailable (503)")
             else:
-                logger.error(f"Open Library HTTP error: {e}")
+                logger.exception("Open Library HTTP error")
             return []
-        except Exception as e:
-            logger.error(f"Open Library search error: {e}")
+        except Exception:
+            logger.exception("Open Library search error")
             return []
+        return books
 
     @cacheable(ttl_key="METADATA_CACHE_BOOK_TTL", ttl_default=600, key_prefix="openlibrary:book")
     def get_book(self, book_id: str) -> BookMetadata | None:
@@ -246,10 +246,10 @@ class OpenLibraryProvider(MetadataProvider):
             if e.response.status_code == 404:
                 logger.debug(f"Open Library work not found: {book_id}")
             else:
-                logger.error(f"Open Library HTTP error: {e}")
+                logger.exception("Open Library HTTP error")
             return None
-        except Exception as e:
-            logger.error(f"Open Library get_book error: {e}")
+        except Exception:
+            logger.exception("Open Library get_book error")
             return None
 
     @cacheable(ttl_key="METADATA_CACHE_BOOK_TTL", ttl_default=600, key_prefix="openlibrary:isbn")
@@ -303,10 +303,10 @@ class OpenLibraryProvider(MetadataProvider):
             if e.response.status_code == 404:
                 logger.debug(f"Open Library ISBN not found: {isbn}")
             else:
-                logger.error(f"Open Library ISBN search HTTP error: {e}")
+                logger.exception("Open Library ISBN search HTTP error")
             return None
-        except Exception as e:
-            logger.error(f"Open Library ISBN search error: {e}")
+        except Exception:
+            logger.exception("Open Library ISBN search error")
             return None
 
     def _parse_search_doc(self, doc: dict) -> BookMetadata | None:
@@ -503,6 +503,7 @@ class OpenLibraryProvider(MetadataProvider):
 
 def _test_openlibrary_connection() -> dict[str, Any]:
     """Test the Open Library API connection."""
+    connection_result = {"success": False, "message": "Unexpected response from API"}
     try:
         provider = OpenLibraryProvider()
         # Simple API call to test connectivity
@@ -515,14 +516,14 @@ def _test_openlibrary_connection() -> dict[str, Any]:
         response.raise_for_status()
         data = response.json()
         if "docs" in data:
-            return {"success": True, "message": "Successfully connected to Open Library API"}
-        return {"success": False, "message": "Unexpected response from API"}
+            connection_result = {"success": True, "message": "Successfully connected to Open Library API"}
     except requests.Timeout:
         return {"success": False, "message": "Connection timed out"}
     except requests.RequestException as e:
         return {"success": False, "message": f"Connection failed: {str(e)}"}
     except Exception as e:
         return {"success": False, "message": f"Error: {str(e)}"}
+    return connection_result
 
 
 # Open Library sort options for settings UI

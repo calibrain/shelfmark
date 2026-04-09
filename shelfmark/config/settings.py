@@ -343,15 +343,16 @@ def _clear_covers_cache(current_values: dict) -> dict:
         # Reset the singleton so it reinitializes with fresh state
         reset_image_cache()
 
-        return {
-            "success": True,
-            "message": f"Cleared {count} cached cover images.",
-        }
     except Exception as e:
-        logger.error(f"Failed to clear cover cache: {e}")
+        logger.exception("Failed to clear cover cache")
         return {
             "success": False,
             "message": f"Failed to clear cache: {str(e)}",
+        }
+    else:
+        return {
+            "success": True,
+            "message": f"Cleared {count} cached cover images.",
         }
 
 
@@ -369,7 +370,7 @@ def _clear_metadata_cache(current_values: dict) -> dict:
             "message": f"Cleared {stats_before['size']} cached entries.",
         }
     except Exception as e:
-        logger.error(f"Failed to clear metadata cache: {e}")
+        logger.exception("Failed to clear metadata cache")
         return {
             "success": False,
             "message": f"Failed to clear cache: {str(e)}",

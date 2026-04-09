@@ -119,8 +119,8 @@ class WebSocketManager:
                     self._broadcast_status_update_to_room(room)
 
             logger.debug("Broadcasted status update to all rooms")
-        except Exception as e:
-            logger.error(f"Error broadcasting status update: {e}")
+        except Exception:
+            logger.exception("Error broadcasting status update")
 
     def _broadcast_status_update_to_room(self, room: str) -> None:
         """Broadcast status update to one user room."""
@@ -130,8 +130,8 @@ class WebSocketManager:
             filtered = self._queue_status_fn(user_id=uid) if self._queue_status_fn else None
             if filtered is not None:
                 self.socketio.emit('status_update', filtered, to=room)
-        except Exception as e:
-            logger.error(f"Failed to send status update for room {room}: {e}")
+        except Exception:
+            logger.exception(f"Failed to send status update for room {room}")
 
     def broadcast_download_progress(self, book_id: str, progress: float, status: str, user_id: int | None = None):
         """Broadcast download progress update for a specific book."""
@@ -153,8 +153,8 @@ class WebSocketManager:
                     if room in self._user_rooms:
                         self.socketio.emit('download_progress', data, to=room)
             logger.debug(f"Broadcasted progress for book {book_id}: {progress}%")
-        except Exception as e:
-            logger.error(f"Error broadcasting download progress: {e}")
+        except Exception:
+            logger.exception("Error broadcasting download progress")
 
     def broadcast_search_status(
         self,
@@ -177,8 +177,8 @@ class WebSocketManager:
                 'phase': phase,
             }
             self.socketio.emit('search_status', data)
-        except Exception as e:
-            logger.error(f"Error broadcasting search status: {e}")
+        except Exception:
+            logger.exception("Error broadcasting search status")
 
 
 # Global WebSocket manager instance

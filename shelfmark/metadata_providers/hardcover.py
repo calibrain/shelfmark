@@ -1704,13 +1704,13 @@ class HardcoverProvider(MetadataProvider):
     def _unwrap_me_data(result: dict | None) -> dict:
         """Extract and validate the ``me`` payload from a GraphQL result."""
         if not isinstance(result, dict):
-            raise RuntimeError("Hardcover could not load book targets")
+            raise TypeError("Hardcover could not load book targets")
 
         me_data = result.get("me", {})
         if isinstance(me_data, list) and me_data:
             me_data = me_data[0]
         if not isinstance(me_data, dict):
-            raise RuntimeError("Hardcover returned an invalid target payload")
+            raise TypeError("Hardcover returned an invalid target payload")
         return me_data
 
     def _fetch_book_target_state(self, book_id: int) -> HardcoverBookTargetState:
@@ -2133,8 +2133,8 @@ class HardcoverProvider(MetadataProvider):
                 has_more=has_more
             )
 
-        except Exception as e:
-            logger.error(f"Hardcover search error: {e}")
+        except Exception:
+            logger.exception("Hardcover search error")
             return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
 
     @cacheable(ttl_key="METADATA_CACHE_BOOK_TTL", ttl_default=600, key_prefix="hardcover:book")
@@ -2209,10 +2209,10 @@ class HardcoverProvider(MetadataProvider):
             return self._parse_book(books[0])
 
         except ValueError:
-            logger.error(f"Invalid book ID: {book_id}")
+            logger.exception(f"Invalid book ID: {book_id}")
             return None
-        except Exception as e:
-            logger.error(f"Hardcover get_book error: {e}")
+        except Exception:
+            logger.exception("Hardcover get_book error")
             return None
 
     @cacheable(ttl_key="METADATA_CACHE_BOOK_TTL", ttl_default=600, key_prefix="hardcover:isbn")
@@ -2282,8 +2282,8 @@ class HardcoverProvider(MetadataProvider):
 
             return self._parse_book(book_data)
 
-        except Exception as e:
-            logger.error(f"Hardcover ISBN search error: {e}")
+        except Exception:
+            logger.exception("Hardcover ISBN search error")
             return None
 
     def _execute_query(
@@ -2294,6 +2294,9 @@ class HardcoverProvider(MetadataProvider):
         raise_on_error: bool = False,
     ) -> dict | None:
         """Execute a GraphQL query and return data or None on error."""
+        def _raise_graphql_error(message: str) -> None:
+            raise HardcoverGraphQLError(message)
+
         try:
             response = self.session.post(
                 HARDCOVER_API_URL,
@@ -2309,7 +2312,7 @@ class HardcoverProvider(MetadataProvider):
                 logger.error(f"GraphQL errors: {data['errors']}")
                 if raise_on_error:
                     message = _extract_graphql_error_message(data) or "Hardcover rejected this request"
-                    raise HardcoverGraphQLError(message)
+                    _raise_graphql_error(message)
                 return None
 
             return data.get("data")
@@ -2321,23 +2324,23 @@ class HardcoverProvider(MetadataProvider):
             return None
         except requests.HTTPError as e:
             if e.response.status_code == 401:
-                logger.error("Hardcover API key is invalid")
+                logger.exception("Hardcover API key is invalid")
                 if raise_on_error:
                     raise RuntimeError("Hardcover API key is invalid") from e
             else:
-                logger.error(f"Hardcover API HTTP error: {e}")
+                logger.exception("Hardcover API HTTP error")
                 if raise_on_error:
                     raise RuntimeError(f"Hardcover API HTTP error: {e}") from e
             return None
         except HardcoverGraphQLError:
             raise
         except ValueError as e:
-            logger.error(f"Hardcover API returned invalid JSON: {e}")
+            logger.exception("Hardcover API returned invalid JSON")
             if raise_on_error:
                 raise RuntimeError("Hardcover API returned an invalid response") from e
             return None
         except Exception as e:
-            logger.error(f"Hardcover API request failed: {e}")
+            logger.exception("Hardcover API request failed")
             if raise_on_error:
                 raise RuntimeError("Hardcover API request failed") from e
             return None
@@ -2609,13 +2612,11 @@ def _test_hardcover_connection(current_values: dict[str, Any] | None = None) -> 
     if key_len < 100:
         return {"success": False, "message": f"API key seems too short ({key_len} chars). Expected 500+ chars."}
 
+    connection_result = {"success": False, "message": "API request failed - check your API key"}
     try:
         provider = HardcoverProvider(api_key=api_key)
         # Use the 'me' query to test connection (recommended by API docs)
-        result = provider._execute_query(
-            "query { me { id, username } }",
-            {}
-        )
+        result = provider._execute_query("query { me { id, username } }", {})
         if result is not None:
             # Handle both single object and array response formats
             me_data = result.get("me", {})
@@ -2626,14 +2627,15 @@ def _test_hardcover_connection(current_values: dict[str, Any] | None = None) -> 
 
             # Save connected user metadata for persistent display + per-user list caching
             _save_connected_user(user_id, username)
-
-            return {"success": True, "message": f"Connected as: {username}"}
-        _save_connected_user(None, None)
-        return {"success": False, "message": "API request failed - check your API key"}
+            connection_result = {"success": True, "message": f"Connected as: {username}"}
+        else:
+            _save_connected_user(None, None)
     except Exception as e:
         logger.exception("Hardcover connection test failed")
         _save_connected_user(None, None)
         return {"success": False, "message": f"Connection failed: {str(e)}"}
+
+    return connection_result
 
 
 def _save_connected_user(user_id: str | None, username: str | None) -> None:

@@ -151,25 +151,23 @@ class GoogleBooksProvider(MetadataProvider):
         if options.language:
             params["langRestrict"] = options.language
 
+        books: list[BookMetadata] = []
         try:
             result = self._make_request("/volumes", params)
-            if not result:
-                return []
+            if result:
+                items = result.get("items", [])
 
-            items = result.get("items", [])
-            books = []
+                for item in items:
+                    book = self._parse_volume(item)
+                    if book:
+                        books.append(book)
 
-            for item in items:
-                book = self._parse_volume(item)
-                if book:
-                    books.append(book)
+                logger.info(f"Google Books search '{query}' returned {len(books)} results")
 
-            logger.info(f"Google Books search '{query}' returned {len(books)} results")
-            return books
-
-        except Exception as e:
-            logger.error(f"Google Books search error: {e}")
+        except Exception:
+            logger.exception("Google Books search error")
             return []
+        return books
 
     @cacheable(
         ttl_key="METADATA_CACHE_BOOK_TTL",
@@ -185,8 +183,8 @@ class GoogleBooksProvider(MetadataProvider):
 
             return self._parse_volume(result)
 
-        except Exception as e:
-            logger.error(f"Google Books get_book error: {e}")
+        except Exception:
+            logger.exception("Google Books get_book error")
             return None
 
     @cacheable(
@@ -217,8 +215,8 @@ class GoogleBooksProvider(MetadataProvider):
 
             return self._parse_volume(items[0])
 
-        except Exception as e:
-            logger.error(f"Google Books ISBN search error: {e}")
+        except Exception:
+            logger.exception("Google Books ISBN search error")
             return None
 
     def _make_request(
@@ -246,7 +244,7 @@ class GoogleBooksProvider(MetadataProvider):
             if e.response is not None:
                 if e.response.status_code == 403:
                     # Quota exceeded or invalid API key
-                    logger.error(
+                    logger.exception(
                         "Google Books API: quota exceeded or invalid API key (HTTP 403)"
                     )
                 elif e.response.status_code == 400:
@@ -254,12 +252,12 @@ class GoogleBooksProvider(MetadataProvider):
                 elif e.response.status_code == 404:
                     logger.debug("Google Books: volume not found")
                 else:
-                    logger.error(f"Google Books API HTTP error: {e}")
+                    logger.exception("Google Books API HTTP error")
             else:
-                logger.error(f"Google Books API HTTP error: {e}")
+                logger.exception("Google Books API HTTP error")
             return None
-        except Exception as e:
-            logger.error(f"Google Books API request failed: {e}")
+        except Exception:
+            logger.exception("Google Books API request failed")
             return None
 
     def _parse_volume(self, volume: dict[str, Any]) -> BookMetadata | None:
@@ -376,24 +374,25 @@ def _test_googlebooks_connection(current_values: dict[str, Any] = None) -> dict[
         provider = GoogleBooksProvider(api_key=api_key)
         # Simple test search
         result = provider._make_request("/volumes", {"q": "test", "maxResults": 1})
-
-        if result is not None and "items" in result:
-            return {
-                "success": True,
-                "message": "Successfully connected to Google Books API",
-            }
-        if result is not None:
-            return {
-                "success": True,
-                "message": "API connected but returned no results for test query",
-            }
-        return {
+        test_result = {
             "success": False,
             "message": "API request failed - check your API key",
         }
+
+        if result is not None and "items" in result:
+            test_result = {
+                "success": True,
+                "message": "Successfully connected to Google Books API",
+            }
+        elif result is not None:
+            test_result = {
+                "success": True,
+                "message": "API connected but returned no results for test query",
+            }
     except Exception as e:
         logger.exception("Google Books connection test failed")
         return {"success": False, "message": f"Connection failed: {str(e)}"}
+    return test_result
 
 
 # Sort options for settings UI

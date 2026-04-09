@@ -68,14 +68,14 @@ def _fetch_via_bypasser(target_url: str) -> str | None:
             logger.warning(f"External bypasser returned empty response for '{target_url}'")
             return None
 
-        return html
-
     except requests.exceptions.Timeout:
         logger.warning(f"External bypasser timed out for '{target_url}' (connect: {CONNECT_TIMEOUT}s, read: {read_timeout:.0f}s)")
     except requests.exceptions.RequestException as e:
         logger.warning(f"External bypasser request failed for '{target_url}': {e}")
     except (KeyError, TypeError, ValueError) as e:
         logger.warning(f"External bypasser returned malformed response for '{target_url}': {e}")
+    else:
+        return html
 
     return None
 

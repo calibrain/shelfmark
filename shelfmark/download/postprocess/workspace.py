@@ -34,9 +34,10 @@ def is_within_tmp_dir(path: Path) -> bool:
 
     try:
         run_blocking_io(path.resolve).relative_to(run_blocking_io(tmp_dir.resolve))
-        return True
     except (OSError, ValueError):
         return False
+    else:
+        return True
 
 
 def is_managed_workspace_path(path: Path) -> bool:

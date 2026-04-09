@@ -57,8 +57,8 @@ def mark_onboarding_complete() -> bool:
     """Mark onboarding as complete."""
     try:
         return save_config_file("general", {ONBOARDING_STORAGE_KEY: True})
-    except Exception as e:
-        logger.error(f"Failed to mark onboarding complete: {e}")
+    except Exception:
+        logger.exception("Failed to mark onboarding complete")
         return False
 
 
@@ -428,8 +428,8 @@ def save_onboarding_settings(values: dict[str, Any]) -> dict[str, Any]:
         except ImportError as e:
             logger.debug(f"Could not refresh config after onboarding: {e}")
 
-        return {"success": True, "message": "Onboarding complete!"}
-
     except Exception as e:
-        logger.error(f"Failed to save onboarding settings: {e}")
+        logger.exception("Failed to save onboarding settings")
         return {"success": False, "message": str(e)}
+    else:
+        return {"success": True, "message": "Onboarding complete!"}

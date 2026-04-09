@@ -30,7 +30,7 @@ VALID_DELIVERY_STATES = frozenset({DELIVERY_STATE_NONE} | set(QueueStatus))
 def normalize_request_status(status: Any) -> str:
     """Validate and normalize request status values."""
     if not isinstance(status, str):
-        raise ValueError(f"Invalid request status: {status}")
+        raise TypeError(f"Invalid request status: {status}")
     normalized = status.strip().lower()
     if normalized not in VALID_REQUEST_STATUSES:
         raise ValueError(f"Invalid request status: {status}")
@@ -48,7 +48,7 @@ def normalize_policy_mode(mode: Any) -> str:
 def normalize_request_level(request_level: Any) -> str:
     """Validate and normalize request level values."""
     if not isinstance(request_level, str):
-        raise ValueError(f"Invalid request_level: {request_level}")
+        raise TypeError(f"Invalid request_level: {request_level}")
     normalized = request_level.strip().lower()
     if normalized not in VALID_REQUEST_LEVELS:
         raise ValueError(f"Invalid request_level: {request_level}")
@@ -58,7 +58,7 @@ def normalize_request_level(request_level: Any) -> str:
 def normalize_delivery_state(state: Any) -> str:
     """Validate and normalize delivery-state values."""
     if not isinstance(state, str):
-        raise ValueError(f"Invalid delivery_state: {state}")
+        raise TypeError(f"Invalid delivery_state: {state}")
     normalized = state.strip().lower()
     if normalized not in VALID_DELIVERY_STATES:
         raise ValueError(f"Invalid delivery_state: {state}")

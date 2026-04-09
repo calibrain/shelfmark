@@ -22,6 +22,10 @@ _internal_bypasser = None
 _external_bypasser = None
 
 
+def _raise_too_many_redirects(message: str):
+    raise requests.exceptions.TooManyRedirects(message)
+
+
 def _get_internal_bypasser():
     """Lazy import of internal bypasser module."""
     global _internal_bypasser
@@ -267,7 +271,7 @@ def html_get_page(
                 if is_aa_url and response.is_redirect:
                     location = response.headers.get("Location", "")
                     if not location:
-                        raise requests.exceptions.TooManyRedirects(f"Redirect with no Location header: {current_url}")
+                        _raise_too_many_redirects(f"Redirect with no Location header: {current_url}")
 
                     redirect_url = urljoin(current_url, location)
                     current_host = urlparse(current_url).hostname or ""
@@ -306,7 +310,7 @@ def html_get_page(
                     # Same-host redirect (relative or absolute) - follow manually.
                     redirects_followed += 1
                     if redirects_followed > 5:
-                        raise requests.exceptions.TooManyRedirects(f"Too many redirects for {current_url}")
+                        _raise_too_many_redirects(f"Too many redirects for {current_url}")
                     current_url = redirect_url
                     continue
 
@@ -363,7 +367,7 @@ def html_get_page(
                 logger.warning(f"Retry {attempt}/{retry} for {current_url}: {type(e).__name__}: {e}")
                 time.sleep(_backoff_delay(attempt))
             else:
-                logger.error(f"Giving up after {retry} attempts: {current_url}")
+                logger.exception(f"Giving up after {retry} attempts: {current_url}")
 
     return _result("", current_url)
 
@@ -431,7 +435,6 @@ def download_url(
                 return None
 
             logger.debug(f"Download completed: {bytes_downloaded} bytes")
-            return buffer
 
         except requests.exceptions.RequestException as e:
             status = _get_status_code(e)
@@ -489,6 +492,8 @@ def download_url(
             if attempt < MAX_DOWNLOAD_RETRIES - 1:
                 time.sleep(_backoff_delay(attempt + 1))
             attempt += 1
+        else:
+            return buffer
 
     logger.error(f"Download failed after {MAX_DOWNLOAD_RETRIES} attempts: {link}")
     return None
@@ -541,10 +546,11 @@ def _try_resume(
             pbar.close()
             
             logger.info(f"Resume completed: {start_byte} bytes")
-            return buffer
             
         except requests.exceptions.RequestException as e:
             logger.debug(f"Resume attempt {attempt + 1} failed: {e}")
+        else:
+            return buffer
     
     logger.warning(f"Resume failed after {MAX_RESUME_ATTEMPTS} attempts")
     return None

@@ -189,8 +189,8 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             return client.authorize_redirect(redirect_uri)
         except ValueError:
             return jsonify({"error": "OIDC not configured"}), 500
-        except Exception as e:
-            logger.error(f"OIDC login error: {e}")
+        except Exception:
+            logger.exception("OIDC login error")
             return jsonify({"error": "OIDC login failed"}), 500
 
     @app.route("/api/auth/oidc/callback", methods=["GET"])
@@ -216,10 +216,9 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
                 except Exception as metadata_error:
                     logger.debug(f"OIDC metadata lookup failed during claim diagnostics: {metadata_error}")
 
-                logger.error(
-                    "OIDC callback claim validation failed: claim=%s error=%s discovery_url=%s provider_issuer=%s",
+                logger.exception(
+                    "OIDC callback claim validation failed: claim=%s discovery_url=%s provider_issuer=%s",
                     claim_name,
-                    e,
                     discovery_url or "<unset>",
                     provider_issuer or "<unknown>",
                 )
@@ -240,8 +239,8 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
                     fetched_claims = _normalize_claims(client.userinfo(token=token))
                 except TypeError:
                     fetched_claims = _normalize_claims(client.userinfo())
-                except Exception as e:
-                    logger.error(f"Failed to fetch OIDC userinfo: {e}")
+                except Exception:
+                    logger.exception("Failed to fetch OIDC userinfo")
                 if fetched_claims:
                     claims = {**claims, **fetched_claims}
 
@@ -285,8 +284,8 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             return redirect(_post_login_redirect_target(_get_pending_return_to(clear=True)))
 
         except ValueError as e:
-            logger.error(f"OIDC callback error: {e}")
+            logger.exception("OIDC callback error")
             return redirect(_login_error_url(str(e)))
-        except Exception as e:
-            logger.error(f"OIDC callback error: {e}")
+        except Exception:
+            logger.exception("OIDC callback error")
             return redirect(_login_error_url("Authentication failed"))

@@ -293,6 +293,7 @@ class ImageCacheService:
             ext = entry.get('ext', 'jpg')
             content_type = entry.get('content_type', 'image/jpeg')
             image_path = self._get_image_path(cache_id, ext)
+            result: tuple[bytes, str] | None = None
 
             try:
                 if not image_path.exists():
@@ -308,13 +309,14 @@ class ImageCacheService:
                 # Update accessed time
                 entry['accessed_at'] = time.time()
                 self._save_index()
-
-                self._hits += 1
-                return data, content_type
+                result = data, content_type
 
             except OSError:
                 self._misses += 1
                 return None
+            else:
+                self._hits += 1
+                return result
 
     def put(self, cache_id: str, data: bytes, content_type: str) -> bool:
         """Store an image in the cache.
@@ -504,6 +506,7 @@ class ImageCacheService:
         Returns:
             Tuple of (image_data, content_type) or None on failure
         """
+        cached_data: tuple[bytes, str] | None = None
         try:
             if not self._is_safe_url(url):
                 logger.warning(f"Blocked request to disallowed URL: {url}")
@@ -544,9 +547,7 @@ class ImageCacheService:
                 detected = _detect_image_type(image_data)
                 if detected:
                     content_type = detected[0]
-                return image_data, content_type
-
-            return None
+                cached_data = image_data, content_type
 
         except requests.exceptions.Timeout:
             self.put_negative(cache_id, transient=True)
@@ -560,6 +561,8 @@ class ImageCacheService:
             return None
         except Exception:
             return None
+        else:
+            return cached_data
 
 
 # Singleton instance (initialized lazily when config is available)

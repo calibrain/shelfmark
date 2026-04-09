@@ -48,8 +48,8 @@ def _save_cache(cache: dict[str, Any]) -> None:
     """Save cache to disk."""
     try:
         CACHE_FILE.write_text(json.dumps(cache, indent=2))
-    except OSError as e:
-        logger.error(f"Failed to save IRC cache: {e}")
+    except OSError:
+        logger.exception("Failed to save IRC cache")
 
 
 def _release_to_dict(release: Release) -> dict[str, Any]:

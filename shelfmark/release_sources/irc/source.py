@@ -233,20 +233,21 @@ class IRCReleaseSource(ReleaseSource):
                 online_servers=list(self._online_servers) if self._online_servers else None,
             )
 
-            return releases
-
         except DCCError as e:
-            logger.error(f"DCC error during search: {e}")
+            logger.exception("DCC error during search")
             _emit_status(f"DCC error: {e}", phase='error')
             if client:
                 connection_manager.close_connection(client)
             return []
         except Exception as e:
-            logger.error(f"IRC search failed: {e}")
+            logger.exception("IRC search failed")
             _emit_status(f"Search failed: {e}", phase='error')
             if client:
                 connection_manager.close_connection(client)
             return []
+
+        else:
+            return releases
 
     def _build_query(self, book: BookMetadata) -> str:
         """Build search query from book metadata."""

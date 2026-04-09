@@ -731,7 +731,7 @@ class TestDownloadRequests:
     def test_create_request_rejects_non_object_release_data(self, user_db):
         user = user_db.create_user(username="alice")
 
-        with pytest.raises(ValueError, match="release_data must be an object when provided"):
+        with pytest.raises(TypeError, match="release_data must be an object when provided"):
             user_db.create_request(
                 user_id=user["id"],
                 content_type="ebook",
@@ -883,7 +883,7 @@ class TestDownloadRequests:
             release_data=self._release_data(),
         )
 
-        with pytest.raises(ValueError, match="release_data must be an object when provided"):
+        with pytest.raises(TypeError, match="release_data must be an object when provided"):
             user_db.update_request(created["id"], release_data="not-an-object")
 
     def test_reopen_failed_request_resets_fulfilled_request_for_reapproval(self, user_db):

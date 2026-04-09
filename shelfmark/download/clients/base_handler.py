@@ -291,8 +291,8 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 f"Check volume mappings and category settings."
             )
             if log_details:
-                logger.error(
-                    f"Failed to resolve download path for {client.name} {download_id}: {e}"
+                logger.exception(
+                    f"Failed to resolve download path for {client.name} {download_id}"
                 )
             else:
                 logger.debug(
@@ -567,7 +567,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                         ratio_limit=request.ratio_limit,
                     )
                 except Exception as e:
-                    logger.error(f"Failed to add to {client.name}: {e}")
+                    logger.exception(f"Failed to add to {client.name}")
                     status_callback("error", f"Failed to add to {client.name}: {e}")
                     return None
 
@@ -585,7 +585,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
             )
 
         except Exception as e:
-            logger.error(f"External client download error: {e}")
+            logger.exception("External client download error")
             status_callback("error", str(e))
             return None
 
@@ -606,6 +606,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         max_not_found_retries = 15  # 15 retries * poll interval ~= 30s grace period
 
         try:
+            result: str | None = None
             logger.debug(f"Starting poll for {download_id} (content_type={task.content_type})")
             while not cancel_flag.is_set():
                 status = client.get_status(download_id)
@@ -725,10 +726,12 @@ class ExternalClientHandler(DownloadHandler, ABC):
             return result
 
         except Exception as e:
-            logger.error(f"Error during download polling: {e}")
+            logger.exception("Error during download polling")
             status_callback("error", str(e))
             self._safe_remove_download(client, download_id, protocol, "polling exception")
             return None
+        else:
+            return result
 
     def _handle_completed_file(
         self,
@@ -755,7 +758,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
             return str(source_path)
 
         except Exception as e:
-            logger.error(f"Failed to finalize completed download at {source_path}: {e}")
+            logger.exception(f"Failed to finalize completed download at {source_path}")
             status_callback("error", f"Failed to finalize completed download: {e}")
             return None
 

@@ -60,11 +60,12 @@ def _get_indexer_options() -> list[dict[str, str]]:
                 "label": label,
             })
 
-        return options
-
-    except Exception as e:
-        logger.error(f"Failed to fetch Prowlarr indexers: {e}")
+    except Exception:
+        logger.exception("Failed to fetch Prowlarr indexers")
         return []
+
+    else:
+        return options
 
 
 # ==================== Test Connection Callback ====================
@@ -92,9 +93,10 @@ def _test_prowlarr_connection(current_values: dict[str, Any] | None = None) -> d
     try:
         client = ProwlarrClient(url, api_key)
         success, message = client.test_connection()
-        return {"success": success, "message": message}
     except Exception as e:
         return {"success": False, "message": f"Connection failed: {str(e)}"}
+    else:
+        return {"success": success, "message": message}
 
 
 # ==================== Configuration Tab ====================

@@ -151,11 +151,12 @@ class Config:
             db_path = str(Path(os.environ.get("CONFIG_DIR", "/config")) / "users.db")
             user_db = user_db_cls(db_path)
             user_db.initialize()
-            self._user_db = user_db
-            return self._user_db
         except Exception:
             # Multi-user support is optional; fall back to global config when unavailable.
             return None
+        else:
+            self._user_db = user_db
+            return self._user_db
 
     def _get_user_settings(self, user_id: int) -> dict[str, Any]:
         """Get cached per-user settings from user DB."""

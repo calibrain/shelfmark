@@ -351,7 +351,10 @@ async def _detect_challenge_type(page) -> str:
     """Detect challenge type: 'cloudflare', 'ddos_guard', or 'none'."""
     try:
         title, body, current_url = await _get_page_info(page)
-
+    except Exception as e:
+        logger.warning(f"Error detecting challenge type: {e}")
+        return "none"
+    else:
         # DDOS-Guard indicators
         if found := _check_indicators(title, body, DDOS_GUARD_INDICATORS):
             logger.debug(f"DDOS-Guard indicator found: '{found}'")
@@ -367,14 +370,16 @@ async def _detect_challenge_type(page) -> str:
             return "cloudflare"
 
         return "none"
-    except Exception as e:
-        logger.warning(f"Error detecting challenge type: {e}")
-        return "none"
 
 async def _is_bypassed(page, escape_emojis: bool = True) -> bool:
     """Check if the protection has been bypassed."""
     try:
         title, body, current_url = await _get_page_info(page)
+    except Exception as e:
+        logger.warning(f"Error checking bypass status: {e}")
+        return False
+
+    else:
         body_len = len(body.strip())
 
         # Long page content = probably bypassed
@@ -405,10 +410,6 @@ async def _is_bypassed(page, escape_emojis: bool = True) -> bool:
 
         logger.debug(f"Bypass check passed - Title: '{title[:100]}', Body length: {body_len}")
         return True
-
-    except Exception as e:
-        logger.warning(f"Error checking bypass status: {e}")
-        return False
 
 async def _bypass_method_humanlike(page) -> bool:
     """Human-like behavior with scroll, wait, and reload."""

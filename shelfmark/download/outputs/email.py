@@ -408,7 +408,7 @@ def _post_process_email(
 
         status_callback("complete", f"Sent to {label}")
         success = True
-        return f"email://{task.task_id}"
+        output_path = f"email://{task.task_id}"
 
     except EmailOutputError as exc:
         logger.warning("Task %s: email send failed: %s", task.task_id, exc)
@@ -418,6 +418,8 @@ def _post_process_email(
         logger.error_trace("Task %s: unexpected error sending email: %s", task.task_id, exc)
         status_callback("error", f"Email send failed: {exc}")
         return None
+    else:
+        return output_path
     finally:
         cleanup_output_staging(
             prepared.output_plan,

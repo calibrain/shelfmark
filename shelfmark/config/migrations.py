@@ -112,11 +112,8 @@ def migrate_security_settings(
                 config.get("BUILTIN_USERNAME", ""),
                 config.get("BUILTIN_PASSWORD_HASH", ""),
             )
-        except Exception as exc:
-            logger.error(
-                "Failed to sync builtin credentials to users database during migration: "
-                f"{exc}"
-            )
+        except Exception:
+            logger.exception("Failed to sync builtin credentials to users database during migration")
 
         if migrated_security:
             ensure_config_dir()
@@ -131,5 +128,5 @@ def migrate_security_settings(
 
     except FileNotFoundError:
         logger.debug("No existing security config file found - nothing to migrate")
-    except Exception as exc:
-        logger.error(f"Failed to migrate security settings: {exc}")
+    except Exception:
+        logger.exception("Failed to migrate security settings")

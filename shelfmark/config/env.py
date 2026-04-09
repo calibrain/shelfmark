@@ -67,9 +67,10 @@ def _is_config_dir_writable() -> bool:
         test_file = CONFIG_DIR / ".write_test"
         test_file.touch()
         test_file.unlink()
-        return True
     except (OSError, PermissionError):
         return False
+    else:
+        return True
 
 
 def is_covers_cache_enabled() -> bool:

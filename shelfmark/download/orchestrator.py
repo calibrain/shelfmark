@@ -46,7 +46,7 @@ WEBSOCKET_AVAILABLE = True
 try:
     from shelfmark.api.websocket import ws_manager
 except ImportError:
-    logger.error("WebSocket unavailable - real-time updates disabled")
+    logger.exception("WebSocket unavailable - real-time updates disabled")
     ws_manager = None
     WEBSOCKET_AVAILABLE = False
 
@@ -244,8 +244,6 @@ def queue_release(
         if ws_manager:
             ws_manager.broadcast_status_update(queue_status())
 
-        return True, None
-
     except ValueError as e:
         error_msg = str(e)
         logger.warning(error_msg)
@@ -258,6 +256,8 @@ def queue_release(
         error_msg = f"Error queueing release: {e}"
         logger.error_trace(error_msg)
         return False, error_msg
+    else:
+        return True, None
 
 def queue_status(user_id: int | None = None) -> dict[str, dict[str, Any]]:
     """Get current status of the download queue."""
@@ -662,8 +662,6 @@ def _download_task(task_id: str, cancel_flag: Event) -> str | None:
             task.staged_path = None
             _clear_task_error_state(task)
 
-        return result
-
     except Exception as e:
         if cancel_flag.is_set():
             logger.info("Task %s: cancelled during error handling", task_id)
@@ -677,6 +675,9 @@ def _download_task(task_id: str, cancel_flag: Event) -> str | None:
                     exc_type=type(e).__name__,
                 )
         return None
+
+    else:
+        return result
 
 
 

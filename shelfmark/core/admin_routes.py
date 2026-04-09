@@ -376,8 +376,8 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
                 "error": "Calibre-Web database is not available",
                 "message": "Verify app.db is mounted and readable at /auth/app.db.",
             }), 503
-        except Exception as exc:
-            logger.error(f"Failed to sync CWA users: {exc}")
+        except Exception:
+            logger.exception("Failed to sync CWA users")
             return jsonify({
                 "error": "Failed to sync users from Calibre-Web",
             }), 500

@@ -72,5 +72,5 @@ def test_oidc_connection(
 
         return {"success": True, "message": f"Connected to {document['issuer']}"}
     except Exception as exc:
-        logger.error(f"OIDC connection test failed: {exc}")
+        logger.exception("OIDC connection test failed")
         return {"success": False, "message": f"Connection failed: {str(exc)}"}

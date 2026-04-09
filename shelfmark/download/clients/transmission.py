@@ -132,9 +132,10 @@ class TransmissionClient(DownloadClient):
         try:
             session = self._client.get_session()
             version = session.version
-            return True, f"Connected to Transmission {version}"
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
+        else:
+            return True, f"Connected to Transmission {version}"
 
     def add_download(
         self,
@@ -202,11 +203,11 @@ class TransmissionClient(DownloadClient):
                 except Exception as e:
                     logger.warning(f"Failed to set seeding limits for {torrent_hash}: {e}")
 
-            return torrent_hash
-
-        except Exception as e:
-            logger.error(f"Transmission add failed: {e}")
+        except Exception:
+            logger.exception("Transmission add failed")
             raise
+        else:
+            return torrent_hash
 
     def get_status(self, download_id: str) -> DownloadStatus:
         """
@@ -306,10 +307,11 @@ class TransmissionClient(DownloadClient):
                 f"Removed torrent from Transmission: {download_id}"
                 + (" (with files)" if delete_files else "")
             )
-            return True
         except Exception as e:
             self._log_error("remove", e)
             return False
+        else:
+            return True
 
     def get_download_path(self, download_id: str) -> str | None:
         """
@@ -346,9 +348,10 @@ class TransmissionClient(DownloadClient):
             try:
                 self._client.get_torrent(torrent_info.info_hash)
                 status = self.get_status(torrent_info.info_hash)
-                return (torrent_info.info_hash, status)
             except KeyError:
                 return None
+            else:
+                return (torrent_info.info_hash, status)
         except Exception as e:
             logger.debug(f"Error checking for existing torrent: {e}")
             return None

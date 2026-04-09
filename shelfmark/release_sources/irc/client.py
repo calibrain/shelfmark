@@ -405,10 +405,11 @@ class IRCClient:
                 try:
                     offer = parse_dcc_send(msg.raw)
                     logger.info(f"Received DCC offer: {offer.filename}")
-                    return offer
-                except Exception as e:
-                    logger.error(f"Failed to parse DCC: {e}")
+                except Exception:
+                    logger.exception("Failed to parse DCC")
                     return None
+                else:
+                    return offer
 
             # Log other events for debugging
             if msg.event == IRCEvent.NO_RESULTS:

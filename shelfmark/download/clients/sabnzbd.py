@@ -157,7 +157,7 @@ class SABnzbdClient(DownloadClient):
         # Check for error in response
         if isinstance(result, dict) and result.get("status") is False:
             error = result.get("error", "Unknown error")
-            raise Exception(f"SABnzbd error: {error}")
+            raise RuntimeError(f"SABnzbd error: {error}")
 
         return result
 
@@ -184,7 +184,7 @@ class SABnzbdClient(DownloadClient):
 
         if isinstance(result, dict) and result.get("status") is False:
             error = result.get("error", "Unknown error")
-            raise Exception(f"SABnzbd error: {error}")
+            raise RuntimeError(f"SABnzbd error: {error}")
 
         return result
 
@@ -244,7 +244,7 @@ class SABnzbdClient(DownloadClient):
     @staticmethod
     def _extract_nzo_id(result: Any) -> str:
         if not isinstance(result, dict):
-            raise Exception("SABnzbd returned invalid response")
+            raise TypeError("SABnzbd returned invalid response")
 
         nzo_ids = result.get("nzo_ids") or result.get("nzo_id")
         if isinstance(nzo_ids, list) and nzo_ids:
@@ -254,20 +254,21 @@ class SABnzbdClient(DownloadClient):
         if isinstance(nzo_ids, int):
             return str(nzo_ids)
 
-        raise Exception("SABnzbd returned no nzo_id")
+        raise RuntimeError("SABnzbd returned no nzo_id")
 
     def test_connection(self) -> tuple[bool, str]:
         """Test connection to SABnzbd."""
         try:
             result = self._api_call("version")
             version = result.get("version", "unknown")
-            return True, f"Connected to SABnzbd {version}"
         except requests.exceptions.ConnectionError:
             return False, "Could not connect to SABnzbd"
         except requests.exceptions.Timeout:
             return False, "Connection timed out"
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
+        else:
+            return True, f"Connected to SABnzbd {version}"
 
     def add_download(
         self,
@@ -302,9 +303,10 @@ class SABnzbdClient(DownloadClient):
             result = self._api_post_file(nzb_content, nzb_filename, name, category)
             nzo_id = self._extract_nzo_id(result)
             logger.info(f"Added NZB to SABnzbd: {nzo_id}")
-            return nzo_id
         except Exception as e:
             logger.warning(f"SABnzbd addfile failed, falling back to addurl: {e}")
+        else:
+            return nzo_id
 
         try:
             result = self._api_call(
@@ -317,10 +319,11 @@ class SABnzbdClient(DownloadClient):
             )
             nzo_id = self._extract_nzo_id(result)
             logger.info(f"Added NZB to SABnzbd via addurl: {nzo_id}")
-            return nzo_id
-        except Exception as e:
-            logger.error(f"SABnzbd add failed: {e}")
+        except Exception:
+            logger.exception("SABnzbd add failed")
             raise
+        else:
+            return nzo_id
 
     def get_status(self, download_id: str) -> DownloadStatus:
         """
@@ -556,8 +559,8 @@ class SABnzbdClient(DownloadClient):
                         logger.debug(f"Found existing NZB in SABnzbd history: {nzo_id}")
                         return (nzo_id, status)
 
-            return None
-
         except Exception as e:
             logger.debug(f"Error checking for existing NZB: {e}")
+            return None
+        else:
             return None

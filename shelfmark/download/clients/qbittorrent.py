@@ -32,6 +32,10 @@ def _hashes_match(hash1: str, hash2: str) -> bool:
     return False
 
 
+def _raise_runtime_error(message: str):
+    raise RuntimeError(message)
+
+
 def _normalize_tags(raw_tags: object) -> list[str]:
     """Normalize tag input to a clean, de-duplicated list of strings."""
     if raw_tags is None:
@@ -116,7 +120,6 @@ class QBittorrentClient(DownloadClient):
                 return False, None
 
             response.raise_for_status()
-            return True, None
         except requests.exceptions.HTTPError as e:
             status = getattr(getattr(e, "response", None), "status_code", None)
             if status == 404:
@@ -130,6 +133,8 @@ class QBittorrentClient(DownloadClient):
             return False, f"qBittorrent request timed out at {self._base_url}"
         except Exception as e:
             return False, f"qBittorrent API error: {type(e).__name__}: {e}"
+        else:
+            return True, None
 
     protocol = "torrent"
     name = "qbittorrent"
@@ -236,8 +241,6 @@ class QBittorrentClient(DownloadClient):
 
                 return all_torrents, None
 
-            return torrents, None
-
         except requests.exceptions.HTTPError as e:
             status = getattr(getattr(e, "response", None), "status_code", None)
             if status:
@@ -262,6 +265,8 @@ class QBittorrentClient(DownloadClient):
                     f"Configured: {self._base_url}",
                 )
             return [], f"qBittorrent API error: {type(e).__name__}: {e}"
+        else:
+            return torrents, None
 
     @staticmethod
     def is_configured() -> bool:
@@ -275,9 +280,10 @@ class QBittorrentClient(DownloadClient):
         try:
             self._client.auth_log_in()
             api_version = self._client.app.web_api_version
-            return True, f"Connected to qBittorrent (API v{api_version})"
         except Exception as e:
             return False, f"Connection failed: {str(e)}"
+        else:
+            return True, f"Connected to qBittorrent (API v{api_version})"
 
     def add_download(
         self,
@@ -359,10 +365,10 @@ class QBittorrentClient(DownloadClient):
             logger.debug(f"qBittorrent add result: {result_text}")
 
             if not expected_hash:
-                raise Exception("Could not determine torrent hash from URL")
+                _raise_runtime_error("Could not determine torrent hash from URL")
 
             if _is_explicit_add_failure(result):
-                raise Exception(f"Failed to add torrent: {result_text}")
+                _raise_runtime_error(f"Failed to add torrent: {result_text}")
 
             # Some qBittorrent-compatible clients return HTTP 200 with an empty body
             # instead of qBittorrent's literal "Ok." response. Prefer verifying that
@@ -380,10 +386,11 @@ class QBittorrentClient(DownloadClient):
                 "Torrent add was not confirmed within the visibility grace period "
                 f"(response={result_text or '<empty>'}), returning expected hash"
             )
-            return expected_hash
-        except Exception as e:
-            logger.error(f"qBittorrent add failed: {e}")
+        except Exception:
+            logger.exception("qBittorrent add failed")
             raise
+        else:
+            return expected_hash
 
     def get_status(self, download_id: str) -> DownloadStatus:
         """
@@ -490,10 +497,11 @@ class QBittorrentClient(DownloadClient):
                 f"Removed torrent from qBittorrent: {download_id}"
                 + (" (with files)" if delete_files else "")
             )
-            return True
         except Exception as e:
             self._log_error("remove", e)
             return False
+        else:
+            return True
 
     def get_download_path(self, download_id: str) -> str | None:
         """Get the path where torrent files are located.
@@ -639,8 +647,8 @@ class QBittorrentClient(DownloadClient):
             if torrent and isinstance(getattr(torrent, "hash", None), str):
                 torrent_hash = torrent.hash
                 return (torrent_hash.lower(), self.get_status(torrent_hash.lower()))
-
-            return None
         except Exception as e:
             logger.debug(f"Error checking for existing torrent: {e}")
+            return None
+        else:
             return None

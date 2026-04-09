@@ -298,13 +298,15 @@ def process_directory(
             for cleanup_path in cleanup_paths:
                 safe_cleanup_path(cleanup_path, task)
 
-        return final_paths, None
+        processed_paths = final_paths
 
     except Exception as exc:
         logger.error_trace("Task %s: error processing directory %s: %s", task.task_id, directory, exc)
         if not is_torrent_source(directory, task):
             safe_cleanup_path(directory, task)
         return [], str(exc)
+    else:
+        return processed_paths, None
 
 
 def transfer_file_to_library(

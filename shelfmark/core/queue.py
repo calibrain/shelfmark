@@ -78,10 +78,10 @@ class BookQueue:
                     cancel_flag = Event()
                     self._cancel_flags[task_id] = cancel_flag
                     self._active_downloads[task_id] = True
-
-                return task_id, cancel_flag
             except queue.Empty:
                 return None
+            else:
+                return task_id, cancel_flag
 
     def get_task(self, task_id: str) -> DownloadTask | None:
         """Get a task by its ID."""
