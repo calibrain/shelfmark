@@ -48,7 +48,7 @@ def is_onboarding_complete() -> bool:
             config = json.load(f)
             return config.get(ONBOARDING_STORAGE_KEY, False)
     except (json.JSONDecodeError, OSError) as e:
-        logger.warning('Could not read onboarding status from settings.json: %s', e)
+        logger.warning("Could not read onboarding status from settings.json: %s", e)
         return False
 
 
@@ -74,14 +74,14 @@ def _get_field_from_tab(tab_name: str, field_key: str) -> SettingsField | None:
     """
     tab = get_settings_tab(tab_name)
     if not tab:
-        logger.warning('Settings tab not found: %s', tab_name)
+        logger.warning("Settings tab not found: %s", tab_name)
         return None
 
     for field in tab.fields:
         if hasattr(field, "key") and field.key == field_key:
             return field
 
-    logger.warning('Field %s not found in tab %s', field_key, tab_name)
+    logger.warning("Field %s not found in tab %s", field_key, tab_name)
     return None
 
 
@@ -388,7 +388,7 @@ def save_onboarding_settings(values: dict[str, Any]) -> dict[str, Any]:
         for tab_name, tab_data in tab_values.items():
             if tab_data:
                 save_config_file(tab_name, tab_data)
-                logger.info('Saved onboarding settings to %s: %s', tab_name, list(tab_data.keys()))
+                logger.info("Saved onboarding settings to %s: %s", tab_name, list(tab_data.keys()))
 
         # Enable the selected metadata provider
         search_mode = values.get("SEARCH_MODE", "direct")
@@ -413,7 +413,7 @@ def save_onboarding_settings(values: dict[str, Any]) -> dict[str, Any]:
                     provider_config["GOOGLEBOOKS_API_KEY"] = values["GOOGLEBOOKS_API_KEY"]
 
                 save_config_file(provider, provider_config)
-                logger.info('Enabled metadata provider: %s with keys: %s', provider, list(provider_config.keys()))
+                logger.info("Enabled metadata provider: %s with keys: %s", provider, list(provider_config.keys()))
 
         # Mark onboarding as complete
         mark_onboarding_complete()
@@ -423,7 +423,7 @@ def save_onboarding_settings(values: dict[str, Any]) -> dict[str, Any]:
             from shelfmark.core.config import config
             config.refresh()
         except ImportError as e:
-            logger.debug('Could not refresh config after onboarding: %s', e)
+            logger.debug("Could not refresh config after onboarding: %s", e)
 
     except Exception as e:
         logger.exception("Failed to save onboarding settings")

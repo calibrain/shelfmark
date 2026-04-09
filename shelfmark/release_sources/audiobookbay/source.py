@@ -212,7 +212,7 @@ class AudiobookBaySource(ReleaseSource):
         try:
             for index, query in enumerate(deduped_queries):
                 query_lower = query.lower()
-                logger.info('Searching AudiobookBay for: %s', query_lower)
+                logger.info("Searching AudiobookBay for: %s", query_lower)
 
                 # Search AudiobookBay
                 results = scraper.search_audiobookbay(
@@ -255,7 +255,7 @@ class AudiobookBaySource(ReleaseSource):
                     # Basic relevance check: ensure title contains at least one query word
                     # This filters out homepage "Latest" feed items that may leak through
                     if query_words and not any(word in title_for_filter for word in query_words):
-                        logger.debug('Filtering out irrelevant result: %s', title)
+                        logger.debug("Filtering out irrelevant result: %s", title)
                         continue
 
                     # Generate unique source ID
@@ -299,7 +299,7 @@ class AudiobookBaySource(ReleaseSource):
                     )
                     releases.append(release)
                 except Exception as e:
-                    logger.warning('Failed to create release from result: %s', e)
+                    logger.warning("Failed to create release from result: %s", e)
                     continue
 
         except Exception:
@@ -307,7 +307,7 @@ class AudiobookBaySource(ReleaseSource):
             return []
 
         else:
-            logger.info('Found %s releases from AudiobookBay', len(releases))
+            logger.info("Found %s releases from AudiobookBay", len(releases))
             return releases
 
     def is_available(self) -> bool:

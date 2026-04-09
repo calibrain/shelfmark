@@ -219,7 +219,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             )
         except ValueError:
             return jsonify({"error": "Username already exists"}), 409
-        logger.info('Shelfmark user created (source=manual_admin_create, created_by=%s, username=%s, role=%s, auth_source=%s)', session.get('user_id', 'unknown'), username, role, AUTH_SOURCE_BUILTIN)
+        logger.info("Shelfmark user created (source=manual_admin_create, created_by=%s, username=%s, role=%s, auth_source=%s)", session.get("user_id", "unknown"), username, role, AUTH_SOURCE_BUILTIN)
         return jsonify(
             _serialize_user(
                 user,
@@ -353,7 +353,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             g.auth_mode,
         )
         result["settings"] = user_db.get_user_settings(user_id)
-        logger.info('Admin updated user %s', user_id)
+        logger.info("Admin updated user %s", user_id)
         return jsonify(result)
 
     @app.route("/api/admin/users/sync-cwa", methods=["POST"])
@@ -419,5 +419,5 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         # local password admin remains.
 
         user_db.delete_user(user_id)
-        logger.info('Admin deleted user %s: %s', user_id, user['username'])
+        logger.info("Admin deleted user %s: %s", user_id, user["username"])
         return jsonify({"success": True})

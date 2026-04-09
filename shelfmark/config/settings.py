@@ -77,7 +77,7 @@ logger = setup_logger(__name__)
 logger.debug("Bootstrap configuration:")
 for key in ["CONFIG_DIR", "LOG_DIR", "TMP_DIR", "INGEST_DIR", "DEBUG", "DOCKERMODE"]:
     if hasattr(env, key):
-        logger.debug('  %s: %s', key, getattr(env, key))
+        logger.debug("  %s: %s", key, getattr(env, key))
 
 # Load supported book languages from data file
 # Path is relative to the package root, not this file
@@ -87,7 +87,7 @@ with (_DATA_DIR / "book-languages.json").open() as file:
 
 # Directory settings
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-logger.debug('BASE_DIR: %s', BASE_DIR)
+logger.debug("BASE_DIR: %s", BASE_DIR)
 if env.ENABLE_LOGGING:
     env.LOG_DIR.mkdir(exist_ok=True)
 

@@ -209,14 +209,14 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
         raise SearchUnavailable("Unable to reach download source. Network restricted or mirrors are blocked.")
 
     if "No files found." in html:
-        logger.info('No books found for query: %s', query)
+        logger.info("No books found for query: %s", query)
         return []
 
     soup = BeautifulSoup(html, "html.parser")
     tbody: Tag | NavigableString | None = soup.find("table")
 
     if not tbody:
-        logger.warning('No results table found for query: %s', query)
+        logger.warning("No results table found for query: %s", query)
         raise RuntimeError("No books found. Please try another query.")
 
     books = []
@@ -409,7 +409,7 @@ def _parse_book_info_page(soup: BeautifulSoup, book_id: str, fetch_download_coun
                 if "downloads_total" in summary_data:
                     info["Downloads"] = [str(summary_data["downloads_total"])]
         except Exception as e:
-            logger.debug('Failed to fetch download count for %s: %s', book_id, e)
+            logger.debug("Failed to fetch download count for %s: %s", book_id, e)
 
     book_info.info = info
 
@@ -557,7 +557,7 @@ def _fetch_aa_page_urls(book_info: BrowseRecord, urls_by_source: dict[str, list[
         fresh_book_info = get_book_info(book_info.id, fetch_download_count=False)
         _group_urls_by_source(fresh_book_info.download_urls, urls_by_source)
     except Exception as e:
-        logger.warning('Failed to fetch AA page: %s', e)
+        logger.warning("Failed to fetch AA page: %s", e)
 
 
 def _get_urls_for_source(
@@ -626,7 +626,7 @@ def _try_download_url(
     Returns: download URL on success, None on failure.
     """
     try:
-        logger.info('Trying download source [%s]: %s', source_id, url)
+        logger.info("Trying download source [%s]: %s", source_id, url)
 
         if status_callback:
             status_callback("resolving", f"Trying {source_context}")
@@ -635,7 +635,7 @@ def _try_download_url(
         if not download_url:
             _raise_runtime_error("No download URL resolved")
 
-        logger.info('Resolved download URL [%s]: %s', source_id, download_url)
+        logger.info("Resolved download URL [%s]: %s", source_id, download_url)
 
         data = downloader.download_url(
             download_url, book_info.size or "",
@@ -648,16 +648,16 @@ def _try_download_url(
 
         file_size = data.tell()
         if file_size < _MIN_VALID_FILE_SIZE:
-            logger.warning('Downloaded file too small (%s bytes), likely an error page', file_size)
+            logger.warning("Downloaded file too small (%s bytes), likely an error page", file_size)
             _raise_runtime_error(f"File too small ({file_size} bytes)")
 
-        logger.debug('Download finished (%s bytes). Writing to %s', file_size, book_path)
+        logger.debug("Download finished (%s bytes). Writing to %s", file_size, book_path)
         data.seek(0)
         with book_path.open("wb") as f:
             f.write(data.getbuffer())
 
     except Exception as e:
-        logger.warning('Failed to download from %s (source=%s): %s', url, source_id, e)
+        logger.warning("Failed to download from %s (source=%s): %s", url, source_id, e)
         return None
     else:
         return download_url
@@ -675,14 +675,14 @@ def _get_download_urls_from_welib(
     if not _is_source_enabled("welib"):
         return []
     url = mirrors.get_welib_url_template().format(md5=book_id)
-    logger.info('Fetching welib download URLs for %s', book_id)
+    logger.info("Fetching welib download URLs for %s", book_id)
     try:
         html = downloader.html_get_page(url, use_bypasser=True, selector=selector or network.AAMirrorSelector(), cancel_flag=cancel_flag, status_callback=status_callback)
     except Exception as exc:
         logger.error_trace(f"Welib fetch failed for {book_id}: {exc}")
         return []
     if not html:
-        logger.warning('Welib page empty for %s', book_id)
+        logger.warning("Welib page empty for %s", book_id)
         return []
 
     soup = BeautifulSoup(html, "html.parser")
@@ -700,7 +700,7 @@ def _extract_libgen_download_url(link: str, cancel_flag: Event | None = None) ->
         return ""
 
     base_url = "/".join(link.split("/")[:3])
-    logger.debug('Libgen fast: trying %s', link)
+    logger.debug("Libgen fast: trying %s", link)
 
     try:
         response = requests.get(
@@ -713,14 +713,14 @@ def _extract_libgen_download_url(link: str, cancel_flag: Event | None = None) ->
         )
 
         if response.status_code != 200:
-            logger.debug('Libgen fast: %s returned %s', link, response.status_code)
+            logger.debug("Libgen fast: %s returned %s", link, response.status_code)
             return ""
 
         html = response.text
         final_url = response.url
 
         if "libgen" not in final_url.lower() and "ads.php" not in final_url.lower():
-            logger.debug('Libgen fast: redirected away to %s', final_url)
+            logger.debug("Libgen fast: redirected away to %s", final_url)
             return ""
 
         if "get.php" not in html:
@@ -740,12 +740,12 @@ def _extract_libgen_download_url(link: str, cancel_flag: Event | None = None) ->
         if not download_url.startswith("http"):
             download_url = f"{base_url}/{download_url.lstrip('/')}"
 
-        logger.debug('Libgen fast: extracted %s', download_url)
+        logger.debug("Libgen fast: extracted %s", download_url)
     except requests.exceptions.RequestException as e:
-        logger.debug('Libgen fast: request failed: %s', e)
+        logger.debug("Libgen fast: request failed: %s", e)
         return ""
     except Exception as e:
-        logger.warning('Libgen fast: unexpected error: %s', e)
+        logger.warning("Libgen fast: unexpected error: %s", e)
         return ""
     else:
         return download_url
@@ -783,12 +783,12 @@ def _download_book(
 
         # Skip if source requires CF bypass and it's not enabled
         if source_id in _CF_BYPASS_REQUIRED and not config.USE_CF_BYPASS:
-            logger.debug('Skipping %s - requires CF bypass', source_id)
+            logger.debug("Skipping %s - requires CF bypass", source_id)
             continue
 
         # Skip if source has failed too many times
         if source_failures.get(source_id, 0) >= _SOURCE_FAILURE_THRESHOLD:
-            logger.debug('Skipping %s - too many failures', source_id)
+            logger.debug("Skipping %s - too many failures", source_id)
             continue
 
         # Get URLs for this source (lazy-loads as needed)
@@ -806,7 +806,7 @@ def _download_book(
             rotation = rotation_value % len(urls_to_try)
             urls_to_try = urls_to_try[rotation:] + urls_to_try[:rotation]
             if rotation:
-                logger.debug('Rotated %s URLs by %s', source_id, rotation)
+                logger.debug("Rotated %s URLs by %s", source_id, rotation)
 
         # Try each URL for this source
         for url in urls_to_try:
@@ -833,7 +833,7 @@ def _download_book(
 
             # Check if we've hit the failure threshold
             if source_failures[source_id] >= _SOURCE_FAILURE_THRESHOLD:
-                logger.info('Source %s hit failure threshold, moving to next source', source_id)
+                logger.info("Source %s hit failure threshold, moving to next source", source_id)
                 break
 
     if status_callback:
@@ -969,8 +969,8 @@ def _extract_slow_download_url(
         MAX_COUNTDOWN_SECONDS = 600
         sleep_time = min(countdown_seconds, MAX_COUNTDOWN_SECONDS)
         if countdown_seconds > MAX_COUNTDOWN_SECONDS:
-            logger.warning('Countdown %ss exceeds max, capping at %ss', countdown_seconds, MAX_COUNTDOWN_SECONDS)
-        logger.info('AA waitlist: %ss for %s', sleep_time, title)
+            logger.warning("Countdown %ss exceeds max, capping at %ss", countdown_seconds, MAX_COUNTDOWN_SECONDS)
+        logger.info("AA waitlist: %ss for %s", sleep_time, title)
 
         # Live countdown with status updates
         for remaining in range(sleep_time, 0, -1):
@@ -980,7 +980,7 @@ def _extract_slow_download_url(
 
             # Wait 1 second (or until cancelled)
             if cancel_flag and cancel_flag.wait(timeout=1):
-                logger.info('Cancelled wait for %s', title)
+                logger.info("Cancelled wait for %s", title)
                 return ""
 
         # After countdown, update status and re-fetch
@@ -990,7 +990,7 @@ def _extract_slow_download_url(
         return _get_download_url(link, title, cancel_flag, status_callback, selector, source_context)
 
     link_texts = [a.get_text(strip=True)[:50] for a in soup.find_all("a", href=True)[:10]]
-    logger.warning('No download URL found. First 10 links: %s', link_texts)
+    logger.warning("No download URL found. First 10 links: %s", link_texts)
     return ""
 
 
@@ -1181,7 +1181,7 @@ class DirectDownloadSource(ReleaseSource):
         if results or not filters.lang:
             return results
 
-        logger.debug('No %s results with langs=%s, retrying without language filter', search_label, filters.lang)
+        logger.debug("No %s results with langs=%s, retrying without language filter", search_label, filters.lang)
         return search_books(query, replace(filters, lang=None))
 
     def search(
@@ -1230,14 +1230,14 @@ class DirectDownloadSource(ReleaseSource):
                 try:
                     results = search_books(isbn, filters)
                     if results:
-                        logger.info('Found %s releases via ISBN', len(results))
+                        logger.info("Found %s releases via ISBN", len(results))
                         self._last_search_type = "isbn"
                         return [_browse_record_to_release(record) for record in results]
                     logger.debug("No ISBN results, falling back to title+author")
                 except SearchUnavailable:
                     raise
                 except Exception as e:
-                    logger.warning('ISBN search failed: %s', e)
+                    logger.warning("ISBN search failed: %s", e)
 
         # Title + author fallback
         author = plan.author
@@ -1282,7 +1282,7 @@ class DirectDownloadSource(ReleaseSource):
                 except Exception:
                     logger.exception("Search error")
 
-        logger.info('Found %s releases via title+author', len(all_results))
+        logger.info("Found %s releases via title+author", len(all_results))
         return [_browse_record_to_release(record) for record in all_results]
 
     def is_available(self) -> bool:
@@ -1324,7 +1324,7 @@ class DirectDownloadHandler(DownloadHandler):
         try:
             # Check for cancellation before starting
             if cancel_flag.is_set():
-                logger.info('Download cancelled before starting: %s', task.task_id)
+                logger.info("Download cancelled before starting: %s", task.task_id)
                 status_callback("cancelled", "Cancelled")
                 return None
 
@@ -1351,7 +1351,7 @@ class DirectDownloadHandler(DownloadHandler):
 
         except Exception as e:
             if cancel_flag.is_set():
-                logger.info('Download cancelled during error handling: %s', task.task_id)
+                logger.info("Download cancelled during error handling: %s", task.task_id)
                 status_callback("cancelled", "Cancelled")
             else:
                 logger.exception("Error downloading book")
@@ -1389,7 +1389,7 @@ class DirectDownloadHandler(DownloadHandler):
 
             # Check cancellation before download
             if cancel_flag.is_set():
-                logger.info('Download cancelled before download call: %s', book_info.id)
+                logger.info("Download cancelled before download call: %s", book_info.id)
                 status_callback("cancelled", "Cancelled")
                 return None
 
@@ -1405,7 +1405,7 @@ class DirectDownloadHandler(DownloadHandler):
 
             # Check for cancellation after download
             if cancel_flag.is_set():
-                logger.info('Download cancelled during download: %s', book_info.id)
+                logger.info("Download cancelled during download: %s", book_info.id)
                 if book_path.exists():
                     book_path.unlink()
                 status_callback("cancelled", "Cancelled")
@@ -1420,7 +1420,7 @@ class DirectDownloadHandler(DownloadHandler):
 
         except Exception:
             if cancel_flag.is_set():
-                logger.info('Download cancelled during error handling: %s', book_info.id)
+                logger.info("Download cancelled during error handling: %s", book_info.id)
                 status_callback("cancelled", "Cancelled")
             else:
                 logger.exception("Error downloading book")

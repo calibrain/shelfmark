@@ -46,7 +46,7 @@ def should_bypass_proxy(url: str) -> bool:
         parsed = urllib.parse.urlparse(url)
         hostname = (parsed.hostname or "").lower()
     except Exception as e:
-        logger.debug('Failed to parse URL for proxy bypass check: %s - %s', url, e)
+        logger.debug("Failed to parse URL for proxy bypass check: %s - %s", url, e)
         return False
 
     if not hostname:
@@ -161,10 +161,10 @@ logger = setup_logger(__name__)
 def _call_dns_rotation_callback(callback: Callable[[str, list[str], str], None], provider_name: str, servers: list[str], doh_url: str) -> None:
     """Call one DNS rotation callback and log failures."""
     try:
-        logger.debug('Calling DNS rotation callback: %s', callback.__name__)
+        logger.debug("Calling DNS rotation callback: %s", callback.__name__)
         callback(provider_name, servers, doh_url)
     except Exception as e:
-        logger.warning('DNS rotation callback %s failed: %s', callback.__name__, e)
+        logger.warning("DNS rotation callback %s failed: %s", callback.__name__, e)
 
 # In-memory state (no disk persistence)
 STATE_TTL_DAYS = 30
@@ -193,7 +193,7 @@ def register_dns_rotation_callback(callback: Callable[[str, list[str], str], Non
     with _dns_callback_lock:
         if callback not in _dns_rotation_callbacks:
             _dns_rotation_callbacks.append(callback)
-            logger.debug('Registered DNS rotation callback: %s', callback.__name__)
+            logger.debug("Registered DNS rotation callback: %s", callback.__name__)
 
 
 def unregister_dns_rotation_callback(callback: Callable[[str, list[str], str], None]) -> None:
@@ -201,7 +201,7 @@ def unregister_dns_rotation_callback(callback: Callable[[str, list[str], str], N
     with _dns_callback_lock:
         if callback in _dns_rotation_callbacks:
             _dns_rotation_callbacks.remove(callback)
-            logger.debug('Unregistered DNS rotation callback: %s', callback.__name__)
+            logger.debug("Unregistered DNS rotation callback: %s", callback.__name__)
 
 
 def _notify_dns_rotation(provider_name: str, servers: list[str], doh_url: str) -> None:
@@ -424,7 +424,7 @@ class DoHResolver:
         if key in self._cache:
             ips, timestamp = self._cache[key]
             if datetime.now() - timestamp < timedelta(seconds=self.CACHE_TTL):
-                logger.debug('DoH cache hit for %s: %s', hostname, ips)
+                logger.debug("DoH cache hit for %s: %s", hostname, ips)
                 return ips
             # Cache expired, remove it
             del self._cache[key]
@@ -448,17 +448,17 @@ class DoHResolver:
         """
         # Check if hostname is already an IP address, no need to resolve
         if _is_ip_address(hostname):
-            logger.debug('Skipping DoH resolution for IP address: %s', hostname)
+            logger.debug("Skipping DoH resolution for IP address: %s", hostname)
             return [hostname]
 
         # Check if hostname is a private IP address, and skip DoH if it is
         if _is_local_address(hostname):
-            logger.debug('Skipping DoH resolution for private IP: %s', hostname)
+            logger.debug("Skipping DoH resolution for private IP: %s", hostname)
             return [hostname]
 
         # Skip resolution for the DoH server itself to prevent recursion
         if hostname == self.hostname:
-            logger.debug('Skipping DoH resolution for DoH server itself: %s', hostname)
+            logger.debug("Skipping DoH resolution for DoH server itself: %s", hostname)
             return [self.ip]
 
         # Check cache first
@@ -483,7 +483,7 @@ class DoHResolver:
 
             data = response.json()
             if "Answer" not in data:
-                logger.warning('DoH resolution failed for %s: %s', hostname, data)
+                logger.warning("DoH resolution failed for %s: %s", hostname, data)
                 return []
 
             # Extract IP addresses from the response
@@ -495,7 +495,7 @@ class DoHResolver:
 
             # Don't log here - the caller (custom_getaddrinfo) will log the final result
         except Exception as e:
-            logger.warning('DoH resolution failed for %s: %s', hostname, e)
+            logger.warning("DoH resolution failed for %s: %s", hostname, e)
             return []
         else:
             return answers
@@ -588,22 +588,22 @@ def create_custom_getaddrinfo(
                 return results
 
         except Exception as e:
-            logger.warning('Custom DNS resolution failed for %s: %s, falling back to system DNS', host_str, e)
+            logger.warning("Custom DNS resolution failed for %s: %s, falling back to system DNS", host_str, e)
             # Trigger DNS switch on failure (if auto mode)
             if _is_auto_dns_mode() and not _is_local_address(host_str) and not _is_ip_address(host_str) and _current_dns_index < len(DNS_PROVIDERS):
-                logger.info('Requesting DNS provider switch after custom resolver failure for %s', host_str)
+                logger.info("Requesting DNS provider switch after custom resolver failure for %s", host_str)
                 switch_dns_provider()
 
         # Fall back to system DNS if custom resolution fails
-        logger.info('Custom DNS returned no addresses for %s; falling back to system resolver', host_str)
+        logger.info("Custom DNS returned no addresses for %s; falling back to system resolver", host_str)
         try:
             res = original_getaddrinfo(host, port, family, type, proto, flags)
             _log_results("system resolver (fallback)", "system", res)
         except Exception:
-            logger.exception('System DNS resolution also failed for %s', host_str)
+            logger.exception("System DNS resolution also failed for %s", host_str)
             # Last resort: Try to connect to the hostname directly
             if family == 0 or family == socket.AF_INET:
-                logger.warning('Using direct hostname as last resort for %s', host_str)
+                logger.warning("Using direct hostname as last resort for %s", host_str)
                 return [(socket.AF_INET, cast("SocketKind", type), proto, "", (host_str, port_int))]
             raise  # Re-raise the exception if we can't provide a last resort
         else:
@@ -628,12 +628,12 @@ def create_system_failover_getaddrinfo():
             return original_getaddrinfo(host, port, family, type, proto, flags)
         except Exception as e:
             if host_str not in _switch_logged:
-                logger.warning('System DNS resolution failed for %s: %s', host_str, e)
+                logger.warning("System DNS resolution failed for %s: %s", host_str, e)
 
             # Trigger DNS switch only in auto mode for non-local targets
             if _is_auto_dns_mode() and not _is_ip_address(host_str) and not _is_local_address(host_str) and _current_dns_index + 1 < len(DNS_PROVIDERS):
                 if host_str not in _switch_logged:
-                    logger.info('Switching DNS provider after system DNS failure for %s', host_str)
+                    logger.info("Switching DNS provider after system DNS failure for %s", host_str)
                     _switch_logged.add(host_str)
                 if switch_dns_provider():
                     return socket.getaddrinfo(host, port, family, type, proto, flags)
@@ -662,15 +662,15 @@ def _init_doh_resolver_internal(doh_server: str) -> DoHResolver:
         socket.getaddrinfo = original_getaddrinfo
 
         server_ip = socket.gethostbyname(server_hostname)
-        logger.info('DoH server %s resolved to IP: %s', server_hostname, server_ip)
+        logger.info("DoH server %s resolved to IP: %s", server_hostname, server_ip)
 
         # Restore custom getaddrinfo if it was previously set
         socket.getaddrinfo = temp_getaddrinfo
     except Exception:
-        logger.exception('Failed to resolve DoH server %s', server_hostname)
+        logger.exception("Failed to resolve DoH server %s", server_hostname)
         # Fall back to a known public DNS if resolution fails
         server_ip = "1.1.1.1"
-        logger.info('Using fallback IP for DoH server: %s', server_ip)
+        logger.info("Using fallback IP for DoH server: %s", server_ip)
 
     # Create DoH resolver
     doh_resolver = DoHResolver(doh_server, server_hostname, server_ip)
@@ -753,7 +753,7 @@ def switch_dns_provider() -> bool:
         app_config.CUSTOM_DNS = servers
         app_config.DOH_SERVER = doh
 
-        logger.warning('Switched DNS provider to: %s (using DoH)', name)
+        logger.warning("Switched DNS provider to: %s (using DoH)", name)
         _save_state(dns_provider=name)
         init_dns_resolvers()
 
@@ -799,14 +799,14 @@ def rotate_dns_and_reset_aa() -> bool:
         # Auto mode always resets to the first mirror to restart the cascade
         _current_aa_url_index = 0
         _aa_base_url = _aa_urls[0] if _aa_urls else "https://annas-archive.gl"
-        logger.info('After DNS switch, resetting AA URL to: %s', _aa_base_url)
+        logger.info("After DNS switch, resetting AA URL to: %s", _aa_base_url)
         _save_state(aa_url=_aa_base_url)
     else:
         # Keep the user's configured primary mirror (if it exists in the list),
         # otherwise keep the configured URL as-is (custom/env).
         _current_aa_url_index = _aa_urls.index(configured_url) if configured_url in _aa_urls else 0
         _aa_base_url = configured_url
-        logger.info('After DNS switch, keeping configured AA URL: %s', _aa_base_url)
+        logger.info("After DNS switch, keeping configured AA URL: %s", _aa_base_url)
         _save_state(aa_url=_aa_base_url)
     return True
 
@@ -868,7 +868,7 @@ def set_dns_provider(provider: str, manual_servers: list[str] | None = None, use
             DOH_SERVER = ""  # No DoH for manual servers
             app_config.CUSTOM_DNS = manual_servers
             app_config.DOH_SERVER = ""
-            logger.info('DNS set to manual servers: %s', manual_servers)
+            logger.info("DNS set to manual servers: %s", manual_servers)
             init_dns_resolvers()
             _notify_dns_rotation("manual", manual_servers, "")
             return True
@@ -884,13 +884,13 @@ def set_dns_provider(provider: str, manual_servers: list[str] | None = None, use
                 app_config.CUSTOM_DNS = servers
                 app_config.DOH_SERVER = DOH_SERVER
                 doh_status = "DoH enabled" if doh_enabled else "standard DNS"
-                logger.info('DNS set to: %s (%s)', name, doh_status)
+                logger.info("DNS set to: %s (%s)", name, doh_status)
                 _save_state(dns_provider=name)
                 init_dns_resolvers()
                 _notify_dns_rotation(name, servers, DOH_SERVER)
                 return True
 
-        logger.warning('Unknown DNS provider: %s', provider)
+        logger.warning("Unknown DNS provider: %s", provider)
         return False
 
 
@@ -905,7 +905,7 @@ def init_dns_resolvers():
             DOH_SERVER = doh
             app_config.CUSTOM_DNS = servers
             app_config.DOH_SERVER = doh
-            logger.info('Using DNS provider: %s (DoH enabled)', name)
+            logger.info("Using DNS provider: %s (DoH enabled)", name)
         else:
             CUSTOM_DNS = []
             DOH_SERVER = ""
@@ -949,7 +949,7 @@ def _get_initial_dns_config() -> tuple[str, list[str] | None, bool]:
         if potential_ips and all(_looks_like_ip(p) for p in potential_ips):
             manual_servers = potential_ips
             provider = "manual"
-            logger.info('Detected legacy DNS format, treating as manual: %s', manual_servers)
+            logger.info("Detected legacy DNS format, treating as manual: %s", manual_servers)
 
     return provider or "auto", manual_servers, use_doh
 
@@ -991,7 +991,7 @@ def _initialize_aa_state() -> None:
             _current_aa_url_index = _aa_urls.index(state["aa_base_url"])
             _aa_base_url = state["aa_base_url"]
         else:
-            logger.debug('AA_BASE_URL: auto, checking available urls %s', _aa_urls)
+            logger.debug("AA_BASE_URL: auto, checking available urls %s", _aa_urls)
             for i, url in enumerate(_aa_urls):
                 try:
                     response = requests.get(url, proxies=get_proxies(url), timeout=3, verify=get_ssl_verify(url))
@@ -1006,13 +1006,13 @@ def _initialize_aa_state() -> None:
                 _aa_base_url = _aa_urls[0]
                 _current_aa_url_index = 0
     elif configured_url not in _aa_urls:
-        logger.info('AA_BASE_URL set to custom value %s; skipping auto-switch', configured_url)
+        logger.info("AA_BASE_URL set to custom value %s; skipping auto-switch", configured_url)
         _aa_base_url = configured_url
     else:
         _current_aa_url_index = _aa_urls.index(configured_url)
         _aa_base_url = configured_url
 
-    logger.info('AA_BASE_URL: %s', _aa_base_url)
+    logger.info("AA_BASE_URL: %s", _aa_base_url)
 
 def init_dns(force: bool = False) -> None:
     """Initialize DNS state and resolvers using set_dns_provider() for consistency."""
@@ -1024,7 +1024,7 @@ def init_dns(force: bool = False) -> None:
         if _dns_initialized and not force:
             return
         # Do work first, set flag after to prevent race conditions.
-        logger.debug('Initializing DNS (using %s locks)', 'gevent' if _using_gevent_locks else 'threading')
+        logger.debug("Initializing DNS (using %s locks)", "gevent" if _using_gevent_locks else "threading")
         state = _load_state()
 
         # Get initial DNS configuration from environment
@@ -1037,7 +1037,7 @@ def init_dns(force: bool = False) -> None:
                 for i, (name, _, _) in enumerate(DNS_PROVIDERS):
                     if name == persisted:
                         _current_dns_index = i
-                        logger.info('Restored DNS provider from state: %s', name)
+                        logger.info("Restored DNS provider from state: %s", name)
                         break
             # Use init_dns_resolvers() for auto mode to preserve rotation capability
             init_dns_resolvers()
@@ -1113,7 +1113,7 @@ def set_aa_url_index(new_index: int) -> bool:
         return False
     _current_aa_url_index = new_index
     _aa_base_url = _aa_urls[_current_aa_url_index]
-    logger.info('Set AA URL to: %s', _aa_base_url)
+    logger.info("Set AA URL to: %s", _aa_base_url)
     _save_state(aa_url=_aa_base_url)
     return True
 

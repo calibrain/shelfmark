@@ -19,14 +19,14 @@ def _delete_file_with_logging(file_path: Path, file_type_label: str, *, rejected
     try:
         file_path.unlink()
         if rejected:
-            logger.debug('Deleted rejected %s file: %s', file_type_label, file_path.name)
+            logger.debug("Deleted rejected %s file: %s", file_type_label, file_path.name)
         else:
-            logger.debug('Deleted non-%s file: %s', file_type_label, file_path.name)
+            logger.debug("Deleted non-%s file: %s", file_type_label, file_path.name)
     except OSError as e:
         if rejected:
-            logger.warning('Failed to delete rejected %s file %s: %s', file_type_label, file_path, e)
+            logger.warning("Failed to delete rejected %s file %s: %s", file_type_label, file_path, e)
         else:
-            logger.warning('Failed to delete non-%s file %s: %s', file_type_label, file_path, e)
+            logger.warning("Failed to delete non-%s file %s: %s", file_type_label, file_path, e)
 
 
 # Check for rarfile availability at module load
@@ -170,7 +170,7 @@ def _extract_files_from_archive(archive, output_dir: Path) -> list[Path]:
         # Security: reject filenames with null bytes or path separators
         # Check both / and \ since archives may be created on different OSes
         if "\x00" in filename or "/" in filename or "\\" in filename:
-            logger.warning('Skipping suspicious filename in archive: %r', info.filename)
+            logger.warning("Skipping suspicious filename in archive: %r", info.filename)
             continue
 
         # Extract to output_dir with flat structure
@@ -180,14 +180,14 @@ def _extract_files_from_archive(archive, output_dir: Path) -> list[Path]:
         try:
             target_path.resolve().relative_to(output_dir.resolve())
         except ValueError:
-            logger.warning('Path traversal attempt blocked: %r', info.filename)
+            logger.warning("Path traversal attempt blocked: %r", info.filename)
             continue
 
         with archive.open(info) as src:
             data = src.read()
         final_path = atomic_write(target_path, data)
         extracted_files.append(final_path)
-        logger.debug('Extracted: %s', filename)
+        logger.debug("Extracted: %s", filename)
 
     return extracted_files
 

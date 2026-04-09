@@ -136,7 +136,7 @@ try:
     import shelfmark.release_sources  # noqa: F401
     logger.debug("Plugin modules loaded successfully")
 except ImportError as e:
-    logger.warning('Failed to import plugin modules: %s', e)
+    logger.warning("Failed to import plugin modules: %s", e)
 
 # Migrate legacy security settings if needed
 from shelfmark.config.security import _migrate_security_settings
@@ -166,7 +166,7 @@ try:
     register_admin_routes(app, user_db)
     register_self_user_routes(app, user_db)
 except (sqlite3.OperationalError, OSError) as e:
-    logger.warning('User database initialization failed: %s. Multi-user authentication features will be disabled. Ensure CONFIG_DIR (%s) exists and is writable.', e, _os.environ.get('CONFIG_DIR', '/config'))
+    logger.warning("User database initialization failed: %s. Multi-user authentication features will be disabled. Ensure CONFIG_DIR (%s) exists and is writable.", e, _os.environ.get("CONFIG_DIR", "/config"))
     user_db = None
     download_history_service = None
     activity_view_state_service = None
@@ -188,7 +188,7 @@ def cleanup_old_lockouts() -> None:
         if "lockout_until" in data and data["lockout_until"] < current_time
     ]
     for username in expired_users:
-        logger.info('Lockout expired for user: %s', username)
+        logger.info("Lockout expired for user: %s", username)
         del failed_login_attempts[username]
 
 def is_account_locked(username: str) -> bool:
@@ -217,7 +217,7 @@ def record_failed_login(username: str, ip_address: str) -> bool:
     if count >= MAX_LOGIN_ATTEMPTS:
         lockout_until = datetime.now() + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
         failed_login_attempts[username]["lockout_until"] = lockout_until
-        logger.warning("Account locked for user '%s' until %s due to %s failed login attempts", username, lockout_until.strftime('%Y-%m-%d %H:%M:%S'), count)
+        logger.warning("Account locked for user '%s' until %s due to %s failed login attempts", username, lockout_until.strftime("%Y-%m-%d %H:%M:%S"), count)
         return True
 
     return False
@@ -226,7 +226,7 @@ def clear_failed_logins(username: str) -> None:
     """Clear failed login attempts for a user after successful login."""
     if username in failed_login_attempts:
         del failed_login_attempts[username]
-        logger.debug('Cleared failed login attempts for user: %s', username)
+        logger.debug("Cleared failed login attempts for user: %s", username)
 
 
 def get_client_ip() -> str:
@@ -443,7 +443,7 @@ if user_db is not None:
                 ws_manager=ws_manager,
             )
     except Exception as e:
-        logger.warning('Failed to register request routes: %s', e)
+        logger.warning("Failed to register request routes: %s", e)
 
 
 # Enable CORS in development mode for local frontend development
@@ -545,8 +545,8 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME = 604800  # 7 days in seconds
 )
 
-logger.info('Session cookie secure setting: %s (from env: %s)', SESSION_COOKIE_SECURE, SESSION_COOKIE_SECURE_ENV)
-logger.info('Session cookie name: %s', SESSION_COOKIE_NAME)
+logger.info("Session cookie secure setting: %s (from env: %s)", SESSION_COOKIE_SECURE, SESSION_COOKIE_SECURE_ENV)
+logger.info("Session cookie name: %s", SESSION_COOKIE_NAME)
 
 @app.before_request
 def proxy_auth_middleware():
@@ -688,7 +688,7 @@ def login_required(f):
 
         # If CWA mode and database disappeared after startup, return error
         if auth_mode == "cwa" and CWA_DB_PATH and not CWA_DB_PATH.exists():
-            logger.error('CWA database at %s is no longer accessible', CWA_DB_PATH)
+            logger.error("CWA database at %s is no longer accessible", CWA_DB_PATH)
             return jsonify({"error": "Internal Server Error"}), 500
 
         # Check if user has a valid session
@@ -790,13 +790,13 @@ if DEBUG:
             result = subprocess.run(["/app/genDebug.sh"], capture_output=True, text=True, check=True)
             if result.returncode != 0:
                 _raise_runtime_error(f"Debug script failed: {result.stderr}")
-            logger.info('Debug script executed: %s', result.stdout)
+            logger.info("Debug script executed: %s", result.stdout)
             debug_file_path = result.stdout.strip().split("\n")[-1]
             if not Path(debug_file_path).exists():
-                logger.error('Debug zip file not found at: %s', debug_file_path)
+                logger.error("Debug zip file not found at: %s", debug_file_path)
                 return jsonify({"error": "Failed to generate debug information"}), 500
 
-            logger.info('Sending debug file: %s', debug_file_path)
+            logger.info("Sending debug file: %s", debug_file_path)
             return send_file(
                 debug_file_path,
                 mimetype="application/zip",
@@ -1348,7 +1348,7 @@ def _emit_request_update_events(updated_requests: list[dict[str, Any]]) -> None:
             socketio_ref.emit("request_update", payload, to=f"user_{updated['user_id']}")
             socketio_ref.emit("request_update", payload, to="admins")
     except Exception as exc:
-        logger.warning('Failed to emit delivery request_update events: %s', exc)
+        logger.warning("Failed to emit delivery request_update events: %s", exc)
 
 
 @app.route("/api/status", methods=["GET"])
@@ -1481,7 +1481,7 @@ def api_cover(cover_id: str) -> Response | tuple[Response, int]:
         try:
             original_url = base64.urlsafe_b64decode(encoded_url).decode()
         except Exception as e:
-            logger.warning('Failed to decode cover URL: %s', e)
+            logger.warning("Failed to decode cover URL: %s", e)
             return jsonify({"error": "Invalid cover URL encoding"}), 400
 
         # Fetch and cache the image
@@ -1725,7 +1725,7 @@ def not_found_error(error: Exception) -> Response | tuple[Response, int]:
         flask.Response: JSON error message with 404 status.
 
     """
-    logger.warning('404 error: %s : %s', request.url, error)
+    logger.warning("404 error: %s : %s", request.url, error)
     return jsonify({"error": "Resource not found"}), 404
 
 @app.errorhandler(500)
@@ -1816,7 +1816,7 @@ def api_login() -> Response | tuple[Response, int]:
         # OIDC mode also allows password login as a fallback so admins don't get locked out
         if auth_mode in ("builtin", "oidc"):
             if user_db is None:
-                logger.error('User database not available for %s auth', auth_mode)
+                logger.error("User database not available for %s auth", auth_mode)
                 return jsonify({"error": "Authentication service unavailable"}), 503
             try:
                 db_user = user_db.get_user(username=username)
@@ -1848,7 +1848,7 @@ def api_login() -> Response | tuple[Response, int]:
         if auth_mode == "cwa":
             # Verify database still exists (it was validated at startup)
             if not CWA_DB_PATH or not CWA_DB_PATH.exists():
-                logger.error('CWA database at %s is no longer accessible', CWA_DB_PATH)
+                logger.error("CWA database at %s is no longer accessible", CWA_DB_PATH)
                 return jsonify({"error": "Database configuration error"}), 500
 
             try:
@@ -2302,7 +2302,7 @@ def api_metadata_field_options() -> Response:
         options = provider.get_search_field_options(field_key, query=query_text or None)
         return jsonify({"options": options})
     except Exception as e:
-        logger.warning('Metadata field options endpoint error: %s', e)
+        logger.warning("Metadata field options endpoint error: %s", e)
         return jsonify({"options": []})
 
 
@@ -2507,7 +2507,7 @@ def api_releases() -> Response | tuple[Response, int]:
             except ValueError:
                 return None, [], f"Unknown source: {source_name}"
             except Exception as e:
-                logger.warning('Release search failed for source %s: %s', source_name, e)
+                logger.warning("Release search failed for source %s: %s", source_name, e)
                 return None, [], f"{source_name}: {e!s}"
             else:
                 return source, releases, None
@@ -2626,7 +2626,7 @@ def api_releases() -> Response | tuple[Response, int]:
                 first_source = source_instances[sources_to_search[0]]
                 column_config = serialize_column_config(first_source.get_column_config())
             except Exception as e:
-                logger.warning('Failed to get column config: %s', e)
+                logger.warning("Failed to get column config: %s", e)
 
         # Convert book to dict and transform cover_url
         book_dict = asdict(book)
@@ -2666,7 +2666,7 @@ def api_releases() -> Response | tuple[Response, int]:
 
         return jsonify(response)
     except SourceUnavailableError as e:
-        logger.warning('Release search unavailable: %s', e)
+        logger.warning("Release search unavailable: %s", e)
         return jsonify({"error": str(e)}), 503
     except Exception as e:
         logger.error_trace(f"Releases search error: {e}")
@@ -2706,7 +2706,7 @@ def api_release_source_record(source_name: str, record_id: str) -> Response | tu
     except ValueError:
         return jsonify({"error": f"Unknown release source: {source_name}"}), 400
     except SourceUnavailableError as e:
-        logger.warning('Release source record unavailable: %s', e)
+        logger.warning("Release source record unavailable: %s", e)
         return jsonify({"error": str(e)}), 503
     except Exception as e:
         logger.error_trace(f"Release source record error: {e}")
@@ -3008,10 +3008,10 @@ logger.log_resource_usage()
 
 # Warn if config directory is not writable (settings won't persist)
 if not _is_config_dir_writable():
-    logger.warning('Config directory %s is not writable. Settings will not persist. Mount a config volume to enable settings persistence (see docs for details).', CONFIG_DIR)
+    logger.warning("Config directory %s is not writable. Settings will not persist. Mount a config volume to enable settings persistence (see docs for details).", CONFIG_DIR)
 
 if __name__ == "__main__":
-    logger.info('Starting Flask application with WebSocket support on %s:%s (debug=%s)', FLASK_HOST, FLASK_PORT, DEBUG)
+    logger.info("Starting Flask application with WebSocket support on %s:%s (debug=%s)", FLASK_HOST, FLASK_PORT, DEBUG)
     socketio.run(
         app,
         host=FLASK_HOST,
