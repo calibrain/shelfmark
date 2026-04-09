@@ -72,7 +72,11 @@ _SELF_SETTINGS_SECTION_OPTIONS = [
 _SELF_SETTINGS_SECTION_VALUES = {option["value"] for option in _SELF_SETTINGS_SECTION_OPTIONS}
 _SELF_SETTINGS_SECTION_DEFAULTS = [option["value"] for option in _SELF_SETTINGS_SECTION_OPTIONS]
 _SEARCH_MODE_VALUES = {"direct", "universal"}
-_SEARCH_PREFERENCE_PROVIDER_KEYS = {"METADATA_PROVIDER", "METADATA_PROVIDER_AUDIOBOOK", "METADATA_PROVIDER_COMBINED"}
+_SEARCH_PREFERENCE_PROVIDER_KEYS = {
+    "METADATA_PROVIDER",
+    "METADATA_PROVIDER_AUDIOBOOK",
+    "METADATA_PROVIDER_COMBINED",
+}
 _SEARCH_PREFERENCE_VALIDATABLE_KEYS = {
     "SEARCH_MODE",
     "DEFAULT_RELEASE_SOURCE",
@@ -231,7 +235,9 @@ def _on_save_users(values: dict[str, object]) -> dict[str, object]:
         elif isinstance(raw_sections, str):
             candidate_sections = [s.strip() for s in raw_sections.split(",") if s.strip()]
         elif isinstance(raw_sections, (list, tuple, set)):
-            candidate_sections = [str(section).strip() for section in raw_sections if str(section).strip()]
+            candidate_sections = [
+                str(section).strip() for section in raw_sections if str(section).strip()
+            ]
         else:
             return {
                 "error": True,
@@ -256,14 +262,20 @@ def _on_save_users(values: dict[str, object]) -> dict[str, object]:
 
         values["VISIBLE_SELF_SETTINGS_SECTIONS"] = normalized_sections
 
-    if "REQUEST_POLICY_DEFAULT_EBOOK" in values and parse_policy_mode(values["REQUEST_POLICY_DEFAULT_EBOOK"]) is None:
+    if (
+        "REQUEST_POLICY_DEFAULT_EBOOK" in values
+        and parse_policy_mode(values["REQUEST_POLICY_DEFAULT_EBOOK"]) is None
+    ):
         return {
             "error": True,
             "message": "REQUEST_POLICY_DEFAULT_EBOOK must be a valid policy mode",
             "values": values,
         }
 
-    if "REQUEST_POLICY_DEFAULT_AUDIOBOOK" in values and parse_policy_mode(values["REQUEST_POLICY_DEFAULT_AUDIOBOOK"]) is None:
+    if (
+        "REQUEST_POLICY_DEFAULT_AUDIOBOOK" in values
+        and parse_policy_mode(values["REQUEST_POLICY_DEFAULT_AUDIOBOOK"]) is None
+    ):
         return {
             "error": True,
             "message": "REQUEST_POLICY_DEFAULT_AUDIOBOOK must be a valid policy mode",
@@ -326,9 +338,7 @@ def users_settings() -> list[SettingsField]:
         HeadingField(
             key="requests_heading",
             title="Requests",
-            description=(
-                "Choose what users can download directly and what needs approval first."
-            ),
+            description=("Choose what users can download directly and what needs approval first."),
         ),
         CheckboxField(
             key="REQUESTS_ENABLED",
@@ -352,9 +362,7 @@ def users_settings() -> list[SettingsField]:
                 SelectField(
                     key="REQUEST_POLICY_DEFAULT_EBOOK",
                     label="Default Ebook Mode",
-                    description=(
-                        "Sets the baseline for all ebook sources."
-                    ),
+                    description=("Sets the baseline for all ebook sources."),
                     options=_REQUEST_DEFAULT_MODE_OPTIONS,
                     default="download",
                     user_overridable=True,
@@ -362,9 +370,7 @@ def users_settings() -> list[SettingsField]:
                 SelectField(
                     key="REQUEST_POLICY_DEFAULT_AUDIOBOOK",
                     label="Default Audiobook Mode",
-                    description=(
-                        "Sets the baseline for all audiobook sources."
-                    ),
+                    description=("Sets the baseline for all audiobook sources."),
                     options=_REQUEST_DEFAULT_MODE_OPTIONS,
                     default="download",
                     user_overridable=True,

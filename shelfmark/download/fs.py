@@ -32,9 +32,7 @@ _IO_THREADPOOL: Optional["_GeventThreadPool"] = None
 
 def _use_gevent_threadpool() -> bool:
     return bool(
-        _gevent_monkey
-        and _GeventThreadPool
-        and _gevent_monkey.is_module_patched("threading")
+        _gevent_monkey and _GeventThreadPool and _gevent_monkey.is_module_patched("threading")
     )
 
 
@@ -46,7 +44,9 @@ def _get_io_threadpool() -> "_GeventThreadPool":
     return _IO_THREADPOOL
 
 
-def _call_and_capture(func: Callable[..., T], args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[bool, T | Exception]:
+def _call_and_capture(
+    func: Callable[..., T], args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> tuple[bool, T | Exception]:
     try:
         return True, func(*args, **kwargs)
     except Exception as exc:
@@ -84,7 +84,6 @@ def run_blocking_io(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     return func(*args, **kwargs)
 
 
-
 _VERIFY_IO_WAIT_SECONDS = 3.0
 _PUBLISH_VERIFY_RETRY_SECONDS = 0.25
 
@@ -104,7 +103,13 @@ def _verify_transfer_size(
     if actual_size == expected_size:
         return
 
-    logger.debug("File %s size mismatch, waiting for filesystem sync: %s (%s != %s)", action, dest, actual_size, expected_size)
+    logger.debug(
+        "File %s size mismatch, waiting for filesystem sync: %s (%s != %s)",
+        action,
+        dest,
+        actual_size,
+        expected_size,
+    )
     time.sleep(_VERIFY_IO_WAIT_SECONDS)
 
     actual_size = run_blocking_io(dest.stat).st_size
@@ -234,7 +239,9 @@ def _perform_nfs_fallback(source: Path, dest: Path, *, is_move: bool) -> None:
         run_blocking_io(dest.unlink, missing_ok=True)
 
         if _is_permission_error(copy_error):
-            log_transfer_permission_context("nfs_fallback_copyfile", source=source, dest=dest, error=copy_error)
+            log_transfer_permission_context(
+                "nfs_fallback_copyfile", source=source, dest=dest, error=copy_error
+            )
         logger.exception("Fallback copyfile failed (%s -> %s)", source, dest)
 
         # Fallback 2: system command
@@ -247,7 +254,9 @@ def _perform_nfs_fallback(source: Path, dest: Path, *, is_move: bool) -> None:
             if is_move:
                 run_blocking_io(source.unlink, missing_ok=True)
         except subprocess.CalledProcessError as sys_error:
-            log_transfer_permission_context("nfs_fallback_system", source=source, dest=dest, error=sys_error)
+            log_transfer_permission_context(
+                "nfs_fallback_system", source=source, dest=dest, error=sys_error
+            )
             logger.exception("System %s failed (%s -> %s): %s", op, source, dest, sys_error.stderr)
             run_blocking_io(dest.unlink, missing_ok=True)
             raise

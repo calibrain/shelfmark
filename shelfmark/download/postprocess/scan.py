@@ -93,7 +93,12 @@ def extract_archive_files(
 
     if not extracted_files:
         if rejected_files:
-            return [], rejected_files, cleanup_paths, _format_not_supported_error(rejected_files, task)
+            return (
+                [],
+                rejected_files,
+                cleanup_paths,
+                _format_not_supported_error(rejected_files, task),
+            )
         file_type_label = "audiobook" if check_audiobook(content_type) else "book"
         return [], rejected_files, cleanup_paths, f"No {file_type_label} files found in archive"
 
@@ -113,6 +118,7 @@ def scan_directory_tree(
 ) -> tuple[list[Path], list[Path], list[Path], str | None]:
     """Scan a directory tree for book files, trackable-but-unsupported files, and archives."""
     try:
+
         def _probe_dir() -> None:
             # Force a fast error if the dir is missing/inaccessible.
             with os.scandir(directory) as it:
@@ -135,8 +141,19 @@ def scan_directory_tree(
         trackable_exts = {".m4b", ".mp3", ".m4a", ".flac", ".ogg", ".wma", ".aac", ".wav"}
     else:
         trackable_exts = {
-            ".pdf", ".epub", ".mobi", ".azw", ".azw3", ".fb2", ".djvu", ".cbz", ".cbr",
-            ".doc", ".docx", ".rtf", ".txt",
+            ".pdf",
+            ".epub",
+            ".mobi",
+            ".azw",
+            ".azw3",
+            ".fb2",
+            ".djvu",
+            ".cbz",
+            ".cbr",
+            ".doc",
+            ".docx",
+            ".rtf",
+            ".txt",
         }
 
     logged_walk_permission_context = False
@@ -197,7 +214,9 @@ def collect_directory_files(
     cleanup_archives: bool = False,
 ) -> tuple[list[Path], list[Path], list[Path], str | None]:
     content_type = task.content_type
-    book_files, rejected_files, archive_files, scan_error = scan_directory_tree(directory, content_type)
+    book_files, rejected_files, archive_files, scan_error = scan_directory_tree(
+        directory, content_type
+    )
     if scan_error:
         return [], [], [], scan_error
 
@@ -271,7 +290,12 @@ def collect_directory_files(
             return [], rejected_files, cleanup_paths, "; ".join(all_errors)
 
         if rejected_files:
-            return [], rejected_files, cleanup_paths, _format_not_supported_error(rejected_files, task)
+            return (
+                [],
+                rejected_files,
+                cleanup_paths,
+                _format_not_supported_error(rejected_files, task),
+            )
 
         return [], rejected_files, cleanup_paths, "No book files found in archives"
 
@@ -340,8 +364,19 @@ def collect_staged_files(
         trackable_exts = {".m4b", ".mp3", ".m4a", ".flac", ".ogg", ".wma", ".aac", ".wav"}
     else:
         trackable_exts = {
-            ".pdf", ".epub", ".mobi", ".azw", ".azw3", ".fb2", ".djvu", ".cbz", ".cbr",
-            ".doc", ".docx", ".rtf", ".txt",
+            ".pdf",
+            ".epub",
+            ".mobi",
+            ".azw",
+            ".azw3",
+            ".fb2",
+            ".djvu",
+            ".cbz",
+            ".cbr",
+            ".doc",
+            ".docx",
+            ".rtf",
+            ".txt",
         }
 
     if suffix in supported_exts:

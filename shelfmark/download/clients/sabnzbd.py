@@ -207,9 +207,7 @@ class SABnzbdClient(DownloadClient):
     def _fetch_nzb_content(self, url: str) -> bytes:
         """Fetch NZB content, including Prowlarr auth headers when appropriate."""
         headers = self._get_prowlarr_headers(url)
-        response = requests.get(
-            url, timeout=30, headers=headers, verify=get_ssl_verify(url)
-        )
+        response = requests.get(url, timeout=30, headers=headers, verify=get_ssl_verify(url))
         response.raise_for_status()
         return response.content
 
@@ -229,11 +227,7 @@ class SABnzbdClient(DownloadClient):
         except ValueError:
             return {}
 
-        if (
-            target.hostname
-            and base.hostname
-            and target.hostname.lower() == base.hostname.lower()
-        ):
+        if target.hostname and base.hostname and target.hostname.lower() == base.hostname.lower():
             return {"X-Api-Key": api_key}
 
         return {}
@@ -419,9 +413,7 @@ class SABnzbdClient(DownloadClient):
 
                     if status_text == "COMPLETED":
                         title = slot.get("name") or slot.get("nzb_name") or ""
-                        resolved_storage = self._resolve_completed_storage_path(
-                            storage, title
-                        )
+                        resolved_storage = self._resolve_completed_storage_path(storage, title)
 
                         return DownloadStatus(
                             progress=100,
@@ -433,9 +425,7 @@ class SABnzbdClient(DownloadClient):
                     if status_text == "FAILED":
                         fail_message = slot.get("fail_message", "Download failed")
                         title = slot.get("name") or slot.get("nzb_name") or ""
-                        resolved_storage = self._resolve_completed_storage_path(
-                            storage, title
-                        )
+                        resolved_storage = self._resolve_completed_storage_path(storage, title)
                         return DownloadStatus(
                             progress=100,
                             state="error",
@@ -455,16 +445,12 @@ class SABnzbdClient(DownloadClient):
                     )
 
             # Not found
-            logger.warning(
-                "SABnzbd: download %s not found in queue or history", download_id
-            )
+            logger.warning("SABnzbd: download %s not found in queue or history", download_id)
             return DownloadStatus.error("Download not found")
         except Exception as e:
             return DownloadStatus.error(self._log_error("get_status", e))
 
-    def remove(
-        self, download_id: str, *, delete_files: bool = False, archive: bool = True
-    ) -> bool:
+    def remove(self, download_id: str, *, delete_files: bool = False, archive: bool = True) -> bool:
         """Remove a download from SABnzbd.
 
         Args:
@@ -594,9 +580,7 @@ class SABnzbdClient(DownloadClient):
                     nzo_id = slot.get("nzo_id")
                     if nzo_id:
                         status = self.get_status(nzo_id)
-                        logger.debug(
-                            "Found existing NZB in SABnzbd history: %s", nzo_id
-                        )
+                        logger.debug("Found existing NZB in SABnzbd history: %s", nzo_id)
                         return (nzo_id, status)
 
         except Exception as e:

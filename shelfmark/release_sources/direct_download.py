@@ -48,6 +48,7 @@ logger = setup_logger(__name__)
 def _raise_runtime_error(message: str) -> NoReturn:
     raise RuntimeError(message)
 
+
 _aa_slow_rotation = itertools.count()
 _url_source_types: dict[str, str] = {}
 
@@ -73,6 +74,7 @@ _CF_BYPASS_REQUIRED = frozenset({"aa-slow-nowait", "aa-slow-wait", "zlib", "weli
 # Sources whose URLs come from AA page (multiple mirrors)
 _AA_PAGE_SOURCES = frozenset({"aa-slow-nowait", "aa-slow-wait"})
 
+
 def _get_md5_url_template(source_id: str) -> str | None:
     """Get URL template for MD5-based sources from centralized config."""
     from shelfmark.core import mirrors
@@ -87,14 +89,27 @@ def _get_md5_url_template(source_id: str) -> str | None:
 def _get_libgen_domains() -> list[str]:
     """Get LibGen domains from centralized config."""
     from shelfmark.core import mirrors
+
     return mirrors.get_libgen_mirrors()
 
+
 _LIBGEN_GET_PATTERNS = [
-    re.compile(r'<a\s+href=["\']([^"\']*get\.php\?md5=[^"\']+&key=[^"\']+)["\'][^>]*>\s*<h2[^>]*>GET</h2>\s*</a>', re.IGNORECASE),
-    re.compile(r'<a[^>]+href=["\']([^"\']*get\.php\?md5=[^"\']+&(?:amp;)?key=[^"\']+)["\']', re.IGNORECASE),
-    re.compile(r'<a\s+href=["\']([^"\']*get\.php[^"\']*)["\'][^>]*>[\s\S]*?<h2[^>]*>GET</h2>', re.IGNORECASE),
-    re.compile(r'href=["\']([^"\']*get\.php\?[^"\']*md5=[^"\']*&[^"\']*key=[^"\']+)["\']', re.IGNORECASE),
+    re.compile(
+        r'<a\s+href=["\']([^"\']*get\.php\?md5=[^"\']+&key=[^"\']+)["\'][^>]*>\s*<h2[^>]*>GET</h2>\s*</a>',
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r'<a[^>]+href=["\']([^"\']*get\.php\?md5=[^"\']+&(?:amp;)?key=[^"\']+)["\']', re.IGNORECASE
+    ),
+    re.compile(
+        r'<a\s+href=["\']([^"\']*get\.php[^"\']*)["\'][^>]*>[\s\S]*?<h2[^>]*>GET</h2>',
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r'href=["\']([^"\']*get\.php\?[^"\']*md5=[^"\']*&[^"\']*key=[^"\']+)["\']', re.IGNORECASE
+    ),
 ]
+
 
 def _get_source_priority() -> list[dict]:
     """Get the full source priority list.
@@ -169,9 +184,7 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
     query_html = quote(query)
 
     if filters.isbn:
-        isbns = " || ".join(
-            [f"('isbn13:{isbn}' || 'isbn10:{isbn}')" for isbn in filters.isbn]
-        )
+        isbns = " || ".join([f"('isbn13:{isbn}' || 'isbn10:{isbn}')" for isbn in filters.isbn])
         query_html = quote(f"({isbns}) {query}")
 
     filters_query = ""
@@ -210,7 +223,9 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
     html = downloader.html_get_page(url, selector=selector, allow_bypasser_fallback=False)
     if not html:
         # Network/mirror exhaustion path bubbles up so API can notify clients
-        raise SearchUnavailable("Unable to reach download source. Network restricted or mirrors are blocked.")
+        raise SearchUnavailable(
+            "Unable to reach download source. Network restricted or mirrors are blocked."
+        )
 
     if "No files found." in html:
         logger.info("No books found for query: %s", query)
@@ -258,7 +273,9 @@ def get_book_info(book_id: str, *, fetch_download_count: bool = True) -> BrowseR
     html = downloader.html_get_page(url, selector=selector, allow_bypasser_fallback=False)
 
     if not html:
-        raise SearchUnavailable("Unable to reach download source. Network restricted or mirrors are blocked.")
+        raise SearchUnavailable(
+            "Unable to reach download source. Network restricted or mirrors are blocked."
+        )
 
     soup = BeautifulSoup(html, "html.parser")
 
@@ -412,12 +429,21 @@ def _parse_book_info_page(
     if fetch_download_count:
         try:
             summary_url = f"{network.get_aa_base_url()}/dyn/md5/summary/{book_id}"
-            summary_response = downloader.html_get_page(summary_url, selector=network.AAMirrorSelector(), allow_bypasser_fallback=False)
+            summary_response = downloader.html_get_page(
+                summary_url, selector=network.AAMirrorSelector(), allow_bypasser_fallback=False
+            )
             if summary_response:
                 summary_data = json.loads(summary_response)
                 if "downloads_total" in summary_data:
                     info["Downloads"] = [str(summary_data["downloads_total"])]
-        except (SearchUnavailable, RuntimeError, json.JSONDecodeError, TypeError, KeyError, AttributeError) as e:
+        except (
+            SearchUnavailable,
+            RuntimeError,
+            json.JSONDecodeError,
+            TypeError,
+            KeyError,
+            AttributeError,
+        ) as e:
             logger.debug("Failed to fetch download count for %s: %s", book_id, e)
 
     book_info.info = info
@@ -605,7 +631,12 @@ def _get_urls_for_source(
     if source_id == "welib":
         if status_callback:
             status_callback("resolving", "Fetching welib sources")
-        return _get_download_urls_from_welib(book_info.id, selector=selector, cancel_flag=cancel_flag, status_callback=status_callback)
+        return _get_download_urls_from_welib(
+            book_info.id,
+            selector=selector,
+            cancel_flag=cancel_flag,
+            status_callback=status_callback,
+        )
 
     # AA page sources - fetch AA page if not already done
     if source_id in _AA_PAGE_SOURCES:
@@ -628,7 +659,7 @@ def _try_download_url(
     cancel_flag: Event | None,
     status_callback: Callable[[str, str | None], None] | None,
     selector: network.AAMirrorSelector,
-    source_context: str
+    source_context: str,
 ) -> str | None:
     """Attempt to download from a single URL.
 
@@ -640,16 +671,22 @@ def _try_download_url(
         if status_callback:
             status_callback("resolving", f"Trying {source_context}")
 
-        download_url = _get_download_url(url, book_info.title, cancel_flag, status_callback, selector, source_context)
+        download_url = _get_download_url(
+            url, book_info.title, cancel_flag, status_callback, selector, source_context
+        )
         if not download_url:
             _raise_runtime_error("No download URL resolved")
 
         logger.info("Resolved download URL [%s]: %s", source_id, download_url)
 
         data = downloader.download_url(
-            download_url, book_info.size or "",
-            progress_callback, cancel_flag, selector,
-            status_callback, referer=url
+            download_url,
+            book_info.size or "",
+            progress_callback,
+            cancel_flag,
+            selector,
+            status_callback,
+            referer=url,
         )
 
         if not data:
@@ -665,7 +702,15 @@ def _try_download_url(
         with book_path.open("wb") as f:
             f.write(data.getbuffer())
 
-    except (RuntimeError, requests.exceptions.RequestException, OSError, KeyError, ValueError, TypeError, AttributeError) as e:
+    except (
+        RuntimeError,
+        requests.exceptions.RequestException,
+        OSError,
+        KeyError,
+        ValueError,
+        TypeError,
+        AttributeError,
+    ) as e:
         logger.warning("Failed to download from %s (source=%s): %s", url, source_id, e)
         return None
     else:
@@ -676,7 +721,7 @@ def _get_download_urls_from_welib(
     book_id: str,
     selector: network.AAMirrorSelector | None = None,
     cancel_flag: Event | None = None,
-    status_callback: Callable[[str, str | None], None] | None = None
+    status_callback: Callable[[str, str | None], None] | None = None,
 ) -> list[str]:
     """Get download URLs from welib.org (bypasser required)."""
     from shelfmark.core import mirrors
@@ -686,8 +731,21 @@ def _get_download_urls_from_welib(
     url = mirrors.get_welib_url_template().format(md5=book_id)
     logger.info("Fetching welib download URLs for %s", book_id)
     try:
-        html = downloader.html_get_page(url, use_bypasser=True, selector=selector or network.AAMirrorSelector(), cancel_flag=cancel_flag, status_callback=status_callback)
-    except (SearchUnavailable, requests.exceptions.RequestException, RuntimeError, ValueError, TypeError, AttributeError) as exc:
+        html = downloader.html_get_page(
+            url,
+            use_bypasser=True,
+            selector=selector or network.AAMirrorSelector(),
+            cancel_flag=cancel_flag,
+            status_callback=status_callback,
+        )
+    except (
+        SearchUnavailable,
+        requests.exceptions.RequestException,
+        RuntimeError,
+        ValueError,
+        TypeError,
+        AttributeError,
+    ) as exc:
         logger.error_trace(f"Welib fetch failed for {book_id}: {exc}")
         return []
     if not html:
@@ -740,7 +798,9 @@ def _extract_libgen_download_url(link: str, cancel_flag: Event | None = None) ->
         for pattern in _LIBGEN_GET_PATTERNS:
             match = pattern.search(html)
             if match:
-                download_url = match.group(1).replace("&amp;", "&").replace("&gt;", ">").replace("&lt;", "<")
+                download_url = (
+                    match.group(1).replace("&amp;", "&").replace("&gt;", ">").replace("&lt;", "<")
+                )
                 break
 
         if not download_url:
@@ -765,7 +825,7 @@ def _download_book(
     book_path: Path,
     progress_callback: Callable[[float], None] | None = None,
     cancel_flag: Event | None = None,
-    status_callback: Callable[[str, str | None], None] | None = None
+    status_callback: Callable[[str, str | None], None] | None = None,
 ) -> str | None:
     """Download a book using sources in configured priority order.
 
@@ -802,7 +862,11 @@ def _download_book(
 
         # Get URLs for this source (lazy-loads as needed)
         urls_to_try = _get_urls_for_source(
-            source_id, book_info, selector, cancel_flag, status_callback,
+            source_id,
+            book_info,
+            selector,
+            cancel_flag,
+            status_callback,
             urls_by_source,
         )
 
@@ -830,9 +894,15 @@ def _download_book(
                 source_context = f"{friendly_name} (Server #{url_attempt_counter})"
 
             result = _try_download_url(
-                url, source_id, book_info, book_path,
-                progress_callback, cancel_flag, status_callback, selector,
-                source_context
+                url,
+                source_id,
+                book_info,
+                book_path,
+                progress_callback,
+                cancel_flag,
+                status_callback,
+                selector,
+                source_context,
             )
 
             if result:
@@ -856,7 +926,7 @@ def _get_download_url(
     cancel_flag: Event | None = None,
     status_callback: Callable[[str, str | None], None] | None = None,
     selector: network.AAMirrorSelector | None = None,
-    source_context: str | None = None
+    source_context: str | None = None,
 ) -> str:
     """Extract actual download URL from various source pages.
 
@@ -873,13 +943,17 @@ def _get_download_url(
 
     # AA fast download API (JSON response)
     if link.startswith(f"{network.get_aa_base_url()}/dyn/api/fast_download.json"):
-        page = downloader.html_get_page(link, selector=sel, cancel_flag=cancel_flag, status_callback=status_callback)
+        page = downloader.html_get_page(
+            link, selector=sel, cancel_flag=cancel_flag, status_callback=status_callback
+        )
         return downloader.get_absolute_url(link, json.loads(page).get("download_url", ""))
 
     if "/ads.php?md5=" in link and any(domain in link for domain in _get_libgen_domains()):
         return _extract_libgen_download_url(link, cancel_flag)
 
-    html = downloader.html_get_page(link, selector=sel, cancel_flag=cancel_flag, status_callback=status_callback)
+    html = downloader.html_get_page(
+        link, selector=sel, cancel_flag=cancel_flag, status_callback=status_callback
+    )
     if not html:
         return ""
 
@@ -892,7 +966,9 @@ def _get_download_url(
         if not dl:
             # Retry after delay if page not fully loaded
             time.sleep(2)
-            html = downloader.html_get_page(link, selector=sel, cancel_flag=cancel_flag, status_callback=status_callback)
+            html = downloader.html_get_page(
+                link, selector=sel, cancel_flag=cancel_flag, status_callback=status_callback
+            )
             if html:
                 soup = BeautifulSoup(html, "html.parser")
                 dl = soup.find("a", href=True, class_="addDownloadedBook")
@@ -900,7 +976,9 @@ def _get_download_url(
 
     # AA slow download / partner servers
     elif "/slow_download/" in link:
-        url = _extract_slow_download_url(soup, link, title, cancel_flag, status_callback, sel, source_context)
+        url = _extract_slow_download_url(
+            soup, link, title, cancel_flag, status_callback, sel, source_context
+        )
 
     else:
         get_btn = soup.find("a", string="GET") or soup.find("a", string="Download")
@@ -920,7 +998,7 @@ def _extract_slow_download_url(
     cancel_flag: Event | None,
     status_callback: Callable[[str, str | None], None] | None,
     selector: network.AAMirrorSelector,
-    source_context: str | None = None
+    source_context: str | None = None,
 ) -> str:
     """Extract download URL from AA slow download pages."""
     html_str = str(soup)
@@ -969,7 +1047,11 @@ def _extract_slow_download_url(
         if code_elem:
             return code_elem.get_text(strip=True)
         for sibling in parent.find_next_siblings():
-            text = sibling.get_text(strip=True) if hasattr(sibling, "get_text") else str(sibling).strip()
+            text = (
+                sibling.get_text(strip=True)
+                if hasattr(sibling, "get_text")
+                else str(sibling).strip()
+            )
             if text.startswith("http"):
                 return text
 
@@ -978,12 +1060,20 @@ def _extract_slow_download_url(
         MAX_COUNTDOWN_SECONDS = 600
         sleep_time = min(countdown_seconds, MAX_COUNTDOWN_SECONDS)
         if countdown_seconds > MAX_COUNTDOWN_SECONDS:
-            logger.warning("Countdown %ss exceeds max, capping at %ss", countdown_seconds, MAX_COUNTDOWN_SECONDS)
+            logger.warning(
+                "Countdown %ss exceeds max, capping at %ss",
+                countdown_seconds,
+                MAX_COUNTDOWN_SECONDS,
+            )
         logger.info("AA waitlist: %ss for %s", sleep_time, title)
 
         # Live countdown with status updates
         for remaining in range(sleep_time, 0, -1):
-            wait_msg = f"{source_context} - Waiting {remaining}s" if source_context else f"Waiting {remaining}s"
+            wait_msg = (
+                f"{source_context} - Waiting {remaining}s"
+                if source_context
+                else f"Waiting {remaining}s"
+            )
             if status_callback:
                 status_callback("resolving", wait_msg)
 
@@ -996,7 +1086,9 @@ def _extract_slow_download_url(
         if status_callback and source_context:
             status_callback("resolving", f"{source_context} - Fetching")
 
-        return _get_download_url(link, title, cancel_flag, status_callback, selector, source_context)
+        return _get_download_url(
+            link, title, cancel_flag, status_callback, selector, source_context
+        )
 
     link_texts = [a.get_text(strip=True)[:50] for a in soup.find_all("a", href=True)[:10]]
     logger.warning("No download URL found. First 10 links: %s", link_texts)
@@ -1011,7 +1103,9 @@ def _extract_countdown_seconds(soup: BeautifulSoup, html_str: str) -> int:
         if seconds is not None:
             return seconds
 
-    for elem in soup.find_all(["span", "div"], class_=lambda c: c and ("timer" in c.lower() or "countdown" in c.lower())):
+    for elem in soup.find_all(
+        ["span", "div"], class_=lambda c: c and ("timer" in c.lower() or "countdown" in c.lower())
+    ):
         seconds = _parse_countdown_seconds_from_element(elem)
         if seconds is not None:
             return seconds
@@ -1092,7 +1186,7 @@ def _browse_record_to_release(record: BrowseRecord) -> Release:
             "description": record.description,
             "download_urls": record.download_urls,
             "info": record.info,
-        }
+        },
     )
 
 
@@ -1190,7 +1284,11 @@ class DirectDownloadSource(ReleaseSource):
         if results or not filters.lang:
             return results
 
-        logger.debug("No %s results with langs=%s, retrying without language filter", search_label, filters.lang)
+        logger.debug(
+            "No %s results with langs=%s, retrying without language filter",
+            search_label,
+            filters.lang,
+        )
         return search_books(query, replace(filters, lang=None))
 
     def search(
@@ -1199,7 +1297,7 @@ class DirectDownloadSource(ReleaseSource):
         plan: "ReleaseSearchPlan",
         *,
         expand_search: bool = False,
-        content_type: str = "ebook"
+        content_type: str = "ebook",
     ) -> list[Release]:
         """Search for releases using the book's metadata.
 
@@ -1220,10 +1318,14 @@ class DirectDownloadSource(ReleaseSource):
 
         if plan.source_filters is not None:
             query = plan.manual_query or ""
-            logger.debug("Searching direct_download: source_query='%s', langs=%s", query, lang_filter)
+            logger.debug(
+                "Searching direct_download: source_query='%s', langs=%s", query, lang_filter
+            )
             filters = plan.source_filters or SearchFilters()
             filters.lang = lang_filter if lang_filter is not None else (filters.lang or [])
-            results = self._search_books_with_language_fallback(query, filters, search_label="manual")
+            results = self._search_books_with_language_fallback(
+                query, filters, search_label="manual"
+            )
             self._last_search_type = "manual" if query else "title_author"
             return [_browse_record_to_release(record) for record in results]
 
@@ -1275,7 +1377,9 @@ class DirectDownloadSource(ReleaseSource):
                 logger.exception("Search error")
 
         if not all_results and any(langs for _, langs in searches):
-            logger.debug("No title+author results with language filter, retrying without language filter")
+            logger.debug(
+                "No title+author results with language filter, retrying without language filter"
+            )
             for title, _langs in searches:
                 query = f"{title} {author}".strip()
                 if not query:
@@ -1314,7 +1418,7 @@ class DirectDownloadHandler(DownloadHandler):
         task: DownloadTask,
         cancel_flag: Event,
         progress_callback: Callable[[float], None],
-        status_callback: Callable[[str, str | None], None]
+        status_callback: Callable[[str, str | None], None],
     ) -> str | None:
         """Execute a direct HTTP download.
 
@@ -1353,10 +1457,7 @@ class DirectDownloadHandler(DownloadHandler):
             )
 
             return self._execute_download(
-                book_info,
-                cancel_flag,
-                progress_callback,
-                status_callback
+                book_info, cancel_flag, progress_callback, status_callback
             )
 
         except Exception as e:
@@ -1373,7 +1474,7 @@ class DirectDownloadHandler(DownloadHandler):
         book_info: BrowseRecord,
         cancel_flag: Event,
         progress_callback: Callable[[float], None],
-        status_callback: Callable[[str, str | None], None]
+        status_callback: Callable[[str, str | None], None],
     ) -> str | None:
         """Internal method to execute the download with fetched browse record.
 
@@ -1406,11 +1507,7 @@ class DirectDownloadHandler(DownloadHandler):
             # Execute download via _download_book (handles cascade and bypass)
             status_callback("resolving", "Finding download source")
             success_url = _download_book(
-                book_info,
-                book_path,
-                progress_callback,
-                cancel_flag,
-                status_callback
+                book_info, book_path, progress_callback, cancel_flag, status_callback
             )
 
             # Check for cancellation after download

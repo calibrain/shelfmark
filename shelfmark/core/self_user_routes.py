@@ -104,10 +104,7 @@ def _normalize_visible_self_settings_sections(raw_sections: object) -> list[str]
 
     normalized_sections: list[str] = []
     for section in candidate_sections:
-        if (
-            section in _VALID_SELF_SETTINGS_SECTIONS
-            and section not in normalized_sections
-        ):
+        if section in _VALID_SELF_SETTINGS_SECTIONS and section not in normalized_sections:
             normalized_sections.append(section)
 
     if not normalized_sections and candidate_sections:
@@ -128,14 +125,10 @@ def _get_allowed_self_settings_keys(visible_sections: list[str]) -> set[str]:
     visible_sections_set = set(visible_sections)
 
     if _SELF_SETTINGS_SECTION_DELIVERY in visible_sections_set:
-        allowed_keys |= {
-            key for key, _field in _get_ordered_user_overridable_fields("downloads")
-        }
+        allowed_keys |= {key for key, _field in _get_ordered_user_overridable_fields("downloads")}
 
     if _SELF_SETTINGS_SECTION_SEARCH in visible_sections_set:
-        allowed_keys |= {
-            key for key, _field in _get_ordered_user_overridable_fields("search_mode")
-        }
+        allowed_keys |= {key for key, _field in _get_ordered_user_overridable_fields("search_mode")}
 
     if _SELF_SETTINGS_SECTION_NOTIFICATIONS in visible_sections_set:
         allowed_keys |= {
@@ -232,11 +225,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
         user_overridable_keys = sorted(
             set(delivery_preferences.get("keys", []) if delivery_preferences else [])
             | set(search_preferences.get("keys", []) if search_preferences else [])
-            | set(
-                notification_preferences.get("keys", [])
-                if notification_preferences
-                else []
-            )
+            | set(notification_preferences.get("keys", []) if notification_preferences else [])
         )
 
         return jsonify(
@@ -291,9 +280,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
                 ), 400
             if len(password) < MIN_PASSWORD_LENGTH:
                 return jsonify(
-                    {
-                        "error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters"
-                    }
+                    {"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters"}
                 ), 400
             user_db.update_user(user_id, password_hash=generate_password_hash(password))
 
@@ -312,9 +299,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
                 else None
             )
 
-        email_changed = "email" in user_fields and user_fields["email"] != user.get(
-            "email"
-        )
+        email_changed = "email" in user_fields and user_fields["email"] != user.get("email")
         display_name_changed = "display_name" in user_fields and user_fields[
             "display_name"
         ] != user.get("display_name")
@@ -366,15 +351,12 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
                     {
                         "error": "Some settings are admin-only",
                         "details": [
-                            f"Setting not user-overridable: {key}"
-                            for key in disallowed_keys
+                            f"Setting not user-overridable: {key}" for key in disallowed_keys
                         ],
                     }
                 ), 400
 
-            validated_settings, validation_errors = validate_user_settings(
-                settings_payload
-            )
+            validated_settings, validation_errors = validate_user_settings(settings_payload)
             if validation_errors:
                 return jsonify(
                     {

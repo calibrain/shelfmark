@@ -135,10 +135,7 @@ class Config:
         (e.g. after a settings write).
         """
         now = time.monotonic()
-        if (
-            not force
-            and (now - self._last_refresh_time) < _SETTINGS_REFRESH_COOLDOWN_SECONDS
-        ):
+        if not force and (now - self._last_refresh_time) < _SETTINGS_REFRESH_COOLDOWN_SECONDS:
             return
 
         with self._cache_lock:
@@ -197,9 +194,7 @@ class Config:
         user_settings = self._get_user_settings(user_id)
         return user_settings.get(key)
 
-    def get(
-        self, key: str, default: object = None, user_id: int | None = None
-    ) -> object:
+    def get(self, key: str, default: object = None, user_id: int | None = None) -> object:
         """Get a setting value by key.
 
         Args:

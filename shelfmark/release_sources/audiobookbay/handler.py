@@ -56,9 +56,7 @@ class AudiobookBayHandler(ExternalClientHandler):
         detail_url = self._resolve_detail_url(task)
         if not detail_url:
             status_callback("error", "Missing AudiobookBay details URL")
-            logger.warning(
-                "Missing details URL for AudiobookBay task: %s", task.task_id
-            )
+            logger.warning("Missing details URL for AudiobookBay task: %s", task.task_id)
             return None
 
         hostname = normalize_hostname(config.get("ABB_HOSTNAME", ""))

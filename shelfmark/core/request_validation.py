@@ -88,9 +88,7 @@ def validate_request_level_payload(request_level: object, release_data: object) 
     return normalized_level
 
 
-def validate_status_transition(
-    current_status: object, new_status: object
-) -> tuple[str, str]:
+def validate_status_transition(current_status: object, new_status: object) -> tuple[str, str]:
     """Validate request status transitions and terminal immutability."""
     current = normalize_request_status(current_status)
     new = normalize_request_status(new_status)

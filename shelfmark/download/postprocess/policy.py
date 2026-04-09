@@ -71,11 +71,7 @@ def get_template(*, is_audiobook: bool, organization_mode: str) -> str:
         else:
             key = "TEMPLATE_AUDIOBOOK_RENAME"
     else:
-        key = (
-            "TEMPLATE_ORGANIZE"
-            if organization_mode == "organize"
-            else "TEMPLATE_RENAME"
-        )
+        key = "TEMPLATE_ORGANIZE" if organization_mode == "organize" else "TEMPLATE_RENAME"
 
     template = core_config.config.get(key, "")
 
@@ -85,9 +81,7 @@ def get_template(*, is_audiobook: bool, organization_mode: str) -> str:
         template = core_config.config.get(legacy_key, "")
 
     if not template:
-        legacy_key = (
-            "LIBRARY_TEMPLATE_AUDIOBOOK" if is_audiobook else "LIBRARY_TEMPLATE"
-        )
+        legacy_key = "LIBRARY_TEMPLATE_AUDIOBOOK" if is_audiobook else "LIBRARY_TEMPLATE"
         template = core_config.config.get(legacy_key, "")
 
     if not template:

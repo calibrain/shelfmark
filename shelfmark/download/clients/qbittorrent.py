@@ -33,17 +33,9 @@ def _hashes_match(hash1: str, hash2: str) -> bool:
     h1, h2 = hash1.lower(), hash2.lower()
     if h1 == h2:
         return True
-    if (
-        len(h1) == _HASH_LENGTH_40
-        and len(h2) == _HASH_LENGTH_ED2K
-        and h1.endswith("00000000")
-    ):
+    if len(h1) == _HASH_LENGTH_40 and len(h2) == _HASH_LENGTH_ED2K and h1.endswith("00000000"):
         return h1[:_HASH_LENGTH_ED2K] == h2
-    if (
-        len(h2) == _HASH_LENGTH_40
-        and len(h1) == _HASH_LENGTH_ED2K
-        and h2.endswith("00000000")
-    ):
+    if len(h2) == _HASH_LENGTH_40 and len(h1) == _HASH_LENGTH_ED2K and h2.endswith("00000000"):
         return h2[:_HASH_LENGTH_ED2K] == h1
     return False
 
@@ -218,9 +210,7 @@ class QBittorrentClient(DownloadClient):
             if response.status_code == _HTTP_STATUS_FORBIDDEN:
                 logger.debug("qBittorrent returned 403; re-authenticating and retrying")
                 self._client.auth_log_in()
-                response = self._client._session.get(
-                    url, params=request_params, timeout=10
-                )
+                response = self._client._session.get(url, params=request_params, timeout=10)
 
             if response.status_code == _HTTP_STATUS_FORBIDDEN:
                 logger.warning("qBittorrent authentication failed (HTTP 403)")
@@ -258,9 +248,7 @@ class QBittorrentClient(DownloadClient):
 
                 # Fallback 2: list everything (handles per-task categories like audiobooks)
                 all_response = do_request({})
-                all_torrents, all_error = parse_response(
-                    all_response, request_params={}
-                )
+                all_torrents, all_error = parse_response(all_response, request_params={})
                 if all_error:
                     return [], all_error
 
@@ -473,9 +461,7 @@ class QBittorrentClient(DownloadClient):
             }
 
             torrent_state = getattr(torrent, "state", "unknown")
-            state, message = state_info.get(
-                torrent_state, ("unknown", str(torrent_state))
-            )
+            state, message = state_info.get(torrent_state, ("unknown", str(torrent_state)))
 
             torrent_progress = getattr(torrent, "progress", 0.0)
             # Don't mark complete while files are being moved to final location
@@ -526,9 +512,7 @@ class QBittorrentClient(DownloadClient):
 
         """
         try:
-            self._client.torrents_delete(
-                torrent_hashes=download_id, delete_files=delete_files
-            )
+            self._client.torrents_delete(torrent_hashes=download_id, delete_files=delete_files)
             logger.info(
                 "Removed torrent from qBittorrent: %s%s",
                 download_id,

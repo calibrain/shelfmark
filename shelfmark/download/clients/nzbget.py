@@ -217,18 +217,12 @@ class NZBGetClient(DownloadClient):
                 if group.get("NZBID") == nzb_id:
                     # Calculate progress
                     # NZBGet uses Hi/Lo for 64-bit values on 32-bit systems
-                    file_size = (group.get("FileSizeHi", 0) << 32) + group.get(
-                        "FileSizeLo", 0
-                    )
+                    file_size = (group.get("FileSizeHi", 0) << 32) + group.get("FileSizeLo", 0)
                     remaining = (group.get("RemainingSizeHi", 0) << 32) + group.get(
                         "RemainingSizeLo", 0
                     )
 
-                    progress = (
-                        ((file_size - remaining) / file_size * 100)
-                        if file_size > 0
-                        else 0
-                    )
+                    progress = ((file_size - remaining) / file_size * 100) if file_size > 0 else 0
                     status = group.get("Status", "")
 
                     # Map NZBGet status to our states
@@ -251,9 +245,7 @@ class NZBGetClient(DownloadClient):
                         file_path=None,
                         download_speed=group.get("DownloadRate"),
                         eta=(
-                            group.get("RemainingSec")
-                            if group.get("RemainingSec", 0) > 0
-                            else None
+                            group.get("RemainingSec") if group.get("RemainingSec", 0) > 0 else None
                         ),
                     )
 

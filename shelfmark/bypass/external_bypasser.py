@@ -42,9 +42,7 @@ def _fetch_via_bypasser(target_url: str) -> str | None:
         )
         return None
 
-    read_timeout = min(
-        (bypasser_timeout / 1000) + READ_TIMEOUT_BUFFER, MAX_READ_TIMEOUT
-    )
+    read_timeout = min((bypasser_timeout / 1000) + READ_TIMEOUT_BUFFER, MAX_READ_TIMEOUT)
 
     try:
         response = requests.post(
@@ -63,9 +61,7 @@ def _fetch_via_bypasser(target_url: str) -> str | None:
 
         status = result.get("status", "unknown")
         message = result.get("message", "")
-        logger.debug(
-            "External bypasser response for '%s': %s - %s", target_url, status, message
-        )
+        logger.debug("External bypasser response for '%s': %s - %s", target_url, status, message)
 
         if status != "ok":
             logger.warning(
@@ -80,9 +76,7 @@ def _fetch_via_bypasser(target_url: str) -> str | None:
         html = solution.get("response", "") if solution else ""
 
         if not html:
-            logger.warning(
-                "External bypasser returned empty response for '%s'", target_url
-            )
+            logger.warning("External bypasser returned empty response for '%s'", target_url)
             return None
 
     except requests.exceptions.Timeout:
@@ -95,9 +89,7 @@ def _fetch_via_bypasser(target_url: str) -> str | None:
     except requests.exceptions.RequestException as e:
         logger.warning("External bypasser request failed for '%s': %s", target_url, e)
     except (KeyError, TypeError, ValueError) as e:
-        logger.warning(
-            "External bypasser returned malformed response for '%s': %s", target_url, e
-        )
+        logger.warning("External bypasser returned malformed response for '%s': %s", target_url, e)
     else:
         return html
 

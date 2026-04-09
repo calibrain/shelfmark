@@ -40,14 +40,10 @@ def _log_path_permissions(probe: Path, label: str) -> None:
             _run_io(probe.is_dir),
         )
     except Exception as stat_error:
-        logger.debug(
-            "Path permissions (%s): stat failed for %s: %s", label, probe, stat_error
-        )
+        logger.debug("Path permissions (%s): stat failed for %s: %s", label, probe, stat_error)
 
 
-def _run_io(
-    func: Callable[..., _T], *args: Any, **kwargs: Any
-) -> _T:
+def _run_io(func: Callable[..., _T], *args: Any, **kwargs: Any) -> _T:
     """Best-effort offload for potentially blocking filesystem calls.
 
     Keep this module import-cycle safe: `shelfmark.download.fs` imports this module,
@@ -132,14 +128,10 @@ def log_path_permission_context(label: str, path: Path) -> None:
                     stat_error,
                 )
     except Exception as context_error:
-        logger.debug(
-            "Permission context (%s): failed to collect: %s", label, context_error
-        )
+        logger.debug("Permission context (%s): failed to collect: %s", label, context_error)
 
 
-def log_transfer_permission_context(
-    label: str, source: Path, dest: Path, error: Exception
-) -> None:
+def log_transfer_permission_context(label: str, source: Path, dest: Path, error: Exception) -> None:
     """Log useful permission/ownership context when a file transfer fails."""
     try:
         euid = os.geteuid() if hasattr(os, "geteuid") else None
@@ -161,6 +153,4 @@ def log_transfer_permission_context(
         for probe in [source, dest, dest.parent]:
             _log_path_permissions(probe, label)
     except Exception as context_error:
-        logger.debug(
-            "Permission context (%s): failed to collect: %s", label, context_error
-        )
+        logger.debug("Permission context (%s): failed to collect: %s", label, context_error)

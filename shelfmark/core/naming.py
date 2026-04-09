@@ -240,9 +240,7 @@ def same_filesystem(path1: str | Path, path2: str | Path) -> bool:
     dev2 = get_device(path2)
 
     if dev1 is None or dev2 is None:
-        logger.warning(
-            "Cannot determine filesystem for hardlink check, falling back to copy"
-        )
+        logger.warning("Cannot determine filesystem for hardlink check, falling back to copy")
         return False
 
     return dev1 == dev2

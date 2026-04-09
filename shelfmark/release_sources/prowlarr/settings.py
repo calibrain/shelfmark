@@ -55,10 +55,12 @@ def _get_indexer_options() -> list[dict[str, str]]:
             if has_books:
                 label += " 📚"
 
-            options.append({
-                "value": str(idx_id),
-                "label": label,
-            })
+            options.append(
+                {
+                    "value": str(idx_id),
+                    "label": label,
+                }
+            )
 
     except Exception:
         logger.exception("Failed to fetch Prowlarr indexers")

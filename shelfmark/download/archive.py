@@ -32,7 +32,9 @@ def _delete_file_with_logging(file_path: Path, file_type_label: str, *, rejected
             logger.debug("Deleted non-%s file: %s", file_type_label, file_path.name)
     except OSError as e:
         if rejected:
-            logger.warning("Failed to delete rejected %s file %s: %s", file_type_label, file_path, e)
+            logger.warning(
+                "Failed to delete rejected %s file %s: %s", file_type_label, file_path, e
+            )
         else:
             logger.warning("Failed to delete non-%s file %s: %s", file_type_label, file_path, e)
 
@@ -51,15 +53,12 @@ class ArchiveExtractionError(Exception):
     """Raised when archive extraction fails."""
 
 
-
 class PasswordProtectedError(ArchiveExtractionError):
     """Raised when archive requires a password."""
 
 
-
 class CorruptedArchiveError(ArchiveExtractionError):
     """Raised when archive is corrupted."""
-
 
 
 def is_archive(file_path: Path) -> bool:
@@ -79,7 +78,21 @@ def _is_supported_file(file_path: Path, content_type: str | None = None) -> bool
 
 
 # All known ebook extensions (superset of what user might enable)
-ALL_EBOOK_EXTENSIONS = {".pdf", ".epub", ".mobi", ".azw", ".azw3", ".fb2", ".djvu", ".cbz", ".cbr", ".doc", ".docx", ".rtf", ".txt"}
+ALL_EBOOK_EXTENSIONS = {
+    ".pdf",
+    ".epub",
+    ".mobi",
+    ".azw",
+    ".azw3",
+    ".fb2",
+    ".djvu",
+    ".cbz",
+    ".cbr",
+    ".doc",
+    ".docx",
+    ".rtf",
+    ".txt",
+}
 
 # All known audio extensions (superset of what user might enable for audiobooks)
 ALL_AUDIO_EXTENSIONS = {".m4b", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".wma", ".wav", ".opus"}
@@ -135,7 +148,9 @@ def extract_archive(
 
     if rejected_files:
         rejected_exts = sorted({f.suffix.lower() for f in rejected_files})
-        warnings.append(f"Skipped {len(rejected_files)} {file_type_label}(s) with unsupported format: {', '.join(rejected_exts)}")
+        warnings.append(
+            f"Skipped {len(rejected_files)} {file_type_label}(s) with unsupported format: {', '.join(rejected_exts)}"
+        )
 
     # Delete other files (images, html, etc)
     for other_file in other_files:

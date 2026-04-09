@@ -79,9 +79,7 @@ class DelugeClient(DownloadClient):
 
         # Allow DELUGE_HOST to be either a hostname OR a full URL
         # (useful when Deluge is behind a reverse proxy path).
-        raw_host = (
-            normalize_http_url(raw_host, strip_trailing_slash=False) if raw_host else ""
-        )
+        raw_host = normalize_http_url(raw_host, strip_trailing_slash=False) if raw_host else ""
         if not raw_host:
             msg = "DELUGE_HOST is invalid"
             raise ValueError(msg)
@@ -225,9 +223,7 @@ class DelugeClient(DownloadClient):
 
             self._rpc_call("label.set_torrent", torrent_id, label)
         except Exception as e:
-            logger.debug(
-                "Could not set Deluge label '%s' for %s: %s", label, torrent_id, e
-            )
+            logger.debug("Could not set Deluge label '%s' for %s: %s", label, torrent_id, e)
 
     @staticmethod
     def is_configured() -> bool:
@@ -279,9 +275,7 @@ class DelugeClient(DownloadClient):
 
             if torrent_info.is_magnet:
                 magnet_url = torrent_info.magnet_url or url
-                torrent_id = self._rpc_call(
-                    "core.add_torrent_magnet", magnet_url, options
-                )
+                torrent_id = self._rpc_call("core.add_torrent_magnet", magnet_url, options)
             else:
                 torrent_data = torrent_info.torrent_data
                 if torrent_data is None:
@@ -345,15 +339,11 @@ class DelugeClient(DownloadClient):
             }
 
             deluge_state = status.get("state", "Unknown")
-            state, message = state_map.get(
-                str(deluge_state), ("unknown", str(deluge_state))
-            )
+            state, message = state_map.get(str(deluge_state), ("unknown", str(deluge_state)))
 
             progress = float(status.get("progress", 0))
             # Don't mark complete while files are being moved
-            complete = (
-                progress >= DOWNLOAD_COMPLETE_PROGRESS and deluge_state != "Moving"
-            )
+            complete = progress >= DOWNLOAD_COMPLETE_PROGRESS and deluge_state != "Moving"
 
             if complete:
                 message = "Complete"

@@ -28,18 +28,10 @@ class BookQueue:
         self._lock = Lock()
         self._status: dict[str, QueueStatus] = {}
         self._task_data: dict[str, DownloadTask] = {}
-        self._status_timestamps: dict[
-            str, datetime
-        ] = {}  # Track when each status was last updated
-        self._cancel_flags: dict[
-            str, Event
-        ] = {}  # Cancellation flags for active downloads
-        self._active_downloads: dict[
-            str, bool
-        ] = {}  # Track currently downloading tasks
-        self._terminal_status_hook: (
-            Callable[[str, QueueStatus, DownloadTask], None] | None
-        ) = None
+        self._status_timestamps: dict[str, datetime] = {}  # Track when each status was last updated
+        self._cancel_flags: dict[str, Event] = {}  # Cancellation flags for active downloads
+        self._active_downloads: dict[str, bool] = {}  # Track currently downloading tasks
+        self._terminal_status_hook: Callable[[str, QueueStatus, DownloadTask], None] | None = None
         self._queue_hook: Callable[[str, DownloadTask], None] | None = None
 
     @property
@@ -74,9 +66,7 @@ class BookQueue:
             try:
                 hook(task_id, task)
             except Exception as exc:
-                logger.warning(
-                    "Queue hook failed while adding task %s: %s", task_id, exc
-                )
+                logger.warning("Queue hook failed while adding task %s: %s", task_id, exc)
         return True
 
     def get_next(self) -> tuple[str, Event] | None:
@@ -89,10 +79,7 @@ class BookQueue:
 
                 with self._lock:
                     # Check if task was cancelled while in queue
-                    if (
-                        task_id in self._status
-                        and self._status[task_id] == QueueStatus.CANCELLED
-                    ):
+                    if task_id in self._status and self._status[task_id] == QueueStatus.CANCELLED:
                         continue  # Skip cancelled items, try next
 
                     # Create cancellation flag for this download
@@ -179,9 +166,7 @@ class BookQueue:
             if task_id in self._task_data:
                 self._task_data[task_id].status_message = message
 
-    def get_status(
-        self, user_id: int | None = None
-    ) -> dict[QueueStatus, dict[str, DownloadTask]]:
+    def get_status(self, user_id: int | None = None) -> dict[QueueStatus, dict[str, DownloadTask]]:
         """Get current queue status grouped by status.
 
         Args:
@@ -255,10 +240,7 @@ class BookQueue:
     def set_priority(self, task_id: str, new_priority: int) -> bool:
         """Change the priority of a queued task (lower = higher priority)."""
         with self._lock:
-            if (
-                task_id not in self._status
-                or self._status[task_id] != QueueStatus.QUEUED
-            ):
+            if task_id not in self._status or self._status[task_id] != QueueStatus.QUEUED:
                 return False
 
             # Remove task from queue and re-add with new priority
@@ -323,9 +305,7 @@ class BookQueue:
             try:
                 hook(task_id, hook_task)
             except Exception as exc:
-                logger.warning(
-                    "Queue hook failed while requeueing task %s: %s", task_id, exc
-                )
+                logger.warning("Queue hook failed while requeueing task %s: %s", task_id, exc)
         return True
 
     def reorder_queue(self, task_priorities: dict[str, int]) -> bool:

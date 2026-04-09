@@ -28,9 +28,7 @@ DEFAULT_CACHE_TTL = 30 * 24 * 60 * 60
 _cache_lock = Lock()
 
 
-def _generate_cache_key(
-    provider: str, provider_id: str, content_type: str | None = None
-) -> str:
+def _generate_cache_key(provider: str, provider_id: str, content_type: str | None = None) -> str:
     """Generate a cache key from provider, provider_id, and content type."""
     normalized_content_type = "audiobook" if check_audiobook(content_type) else "ebook"
     return f"{provider}:{provider_id}:{normalized_content_type}"
@@ -60,9 +58,7 @@ def _release_to_dict(release: Release) -> dict[str, Any]:
     # Convert enum to string
     if data.get("protocol"):
         data["protocol"] = (
-            data["protocol"].value
-            if hasattr(data["protocol"], "value")
-            else str(data["protocol"])
+            data["protocol"].value if hasattr(data["protocol"], "value") else str(data["protocol"])
         )
     return data
 
@@ -192,9 +188,7 @@ def cache_results(
         logger.info("Cached %s IRC releases for '%s'", len(releases), title)
 
 
-def invalidate_cache(
-    provider: str, provider_id: str, content_type: str | None = None
-) -> bool:
+def invalidate_cache(provider: str, provider_id: str, content_type: str | None = None) -> bool:
     """Remove a specific entry from the cache.
 
     Args:
@@ -302,9 +296,7 @@ def get_cache_stats() -> dict[str, Any]:
         )
 
         # Calculate total releases cached
-        total_releases = sum(
-            len(entry.get("releases", [])) for entry in entries.values()
-        )
+        total_releases = sum(len(entry.get("releases", [])) for entry in entries.values())
 
         return {
             "total_entries": total,

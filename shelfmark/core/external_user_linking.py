@@ -59,9 +59,7 @@ def _get_by_subject(
     return None
 
 
-def find_unique_user_by_email(
-    user_db: UserDB, email: str | None
-) -> dict[str, Any] | None:
+def find_unique_user_by_email(user_db: UserDB, email: str | None) -> dict[str, Any] | None:
     key = _email_key(_normalize_email(email))
     if not key:
         return None
@@ -100,9 +98,7 @@ def find_external_user_match(
         return by_username, "existing_source_username_match"
 
     if allow_email_link:
-        return find_unique_user_by_email(
-            user_db, normalized_email
-        ), "unique_email_match"
+        return find_unique_user_by_email(user_db, normalized_email), "unique_email_match"
     return None, None
 
 
@@ -148,8 +144,7 @@ def _find_existing_alias_user(
         user
         for user in user_db.list_users()
         if pattern.match(str(user.get("username") or ""))
-        and normalize_auth_source(user.get("auth_source"), user.get("oidc_subject"))
-        == auth_source
+        and normalize_auth_source(user.get("auth_source"), user.get("oidc_subject")) == auth_source
     ]
     if not candidates:
         return None

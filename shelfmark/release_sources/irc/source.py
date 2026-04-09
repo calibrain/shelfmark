@@ -72,9 +72,7 @@ class IRCReleaseSource(ReleaseSource):
     name = "irc"
     display_name = "IRC"
     supported_content_types: ClassVar[list[str]] = ["ebook", "audiobook"]
-    can_be_default = (
-        False  # Exclude from default source options (requires deliberate selection)
-    )
+    can_be_default = False  # Exclude from default source options (requires deliberate selection)
 
     def __init__(self) -> None:
         # Track online servers from most recent search
@@ -145,9 +143,7 @@ class IRCReleaseSource(ReleaseSource):
 
         # Check cache first (unless expand_search/refresh is requested)
         if not expand_search:
-            cached = get_cached_results(
-                book.provider, book.provider_id, content_type=content_type
-            )
+            cached = get_cached_results(book.provider, book.provider_id, content_type=content_type)
             if cached:
                 _emit_status("Using cached results", phase="complete")
                 self._online_servers = set(cached.get("online_servers", []))
@@ -192,9 +188,7 @@ class IRCReleaseSource(ReleaseSource):
             client.send_message(f"#{channel}", search_msg)
 
             # Wait for results DCC - this is the long wait
-            _emit_status(
-                f"Connected to #{channel} - Waiting for results...", phase="searching"
-            )
+            _emit_status(f"Connected to #{channel} - Waiting for results...", phase="searching")
             offer = client.wait_for_dcc(timeout=60.0, result_type=True)
             if not offer:
                 logger.info("No search results received")
@@ -208,16 +202,12 @@ class IRCReleaseSource(ReleaseSource):
                     book.title,
                     [],
                     content_type=content_type,
-                    online_servers=list(self._online_servers)
-                    if self._online_servers
-                    else None,
+                    online_servers=list(self._online_servers) if self._online_servers else None,
                 )
                 return []
 
             # Download results file
-            _emit_status(
-                f"Connected to #{channel} - Downloading results...", phase="downloading"
-            )
+            _emit_status(f"Connected to #{channel} - Downloading results...", phase="downloading")
             with tempfile.TemporaryDirectory() as tmpdir:
                 result_path = Path(tmpdir) / offer.filename
                 download_dcc(offer, result_path, timeout=30.0)
@@ -242,9 +232,7 @@ class IRCReleaseSource(ReleaseSource):
                 book.title,
                 releases,
                 content_type=content_type,
-                online_servers=list(self._online_servers)
-                if self._online_servers
-                else None,
+                online_servers=list(self._online_servers) if self._online_servers else None,
             )
 
         except DCCError as e:

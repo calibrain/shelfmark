@@ -65,9 +65,7 @@ def migrate_security_settings(
                 if old_value:
                     config["AUTH_METHOD"] = "cwa"
                     logger.info("Migrated USE_CWA_AUTH=True to AUTH_METHOD='cwa'")
-                elif config.get("BUILTIN_USERNAME") and config.get(
-                    "BUILTIN_PASSWORD_HASH"
-                ):
+                elif config.get("BUILTIN_USERNAME") and config.get("BUILTIN_PASSWORD_HASH"):
                     config["AUTH_METHOD"] = "builtin"
                     logger.info("Migrated USE_CWA_AUTH=False to AUTH_METHOD='builtin'")
                 else:
@@ -75,9 +73,7 @@ def migrate_security_settings(
                     logger.info("Migrated USE_CWA_AUTH=False to AUTH_METHOD='none'")
                 migrated_security = True
             else:
-                logger.info(
-                    "Removed deprecated USE_CWA_AUTH setting (AUTH_METHOD already exists)"
-                )
+                logger.info("Removed deprecated USE_CWA_AUTH setting (AUTH_METHOD already exists)")
                 migrated_security = True
 
         # Backfill AUTH_METHOD for configs that have builtin credentials but

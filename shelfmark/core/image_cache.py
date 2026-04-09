@@ -63,11 +63,7 @@ def _detect_image_type(data: bytes) -> tuple[str, str] | None:
             return content_type, ext
 
     # Special case for WebP - check for WEBP after RIFF
-    if (
-        data.startswith(b"RIFF")
-        and len(data) > _MIN_WEBP_HEADER_LENGTH
-        and data[8:12] == b"WEBP"
-    ):
+    if data.startswith(b"RIFF") and len(data) > _MIN_WEBP_HEADER_LENGTH and data[8:12] == b"WEBP":
         return "image/webp", "webp"
 
     return None
@@ -207,9 +203,7 @@ class ImageCacheService:
             return False
 
         cached_at = entry.get("cached_at", 0)
-        ttl = (
-            TRANSIENT_CACHE_TTL if entry.get("transient", False) else NEGATIVE_CACHE_TTL
-        )
+        ttl = TRANSIENT_CACHE_TTL if entry.get("transient", False) else NEGATIVE_CACHE_TTL
         return (time.time() - cached_at) > ttl
 
     def _calculate_total_size(self) -> int:
@@ -228,9 +222,7 @@ class ImageCacheService:
             return
 
         # Sort entries by accessed_at (oldest first)
-        sorted_entries = sorted(
-            self._index.items(), key=lambda x: x[1].get("accessed_at", 0)
-        )
+        sorted_entries = sorted(self._index.items(), key=lambda x: x[1].get("accessed_at", 0))
 
         evicted_count = 0
         for cache_id, entry in sorted_entries:
@@ -471,9 +463,7 @@ class ImageCacheService:
         with self._lock:
             total_size = self._calculate_total_size()
             entry_count = len(self._index)
-            negative_count = sum(
-                1 for e in self._index.values() if e.get("negative", False)
-            )
+            negative_count = sum(1 for e in self._index.values() if e.get("negative", False))
             total_requests = self._hits + self._misses
             hit_rate = (self._hits / total_requests * 100) if total_requests > 0 else 0
 
@@ -507,12 +497,7 @@ class ImageCacheService:
             resolved = socket.getaddrinfo(hostname, None)
             for _, _, _, _, sockaddr in resolved:
                 ip = ipaddress.ip_address(sockaddr[0])
-                if (
-                    ip.is_private
-                    or ip.is_loopback
-                    or ip.is_link_local
-                    or ip.is_reserved
-                ):
+                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
                     return False
         except (socket.gaierror, ValueError):
             return False

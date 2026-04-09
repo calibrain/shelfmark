@@ -21,9 +21,7 @@ class PrefixMiddleware:
         self.prefix = prefix.rstrip("/")
         self.bypass_paths = set(bypass_paths or [])
 
-    def __call__(
-        self, environ: dict[str, object], start_response: Callable[..., object]
-    ) -> object:
+    def __call__(self, environ: dict[str, object], start_response: Callable[..., object]) -> object:
         path = environ.get("PATH_INFO", "") or ""
 
         if path in self.bypass_paths:

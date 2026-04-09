@@ -145,9 +145,7 @@ def process_folder_output(
     # If we staged into TMP_DIR, transfer from the staged path and disable hardlinking.
     use_hardlink = plan.use_hardlink and prepared.output_plan.stage_action == STAGE_NONE
     source_path = (
-        plan.hardlink_source
-        if use_hardlink and plan.hardlink_source
-        else prepared.working_path
+        plan.hardlink_source if use_hardlink and plan.hardlink_source else prepared.working_path
     )
     is_torrent = is_torrent_source(source_path, task)
 
@@ -174,11 +172,7 @@ def process_folder_output(
 
     if use_hardlink:
         op_label = "Hardlinking"
-    elif (
-        is_usenet
-        and usenet_action == "move"
-        and prepared.output_plan.stage_action == STAGE_NONE
-    ):
+    elif is_usenet and usenet_action == "move" and prepared.output_plan.stage_action == STAGE_NONE:
         # Presented as a move, but implemented as copy + client cleanup.
         op_label = "Moving"
     elif copy_for_label:
@@ -245,9 +239,7 @@ def process_folder_output(
         ),
     )
 
-    if not maybe_run_custom_script(
-        script_context, status_callback=status_callback, steps=steps
-    ):
+    if not maybe_run_custom_script(script_context, status_callback=status_callback, steps=steps):
         if not preserve_source_on_failure:
             cleanup_output_staging(
                 prepared.output_plan,
@@ -264,9 +256,7 @@ def process_folder_output(
         prepared.cleanup_paths,
     )
 
-    message = (
-        "Complete" if len(final_paths) == 1 else f"Complete ({len(final_paths)} files)"
-    )
+    message = "Complete" if len(final_paths) == 1 else f"Complete ({len(final_paths)} files)"
     status_callback("complete", message)
 
     return str(final_paths[0])

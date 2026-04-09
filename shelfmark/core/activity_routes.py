@@ -193,9 +193,7 @@ def _resolve_db_user_id(
         try:
             db_user = user_db.get_user(user_id=parsed_db_user_id)
         except Exception as exc:
-            logger.warning(
-                "Failed to validate activity db identity %s: %s", parsed_db_user_id, exc
-            )
+            logger.warning("Failed to validate activity db identity %s: %s", parsed_db_user_id, exc)
             db_user = None
         if db_user is None:
             if not require_in_auth_mode:
@@ -340,9 +338,7 @@ def _build_queue_index(
             continue
         for task_id, payload in bucket.items():
             normalized_bucket_key = (
-                bucket_key.value
-                if isinstance(bucket_key, QueueStatus)
-                else str(bucket_key)
+                bucket_key.value if isinstance(bucket_key, QueueStatus) else str(bucket_key)
             )
             queue_index[str(task_id)] = (normalized_bucket_key, payload)
     return queue_index
@@ -400,21 +396,14 @@ def _build_download_status_from_db(
                     row,
                     has_live_queue_entry=False,
                 )
-                download_payload = DownloadHistoryService.to_download_payload(
-                    effective_row
-                )
+                download_payload = DownloadHistoryService.to_download_payload(effective_row)
                 status[QueueStatus.ERROR][task_id] = download_payload
         elif final_status in VALID_TERMINAL_STATUSES:
             download_payload = DownloadHistoryService.to_download_payload(row)
             if queue_entry is not None:
                 _, queue_payload = queue_entry
-                if (
-                    isinstance(queue_payload, dict)
-                    and "retry_available" in queue_payload
-                ):
-                    download_payload["retry_available"] = bool(
-                        queue_payload.get("retry_available")
-                    )
+                if isinstance(queue_payload, dict) and "retry_available" in queue_payload:
+                    download_payload["retry_available"] = bool(queue_payload.get("retry_available"))
             # For complete/cancelled the saved status_message is a stale
             # progress string (e.g. "Fetching download sources") — clear it
             # so the frontend only shows its own status label.  Error rows
@@ -443,9 +432,7 @@ def _request_terminal_status(row: dict[str, Any]) -> str | None:
     return QueueStatus.COMPLETE
 
 
-def _minimal_request_snapshot(
-    request_row: dict[str, Any], request_id: int
-) -> dict[str, Any]:
+def _minimal_request_snapshot(request_row: dict[str, Any], request_id: int) -> dict[str, Any]:
     book_data = request_row.get("book_data")
     release_data = request_row.get("release_data")
     if not isinstance(book_data, dict):
@@ -525,20 +512,15 @@ def register_activity_routes(
         if actor_error is not None:
             return actor_error
 
-        hidden_rows = activity_view_state_service.list_hidden(
-            viewer_scope=actor.viewer_scope
-        )
-        hidden_item_keys = {
-            str(row.get("item_key") or "").strip() for row in hidden_rows
-        }
+        hidden_rows = activity_view_state_service.list_hidden(viewer_scope=actor.viewer_scope)
+        hidden_item_keys = {str(row.get("item_key") or "").strip() for row in hidden_rows}
         dismissed_entries = [
             {
                 "item_type": str(row.get("item_type") or "").strip().lower(),
                 "item_key": str(row.get("item_key") or "").strip(),
             }
             for row in hidden_rows
-            if str(row.get("item_type") or "").strip().lower()
-            in {"download", "request"}
+            if str(row.get("item_type") or "").strip().lower() in {"download", "request"}
             and str(row.get("item_key") or "").strip()
         ]
         live_queue = queue_status(user_id=actor.owner_scope)
@@ -549,8 +531,7 @@ def register_activity_routes(
         visible_db_rows = [
             row
             for row in db_rows
-            if f"download:{str(row.get('task_id') or '').strip()}"
-            not in hidden_item_keys
+            if f"download:{str(row.get('task_id') or '').strip()}" not in hidden_item_keys
         ]
 
         status = _build_download_status_from_db(
@@ -602,9 +583,7 @@ def register_activity_routes(
 
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
-            return _activity_error_response(
-                "dismiss", status_code=400, error="Invalid payload"
-            )
+            return _activity_error_response("dismiss", status_code=400, error="Invalid payload")
 
         item_type = str(data.get("item_type") or "").strip().lower()
         item_key = data.get("item_key")
@@ -636,9 +615,7 @@ def register_activity_routes(
                     item_key=f"download:{task_id}",
                 )
 
-            live_queue_index = _build_queue_index(
-                queue_status(user_id=actor.owner_scope)
-            )
+            live_queue_index = _build_queue_index(queue_status(user_id=actor.owner_scope))
             effective_existing = _effective_download_row_for_activity(
                 existing,
                 has_live_queue_entry=task_id in live_queue_index,
@@ -832,9 +809,7 @@ def register_activity_routes(
                     missing_item_keys.append(f"download:{task_id}")
                     continue
                 if live_queue_index is None:
-                    live_queue_index = _build_queue_index(
-                        queue_status(user_id=actor.owner_scope)
-                    )
+                    live_queue_index = _build_queue_index(queue_status(user_id=actor.owner_scope))
                 effective_existing = _effective_download_row_for_activity(
                     existing,
                     has_live_queue_entry=task_id in live_queue_index,
@@ -865,15 +840,11 @@ def register_activity_routes(
                         item_count=len(items),
                         **_download_row_log_context(effective_existing),
                     )
-                dismissal_items.append(
-                    {"item_type": "download", "item_key": f"download:{task_id}"}
-                )
+                dismissal_items.append({"item_type": "download", "item_key": f"download:{task_id}"})
                 continue
 
             if item_type == "request":
-                request_id = normalize_positive_int(
-                    _parse_item_key(item_key, "request")
-                )
+                request_id = normalize_positive_int(_parse_item_key(item_key, "request"))
                 if request_id is None:
                     return _activity_error_response(
                         "dismiss_many",
@@ -1038,9 +1009,7 @@ def register_activity_routes(
                 continue
 
             if item_type == "request":
-                request_id = normalize_positive_int(
-                    _parse_item_key(item_key, "request")
-                )
+                request_id = normalize_positive_int(_parse_item_key(item_key, "request"))
                 if request_id is None:
                     msg = f"Invalid activity history item_key: {item_key}"
                     raise RuntimeError(msg)

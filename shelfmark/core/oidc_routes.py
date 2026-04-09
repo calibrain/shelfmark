@@ -90,9 +90,7 @@ def _normalize_return_to(raw_return_to: object) -> str | None:
 def _get_pending_return_to(*, clear: bool = False) -> str | None:
     """Read the pending post-login target from the session."""
     raw_return_to = (
-        session.pop(_RETURN_TO_SESSION_KEY, None)
-        if clear
-        else session.get(_RETURN_TO_SESSION_KEY)
+        session.pop(_RETURN_TO_SESSION_KEY, None) if clear else session.get(_RETURN_TO_SESSION_KEY)
     )
     normalized = _normalize_return_to(raw_return_to)
     if normalized is None and not clear:
@@ -122,15 +120,11 @@ def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
 
     configured_scopes = app_config.get("OIDC_SCOPES", ["openid", "email", "profile"])
     if isinstance(configured_scopes, list):
-        scope_values = [
-            str(scope).strip() for scope in configured_scopes if str(scope).strip()
-        ]
+        scope_values = [str(scope).strip() for scope in configured_scopes if str(scope).strip()]
     elif isinstance(configured_scopes, str):
         delimiter = "," if "," in configured_scopes else " "
         scope_values = [
-            scope.strip()
-            for scope in configured_scopes.split(delimiter)
-            if scope.strip()
+            scope.strip() for scope in configured_scopes.split(delimiter) if scope.strip()
         ]
     else:
         scope_values = []
@@ -237,9 +231,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
                     return redirect(_login_error_url(msg))
 
                 return redirect(
-                    _login_error_url(
-                        f"OIDC token claim validation failed: {claim_name}"
-                    )
+                    _login_error_url(f"OIDC token claim validation failed: {claim_name}")
                 )
             claims = _normalize_claims(token.get("userinfo"))
 
@@ -285,21 +277,15 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
                     "OIDC login rejected: auto-provision disabled for %s",
                     user_info["username"],
                 )
-                return redirect(
-                    _login_error_url("Account not found. Contact your administrator.")
-                )
+                return redirect(_login_error_url("Account not found. Contact your administrator."))
 
             session["user_id"] = user["username"]
             session["is_admin"] = user.get("role") == "admin"
             session["db_user_id"] = user["id"]
             session.permanent = True
 
-            logger.info(
-                "OIDC login successful: %s (admin=%s)", user["username"], is_admin
-            )
-            return redirect(
-                _post_login_redirect_target(_get_pending_return_to(clear=True))
-            )
+            logger.info("OIDC login successful: %s (admin=%s)", user["username"], is_admin)
+            return redirect(_post_login_redirect_target(_get_pending_return_to(clear=True)))
 
         except ValueError as e:
             logger.exception("OIDC callback error")

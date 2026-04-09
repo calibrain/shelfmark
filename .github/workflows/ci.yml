@@ -27,6 +27,9 @@ jobs:
       - name: Lint backend
         run: uv run ruff check shelfmark
 
+      - name: Check backend formatting
+        run: uv run ruff format --check shelfmark
+
       - name: Run tests
         run: uv run pytest tests/ -x --tb=short
 

@@ -29,7 +29,9 @@ _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="Notify")
 _ROUTE_EVENT_ALL = "all"
 _APPRISE_APP_ID = "Shelfmark"
 _APPRISE_APP_DESC = "Shelfmark notifications"
-_APPRISE_LOGO_URL = "https://raw.githubusercontent.com/calibrain/shelfmark/main/src/frontend/public/logo.png"
+_APPRISE_LOGO_URL = (
+    "https://raw.githubusercontent.com/calibrain/shelfmark/main/src/frontend/public/logo.png"
+)
 _APPRISE_LOGGER_NAME = "apprise"
 
 
@@ -67,9 +69,7 @@ def _normalize_urls(value: object) -> list[str]:
         raw_values = value
     elif isinstance(value, str):
         # Support legacy/manual configs.
-        raw_values = [
-            segment for part in value.splitlines() for segment in part.split(",")
-        ]
+        raw_values = [segment for part in value.splitlines() for segment in part.split(",")]
     else:
         raw_values = [value]
 
@@ -125,9 +125,7 @@ class _AppriseLogCapture(logging.Handler):
             elif record.exc_text:
                 exception_summary = str(record.exc_text).strip()
 
-            self.records.append(
-                (record.levelno, record.name, str(message), exception_summary)
-            )
+            self.records.append((record.levelno, record.name, str(message), exception_summary))
 
 
 @contextmanager
@@ -160,9 +158,7 @@ def _log_apprise_records(records: Iterable[tuple[int, str, str, str]]) -> None:
             continue
         seen.add(key)
 
-        full_message = (
-            message if not exception_summary else f"{message} ({exception_summary})"
-        )
+        full_message = message if not exception_summary else f"{message} ({exception_summary})"
 
         if level >= logging.ERROR:
             logger.error("Apprise source [%s]: %s", source_name, full_message)
@@ -198,9 +194,7 @@ def _build_apprise_warning_detail(
 
         source_name = str(source or "").strip()
         exception_summary = str(raw_exception_summary or "").strip()
-        full_message = (
-            message if not exception_summary else f"{message} ({exception_summary})"
-        )
+        full_message = message if not exception_summary else f"{message} ({exception_summary})"
 
         if source_name and source_name != _APPRISE_LOGGER_NAME:
             return f"{scheme}: {source_name}: {full_message}"
@@ -406,9 +400,7 @@ def _dispatch_to_apprise(
         registration_failure_detail: str | None = None
         with _capture_apprise_logs(min_level=logging.INFO) as apprise_records:
             try:
-                plugin = apprise.Apprise.instantiate(
-                    url, asset=getattr(apobj, "asset", None)
-                )
+                plugin = apprise.Apprise.instantiate(url, asset=getattr(apobj, "asset", None))
             except Exception as exc:
                 logger.warning(
                     "Failed to register notification route URL for scheme '%s': %s",
@@ -428,13 +420,9 @@ def _dispatch_to_apprise(
 
             if plugin is None:
                 invalid_urls += 1
-                logger.warning(
-                    "Apprise rejected notification route URL for scheme '%s'", scheme
-                )
+                logger.warning("Apprise rejected notification route URL for scheme '%s'", scheme)
                 _log_apprise_records(apprise_records)
-                warning_detail = _build_apprise_warning_detail(
-                    apprise_records, scheme=scheme
-                )
+                warning_detail = _build_apprise_warning_detail(apprise_records, scheme=scheme)
                 if warning_detail:
                     failure_details.append(warning_detail)
                 elif registration_failure_detail is None:
@@ -446,9 +434,7 @@ def _dispatch_to_apprise(
             valid_urls += 1
 
             try:
-                delivered = bool(
-                    apobj.notify(title=title, body=body, notify_type=notify_type)
-                )
+                delivered = bool(apobj.notify(title=title, body=body, notify_type=notify_type))
             except Exception as exc:
                 _log_apprise_records(apprise_records)
                 failed_delivery_urls += 1
@@ -459,15 +445,11 @@ def _dispatch_to_apprise(
                     exc,
                 )
                 _log_apprise_exception_debug(action="notify", scheme=scheme, exc=exc)
-                warning_detail = _build_apprise_warning_detail(
-                    apprise_records, scheme=scheme
-                )
+                warning_detail = _build_apprise_warning_detail(apprise_records, scheme=scheme)
                 if warning_detail:
                     failure_details.append(warning_detail)
                 else:
-                    failure_details.append(
-                        f"{scheme}: notify raised {type(exc).__name__}: {exc}"
-                    )
+                    failure_details.append(f"{scheme}: notify raised {type(exc).__name__}: {exc}")
                 continue
 
         _log_apprise_records(apprise_records)
@@ -642,6 +624,4 @@ def send_test_notification(urls: list[str]) -> dict[str, Any]:
         author="Shelfmark",
         username="Shelfmark",
     )
-    return _send_admin_event(
-        NotificationEvent.REQUEST_CREATED, test_context, normalized_urls
-    )
+    return _send_admin_event(NotificationEvent.REQUEST_CREATED, test_context, normalized_urls)

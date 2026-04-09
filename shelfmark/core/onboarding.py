@@ -28,6 +28,7 @@ ONBOARDING_STORAGE_KEY = "onboarding_complete"
 def _get_config_dir() -> Path:
     """Get the config directory path."""
     from shelfmark.config.env import CONFIG_DIR
+
     return Path(CONFIG_DIR)
 
 
@@ -112,10 +113,12 @@ def get_search_mode_fields() -> list[SettingsField]:
     search_mode_field = _get_field_from_tab("search_mode", "SEARCH_MODE")
     if search_mode_field:
         # Clone with onboarding-specific description
-        fields.append(_clone_field_with_overrides(
-            search_mode_field,
-            description="Choose how you want to find books.",
-        ))
+        fields.append(
+            _clone_field_with_overrides(
+                search_mode_field,
+                description="Choose how you want to find books.",
+            )
+        )
 
     return fields
 
@@ -153,11 +156,13 @@ def get_metadata_provider_fields() -> list[SettingsField]:
         ]
 
         # Clone with onboarding-specific options and default
-        fields.append(_clone_field_with_overrides(
-            provider_field,
-            default="hardcover",
-            options=onboarding_options,
-        ))
+        fields.append(
+            _clone_field_with_overrides(
+                provider_field,
+                default="hardcover",
+                options=onboarding_options,
+            )
+        )
 
     return fields
 
@@ -315,8 +320,7 @@ ONBOARDING_STEPS = [
 
 
 def get_onboarding_config() -> dict[str, Any]:
-    """Get the full onboarding configuration including steps and current values.
-    """
+    """Get the full onboarding configuration including steps and current values."""
     steps = []
     all_values = {}
 
@@ -333,7 +337,9 @@ def get_onboarding_config() -> dict[str, Any]:
             # Collect values (skip HeadingFields)
             if hasattr(field, "key") and field.key and not isinstance(field, HeadingField):
                 value = get_setting_value(field, tab_name)
-                all_values[field.key] = value if value is not None else getattr(field, "default", "")
+                all_values[field.key] = (
+                    value if value is not None else getattr(field, "default", "")
+                )
 
         step = {
             "id": step_config["id"],
@@ -413,7 +419,11 @@ def save_onboarding_settings(values: dict[str, Any]) -> dict[str, Any]:
                     provider_config["GOOGLEBOOKS_API_KEY"] = values["GOOGLEBOOKS_API_KEY"]
 
                 save_config_file(provider, provider_config)
-                logger.info("Enabled metadata provider: %s with keys: %s", provider, list(provider_config.keys()))
+                logger.info(
+                    "Enabled metadata provider: %s with keys: %s",
+                    provider,
+                    list(provider_config.keys()),
+                )
 
         # Mark onboarding as complete
         mark_onboarding_complete()
@@ -421,6 +431,7 @@ def save_onboarding_settings(values: dict[str, Any]) -> dict[str, Any]:
         # Refresh config
         try:
             from shelfmark.core.config import config
+
             config.refresh()
         except ImportError as e:
             logger.debug("Could not refresh config after onboarding: %s", e)

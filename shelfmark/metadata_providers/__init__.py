@@ -79,9 +79,7 @@ class SelectSearchField:
 
     key: str
     label: str
-    options: list[dict[str, str]] = field(
-        default_factory=list
-    )  # [{value: "", label: ""}]
+    options: list[dict[str, str]] = field(default_factory=list)  # [{value: "", label: ""}]
     placeholder: str = ""
     description: str = ""
 
@@ -150,9 +148,7 @@ def serialize_search_field(search_field: SearchField) -> dict[str, Any]:
     elif isinstance(search_field, TextSearchField):
         if search_field.suggestions_endpoint:
             result["suggestions_endpoint"] = search_field.suggestions_endpoint
-            result["suggestions_min_query_length"] = (
-                search_field.suggestions_min_query_length
-            )
+            result["suggestions_min_query_length"] = search_field.suggestions_min_query_length
     elif isinstance(search_field, SelectSearchField):
         result["options"] = search_field.options
     elif isinstance(search_field, CheckboxSearchField):
@@ -208,12 +204,8 @@ class BookMetadata:
     genres: list[str] = field(default_factory=list)
     source_url: str | None = None  # Link to book on provider's site
     subtitle: str | None = None  # Book subtitle, if any
-    search_title: str | None = (
-        None  # Cleaner title for search queries (provider-specific)
-    )
-    search_author: str | None = (
-        None  # Cleaner author for search queries (provider-specific)
-    )
+    search_title: str | None = None  # Cleaner title for search queries (provider-specific)
+    search_author: str | None = None  # Cleaner author for search queries (provider-specific)
 
     # Cover aspect ratio hint for the frontend ("portrait" or "square")
     cover_aspect: str | None = None
@@ -224,9 +216,7 @@ class BookMetadata:
     # Series info (if book is part of a series)
     series_id: str | None = None  # Provider-specific series ID
     series_name: str | None = None  # Name of the series
-    series_position: float | None = (
-        None  # This book's position (e.g., 3, 1.5 for novellas)
-    )
+    series_position: float | None = None  # This book's position (e.g., 3, 1.5 for novellas)
     series_count: int | None = None  # Total books in the series
 
     # Alternative titles by language (for localized searches)
@@ -339,9 +329,7 @@ class SearchResult:
     page: int = 1
     total_found: int = 0  # Total matching results (if known)
     has_more: bool = False  # True if more results available
-    source_url: str | None = (
-        None  # External URL for the result set (e.g. Hardcover list page)
-    )
+    source_url: str | None = None  # External URL for the result set (e.g. Hardcover list page)
     source_title: str | None = None  # Display title for the result set (e.g. list name)
 
 
@@ -409,17 +397,13 @@ class MetadataProvider(ABC):
         msg = f"{self.display_name} does not support book targets"
         raise NotImplementedError(msg)
 
-    def get_book_targets_batch(
-        self, book_ids: list[str]
-    ) -> dict[str, list[dict[str, Any]]]:
+    def get_book_targets_batch(self, book_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
         """Get provider-managed targets for multiple books.
 
         Returns a dict mapping each book_id to its list of target options.
         Default implementation calls get_book_targets per book.
         """
-        return {
-            book_id: self._get_book_targets_for_batch(book_id) for book_id in book_ids
-        }
+        return {book_id: self._get_book_targets_for_batch(book_id) for book_id in book_ids}
 
     def _get_book_targets_for_batch(self, book_id: str) -> list[dict[str, Any]]:
         """Safely fetch targets for one book, falling back to an empty list."""
@@ -541,9 +525,7 @@ def get_configured_provider(
 
     # For audiobooks, try audiobook-specific provider first, then fall back to main provider
     if content_type == "audiobook":
-        metadata_provider = app_config.get(
-            "METADATA_PROVIDER_AUDIOBOOK", "", user_id=user_id
-        )
+        metadata_provider = app_config.get("METADATA_PROVIDER_AUDIOBOOK", "", user_id=user_id)
         if not metadata_provider:
             metadata_provider = app_config.get("METADATA_PROVIDER", "", user_id=user_id)
     else:

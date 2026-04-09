@@ -69,9 +69,7 @@ class RTorrentClient(DownloadClient):
 
         if username and password:
             parsed = urlparse(self._base_url)
-            self._base_url = (
-                f"{parsed.scheme}://{username}:{password}@{parsed.netloc}{parsed.path}"
-            )
+            self._base_url = f"{parsed.scheme}://{username}:{password}@{parsed.netloc}{parsed.path}"
 
         self._rpc = _create_rtorrent_server_proxy(self._base_url)
         self._download_dir = config.get("RTORRENT_DOWNLOAD_DIR", "")
@@ -138,9 +136,7 @@ class RTorrentClient(DownloadClient):
                     commands,
                     len(torrent_info.torrent_data),
                 )
-                self._rpc.load.raw_start(
-                    "", torrent_info.torrent_data, ";".join(commands)
-                )
+                self._rpc.load.raw_start("", torrent_info.torrent_data, ";".join(commands))
             else:
                 logger.debug(
                     "Adding torrent URL to rTorrent for: %s with commands: %s with URL: %s",

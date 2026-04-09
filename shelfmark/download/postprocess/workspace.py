@@ -72,9 +72,7 @@ def safe_cleanup_path(path: Path | None, task: DownloadTask) -> None:
         return
 
     if not is_managed_workspace_path(path):
-        logger.debug(
-            "Skip cleanup (outside TMP_DIR) for task %s: %s", task.task_id, path
-        )
+        logger.debug("Skip cleanup (outside TMP_DIR) for task %s: %s", task.task_id, path)
         return
 
     try:

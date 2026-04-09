@@ -68,7 +68,11 @@ def _is_homepage_redirect(final_url: str, hostname: str) -> bool:
 def _encode_search_query(query: str, *, exact_phrase: bool) -> str:
     """Encode search query using ABB's space-plus style and optional exact phrase wrapping."""
     search_query = query.strip()
-    if exact_phrase and search_query and not (search_query.startswith('"') and search_query.endswith('"')):
+    if (
+        exact_phrase
+        and search_query
+        and not (search_query.startswith('"') and search_query.endswith('"'))
+    ):
         search_query = f'"{search_query}"'
     # Keep ABB-friendly encoding style (spaces as '+') while percent-encoding quotes.
     return search_query.replace('"', "%22").replace(" ", "+")
@@ -113,13 +117,13 @@ def search_audiobookbay(
     exact_phrase: bool = False,
 ) -> list[dict[str, str]]:
     """Search AudiobookBay for audiobooks matching the query.
-    
+
     Args:
         query: Search query string
         max_pages: Maximum number of pages to fetch
         hostname: AudiobookBay hostname (e.g., "audiobookbay.lu")
         exact_phrase: Wrap query in quotes for exact phrase matching
-        
+
     Returns:
         List of dicts with keys: title, link, cover, language, format, bitrate, size, posted_date
 
@@ -192,7 +196,10 @@ def search_audiobookbay(
                 # Search was redirected to homepage - this means the search failed
                 # This can happen due to geo-blocking, rate limiting, or invalid query format
                 if page == 1:
-                    logger.warning("Search query '%s' was redirected to homepage - search may be blocked or invalid", query)
+                    logger.warning(
+                        "Search query '%s' was redirected to homepage - search may be blocked or invalid",
+                        query,
+                    )
                 break
 
             # Parse HTML
@@ -224,7 +231,9 @@ def search_audiobookbay(
 
                     # Extract cover image (try .postContent .center img first, then fallback to any img)
                     cover = None
-                    cover_elem = post.select_one(".postContent .center img") or post.select_one("img")
+                    cover_elem = post.select_one(".postContent .center img") or post.select_one(
+                        "img"
+                    )
                     if cover_elem:
                         cover = _normalize_result_url(cover_elem.get("src", ""), hostname) or None
 
@@ -232,7 +241,9 @@ def search_audiobookbay(
                     language = None
                     post_info = post.select_one(".postInfo")
                     if post_info:
-                        info_text = post_info.get_text(separator=" ", strip=True).replace("\xa0", " ")
+                        info_text = post_info.get_text(separator=" ", strip=True).replace(
+                            "\xa0", " "
+                        )
                         lang_match = LANGUAGE_PATTERN.search(info_text)
                         if lang_match:
                             language = lang_match.group(1).strip()
@@ -245,7 +256,9 @@ def search_audiobookbay(
 
                     post_content = post.select_one(".postContent")
                     if post_content:
-                        content_text = post_content.get_text(separator=" ", strip=True).replace("\xa0", " ")
+                        content_text = post_content.get_text(separator=" ", strip=True).replace(
+                            "\xa0", " "
+                        )
 
                         # Extract posted date
                         posted_match = POSTED_PATTERN.search(content_text)
@@ -272,16 +285,18 @@ def search_audiobookbay(
                             size_unit = size_unit.upper()
                             size_str = f"{size_value} {size_unit}"
 
-                    results.append({
-                        "title": title,
-                        "link": link,
-                        "cover": cover or None,
-                        "language": language,
-                        "format": format_type,
-                        "bitrate": bitrate,
-                        "size": size_str,
-                        "posted_date": posted_date,
-                    })
+                    results.append(
+                        {
+                            "title": title,
+                            "link": link,
+                            "cover": cover or None,
+                            "language": language,
+                            "format": format_type,
+                            "bitrate": bitrate,
+                            "size": size_str,
+                            "posted_date": posted_date,
+                        }
+                    )
                 except (TypeError, ValueError, AttributeError, IndexError, KeyError) as e:
                     logger.debug("Skipping post due to error: %s", e)
                     continue
@@ -297,16 +312,13 @@ def search_audiobookbay(
     return results
 
 
-def extract_magnet_link(
-    details_url: str,
-    hostname: str = "audiobookbay.lu"
-) -> str | None:
+def extract_magnet_link(details_url: str, hostname: str = "audiobookbay.lu") -> str | None:
     """Extract info hash and trackers from book detail page, then construct magnet link.
-    
+
     Args:
         details_url: URL of the book's detail page
         hostname: AudiobookBay hostname (for logging)
-        
+
     Returns:
         Magnet link, or None if extraction fails
 
@@ -386,10 +398,7 @@ def extract_magnet_link(
 
         # 4. Construct Magnet Link
         # Format: magnet:?xt=urn:btih:{INFO_HASH}&tr={TRACKER1}&tr={TRACKER2}...
-        tracker_params = "&".join(
-            f"tr={quote(tracker)}"
-            for tracker in trackers
-        )
+        tracker_params = "&".join(f"tr={quote(tracker)}" for tracker in trackers)
         magnet_link = f"magnet:?xt=urn:btih:{info_hash}&{tracker_params}"
 
         logger.debug("Generated Magnet Link: %s...", magnet_link[:100])

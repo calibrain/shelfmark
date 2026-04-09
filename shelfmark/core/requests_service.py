@@ -76,9 +76,7 @@ def _validate_book_data(book_data: object) -> dict[str, Any]:
 
     required_fields = ("title", "author", "provider", "provider_id")
     missing = [
-        field
-        for field in required_fields
-        if not _normalize_match_text(book_data.get(field))
+        field for field in required_fields if not _normalize_match_text(book_data.get(field))
     ]
     if missing:
         msg_0 = f"book_data missing required field(s): {', '.join(missing)}"
@@ -128,11 +126,7 @@ def _find_duplicate_pending_request(
         row_content_type = normalize_content_type(
             row.get("content_type") or row_book_data.get("content_type")
         )
-        if (
-            row_title == title
-            and row_author == author
-            and row_content_type == content_type
-        ):
+        if row_title == title and row_author == author and row_content_type == content_type:
             return row
     return None
 
@@ -169,9 +163,7 @@ def _prepare_request_create(
     validated_book_data["content_type"] = normalized_content_type
 
     try:
-        normalized_request_level = validate_request_level_payload(
-            request_level, release_data
-        )
+        normalized_request_level = validate_request_level_payload(request_level, release_data)
         normalized_policy_mode = normalize_policy_mode(policy_mode)
     except ValueError as exc:
         raise RequestServiceError(str(exc), status_code=400) from exc
@@ -198,9 +190,7 @@ def sync_delivery_states_from_queue_status(
     user_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """Persist delivery-state transitions for fulfilled requests based on queue status."""
-    fulfilled_rows = user_db.list_requests(
-        user_id=user_id, status=RequestStatus.FULFILLED
-    )
+    fulfilled_rows = user_db.list_requests(user_id=user_id, status=RequestStatus.FULFILLED)
     if not fulfilled_rows:
         return []
 
@@ -428,9 +418,7 @@ def ensure_request_access(
         msg = "Request not found"
         raise RequestServiceError(msg, status_code=404)
 
-    if not is_admin and (
-        actor_user_id is None or request_row["user_id"] != actor_user_id
-    ):
+    if not is_admin and (actor_user_id is None or request_row["user_id"] != actor_user_id):
         msg = "Forbidden"
         raise RequestServiceError(msg, status_code=403)
 
@@ -469,9 +457,7 @@ def cancel_request(
             status=RequestStatus.CANCELLED,
         )
     except ValueError as exc:
-        raise RequestServiceError(
-            str(exc), status_code=409, code="stale_transition"
-        ) from exc
+        raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
 
 
 def reject_request(
@@ -502,9 +488,7 @@ def reject_request(
             reviewed_at=_now_timestamp(),
         )
     except ValueError as exc:
-        raise RequestServiceError(
-            str(exc), status_code=409, code="stale_transition"
-        ) from exc
+        raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
 
 
 def fulfil_request(
@@ -535,9 +519,7 @@ def fulfil_request(
     selected_release_data = (
         release_data if release_data is not None else request_row.get("release_data")
     )
-    if selected_release_data is not None and not isinstance(
-        selected_release_data, dict
-    ):
+    if selected_release_data is not None and not isinstance(selected_release_data, dict):
         msg = "release_data must be an object"
         raise RequestServiceError(msg, status_code=400)
 
@@ -556,9 +538,7 @@ def fulfil_request(
                 reviewed_at=_now_timestamp(),
             )
         except ValueError as exc:
-            raise RequestServiceError(
-                str(exc), status_code=409, code="stale_transition"
-            ) from exc
+            raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
 
     if selected_release_data is None:
         msg = "release_data is required to fulfil requests"
@@ -589,9 +569,7 @@ def fulfil_request(
             reviewed_at=_now_timestamp(),
         )
     except ValueError as exc:
-        raise RequestServiceError(
-            str(exc), status_code=409, code="stale_transition"
-        ) from exc
+        raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
 
     queued_release_data = dict(selected_release_data)
     queued_release_data["_request_id"] = request_id

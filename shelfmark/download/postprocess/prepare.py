@@ -32,9 +32,7 @@ def build_output_plan(
     status_callback: Callable[[str, str | None], None] | None = None,
 ) -> OutputPlan:
     """Build an output plan that describes staging behavior for file-based outputs."""
-    transfer_plan = resolve_hardlink_source(
-        temp_file, task, destination, status_callback
-    )
+    transfer_plan = resolve_hardlink_source(temp_file, task, destination, status_callback)
     staging_dir = get_staging_dir()
 
     return OutputPlan(
@@ -68,18 +66,13 @@ def prepare_output_files(
     working_path = temp_file
     if output_plan.stage_action != STAGE_NONE:
         step_label = (
-            "Staging torrent files"
-            if output_plan.stage_action == STAGE_COPY
-            else "Staging files"
+            "Staging torrent files" if output_plan.stage_action == STAGE_COPY else "Staging files"
         )
         status_callback("resolving", step_label)
-        working_path = stage_path(
-            working_path, output_plan.staging_dir, output_plan.stage_action
-        )
+        working_path = stage_path(working_path, output_plan.staging_dir, output_plan.stage_action)
 
     can_delete_source_archives = (
-        output_plan.stage_action != STAGE_NONE
-        or is_managed_workspace_path(working_path)
+        output_plan.stage_action != STAGE_NONE or is_managed_workspace_path(working_path)
     )
     cleanup_archives = can_delete_source_archives and not preserve_source_on_failure
 
@@ -97,9 +90,7 @@ def prepare_output_files(
             cleanup_output_staging(output_plan, working_path, task, cleanup_paths)
         return None
 
-    if output_plan.stage_action == STAGE_NONE and is_managed_workspace_path(
-        working_path
-    ):
+    if output_plan.stage_action == STAGE_NONE and is_managed_workspace_path(working_path):
         cleanup_paths = [*cleanup_paths, working_path]
 
     return PreparedFiles(

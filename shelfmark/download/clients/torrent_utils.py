@@ -75,9 +75,7 @@ def extract_torrent_info(
         info_hash = extract_hash_from_magnet(url)
         if not info_hash and expected_hash:
             info_hash = expected_hash
-        return TorrentInfo(
-            info_hash=info_hash, torrent_data=None, is_magnet=True, magnet_url=url
-        )
+        return TorrentInfo(info_hash=info_hash, torrent_data=None, is_magnet=True, magnet_url=url)
 
     # Not a magnet - try to fetch and parse the .torrent file
     if not fetch_torrent:
@@ -158,9 +156,7 @@ def extract_torrent_info(
             logger.debug("Extracted hash from torrent file: %s", info_hash)
         else:
             logger.warning("Could not extract hash from torrent file")
-        return TorrentInfo(
-            info_hash=info_hash, torrent_data=torrent_data, is_magnet=False
-        )
+        return TorrentInfo(info_hash=info_hash, torrent_data=torrent_data, is_magnet=False)
     except Exception as e:
         logger.debug("Could not fetch torrent file: %s", e)
         return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
@@ -298,7 +294,11 @@ def extract_hash_from_magnet(magnet_url: str) -> str | None:
         if not data:
             return None
 
-        if len(data) >= _BASE32_BTMH_TAG_BYTES and data[0] == _BTIH_PREFIX_BYTE and data[1] == _BTIH_INFO_BYTE_HEX:
+        if (
+            len(data) >= _BASE32_BTMH_TAG_BYTES
+            and data[0] == _BTIH_PREFIX_BYTE
+            and data[1] == _BTIH_INFO_BYTE_HEX
+        ):
             digest = data[2:_BASE32_BTMH_TAG_BYTES]
             if len(digest) == _BTIH_DIGEST_LENGTH:
                 return digest.hex().lower()

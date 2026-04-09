@@ -97,9 +97,7 @@ def get_bypassed_page(
 def get_cf_cookies_for_domain(domain: str) -> dict[str, str]:
     """Get CF cookies - only available with internal bypasser."""
     if _is_using_external_bypasser():
-        logger.debug(
-            "External bypasser in use, CF cookies not available for %s", domain
-        )
+        logger.debug("External bypasser in use, CF cookies not available for %s", domain)
         return {}
     return _get_internal_bypasser().get_cf_cookies_for_domain(domain)
 
@@ -107,9 +105,7 @@ def get_cf_cookies_for_domain(domain: str) -> dict[str, str]:
 def get_cf_user_agent_for_domain(domain: str) -> str | None:
     """Get CF user agent - only available with internal bypasser."""
     if _is_using_external_bypasser():
-        logger.debug(
-            "External bypasser in use, CF user agent not available for %s", domain
-        )
+        logger.debug("External bypasser in use, CF user agent not available for %s", domain)
         return None
     return _get_internal_bypasser().get_cf_user_agent_for_domain(domain)
 
@@ -198,9 +194,7 @@ def _try_rotation(
             new_url = selector.rewrite(original_url)
             logger.info("[%s] switching to: %s", action, new_url)
             return new_url
-    elif (
-        network.should_rotate_dns_for_url(current_url) and network.rotate_dns_provider()
-    ):
+    elif network.should_rotate_dns_for_url(current_url) and network.rotate_dns_provider():
         logger.info("[dns-rotate] retrying: %s", original_url)
         return original_url
     return None
@@ -258,12 +252,12 @@ def html_get_page(
                     def _heartbeat(stop_event: Event = heartbeat_stop) -> None:
                         # Keep the download "alive" during long bypass operations so the orchestrator
                         # doesn't flag it as stalled.
-                            if cancel_flag and cancel_flag.is_set():
-                                return
-                            try:
-                                status_callback("resolving", "Bypassing protection...")
-                            except Exception:
-                                return
+                        if cancel_flag and cancel_flag.is_set():
+                            return
+                        try:
+                            status_callback("resolving", "Bypassing protection...")
+                        except Exception:
+                            return
 
                     heartbeat_thread = Thread(
                         target=_heartbeat, daemon=True, name="BypassHeartbeat"
@@ -350,9 +344,7 @@ def html_get_page(
                     # Same-host redirect (relative or absolute) - follow manually.
                     redirects_followed += 1
                     if redirects_followed > _MAX_REDIRECTS:
-                        _raise_too_many_redirects(
-                            f"Too many redirects for {current_url}"
-                        )
+                        _raise_too_many_redirects(f"Too many redirects for {current_url}")
                     current_url = redirect_url
                     continue
 
@@ -521,18 +513,14 @@ def download_url(
                 parsed = urlparse(current_url)
                 if parsed.hostname and "z-lib" in parsed.hostname and referer:
                     zlib_cookie_refresh_attempted = True
-                    logger.info(
-                        "Z-Library 403 - refreshing cookies via referer: %s", referer
-                    )
+                    logger.info("Z-Library 403 - refreshing cookies via referer: %s", referer)
                     try:
                         get_bypassed_page(referer, selector, cancel_flag)
                         time.sleep(0.5)
                         # Retry with fresh cookies (don't increment attempt)
                         continue
                     except Exception as cookie_err:
-                        logger.warning(
-                            "Z-Library cookie refresh failed: %s", cookie_err
-                        )
+                        logger.warning("Z-Library cookie refresh failed: %s", cookie_err)
 
             # Non-retryable errors
             if status in _HTTP_STATUS_NON_RETRYABLE:
@@ -627,9 +615,7 @@ def _try_resume(
             if response.status_code == _HTTP_STATUS_OK:  # Server doesn't support resume
                 logger.info("Server doesn't support resume")
                 return None
-            if (
-                response.status_code == _HTTP_STATUS_RANGE_NOT_SATISFIABLE
-            ):  # Range not satisfiable
+            if response.status_code == _HTTP_STATUS_RANGE_NOT_SATISFIABLE:  # Range not satisfiable
                 logger.warning("Range not satisfiable")
                 return None
             if response.status_code != _HTTP_STATUS_PARTIAL_CONTENT:

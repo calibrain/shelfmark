@@ -44,9 +44,7 @@ def validate_destination(
         except (OSError, PermissionError) as exc:
             log_path_permission_context("destination_create", destination)
             logger.warning("Cannot create destination: %s (%s)", destination, exc)
-            status_callback(
-                "error", f"Cannot create destination: {destination} ({exc})"
-            )
+            status_callback("error", f"Cannot create destination: {destination} ({exc})")
             return False
 
     test_path = destination / f".shelfmark_write_test_{uuid.uuid4().hex}.tmp"

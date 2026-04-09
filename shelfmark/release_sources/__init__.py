@@ -66,9 +66,7 @@ class Release:
     size: str | None = None
     size_bytes: int | None = None
     download_url: str | None = None
-    info_url: str | None = (
-        None  # Link to release info page (e.g., tracker) - makes title clickable
-    )
+    info_url: str | None = None  # Link to release info page (e.g., tracker) - makes title clickable
     protocol: ReleaseProtocol | None = None
     indexer: str | None = None  # Source name for display
     seeders: int | None = None  # For torrents
@@ -118,9 +116,7 @@ class ColumnAlign(str, Enum):
 class ColumnColorHint:
     """Color hint for badge-type columns."""
 
-    type: Literal[
-        "map", "static"
-    ]  # "map" uses frontend colorMaps, "static" is fixed class
+    type: Literal["map", "static"]  # "map" uses frontend colorMaps, "static" is fixed class
     value: str  # Map name ("format", "language") or Tailwind class
 
 
@@ -154,9 +150,7 @@ class LeadingCellConfig:
     """Configuration for the leading cell in release rows."""
 
     type: LeadingCellType = LeadingCellType.THUMBNAIL
-    key: str | None = (
-        None  # Field path for data (e.g., "extra.preview" or "extra.download_type")
-    )
+    key: str | None = None  # Field path for data (e.g., "extra.preview" or "extra.download_type")
     color_hint: ColumnColorHint | None = None  # For badge type - maps values to colors
     uppercase: bool = False  # Force uppercase for badge text
 
@@ -184,12 +178,8 @@ class ReleaseColumnConfig:
     columns: list[ColumnSchema]
     grid_template: str = "minmax(0,2fr) 60px 80px 80px"  # CSS grid-template-columns
     leading_cell: LeadingCellConfig | None = None  # Defaults to thumbnail mode if None
-    online_servers: list[str] | None = (
-        None  # For IRC: list of currently online server nicks
-    )
-    available_indexers: list[str] | None = (
-        None  # For Prowlarr: list of all enabled indexer names
-    )
+    online_servers: list[str] | None = None  # For IRC: list of currently online server nicks
+    available_indexers: list[str] | None = None  # For Prowlarr: list of all enabled indexer names
     default_indexers: list[str] | None = (
         None  # For Prowlarr: indexers selected in settings (pre-selected in filter)
     )
@@ -269,8 +259,7 @@ def serialize_column_config(config: ReleaseColumnConfig) -> dict[str, Any]:
     # Include extra sort options (sort entries not tied to a column)
     if config.extra_sort_options:
         result["extra_sort_options"] = [
-            {"label": opt.label, "sort_key": opt.sort_key}
-            for opt in config.extra_sort_options
+            {"label": opt.label, "sort_key": opt.sort_key} for opt in config.extra_sort_options
         ]
 
     # Include action button if specified (replaces default expand search)
@@ -330,9 +319,7 @@ class ReleaseSource(ABC):
         "ebook",
         "audiobook",
     ]  # Content types this source supports
-    can_be_default: bool = (
-        True  # Whether this source can be selected as default in settings
-    )
+    can_be_default: bool = True  # Whether this source can be selected as default in settings
 
     @abstractmethod
     def search(
@@ -486,9 +473,7 @@ def browse_record_to_book_metadata(
     author_override: str | None = None,
 ) -> BookMetadata:
     """Convert a source-native browse record into generic book metadata."""
-    resolved_title = (
-        title_override or str(record.title or "").strip() or "Unknown title"
-    )
+    resolved_title = title_override or str(record.title or "").strip() or "Unknown title"
     resolved_author = author_override or str(record.author or "").strip()
     authors = [part.strip() for part in resolved_author.split(",") if part.strip()]
     publish_year = None

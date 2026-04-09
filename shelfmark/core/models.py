@@ -94,25 +94,15 @@ class DownloadTask:
     size: str | None = None
     preview: str | None = None
     content_type: str | None = None  # "book (fiction)", "audiobook", "magazine", etc.
-    source_url: str | None = (
-        None  # Original release URL used by source-specific handlers
-    )
-    retry_download_url: str | None = (
-        None  # Resolved download URL for restart-safe retries
-    )
+    source_url: str | None = None  # Original release URL used by source-specific handlers
+    retry_download_url: str | None = None  # Resolved download URL for restart-safe retries
     retry_download_protocol: str | None = (
         None  # Protocol for retry_download_url (e.g. torrent, usenet)
     )
-    retry_release_name: str | None = (
-        None  # Display name to send back to external download clients
-    )
-    retry_expected_hash: str | None = (
-        None  # Optional torrent hash used to match client downloads
-    )
+    retry_release_name: str | None = None  # Display name to send back to external download clients
+    retry_expected_hash: str | None = None  # Optional torrent hash used to match client downloads
     retry_ratio_limit: float | None = None  # Optional post-download seeding ratio
-    retry_seeding_time_limit_minutes: int | None = (
-        None  # Optional post-download seeding time limit
-    )
+    retry_seeding_time_limit_minutes: int | None = None  # Optional post-download seeding time limit
     can_retry_without_staged_source: bool = (
         True  # Whether the source can restart without a preserved staged file
     )
@@ -123,9 +113,7 @@ class DownloadTask:
     subtitle: str | None = None  # Book subtitle for naming templates
 
     # Hardlinking support
-    original_download_path: str | None = (
-        None  # Path in download client (for hardlinking)
-    )
+    original_download_path: str | None = None  # Path in download client (for hardlinking)
 
     # Search mode - determines post-download processing behavior
     # See SearchMode enum for behavioral differences
@@ -142,9 +130,7 @@ class DownloadTask:
     # User association (multi-user support)
     user_id: int | None = None  # DB user ID who queued this download
     username: str | None = None  # Username for {User} template variable
-    request_id: int | None = (
-        None  # Origin request ID when queued from request fulfilment
-    )
+    request_id: int | None = None  # Origin request ID when queued from request fulfilment
 
     # Runtime state
     priority: int = 0

@@ -146,9 +146,7 @@ class WebSocketManager:
         try:
             # Extract user_id from room name "user_123"
             uid = int(room.split("_", 1)[1])
-            filtered = (
-                self._queue_status_fn(user_id=uid) if self._queue_status_fn else None
-            )
+            filtered = self._queue_status_fn(user_id=uid) if self._queue_status_fn else None
             if filtered is not None:
                 self.socketio.emit("status_update", filtered, to=room)
         except Exception:

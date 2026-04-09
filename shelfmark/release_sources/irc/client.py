@@ -99,9 +99,7 @@ class IRCClient:
 
     def connect(self) -> None:
         """Connect to IRC server, send USER/NICK, and wait for welcome."""
-        logger.info(
-            "Connecting to %s:%s (TLS=%s)", self.server, self.port, self.use_tls
-        )
+        logger.info("Connecting to %s:%s (TLS=%s)", self.server, self.port, self.use_tls)
 
         try:
             # Create socket
@@ -267,11 +265,7 @@ class IRCClient:
     def _parse_names_list(self, names_data: str) -> None:
         """Parse 353 NAMES reply and extract elevated users (download servers)."""
         # Extract the trailing part after the last colon (the actual names)
-        names_part = (
-            names_data.rsplit(" :", maxsplit=1)[-1]
-            if " :" in names_data
-            else names_data
-        )
+        names_part = names_data.rsplit(" :", maxsplit=1)[-1] if " :" in names_data else names_data
 
         for name in names_part.split():
             # Check if user has an elevated prefix
@@ -444,9 +438,7 @@ class IRCClient:
             if msg.event == IRCEvent.SEARCH_ACCEPTED:
                 logger.info("Search accepted, waiting for results...")
             elif (
-                msg.event == IRCEvent.MATCHES_FOUND
-                and msg.trailing
-                and "returned" in msg.trailing
+                msg.event == IRCEvent.MATCHES_FOUND and msg.trailing and "returned" in msg.trailing
             ):
                 # Extract count from "returned X matches"
                 match = re.search(r"returned\s+(\d+)\s+matches", msg.trailing)

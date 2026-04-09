@@ -191,9 +191,7 @@ class ActivityViewStateService:
         normalized_items: list[tuple[str, str]] = []
         for item in items:
             normalized_type = _normalize_item_type(item.get("item_type"))
-            normalized_key = _normalize_item_key(
-                item.get("item_key"), item_type=normalized_type
-            )
+            normalized_key = _normalize_item_key(item.get("item_key"), item_type=normalized_type)
             marker = (normalized_type, normalized_key)
             if marker in seen:
                 continue
@@ -230,9 +228,7 @@ class ActivityViewStateService:
                             dismissed_at,
                         ),
                     )
-                    rowcount = (
-                        int(cursor.rowcount) if cursor.rowcount is not None else 0
-                    )
+                    rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
                     total += max(rowcount, 0)
                 conn.commit()
                 return total
@@ -301,8 +297,7 @@ class ActivityViewStateService:
     def delete_items(self, *, item_type: str, item_keys: list[str]) -> int:
         normalized_type = _normalize_item_type(item_type)
         normalized_keys = [
-            _normalize_item_key(item_key, item_type=normalized_type)
-            for item_key in item_keys
+            _normalize_item_key(item_key, item_type=normalized_type) for item_key in item_keys
         ]
         if not normalized_keys:
             return 0

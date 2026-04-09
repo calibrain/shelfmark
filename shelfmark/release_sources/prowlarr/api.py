@@ -114,9 +114,7 @@ class ProwlarrClient:
         indexers = self.get_indexers()
         return [idx for idx in indexers if idx.get("enable", False)]
 
-    def get_enriched_indexer_ids(
-        self, *, restrict_to: list[int] | None = None
-    ) -> list[int]:
+    def get_enriched_indexer_ids(self, *, restrict_to: list[int] | None = None) -> list[int]:
         """Return enabled indexer IDs that benefit from extra Torznab handling.
 
         Args:
@@ -230,9 +228,7 @@ class ProwlarrClient:
                 if r.get("indexerId") is None:
                     r["indexerId"] = int(indexer_id)
         except Exception:
-            logger.exception(
-                "Prowlarr Torznab search failed for indexer %s", indexer_id
-            )
+            logger.exception("Prowlarr Torznab search failed for indexer %s", indexer_id)
             return []
         else:
             return results

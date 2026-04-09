@@ -92,6 +92,7 @@ logger = setup_logger(__name__)
 def _raise_runtime_error(message: str) -> NoReturn:
     raise RuntimeError(message)
 
+
 # Project root is one level up from this package
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 FRONTEND_DIST = PROJECT_ROOT / "frontend-dist"
@@ -128,7 +129,7 @@ socketio = SocketIO(
     # Enable CORS for all origins (you can restrict this in production)
     allow_upgrades=True,
     # Important for proxies that buffer
-    http_compression=True
+    http_compression=True,
 )
 
 # Initialize WebSocket manager
@@ -171,11 +172,16 @@ try:
     from shelfmark.core.admin_routes import register_admin_routes
     from shelfmark.core.oidc_routes import register_oidc_routes
     from shelfmark.core.self_user_routes import register_self_user_routes
+
     register_oidc_routes(app, user_db)
     register_admin_routes(app, user_db)
     register_self_user_routes(app, user_db)
 except (sqlite3.OperationalError, OSError) as e:
-    logger.warning("User database initialization failed: %s. Multi-user authentication features will be disabled. Ensure CONFIG_DIR (%s) exists and is writable.", e, _os.environ.get("CONFIG_DIR", "/config"))
+    logger.warning(
+        "User database initialization failed: %s. Multi-user authentication features will be disabled. Ensure CONFIG_DIR (%s) exists and is writable.",
+        e,
+        _os.environ.get("CONFIG_DIR", "/config"),
+    )
     user_db = None
     download_history_service = None
     activity_view_state_service = None
@@ -189,16 +195,19 @@ failed_login_attempts: dict[str, dict[str, Any]] = {}
 MAX_LOGIN_ATTEMPTS = 10
 LOCKOUT_DURATION_MINUTES = 30
 
+
 def cleanup_old_lockouts() -> None:
     """Remove expired lockout entries to prevent memory buildup."""
     current_time = datetime.now()
     expired_users = [
-        username for username, data in failed_login_attempts.items()
+        username
+        for username, data in failed_login_attempts.items()
         if "lockout_until" in data and data["lockout_until"] < current_time
     ]
     for username in expired_users:
         logger.info("Lockout expired for user: %s", username)
         del failed_login_attempts[username]
+
 
 def is_account_locked(username: str) -> bool:
     """Check if an account is currently locked due to failed login attempts."""
@@ -209,6 +218,7 @@ def is_account_locked(username: str) -> bool:
 
     lockout_until = failed_login_attempts[username].get("lockout_until")
     return lockout_until is not None and datetime.now() < lockout_until
+
 
 def record_failed_login(username: str, ip_address: str) -> bool:
     """Record a failed login attempt and lock account if threshold is reached.
@@ -221,15 +231,27 @@ def record_failed_login(username: str, ip_address: str) -> bool:
     failed_login_attempts[username]["count"] += 1
     count = failed_login_attempts[username]["count"]
 
-    logger.warning("Failed login attempt %s/%s for user '%s' from IP %s", count, MAX_LOGIN_ATTEMPTS, username, ip_address)
+    logger.warning(
+        "Failed login attempt %s/%s for user '%s' from IP %s",
+        count,
+        MAX_LOGIN_ATTEMPTS,
+        username,
+        ip_address,
+    )
 
     if count >= MAX_LOGIN_ATTEMPTS:
         lockout_until = datetime.now() + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
         failed_login_attempts[username]["lockout_until"] = lockout_until
-        logger.warning("Account locked for user '%s' until %s due to %s failed login attempts", username, lockout_until.strftime("%Y-%m-%d %H:%M:%S"), count)
+        logger.warning(
+            "Account locked for user '%s' until %s due to %s failed login attempts",
+            username,
+            lockout_until.strftime("%Y-%m-%d %H:%M:%S"),
+            count,
+        )
         return True
 
     return False
+
 
 def clear_failed_logins(username: str) -> None:
     """Clear failed login attempts for a user after successful login."""
@@ -380,19 +402,23 @@ def _policy_block_response(mode: PolicyMode) -> tuple[Response, int]:
     )
     if mode == PolicyMode.BLOCKED:
         return (
-            jsonify({
-                "error": "Download not allowed by policy",
-                "code": "policy_blocked",
-                "required_mode": PolicyMode.BLOCKED.value,
-            }),
+            jsonify(
+                {
+                    "error": "Download not allowed by policy",
+                    "code": "policy_blocked",
+                    "required_mode": PolicyMode.BLOCKED.value,
+                }
+            ),
             403,
         )
     return (
-        jsonify({
-            "error": "Download not allowed by policy",
-            "code": "policy_requires_request",
-            "required_mode": mode.value,
-        }),
+        jsonify(
+            {
+                "error": "Download not allowed by policy",
+                "code": "policy_requires_request",
+                "required_mode": mode.value,
+            }
+        ),
         403,
     )
 
@@ -477,14 +503,18 @@ if user_db is not None:
 
 # Enable CORS in development mode for local frontend development
 if DEBUG:
-    CORS(app, resources={
-        r"/*": {
-            "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
-            "supports_credentials": True,
-            "allow_headers": ["Content-Type", "Authorization"],
-            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-        }
-    })
+    CORS(
+        app,
+        resources={
+            r"/*": {
+                "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+                "supports_credentials": True,
+                "allow_headers": ["Content-Type", "Authorization"],
+                "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            }
+        },
+    )
+
 
 # Custom log filter to exclude routine status endpoint polling and WebSocket noise
 class LogNoiseFilter(logging.Filter):
@@ -512,10 +542,16 @@ class LogNoiseFilter(logging.Filter):
             # Filter WebSocket-related AssertionError tracebacks
             if hasattr(record, "exc_info") and record.exc_info:
                 exc_type, exc_value = record.exc_info[0], record.exc_info[1]
-                if exc_type and exc_type.__name__ == "AssertionError" and exc_value and "write() before start_response" in str(exc_value):
+                if (
+                    exc_type
+                    and exc_type.__name__ == "AssertionError"
+                    and exc_value
+                    and "write() before start_response" in str(exc_value)
+                ):
                     return False
 
         return True
+
 
 # Flask logger
 app.logger.handlers = logger.handlers
@@ -566,21 +602,26 @@ def _load_or_create_secret_key() -> bytes:
 
 
 app.config.update(
-    SECRET_KEY = _load_or_create_secret_key(),
-    SESSION_COOKIE_HTTPONLY = True,
-    SESSION_COOKIE_SAMESITE = "Lax",
-    SESSION_COOKIE_SECURE = SESSION_COOKIE_SECURE,
-    SESSION_COOKIE_NAME = SESSION_COOKIE_NAME,
-    PERMANENT_SESSION_LIFETIME = 604800  # 7 days in seconds
+    SECRET_KEY=_load_or_create_secret_key(),
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=SESSION_COOKIE_SECURE,
+    SESSION_COOKIE_NAME=SESSION_COOKIE_NAME,
+    PERMANENT_SESSION_LIFETIME=604800,  # 7 days in seconds
 )
 
-logger.info("Session cookie secure setting: %s (from env: %s)", SESSION_COOKIE_SECURE, SESSION_COOKIE_SECURE_ENV)
+logger.info(
+    "Session cookie secure setting: %s (from env: %s)",
+    SESSION_COOKIE_SECURE,
+    SESSION_COOKIE_SECURE_ENV,
+)
 logger.info("Session cookie name: %s", SESSION_COOKIE_NAME)
+
 
 @app.before_request
 def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
     """Middleware to handle proxy authentication.
-    
+
     When AUTH_METHOD is set to "proxy", this middleware automatically
     authenticates users based on headers set by the reverse proxy.
     """
@@ -635,7 +676,9 @@ def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
         if admin_group_name:
             groups_header = get_proxy_header(admin_group_header) or ""
             user_groups_delimiter = "," if "," in groups_header else "|"
-            user_groups = [g.strip() for g in groups_header.split(user_groups_delimiter) if g.strip()]
+            user_groups = [
+                g.strip() for g in groups_header.split(user_groups_delimiter) if g.strip()
+            ]
             is_admin = admin_group_name in user_groups
         elif user_db is not None:
             existing_db_user = user_db.get_user(username=username)
@@ -664,11 +707,11 @@ def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
                 except (TypeError, ValueError):
                     session_db_user = None
 
-            session_db_username = str(session_db_user.get("username") or "").strip() if session_db_user else ""
+            session_db_username = (
+                str(session_db_user.get("username") or "").strip() if session_db_user else ""
+            )
             needs_db_user_sync = (
-                raw_db_user_id is None
-                or session_db_user is None
-                or session_db_username != username
+                raw_db_user_id is None or session_db_user is None or session_db_username != username
             )
 
             if needs_db_user_sync:
@@ -692,6 +735,7 @@ def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
         return jsonify({"error": "Authentication error"}), 500
     else:
         return None
+
 
 @app.after_request
 def set_security_headers(response: Response) -> Response:
@@ -729,9 +773,8 @@ def login_required(
         # Check admin access for settings/onboarding endpoints.
         if is_settings_or_onboarding_path(request.path):
             try:
-                if (
-                    requires_admin_for_settings_access(request.path, {})
-                    and not session.get("is_admin", False)
+                if requires_admin_for_settings_access(request.path, {}) and not session.get(
+                    "is_admin", False
                 ):
                     return jsonify({"error": "Admin access required"}), 403
 
@@ -740,6 +783,7 @@ def login_required(
                 return jsonify({"error": "Internal Server Error"}), 500
 
         return f(*args, **kwargs)
+
     return decorated_function
 
 
@@ -770,9 +814,9 @@ def _serve_index_html() -> Response:
 # Serve frontend static files
 @app.route("/assets/<path:filename>")
 def serve_frontend_assets(filename: str) -> Response:
-    """Serve static assets from the built frontend.
-    """
+    """Serve static assets from the built frontend."""
     return send_from_directory(FRONTEND_DIST / "assets", filename)
+
 
 @app.route("/")
 def index() -> Response:
@@ -781,23 +825,25 @@ def index() -> Response:
     """
     return _serve_index_html()
 
+
 @app.route("/theme-init.js")
 def theme_init_js() -> Response:
     """Serve the blocking theme-init script."""
     return send_from_directory(FRONTEND_DIST, "theme-init.js", mimetype="application/javascript")
 
+
 @app.route("/logo.png")
 def logo() -> Response:
-    """Serve logo from built frontend assets.
-    """
+    """Serve logo from built frontend assets."""
     return send_from_directory(FRONTEND_DIST, "logo.png", mimetype="image/png")
+
 
 @app.route("/favicon.ico")
 @app.route("/favico<path:_>")
 def favicon(_: Any = None) -> Response:
-    """Serve favicon from built frontend assets.
-    """
+    """Serve favicon from built frontend assets."""
     return send_from_directory(FRONTEND_DIST, "favicon.ico", mimetype="image/vnd.microsoft.icon")
+
 
 if DEBUG:
     import subprocess
@@ -821,7 +867,9 @@ if DEBUG:
             logger.info("Debug endpoint called, stopping GUI and generating debug info...")
             _stop_gui()
             time.sleep(1)
-            result = subprocess.run(["/app/genDebug.sh"], capture_output=True, text=True, check=True)
+            result = subprocess.run(
+                ["/app/genDebug.sh"], capture_output=True, text=True, check=True
+            )
             if result.returncode != 0:
                 _raise_runtime_error(f"Debug script failed: {result.stderr}")
             logger.info("Debug script executed: %s", result.stdout)
@@ -835,7 +883,7 @@ if DEBUG:
                 debug_file_path,
                 mimetype="application/zip",
                 download_name=Path(debug_file_path).name,
-                as_attachment=True
+                as_attachment=True,
             )
         except subprocess.CalledProcessError as e:
             logger.error_trace(f"Debug script error: {e}, stdout: {e.stdout}, stderr: {e.stderr}")
@@ -847,9 +895,9 @@ if DEBUG:
     @app.route("/api/restart", methods=["GET"])
     @login_required
     def restart() -> Response | tuple[Response, int]:
-        """Restart the application
-        """
+        """Restart the application"""
         os._exit(0)
+
 
 def _parse_search_filters_from_request() -> SearchFilters:
     """Parse direct/source browse filters from query parameters."""
@@ -893,10 +941,7 @@ def _build_source_query_book(query_text: str, filters: SearchFilters) -> BookMet
 
 def _serialize_browse_record(record: BrowseRecord) -> dict:
     """Serialize a source-native browse record for the frontend."""
-    result = {
-        key: value for key, value in record.__dict__.items()
-        if value is not None
-    }
+    result = {key: value for key, value in record.__dict__.items() if value is not None}
 
     preview = result.get("preview")
     if isinstance(preview, str) and preview:
@@ -981,8 +1026,10 @@ def api_download_release() -> Response | tuple[Response, int]:
         if on_behalf_error:
             return on_behalf_error
         success, error_msg = backend.queue_release(
-            release_payload, priority,
-            user_id=db_user_id, username=_username,
+            release_payload,
+            priority,
+            user_id=db_user_id,
+            username=_username,
         )
 
         if success:
@@ -1033,7 +1080,9 @@ def api_config() -> Response | tuple[Response, int]:
             "",
             user_id=db_user_id,
         )
-        metadata_ui_provider = configured_metadata_provider or _configured_metadata_provider_audiobook
+        metadata_ui_provider = (
+            configured_metadata_provider or _configured_metadata_provider_audiobook
+        )
 
         config = {
             "calibre_web_url": app_config.get("CALIBRE_WEB_URL", ""),
@@ -1051,10 +1100,14 @@ def api_config() -> Response | tuple[Response, int]:
             "default_release_source": default_release_source,
             "default_release_source_audiobook": default_release_source_audiobook,
             "show_release_source_links": app_config.get("SHOW_RELEASE_SOURCE_LINKS", True),
-            "show_combined_selector": app_config.get("SHOW_COMBINED_SELECTOR", True, user_id=db_user_id),
+            "show_combined_selector": app_config.get(
+                "SHOW_COMBINED_SELECTOR", True, user_id=db_user_id
+            ),
             "books_output_mode": app_config.get("BOOKS_OUTPUT_MODE", "folder"),
             "auto_open_downloads_sidebar": app_config.get("AUTO_OPEN_DOWNLOADS_SIDEBAR", True),
-            "hardcover_auto_remove_on_download": app_config.get("HARDCOVER_AUTO_REMOVE_ON_DOWNLOAD", True),
+            "hardcover_auto_remove_on_download": app_config.get(
+                "HARDCOVER_AUTO_REMOVE_ON_DOWNLOAD", True
+            ),
             "download_to_browser_content_types": app_config.get(
                 "DOWNLOAD_TO_BROWSER_CONTENT_TYPES",
                 [],
@@ -1063,13 +1116,18 @@ def api_config() -> Response | tuple[Response, int]:
             "settings_enabled": _is_config_dir_writable(),
             "onboarding_complete": _get_onboarding_complete(),
             # Default sort orders
-            "default_sort": app_config.get("AA_DEFAULT_SORT", "relevance"),  # For direct mode (Anna's Archive)
-            "metadata_default_sort": get_provider_default_sort(metadata_ui_provider),  # For universal mode
+            "default_sort": app_config.get(
+                "AA_DEFAULT_SORT", "relevance"
+            ),  # For direct mode (Anna's Archive)
+            "metadata_default_sort": get_provider_default_sort(
+                metadata_ui_provider
+            ),  # For universal mode
         }
         return jsonify(config)
     except Exception as e:
         logger.error_trace(f"Config error: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/api/health", methods=["GET"])
 def api_health() -> Response | tuple[Response, int]:
@@ -1118,6 +1176,7 @@ def _resolve_status_scope(*, require_authenticated: bool = True) -> tuple[bool, 
 def _queue_status_to_final_activity_status(status: QueueStatus) -> str | None:
     return status.value if status in TERMINAL_QUEUE_STATUSES else None
 
+
 def _queue_status_to_notification_event(status: QueueStatus) -> NotificationEvent | None:
     if status == QueueStatus.COMPLETE:
         return NotificationEvent.DOWNLOAD_COMPLETE
@@ -1126,7 +1185,9 @@ def _queue_status_to_notification_event(status: QueueStatus) -> NotificationEven
     return None
 
 
-def _notify_admin_for_terminal_download_status(*, task_id: str, status: QueueStatus, task: Any) -> None:
+def _notify_admin_for_terminal_download_status(
+    *, task_id: str, status: QueueStatus, task: Any
+) -> None:
     event = _queue_status_to_notification_event(status)
     if event is None:
         return
@@ -1323,7 +1384,9 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
         )
 
 
-def _task_owned_by_actor(task: Any, *, actor_user_id: int | None, actor_username: str | None) -> bool:
+def _task_owned_by_actor(
+    task: Any, *, actor_user_id: int | None, actor_username: str | None
+) -> bool:
     raw_task_user_id = getattr(task, "user_id", None)
     try:
         task_user_id = int(raw_task_user_id) if raw_task_user_id is not None else None
@@ -1413,6 +1476,7 @@ def api_status() -> Response | tuple[Response, int]:
         logger.error_trace(f"Status error: {e}")
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/api/localdownload", methods=["GET"])
 @login_required
 def api_local_download() -> Response | tuple[Response, int]:
@@ -1455,15 +1519,12 @@ def api_local_download() -> Response | tuple[Response, int]:
         file_name = book_info.get_filename() if book_info is not None else Path(book_id).name
         # Prepare the file for sending to the client
         data = io.BytesIO(file_data)
-        return send_file(
-            data,
-            download_name=file_name,
-            as_attachment=True
-        )
+        return send_file(data, download_name=file_name, as_attachment=True)
 
     except Exception as e:
         logger.error_trace(f"Local download error: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/api/covers/<cover_id>", methods=["GET"])
 def api_cover(cover_id: str) -> Response | tuple[Response, int]:
@@ -1498,11 +1559,7 @@ def api_cover(cover_id: str) -> Response | tuple[Response, int]:
         cached = cache.get(cover_id)
         if cached:
             image_data, content_type = cached
-            response = app.response_class(
-                response=image_data,
-                status=200,
-                mimetype=content_type
-            )
+            response = app.response_class(response=image_data, status=200, mimetype=content_type)
             response.headers["Cache-Control"] = "public, max-age=86400"
             response.headers["X-Cache"] = "HIT"
             return response
@@ -1524,11 +1581,7 @@ def api_cover(cover_id: str) -> Response | tuple[Response, int]:
             return jsonify({"error": "Failed to fetch cover image"}), 404
 
         image_data, content_type = result
-        response = app.response_class(
-            response=image_data,
-            status=200,
-            mimetype=content_type
-        )
+        response = app.response_class(response=image_data, status=200, mimetype=content_type)
         response.headers["Cache-Control"] = "public, max-age=86400"
         response.headers["X-Cache"] = "MISS"
     except Exception as e:
@@ -1558,7 +1611,9 @@ def api_cancel_download(book_id: str) -> Response | tuple[Response, int]:
         is_admin, db_user_id, can_access_status = _resolve_status_scope()
         if not is_admin:
             if not can_access_status or db_user_id is None:
-                return jsonify({"error": "User identity unavailable", "code": "user_identity_unavailable"}), 403
+                return jsonify(
+                    {"error": "User identity unavailable", "code": "user_identity_unavailable"}
+                ), 403
 
             actor_username = session.get("user_id")
             normalized_actor_username = actor_username if isinstance(actor_username, str) else None
@@ -1570,7 +1625,9 @@ def api_cancel_download(book_id: str) -> Response | tuple[Response, int]:
                 return jsonify({"error": "Forbidden", "code": "download_not_owned"}), 403
 
             if getattr(task, "request_id", None) is not None:
-                return jsonify({"error": "Forbidden", "code": "requested_download_cancel_forbidden"}), 403
+                return jsonify(
+                    {"error": "Forbidden", "code": "requested_download_cancel_forbidden"}
+                ), 403
 
         success = backend.cancel_download(book_id)
         if success:
@@ -1598,7 +1655,9 @@ def api_retry_download(book_id: str) -> Response | tuple[Response, int]:
         normalized_actor_username = actor_username if isinstance(actor_username, str) else None
         if not is_admin:
             if not can_access_status or db_user_id is None:
-                return jsonify({"error": "User identity unavailable", "code": "user_identity_unavailable"}), 403
+                return jsonify(
+                    {"error": "User identity unavailable", "code": "user_identity_unavailable"}
+                ), 403
 
             if task is not None:
                 if not _task_owned_by_actor(
@@ -1616,22 +1675,24 @@ def api_retry_download(book_id: str) -> Response | tuple[Response, int]:
 
         if task is not None:
             task_status = backend.book_queue.get_task_status(book_id)
-            if (
-                getattr(task, "request_id", None) is not None
-                and not backend.can_retry_download_task(task, task_status)
-            ):
-                return jsonify({"error": "Forbidden", "code": "requested_download_retry_forbidden"}), 403
+            if getattr(
+                task, "request_id", None
+            ) is not None and not backend.can_retry_download_task(task, task_status):
+                return jsonify(
+                    {"error": "Forbidden", "code": "requested_download_retry_forbidden"}
+                ), 403
             success, error = backend.retry_download(book_id)
         else:
             assert history_row is not None
             request_id = normalize_positive_int(history_row.get("request_id"))
             retry_payload = history_row.get("retry_payload")
             final_status = history_row.get("final_status")
-            if (
-                request_id is not None
-                and not download_history_service.is_retry_available(history_row)
+            if request_id is not None and not download_history_service.is_retry_available(
+                history_row
             ):
-                return jsonify({"error": "Forbidden", "code": "requested_download_retry_forbidden"}), 403
+                return jsonify(
+                    {"error": "Forbidden", "code": "requested_download_retry_forbidden"}
+                ), 403
             success, error = backend.retry_persisted_download(
                 retry_payload,
                 final_status=final_status,
@@ -1681,6 +1742,7 @@ def api_set_priority(book_id: str) -> Response | tuple[Response, int]:
         logger.error_trace(f"Set priority error: {e}")
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/api/queue/reorder", methods=["POST"])
 @login_required
 def api_reorder_queue() -> Response | tuple[Response, int]:
@@ -1716,6 +1778,7 @@ def api_reorder_queue() -> Response | tuple[Response, int]:
         logger.error_trace(f"Reorder queue error: {e}")
         return jsonify({"error": str(e)}), 500
 
+
 @app.route("/api/queue/order", methods=["GET"])
 @login_required
 def api_queue_order() -> Response | tuple[Response, int]:
@@ -1731,6 +1794,7 @@ def api_queue_order() -> Response | tuple[Response, int]:
     except Exception as e:
         logger.error_trace(f"Queue order error: {e}")
         return jsonify({"error": str(e)}), 500
+
 
 @app.route("/api/downloads/active", methods=["GET"])
 @login_required
@@ -1748,6 +1812,7 @@ def api_active_downloads() -> Response | tuple[Response, int]:
         logger.error_trace(f"Active downloads error: {e}")
         return jsonify({"error": str(e)}), 500
 
+
 @app.errorhandler(404)
 def not_found_error(error: Exception) -> Response | tuple[Response, int]:
     """Handle 404 (Not Found) errors.
@@ -1761,6 +1826,7 @@ def not_found_error(error: Exception) -> Response | tuple[Response, int]:
     """
     logger.warning("404 error: %s : %s", request.url, error)
     return jsonify({"error": "Resource not found"}), 404
+
 
 @app.errorhandler(500)
 def internal_error(error: Exception) -> Response | tuple[Response, int]:
@@ -1776,20 +1842,23 @@ def internal_error(error: Exception) -> Response | tuple[Response, int]:
     logger.error_trace(f"500 error: {error}")
     return jsonify({"error": "Internal server error"}), 500
 
+
 def _failed_login_response(username: str, ip_address: str) -> tuple[Response, int]:
     """Handle a failed login attempt by recording it and returning the appropriate response."""
     is_now_locked = record_failed_login(username, ip_address)
 
     if is_now_locked:
-        return jsonify({
-            "error": f"Account locked due to {MAX_LOGIN_ATTEMPTS} failed login attempts. Try again in {LOCKOUT_DURATION_MINUTES} minutes."
-        }), 429
+        return jsonify(
+            {
+                "error": f"Account locked due to {MAX_LOGIN_ATTEMPTS} failed login attempts. Try again in {LOCKOUT_DURATION_MINUTES} minutes."
+            }
+        ), 429
 
     attempts_remaining = MAX_LOGIN_ATTEMPTS - failed_login_attempts[username]["count"]
     if attempts_remaining <= 5:
-        return jsonify({
-            "error": f"Invalid username or password. {attempts_remaining} attempts remaining."
-        }), 401
+        return jsonify(
+            {"error": f"Invalid username or password. {attempts_remaining} attempts remaining."}
+        ), 401
 
     return jsonify({"error": "Invalid username or password."}), 401
 
@@ -1833,17 +1902,25 @@ def api_login() -> Response | tuple[Response, int]:
         if is_account_locked(username):
             lockout_until = failed_login_attempts[username].get("lockout_until")
             remaining_time = (lockout_until - datetime.now()).total_seconds() / 60
-            logger.warning("Login attempt blocked for locked account '%s' from IP %s", username, ip_address)
-            return jsonify({
-                "error": f"Account temporarily locked due to multiple failed login attempts. Try again in {int(remaining_time)} minutes."
-            }), 429
+            logger.warning(
+                "Login attempt blocked for locked account '%s' from IP %s", username, ip_address
+            )
+            return jsonify(
+                {
+                    "error": f"Account temporarily locked due to multiple failed login attempts. Try again in {int(remaining_time)} minutes."
+                }
+            ), 429
 
         # If no authentication is configured, authentication always succeeds
         if auth_mode == "none":
             session["user_id"] = username
             session.permanent = remember_me
             clear_failed_logins(username)
-            logger.info("Login successful for user '%s' from IP %s (no auth configured)", username, ip_address)
+            logger.info(
+                "Login successful for user '%s' from IP %s (no auth configured)",
+                username,
+                ip_address,
+            )
             return jsonify({"success": True})
 
         # Password authentication (builtin and OIDC modes)
@@ -1860,7 +1937,9 @@ def api_login() -> Response | tuple[Response, int]:
 
                 # Authenticate against DB user
                 if db_user:
-                    if not db_user.get("password_hash") or not check_password_hash(db_user["password_hash"], password):
+                    if not db_user.get("password_hash") or not check_password_hash(
+                        db_user["password_hash"], password
+                    ):
                         return _failed_login_response(username, ip_address)
 
                     is_admin = db_user["role"] == "admin"
@@ -1869,7 +1948,14 @@ def api_login() -> Response | tuple[Response, int]:
                     session["is_admin"] = is_admin
                     session.permanent = remember_me
                     clear_failed_logins(username)
-                    logger.info("Login successful for user '%s' from IP %s (%s auth, is_admin=%s, remember_me=%s)", username, ip_address, auth_mode, is_admin, remember_me)
+                    logger.info(
+                        "Login successful for user '%s' from IP %s (%s auth, is_admin=%s, remember_me=%s)",
+                        username,
+                        ip_address,
+                        auth_mode,
+                        is_admin,
+                        remember_me,
+                    )
                     return jsonify({"success": True})
 
                 return _failed_login_response(username, ip_address)
@@ -1922,7 +2008,13 @@ def api_login() -> Response | tuple[Response, int]:
                     session["db_user_id"] = db_user_id
                 session.permanent = remember_me
                 clear_failed_logins(username)
-                logger.info("Login successful for user '%s' from IP %s (CWA auth, is_admin=%s, remember_me=%s)", username, ip_address, is_admin, remember_me)
+                logger.info(
+                    "Login successful for user '%s' from IP %s (CWA auth, is_admin=%s, remember_me=%s)",
+                    username,
+                    ip_address,
+                    is_admin,
+                    remember_me,
+                )
                 return jsonify({"success": True})
 
             except Exception as e:
@@ -1936,11 +2028,12 @@ def api_login() -> Response | tuple[Response, int]:
         logger.error_trace(f"Login error: {e}")
         return jsonify({"error": "Login failed"}), 500
 
+
 @app.route("/api/auth/logout", methods=["POST"])
 def api_logout() -> Response | tuple[Response, int]:
     """Logout endpoint that clears the session.
     For proxy auth, returns the logout URL if configured.
-    
+
     Returns:
         flask.Response: JSON with success status and optional logout_url.
 
@@ -1963,6 +2056,7 @@ def api_logout() -> Response | tuple[Response, int]:
         logger.error_trace(f"Logout error: {e}")
         return jsonify({"error": "Logout failed"}), 500
 
+
 @app.route("/api/auth/check", methods=["GET"])
 def api_auth_check() -> Response | tuple[Response, int]:
     """Check if user has a valid session.
@@ -1977,12 +2071,14 @@ def api_auth_check() -> Response | tuple[Response, int]:
 
         # If no authentication is configured, access is allowed (full admin)
         if auth_mode == "none":
-            return jsonify({
-                "authenticated": True,
-                "auth_required": False,
-                "auth_mode": "none",
-                "is_admin": True
-            })
+            return jsonify(
+                {
+                    "authenticated": True,
+                    "auth_required": False,
+                    "auth_mode": "none",
+                    "is_admin": True,
+                }
+            )
 
         # Check if user has a valid session
         is_authenticated = "user_id" in session
@@ -2026,12 +2122,14 @@ def api_auth_check() -> Response | tuple[Response, int]:
         return jsonify(response_data)
     except Exception as e:
         logger.error_trace(f"Auth check error: {e}")
-        return jsonify({
-            "authenticated": False,
-            "auth_required": True,
-            "auth_mode": "unknown",
-            "is_admin": False
-        })
+        return jsonify(
+            {
+                "authenticated": False,
+                "auth_required": True,
+                "auth_mode": "unknown",
+                "is_admin": False,
+            }
+        )
 
 
 @app.route("/api/metadata/providers", methods=["GET"])
@@ -2089,12 +2187,14 @@ def api_metadata_providers() -> Response | tuple[Response, int]:
 
             providers.append(provider_info)
 
-        return jsonify({
-            "providers": providers,
-            "configured_provider": configured_metadata_provider or None,
-            "configured_provider_audiobook": configured_audiobook_metadata_provider or None,
-            "configured_provider_combined": configured_combined_metadata_provider or None,
-        })
+        return jsonify(
+            {
+                "providers": providers,
+                "configured_provider": configured_metadata_provider or None,
+                "configured_provider_audiobook": configured_audiobook_metadata_provider or None,
+                "configured_provider_combined": configured_combined_metadata_provider or None,
+            }
+        )
     except Exception as e:
         logger.error_trace(f"Metadata providers error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -2130,16 +2230,18 @@ def api_metadata_config() -> Response | tuple[Response, int]:
             )
 
         if not provider_name:
-            return jsonify({
-                "provider": None,
-                "display_name": None,
-                "enabled": False,
-                "available": False,
-                "search_fields": [],
-                "capabilities": [],
-                "sort_options": [{"value": "relevance", "label": "Most relevant"}],
-                "default_sort": "relevance",
-            })
+            return jsonify(
+                {
+                    "provider": None,
+                    "display_name": None,
+                    "enabled": False,
+                    "available": False,
+                    "search_fields": [],
+                    "capabilities": [],
+                    "sort_options": [{"value": "relevance", "label": "Most relevant"}],
+                    "default_sort": "relevance",
+                }
+            )
 
         if not is_provider_registered(provider_name):
             return jsonify({"error": f"Unknown metadata provider: {provider_name}"}), 400
@@ -2150,16 +2252,18 @@ def api_metadata_config() -> Response | tuple[Response, int]:
         provider_enabled = app_config.get(enabled_key, False) is True
         provider_available = provider.is_available()
 
-        return jsonify({
-            "provider": provider_name,
-            "display_name": provider.display_name,
-            "enabled": provider_enabled,
-            "available": provider_available,
-            "search_fields": get_provider_search_fields(provider_name),
-            "capabilities": get_provider_capabilities(provider_name),
-            "sort_options": get_provider_sort_options(provider_name),
-            "default_sort": get_provider_default_sort(provider_name, user_id=db_user_id),
-        })
+        return jsonify(
+            {
+                "provider": provider_name,
+                "display_name": provider.display_name,
+                "enabled": provider_enabled,
+                "available": provider_available,
+                "search_fields": get_provider_search_fields(provider_name),
+                "capabilities": get_provider_capabilities(provider_name),
+                "sort_options": get_provider_sort_options(provider_name),
+                "default_sort": get_provider_default_sort(provider_name, user_id=db_user_id),
+            }
+        )
     except Exception as e:
         logger.error_trace(f"Metadata config error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -2220,15 +2324,19 @@ def api_metadata_search() -> Response | tuple[Response, int]:
 
         if provider_name:
             if not is_provider_registered(provider_name):
-                return jsonify({
-                    "error": f"Unknown metadata provider: {provider_name}",
-                    "message": f"Unknown metadata provider: {provider_name}",
-                }), 400
+                return jsonify(
+                    {
+                        "error": f"Unknown metadata provider: {provider_name}",
+                        "message": f"Unknown metadata provider: {provider_name}",
+                    }
+                ), 400
             if not is_provider_enabled(provider_name):
-                return jsonify({
-                    "error": f"Metadata provider '{provider_name}' is not enabled",
-                    "message": f"{provider_name} is not enabled. Enable it in Settings first.",
-                }), 503
+                return jsonify(
+                    {
+                        "error": f"Metadata provider '{provider_name}' is not enabled",
+                        "message": f"{provider_name} is not enabled. Enable it in Settings first.",
+                    }
+                ), 503
 
             kwargs = get_provider_kwargs(provider_name)
             provider = get_provider(provider_name, **kwargs)
@@ -2236,16 +2344,20 @@ def api_metadata_search() -> Response | tuple[Response, int]:
             provider = get_configured_provider(content_type=content_type, user_id=db_user_id)
 
         if not provider:
-            return jsonify({
-                "error": "No metadata provider configured",
-                "message": "No metadata provider configured. Enable one in Settings."
-            }), 503
+            return jsonify(
+                {
+                    "error": "No metadata provider configured",
+                    "message": "No metadata provider configured. Enable one in Settings.",
+                }
+            ), 503
 
         if not provider.is_available():
-            return jsonify({
-                "error": f"Metadata provider '{provider.name}' is not available",
-                "message": f"{provider.display_name} is not available. Check configuration in Settings."
-            }), 503
+            return jsonify(
+                {
+                    "error": f"Metadata provider '{provider.name}' is not available",
+                    "message": f"{provider.display_name} is not available. Check configuration in Settings.",
+                }
+            ), 503
 
         # Extract custom search field values from query params
         fields: dict[str, Any] = {}
@@ -2268,7 +2380,9 @@ def api_metadata_search() -> Response | tuple[Response, int]:
         if not query and not fields:
             return jsonify({"error": "Either 'query' or search field values are required"}), 400
 
-        options = MetadataSearchOptions(query=query, limit=limit, page=page, sort=sort_order, fields=fields)
+        options = MetadataSearchOptions(
+            query=query, limit=limit, page=page, sort=sort_order, fields=fields
+        )
         search_result = provider.search_paginated(options)
 
         # Convert BookMetadata objects to dicts
@@ -2276,6 +2390,7 @@ def api_metadata_search() -> Response | tuple[Response, int]:
 
         # Transform cover_url to local proxy URLs when caching is enabled
         from shelfmark.core.utils import transform_cover_url
+
         for book_dict in books_data:
             if book_dict.get("cover_url"):
                 cache_id = f"{book_dict['provider']}_{book_dict['provider_id']}"
@@ -2389,6 +2504,7 @@ def api_metadata_book(provider: str, book_id: str) -> Response | tuple[Response,
 
         # Transform cover_url to local proxy URL when caching is enabled
         from shelfmark.core.utils import transform_cover_url
+
         if book_dict.get("cover_url"):
             cache_id = f"{provider}_{book_id}"
             book_dict["cover_url"] = transform_cover_url(book_dict["cover_url"], cache_id)
@@ -2405,8 +2521,11 @@ def api_metadata_book(provider: str, book_id: str) -> Response | tuple[Response,
 
 def _handle_target_errors(
     fallback_message: str,
-) -> Callable[[Callable[..., Response | tuple[Response, int]]], Callable[..., Response | tuple[Response, int]]]:
+) -> Callable[
+    [Callable[..., Response | tuple[Response, int]]], Callable[..., Response | tuple[Response, int]]
+]:
     """Decorator that wraps a metadata-target route with standard error handling."""
+
     def decorator(
         fn: Callable[..., Response | tuple[Response, int]],
     ) -> Callable[..., Response | tuple[Response, int]]:
@@ -2421,7 +2540,9 @@ def _handle_target_errors(
             except Exception as e:
                 logger.error_trace(f"{fallback_message}: {e}")
                 return jsonify({"error": fallback_message}), 500
+
         return wrapper
+
     return decorator
 
 
@@ -2454,7 +2575,9 @@ def api_metadata_book_targets_batch(provider: str) -> Response | tuple[Response,
 @app.route("/api/metadata/book/<provider>/<book_id>/targets", methods=["PUT"])
 @login_required
 @_handle_target_errors("Failed to update book targets")
-def api_metadata_book_targets_update(provider: str, book_id: str) -> Response | tuple[Response, int]:
+def api_metadata_book_targets_update(
+    provider: str, book_id: str
+) -> Response | tuple[Response, int]:
     """Set whether a book belongs to a provider-managed list or shelf."""
     prov = _resolve_metadata_provider(provider)
 
@@ -2520,7 +2643,9 @@ def api_releases() -> Response | tuple[Response, int]:
 
                 plan = build_release_search_plan(
                     book,
-                    languages=browse_filters.lang if source_query_filters is not None else languages,
+                    languages=browse_filters.lang
+                    if source_query_filters is not None
+                    else languages,
                     manual_query=query_text if source_query_filters is not None else manual_query,
                     indexers=indexers,
                     source_filters=source_query_filters,
@@ -2539,9 +2664,20 @@ def api_releases() -> Response | tuple[Response, int]:
                     planned_query = plan.primary_query
                     planned_query_type = "title_author"
 
-                logger.debug("Searching %s: %s='%s' (title='%s', authors=%s, expand=%s, content_type=%s)", source_name, planned_query_type, planned_query, book.title, book.authors, expand_search, content_type)
+                logger.debug(
+                    "Searching %s: %s='%s' (title='%s', authors=%s, expand=%s, content_type=%s)",
+                    source_name,
+                    planned_query_type,
+                    planned_query,
+                    book.title,
+                    book.authors,
+                    expand_search,
+                    content_type,
+                )
 
-                releases = source.search(book, plan, expand_search=expand_search, content_type=content_type)
+                releases = source.search(
+                    book, plan, expand_search=expand_search, content_type=content_type
+                )
             except ValueError:
                 return None, [], f"Unknown source: {source_name}"
             except Exception as e:
@@ -2560,7 +2696,11 @@ def api_releases() -> Response | tuple[Response, int]:
         expand_search = request.args.get("expand_search", "").lower() == "true"
         # Accept language codes for filtering (comma-separated)
         languages_param = request.args.get("languages", "").strip()
-        languages = [lang.strip() for lang in languages_param.split(",") if lang.strip()] if languages_param else None
+        languages = (
+            [lang.strip() for lang in languages_param.split(",") if lang.strip()]
+            if languages_param
+            else None
+        )
         # Content type for audiobook vs ebook search
         content_type = request.args.get("content_type", "ebook").strip()
 
@@ -2568,7 +2708,11 @@ def api_releases() -> Response | tuple[Response, int]:
 
         # Accept indexer names for Prowlarr filtering (comma-separated)
         indexers_param = request.args.get("indexers", "").strip()
-        indexers = [idx.strip() for idx in indexers_param.split(",") if idx.strip()] if indexers_param else None
+        indexers = (
+            [idx.strip() for idx in indexers_param.split(",") if idx.strip()]
+            if indexers_param
+            else None
+        )
         browse_filters = _parse_search_filters_from_request()
         has_browse_filters = bool(query_text or any(vars(browse_filters).values()))
 
@@ -2579,7 +2723,9 @@ def api_releases() -> Response | tuple[Response, int]:
             if not source_filter or not has_browse_filters:
                 return jsonify({"error": "Parameters 'provider' and 'book_id' are required"}), 400
             if not source_results_are_releases(source_filter):
-                return jsonify({"error": f"Source does not support browse release search: {source_filter}"}), 400
+                return jsonify(
+                    {"error": f"Source does not support browse release search: {source_filter}"}
+                ), 400
 
             book = _build_source_query_book(query_text, browse_filters)
             source_query_filters = browse_filters
@@ -2669,6 +2815,7 @@ def api_releases() -> Response | tuple[Response, int]:
         # Convert book to dict and transform cover_url
         book_dict = asdict(book)
         from shelfmark.core.utils import transform_cover_url
+
         if book_dict.get("cover_url"):
             cache_id = f"{provider}_{book_id}"
             book_dict["cover_url"] = transform_cover_url(book_dict["cover_url"], cache_id)
@@ -2676,9 +2823,7 @@ def api_releases() -> Response | tuple[Response, int]:
         search_info = {}
         for source_name, source_instance in source_instances.items():
             if hasattr(source_instance, "last_search_type") and source_instance.last_search_type:
-                search_info[source_name] = {
-                    "search_type": source_instance.last_search_type
-                }
+                search_info[source_name] = {"search_type": source_instance.last_search_type}
 
         response = {
             "releases": releases_data,
@@ -2722,6 +2867,7 @@ def api_release_sources() -> Response | tuple[Response, int]:
     """
     try:
         from shelfmark.release_sources import list_available_sources
+
         sources = list_available_sources()
         return jsonify(sources)
     except Exception as e:
@@ -2988,6 +3134,7 @@ def catch_all(path: str) -> Response:
     # Otherwise serve the React app
     return _serve_index_html()
 
+
 # WebSocket event handlers
 @socketio.on("connect")
 def handle_connect() -> None:
@@ -3013,6 +3160,7 @@ def handle_connect() -> None:
     except Exception:
         logger.exception("Error sending initial status")
 
+
 @socketio.on("disconnect")
 def handle_disconnect() -> None:
     """Handle client disconnection."""
@@ -3023,6 +3171,7 @@ def handle_disconnect() -> None:
 
     # Track the disconnection
     ws_manager.client_disconnected()
+
 
 @socketio.on("request_status")
 def handle_status_request() -> None:
@@ -3042,18 +3191,27 @@ def handle_status_request() -> None:
         logger.exception("Error handling status request")
         emit("error", {"message": "Failed to get status"})
 
+
 logger.log_resource_usage()
 
 # Warn if config directory is not writable (settings won't persist)
 if not _is_config_dir_writable():
-    logger.warning("Config directory %s is not writable. Settings will not persist. Mount a config volume to enable settings persistence (see docs for details).", CONFIG_DIR)
+    logger.warning(
+        "Config directory %s is not writable. Settings will not persist. Mount a config volume to enable settings persistence (see docs for details).",
+        CONFIG_DIR,
+    )
 
 if __name__ == "__main__":
-    logger.info("Starting Flask application with WebSocket support on %s:%s (debug=%s)", FLASK_HOST, FLASK_PORT, DEBUG)
+    logger.info(
+        "Starting Flask application with WebSocket support on %s:%s (debug=%s)",
+        FLASK_HOST,
+        FLASK_PORT,
+        DEBUG,
+    )
     socketio.run(
         app,
         host=FLASK_HOST,
         port=FLASK_PORT,
         debug=DEBUG,
-        allow_unsafe_werkzeug=True  # For development only
+        allow_unsafe_werkzeug=True,  # For development only
     )

@@ -47,8 +47,7 @@ def validate_user_settings(
                 continue
 
             if (
-                key
-                in {"REQUEST_POLICY_DEFAULT_EBOOK", "REQUEST_POLICY_DEFAULT_AUDIOBOOK"}
+                key in {"REQUEST_POLICY_DEFAULT_EBOOK", "REQUEST_POLICY_DEFAULT_AUDIOBOOK"}
                 and parse_policy_mode(value) is None
             ):
                 errors.append(f"Invalid policy mode for {key}: {value}")
@@ -67,8 +66,7 @@ def validate_user_settings(
                 invalid_count = sum(
                     1
                     for row in normalized_routes
-                    if row.get("url")
-                    and not is_valid_notification_url(str(row.get("url")))
+                    if row.get("url") and not is_valid_notification_url(str(row.get("url")))
                 )
                 if invalid_count:
                     errors.append(
@@ -79,8 +77,8 @@ def validate_user_settings(
                 valid[key] = normalized_routes
                 continue
 
-            normalized_search_value, search_validation_error = (
-                validate_search_preference_value(key, value)
+            normalized_search_value, search_validation_error = validate_search_preference_value(
+                key, value
             )
             if search_validation_error:
                 errors.append(search_validation_error)
@@ -154,9 +152,7 @@ def register_admin_settings_routes(
     @require_admin
     def admin_download_defaults() -> Response | tuple[Response, int]:
         defaults = {
-            key: (
-                "" if (value := app_config.get(key, field.default)) is None else value
-            )
+            key: ("" if (value := app_config.get(key, field.default)) is None else value)
             for key, field in _get_ordered_user_overridable_fields("downloads")
         }
 
@@ -205,9 +201,7 @@ def register_admin_settings_routes(
 
         return jsonify(payload)
 
-    @app.route(
-        "/api/admin/users/<int:user_id>/notification-preferences", methods=["GET"]
-    )
+    @app.route("/api/admin/users/<int:user_id>/notification-preferences", methods=["GET"])
     @require_admin
     def admin_get_notification_preferences(user_id: int) -> Response | tuple[Response, int]:
         user = user_db.get_user(user_id=user_id)
@@ -221,9 +215,7 @@ def register_admin_settings_routes(
 
         return jsonify(payload)
 
-    @app.route(
-        "/api/admin/users/<int:user_id>/notification-preferences/test", methods=["POST"]
-    )
+    @app.route("/api/admin/users/<int:user_id>/notification-preferences/test", methods=["POST"])
     @require_admin
     def admin_test_notification_preferences(user_id: int) -> Response | tuple[Response, int]:
         user = user_db.get_user(user_id=user_id)
@@ -246,9 +238,7 @@ def register_admin_settings_routes(
         if not settings_registry.get_settings_tab(tab_name):
             return jsonify({"error": f"Unknown settings tab: {tab_name}"}), 404
 
-        overridable_keys = list(
-            settings_registry.get_user_overridable_fields(tab_name=tab_name)
-        )
+        overridable_keys = list(settings_registry.get_user_overridable_fields(tab_name=tab_name))
         keys_payload: dict[str, dict[str, Any]] = {}
 
         for user_record in user_db.list_users():
@@ -298,9 +288,7 @@ def register_admin_settings_routes(
                 source = "user_override"
                 value = user_settings[key]
             else:
-                tab_config = tab_config_cache.setdefault(
-                    tab_name, load_config_file(tab_name)
-                )
+                tab_config = tab_config_cache.setdefault(tab_name, load_config_file(tab_name))
                 if key in tab_config:
                     source = "global_config"
 

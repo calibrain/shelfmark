@@ -25,9 +25,7 @@ logger = setup_logger(__name__)
 DEFAULT_CUSTOM_SCRIPT_TIMEOUT_SECONDS = 300  # 5 minutes
 
 
-def resolve_custom_script_target(
-    target_path: Path, destination: Path, path_mode: str
-) -> Path:
+def resolve_custom_script_target(target_path: Path, destination: Path, path_mode: str) -> Path:
     """Resolve the path that should be passed as the custom script argument.
 
     In absolute mode, we pass the full target path.
@@ -101,9 +99,7 @@ def prepare_custom_script_execution(
         destination=destination,
         mode=mode,
         phase=phase,
-        payload_json=json.dumps(payload, indent=2, sort_keys=True) + "\n"
-        if payload
-        else None,
+        payload_json=json.dumps(payload, indent=2, sort_keys=True) + "\n" if payload else None,
     )
 
 
@@ -143,22 +139,16 @@ def run_custom_script(
             input=execution.payload_json,
         )
         if result.stdout:
-            logger.debug(
-                "Task %s: custom script stdout: %s", task_id, result.stdout.strip()
-            )
+            logger.debug("Task %s: custom script stdout: %s", task_id, result.stdout.strip())
     except FileNotFoundError:
-        logger.exception(
-            "Task %s: custom script not found: %s", task_id, execution.script_path
-        )
+        logger.exception("Task %s: custom script not found: %s", task_id, execution.script_path)
         status_callback("error", f"Custom script not found: {execution.script_path}")
         return False
     except PermissionError:
         logger.exception(
             "Task %s: custom script not executable: %s", task_id, execution.script_path
         )
-        status_callback(
-            "error", f"Custom script not executable: {execution.script_path}"
-        )
+        status_callback("error", f"Custom script not executable: {execution.script_path}")
         return False
     except subprocess.TimeoutExpired:
         logger.exception(
@@ -213,9 +203,7 @@ def _build_custom_script_payload(
         "task": {
             "task_id": context.task.task_id,
             "source": context.task.source,
-            "search_mode": context.task.search_mode.value
-            if context.task.search_mode
-            else None,
+            "search_mode": context.task.search_mode.value if context.task.search_mode else None,
             "title": context.task.title,
             "author": context.task.author,
             "year": context.task.year,
@@ -299,9 +287,7 @@ def maybe_run_custom_script(
     )
 
     if steps is not None:
-        payload_bytes = (
-            len(execution.payload_json.encode("utf-8")) if execution.payload_json else 0
-        )
+        payload_bytes = len(execution.payload_json.encode("utf-8")) if execution.payload_json else 0
         record_step(
             steps,
             "custom_script",

@@ -147,25 +147,17 @@ class DownloadHistoryService:
     @staticmethod
     def is_retry_available(row: dict[str, Any]) -> bool:
         final_status = (
-            str(row.get("retry_final_status") or row.get("final_status") or "")
-            .strip()
-            .lower()
+            str(row.get("retry_final_status") or row.get("final_status") or "").strip().lower()
         )
-        retry_payload = DownloadHistoryService._deserialize_retry_payload(
-            row.get("retry_payload")
-        )
+        retry_payload = DownloadHistoryService._deserialize_retry_payload(row.get("retry_payload"))
         if retry_payload is None:
             return False
 
-        has_staged_retry_source = DownloadHistoryService._has_staged_retry_source(
+        has_staged_retry_source = DownloadHistoryService._has_staged_retry_source(retry_payload)
+        can_retry_without_staged_source = DownloadHistoryService._can_retry_without_staged_source(
             retry_payload
         )
-        can_retry_without_staged_source = (
-            DownloadHistoryService._can_retry_without_staged_source(retry_payload)
-        )
-        request_id = normalize_optional_positive_int(
-            row.get("request_id"), "request_id"
-        )
+        request_id = normalize_optional_positive_int(row.get("request_id"), "request_id")
         if request_id is None:
             if final_status in {ACTIVE_DOWNLOAD_STATUS, "cancelled"}:
                 return can_retry_without_staged_source
@@ -218,9 +210,7 @@ class DownloadHistoryService:
         return parsed.timestamp()
 
     @classmethod
-    def to_history_row(
-        cls, row: dict[str, Any], *, dismissed_at: str
-    ) -> dict[str, Any]:
+    def to_history_row(cls, row: dict[str, Any], *, dismissed_at: str) -> dict[str, Any]:
         task_id = str(row.get("task_id") or "").strip()
         item_key = cls._to_item_key(task_id)
         download_payload = cls.to_download_payload(row)
@@ -270,9 +260,7 @@ class DownloadHistoryService:
         """
         normalized_task_id = _normalize_task_id(task_id)
         normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
-        normalized_request_id = normalize_optional_positive_int(
-            request_id, "request_id"
-        )
+        normalized_request_id = normalize_optional_positive_int(request_id, "request_id")
         normalized_source = normalize_optional_text(source)
         if normalized_source is None:
             msg = "source must be a non-empty string"

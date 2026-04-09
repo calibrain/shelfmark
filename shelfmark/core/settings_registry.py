@@ -26,12 +26,8 @@ class FieldBase:
     default: object = None  # Default value if not set
     required: bool = False  # Whether field must have a value
     env_var: str | None = None  # Override env var name (defaults to key)
-    env_supported: bool = (
-        True  # Whether this setting can be set via ENV var (False = UI-only)
-    )
-    user_overridable: bool = (
-        False  # Whether admins can set per-user overrides for this field
-    )
+    env_supported: bool = True  # Whether this setting can be set via ENV var (False = UI-only)
+    user_overridable: bool = False  # Whether admins can set per-user overrides for this field
     disabled: bool = False  # Whether field is disabled/greyed out
     disabled_reason: str = ""  # Explanation shown when disabled
     show_when: dict[str, Any] | list[dict[str, Any]] | None = (
@@ -40,15 +36,9 @@ class FieldBase:
     disabled_when: dict[str, Any] | None = (
         None  # Conditional disable: {"field": "key", "value": "expected", "reason": "..."}
     )
-    requires_restart: bool = (
-        False  # Whether changing this setting requires a container restart
-    )
-    universal_only: bool = (
-        False  # Only show in Universal search mode (hide in Direct mode)
-    )
-    hidden_in_ui: bool = (
-        False  # Keep field in schema/save path but hide default renderer
-    )
+    requires_restart: bool = False  # Whether changing this setting requires a container restart
+    universal_only: bool = False  # Only show in Universal search mode (hide in Direct mode)
+    hidden_in_ui: bool = False  # Keep field in schema/save path but hide default renderer
 
     def get_env_var_name(self) -> str:
         """Get the environment variable name for this field."""
@@ -96,12 +86,8 @@ class SelectField(FieldBase):
     """Single-choice dropdown."""
 
     # Options can be a list or a callable that returns a list (for lazy evaluation)
-    options: object = field(
-        default_factory=list
-    )  # [{value: "", label: ""}] or callable
-    filter_by_field: str | None = (
-        None  # Field key whose value filters options via childOf property
-    )
+    options: object = field(default_factory=list)  # [{value: "", label: ""}] or callable
+    filter_by_field: str | None = None  # Field key whose value filters options via childOf property
 
 
 @dataclass
@@ -109,13 +95,9 @@ class MultiSelectField(FieldBase):
     """Multiple-choice selection."""
 
     # Options can be a list or a callable that returns a list (for lazy evaluation)
-    options: object = field(
-        default_factory=list
-    )  # [{value: "", label: ""}] or callable
+    options: object = field(default_factory=list)  # [{value: "", label: ""}] or callable
     default: list[str] = field(default_factory=list)
-    variant: str = (
-        "pills"  # "pills" (default) or "dropdown" for checkbox dropdown style
-    )
+    variant: str = "pills"  # "pills" (default) or "dropdown" for checkbox dropdown style
 
 
 @dataclass
@@ -160,15 +142,9 @@ class CustomComponentField:
     component: str  # Frontend component registry key
     label: str = ""
     description: str = ""
-    bind_keys: list[str] = field(
-        default_factory=list
-    )  # Related value keys this component edits
-    value_fields: list[Any] = field(
-        default_factory=list
-    )  # Backing value schema for this component
-    wrap_in_field_wrapper: bool = (
-        False  # Whether to render with standard FieldWrapper layout
-    )
+    bind_keys: list[str] = field(default_factory=list)  # Related value keys this component edits
+    value_fields: list[Any] = field(default_factory=list)  # Backing value schema for this component
+    wrap_in_field_wrapper: bool = False  # Whether to render with standard FieldWrapper layout
     disabled: bool = False
     disabled_reason: str = ""
     show_when: dict[str, Any] | list[dict[str, Any]] | None = None
@@ -224,9 +200,7 @@ class HeadingField:
     show_when: dict[str, Any] | list[dict[str, Any]] | None = (
         None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
     )
-    universal_only: bool = (
-        False  # Only show in Universal search mode (hide in Direct mode)
-    )
+    universal_only: bool = False  # Only show in Universal search mode (hide in Direct mode)
 
     def get_field_type(self) -> str:
         return "HeadingField"
@@ -277,9 +251,7 @@ _ON_SAVE_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {}
 _REGISTRY_LOCK = Lock()
 
 
-def register_group(
-    name: str, display_name: str, icon: str | None = None, order: int = 100
-) -> None:
+def register_group(name: str, display_name: str, icon: str | None = None, order: int = 100) -> None:
     with _REGISTRY_LOCK:
         group = SettingsGroup(
             name=name,
@@ -297,7 +269,7 @@ def register_settings(
     icon: str | None = None,
     order: int = 100,
     group: str | None = None,
-)-> Callable[[Callable[[], list[SettingsField]]], Callable[[], list[SettingsField]]]:
+) -> Callable[[Callable[[], list[SettingsField]]], Callable[[], list[SettingsField]]]:
     def decorator(func: Callable[[], list[SettingsField]]) -> Callable[[], list[SettingsField]]:
         with _REGISTRY_LOCK:
             fields = func()
@@ -321,9 +293,7 @@ def register_settings(
     return decorator
 
 
-def register_on_save(
-    tab_name: str, handler: Callable[[dict[str, Any]], dict[str, Any]]
-) -> None:
+def register_on_save(tab_name: str, handler: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
     with _REGISTRY_LOCK:
         _ON_SAVE_HANDLERS[tab_name] = handler
         logger.debug("Registered on_save handler for tab: %s", tab_name)
@@ -351,9 +321,7 @@ def _iter_value_fields(tab: SettingsTab) -> Iterator[SettingsField]:
     for settings_field in tab.fields:
         if isinstance(settings_field, CustomComponentField):
             for value_field in settings_field.value_fields:
-                if isinstance(
-                    value_field, (ActionButton, HeadingField, CustomComponentField)
-                ):
+                if isinstance(value_field, (ActionButton, HeadingField, CustomComponentField)):
                     continue
                 yield value_field
             continue
@@ -732,9 +700,7 @@ def migrate_legacy_settings() -> None:
     old_mode_ab = downloads_config.get("PROCESSING_MODE_AUDIOBOOK", "ingest")
     old_ingest_dir_ab = downloads_config.get("INGEST_DIR_AUDIOBOOK", "")
     old_library_path_ab = downloads_config.get("LIBRARY_PATH_AUDIOBOOK", "")
-    old_library_template_ab = downloads_config.get(
-        "LIBRARY_TEMPLATE_AUDIOBOOK", "{Author}/{Title}"
-    )
+    old_library_template_ab = downloads_config.get("LIBRARY_TEMPLATE_AUDIOBOOK", "{Author}/{Title}")
 
     if old_mode_ab == "library":
         migrated_downloads["FILE_ORGANIZATION_AUDIOBOOK"] = "organize"
@@ -784,9 +750,7 @@ def migrate_legacy_settings() -> None:
 
     if migrated_sources:
         save_config_file("download_sources", migrated_sources)
-        logger.info(
-            "Migrated content-type routing settings: %s", list(migrated_sources.keys())
-        )
+        logger.info("Migrated content-type routing settings: %s", list(migrated_sources.keys()))
 
 
 def migrate_download_to_browser_settings() -> None:
@@ -1033,9 +997,7 @@ def serialize_field(
         result["style"] = field.style
         result["description"] = field.description
 
-    if include_value and not isinstance(
-        field, (ActionButton, HeadingField, CustomComponentField)
-    ):
+    if include_value and not isinstance(field, (ActionButton, HeadingField, CustomComponentField)):
         value = get_setting_value(field, tab_name)
 
         # Ensure select values are serialized as strings so the frontend can
@@ -1063,9 +1025,7 @@ def serialize_field(
                 value = [v.strip() for v in value.split(",") if v.strip()]
             else:
                 value = []
-        elif isinstance(field, TableField) and (
-            value is None or not isinstance(value, list)
-        ):
+        elif isinstance(field, TableField) and (value is None or not isinstance(value, list)):
             value = []
 
         result["value"] = value if value is not None else ""
@@ -1086,9 +1046,7 @@ def serialize_tab(
         "icon": tab.icon,
         "order": tab.order,
         "group": tab.group,
-        "fields": [
-            serialize_field(f, tab.name, include_value=include_values) for f in tab.fields
-        ],
+        "fields": [serialize_field(f, tab.name, include_value=include_values) for f in tab.fields],
     }
 
 
@@ -1139,18 +1097,13 @@ def execute_action(
         return {"success": False, "message": f"Unknown settings tab: {tab_name}"}
 
     for settings_field in tab.fields:
-        if (
-            isinstance(settings_field, ActionButton)
-            and settings_field.key == action_key
-        ):
+        if isinstance(settings_field, ActionButton) and settings_field.key == action_key:
             if settings_field.callback:
                 try:
                     # Check if callback accepts current_values parameter
                     sig = inspect.signature(settings_field.callback)
                     if "current_values" in sig.parameters:
-                        return settings_field.callback(
-                            current_values=current_values or {}
-                        )
+                        return settings_field.callback(current_values=current_values or {})
                     return settings_field.callback()
                 except Exception as e:
                     logger.exception("Action %s failed", action_key)
@@ -1230,8 +1183,7 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
 
     # Build a map of field keys to fields (exclude non-value fields)
     field_map = {
-        key: field
-        for key, (field, _) in get_settings_field_map(tab_name=tab_name).items()
+        key: field for key, (field, _) in get_settings_field_map(tab_name=tab_name).items()
     }
 
     # Filter out values that are set via env vars or unknown

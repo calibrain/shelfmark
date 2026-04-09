@@ -138,7 +138,9 @@ def sync_builtin_admin_user(
 
     existing = user_db.get_user(username=normalized_username)
     if existing:
-        existing_auth_source = str(existing.get("auth_source") or AUTH_SOURCE_BUILTIN).strip().lower()
+        existing_auth_source = (
+            str(existing.get("auth_source") or AUTH_SOURCE_BUILTIN).strip().lower()
+        )
         if existing_auth_source != AUTH_SOURCE_BUILTIN:
             logger.warning(
                 "Skipped builtin admin sync for username '%s' because it belongs to auth_source='%s'",
@@ -204,14 +206,10 @@ class UserDB:
         column_names = {str(col["name"]) for col in columns}
 
         if "auth_source" not in column_names:
-            conn.execute(
-                "ALTER TABLE users ADD COLUMN auth_source TEXT NOT NULL DEFAULT 'builtin'"
-            )
+            conn.execute("ALTER TABLE users ADD COLUMN auth_source TEXT NOT NULL DEFAULT 'builtin'")
 
         # Backfill OIDC-origin users created before auth_source existed.
-        conn.execute(
-            "UPDATE users SET auth_source = 'oidc' WHERE oidc_subject IS NOT NULL"
-        )
+        conn.execute("UPDATE users SET auth_source = 'oidc' WHERE oidc_subject IS NOT NULL")
         # Defensive cleanup for any legacy null/blank values.
         conn.execute(
             "UPDATE users SET auth_source = 'builtin' WHERE auth_source IS NULL OR auth_source = ''"
@@ -314,9 +312,7 @@ class UserDB:
             if user_id is not None:
                 return self._get_user_by_id(conn, user_id)
             if username is not None:
-                row = conn.execute(
-                    "SELECT * FROM users WHERE username = ?", (username,)
-                ).fetchone()
+                row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
             elif oidc_subject is not None:
                 row = conn.execute(
                     "SELECT * FROM users WHERE oidc_subject = ?", (oidc_subject,)
@@ -331,14 +327,16 @@ class UserDB:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         return dict(row) if row else None
 
-    _ALLOWED_UPDATE_COLUMNS: ClassVar[frozenset[str]] = frozenset({
-        "email",
-        "display_name",
-        "password_hash",
-        "oidc_subject",
-        "auth_source",
-        "role",
-    })
+    _ALLOWED_UPDATE_COLUMNS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "email",
+            "display_name",
+            "password_hash",
+            "oidc_subject",
+            "auth_source",
+            "role",
+        }
+    )
 
     def update_user(self, user_id: int, **kwargs) -> None:
         """Update user fields. Raises ValueError if user not found or invalid column."""
@@ -386,7 +384,10 @@ class UserDB:
                     "DELETE FROM activity_view_state WHERE viewer_scope = ?",
                     (user_viewer_scope(user_id),),
                 )
-                conn.execute("UPDATE download_requests SET reviewed_by = NULL WHERE reviewed_by = ?", (user_id,))
+                conn.execute(
+                    "UPDATE download_requests SET reviewed_by = NULL WHERE reviewed_by = ?",
+                    (user_id,),
+                )
                 conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
                 conn.commit()
             finally:
@@ -671,22 +672,24 @@ class UserDB:
         finally:
             conn.close()
 
-    _ALLOWED_REQUEST_UPDATE_COLUMNS: ClassVar[frozenset[str]] = frozenset({
-        "status",
-        "source_hint",
-        "content_type",
-        "request_level",
-        "policy_mode",
-        "book_data",
-        "release_data",
-        "note",
-        "admin_note",
-        "reviewed_by",
-        "reviewed_at",
-        "delivery_state",
-        "delivery_updated_at",
-        "last_failure_reason",
-    })
+    _ALLOWED_REQUEST_UPDATE_COLUMNS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "status",
+            "source_hint",
+            "content_type",
+            "request_level",
+            "policy_mode",
+            "book_data",
+            "release_data",
+            "note",
+            "admin_note",
+            "reviewed_by",
+            "reviewed_at",
+            "delivery_state",
+            "delivery_updated_at",
+            "last_failure_reason",
+        }
+    )
 
     def update_request(
         self,
@@ -757,7 +760,9 @@ class UserDB:
                     updates["book_data"] = self._serialize_json(updates["book_data"], "book_data")
 
                 if "release_data" in updates:
-                    if updates["release_data"] is not None and not isinstance(updates["release_data"], dict):
+                    if updates["release_data"] is not None and not isinstance(
+                        updates["release_data"], dict
+                    ):
                         raise TypeError("release_data must be an object when provided")
                     updates["release_data"] = self._serialize_json(
                         updates["release_data"],

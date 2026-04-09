@@ -171,9 +171,7 @@ def parse_result_line(line: str) -> SearchResult | None:
     return None
 
 
-def parse_results_file(
-    content: str, content_type: str | None = None
-) -> list[SearchResult]:
+def parse_results_file(content: str, content_type: str | None = None) -> list[SearchResult]:
     """Parse a search results file into SearchResult objects."""
     results = []
     supported = _get_supported_formats(content_type)

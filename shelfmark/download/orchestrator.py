@@ -83,9 +83,7 @@ def _resolve_email_destination(
       (email_to, error_message)
 
     """
-    configured_recipient = str(
-        config.get("EMAIL_RECIPIENT", "", user_id=user_id) or ""
-    ).strip()
+    configured_recipient = str(config.get("EMAIL_RECIPIENT", "", user_id=user_id) or "").strip()
     if configured_recipient:
         if _is_plain_email_address(configured_recipient):
             return configured_recipient, None
@@ -152,9 +150,7 @@ def _build_retry_resolution_fields(
         release_data.get("seeding_time_limit_minutes")
     )
     if seeding_time_limit_minutes is None:
-        seeding_time_limit_minutes = _seed_time_seconds_to_minutes(
-            extra.get("minimum_seed_time")
-        )
+        seeding_time_limit_minutes = _seed_time_seconds_to_minutes(extra.get("minimum_seed_time"))
 
     return {
         "retry_download_url": normalize_optional_text(release_data.get("download_url")),
@@ -203,9 +199,7 @@ def queue_release(
 
         # Get series info for library naming templates
         series_name = release_data.get("series_name") or extra.get("series_name")
-        series_position = release_data.get("series_position") or extra.get(
-            "series_position"
-        )
+        series_position = release_data.get("series_position") or extra.get("series_position")
         subtitle = release_data.get("subtitle") or extra.get("subtitle")
 
         books_output_mode = (
@@ -282,9 +276,7 @@ def queue_status(user_id: int | None = None) -> dict[str, dict[str, Any]]:
     status = book_queue.get_status(user_id=user_id)
     for tasks in status.values():
         for task in tasks.values():
-            if task.download_path and not run_blocking_io(
-                os.path.exists, task.download_path
-            ):
+            if task.download_path and not run_blocking_io(os.path.exists, task.download_path):
                 task.download_path = None
 
     # Convert Enum keys to strings and DownloadTask objects to dicts for JSON serialization
@@ -379,9 +371,7 @@ def serialize_task_for_retry(task: DownloadTask) -> dict[str, Any]:
         "subtitle": getattr(task, "subtitle", None),
         "search_mode": search_mode,
         "output_mode": getattr(task, "output_mode", None),
-        "output_args": dict(raw_output_args)
-        if isinstance(raw_output_args, dict)
-        else {},
+        "output_args": dict(raw_output_args) if isinstance(raw_output_args, dict) else {},
         "user_id": getattr(task, "user_id", None),
         "username": getattr(task, "username", None),
         "request_id": getattr(task, "request_id", None),
@@ -391,9 +381,7 @@ def serialize_task_for_retry(task: DownloadTask) -> dict[str, Any]:
         "retry_release_name": getattr(task, "retry_release_name", None),
         "retry_expected_hash": getattr(task, "retry_expected_hash", None),
         "retry_ratio_limit": getattr(task, "retry_ratio_limit", None),
-        "retry_seeding_time_limit_minutes": getattr(
-            task, "retry_seeding_time_limit_minutes", None
-        ),
+        "retry_seeding_time_limit_minutes": getattr(task, "retry_seeding_time_limit_minutes", None),
         "can_retry_without_staged_source": bool(
             getattr(task, "can_retry_without_staged_source", True)
         ),
@@ -442,18 +430,14 @@ def _restore_task_from_retry_payload(payload: object) -> DownloadTask | None:
         request_id=normalize_positive_int(payload.get("request_id")),
         staged_path=normalize_optional_text(payload.get("staged_path")),
         retry_download_url=normalize_optional_text(payload.get("retry_download_url")),
-        retry_download_protocol=normalize_optional_text(
-            payload.get("retry_download_protocol")
-        ),
+        retry_download_protocol=normalize_optional_text(payload.get("retry_download_protocol")),
         retry_release_name=normalize_optional_text(payload.get("retry_release_name")),
         retry_expected_hash=normalize_optional_text(payload.get("retry_expected_hash")),
         retry_ratio_limit=_optional_number(payload.get("retry_ratio_limit")),
         retry_seeding_time_limit_minutes=_optional_positive_int(
             payload.get("retry_seeding_time_limit_minutes")
         ),
-        can_retry_without_staged_source=bool(
-            payload.get("can_retry_without_staged_source", True)
-        ),
+        can_retry_without_staged_source=bool(payload.get("can_retry_without_staged_source", True)),
     )
 
 
@@ -481,11 +465,7 @@ def retry_persisted_download(
     if normalized_status in {"active", "cancelled"} and not has_fresh_retry_context:
         return False, "Download cannot be retried"
 
-    if (
-        task.request_id is not None
-        and normalized_status == "error"
-        and not has_staged_retry_source
-    ):
+    if task.request_id is not None and normalized_status == "error" and not has_staged_retry_source:
         return False, "Request-linked downloads must be retried from requests"
 
     if (
@@ -624,9 +604,7 @@ def _download_task(task_id: str, cancel_flag: Event) -> str | None:
             staged_file = Path(task.staged_path)
             if run_blocking_io(staged_file.exists):
                 temp_file = staged_file
-                logger.info(
-                    "Task %s: reusing staged file for retry: %s", task_id, staged_file
-                )
+                logger.info("Task %s: reusing staged file for retry: %s", task_id, staged_file)
             else:
                 task.staged_path = None
 
@@ -756,9 +734,7 @@ def update_download_progress(book_id: str, progress: float) -> None:
             )
 
 
-def update_download_status(
-    book_id: str, status: str, message: str | None = None
-) -> None:
+def update_download_status(book_id: str, status: str, message: str | None = None) -> None:
     """Update download status with optional message for UI display."""
     status_key = status.lower()
     try:
@@ -931,9 +907,7 @@ def concurrent_download_loop() -> None:
     max_workers = config.MAX_CONCURRENT_DOWNLOADS
     logger.info("Starting concurrent download loop with %s workers", max_workers)
 
-    with ThreadPoolExecutor(
-        max_workers=max_workers, thread_name_prefix="Download"
-    ) as executor:
+    with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="Download") as executor:
         active_futures: dict[Future, str] = {}  # Track active download futures
         stalled_tasks: set[str] = set()  # Track tasks already cancelled due to stall
 
@@ -957,9 +931,7 @@ def concurrent_download_loop() -> None:
                             continue
                         last_active = _last_activity.get(task_id, current_time)
                         if current_time - last_active > STALL_TIMEOUT:
-                            logger.warning(
-                                "Download stalled for %s, cancelling", task_id
-                            )
+                            logger.warning("Download stalled for %s, cancelling", task_id)
                             book_queue.cancel_download(task_id)
                             book_queue.update_status_message(
                                 task_id,
@@ -977,17 +949,13 @@ def concurrent_download_loop() -> None:
                     # Only delay if other downloads are already active
                     if active_futures:
                         stagger_delay = random.uniform(2, 5)
-                        logger.debug(
-                            "Staggering download start by %.1fs", stagger_delay
-                        )
+                        logger.debug("Staggering download start by %.1fs", stagger_delay)
                         time.sleep(stagger_delay)
 
                     task_id, cancel_flag = next_download
 
                     # Submit download job to thread pool
-                    future = executor.submit(
-                        _process_single_download, task_id, cancel_flag
-                    )
+                    future = executor.submit(_process_single_download, task_id, cancel_flag)
                     active_futures[future] = task_id
 
                 # Brief sleep to prevent busy waiting
@@ -1012,9 +980,7 @@ def start() -> None:
             return
 
         if _coordinator_thread is not None:
-            logger.warning(
-                "Download coordinator thread is not alive; starting a new one"
-            )
+            logger.warning("Download coordinator thread is not alive; starting a new one")
 
         _coordinator_thread = threading.Thread(
             target=concurrent_download_loop, daemon=True, name="DownloadCoordinator"

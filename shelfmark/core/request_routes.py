@@ -116,9 +116,7 @@ def _resolve_effective_policy(
     db_user_id: int | None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], bool]:
     global_settings = load_users_request_policy_settings()
-    user_settings = (
-        user_db.get_user_settings(db_user_id) if db_user_id is not None else {}
-    )
+    user_settings = user_db.get_user_settings(db_user_id) if db_user_id is not None else {}
     effective = merge_request_policy_settings(global_settings, user_settings)
     requests_enabled = coerce_bool(effective.get("REQUESTS_ENABLED"), default=False)
     return global_settings, user_settings, effective, requests_enabled
@@ -318,9 +316,7 @@ def _prepare_request_create_arguments(
     request_title = _resolve_title_from_book_data(book_data)
 
     content_type = normalize_content_type(
-        context.get("content_type")
-        or data.get("content_type")
-        or book_data.get("content_type")
+        context.get("content_type") or data.get("content_type") or book_data.get("content_type")
     )
     request_level, release_data = _normalize_release_result_request_payload(
         source=source,
@@ -330,11 +326,9 @@ def _prepare_request_create_arguments(
         content_type=content_type,
     )
 
-    global_settings, user_settings, effective, requests_enabled = (
-        _resolve_effective_policy(
-            user_db,
-            db_user_id=target_user_id,
-        )
+    global_settings, user_settings, effective, requests_enabled = _resolve_effective_policy(
+        user_db,
+        db_user_id=target_user_id,
     )
     if not requests_enabled:
         msg = "Request workflow is disabled by policy"
@@ -377,9 +371,7 @@ def _prepare_request_create_arguments(
             required_mode=PolicyMode.BLOCKED.value,
         )
 
-    requested_level = (
-        str(request_level).strip().lower() if isinstance(request_level, str) else ""
-    )
+    requested_level = str(request_level).strip().lower() if isinstance(request_level, str) else ""
     if resolved_mode == PolicyMode.REQUEST_BOOK and requested_level != "book":
         msg = "Policy requires book-level requests"
         raise RequestServiceError(
@@ -412,9 +404,7 @@ def _resolve_request_source_and_format(
 ) -> tuple[str, str | None]:
     release_data = request_row.get("release_data")
     if isinstance(release_data, dict):
-        source = normalize_source(
-            release_data.get("source") or request_row.get("source_hint")
-        )
+        source = normalize_source(release_data.get("source") or request_row.get("source_hint"))
         release_format = normalize_optional_text(
             release_data.get("format")
             or release_data.get("filetype")
@@ -566,19 +556,13 @@ def register_request_routes(
                 except (TypeError, ValueError):
                     db_user_id = None
 
-        global_settings, user_settings, effective, requests_enabled = (
-            _resolve_effective_policy(
-                user_db,
-                db_user_id=db_user_id,
-            )
+        global_settings, user_settings, effective, requests_enabled = _resolve_effective_policy(
+            user_db,
+            db_user_id=db_user_id,
         )
 
-        default_ebook_mode = parse_policy_mode(
-            effective.get("REQUEST_POLICY_DEFAULT_EBOOK")
-        )
-        default_audio_mode = parse_policy_mode(
-            effective.get("REQUEST_POLICY_DEFAULT_AUDIOBOOK")
-        )
+        default_ebook_mode = parse_policy_mode(effective.get("REQUEST_POLICY_DEFAULT_EBOOK"))
+        default_audio_mode = parse_policy_mode(effective.get("REQUEST_POLICY_DEFAULT_AUDIOBOOK"))
 
         source_capabilities = get_source_content_type_capabilities()
         from shelfmark.release_sources import source_results_are_releases
@@ -602,9 +586,7 @@ def register_request_routes(
                 {
                     "source": source_name,
                     "supported_content_types": supported_types,
-                    "browse_results_are_releases": source_results_are_releases(
-                        source_name
-                    ),
+                    "browse_results_are_releases": source_results_are_releases(source_name),
                     "modes": modes,
                 }
             )
@@ -613,9 +595,7 @@ def register_request_routes(
             {
                 "requests_enabled": requests_enabled,
                 "is_admin": is_admin,
-                "allow_notes": coerce_bool(
-                    effective.get("REQUESTS_ALLOW_NOTES"), default=True
-                ),
+                "allow_notes": coerce_bool(effective.get("REQUESTS_ALLOW_NOTES"), default=True),
                 "defaults": {
                     "ebook": (
                         default_ebook_mode.value
@@ -741,10 +721,7 @@ def register_request_routes(
             try:
                 created_rows = create_requests(
                     user_db,
-                    requests=[
-                        prepared["create_args"]
-                        for _, prepared in request_prepared_items
-                    ],
+                    requests=[prepared["create_args"] for _, prepared in request_prepared_items],
                 )
             except RequestServiceError as exc:
                 return _error_response(
@@ -812,9 +789,7 @@ def register_request_routes(
                 prepared["actor_label"],
             )
 
-        ordered_results = [
-            results_by_index[index] for index in range(len(prepared_requests))
-        ]
+        ordered_results = [results_by_index[index] for index in range(len(prepared_requests))]
         status_code = 201 if request_prepared_items else 200
         return jsonify(ordered_results), status_code
 
@@ -920,10 +895,7 @@ def register_request_routes(
         if not session.get("is_admin", False):
             return jsonify({"error": "Admin access required"}), 403
 
-        by_status = {
-            status: len(user_db.list_requests(status=status))
-            for status in RequestStatus
-        }
+        by_status = {status: len(user_db.list_requests(status=status)) for status in RequestStatus}
         return jsonify(
             {
                 "pending": by_status[RequestStatus.PENDING],

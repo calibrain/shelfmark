@@ -146,9 +146,7 @@ def booklore_login(booklore_config: BookloreConfig) -> str:
     }
 
     try:
-        response = requests.post(
-            url, json=payload, timeout=30, verify=booklore_config.verify_tls
-        )
+        response = requests.post(url, json=payload, timeout=30, verify=booklore_config.verify_tls)
     except requests.exceptions.ConnectionError as exc:
         msg = f"Could not connect to {BOOKLORE_DISPLAY_NAME}"
         raise BookloreError(msg) from exc
@@ -183,16 +181,12 @@ def booklore_login(booklore_config: BookloreConfig) -> str:
     return token
 
 
-def booklore_list_libraries(
-    booklore_config: BookloreConfig, token: str
-) -> list[dict[str, Any]]:
+def booklore_list_libraries(booklore_config: BookloreConfig, token: str) -> list[dict[str, Any]]:
     url = f"{booklore_config.base_url}/api/v1/libraries"
     headers = {"Authorization": f"Bearer {token}"}
 
     try:
-        response = requests.get(
-            url, headers=headers, timeout=30, verify=booklore_config.verify_tls
-        )
+        response = requests.get(url, headers=headers, timeout=30, verify=booklore_config.verify_tls)
         response.raise_for_status()
     except requests.exceptions.RequestException as exc:
         msg = f"Failed to fetch {BOOKLORE_DISPLAY_NAME} libraries: {exc}"
@@ -205,9 +199,7 @@ def booklore_list_libraries(
         raise BookloreError(msg) from exc
 
 
-def booklore_upload_file(
-    booklore_config: BookloreConfig, token: str, file_path: Path
-) -> None:
+def booklore_upload_file(booklore_config: BookloreConfig, token: str, file_path: Path) -> None:
     if booklore_config.upload_to_bookdrop:
         url = f"{booklore_config.base_url}/api/v1/files/upload/bookdrop"
         params = None
@@ -256,9 +248,7 @@ def booklore_refresh_library(booklore_config: BookloreConfig, token: str) -> Non
     headers = {"Authorization": f"Bearer {token}"}
 
     try:
-        response = requests.put(
-            url, headers=headers, timeout=30, verify=booklore_config.verify_tls
-        )
+        response = requests.put(url, headers=headers, timeout=30, verify=booklore_config.verify_tls)
         response.raise_for_status()
     except requests.exceptions.RequestException as exc:
         msg = f"{BOOKLORE_DISPLAY_NAME} refresh failed: {exc}"
@@ -406,9 +396,7 @@ def _post_process_booklore(
             destination = prepared.files[0].parent
         else:
             try:
-                destination = Path(
-                    os.path.commonpath([str(p.parent) for p in prepared.files])
-                )
+                destination = Path(os.path.commonpath([str(p.parent) for p in prepared.files]))
             except ValueError:
                 destination = prepared.files[0].parent if prepared.files else None
 
@@ -427,9 +415,7 @@ def _post_process_booklore(
                         else BOOKLORE_DESTINATION_LIBRARY
                     ),
                     "library_id": (
-                        None
-                        if booklore_config.upload_to_bookdrop
-                        else booklore_config.library_id
+                        None if booklore_config.upload_to_bookdrop else booklore_config.library_id
                     ),
                     "path_id": None
                     if booklore_config.upload_to_bookdrop
@@ -443,9 +429,7 @@ def _post_process_booklore(
 
         message = f"Uploaded to {BOOKLORE_DISPLAY_NAME}"
         if len(prepared.files) > 1:
-            message = (
-                f"Uploaded to {BOOKLORE_DISPLAY_NAME} ({len(prepared.files)} files)"
-            )
+            message = f"Uploaded to {BOOKLORE_DISPLAY_NAME} ({len(prepared.files)} files)"
         status_callback("complete", message)
         success = True
         output_path = f"booklore://{task.task_id}"
@@ -455,9 +439,7 @@ def _post_process_booklore(
         status_callback("error", str(e))
         return None
     except Exception as e:
-        logger.error_trace(
-            "Task %s: unexpected error uploading to Booklore: %s", task.task_id, e
-        )
+        logger.error_trace("Task %s: unexpected error uploading to Booklore: %s", task.task_id, e)
         status_callback("error", f"{BOOKLORE_DISPLAY_NAME} upload failed: {e}")
         return None
     else:

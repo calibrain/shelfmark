@@ -56,7 +56,9 @@ def _on_save_advanced(values: dict[str, Any]) -> dict[str, Any]:
     logger.info("Saved %d remote path mapping(s)", len(cleaned))
     if cleaned:
         for m in cleaned:
-            logger.debug("  Mapping: %s -> %s (client: %s)", m["remotePath"], m["localPath"], m["host"])
+            logger.debug(
+                "  Mapping: %s -> %s (client: %s)", m["remotePath"], m["localPath"], m["host"]
+            )
 
     values["PROWLARR_REMOTE_PATH_MAPPINGS"] = cleaned
     return {"error": False, "values": values}
@@ -105,6 +107,7 @@ RECORDING_DIR = env.LOG_DIR / "recording"
 def _log_external_bypasser_warning() -> None:
     """Log warning about external bypasser DNS limitations (called after config is available)."""
     from shelfmark.core.config import config
+
     if config.get("USING_EXTERNAL_BYPASSER", False) and config.get("USE_CF_BYPASS", True):
         logger.warning(
             "Using external bypasser (FlareSolverr). Note: FlareSolverr uses its own DNS resolution, "
@@ -133,18 +136,13 @@ from shelfmark.core.settings_registry import (
     register_settings,
 )
 
-register_group(
-    "direct_download",
-    "Direct Download",
-    icon="download",
-    order=20
-)
+register_group("direct_download", "Direct Download", icon="download", order=20)
 
 register_group(
     "metadata_providers",
     "Metadata Providers",
     icon="book",
-    order=12  # Between Network (10) and Advanced (15)
+    order=12,  # Between Network (10) and Advanced (15)
 )
 
 
@@ -251,8 +249,10 @@ def _get_audiobook_release_source_options() -> list[dict[str, str]]:
     ]
 
 
+_LANGUAGE_OPTIONS = [
+    {"value": lang["code"], "label": lang["language"]} for lang in _SUPPORTED_BOOK_LANGUAGE
+]
 
-_LANGUAGE_OPTIONS = [{"value": lang["code"], "label": lang["language"]} for lang in _SUPPORTED_BOOK_LANGUAGE]
 
 def _get_aa_base_url_options() -> list[dict[str, str]]:
     """Build AA URL options dynamically, including additional mirrors from config."""
@@ -595,7 +595,10 @@ def network_settings() -> list[SettingsField]:
             disabled=tor_overrides_network,
             disabled_reason="DNS over HTTPS is not used when Tor routing is enabled.",
             # Hide for manual and system (no DoH endpoint available for custom IPs or system DNS)
-            show_when={"field": "CUSTOM_DNS", "value": ["auto", "google", "cloudflare", "quad9", "opendns"]},
+            show_when={
+                "field": "CUSTOM_DNS",
+                "value": ["auto", "google", "cloudflare", "quad9", "opendns"],
+            },
             # Disable for auto (always uses DoH)
             disabled_when={
                 "field": "CUSTOM_DNS",
@@ -690,9 +693,7 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
             normalized_content_types: list[str] = []
         elif isinstance(raw_content_types, list):
             normalized_content_types = [
-                str(value).strip().lower()
-                for value in raw_content_types
-                if str(value).strip()
+                str(value).strip().lower() for value in raw_content_types if str(value).strip()
             ]
         else:
             return {
@@ -777,20 +778,36 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
             return {"error": True, "message": "SMTP port must be a number", "values": values}
 
         if port < 1 or port > 65535:
-            return {"error": True, "message": "SMTP port must be between 1 and 65535", "values": values}
+            return {
+                "error": True,
+                "message": "SMTP port must be between 1 and 65535",
+                "values": values,
+            }
 
         try:
             timeout_seconds = int(effective.get("EMAIL_SMTP_TIMEOUT_SECONDS", 60))
         except (TypeError, ValueError):
-            return {"error": True, "message": "SMTP timeout (seconds) must be a number", "values": values}
+            return {
+                "error": True,
+                "message": "SMTP timeout (seconds) must be a number",
+                "values": values,
+            }
 
         if timeout_seconds < 1:
-            return {"error": True, "message": "SMTP timeout (seconds) must be >= 1", "values": values}
+            return {
+                "error": True,
+                "message": "SMTP timeout (seconds) must be >= 1",
+                "values": values,
+            }
 
         username = str(effective.get("EMAIL_SMTP_USERNAME", "") or "").strip()
         password = effective.get("EMAIL_SMTP_PASSWORD", "") or ""
         if username and not password:
-            return {"error": True, "message": "SMTP password is required when username is set", "values": values}
+            return {
+                "error": True,
+                "message": "SMTP password is required when username is set",
+                "values": values,
+            }
 
         try:
             attachment_limit_mb = int(effective.get("EMAIL_ATTACHMENT_SIZE_LIMIT_MB", 25))
@@ -901,17 +918,17 @@ def download_settings() -> list[SettingsField]:
                 {
                     "value": "none",
                     "label": "None",
-                    "description": "Keep original filename from source"
+                    "description": "Keep original filename from source",
                 },
                 {
                     "value": "rename",
                     "label": "Rename Only",
-                    "description": "Rename single-file downloads; multi-file keeps original names."
+                    "description": "Rename single-file downloads; multi-file keeps original names.",
                 },
                 {
                     "value": "organize",
                     "label": "Rename and Organize",
-                    "description": "Create folders and rename files using a template. Do not use with ingest folders."
+                    "description": "Create folders and rename files using a template. Do not use with ingest folders.",
                 },
             ],
             default="rename",
@@ -1081,7 +1098,11 @@ def download_settings() -> list[SettingsField]:
             description="Transport security mode for SMTP.",
             options=[
                 {"value": "none", "label": "None", "description": "No TLS (not recommended)."},
-                {"value": "starttls", "label": "STARTTLS", "description": "Upgrade to TLS after connecting (recommended)."},
+                {
+                    "value": "starttls",
+                    "label": "STARTTLS",
+                    "description": "Upgrade to TLS after connecting (recommended).",
+                },
                 {"value": "ssl", "label": "SSL/TLS", "description": "Connect using TLS (SMTPS)."},
             ],
             default="starttls",
@@ -1139,7 +1160,6 @@ def download_settings() -> list[SettingsField]:
             callback=test_email_connection,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
         ),
-
         # === AUDIOBOOKS SECTION ===
         # Universal mode only
         HeadingField(
@@ -1160,9 +1180,21 @@ def download_settings() -> list[SettingsField]:
             label="File Organization",
             description="Choose how downloaded audiobook files are named and organized.",
             options=[
-                {"value": "none", "label": "None", "description": "Keep original filename from source"},
-                {"value": "rename", "label": "Rename Only", "description": "Rename single-file downloads; multi-file keeps original names."},
-                {"value": "organize", "label": "Rename and Organize", "description": "Create folders and rename files using a template. Recommended for Audiobookshelf. Do not use with ingest folders."},
+                {
+                    "value": "none",
+                    "label": "None",
+                    "description": "Keep original filename from source",
+                },
+                {
+                    "value": "rename",
+                    "label": "Rename Only",
+                    "description": "Rename single-file downloads; multi-file keeps original names.",
+                },
+                {
+                    "value": "organize",
+                    "label": "Rename and Organize",
+                    "description": "Create folders and rename files using a template. Recommended for Audiobookshelf. Do not use with ingest folders.",
+                },
             ],
             default="rename",
             universal_only=True,
@@ -1194,7 +1226,6 @@ def download_settings() -> list[SettingsField]:
             default=True,
             universal_only=True,
         ),
-
         # === OPTIONS SECTION ===
         HeadingField(
             key="options_heading",
@@ -1323,7 +1354,9 @@ def _get_slow_source_defaults() -> list[dict[str, str | bool]]:
     ]
 
 
-@register_settings("download_sources", "Download Sources", icon="download", order=21, group="direct_download")
+@register_settings(
+    "download_sources", "Download Sources", icon="download", order=21, group="direct_download"
+)
 def download_source_settings() -> list[SettingsField]:
     """Settings for download source behavior."""
     return [
@@ -1429,7 +1462,9 @@ def download_source_settings() -> list[SettingsField]:
     ]
 
 
-@register_settings("cloudflare_bypass", "Cloudflare Bypass", icon="shield", order=22, group="direct_download")
+@register_settings(
+    "cloudflare_bypass", "Cloudflare Bypass", icon="shield", order=22, group="direct_download"
+)
 def cloudflare_bypass_settings() -> list[SettingsField]:
     """Settings for Cloudflare bypass behavior."""
     return [
@@ -1477,6 +1512,7 @@ def cloudflare_bypass_settings() -> list[SettingsField]:
         ),
     ]
 
+
 def _on_save_mirrors(values: dict[str, Any]) -> dict[str, Any]:
     """Normalize mirror list settings before persisting."""
     from shelfmark.core.logger import setup_logger
@@ -1511,6 +1547,7 @@ def _on_save_mirrors(values: dict[str, Any]) -> dict[str, Any]:
 
     values["AA_MIRROR_URLS"] = normalized
     return {"error": False, "values": values}
+
 
 # Register the on_save handler for this tab
 register_on_save("mirrors", _on_save_mirrors)
@@ -1552,7 +1589,6 @@ def mirror_settings() -> list[SettingsField]:
             description="Deprecated. Use Mirrors instead. This is kept for backwards compatibility with existing installs and environment variables.",
             show_when={"field": "AA_ADDITIONAL_URLS", "notEmpty": True},
         ),
-
         # === LIBGEN ===
         HeadingField(
             key="libgen_mirrors_heading",
@@ -1564,7 +1600,6 @@ def mirror_settings() -> list[SettingsField]:
             label="Additional Mirrors",
             description="Comma-separated list of custom LibGen mirrors to add to the defaults.",
         ),
-
         # === Z-LIBRARY ===
         HeadingField(
             key="zlib_mirrors_heading",
@@ -1583,7 +1618,6 @@ def mirror_settings() -> list[SettingsField]:
             label="Additional Mirrors",
             description="Comma-separated list of custom Z-Library mirror URLs.",
         ),
-
         # === WELIB ===
         HeadingField(
             key="welib_mirrors_heading",
@@ -1652,8 +1686,16 @@ def advanced_settings() -> list[SettingsField]:
             label="Custom Script Path Mode",
             description="Pass the path to the custom script as an absolute path or relative to the destination folder.",
             options=[
-                {"value": "absolute", "label": "Absolute", "description": "Pass the full destination path (default)."},
-                {"value": "relative", "label": "Relative", "description": "Pass the path relative to the destination folder."},
+                {
+                    "value": "absolute",
+                    "label": "Absolute",
+                    "description": "Pass the full destination path (default).",
+                },
+                {
+                    "value": "relative",
+                    "label": "Relative",
+                    "description": "Pass the path relative to the destination folder.",
+                },
             ],
             default="absolute",
         ),

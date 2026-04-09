@@ -33,9 +33,7 @@ def normalize_http_url(
             return ""
 
     if allow_special:
-        special_map = {
-            value.lower(): value for value in allow_special if isinstance(value, str)
-        }
+        special_map = {value.lower(): value for value in allow_special if isinstance(value, str)}
         special_match = special_map.get(normalized.lower())
         if special_match is not None:
             return special_match
@@ -166,9 +164,7 @@ def _resolve_destination_username(
     try:
         from shelfmark.core.user_db import UserDB
 
-        user_db = UserDB(
-            str(Path(os.environ.get("CONFIG_DIR", "/config")) / "users.db")
-        )
+        user_db = UserDB(str(Path(os.environ.get("CONFIG_DIR", "/config")) / "users.db"))
         user_db.initialize()
         user = user_db.get_user(user_id=user_id)
         if not user:
@@ -262,9 +258,7 @@ def get_ingest_dir(content_type: str | None = None) -> Path:
     from shelfmark.core.config import config
 
     # Check new DESTINATION setting first, then legacy INGEST_DIR
-    default_ingest_dir = Path(
-        config.get("DESTINATION", "") or config.get("INGEST_DIR", "/books")
-    )
+    default_ingest_dir = Path(config.get("DESTINATION", "") or config.get("INGEST_DIR", "/books"))
 
     if not content_type:
         return default_ingest_dir

@@ -19,8 +19,10 @@ from shelfmark.download.network import get_ssl_verify
 
 # ==================== Test Connection Callbacks ====================
 
+
 def _raise_runtime_error(message: str) -> NoReturn:
     raise RuntimeError(message)
+
 
 @contextmanager
 def _transmission_session_verify_override(url: str) -> Iterator[None]:
@@ -71,12 +73,23 @@ def _test_qbittorrent_connection(current_values: dict[str, Any] | None = None) -
         if not url:
             return {"success": False, "message": "qBittorrent URL is invalid"}
 
-        client = Client(host=url, username=username, password=password, VERIFY_WEBUI_CERTIFICATE=get_ssl_verify(url))
+        client = Client(
+            host=url,
+            username=username,
+            password=password,
+            VERIFY_WEBUI_CERTIFICATE=get_ssl_verify(url),
+        )
         client.auth_log_in()
         api_version = client.app.web_api_version
     except ImportError:
         return {"success": False, "message": "qbittorrent-api package not installed"}
-    except (requests.exceptions.RequestException, RuntimeError, ValueError, OSError, TypeError) as e:
+    except (
+        requests.exceptions.RequestException,
+        RuntimeError,
+        ValueError,
+        OSError,
+        TypeError,
+    ) as e:
         return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": True, "message": f"Connected to qBittorrent (API v{api_version})"}
@@ -92,8 +105,12 @@ def _test_transmission_connection(current_values: dict[str, Any] | None = None) 
     current_values = current_values or {}
 
     raw_url = current_values.get("TRANSMISSION_URL") or config.get("TRANSMISSION_URL", "")
-    username = current_values.get("TRANSMISSION_USERNAME") or config.get("TRANSMISSION_USERNAME", "")
-    password = current_values.get("TRANSMISSION_PASSWORD") or config.get("TRANSMISSION_PASSWORD", "")
+    username = current_values.get("TRANSMISSION_USERNAME") or config.get(
+        "TRANSMISSION_USERNAME", ""
+    )
+    password = current_values.get("TRANSMISSION_PASSWORD") or config.get(
+        "TRANSMISSION_PASSWORD", ""
+    )
 
     if not raw_url:
         return {"success": False, "message": "Transmission URL is required"}
@@ -129,7 +146,7 @@ def _test_transmission_connection(current_values: dict[str, Any] | None = None) 
             with suppress(Exception):
                 client.protocol = protocol
 
-    # Keep session verify aligned for subsequent calls beyond constructor bootstrap.
+        # Keep session verify aligned for subsequent calls beyond constructor bootstrap.
         http_session = getattr(client, "_http_session", None)
         if http_session is not None:
             http_session.verify = get_ssl_verify(url)
@@ -231,7 +248,11 @@ def _test_deluge_connection(current_values: dict[str, Any] | None = None) -> dic
 
             host_id = hosts[0][0]
             for entry in hosts:
-                if isinstance(entry, list) and len(entry) >= 2 and entry[1] in {"127.0.0.1", "localhost"}:
+                if (
+                    isinstance(entry, list)
+                    and len(entry) >= 2
+                    and entry[1] in {"127.0.0.1", "localhost"}
+                ):
                     host_id = entry[0]
                     break
 
@@ -333,7 +354,13 @@ def _test_nzbget_connection(current_values: dict[str, Any] | None = None) -> dic
     try:
         rpc_url = f"{url.rstrip('/')}/jsonrpc"
         payload = {"jsonrpc": "2.0", "method": "status", "params": [], "id": 1}
-        response = requests.post(rpc_url, json=payload, auth=(username, password), timeout=30, verify=get_ssl_verify(rpc_url))
+        response = requests.post(
+            rpc_url,
+            json=payload,
+            auth=(username, password),
+            timeout=30,
+            verify=get_ssl_verify(rpc_url),
+        )
         response.raise_for_status()
         result = response.json()
         if result.get("error"):
@@ -400,6 +427,7 @@ def _test_sabnzbd_connection(current_values: dict[str, Any] | None = None) -> di
 
 # ==================== Download Clients Tab ====================
 
+
 @register_settings(
     name="prowlarr_clients",
     display_name="Download Clients",
@@ -428,7 +456,6 @@ def prowlarr_clients_settings() -> list[SettingsField]:
             ],
             default="",
         ),
-
         # --- qBittorrent Settings ---
         TextField(
             key="QBITTORRENT_URL",
@@ -490,7 +517,6 @@ def prowlarr_clients_settings() -> list[SettingsField]:
             normalize_urls=False,
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "qbittorrent"},
         ),
-
         # --- Transmission Settings ---
         TextField(
             key="TRANSMISSION_URL",
@@ -542,7 +568,6 @@ def prowlarr_clients_settings() -> list[SettingsField]:
             placeholder="/downloads",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "transmission"},
         ),
-
         # --- Deluge Settings ---
         TextField(
             key="DELUGE_HOST",
@@ -597,7 +622,6 @@ def prowlarr_clients_settings() -> list[SettingsField]:
             placeholder="/downloads",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "deluge"},
         ),
-
         # --- rTorrent Settings ---
         TextField(
             key="RTORRENT_URL",
@@ -653,7 +677,6 @@ def prowlarr_clients_settings() -> list[SettingsField]:
             default="keep",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "notEmpty": True},
         ),
-
         # --- Usenet Client Selection ---
         HeadingField(
             key="usenet_heading",
@@ -671,7 +694,6 @@ def prowlarr_clients_settings() -> list[SettingsField]:
             ],
             default="",
         ),
-
         # --- NZBGet Settings ---
         TextField(
             key="NZBGET_URL",
@@ -718,7 +740,6 @@ def prowlarr_clients_settings() -> list[SettingsField]:
             default="",
             show_when={"field": "PROWLARR_USENET_CLIENT", "value": "nzbget"},
         ),
-
         # --- SABnzbd Settings ---
         TextField(
             key="SABNZBD_URL",

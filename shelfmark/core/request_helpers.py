@@ -97,9 +97,7 @@ def normalize_positive_int(value: object) -> int | None:
     return parsed if parsed > 0 else None
 
 
-def normalize_optional_positive_int(
-    value: object, field_name: str = "value"
-) -> int | None:
+def normalize_optional_positive_int(value: object, field_name: str = "value") -> int | None:
     """Parse *value* as a positive integer or ``None``.
 
     Raises ``ValueError`` when *value* is present but not a valid

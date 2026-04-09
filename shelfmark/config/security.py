@@ -54,7 +54,6 @@ def _migrate_security_settings() -> None:
     )
 
 
-
 def _on_save_security(values: dict[str, Any]) -> dict[str, Any]:
     return on_save_security(values)
 
@@ -107,18 +106,22 @@ def security_settings() -> list[SettingsField]:
             label="A local admin account is required before OIDC can be enabled.",
             show_when=_auth_condition("oidc"),
         ),
-        *([] if cwa_db_available else [
-            CustomComponentField(
-                key="cwa_db_missing",
-                component="oidc_admin_hint",
-                label=(
-                    "Calibre-Web database not detected. Mount your app.db to "
-                    "/auth/app.db to enable this method. Authentication will fall "
-                    "back to none until the database is available."
+        *(
+            []
+            if cwa_db_available
+            else [
+                CustomComponentField(
+                    key="cwa_db_missing",
+                    component="oidc_admin_hint",
+                    label=(
+                        "Calibre-Web database not detected. Mount your app.db to "
+                        "/auth/app.db to enable this method. Authentication will fall "
+                        "back to none until the database is available."
+                    ),
+                    show_when=_auth_condition("cwa"),
                 ),
-                show_when=_auth_condition("cwa"),
-            ),
-        ]),
+            ]
+        ),
         ActionButton(
             key="open_users_tab",
             label="Go to Users",

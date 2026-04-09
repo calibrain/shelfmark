@@ -73,14 +73,18 @@ def build_email_smtp_config(values: Mapping[str, Any]) -> EmailSmtpConfig:
 
     security = str(values.get("EMAIL_SMTP_SECURITY", SECURITY_STARTTLS) or "").strip().lower()
     if security not in ALLOWED_SECURITY:
-        raise EmailOutputError(f"SMTP security must be one of: {', '.join(sorted(ALLOWED_SECURITY))}")
+        raise EmailOutputError(
+            f"SMTP security must be one of: {', '.join(sorted(ALLOWED_SECURITY))}"
+        )
 
     username = str(values.get("EMAIL_SMTP_USERNAME", "") or "").strip()
     password = values.get("EMAIL_SMTP_PASSWORD", "") or ""
 
     from_addr = str(values.get("EMAIL_FROM", "") or "").strip()
     subject_template = str(values.get("EMAIL_SUBJECT_TEMPLATE", "{Title}") or "").strip()
-    timeout_seconds = _parse_int(values.get("EMAIL_SMTP_TIMEOUT_SECONDS", 60), "SMTP timeout (seconds)", minimum=1)
+    timeout_seconds = _parse_int(
+        values.get("EMAIL_SMTP_TIMEOUT_SECONDS", 60), "SMTP timeout (seconds)", minimum=1
+    )
     allow_unverified_tls = bool(values.get("EMAIL_ALLOW_UNVERIFIED_TLS", False))
 
     if not host:
@@ -94,7 +98,9 @@ def build_email_smtp_config(values: Mapping[str, Any]) -> EmailSmtpConfig:
         if username_email and "@" in username_email:
             from_addr = f"Shelfmark <{username_email}>"
         else:
-            raise EmailOutputError("From address is required (or set SMTP username to an email address).")
+            raise EmailOutputError(
+                "From address is required (or set SMTP username to an email address)."
+            )
 
     return EmailSmtpConfig(
         host=host,
@@ -192,9 +198,7 @@ def test_smtp_connection(smtp_config: EmailSmtpConfig) -> None:
     smtp: smtplib.SMTP | None = None
     try:
         if smtp_config.security == SECURITY_SSL:
-            context = _create_tls_context(
-                allow_unverified=smtp_config.allow_unverified_tls
-            )
+            context = _create_tls_context(allow_unverified=smtp_config.allow_unverified_tls)
             smtp = smtplib.SMTP_SSL(
                 smtp_config.host,
                 smtp_config.port,
@@ -202,14 +206,14 @@ def test_smtp_connection(smtp_config: EmailSmtpConfig) -> None:
                 context=context,
             )
         else:
-            smtp = smtplib.SMTP(smtp_config.host, smtp_config.port, timeout=smtp_config.timeout_seconds)
+            smtp = smtplib.SMTP(
+                smtp_config.host, smtp_config.port, timeout=smtp_config.timeout_seconds
+            )
 
         smtp.ehlo()
 
         if smtp_config.security == SECURITY_STARTTLS:
-            context = _create_tls_context(
-                allow_unverified=smtp_config.allow_unverified_tls
-            )
+            context = _create_tls_context(allow_unverified=smtp_config.allow_unverified_tls)
             smtp.starttls(context=context)
             smtp.ehlo()
 
@@ -231,9 +235,7 @@ def send_email_message(smtp_config: EmailSmtpConfig, message: EmailMessage) -> N
     smtp: smtplib.SMTP | None = None
     try:
         if smtp_config.security == SECURITY_SSL:
-            context = _create_tls_context(
-                allow_unverified=smtp_config.allow_unverified_tls
-            )
+            context = _create_tls_context(allow_unverified=smtp_config.allow_unverified_tls)
             smtp = smtplib.SMTP_SSL(
                 smtp_config.host,
                 smtp_config.port,
@@ -241,14 +243,14 @@ def send_email_message(smtp_config: EmailSmtpConfig, message: EmailMessage) -> N
                 context=context,
             )
         else:
-            smtp = smtplib.SMTP(smtp_config.host, smtp_config.port, timeout=smtp_config.timeout_seconds)
+            smtp = smtplib.SMTP(
+                smtp_config.host, smtp_config.port, timeout=smtp_config.timeout_seconds
+            )
 
         smtp.ehlo()
 
         if smtp_config.security == SECURITY_STARTTLS:
-            context = _create_tls_context(
-                allow_unverified=smtp_config.allow_unverified_tls
-            )
+            context = _create_tls_context(allow_unverified=smtp_config.allow_unverified_tls)
             smtp.starttls(context=context)
             smtp.ehlo()
 
@@ -319,7 +321,11 @@ def _post_process_email(
     stage_action = STAGE_NONE
     if is_managed_workspace_path(temp_file):
         stage_action = STAGE_COPY if preserve_source_on_failure else STAGE_MOVE
-    staging_dir = build_staging_dir("email", task.task_id) if stage_action != STAGE_NONE else get_staging_dir()
+    staging_dir = (
+        build_staging_dir("email", task.task_id)
+        if stage_action != STAGE_NONE
+        else get_staging_dir()
+    )
 
     output_plan = OutputPlan(
         mode=EMAIL_OUTPUT_MODE,

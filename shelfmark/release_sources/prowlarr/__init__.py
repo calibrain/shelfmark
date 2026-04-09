@@ -29,6 +29,4 @@ try:
 except ImportError as e:
     import logging
 
-    logging.getLogger(__name__).debug(
-        "Download clients not loaded: %s", e
-    )
+    logging.getLogger(__name__).debug("Download clients not loaded: %s", e)

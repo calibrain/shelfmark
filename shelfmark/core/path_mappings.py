@@ -41,11 +41,7 @@ def _normalize_prefix(path: str) -> str:
 
 def _is_windows_path(path: str) -> bool:
     """Check if a path looks like a Windows path (has a drive letter like C:/)."""
-    return (
-        len(path) >= _WINDOWS_DRIVE_PREFIX_LENGTH
-        and path[1] == ":"
-        and path[0].isalpha()
-    )
+    return len(path) >= _WINDOWS_DRIVE_PREFIX_LENGTH and path[1] == ":" and path[0].isalpha()
 
 
 def _normalize_host(host: str) -> str:
@@ -105,13 +101,10 @@ def remap_remote_to_local_with_match(
         if is_windows:
             remote_lower = remote_normalized.lower()
             prefix_lower = remote_prefix.lower()
-            matches = remote_lower == prefix_lower or remote_lower.startswith(
-                prefix_lower + "/"
-            )
+            matches = remote_lower == prefix_lower or remote_lower.startswith(prefix_lower + "/")
         else:
-            matches = (
-                remote_normalized == remote_prefix
-                or remote_normalized.startswith(remote_prefix + "/")
+            matches = remote_normalized == remote_prefix or remote_normalized.startswith(
+                remote_prefix + "/"
             )
 
         if matches:
@@ -122,9 +115,7 @@ def remap_remote_to_local_with_match(
 
             remainder = remainder.removeprefix("/")
 
-            remapped = (
-                Path(local_prefix) / remainder if remainder else Path(local_prefix)
-            )
+            remapped = Path(local_prefix) / remainder if remainder else Path(local_prefix)
             return remapped, True
 
     return Path(remote_normalized), False

@@ -101,9 +101,7 @@ def resolve_hardlink_source(
                 destination,
             )
             if status_callback:
-                status_callback(
-                    "resolving", "Cannot hardlink (different filesystems), using copy"
-                )
+                status_callback("resolving", "Cannot hardlink (different filesystems), using copy")
 
     return TransferPlan(
         source_path=source_path,
@@ -120,14 +118,10 @@ def is_torrent_source(source_path: Path, task: DownloadTask) -> bool:
 
     original_path = Path(task.original_download_path)
     try:
-        return run_blocking_io(source_path.resolve) == run_blocking_io(
-            original_path.resolve
-        )
+        return run_blocking_io(source_path.resolve) == run_blocking_io(original_path.resolve)
     except (OSError, ValueError):
         try:
-            return os.path.normpath(str(source_path)) == os.path.normpath(
-                str(original_path)
-            )
+            return os.path.normpath(str(source_path)) == os.path.normpath(str(original_path))
         except Exception:
             return False
 
@@ -150,10 +144,7 @@ def _transfer_single_file(
     if use_hardlink:
         final_path = atomic_hardlink(source_path, dest_path, max_attempts=max_attempts)
         try:
-            if (
-                run_blocking_io(source_path.stat).st_ino
-                == run_blocking_io(final_path.stat).st_ino
-            ):
+            if run_blocking_io(source_path.stat).st_ino == run_blocking_io(final_path.stat).st_ino:
                 return final_path, "hardlink"
         except OSError:
             return final_path, "hardlink"
@@ -179,9 +170,7 @@ def transfer_book_files(
         return [], "No book files found", {"hardlink": 0, "copy": 0, "move": 0}
 
     is_audiobook = check_audiobook(task.content_type)
-    organization_mode = organization_mode or get_file_organization(
-        is_audiobook=is_audiobook
-    )
+    organization_mode = organization_mode or get_file_organization(is_audiobook=is_audiobook)
     max_attempts = _max_attempts_for_batch(len(book_files))
 
     final_paths: list[Path] = []
@@ -220,9 +209,7 @@ def transfer_book_files(
 
             for source_file, part_number in files_with_parts:
                 ext = source_file.suffix.lstrip(".") or task.format or ""
-                file_metadata = build_file_metadata(
-                    task, source_file, part_number=part_number
-                )
+                file_metadata = build_file_metadata(task, source_file, part_number=part_number)
                 dest_path = run_blocking_io(
                     build_library_path,
                     str(destination),
@@ -255,9 +242,7 @@ def transfer_book_files(
             metadata = build_file_metadata(task, book_file)
             extension = book_file.suffix.lstrip(".") or task.format or ""
 
-            filename = parse_naming_template(
-                template, metadata, allow_path_separators=False
-            )
+            filename = parse_naming_template(template, metadata, allow_path_separators=False)
             filename = Path(filename).name if filename else ""
             if filename and extension:
                 filename = f"{sanitize_filename(filename)}.{extension}"
@@ -460,9 +445,7 @@ def transfer_directory_to_library(
             transferred_paths.append(final_path)
             op_counts[op] = op_counts.get(op, 0) + 1
 
-    op_summary = (
-        ", ".join(f"{op}={count}" for op, count in op_counts.items() if count) or "none"
-    )
+    op_summary = ", ".join(f"{op}={count}" for op, count in op_counts.items() if count) or "none"
     logger.info(
         "Created %d library file(s) in %s (ops: %s)",
         len(transferred_paths),
@@ -483,9 +466,7 @@ def transfer_directory_to_library(
         safe_cleanup_path(source_dir, task)
 
     message = (
-        f"Complete ({len(transferred_paths)} files)"
-        if len(transferred_paths) > 1
-        else "Complete"
+        f"Complete ({len(transferred_paths)} files)" if len(transferred_paths) > 1 else "Complete"
     )
     status_callback("complete", message)
 

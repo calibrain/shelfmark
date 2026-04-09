@@ -144,7 +144,9 @@ class OpenLibraryProvider(MetadataProvider):
         cache_key = f"{options.query}:{options.search_type.value}:{options.sort.value}:{options.language}:{options.limit}:{options.page}:{fields_key}"
         return self._search_cached(cache_key, options)
 
-    @cacheable(ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="openlibrary:search")
+    @cacheable(
+        ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="openlibrary:search"
+    )
     def _search_cached(self, cache_key: str, options: MetadataSearchOptions) -> list[BookMetadata]:
         """Cached search implementation."""
         _rate_limiter.wait_if_needed()
@@ -290,6 +292,7 @@ class OpenLibraryProvider(MetadataProvider):
                         # Update with ISBN from edition if not present
                         # Use dataclasses.replace() to avoid mutating cached object
                         from dataclasses import replace
+
                         updates = {}
                         if not book.isbn_10:
                             isbn_10_list = edition.get("isbn_10", [])
@@ -526,7 +529,10 @@ def _test_openlibrary_connection() -> dict[str, Any]:
         response.raise_for_status()
         data = response.json()
         if "docs" in data:
-            connection_result = {"success": True, "message": "Successfully connected to Open Library API"}
+            connection_result = {
+                "success": True,
+                "message": "Successfully connected to Open Library API",
+            }
     except requests.Timeout:
         return {"success": False, "message": "Connection timed out"}
     except requests.RequestException as e:
@@ -544,7 +550,9 @@ _OPENLIBRARY_SORT_OPTIONS = [
 ]
 
 
-@register_settings("openlibrary", "Open Library", icon="library", order=52, group="metadata_providers")
+@register_settings(
+    "openlibrary", "Open Library", icon="library", order=52, group="metadata_providers"
+)
 def openlibrary_settings() -> list[SettingsField]:
     """Open Library metadata provider settings."""
     return [

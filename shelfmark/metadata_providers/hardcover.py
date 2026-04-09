@@ -392,9 +392,19 @@ query GetSeriesBooks($seriesId: Int!) {
 HARDCOVER_STATUS_PREFIX = "status:"
 HARDCOVER_STATUSES: list[dict] = [
     {"id": 1, "label": "Want to Read", "slug": "want-to-read", "query_key": "want_to_read_count"},
-    {"id": 2, "label": "Currently Reading", "slug": "currently-reading", "query_key": "currently_reading_count"},
+    {
+        "id": 2,
+        "label": "Currently Reading",
+        "slug": "currently-reading",
+        "query_key": "currently_reading_count",
+    },
     {"id": 3, "label": "Read", "slug": "read", "query_key": "read_count"},
-    {"id": 5, "label": "Did Not Finish", "slug": "did-not-finish", "query_key": "did_not_finish_count"},
+    {
+        "id": 5,
+        "label": "Did Not Finish",
+        "slug": "did-not-finish",
+        "query_key": "did_not_finish_count",
+    },
 ]
 HARDCOVER_STATUS_URL_SLUGS: dict[int, str] = {s["id"]: s["slug"] for s in HARDCOVER_STATUSES}
 HARDCOVER_STATUS_GROUP = "Reading Status"
@@ -621,7 +631,10 @@ def _is_probably_series_position(subtitle: str) -> bool:
     normalized = subtitle.strip().lower()
 
     # Common patterns: "Book One", "Book 1", "Part 2", "Volume III", etc.
-    if re.match(r"^(book|part|volume|vol\.?|episode)\s+([0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b", normalized):
+    if re.match(
+        r"^(book|part|volume|vol\.?|episode)\s+([0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b",
+        normalized,
+    ):
         return True
 
     # e.g. "A Novel", "An Epic Fantasy", etc. These add noise to indexer queries.
@@ -630,8 +643,19 @@ def _is_probably_series_position(subtitle: str) -> bool:
 
     # Descriptive subtitles like "A [Name] Novel", "An [Name] Mystery", etc.
     genre_words = (
-        "novel", "novella", "story", "memoir", "tale", "thriller", "mystery",
-        "romance", "adventure", "epic", "saga", "chronicle", "fantasy",
+        "novel",
+        "novella",
+        "story",
+        "memoir",
+        "tale",
+        "thriller",
+        "mystery",
+        "romance",
+        "adventure",
+        "epic",
+        "saga",
+        "chronicle",
+        "fantasy",
         "novel-in-stories",
     )
     genre_pattern = "|".join(re.escape(w) for w in genre_words)
@@ -729,7 +753,9 @@ def _compute_search_title(
     normalized_title = _strip_parenthetical_suffix(original_title)
 
     normalized_subtitle = " ".join(subtitle.split()).strip() if subtitle else ""
-    normalized_subtitle = _strip_parenthetical_suffix(normalized_subtitle) if normalized_subtitle else ""
+    normalized_subtitle = (
+        _strip_parenthetical_suffix(normalized_subtitle) if normalized_subtitle else ""
+    )
 
     if normalized_subtitle and normalized_subtitle.lower() == normalized_title.lower():
         normalized_subtitle = ""
@@ -739,7 +765,10 @@ def _compute_search_title(
         match = re.match(r"^(.+?)\s*:\s*(.+)$", normalized_title)
         if match:
             suffix = _strip_parenthetical_suffix(match.group(2).strip())
-            if normalized_subtitle.lower() == suffix.lower() or normalized_subtitle.lower() in suffix.lower():
+            if (
+                normalized_subtitle.lower() == suffix.lower()
+                or normalized_subtitle.lower() in suffix.lower()
+            ):
                 return None
 
     # Prefer subtitle when it looks like the real title.
@@ -761,7 +790,10 @@ def _compute_search_title(
                 return prefix
 
             # Otherwise assume "Series: Book Title" and prefer the subtitle.
-            if normalized_subtitle.lower() == suffix.lower() or normalized_subtitle.lower() in suffix.lower():
+            if (
+                normalized_subtitle.lower() == suffix.lower()
+                or normalized_subtitle.lower() in suffix.lower()
+            ):
                 return normalized_subtitle
 
         # Fallback: if title contains the subtitle, this is likely "Series: Subtitle".
@@ -775,7 +807,7 @@ def _compute_search_title(
             # Common Hardcover format: "Series: Book Title".
             prefix = f"{series_normalized}:"
             if normalized_title.lower().startswith(prefix.lower()):
-                candidate = normalized_title[len(prefix):].strip()
+                candidate = normalized_title[len(prefix) :].strip()
                 candidate = _strip_parenthetical_suffix(candidate)
                 if candidate and candidate.lower() != normalized_title.lower():
                     return candidate
@@ -851,10 +883,12 @@ class HardcoverProvider(MetadataProvider):
         self.api_key = raw_key.removeprefix("Bearer ").strip() if raw_key else ""
         self.session = requests.Session()
         if self.api_key:
-            self.session.headers.update({
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            })
+            self.session.headers.update(
+                {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                }
+            )
 
     def is_available(self) -> bool:
         """Check if provider is configured with an API key."""
@@ -932,7 +966,9 @@ class HardcoverProvider(MetadataProvider):
         source_title = str(list_data.get("name") or "").strip() or None
         list_slug = str(list_data.get("slug") or "").strip()
         user_data = list_data.get("user", {})
-        owner_username = str(user_data.get("username") or "").strip() if isinstance(user_data, dict) else ""
+        owner_username = (
+            str(user_data.get("username") or "").strip() if isinstance(user_data, dict) else ""
+        )
         if list_slug and owner_username:
             source_url = f"https://hardcover.app/@{owner_username}/lists/{list_slug}"
 
@@ -956,10 +992,21 @@ class HardcoverProvider(MetadataProvider):
                 logger.debug("Failed to parse Hardcover list book for list_id=%s: %s", list_id, exc)
 
         has_more = offset + len(list_books) < books_count
-        return SearchResult(books=books, page=page, total_found=books_count, has_more=has_more, source_url=source_url, source_title=source_title)
+        return SearchResult(
+            books=books,
+            page=page,
+            total_found=books_count,
+            has_more=has_more,
+            source_url=source_url,
+            source_title=source_title,
+        )
 
-    @cacheable(ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="hardcover:list:slug")
-    def _fetch_list_books(self, slug: str, owner_username: str | None, page: int, limit: int) -> SearchResult:
+    @cacheable(
+        ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="hardcover:list:slug"
+    )
+    def _fetch_list_books(
+        self, slug: str, owner_username: str | None, page: int, limit: int
+    ) -> SearchResult:
         """Fetch list books by slug, optionally disambiguating by owner username."""
         if not self.api_key:
             return SearchResult(books=[], page=page, total_found=0, has_more=False)
@@ -1255,13 +1302,9 @@ class HardcoverProvider(MetadataProvider):
 
         series_items: list[dict[str, Any]] = []
         series_items.extend(author_series)
-        series_items.extend(
-            doc for hit in hits
-            if (doc := _unwrap_hit_document(hit)) is not None
-        )
+        series_items.extend(doc for hit in hits if (doc := _unwrap_hit_document(hit)) is not None)
 
         for item in series_items:
-
             series_id = item.get("id")
             name = str(item.get("name") or "").strip()
             if series_id is None or not name:
@@ -1336,12 +1379,18 @@ class HardcoverProvider(MetadataProvider):
             return None
 
         exact_match = next(
-            (candidate for candidate in candidates if candidate["name"].lower() == normalized_lookup),
+            (
+                candidate
+                for candidate in candidates
+                if candidate["name"].lower() == normalized_lookup
+            ),
             None,
         )
         return exact_match or candidates[0]
 
-    @cacheable(ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="hardcover:series:rows:v4")
+    @cacheable(
+        ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="hardcover:series:rows:v4"
+    )
     def _fetch_series_ordered_rows(
         self,
         series_id: int,
@@ -1366,11 +1415,15 @@ class HardcoverProvider(MetadataProvider):
             return empty
 
         series_data = series_items[0] if isinstance(series_items[0], dict) else {}
-        series_name = str(series_data.get("name") or "").strip() if isinstance(series_data, dict) else ""
+        series_name = (
+            str(series_data.get("name") or "").strip() if isinstance(series_data, dict) else ""
+        )
         allow_split_parts = _series_allows_split_parts(series_name)
         today = datetime.now().date()
 
-        book_series_rows = series_data.get("book_series", []) if isinstance(series_data, dict) else []
+        book_series_rows = (
+            series_data.get("book_series", []) if isinstance(series_data, dict) else []
+        )
         rows_by_position: dict[float, dict[str, Any]] = {}
         for row in book_series_rows:
             if not isinstance(row, dict):
@@ -1432,7 +1485,7 @@ class HardcoverProvider(MetadataProvider):
         total_found = cached["total"]
 
         offset = (page - 1) * limit
-        page_rows = ordered_rows[offset:offset + limit]
+        page_rows = ordered_rows[offset : offset + limit]
 
         books: list[BookMetadata] = []
         for row in page_rows:
@@ -1450,7 +1503,9 @@ class HardcoverProvider(MetadataProvider):
                 parsed_book.series_count = total_found
                 books.append(parsed_book)
             except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
-                logger.debug("Failed to parse Hardcover series book for series_id=%s: %s", series_id, exc)
+                logger.debug(
+                    "Failed to parse Hardcover series book for series_id=%s: %s", series_id, exc
+                )
 
         has_more = offset + len(page_rows) < total_found
         return SearchResult(books=books, page=page, total_found=total_found, has_more=has_more)
@@ -1460,7 +1515,9 @@ class HardcoverProvider(MetadataProvider):
         """Cached wrapper keyed by Hardcover user id to avoid cross-user cache leakage."""
         return self._fetch_user_lists()
 
-    def _fetch_current_user_books_by_status(self, status_id: int, page: int, limit: int) -> SearchResult:
+    def _fetch_current_user_books_by_status(
+        self, status_id: int, page: int, limit: int
+    ) -> SearchResult:
         """Fetch the current user's Hardcover books for a specific status shelf."""
         if not self.api_key:
             return SearchResult(books=[], page=page, total_found=0, has_more=False)
@@ -1471,7 +1528,11 @@ class HardcoverProvider(MetadataProvider):
 
         return self._fetch_user_books_by_status_cached(connected_user_id, status_id, page, limit)
 
-    @cacheable(ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="hardcover:user_books:status")
+    @cacheable(
+        ttl_key="METADATA_CACHE_SEARCH_TTL",
+        ttl_default=300,
+        key_prefix="hardcover:user_books:status",
+    )
     def _fetch_user_books_by_status_cached(
         self,
         _cache_user_id: str,
@@ -1527,7 +1588,9 @@ class HardcoverProvider(MetadataProvider):
                 if parsed_book:
                     books.append(parsed_book)
             except (AttributeError, KeyError, TypeError, ValueError) as exc:
-                logger.debug("Failed to parse Hardcover status book for status_id=%s: %s", status_id, exc)
+                logger.debug(
+                    "Failed to parse Hardcover status book for status_id=%s: %s", status_id, exc
+                )
 
         has_more = offset + len(status_books) < total_found
 
@@ -1538,7 +1601,13 @@ class HardcoverProvider(MetadataProvider):
         if url_slug and username:
             source_url = f"https://hardcover.app/@{username}/books/{url_slug}"
 
-        return SearchResult(books=books, page=page, total_found=total_found, has_more=has_more, source_url=source_url)
+        return SearchResult(
+            books=books,
+            page=page,
+            total_found=total_found,
+            has_more=has_more,
+            source_url=source_url,
+        )
 
     def _fetch_user_lists(self) -> list[dict[str, str]]:
         """Fetch raw list options from Hardcover me query."""
@@ -1564,16 +1633,8 @@ class HardcoverProvider(MetadataProvider):
 
         for status in HARDCOVER_STATUSES:
             count_data = me_data.get(status["query_key"], {})
-            aggregate = (
-                count_data.get("aggregate", {})
-                if isinstance(count_data, dict)
-                else {}
-            )
-            count = (
-                aggregate.get("count")
-                if isinstance(aggregate, dict)
-                else None
-            )
+            aggregate = count_data.get("aggregate", {}) if isinstance(count_data, dict) else {}
+            count = aggregate.get("count") if isinstance(aggregate, dict) else None
             value = f"{HARDCOVER_STATUS_PREFIX}{status['id']}"
             seen_values.add(value)
             options.append(
@@ -1772,7 +1833,8 @@ class HardcoverProvider(MetadataProvider):
         )
 
     def _fetch_book_target_states_batch(
-        self, book_ids: list[int],
+        self,
+        book_ids: list[int],
     ) -> dict[int, HardcoverBookTargetState]:
         """Load Hardcover membership state for multiple books in one query."""
         result = self._execute_query(
@@ -1842,9 +1904,14 @@ class HardcoverProvider(MetadataProvider):
 
         results: dict[str, list[dict[str, Any]]] = {}
         for int_id, str_id in id_map.items():
-            state = states.get(int_id, HardcoverBookTargetState(
-                user_book_id=None, status_id=None, list_book_ids={},
-            ))
+            state = states.get(
+                int_id,
+                HardcoverBookTargetState(
+                    user_book_id=None,
+                    status_id=None,
+                    list_book_ids={},
+                ),
+            )
             options = [dict(opt) for opt in writable_options]
             for option in options:
                 value = str(option.get("value") or "").strip()
@@ -1867,9 +1934,7 @@ class HardcoverProvider(MetadataProvider):
             if (
                 option.get("group") in HARDCOVER_WRITABLE_TARGET_GROUPS
                 and value
-                and value.startswith(
-                    (HARDCOVER_STATUS_PREFIX, HARDCOVER_LIST_ID_PREFIX)
-                )
+                and value.startswith((HARDCOVER_STATUS_PREFIX, HARDCOVER_LIST_ID_PREFIX))
             ):
                 writable_targets.add(value)
         return writable_targets
@@ -2026,7 +2091,9 @@ class HardcoverProvider(MetadataProvider):
             if list_value_from_field.startswith(HARDCOVER_STATUS_PREFIX):
                 try:
                     status_id = self._parse_prefixed_int(list_value_from_field, "status")
-                    return self._fetch_current_user_books_by_status(status_id, options.page, options.limit)
+                    return self._fetch_current_user_books_by_status(
+                        status_id, options.page, options.limit
+                    )
                 except ValueError:
                     logger.debug("Invalid Hardcover status field value: %s", list_value_from_field)
                     return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
@@ -2140,17 +2207,19 @@ class HardcoverProvider(MetadataProvider):
                 if book:
                     books.append(book)
 
-            logger.info("Hardcover search '%s' (fields=%s) returned %s results", query, search_fields, len(books))
+            logger.info(
+                "Hardcover search '%s' (fields=%s) returned %s results",
+                query,
+                search_fields,
+                len(books),
+            )
 
             # Calculate if there are more results
             results_so_far = (options.page - 1) * HARDCOVER_PAGE_SIZE + len(hits)
             has_more = results_so_far < found_count
 
             return SearchResult(
-                books=books,
-                page=options.page,
-                total_found=found_count,
-                has_more=has_more
+                books=books, page=options.page, total_found=found_count, has_more=has_more
             )
 
         except (AttributeError, KeyError, TypeError, ValueError):
@@ -2314,6 +2383,7 @@ class HardcoverProvider(MetadataProvider):
         raise_on_error: bool = False,
     ) -> dict | None:
         """Execute a GraphQL query and return data or None on error."""
+
         def _raise_graphql_error(message: str) -> None:
             raise HardcoverGraphQLError(message)
 
@@ -2331,7 +2401,9 @@ class HardcoverProvider(MetadataProvider):
             if "errors" in data:
                 logger.error("GraphQL errors: %s", data["errors"])
                 if raise_on_error:
-                    message = _extract_graphql_error_message(data) or "Hardcover rejected this request"
+                    message = (
+                        _extract_graphql_error_message(data) or "Hardcover rejected this request"
+                    )
                     _raise_graphql_error(message)
                 return None
 
@@ -2416,7 +2488,9 @@ class HardcoverProvider(MetadataProvider):
             # Readers (users who have this book)
             users_count = item.get("users_count")
             if users_count:
-                display_fields.append(DisplayField(label="Readers", value=f"{users_count:,}", icon="users"))
+                display_fields.append(
+                    DisplayField(label="Readers", value=f"{users_count:,}", icon="users")
+                )
 
             # Combine headline and description if both present
             headline = item.get("headline")
@@ -2441,7 +2515,6 @@ class HardcoverProvider(MetadataProvider):
                 source_url=source_url,
                 display_fields=display_fields,
             )
-
 
         except (AttributeError, KeyError, TypeError, ValueError) as e:
             logger.debug("Failed to parse Hardcover search result: %s", e)
@@ -2585,29 +2658,28 @@ class HardcoverProvider(MetadataProvider):
             display_fields.append(DisplayField(label="Readers", value=readers_value, icon="users"))
 
         return BookMetadata(
-             provider="hardcover",
-             provider_id=str(book["id"]),
-             title=title,
-             subtitle=subtitle,
-             search_title=_compute_search_title(title, subtitle, series_name=series_name),
-             search_author=search_author,
-             provider_display_name="Hardcover",
-             authors=authors,
-             isbn_10=isbn_10,
-             isbn_13=isbn_13,
-             cover_url=cover_url,
-             description=full_description,
-             publish_year=publish_year,
-             genres=genres,
-             source_url=source_url,
-             series_id=series_id,
-             series_name=series_name,
-             series_position=series_position,
-             series_count=series_count,
-             titles_by_language=titles_by_language,
-             display_fields=display_fields,
-         )
-
+            provider="hardcover",
+            provider_id=str(book["id"]),
+            title=title,
+            subtitle=subtitle,
+            search_title=_compute_search_title(title, subtitle, series_name=series_name),
+            search_author=search_author,
+            provider_display_name="Hardcover",
+            authors=authors,
+            isbn_10=isbn_10,
+            isbn_13=isbn_13,
+            cover_url=cover_url,
+            description=full_description,
+            publish_year=publish_year,
+            genres=genres,
+            source_url=source_url,
+            series_id=series_id,
+            series_name=series_name,
+            series_position=series_position,
+            series_count=series_count,
+            titles_by_language=titles_by_language,
+            display_fields=display_fields,
+        )
 
 
 def _test_hardcover_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -2630,7 +2702,10 @@ def _test_hardcover_connection(current_values: dict[str, Any] | None = None) -> 
         return {"success": False, "message": "API key is required"}
 
     if key_len < 100:
-        return {"success": False, "message": f"API key seems too short ({key_len} chars). Expected 500+ chars."}
+        return {
+            "success": False,
+            "message": f"API key seems too short ({key_len} chars). Expected 500+ chars.",
+        }
 
     connection_result = {"success": False, "message": "API request failed - check your API key"}
     try:
@@ -2642,8 +2717,14 @@ def _test_hardcover_connection(current_values: dict[str, Any] | None = None) -> 
             me_data = result.get("me", {})
             if isinstance(me_data, list) and me_data:
                 me_data = me_data[0]
-            user_id = str(me_data.get("id")) if isinstance(me_data, dict) and me_data.get("id") is not None else None
-            username = me_data.get("username", "Unknown") if isinstance(me_data, dict) else "Unknown"
+            user_id = (
+                str(me_data.get("id"))
+                if isinstance(me_data, dict) and me_data.get("id") is not None
+                else None
+            )
+            username = (
+                me_data.get("username", "Unknown") if isinstance(me_data, dict) else "Unknown"
+            )
 
             # Save connected user metadata for persistent display + per-user list caching
             _save_connected_user(user_id, username)
@@ -2708,7 +2789,9 @@ def hardcover_settings() -> list[SettingsField]:
     """Hardcover metadata provider settings."""
     # Check for connected username to show status
     connected_user = _get_connected_username()
-    test_button_description = f"Connected as: {connected_user}" if connected_user else "Verify your API key works"
+    test_button_description = (
+        f"Connected as: {connected_user}" if connected_user else "Verify your API key works"
+    )
 
     return [
         HeadingField(

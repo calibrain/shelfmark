@@ -204,9 +204,7 @@ class TransmissionClient(DownloadClient):
                 try:
                     self._client.change_torrent(ids=torrent_hash, **seed_kwargs)
                 except Exception as e:
-                    logger.warning(
-                        "Failed to set seeding limits for %s: %s", torrent_hash, e
-                    )
+                    logger.warning("Failed to set seeding limits for %s: %s", torrent_hash, e)
 
         except Exception:
             logger.exception("Transmission add failed")
@@ -237,9 +235,7 @@ class TransmissionClient(DownloadClient):
             # 6: seeding
             # torrent.status is an enum with .value as string
             status_value = (
-                torrent.status.value
-                if hasattr(torrent.status, "value")
-                else str(torrent.status)
+                torrent.status.value if hasattr(torrent.status, "value") else str(torrent.status)
             )
             status_map = {
                 "stopped": ("paused", "Paused"),
@@ -251,9 +247,7 @@ class TransmissionClient(DownloadClient):
                 "seeding": ("seeding", "Seeding"),
             }
 
-            state, message = status_map.get(
-                status_value, ("downloading", "Downloading")
-            )
+            state, message = status_map.get(status_value, ("downloading", "Downloading"))
             progress = torrent.percent_done * 100
             # Only mark complete when seeding - seed pending means files still being moved
             complete = progress >= _SEEDING_PROGRESS_PERCENT and status_value == "seeding"
@@ -269,9 +263,7 @@ class TransmissionClient(DownloadClient):
                     eta = int(eta_seconds)
 
             # Get download speed
-            download_speed = (
-                torrent.rate_download if hasattr(torrent, "rate_download") else None
-            )
+            download_speed = torrent.rate_download if hasattr(torrent, "rate_download") else None
 
             # Get file path for completed downloads
             file_path = None

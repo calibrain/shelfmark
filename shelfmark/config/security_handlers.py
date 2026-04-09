@@ -16,7 +16,9 @@ def _has_local_password_admin() -> bool:
     root = os.environ.get("CONFIG_DIR", "/config")
     user_db = UserDB(str(Path(root) / "users.db"))
     user_db.initialize()
-    return any(user.get("password_hash") and user.get("role") == "admin" for user in user_db.list_users())
+    return any(
+        user.get("password_hash") and user.get("role") == "admin" for user in user_db.list_users()
+    )
 
 
 def on_save_security(
@@ -57,7 +59,9 @@ def test_oidc_connection(
 
     try:
         # Prefer the current (unsaved) form value over the saved config
-        discovery_url = (current_values or {}).get("OIDC_DISCOVERY_URL") or load_security_config().get("OIDC_DISCOVERY_URL", "")
+        discovery_url = (current_values or {}).get(
+            "OIDC_DISCOVERY_URL"
+        ) or load_security_config().get("OIDC_DISCOVERY_URL", "")
         if not discovery_url:
             return {"success": False, "message": "Discovery URL is not configured."}
 
@@ -68,7 +72,10 @@ def test_oidc_connection(
         required_fields = ["issuer", "authorization_endpoint", "token_endpoint"]
         missing_fields = [field for field in required_fields if field not in document]
         if missing_fields:
-            return {"success": False, "message": f"Discovery document missing fields: {', '.join(missing_fields)}"}
+            return {
+                "success": False,
+                "message": f"Discovery document missing fields: {', '.join(missing_fields)}",
+            }
 
         return {"success": True, "message": f"Connected to {document['issuer']}"}
     except Exception as exc:

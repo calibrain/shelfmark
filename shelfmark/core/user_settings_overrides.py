@@ -28,9 +28,7 @@ def get_ordered_user_overridable_fields(tab_name: str) -> list[tuple[str, Any]]:
     return [(field.key, field) for field in tab.fields if field.key in overridable_map]
 
 
-def build_user_preferences_payload(
-    user_db: UserDB, user_id: int, tab_name: str
-) -> dict[str, Any]:
+def build_user_preferences_payload(user_db: UserDB, user_id: int, tab_name: str) -> dict[str, Any]:
     from shelfmark.core.config import config as app_config
 
     settings_registry = get_settings_registry()
@@ -49,9 +47,7 @@ def build_user_preferences_payload(
     effective: dict[str, dict[str, Any]] = {}
 
     for key, field in ordered_fields:
-        serialized = settings_registry.serialize_field(
-            field, tab_name, include_value=False
-        )
+        serialized = settings_registry.serialize_field(field, tab_name, include_value=False)
         serialized["fromEnv"] = bool(
             field.env_supported and settings_registry.is_value_from_env(field)
         )

@@ -93,10 +93,10 @@ def _split_title_and_author(raw_title: str) -> tuple[str, str | None]:
 
 def _map_language(language: str) -> str | None:
     """Map language name to ISO 639-1 code.
-    
+
     Args:
         language: Language name (e.g., "English")
-        
+
     Returns:
         ISO 639-1 code (e.g., "en"), or original string if no mapping found, or None if input is empty
 
@@ -150,16 +150,16 @@ class AudiobookBaySource(ReleaseSource):
         plan: "ReleaseSearchPlan",
         *,
         expand_search: bool = False,
-        content_type: str = "ebook"
+        content_type: str = "ebook",
     ) -> list[Release]:
         """Search AudiobookBay for audiobook releases.
-        
+
         Args:
             book: Book metadata
             plan: Search plan with query variants
             expand_search: Ignored (always searches)
             content_type: Must be "audiobook" for this source
-            
+
         Returns:
             List of Release objects
 
@@ -225,7 +225,9 @@ class AudiobookBaySource(ReleaseSource):
 
                 # For auto-generated queries, fallback to broad matching if exact phrase returns nothing.
                 if exact_phrase and not results and not plan.manual_query:
-                    logger.info("No exact phrase results, retrying AudiobookBay search without quotes")
+                    logger.info(
+                        "No exact phrase results, retrying AudiobookBay search without quotes"
+                    )
                     results = scraper.search_audiobookbay(
                         query=query_lower,
                         max_pages=max_pages,
@@ -296,7 +298,7 @@ class AudiobookBaySource(ReleaseSource):
                             "title_raw": raw_title,
                             "language_raw": language_raw,  # Keep original for reference
                             "author": author,  # Parsed author from title pattern
-                        }
+                        },
                     )
                     releases.append(release)
                 except (AttributeError, KeyError, TypeError, ValueError) as e:
@@ -313,11 +315,13 @@ class AudiobookBaySource(ReleaseSource):
 
     def is_available(self) -> bool:
         """Check if AudiobookBay source is enabled and configured."""
-        return config.get("ABB_ENABLED", False) is True and bool(normalize_hostname(config.get("ABB_HOSTNAME", "")))
+        return config.get("ABB_ENABLED", False) is True and bool(
+            normalize_hostname(config.get("ABB_HOSTNAME", ""))
+        )
 
     def get_column_config(self) -> ReleaseColumnConfig:
         """Get column configuration for AudiobookBay releases.
-        
+
         Shows title, language, format, bitrate, and size columns.
         No seeders/peers since ABB doesn't show this on search page.
         """

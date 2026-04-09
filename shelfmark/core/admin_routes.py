@@ -93,8 +93,7 @@ def _oidc_role_management_message(security_config: dict[str, Any] | None = None)
             f"'{admin_group}' group in your identity provider"
         )
     return (
-        "Disable 'Use Admin Group for Authorization' in security settings "
-        "to manage roles manually"
+        "Disable 'Use Admin Group for Authorization' in security settings to manage roles manually"
     )
 
 
@@ -115,8 +114,6 @@ def _serialize_user(
         security_config=security_config,
     )
     return payload
-
-
 
 
 def _sync_all_cwa_users(user_db: UserDB) -> dict[str, int]:
@@ -149,6 +146,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         In auth-required modes, requires an authenticated session with admin role.
         Caches the resolved auth_mode in ``g.auth_mode`` for the request.
         """
+
         @wraps(f)
         def decorated(*args, **kwargs) -> Response | tuple[Response, int]:
             auth_mode = load_active_auth_mode(CWA_DB_PATH, user_db=user_db)
@@ -159,6 +157,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
                 if not session.get("is_admin", False):
                     return jsonify({"error": "Admin access required"}), 403
             return f(*args, **kwargs)
+
         return decorated
 
     @app.route("/api/admin/users", methods=["GET"])
@@ -167,10 +166,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         """List all users."""
         users = user_db.list_users()
         auth_mode = g.auth_mode
-        return jsonify([
-            _serialize_user(u, auth_mode)
-            for u in users
-        ])
+        return jsonify([_serialize_user(u, auth_mode) for u in users])
 
     @app.route("/api/admin/users", methods=["POST"])
     @_require_admin
@@ -186,13 +182,15 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         role = data.get("role", "user")
 
         if auth_mode in {AUTH_SOURCE_PROXY, AUTH_SOURCE_CWA}:
-            return jsonify({
-                "error": "Local user creation is disabled in this authentication mode",
-                "message": (
-                    "Users are provisioned by your external authentication source. "
-                    "Switch to builtin or OIDC mode to create local users."
-                ),
-            }), 400
+            return jsonify(
+                {
+                    "error": "Local user creation is disabled in this authentication mode",
+                    "message": (
+                        "Users are provisioned by your external authentication source. "
+                        "Switch to builtin or OIDC mode to create local users."
+                    ),
+                }
+            ), 400
 
         if not username:
             return jsonify({"error": "Username is required"}), 400
@@ -222,7 +220,13 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             )
         except ValueError:
             return jsonify({"error": "Username already exists"}), 409
-        logger.info("Shelfmark user created (source=manual_admin_create, created_by=%s, username=%s, role=%s, auth_source=%s)", session.get("user_id", "unknown"), username, role, AUTH_SOURCE_BUILTIN)
+        logger.info(
+            "Shelfmark user created (source=manual_admin_create, created_by=%s, username=%s, role=%s, auth_source=%s)",
+            session.get("user_id", "unknown"),
+            username,
+            role,
+            AUTH_SOURCE_BUILTIN,
+        )
         return jsonify(
             _serialize_user(
                 user,
@@ -264,10 +268,12 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         password = data.get("password", "")
         if password:
             if not capabilities["canSetPassword"]:
-                return jsonify({
-                    "error": f"Cannot set password for {auth_source.upper()} users",
-                    "message": "Password authentication is only available for local users.",
-                }), 400
+                return jsonify(
+                    {
+                        "error": f"Cannot set password for {auth_source.upper()} users",
+                        "message": "Password authentication is only available for local users.",
+                    }
+                ), 400
             if len(password) < 4:
                 return jsonify({"error": "Password must be at least 4 characters"}), 400
             user_db.update_user(user_id, password_hash=generate_password_hash(password))
@@ -283,40 +289,49 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
         role_changed = "role" in user_fields and user_fields["role"] != user.get("role")
         email_changed = "email" in user_fields and user_fields["email"] != user.get("email")
-        display_name_changed = (
-            "display_name" in user_fields
-            and user_fields["display_name"] != user.get("display_name")
-        )
+        display_name_changed = "display_name" in user_fields and user_fields[
+            "display_name"
+        ] != user.get("display_name")
 
         if role_changed and not capabilities["canEditRole"]:
             if auth_source == AUTH_SOURCE_OIDC:
-                return jsonify({
-                    "error": "Cannot change role for OIDC user when group-based authorization is enabled",
-                    "message": _oidc_role_management_message(),
-                }), 400
+                return jsonify(
+                    {
+                        "error": "Cannot change role for OIDC user when group-based authorization is enabled",
+                        "message": _oidc_role_management_message(),
+                    }
+                ), 400
 
-            return jsonify({
-                "error": f"Cannot change role for {auth_source.upper()} users",
-                "message": "Role is managed by the external authentication source.",
-            }), 400
+            return jsonify(
+                {
+                    "error": f"Cannot change role for {auth_source.upper()} users",
+                    "message": "Role is managed by the external authentication source.",
+                }
+            ), 400
 
         if email_changed and not capabilities["canEditEmail"]:
             if auth_source == AUTH_SOURCE_CWA:
-                return jsonify({
-                    "error": "Cannot change email for CWA users",
-                    "message": "Email is synced from Calibre-Web.",
-                }), 400
+                return jsonify(
+                    {
+                        "error": "Cannot change email for CWA users",
+                        "message": "Email is synced from Calibre-Web.",
+                    }
+                ), 400
 
-            return jsonify({
-                "error": "Cannot change email for OIDC users",
-                "message": "Email is managed by your identity provider.",
-            }), 400
+            return jsonify(
+                {
+                    "error": "Cannot change email for OIDC users",
+                    "message": "Email is managed by your identity provider.",
+                }
+            ), 400
 
         if display_name_changed and not capabilities["canEditDisplayName"]:
-            return jsonify({
-                "error": "Cannot change display name for OIDC users",
-                "message": "Display name is managed by your identity provider.",
-            }), 400
+            return jsonify(
+                {
+                    "error": "Cannot change display name for OIDC users",
+                    "message": "Display name is managed by your identity provider.",
+                }
+            ), 400
 
         # Allow demoting the last admin account.
         # Auth mode resolution automatically falls back to "none" when no
@@ -337,15 +352,18 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
             validated_settings, validation_errors = validate_user_settings(data["settings"])
             if validation_errors:
-                return jsonify({
-                    "error": "Invalid settings payload",
-                    "details": validation_errors,
-                }), 400
+                return jsonify(
+                    {
+                        "error": "Invalid settings payload",
+                        "details": validation_errors,
+                    }
+                ), 400
 
             user_db.set_user_settings(user_id, validated_settings)
             # Ensure runtime reads see updated per-user overrides immediately.
             try:
                 from shelfmark.core.config import config as app_config
+
                 app_config.refresh(force=True)
             except Exception:
                 pass
@@ -364,22 +382,28 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
     def admin_sync_cwa_users() -> Response | tuple[Response, int]:
         """Manually sync users from Calibre-Web into users.db."""
         if g.auth_mode != AUTH_SOURCE_CWA:
-            return jsonify({
-                "error": "CWA sync is only available when CWA authentication is enabled",
-            }), 400
+            return jsonify(
+                {
+                    "error": "CWA sync is only available when CWA authentication is enabled",
+                }
+            ), 400
 
         try:
             summary = _sync_all_cwa_users(user_db)
         except FileNotFoundError:
-            return jsonify({
-                "error": "Calibre-Web database is not available",
-                "message": "Verify app.db is mounted and readable at /auth/app.db.",
-            }), 503
+            return jsonify(
+                {
+                    "error": "Calibre-Web database is not available",
+                    "message": "Verify app.db is mounted and readable at /auth/app.db.",
+                }
+            ), 503
         except Exception:
             logger.exception("Failed to sync CWA users")
-            return jsonify({
-                "error": "Failed to sync users from Calibre-Web",
-            }), 500
+            return jsonify(
+                {
+                    "error": "Failed to sync users from Calibre-Web",
+                }
+            ), 500
 
         message = (
             f"Synced {summary['total']} CWA users "
@@ -387,11 +411,13 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             f"{summary.get('deleted', 0)} deleted)."
         )
         logger.info(message)
-        return jsonify({
-            "success": True,
-            "message": message,
-            **summary,
-        })
+        return jsonify(
+            {
+                "success": True,
+                "message": message,
+                **summary,
+            }
+        )
 
     register_admin_settings_routes(app, user_db, _require_admin)
 
@@ -412,10 +438,12 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             user.get("oidc_subject"),
         )
         if auth_source == AUTH_SOURCE_CWA and auth_source == g.auth_mode:
-            return jsonify({
-                "error": f"Cannot delete active {auth_source.upper()} users",
-                "message": f"{auth_source.upper()} users are automatically re-provisioned on login.",
-            }), 400
+            return jsonify(
+                {
+                    "error": f"Cannot delete active {auth_source.upper()} users",
+                    "message": f"{auth_source.upper()} users are automatically re-provisioned on login.",
+                }
+            ), 400
 
         # Allow deleting the last local admin account.
         # Auth mode resolution automatically falls back to "none" when no

@@ -97,14 +97,10 @@ def parse_torznab_xml(xml_text: str) -> list[dict[str, Any]]:
 
         prowlarr_indexer_el = item.find("prowlarrindexer")
         indexer_id = (
-            _coerce_int(prowlarr_indexer_el.get("id"))
-            if prowlarr_indexer_el is not None
-            else None
+            _coerce_int(prowlarr_indexer_el.get("id")) if prowlarr_indexer_el is not None else None
         )
         indexer_name = (
-            (prowlarr_indexer_el.text or "").strip()
-            if prowlarr_indexer_el is not None
-            else ""
+            (prowlarr_indexer_el.text or "").strip() if prowlarr_indexer_el is not None else ""
         )
 
         categories: list[int] = []

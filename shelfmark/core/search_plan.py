@@ -105,9 +105,7 @@ def build_release_search_plan(
 
     if resolved_manual_query:
         # Manual override: use the raw query as-is (no language/title expansion).
-        variant = ReleaseSearchVariant(
-            title=resolved_manual_query, author="", languages=None
-        )
+        variant = ReleaseSearchVariant(title=resolved_manual_query, author="", languages=None)
         return ReleaseSearchPlan(
             languages=resolved_languages,
             isbn_candidates=[],
@@ -161,8 +159,7 @@ def build_release_search_plan(
     # If no titles could be built, fall back to ISBN queries.
     if not title_variants and isbn_candidates:
         title_variants = [
-            ReleaseSearchVariant(title=isbn, author="", languages=None)
-            for isbn in isbn_candidates
+            ReleaseSearchVariant(title=isbn, author="", languages=None) for isbn in isbn_candidates
         ]
 
     return ReleaseSearchPlan(

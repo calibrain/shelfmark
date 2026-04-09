@@ -116,9 +116,7 @@ class GoogleBooksProvider(MetadataProvider):
         ttl_default=300,
         key_prefix="googlebooks:search",
     )
-    def _search_cached(
-        self, cache_key: str, options: MetadataSearchOptions
-    ) -> list[BookMetadata]:
+    def _search_cached(self, cache_key: str, options: MetadataSearchOptions) -> list[BookMetadata]:
         """Cached search implementation."""
         # Build query string with Google Books operators
         author_value = options.fields.get("author", "").strip()
@@ -171,9 +169,7 @@ class GoogleBooksProvider(MetadataProvider):
                     if book:
                         books.append(book)
 
-                logger.info(
-                    "Google Books search '%s' returned %s results", query, len(books)
-                )
+                logger.info("Google Books search '%s' returned %s results", query, len(books))
 
         except Exception:
             logger.exception("Google Books search error")
@@ -230,9 +226,7 @@ class GoogleBooksProvider(MetadataProvider):
             logger.exception("Google Books ISBN search error")
             return None
 
-    def _make_request(
-        self, endpoint: str, params: dict[str, Any]
-    ) -> dict[str, Any] | None:
+    def _make_request(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any] | None:
         """Make authenticated API request to endpoint."""
         if not self.api_key:
             logger.warning("Google Books API key not configured")
@@ -244,9 +238,7 @@ class GoogleBooksProvider(MetadataProvider):
         url = f"{GOOGLE_BOOKS_BASE_URL}{endpoint}"
 
         try:
-            response = self.session.get(
-                url, params=params, timeout=15, verify=get_ssl_verify(url)
-            )
+            response = self.session.get(url, params=params, timeout=15, verify=get_ssl_verify(url))
             response.raise_for_status()
             return response.json()
 
@@ -308,9 +300,7 @@ class GoogleBooksProvider(MetadataProvider):
             )
             # Remove edge=curl parameter and upgrade to https
             if cover_url:
-                cover_url = cover_url.replace("&edge=curl", "").replace(
-                    "http://", "https://"
-                )
+                cover_url = cover_url.replace("&edge=curl", "").replace("http://", "https://")
 
             # Publisher
             publisher = volume_info.get("publisher")
@@ -343,9 +333,7 @@ class GoogleBooksProvider(MetadataProvider):
                 rating_str = f"{average_rating:.1f}"
                 if ratings_count:
                     rating_str += f" ({ratings_count:,})"
-                display_fields.append(
-                    DisplayField(label="Rating", value=rating_str, icon="star")
-                )
+                display_fields.append(DisplayField(label="Rating", value=rating_str, icon="star"))
 
             return BookMetadata(
                 provider="googlebooks",
@@ -377,9 +365,7 @@ def _test_googlebooks_connection(
     current_values = current_values or {}
 
     # Use current form values first, fall back to saved config
-    api_key = current_values.get("GOOGLEBOOKS_API_KEY") or app_config.get(
-        "GOOGLEBOOKS_API_KEY", ""
-    )
+    api_key = current_values.get("GOOGLEBOOKS_API_KEY") or app_config.get("GOOGLEBOOKS_API_KEY", "")
 
     if not api_key:
         return {
@@ -419,9 +405,7 @@ _GOOGLEBOOKS_SORT_OPTIONS = [
 ]
 
 
-@register_settings(
-    "googlebooks", "Google Books", icon="book", order=53, group="metadata_providers"
-)
+@register_settings("googlebooks", "Google Books", icon="book", order=53, group="metadata_providers")
 def googlebooks_settings() -> list[SettingsField]:
     """Google Books metadata provider settings."""
     return [

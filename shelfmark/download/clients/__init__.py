@@ -74,10 +74,7 @@ def with_retry(
                     return func(*args, **kwargs)
                 except requests.exceptions.HTTPError as e:
                     # Only retry on server errors (5xx), not client errors (4xx)
-                    if (
-                        e.response is not None
-                        and e.response.status_code < _MIN_RETRYABLE_STATUS
-                    ):
+                    if e.response is not None and e.response.status_code < _MIN_RETRYABLE_STATUS:
                         raise
                     last_exception = e
                 except RETRYABLE_EXCEPTIONS as e:
@@ -158,17 +155,13 @@ class DownloadStatus:
             except ValueError:
                 # Unknown state string - keep as-is for backwards compatibility
                 _logger.warning(
-                    _logger.warning(
-                        "Unknown download state '%s', keeping as string", self.state
-                    )
+                    _logger.warning("Unknown download state '%s', keeping as string", self.state)
                 )
 
         # Validate progress is in range
         if not _MIN_PROGRESS_PERCENT <= self.progress <= _MAX_PROGRESS_PERCENT:
             _logger.debug(
-                _logger.debug(
-                    "Progress %s out of range, clamping to [0, 100]", self.progress
-                )
+                _logger.debug("Progress %s out of range, clamping to [0, 100]", self.progress)
             )
             object.__setattr__(self, "progress", max(0, min(100, self.progress)))
 

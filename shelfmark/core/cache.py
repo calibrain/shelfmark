@@ -79,9 +79,7 @@ class CacheService:
         """Remove all expired entries. Returns count removed."""
         with self._lock:
             now = time.time()
-            expired_keys = [
-                key for key, entry in self._cache.items() if entry.expires_at < now
-            ]
+            expired_keys = [key for key, entry in self._cache.items() if entry.expires_at < now]
             for key in expired_keys:
                 del self._cache[key]
             return len(expired_keys)
