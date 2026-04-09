@@ -104,10 +104,7 @@ def _verify_transfer_size(
     if actual_size == expected_size:
         return
 
-    logger.debug(
-        f"File {action} size mismatch, waiting for filesystem sync: {dest} "
-        f"({actual_size} != {expected_size})"
-    )
+    logger.debug('File %s size mismatch, waiting for filesystem sync: %s (%s != %s)', action, dest, actual_size, expected_size)
     time.sleep(_VERIFY_IO_WAIT_SECONDS)
 
     actual_size = run_blocking_io(dest.stat).st_size
@@ -194,7 +191,7 @@ def atomic_write(dest_path: Path, data: bytes, max_attempts: int = 100) -> Path:
             finally:
                 run_blocking_io(os.close, fd)
             if attempt > 0:
-                logger.info(f"File collision resolved: {try_path.name}")
+                logger.info('File collision resolved: %s', try_path.name)
         except FileExistsError:
             continue
         else:
@@ -407,7 +404,7 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
             else:
                 run_blocking_io(os.rename, str(source_path), str(try_path))
             if attempt > 0:
-                logger.info(f"File collision resolved: {try_path.name}")
+                logger.info('File collision resolved: %s', try_path.name)
         except FileExistsError:
             # Race condition: file created between exists() check and rename()
             if claimed:
@@ -468,7 +465,7 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                     run_blocking_io(source_path.unlink)
 
                     if attempt > 0:
-                        logger.info(f"File collision resolved: {try_path.name}")
+                        logger.info('File collision resolved: %s', try_path.name)
                 except FileExistsError:
                     if temp_path:
                         run_blocking_io(temp_path.unlink, missing_ok=True)
@@ -497,7 +494,7 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                     try:
                         _perform_nfs_fallback(source_path, try_path, is_move=True)
                         if attempt > 0:
-                            logger.info(f"File collision resolved (fallback): {try_path.name}")
+                            logger.info('File collision resolved (fallback): %s', try_path.name)
                     except Exception as fallback_error:
                         logger.exception(
                             "NFS fallback also failed (%s -> %s)",
@@ -538,7 +535,7 @@ def atomic_hardlink(source_path: Path, dest_path: Path, max_attempts: int = 100)
         try:
             run_blocking_io(os.link, str(source_path), str(try_path))
             if attempt > 0:
-                logger.info(f"File collision resolved: {try_path.name}")
+                logger.info('File collision resolved: %s', try_path.name)
         except FileExistsError:
             continue
         except OSError as e:
@@ -647,7 +644,7 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                 raise
 
             if attempt > 0:
-                logger.info(f"File collision resolved: {try_path.name}")
+                logger.info('File collision resolved: %s', try_path.name)
         except Exception:
             if temp_path:
                 run_blocking_io(temp_path.unlink, missing_ok=True)

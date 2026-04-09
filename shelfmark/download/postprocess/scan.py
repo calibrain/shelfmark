@@ -115,10 +115,10 @@ def scan_directory_tree(
         run_blocking_io(_probe_dir)
     except PermissionError as exc:
         log_path_permission_context("scan_directory", directory)
-        logger.warning(f"Permission denied scanning directory: {directory} ({exc})")
+        logger.warning('Permission denied scanning directory: %s (%s)', directory, exc)
         return [], [], [], f"Permission denied accessing download folder: {directory}"
     except (FileNotFoundError, NotADirectoryError, OSError) as exc:
-        logger.warning(f"Cannot access download folder: {directory} ({exc})")
+        logger.warning('Cannot access download folder: %s (%s)', directory, exc)
         return [], [], [], f"Cannot access download folder: {directory} ({exc})"
 
     supported_formats = get_supported_formats(content_type)
@@ -148,9 +148,9 @@ def scan_directory_tree(
                 log_path_permission_context("scan_directory_walk", error_path)
                 logged_walk_permission_context = True
 
-            logger.debug(f"Skipping inaccessible path during scan: {error}")
+            logger.debug('Skipping inaccessible path during scan: %s', error)
         else:
-            logger.debug(f"Error scanning directory tree: {error}")
+            logger.debug('Error scanning directory tree: %s', error)
 
     def _walk_tree() -> tuple[list[Path], list[Path], list[Path]]:
         book_files: list[Path] = []
@@ -176,10 +176,10 @@ def scan_directory_tree(
         book_files, rejected_files, archive_files = run_blocking_io(_walk_tree)
     except PermissionError as exc:
         log_path_permission_context("scan_directory_walk", directory)
-        logger.warning(f"Permission denied scanning directory: {directory} ({exc})")
+        logger.warning('Permission denied scanning directory: %s (%s)', directory, exc)
         return [], [], [], f"Permission denied accessing download folder: {directory}"
     except (FileNotFoundError, NotADirectoryError, OSError) as exc:
-        logger.warning(f"Cannot access download folder: {directory} ({exc})")
+        logger.warning('Cannot access download folder: %s (%s)', directory, exc)
         return [], [], [], f"Cannot access download folder: {directory} ({exc})"
 
     return book_files, rejected_files, archive_files, None

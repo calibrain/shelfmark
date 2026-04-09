@@ -183,7 +183,7 @@ def search_audiobookbay(
                     )
 
             if not page_html:
-                logger.warning(f"Failed to fetch page {page}")
+                logger.warning('Failed to fetch page %s', page)
                 break
 
             # Check if we were redirected to the homepage (search was rejected/blocked)
@@ -191,7 +191,7 @@ def search_audiobookbay(
                 # Search was redirected to homepage - this means the search failed
                 # This can happen due to geo-blocking, rate limiting, or invalid query format
                 if page == 1:
-                    logger.warning(f"Search query '{query}' was redirected to homepage - search may be blocked or invalid")
+                    logger.warning("Search query '%s' was redirected to homepage - search may be blocked or invalid", query)
                 break
 
             # Parse HTML
@@ -282,7 +282,7 @@ def search_audiobookbay(
                         "posted_date": posted_date,
                     })
                 except Exception as e:
-                    logger.debug(f"Skipping post due to error: {e}")
+                    logger.debug('Skipping post due to error: %s', e)
                     continue
 
             # Rate limiting delay between pages
@@ -292,7 +292,7 @@ def search_audiobookbay(
             logger.exception("Unexpected error on page %s", page)
             break
 
-    logger.info(f"Found {len(results)} results for query '{query}'")
+    logger.info("Found %s results for query '%s'", len(results), query)
     return results
 
 
@@ -391,7 +391,7 @@ def extract_magnet_link(
         )
         magnet_link = f"magnet:?xt=urn:btih:{info_hash}&{tracker_params}"
 
-        logger.debug(f"Generated Magnet Link: {magnet_link[:100]}...")
+        logger.debug('Generated Magnet Link: %s...', magnet_link[:100])
 
     except Exception:
         logger.exception("Failed to extract magnet link")

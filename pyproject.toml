@@ -31,7 +31,7 @@ extend-exclude = [".local"]
 
 [tool.ruff.lint]
 select = ["F", "I", "UP", "B", "C4", "SIM", "PTH", "RET", "PIE", "FURB", "PERF", "TRY"]
-ignore = ["UP035", "TRY003"]
+ignore = ["UP035", "TRY003", "E501"]
 
 [tool.vulture]
 paths = ["shelfmark"]

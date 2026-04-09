@@ -952,7 +952,7 @@ class HardcoverProvider(MetadataProvider):
                 if parsed_book:
                     books.append(parsed_book)
             except Exception as exc:
-                logger.debug(f"Failed to parse Hardcover list book for list_id={list_id}: {exc}")
+                logger.debug('Failed to parse Hardcover list book for list_id=%s: %s', list_id, exc)
 
         has_more = offset + len(list_books) < books_count
         return SearchResult(books=books, page=page, total_found=books_count, has_more=has_more, source_url=source_url, source_title=source_title)
@@ -1294,7 +1294,7 @@ class HardcoverProvider(MetadataProvider):
             try:
                 return {"id": self._parse_prefixed_int(normalized_value, "series id")}
             except ValueError:
-                logger.debug(f"Invalid Hardcover series id field value: {normalized_value}")
+                logger.debug('Invalid Hardcover series id field value: %s', normalized_value)
                 return None
 
         result = self._execute_query(
@@ -1443,7 +1443,7 @@ class HardcoverProvider(MetadataProvider):
                 parsed_book.series_count = total_found
                 books.append(parsed_book)
             except Exception as exc:
-                logger.debug(f"Failed to parse Hardcover series book for series_id={series_id}: {exc}")
+                logger.debug('Failed to parse Hardcover series book for series_id=%s: %s', series_id, exc)
 
         has_more = offset + len(page_rows) < total_found
         return SearchResult(books=books, page=page, total_found=total_found, has_more=has_more)
@@ -1520,7 +1520,7 @@ class HardcoverProvider(MetadataProvider):
                 if parsed_book:
                     books.append(parsed_book)
             except Exception as exc:
-                logger.debug(f"Failed to parse Hardcover status book for status_id={status_id}: {exc}")
+                logger.debug('Failed to parse Hardcover status book for status_id=%s: %s', status_id, exc)
 
         has_more = offset + len(status_books) < total_found
 
@@ -2009,14 +2009,14 @@ class HardcoverProvider(MetadataProvider):
                     status_id = self._parse_prefixed_int(list_value_from_field, "status")
                     return self._fetch_current_user_books_by_status(status_id, options.page, options.limit)
                 except ValueError:
-                    logger.debug(f"Invalid Hardcover status field value: {list_value_from_field}")
+                    logger.debug('Invalid Hardcover status field value: %s', list_value_from_field)
                     return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
             if list_value_from_field.startswith(HARDCOVER_LIST_ID_PREFIX):
                 try:
                     list_id = self._parse_prefixed_int(list_value_from_field, "list")
                     return self._fetch_list_books_by_id(list_id, options.page, options.limit)
                 except ValueError:
-                    logger.debug(f"Invalid hardcover_list field value: {list_value_from_field}")
+                    logger.debug('Invalid hardcover_list field value: %s', list_value_from_field)
                     return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
             return self._fetch_list_books(list_value_from_field, None, options.page, options.limit)
 
@@ -2121,7 +2121,7 @@ class HardcoverProvider(MetadataProvider):
                 if book:
                     books.append(book)
 
-            logger.info(f"Hardcover search '{query}' (fields={search_fields}) returned {len(books)} results")
+            logger.info("Hardcover search '%s' (fields=%s) returned %s results", query, search_fields, len(books))
 
             # Calculate if there are more results
             results_so_far = (options.page - 1) * HARDCOVER_PAGE_SIZE + len(hits)
@@ -2210,7 +2210,7 @@ class HardcoverProvider(MetadataProvider):
             return self._parse_book(books[0])
 
         except ValueError:
-            logger.exception(f"Invalid book ID: {book_id}")
+            logger.exception('Invalid book ID: %s', book_id)
             return None
         except Exception:
             logger.exception("Hardcover get_book error")
@@ -2269,7 +2269,7 @@ class HardcoverProvider(MetadataProvider):
 
             editions = result.get("editions", [])
             if not editions:
-                logger.debug(f"No Hardcover book found for ISBN: {isbn}")
+                logger.debug('No Hardcover book found for ISBN: %s', isbn)
                 return None
 
             edition = editions[0]
@@ -2310,7 +2310,7 @@ class HardcoverProvider(MetadataProvider):
             data = response.json()
 
             if "errors" in data:
-                logger.error(f"GraphQL errors: {data['errors']}")
+                logger.error('GraphQL errors: %s', data['errors'])
                 if raise_on_error:
                     message = _extract_graphql_error_message(data) or "Hardcover rejected this request"
                     _raise_graphql_error(message)
@@ -2425,7 +2425,7 @@ class HardcoverProvider(MetadataProvider):
 
 
         except Exception as e:
-            logger.debug(f"Failed to parse Hardcover search result: {e}")
+            logger.debug('Failed to parse Hardcover search result: %s', e)
             return None
 
     def _parse_book(self, book: dict) -> BookMetadata:
@@ -2603,7 +2603,7 @@ def _test_hardcover_connection(current_values: dict[str, Any] | None = None) -> 
     api_key = raw_key.removeprefix("Bearer ").strip() if raw_key else ""
 
     key_len = len(api_key) if api_key else 0
-    logger.debug(f"Hardcover test: key length={key_len}")
+    logger.debug('Hardcover test: key length=%s', key_len)
 
     if not api_key:
         # Clear any stored connection metadata since there's no key

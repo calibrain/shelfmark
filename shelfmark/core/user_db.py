@@ -155,7 +155,7 @@ def sync_builtin_admin_user(
             updates["auth_source"] = AUTH_SOURCE_BUILTIN
         if updates:
             user_db.update_user(existing["id"], **updates)
-            logger.info(f"Updated local admin user '{normalized_username}' from builtin settings")
+            logger.info("Updated local admin user '%s' from builtin settings", normalized_username)
         return
 
     user_db.create_user(
@@ -164,7 +164,7 @@ def sync_builtin_admin_user(
         auth_source=AUTH_SOURCE_BUILTIN,
         role="admin",
     )
-    logger.info(f"Created local admin user '{normalized_username}' from builtin settings")
+    logger.info("Created local admin user '%s' from builtin settings", normalized_username)
 
 
 class UserDB:

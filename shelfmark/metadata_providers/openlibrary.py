@@ -69,7 +69,7 @@ class RateLimiter:
 
         # Sleep outside the lock to avoid blocking other threads
         if wait_time > 0:
-            logger.debug(f"Rate limited, waiting {wait_time:.2f}s")
+            logger.debug('Rate limited, waiting %0.2fs', wait_time)
             time.sleep(wait_time)
 
         # Re-acquire lock and record request
@@ -201,7 +201,7 @@ class OpenLibraryProvider(MetadataProvider):
                 if book:
                     books.append(book)
 
-            logger.info(f"Open Library search '{options.query}' returned {len(books)} results")
+            logger.info("Open Library search '%s' returned %s results", options.query, len(books))
 
         except requests.Timeout:
             logger.warning("Open Library search timed out")
@@ -244,7 +244,7 @@ class OpenLibraryProvider(MetadataProvider):
             return None
         except requests.HTTPError as e:
             if e.response.status_code == 404:
-                logger.debug(f"Open Library work not found: {book_id}")
+                logger.debug('Open Library work not found: %s', book_id)
             else:
                 logger.exception("Open Library HTTP error")
             return None
@@ -301,7 +301,7 @@ class OpenLibraryProvider(MetadataProvider):
 
         except requests.HTTPError as e:
             if e.response.status_code == 404:
-                logger.debug(f"Open Library ISBN not found: {isbn}")
+                logger.debug('Open Library ISBN not found: %s', isbn)
             else:
                 logger.exception("Open Library ISBN search HTTP error")
             return None
@@ -375,7 +375,7 @@ class OpenLibraryProvider(MetadataProvider):
             )
 
         except Exception as e:
-            logger.debug(f"Failed to parse Open Library search doc: {e}")
+            logger.debug('Failed to parse Open Library search doc: %s', e)
             return None
 
     def _parse_work(self, work: dict, work_id: str) -> BookMetadata | None:
@@ -425,7 +425,7 @@ class OpenLibraryProvider(MetadataProvider):
             )
 
         except Exception as e:
-            logger.debug(f"Failed to parse Open Library work: {e}")
+            logger.debug('Failed to parse Open Library work: %s', e)
             return None
 
     def _parse_edition(self, edition: dict, isbn: str) -> BookMetadata | None:
@@ -479,7 +479,7 @@ class OpenLibraryProvider(MetadataProvider):
             )
 
         except Exception as e:
-            logger.debug(f"Failed to parse Open Library edition: {e}")
+            logger.debug('Failed to parse Open Library edition: %s', e)
             return None
 
     def _get_author_name(self, author_key: str) -> str | None:
