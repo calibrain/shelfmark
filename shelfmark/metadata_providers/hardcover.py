@@ -951,7 +951,7 @@ class HardcoverProvider(MetadataProvider):
                 parsed_book = self._parse_book(book_data)
                 if parsed_book:
                     books.append(parsed_book)
-            except Exception as exc:
+            except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
                 logger.debug("Failed to parse Hardcover list book for list_id=%s: %s", list_id, exc)
 
         has_more = offset + len(list_books) < books_count
@@ -1442,7 +1442,7 @@ class HardcoverProvider(MetadataProvider):
                 parsed_book.series_position = row.get("position")
                 parsed_book.series_count = total_found
                 books.append(parsed_book)
-            except Exception as exc:
+            except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
                 logger.debug("Failed to parse Hardcover series book for series_id=%s: %s", series_id, exc)
 
         has_more = offset + len(page_rows) < total_found
@@ -1519,7 +1519,7 @@ class HardcoverProvider(MetadataProvider):
                 parsed_book = self._parse_book(book_data)
                 if parsed_book:
                     books.append(parsed_book)
-            except Exception as exc:
+            except (AttributeError, KeyError, TypeError, ValueError) as exc:
                 logger.debug("Failed to parse Hardcover status book for status_id=%s: %s", status_id, exc)
 
         has_more = offset + len(status_books) < total_found
@@ -2134,7 +2134,7 @@ class HardcoverProvider(MetadataProvider):
                 has_more=has_more
             )
 
-        except Exception:
+        except (AttributeError, KeyError, TypeError, ValueError):
             logger.exception("Hardcover search error")
             return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
 
@@ -2212,7 +2212,7 @@ class HardcoverProvider(MetadataProvider):
         except ValueError:
             logger.exception("Invalid book ID: %s", book_id)
             return None
-        except Exception:
+        except (AttributeError, KeyError, TypeError):
             logger.exception("Hardcover get_book error")
             return None
 
@@ -2283,7 +2283,7 @@ class HardcoverProvider(MetadataProvider):
 
             return self._parse_book(book_data)
 
-        except Exception:
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError):
             logger.exception("Hardcover ISBN search error")
             return None
 
@@ -2340,7 +2340,7 @@ class HardcoverProvider(MetadataProvider):
             if raise_on_error:
                 raise RuntimeError("Hardcover API returned an invalid response") from e
             return None
-        except Exception as e:
+        except (TypeError, requests.RequestException) as e:
             logger.exception("Hardcover API request failed")
             if raise_on_error:
                 raise RuntimeError("Hardcover API request failed") from e
@@ -2424,7 +2424,7 @@ class HardcoverProvider(MetadataProvider):
             )
 
 
-        except Exception as e:
+        except (AttributeError, KeyError, TypeError, ValueError) as e:
             logger.debug("Failed to parse Hardcover search result: %s", e)
             return None
 
@@ -2631,7 +2631,7 @@ def _test_hardcover_connection(current_values: dict[str, Any] | None = None) -> 
             connection_result = {"success": True, "message": f"Connected as: {username}"}
         else:
             _save_connected_user(None, None)
-    except Exception as e:
+    except (AttributeError, KeyError, requests.RequestException, TypeError, ValueError) as e:
         logger.exception("Hardcover connection test failed")
         _save_connected_user(None, None)
         return {"success": False, "message": f"Connection failed: {e!s}"}

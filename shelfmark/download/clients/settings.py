@@ -30,7 +30,7 @@ def _transmission_session_verify_override(url: str):
 
     try:
         import transmission_rpc.client as transmission_rpc_client
-    except Exception:
+    except ImportError:
         yield
         return
 
@@ -62,6 +62,7 @@ def _test_qbittorrent_connection(current_values: dict[str, Any] | None = None) -
         return {"success": False, "message": "qBittorrent URL is required"}
 
     try:
+        import requests
         from qbittorrentapi import Client
 
         url = normalize_http_url(raw_url)
@@ -73,7 +74,7 @@ def _test_qbittorrent_connection(current_values: dict[str, Any] | None = None) -
         api_version = client.app.web_api_version
     except ImportError:
         return {"success": False, "message": "qbittorrent-api package not installed"}
-    except Exception as e:
+    except (requests.exceptions.RequestException, RuntimeError, ValueError, OSError, TypeError) as e:
         return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": True, "message": f"Connected to qBittorrent (API v{api_version})"}
@@ -135,7 +136,7 @@ def _test_transmission_connection(current_values: dict[str, Any] | None = None) 
         version = session.version
     except ImportError:
         return {"success": False, "message": "transmission-rpc package not installed"}
-    except Exception as e:
+    except (RuntimeError, ValueError, OSError, TypeError) as e:
         return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": True, "message": f"Connected to Transmission {version}"}
@@ -206,7 +207,7 @@ def _test_deluge_connection(current_values: dict[str, Any] | None = None) -> dic
             methods = rpc_call(session, rpc_id, "system.listMethods")
             if isinstance(methods, list) and "daemon.get_version" in methods:
                 return rpc_call(session, rpc_id + 1, "daemon.get_version")
-        except Exception:
+        except (requests.exceptions.RequestException, RuntimeError, ValueError, TypeError):
             # Fall back to daemon.info to preserve existing behavior.
             pass
 
@@ -245,7 +246,15 @@ def _test_deluge_connection(current_values: dict[str, Any] | None = None) -> dic
         return {"success": False, "message": "Could not connect to Deluge Web UI"}
     except requests.exceptions.Timeout:
         return {"success": False, "message": "Connection timed out"}
-    except Exception as e:
+    except (
+        requests.exceptions.RequestException,
+        RuntimeError,
+        ValueError,
+        TypeError,
+        KeyError,
+        IndexError,
+        AttributeError,
+    ) as e:
         return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": True, "message": f"Connected to Deluge {version}"}
@@ -293,8 +302,9 @@ def _test_rtorrent_connection(current_values: dict[str, Any] | None = None) -> d
             rpc = xmlrpc_client.ServerProxy(rpc_url)
 
         version = rpc.system.client_version()
-    except Exception as e:
+    except (xmlrpc_client.Error, RuntimeError, OSError, ValueError, TypeError) as e:
         return {"success": False, "message": f"Connection failed: {e!s}"}
+
     else:
         return {"success": True, "message": f"Connected to rTorrent {version}"}
 
@@ -331,7 +341,13 @@ def _test_nzbget_connection(current_values: dict[str, Any] | None = None) -> dic
         return {"success": False, "message": "Could not connect to NZBGet"}
     except requests.exceptions.Timeout:
         return {"success": False, "message": "Connection timed out"}
-    except Exception as e:
+    except (
+        requests.exceptions.RequestException,
+        RuntimeError,
+        ValueError,
+        AttributeError,
+        TypeError,
+    ) as e:
         return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": True, "message": f"Connected to NZBGet {version}"}
@@ -368,7 +384,13 @@ def _test_sabnzbd_connection(current_values: dict[str, Any] | None = None) -> di
         return {"success": False, "message": "Could not connect to SABnzbd"}
     except requests.exceptions.Timeout:
         return {"success": False, "message": "Connection timed out"}
-    except Exception as e:
+    except (
+        requests.exceptions.RequestException,
+        RuntimeError,
+        ValueError,
+        AttributeError,
+        TypeError,
+    ) as e:
         return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": True, "message": f"Connected to SABnzbd {version}"}

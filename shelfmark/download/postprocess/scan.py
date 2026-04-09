@@ -140,10 +140,7 @@ def scan_directory_tree(
 
         if isinstance(error, PermissionError):
             if not logged_walk_permission_context:
-                try:
-                    error_path = Path(getattr(error, "filename", "") or str(directory))
-                except Exception:
-                    error_path = directory
+                error_path = Path(getattr(error, "filename", "") or str(directory))
 
                 log_path_permission_context("scan_directory_walk", error_path)
                 logged_walk_permission_context = True

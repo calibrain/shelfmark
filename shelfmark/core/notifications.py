@@ -14,9 +14,7 @@ from urllib.parse import urlsplit
 
 try:
     import apprise
-except (
-    Exception
-):  # pragma: no cover - exercised in tests via monkeypatch  # noqa: BLE001
+except ImportError:  # pragma: no cover - exercised in tests via monkeypatch
     apprise = None  # type: ignore[assignment]
 
 from shelfmark.core.config import config as app_config
@@ -409,7 +407,7 @@ def _dispatch_to_apprise(
                 plugin = apprise.Apprise.instantiate(
                     url, asset=getattr(apobj, "asset", None)
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 logger.warning(
                     "Failed to register notification route URL for scheme '%s': %s",
                     scheme,
@@ -449,7 +447,7 @@ def _dispatch_to_apprise(
                 delivered = bool(
                     apobj.notify(title=title, body=body, notify_type=notify_type)
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _log_apprise_records(apprise_records)
                 failed_delivery_urls += 1
                 logger.warning(
@@ -548,12 +546,12 @@ def _create_apprise_client() -> object:
             app_id=_APPRISE_APP_ID,
             app_desc=_APPRISE_APP_DESC,
         )
-    except Exception:  # noqa: BLE001
+    except Exception:
         return apprise_cls()
 
     try:
         return apprise_cls(asset=asset)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return apprise_cls()
 
 
@@ -574,7 +572,7 @@ def notify_admin(event: NotificationEvent, context: NotificationContext) -> None
 
     try:
         _executor.submit(_dispatch_admin_async, event, context, urls)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("Failed to queue admin notification '%s': %s", event.value, exc)
 
 
@@ -593,7 +591,7 @@ def notify_user(
 
     try:
         _executor.submit(_dispatch_user_async, normalized_user_id, event, context, urls)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning(
             "Failed to queue user notification '%s' for user_id=%s: %s",
             event.value,

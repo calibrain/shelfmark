@@ -45,7 +45,7 @@ def should_bypass_proxy(url: str) -> bool:
     try:
         parsed = urllib.parse.urlparse(url)
         hostname = (parsed.hostname or "").lower()
-    except Exception as e:
+    except ValueError as e:
         logger.debug("Failed to parse URL for proxy bypass check: %s - %s", url, e)
         return False
 
@@ -108,7 +108,7 @@ def get_ssl_verify(url: str = "") -> bool:
             hostname = parsed.hostname or ""
             if hostname and _is_local_address(hostname):
                 return False
-        except Exception:
+        except ValueError:
             pass
 
     return True

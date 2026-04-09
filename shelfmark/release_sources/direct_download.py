@@ -283,7 +283,7 @@ def _parse_search_result_row(row: Tag) -> BrowseRecord | None:
             format=cells[9].find("span").next.lower(),
             size=cells[10].find("span").next,
         )
-    except Exception as e:
+    except (AttributeError, IndexError, KeyError, TypeError) as e:
         logger.error_trace(f"Error parsing search result row: {e}")
         return None
 
@@ -324,7 +324,7 @@ def _parse_book_info_page(soup: BeautifulSoup, book_id: str, fetch_download_coun
                     slow_urls_no_waitlist.add(href)
                 else:
                     slow_urls_with_waitlist.add(href)
-        except Exception:
+        except (AttributeError, TypeError):
             pass
 
     logger.debug(
@@ -408,7 +408,7 @@ def _parse_book_info_page(soup: BeautifulSoup, book_id: str, fetch_download_coun
                 summary_data = json.loads(summary_response)
                 if "downloads_total" in summary_data:
                     info["Downloads"] = [str(summary_data["downloads_total"])]
-        except Exception as e:
+        except (SearchUnavailable, RuntimeError, json.JSONDecodeError, TypeError, KeyError, AttributeError) as e:
             logger.debug("Failed to fetch download count for %s: %s", book_id, e)
 
     book_info.info = info
@@ -556,7 +556,7 @@ def _fetch_aa_page_urls(book_info: BrowseRecord, urls_by_source: dict[str, list[
     try:
         fresh_book_info = get_book_info(book_info.id, fetch_download_count=False)
         _group_urls_by_source(fresh_book_info.download_urls, urls_by_source)
-    except Exception as e:
+    except (SearchUnavailable, RuntimeError, TypeError, AttributeError) as e:
         logger.warning("Failed to fetch AA page: %s", e)
 
 
@@ -656,7 +656,7 @@ def _try_download_url(
         with book_path.open("wb") as f:
             f.write(data.getbuffer())
 
-    except Exception as e:
+    except (RuntimeError, requests.exceptions.RequestException, OSError, KeyError, ValueError, TypeError, AttributeError) as e:
         logger.warning("Failed to download from %s (source=%s): %s", url, source_id, e)
         return None
     else:
@@ -678,7 +678,7 @@ def _get_download_urls_from_welib(
     logger.info("Fetching welib download URLs for %s", book_id)
     try:
         html = downloader.html_get_page(url, use_bypasser=True, selector=selector or network.AAMirrorSelector(), cancel_flag=cancel_flag, status_callback=status_callback)
-    except Exception as exc:
+    except (SearchUnavailable, requests.exceptions.RequestException, RuntimeError, ValueError, TypeError, AttributeError) as exc:
         logger.error_trace(f"Welib fetch failed for {book_id}: {exc}")
         return []
     if not html:
@@ -744,7 +744,7 @@ def _extract_libgen_download_url(link: str, cancel_flag: Event | None = None) ->
     except requests.exceptions.RequestException as e:
         logger.debug("Libgen fast: request failed: %s", e)
         return ""
-    except Exception as e:
+    except (AttributeError, TypeError, ValueError) as e:
         logger.warning("Libgen fast: unexpected error: %s", e)
         return ""
     else:
@@ -1236,7 +1236,7 @@ class DirectDownloadSource(ReleaseSource):
                     logger.debug("No ISBN results, falling back to title+author")
                 except SearchUnavailable:
                     raise
-                except Exception as e:
+                except (ValueError, TypeError, AttributeError, RuntimeError) as e:
                     logger.warning("ISBN search failed: %s", e)
 
         # Title + author fallback

@@ -298,7 +298,7 @@ class AudiobookBaySource(ReleaseSource):
                         }
                     )
                     releases.append(release)
-                except Exception as e:
+                except (AttributeError, KeyError, TypeError, ValueError) as e:
                     logger.warning("Failed to create release from result: %s", e)
                     continue
 

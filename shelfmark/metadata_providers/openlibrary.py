@@ -212,8 +212,11 @@ class OpenLibraryProvider(MetadataProvider):
             else:
                 logger.exception("Open Library HTTP error")
             return []
-        except Exception:
-            logger.exception("Open Library search error")
+        except requests.RequestException:
+            logger.exception("Open Library search request failed")
+            return []
+        except (TypeError, ValueError):
+            logger.exception("Open Library search parsing error")
             return []
         return books
 
@@ -248,8 +251,11 @@ class OpenLibraryProvider(MetadataProvider):
             else:
                 logger.exception("Open Library HTTP error")
             return None
-        except Exception:
-            logger.exception("Open Library get_book error")
+        except requests.RequestException:
+            logger.exception("Open Library get_book request failed")
+            return None
+        except (TypeError, ValueError):
+            logger.exception("Open Library get_book parsing error")
             return None
 
     @cacheable(ttl_key="METADATA_CACHE_BOOK_TTL", ttl_default=600, key_prefix="openlibrary:isbn")
@@ -305,8 +311,11 @@ class OpenLibraryProvider(MetadataProvider):
             else:
                 logger.exception("Open Library ISBN search HTTP error")
             return None
-        except Exception:
-            logger.exception("Open Library ISBN search error")
+        except requests.RequestException:
+            logger.exception("Open Library ISBN search request failed")
+            return None
+        except (TypeError, ValueError):
+            logger.exception("Open Library ISBN search parsing error")
             return None
 
     def _parse_search_doc(self, doc: dict) -> BookMetadata | None:
@@ -374,7 +383,7 @@ class OpenLibraryProvider(MetadataProvider):
                 display_fields=display_fields,
             )
 
-        except Exception as e:
+        except (TypeError, ValueError, AttributeError, KeyError) as e:
             logger.debug("Failed to parse Open Library search doc: %s", e)
             return None
 
@@ -424,7 +433,7 @@ class OpenLibraryProvider(MetadataProvider):
                 source_url=f"{OPENLIBRARY_BASE_URL}/works/{work_id}",
             )
 
-        except Exception as e:
+        except (TypeError, ValueError, AttributeError, KeyError) as e:
             logger.debug("Failed to parse Open Library work: %s", e)
             return None
 
@@ -478,7 +487,7 @@ class OpenLibraryProvider(MetadataProvider):
                 source_url=f"{OPENLIBRARY_BASE_URL}{key}" if key else None,
             )
 
-        except Exception as e:
+        except (TypeError, ValueError, AttributeError, KeyError) as e:
             logger.debug("Failed to parse Open Library edition: %s", e)
             return None
 
@@ -496,7 +505,7 @@ class OpenLibraryProvider(MetadataProvider):
             author = response.json()
             return author.get("name")
 
-        except Exception:
+        except (requests.RequestException, ValueError):
             # Don't log errors for author lookups - they're supplementary
             return None
 
@@ -521,7 +530,7 @@ def _test_openlibrary_connection() -> dict[str, Any]:
         return {"success": False, "message": "Connection timed out"}
     except requests.RequestException as e:
         return {"success": False, "message": f"Connection failed: {e!s}"}
-    except Exception as e:
+    except (TypeError, ValueError, AttributeError) as e:
         return {"success": False, "message": f"Error: {e!s}"}
     return connection_result
 

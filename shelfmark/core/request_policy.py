@@ -182,7 +182,7 @@ def get_source_content_type_capabilities() -> dict[str, set[str]]:
     """Return source -> supported content type map from registered sources."""
     try:
         from shelfmark.release_sources import list_available_sources
-    except Exception:
+    except ImportError:
         return {}
 
     capabilities: dict[str, set[str]] = {}

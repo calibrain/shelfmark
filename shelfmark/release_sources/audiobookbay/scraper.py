@@ -281,7 +281,7 @@ def search_audiobookbay(
                         "size": size_str,
                         "posted_date": posted_date,
                     })
-                except Exception as e:
+                except (TypeError, ValueError, AttributeError, IndexError, KeyError) as e:
                     logger.debug("Skipping post due to error: %s", e)
                     continue
 

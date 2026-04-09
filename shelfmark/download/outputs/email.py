@@ -132,7 +132,7 @@ def _render_subject(template: str, task: DownloadTask) -> str:
     }
     try:
         rendered = template.format(**mapping)
-    except Exception:
+    except (IndexError, KeyError, ValueError):
         rendered = template
 
     rendered = " ".join(str(rendered).split()).strip()
@@ -140,11 +140,8 @@ def _render_subject(template: str, task: DownloadTask) -> str:
 
 
 def _msgid_domain(from_addr: str) -> str:
-    try:
-        from_email = parseaddr(from_addr)[1]
-        domain = (from_email.partition("@")[2] or "").strip().rstrip(">")
-    except Exception:
-        domain = ""
+    from_email = parseaddr(from_addr)[1]
+    domain = (from_email.partition("@")[2] or "").strip().rstrip(">")
     return domain or "shelfmark.local"
 
 

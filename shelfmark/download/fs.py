@@ -22,7 +22,7 @@ logger = setup_logger(__name__)
 try:
     from gevent import monkey as _gevent_monkey
     from gevent.threadpool import ThreadPool as _GeventThreadPool
-except Exception:
+except ImportError:
     _gevent_monkey = None
     _GeventThreadPool = None
 
@@ -272,7 +272,7 @@ def _can_use_partial_copy_after_enoent(
 
     try:
         _verify_transfer_size(temp_path, expected_size, action)
-    except Exception:
+    except OSError:
         return False
     else:
         return True
