@@ -34,9 +34,7 @@ def normalize_http_url(
 
     if allow_special:
         special_map = {
-            value.lower(): value
-            for value in allow_special
-            if isinstance(value, str)
+            value.lower(): value for value in allow_special if isinstance(value, str)
         }
         special_match = special_map.get(normalized.lower())
         if special_match is not None:
@@ -67,11 +65,11 @@ def get_hardened_xmlrpc_client() -> ModuleType:
         with _xmlrpc_patch_lock:
             if not _xmlrpc_patch_applied:
                 try:
-                    from defusedxml.xmlrpc import monkey_patch
+                    from defusedxml.xmlrpc import monkey_patch  # noqa: PLC0415
 
                     monkey_patch()
                     _xmlrpc_patch_applied = True
-                except Exception:
+                except Exception:  # noqa: BLE001
                     # Keep runtime behavior unchanged if defusedxml is unavailable.
                     _xmlrpc_patch_applied = False
 
@@ -166,15 +164,17 @@ def _resolve_destination_username(
         return ""
 
     try:
-        from shelfmark.core.user_db import UserDB
+        from shelfmark.core.user_db import UserDB  # noqa: PLC0415
 
-        user_db = UserDB(str(Path(os.environ.get("CONFIG_DIR", "/config")) / "users.db"))
+        user_db = UserDB(
+            str(Path(os.environ.get("CONFIG_DIR", "/config")) / "users.db")
+        )
         user_db.initialize()
         user = user_db.get_user(user_id=user_id)
         if not user:
             return ""
         return str(user.get("username") or "").strip()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return ""
 
 
@@ -202,7 +202,7 @@ def get_destination(
     username: str | None = None,
 ) -> Path:
     """Get base destination directory. Audiobooks fall back to main destination."""
-    from shelfmark.core.config import config
+    from shelfmark.core.config import config  # noqa: PLC0415
 
     if is_audiobook:
         # Audiobook destination with fallback to main destination
@@ -218,7 +218,9 @@ def get_destination(
 
     # Main destination (also fallback for audiobooks)
     # Check new setting first, then legacy INGEST_DIR
-    destination = config.get("DESTINATION", "", user_id=user_id) or config.get("INGEST_DIR", "/books")
+    destination = config.get("DESTINATION", "", user_id=user_id) or config.get(
+        "INGEST_DIR", "/books"
+    )
     return Path(
         _expand_user_destination_placeholder(
             str(destination),
@@ -230,10 +232,12 @@ def get_destination(
 
 def get_aa_content_type_dir(content_type: str | None = None) -> Path | None:
     """Get override directory for AA content-type routing if configured."""
-    from shelfmark.core.config import config
+    from shelfmark.core.config import config  # noqa: PLC0415
 
     # Check if content-type routing is enabled (new or legacy setting)
-    if not config.get("AA_CONTENT_TYPE_ROUTING", False) and not config.get("USE_CONTENT_TYPE_DIRECTORIES", False):
+    if not config.get("AA_CONTENT_TYPE_ROUTING", False) and not config.get(
+        "USE_CONTENT_TYPE_DIRECTORIES", False
+    ):
         return None
 
     if not content_type:
@@ -254,10 +258,12 @@ def get_aa_content_type_dir(content_type: str | None = None) -> Path | None:
 
 def get_ingest_dir(content_type: str | None = None) -> Path:
     """DEPRECATED: Use get_destination() and get_aa_content_type_dir() instead."""
-    from shelfmark.core.config import config
+    from shelfmark.core.config import config  # noqa: PLC0415
 
     # Check new DESTINATION setting first, then legacy INGEST_DIR
-    default_ingest_dir = Path(config.get("DESTINATION", "") or config.get("INGEST_DIR", "/books"))
+    default_ingest_dir = Path(
+        config.get("DESTINATION", "") or config.get("INGEST_DIR", "/books")
+    )
 
     if not content_type:
         return default_ingest_dir
@@ -280,11 +286,12 @@ def transform_cover_url(cover_url: str | None, cache_id: str) -> str | None:
         return cover_url
 
     # Check if cover caching is enabled
-    from shelfmark.config.env import is_covers_cache_enabled
+    from shelfmark.config.env import is_covers_cache_enabled  # noqa: PLC0415
+
     if not is_covers_cache_enabled():
         return cover_url
 
-    from shelfmark.core.config import config as app_config
+    from shelfmark.core.config import config as app_config  # noqa: PLC0415
 
     # Encode the original URL and create a proxy URL
     encoded_url = base64.urlsafe_b64encode(cover_url.encode()).decode()

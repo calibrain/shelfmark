@@ -5,6 +5,7 @@ import json
 import socket
 import threading
 import time
+from http import HTTPStatus
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,9 @@ NEGATIVE_CACHE_TTL = 3600
 # Short enough to retry soon, long enough to prevent spam during one page view
 TRANSIENT_CACHE_TTL = 60
 
+_MIN_WEBP_HEADER_LENGTH = 12
+HTTP_NOT_FOUND = HTTPStatus.NOT_FOUND
+
 
 def _detect_image_type(data: bytes) -> tuple[str, str] | None:
     """Detect image type from magic bytes.
@@ -59,7 +63,11 @@ def _detect_image_type(data: bytes) -> tuple[str, str] | None:
             return content_type, ext
 
     # Special case for WebP - check for WEBP after RIFF
-    if data.startswith(b"RIFF") and len(data) > 12 and data[8:12] == b"WEBP":
+    if (
+        data.startswith(b"RIFF")
+        and len(data) > _MIN_WEBP_HEADER_LENGTH
+        and data[8:12] == b"WEBP"
+    ):
         return "image/webp", "webp"
 
     return None
@@ -199,7 +207,9 @@ class ImageCacheService:
             return False
 
         cached_at = entry.get("cached_at", 0)
-        ttl = TRANSIENT_CACHE_TTL if entry.get("transient", False) else NEGATIVE_CACHE_TTL
+        ttl = (
+            TRANSIENT_CACHE_TTL if entry.get("transient", False) else NEGATIVE_CACHE_TTL
+        )
         return (time.time() - cached_at) > ttl
 
     def _calculate_total_size(self) -> int:
@@ -219,8 +229,7 @@ class ImageCacheService:
 
         # Sort entries by accessed_at (oldest first)
         sorted_entries = sorted(
-            self._index.items(),
-            key=lambda x: x[1].get("accessed_at", 0)
+            self._index.items(), key=lambda x: x[1].get("accessed_at", 0)
         )
 
         evicted_count = 0
@@ -462,7 +471,9 @@ class ImageCacheService:
         with self._lock:
             total_size = self._calculate_total_size()
             entry_count = len(self._index)
-            negative_count = sum(1 for e in self._index.values() if e.get("negative", False))
+            negative_count = sum(
+                1 for e in self._index.values() if e.get("negative", False)
+            )
             total_requests = self._hits + self._misses
             hit_rate = (self._hits / total_requests * 100) if total_requests > 0 else 0
 
@@ -482,7 +493,7 @@ class ImageCacheService:
         """Check that a URL is safe to fetch (no SSRF to internal resources)."""
         try:
             parsed = urlparse(url)
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
 
         if parsed.scheme not in ("http", "https"):
@@ -496,7 +507,12 @@ class ImageCacheService:
             resolved = socket.getaddrinfo(hostname, None)
             for _, _, _, _, sockaddr in resolved:
                 ip = ipaddress.ip_address(sockaddr[0])
-                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                if (
+                    ip.is_private
+                    or ip.is_loopback
+                    or ip.is_link_local
+                    or ip.is_reserved
+                ):
                     return False
         except (socket.gaierror, ValueError):
             return False
@@ -517,7 +533,7 @@ class ImageCacheService:
         cached_data: tuple[bytes, str] | None = None
         try:
             if not self._is_safe_url(url):
-                logger.warning(f"Blocked request to disallowed URL: {url}")
+                logger.warning("Blocked request to disallowed URL: %s", url)
                 return None
 
             response = requests.get(
@@ -564,10 +580,10 @@ class ImageCacheService:
             self.put_negative(cache_id, transient=True)
             return None
         except requests.exceptions.HTTPError as e:
-            is_404 = e.response is not None and e.response.status_code == 404
+            is_404 = e.response is not None and e.response.status_code == HTTP_NOT_FOUND
             self.put_negative(cache_id, transient=not is_404)
             return None
-        except Exception:
+        except Exception:  # noqa: BLE001
             return None
         else:
             return cached_data
@@ -588,8 +604,8 @@ def get_image_cache() -> ImageCacheService:
     if _instance is None:
         with _instance_lock:
             if _instance is None:
-                from shelfmark.config.env import CONFIG_DIR
-                from shelfmark.core.config import config
+                from shelfmark.config.env import CONFIG_DIR  # noqa: PLC0415
+                from shelfmark.core.config import config  # noqa: PLC0415
 
                 cache_dir = CONFIG_DIR / "covers"
                 max_size_mb = config.get("COVERS_CACHE_MAX_SIZE_MB", 500)
@@ -601,7 +617,12 @@ def get_image_cache() -> ImageCacheService:
                     max_size_mb=max_size_mb,
                     ttl_seconds=ttl_seconds,
                 )
-                logger.debug(f"Initialized image cache: {cache_dir} (max {max_size_mb}MB, TTL {ttl_days} days)")
+                logger.debug(
+                    "Initialized image cache: %s (max %sMB, TTL %s days)",
+                    cache_dir,
+                    max_size_mb,
+                    ttl_days,
+                )
 
     return _instance
 

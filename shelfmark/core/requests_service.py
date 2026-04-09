@@ -8,7 +8,10 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.models import QueueStatus
-from shelfmark.core.request_helpers import extract_release_source_id, normalize_positive_int
+from shelfmark.core.request_helpers import (
+    extract_release_source_id,
+    normalize_positive_int,
+)
 from shelfmark.core.request_policy import normalize_content_type
 from shelfmark.core.request_validation import (
     DELIVERY_STATE_NONE,
@@ -42,54 +45,64 @@ class RequestServiceError(ValueError):
         self.required_mode = required_mode
 
 
-def _normalize_match_text(value: Any) -> str:
+def _normalize_match_text(value: object) -> str:
     if not isinstance(value, str):
         return ""
     return value.strip().lower()
 
 
-def normalize_note(note: Any) -> str | None:
+def normalize_note(note: object) -> str | None:
     """Validate request notes and normalize empty strings to None."""
     if note is None:
         return None
     if not isinstance(note, str):
-        raise RequestServiceError("note must be a string", status_code=400)
+        msg = "note must be a string"
+        raise RequestServiceError(msg, status_code=400)
     normalized = note.strip()
     if len(normalized) > MAX_REQUEST_NOTE_LENGTH:
+        msg_0 = f"note must be <= {MAX_REQUEST_NOTE_LENGTH} characters"
         raise RequestServiceError(
-            f"note must be <= {MAX_REQUEST_NOTE_LENGTH} characters",
+            msg_0,
             status_code=400,
         )
     return normalized or None
 
 
-def _validate_book_data(book_data: Any) -> dict[str, Any]:
+def _validate_book_data(book_data: object) -> dict[str, Any]:
     if not isinstance(book_data, dict):
-        raise RequestServiceError("book_data must be an object", status_code=400)
+        msg = "book_data must be an object"
+        raise RequestServiceError(msg, status_code=400)
 
     required_fields = ("title", "author", "provider", "provider_id")
-    missing = [field for field in required_fields if not _normalize_match_text(book_data.get(field))]
+    missing = [
+        field
+        for field in required_fields
+        if not _normalize_match_text(book_data.get(field))
+    ]
     if missing:
+        msg_0 = f"book_data missing required field(s): {', '.join(missing)}"
         raise RequestServiceError(
-            f"book_data missing required field(s): {', '.join(missing)}",
+            msg_0,
             status_code=400,
         )
     return dict(book_data)
 
 
-def _validate_json_blob_size(field: str, payload: Any) -> None:
+def _validate_json_blob_size(field: str, payload: object) -> None:
     if payload is None:
         return
 
     try:
         serialized = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
     except (TypeError, ValueError) as exc:
-        raise RequestServiceError(f"{field} must be JSON-serializable", status_code=400) from exc
+        msg = f"{field} must be JSON-serializable"
+        raise RequestServiceError(msg, status_code=400) from exc
 
     payload_size = len(serialized.encode("utf-8"))
     if payload_size > MAX_REQUEST_JSON_BLOB_BYTES:
+        msg = f"{field} must be <= {MAX_REQUEST_JSON_BLOB_BYTES} bytes"
         raise RequestServiceError(
-            f"{field} must be <= {MAX_REQUEST_JSON_BLOB_BYTES} bytes",
+            msg,
             status_code=400,
             code="request_payload_too_large",
         )
@@ -114,7 +127,11 @@ def _find_duplicate_pending_request(
         row_content_type = normalize_content_type(
             row.get("content_type") or row_book_data.get("content_type")
         )
-        if row_title == title and row_author == author and row_content_type == content_type:
+        if (
+            row_title == title
+            and row_author == author
+            and row_content_type == content_type
+        ):
             return row
     return None
 
@@ -123,11 +140,12 @@ def _now_timestamp() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _normalize_admin_note(admin_note: Any) -> str | None:
+def _normalize_admin_note(admin_note: object) -> str | None:
     if admin_note is None:
         return None
     if not isinstance(admin_note, str):
-        raise RequestServiceError("admin_note must be a string", status_code=400)
+        msg = "admin_note must be a string"
+        raise RequestServiceError(msg, status_code=400)
     return admin_note.strip() or None
 
 
@@ -135,12 +153,12 @@ def _prepare_request_create(
     *,
     user_id: int,
     source_hint: str | None,
-    content_type: Any,
-    request_level: Any,
-    policy_mode: Any,
-    book_data: Any,
-    release_data: Any = None,
-    note: Any = None,
+    content_type: object,
+    request_level: object,
+    policy_mode: object,
+    book_data: object,
+    release_data: object = None,
+    note: object = None,
 ) -> dict[str, Any]:
     validated_book_data = _validate_book_data(book_data)
     normalized_note = normalize_note(note)
@@ -150,7 +168,9 @@ def _prepare_request_create(
     validated_book_data["content_type"] = normalized_content_type
 
     try:
-        normalized_request_level = validate_request_level_payload(request_level, release_data)
+        normalized_request_level = validate_request_level_payload(
+            request_level, release_data
+        )
         normalized_policy_mode = normalize_policy_mode(policy_mode)
     except ValueError as exc:
         raise RequestServiceError(str(exc), status_code=400) from exc
@@ -177,7 +197,9 @@ def sync_delivery_states_from_queue_status(
     user_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """Persist delivery-state transitions for fulfilled requests based on queue status."""
-    fulfilled_rows = user_db.list_requests(user_id=user_id, status=RequestStatus.FULFILLED)
+    fulfilled_rows = user_db.list_requests(
+        user_id=user_id, status=RequestStatus.FULFILLED
+    )
     if not fulfilled_rows:
         return []
 
@@ -258,12 +280,12 @@ def create_request(
     *,
     user_id: int,
     source_hint: str | None,
-    content_type: Any,
-    request_level: Any,
-    policy_mode: Any,
-    book_data: Any,
-    release_data: Any = None,
-    note: Any = None,
+    content_type: object,
+    request_level: object,
+    policy_mode: object,
+    book_data: object,
+    release_data: object = None,
+    note: object = None,
     max_pending_per_user: int | None = None,
 ) -> dict[str, Any]:
     """Create a pending request after service-level validation."""
@@ -281,8 +303,9 @@ def create_request(
     if max_pending_per_user is not None:
         pending_count = user_db.count_user_pending_requests(user_id)
         if pending_count >= max_pending_per_user:
+            msg = "Maximum pending requests reached for this user"
             raise RequestServiceError(
-                "Maximum pending requests reached for this user",
+                msg,
                 status_code=409,
                 code="max_pending_reached",
             )
@@ -295,8 +318,9 @@ def create_request(
         content_type=prepared_request["content_type"],
     )
     if duplicate is not None:
+        msg = "Duplicate pending request exists for this title/author/content_type"
         raise RequestServiceError(
-            "Duplicate pending request exists for this title/author/content_type",
+            msg,
             status_code=409,
             code="duplicate_pending_request",
         )
@@ -314,7 +338,8 @@ def create_requests(
 ) -> list[dict[str, Any]]:
     """Create multiple pending requests atomically after validation."""
     if not isinstance(requests, list) or len(requests) == 0:
-        raise RequestServiceError("requests must contain at least one request", status_code=400)
+        msg = "requests must contain at least one request"
+        raise RequestServiceError(msg, status_code=400)
 
     prepared_requests: list[dict[str, Any]] = []
     pending_counts_by_user: dict[int, int] = {}
@@ -322,7 +347,8 @@ def create_requests(
 
     for request in requests:
         if not isinstance(request, dict):
-            raise RequestServiceError("requests must contain objects", status_code=400)
+            msg = "requests must contain objects"
+            raise RequestServiceError(msg, status_code=400)
 
         user_id = int(request["user_id"])
         prepared_request = _prepare_request_create(
@@ -343,8 +369,9 @@ def create_requests(
             prepared_request["content_type"],
         )
         if request_key in seen_request_keys:
+            msg = "Duplicate pending request exists for this title/author/content_type"
             raise RequestServiceError(
-                "Duplicate pending request exists for this title/author/content_type",
+                msg,
                 status_code=409,
                 code="duplicate_pending_request",
             )
@@ -356,8 +383,9 @@ def create_requests(
             if existing_pending is None:
                 existing_pending = user_db.count_user_pending_requests(user_id)
             if existing_pending >= max_pending_per_user:
+                msg = "Maximum pending requests reached for this user"
                 raise RequestServiceError(
-                    "Maximum pending requests reached for this user",
+                    msg,
                     status_code=409,
                     code="max_pending_reached",
                 )
@@ -371,8 +399,9 @@ def create_requests(
             content_type=request_key[3],
         )
         if duplicate is not None:
+            msg = "Duplicate pending request exists for this title/author/content_type"
             raise RequestServiceError(
-                "Duplicate pending request exists for this title/author/content_type",
+                msg,
                 status_code=409,
                 code="duplicate_pending_request",
             )
@@ -395,18 +424,23 @@ def ensure_request_access(
     """Get request by ID and enforce ownership for non-admin actors."""
     request_row = user_db.get_request(request_id)
     if request_row is None:
-        raise RequestServiceError("Request not found", status_code=404)
+        msg = "Request not found"
+        raise RequestServiceError(msg, status_code=404)
 
-    if not is_admin and (actor_user_id is None or request_row["user_id"] != actor_user_id):
-        raise RequestServiceError("Forbidden", status_code=403)
+    if not is_admin and (
+        actor_user_id is None or request_row["user_id"] != actor_user_id
+    ):
+        msg = "Forbidden"
+        raise RequestServiceError(msg, status_code=403)
 
     return request_row
 
 
 def _require_pending(request_row: dict[str, Any]) -> None:
     if request_row["status"] != RequestStatus.PENDING:
+        msg = "Request is already in a terminal state"
         raise RequestServiceError(
-            "Request is already in a terminal state",
+            msg,
             status_code=409,
             code="stale_transition",
         )
@@ -434,7 +468,9 @@ def cancel_request(
             status=RequestStatus.CANCELLED,
         )
     except ValueError as exc:
-        raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
+        raise RequestServiceError(
+            str(exc), status_code=409, code="stale_transition"
+        ) from exc
 
 
 def reject_request(
@@ -442,7 +478,7 @@ def reject_request(
     *,
     request_id: int,
     admin_user_id: int,
-    admin_note: Any = None,
+    admin_note: object = None,
 ) -> dict[str, Any]:
     """Reject a pending request as admin."""
     request_row = ensure_request_access(
@@ -465,7 +501,9 @@ def reject_request(
             reviewed_at=_now_timestamp(),
         )
     except ValueError as exc:
-        raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
+        raise RequestServiceError(
+            str(exc), status_code=409, code="stale_transition"
+        ) from exc
 
 
 def fulfil_request(
@@ -474,9 +512,9 @@ def fulfil_request(
     request_id: int,
     admin_user_id: int,
     queue_release: Callable[..., tuple[bool, str | None]],
-    release_data: Any = None,
-    admin_note: Any = None,
-    manual_approval: Any = False,
+    release_data: object = None,
+    admin_note: object = None,
+    manual_approval: object = False,
 ) -> dict[str, Any]:
     """Fulfil a pending request and queue the release under requesting-user identity."""
     request_row = ensure_request_access(
@@ -490,11 +528,17 @@ def fulfil_request(
     normalized_admin_note = _normalize_admin_note(admin_note)
 
     if not isinstance(manual_approval, bool):
-        raise RequestServiceError("manual_approval must be a boolean", status_code=400)
+        msg = "manual_approval must be a boolean"
+        raise RequestServiceError(msg, status_code=400)
 
-    selected_release_data = release_data if release_data is not None else request_row.get("release_data")
-    if selected_release_data is not None and not isinstance(selected_release_data, dict):
-        raise RequestServiceError("release_data must be an object", status_code=400)
+    selected_release_data = (
+        release_data if release_data is not None else request_row.get("release_data")
+    )
+    if selected_release_data is not None and not isinstance(
+        selected_release_data, dict
+    ):
+        msg = "release_data must be an object"
+        raise RequestServiceError(msg, status_code=400)
 
     if selected_release_data is None and manual_approval:
         try:
@@ -511,11 +555,14 @@ def fulfil_request(
                 reviewed_at=_now_timestamp(),
             )
         except ValueError as exc:
-            raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
+            raise RequestServiceError(
+                str(exc), status_code=409, code="stale_transition"
+            ) from exc
 
     if selected_release_data is None:
+        msg = "release_data is required to fulfil requests"
         raise RequestServiceError(
-            "release_data is required to fulfil requests",
+            msg,
             status_code=400,
         )
 
@@ -523,7 +570,8 @@ def fulfil_request(
 
     requester = user_db.get_user(user_id=request_row["user_id"])
     if requester is None:
-        raise RequestServiceError("Requesting user not found", status_code=404)
+        msg = "Requesting user not found"
+        raise RequestServiceError(msg, status_code=404)
 
     original_release_data = request_row.get("release_data")
     try:
@@ -540,7 +588,9 @@ def fulfil_request(
             reviewed_at=_now_timestamp(),
         )
     except ValueError as exc:
-        raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
+        raise RequestServiceError(
+            str(exc), status_code=409, code="stale_transition"
+        ) from exc
 
     queued_release_data = dict(selected_release_data)
     queued_release_data["_request_id"] = request_id

@@ -28,7 +28,9 @@ DEFAULT_CACHE_TTL = 30 * 24 * 60 * 60
 _cache_lock = Lock()
 
 
-def _generate_cache_key(provider: str, provider_id: str, content_type: str | None = None) -> str:
+def _generate_cache_key(
+    provider: str, provider_id: str, content_type: str | None = None
+) -> str:
     """Generate a cache key from provider, provider_id, and content type."""
     normalized_content_type = "audiobook" if check_audiobook(content_type) else "ebook"
     return f"{provider}:{provider_id}:{normalized_content_type}"
@@ -40,7 +42,7 @@ def _load_cache() -> dict[str, Any]:
         if CACHE_FILE.exists():
             return json.loads(CACHE_FILE.read_text())
     except (OSError, json.JSONDecodeError) as e:
-        logger.warning(f"Failed to load IRC cache: {e}")
+        logger.warning("Failed to load IRC cache: %s", e)
     return {"entries": {}, "version": 1}
 
 
@@ -57,7 +59,11 @@ def _release_to_dict(release: Release) -> dict[str, Any]:
     data = asdict(release)
     # Convert enum to string
     if data.get("protocol"):
-        data["protocol"] = data["protocol"].value if hasattr(data["protocol"], "value") else str(data["protocol"])
+        data["protocol"] = (
+            data["protocol"].value
+            if hasattr(data["protocol"], "value")
+            else str(data["protocol"])
+        )
     return data
 
 
@@ -76,7 +82,7 @@ def get_cached_results(
     provider: str,
     provider_id: str,
     content_type: str | None = None,
-    ttl_seconds: int | None = None
+    ttl_seconds: int | None = None,
 ) -> dict[str, Any] | None:
     """Get cached search results for a book.
 
@@ -91,7 +97,7 @@ def get_cached_results(
         or None if not cached or expired
 
     """
-    from shelfmark.core.config import config
+    from shelfmark.core.config import config  # noqa: PLC0415
 
     if ttl_seconds is None:
         ttl_value = config.get("IRC_CACHE_TTL", DEFAULT_CACHE_TTL)
@@ -117,7 +123,12 @@ def get_cached_results(
 
         if age > ttl_seconds:
             title = entry.get("title", cache_key)
-            logger.debug(f"IRC cache expired for '{title}' (age: {age:.0f}s > TTL: {ttl_seconds}s)")
+            logger.debug(
+                "IRC cache expired for '%s' (age: %.0fs > TTL: %ss)",
+                title,
+                age,
+                ttl_seconds,
+            )
             # Don't delete here - let cleanup handle it
             return None
 
@@ -126,7 +137,12 @@ def get_cached_results(
         online_servers = entry.get("online_servers", [])
         title = entry.get("title", "")
 
-        logger.info(f"IRC cache hit for '{title}' ({len(releases)} releases, age: {age:.0f}s)")
+        logger.info(
+            "IRC cache hit for '%s' (%s releases, age: %.0fs)",
+            title,
+            len(releases),
+            age,
+        )
 
         return {
             "releases": releases,
@@ -141,7 +157,7 @@ def cache_results(
     title: str,
     releases: list[Release],
     content_type: str | None = None,
-    online_servers: list[str] | None = None
+    online_servers: list[str] | None = None,
 ) -> None:
     """Cache search results for a book.
 
@@ -173,10 +189,12 @@ def cache_results(
         }
 
         _save_cache(cache)
-        logger.info(f"Cached {len(releases)} IRC releases for '{title}'")
+        logger.info("Cached %s IRC releases for '%s'", len(releases), title)
 
 
-def invalidate_cache(provider: str, provider_id: str, content_type: str | None = None) -> bool:
+def invalidate_cache(
+    provider: str, provider_id: str, content_type: str | None = None
+) -> bool:
     """Remove a specific entry from the cache.
 
     Args:
@@ -198,7 +216,7 @@ def invalidate_cache(provider: str, provider_id: str, content_type: str | None =
         if cache_key in cache.get("entries", {}):
             del cache["entries"][cache_key]
             _save_cache(cache)
-            logger.info(f"Invalidated IRC cache for '{title}'")
+            logger.info("Invalidated IRC cache for '%s'", title)
             return True
 
         return False
@@ -216,7 +234,7 @@ def clear_cache() -> int:
         count = len(cache.get("entries", {}))
         cache["entries"] = {}
         _save_cache(cache)
-        logger.info(f"Cleared {count} IRC cache entries")
+        logger.info("Cleared %s IRC cache entries", count)
         return count
 
 
@@ -227,7 +245,7 @@ def cleanup_expired(ttl_seconds: int | None = None) -> int:
         Number of entries removed
 
     """
-    from shelfmark.core.config import config
+    from shelfmark.core.config import config  # noqa: PLC0415
 
     if ttl_seconds is None:
         ttl_value = config.get("IRC_CACHE_TTL", DEFAULT_CACHE_TTL)
@@ -242,7 +260,8 @@ def cleanup_expired(ttl_seconds: int | None = None) -> int:
         entries = cache.get("entries", {})
 
         expired_keys = [
-            key for key, entry in entries.items()
+            key
+            for key, entry in entries.items()
             if current_time - entry.get("cached_at", 0) > ttl_seconds
         ]
 
@@ -252,7 +271,7 @@ def cleanup_expired(ttl_seconds: int | None = None) -> int:
 
         if removed:
             _save_cache(cache)
-            logger.info(f"Cleaned up {removed} expired IRC cache entries")
+            logger.info("Cleaned up %s expired IRC cache entries", removed)
 
     return removed
 
@@ -264,7 +283,7 @@ def get_cache_stats() -> dict[str, Any]:
         Dict with cache stats
 
     """
-    from shelfmark.core.config import config
+    from shelfmark.core.config import config  # noqa: PLC0415
 
     ttl_value = config.get("IRC_CACHE_TTL", DEFAULT_CACHE_TTL)
     # Config values are stored as strings, convert to int
@@ -277,14 +296,14 @@ def get_cache_stats() -> dict[str, Any]:
 
         total = len(entries)
         expired = sum(
-            1 for entry in entries.values()
+            1
+            for entry in entries.values()
             if current_time - entry.get("cached_at", 0) > ttl_seconds
         )
 
         # Calculate total releases cached
         total_releases = sum(
-            len(entry.get("releases", []))
-            for entry in entries.values()
+            len(entry.get("releases", [])) for entry in entries.values()
         )
 
         return {

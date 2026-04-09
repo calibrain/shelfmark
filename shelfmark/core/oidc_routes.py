@@ -26,7 +26,7 @@ oauth = OAuth()
 _RETURN_TO_SESSION_KEY = "oidc_return_to"
 
 
-def _normalize_claims(raw_claims: Any) -> dict[str, Any]:
+def _normalize_claims(raw_claims: object) -> dict[str, Any]:
     """Return a plain dict for claims from Authlib token/userinfo payloads."""
     if raw_claims is None:
         return {}
@@ -36,7 +36,7 @@ def _normalize_claims(raw_claims: Any) -> dict[str, Any]:
         return raw_claims.to_dict()  # type: ignore[no-any-return]
     try:
         return dict(raw_claims)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return {}
 
 
@@ -60,7 +60,7 @@ def _login_error_url(message: str) -> str:
     return f"{login_url}?{urlencode(params)}"
 
 
-def _normalize_return_to(raw_return_to: Any) -> str | None:
+def _normalize_return_to(raw_return_to: object) -> str | None:
     """Return a safe app-relative post-login target."""
     if not isinstance(raw_return_to, str):
         return None
@@ -79,12 +79,9 @@ def _normalize_return_to(raw_return_to: Any) -> str | None:
         if path == script_root:
             path = "/"
         elif path.startswith(f"{script_root}/"):
-            path = path[len(script_root):] or "/"
+            path = path[len(script_root) :] or "/"
 
-    if (
-        path in {"/login", "/api"}
-        or path.startswith(("/login/", "/api/"))
-    ):
+    if path in {"/login", "/api"} or path.startswith(("/login/", "/api/")):
         return None
 
     return urlunsplit(("", "", path, parsed.query, parsed.fragment))
@@ -120,14 +117,21 @@ def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
     client_id = str(app_config.get("OIDC_CLIENT_ID", "") or "")
 
     if not discovery_url or not client_id:
-        raise ValueError("OIDC not configured")
+        msg = "OIDC not configured"
+        raise ValueError(msg)
 
     configured_scopes = app_config.get("OIDC_SCOPES", ["openid", "email", "profile"])
     if isinstance(configured_scopes, list):
-        scope_values = [str(scope).strip() for scope in configured_scopes if str(scope).strip()]
+        scope_values = [
+            str(scope).strip() for scope in configured_scopes if str(scope).strip()
+        ]
     elif isinstance(configured_scopes, str):
         delimiter = "," if "," in configured_scopes else " "
-        scope_values = [scope.strip() for scope in configured_scopes.split(delimiter) if scope.strip()]
+        scope_values = [
+            scope.strip()
+            for scope in configured_scopes.split(delimiter)
+            if scope.strip()
+        ]
     else:
         scope_values = []
 
@@ -160,7 +164,8 @@ def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
 
     client = oauth.create_client("shelfmark_idp")
     if client is None:
-        raise RuntimeError("OIDC client initialization failed")
+        msg = "OIDC client initialization failed"
+        raise RuntimeError(msg)
 
     return client, {
         "OIDC_DISCOVERY_URL": discovery_url,
@@ -199,7 +204,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
         try:
             error = request.args.get("error")
             if error:
-                logger.warning(f"OIDC callback error from IdP: {error}")
+                logger.warning("OIDC callback error from IdP: %s", error)
                 return redirect(_login_error_url("Authentication failed"))
 
             client, config = _get_oidc_client()
@@ -213,12 +218,14 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
                     metadata = client.load_server_metadata()
                     if isinstance(metadata, dict):
                         provider_issuer = str(metadata.get("issuer", ""))
-                except Exception as metadata_error:
-                    logger.debug(f"OIDC metadata lookup failed during claim diagnostics: {metadata_error}")
+                except Exception as metadata_error:  # noqa: BLE001
+                    logger.debug(
+                        "OIDC metadata lookup failed during claim diagnostics: %s",
+                        metadata_error,
+                    )
 
                 logger.exception(
-                    "OIDC callback claim validation failed: claim=%s discovery_url=%s provider_issuer=%s",
-                    claim_name,
+                    "OIDC callback claim validation failed: claim=%s discovery_url=%s provider_issuer=%s",  # noqa: E501
                     discovery_url or "<unset>",
                     provider_issuer or "<unknown>",
                 )
@@ -229,7 +236,11 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
                     )
                     return redirect(_login_error_url(msg))
 
-                return redirect(_login_error_url(f"OIDC token claim validation failed: {claim_name}"))
+                return redirect(
+                    _login_error_url(
+                        f"OIDC token claim validation failed: {claim_name}"
+                    )
+                )
             claims = _normalize_claims(token.get("userinfo"))
 
             # If userinfo is missing or claims are too sparse, request it explicitly.
@@ -271,17 +282,24 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             )
             if user is None:
                 logger.warning(
-                    f"OIDC login rejected: auto-provision disabled for {user_info['username']}"
+                    "OIDC login rejected: auto-provision disabled for %s",
+                    user_info["username"],
                 )
-                return redirect(_login_error_url("Account not found. Contact your administrator."))
+                return redirect(
+                    _login_error_url("Account not found. Contact your administrator.")
+                )
 
             session["user_id"] = user["username"]
             session["is_admin"] = user.get("role") == "admin"
             session["db_user_id"] = user["id"]
             session.permanent = True
 
-            logger.info(f"OIDC login successful: {user['username']} (admin={is_admin})")
-            return redirect(_post_login_redirect_target(_get_pending_return_to(clear=True)))
+            logger.info(
+                "OIDC login successful: %s (admin=%s)", user["username"], is_admin
+            )
+            return redirect(
+                _post_login_redirect_target(_get_pending_return_to(clear=True))
+            )
 
         except ValueError as e:
             logger.exception("OIDC callback error")

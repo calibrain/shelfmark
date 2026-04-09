@@ -10,11 +10,13 @@ from shelfmark.download.outputs.email import (
 )
 
 
-def test_email_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
+def test_email_connection(
+    current_values: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Test SMTP connectivity using current form values (including unsaved changes)."""
     current_values = current_values or {}
 
-    def _get_value(key: str, default: Any = None) -> Any:
+    def _get_value(key: str, default: object = None) -> object:
         value = current_values.get(key)
         if value not in (None, ""):
             return value
@@ -39,7 +41,7 @@ def test_email_connection(current_values: dict[str, Any] | None = None) -> dict[
         test_smtp_connection(smtp_config)
     except EmailOutputError as exc:
         return {"success": False, "message": str(exc)}
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         return {"success": False, "message": f"SMTP test failed: {exc}"}
     else:
         return {"success": True, "message": "Connected to SMTP server"}

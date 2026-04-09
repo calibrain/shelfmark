@@ -51,7 +51,7 @@ def post_process_download(
             preserve_source_on_failure,
         )
 
-    from shelfmark.download.outputs.folder import process_folder_output
+    from shelfmark.download.outputs.folder import process_folder_output  # noqa: PLC0415
 
     logger.info("Task %s: using output mode folder", task.task_id)
     return process_folder_output(

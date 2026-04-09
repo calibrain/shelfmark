@@ -26,7 +26,9 @@ from shelfmark.core.user_settings_overrides import (
 )
 
 
-def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+def validate_user_settings(
+    settings: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
     settings_registry = _get_settings_registry()
     field_map = settings_registry.get_settings_field_map()
     overridable_map = settings_registry.get_user_overridable_fields()
@@ -44,7 +46,11 @@ def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], li
                 valid[key] = None
                 continue
 
-            if key in {"REQUEST_POLICY_DEFAULT_EBOOK", "REQUEST_POLICY_DEFAULT_AUDIOBOOK"} and parse_policy_mode(value) is None:
+            if (
+                key
+                in {"REQUEST_POLICY_DEFAULT_EBOOK", "REQUEST_POLICY_DEFAULT_AUDIOBOOK"}
+                and parse_policy_mode(value) is None
+            ):
                 errors.append(f"Invalid policy mode for {key}: {value}")
                 continue
 
@@ -61,20 +67,21 @@ def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], li
                 invalid_count = sum(
                     1
                     for row in normalized_routes
-                    if row.get("url") and not is_valid_notification_url(str(row.get("url")))
+                    if row.get("url")
+                    and not is_valid_notification_url(str(row.get("url")))
                 )
                 if invalid_count:
                     errors.append(
-
-                            f"Invalid value for {key}: found {invalid_count} invalid URL(s). "
-                            "Use URL values with a valid scheme, e.g. discord://... or ntfys://..."
-
+                        f"Invalid value for {key}: found {invalid_count} invalid URL(s). "
+                        "Use URL values with a valid scheme, e.g. discord://... or ntfys://..."
                     )
                     continue
                 valid[key] = normalized_routes
                 continue
 
-            normalized_search_value, search_validation_error = validate_search_preference_value(key, value)
+            normalized_search_value, search_validation_error = (
+                validate_search_preference_value(key, value)
+            )
             if search_validation_error:
                 errors.append(search_validation_error)
                 continue
@@ -94,9 +101,7 @@ def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], li
                     continue
 
                 candidate_values = [
-                    str(entry).strip().lower()
-                    for entry in value
-                    if str(entry).strip()
+                    str(entry).strip().lower() for entry in value if str(entry).strip()
                 ]
                 normalized_values: list[str] = []
                 has_invalid_value = False
@@ -124,9 +129,9 @@ def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], li
 def build_user_notification_test_response(
     *,
     user_id: int,
-    payload: Any,
+    payload: object,
 ) -> tuple[dict[str, Any], int]:
-    from shelfmark.core.config import config as app_config
+    from shelfmark.core.config import config as app_config  # noqa: PLC0415
 
     routes_input = app_config.get("USER_NOTIFICATION_ROUTES", [], user_id=user_id)
     if isinstance(payload, dict):
@@ -143,13 +148,15 @@ def build_user_notification_test_response(
 def register_admin_settings_routes(
     app: Flask,
     user_db: UserDB,
-    require_admin: Callable[[Callable[..., Any]], Callable[..., Any]],
+    require_admin: Callable[[Callable[..., object]], Callable[..., object]],
 ) -> None:
     @app.route("/api/admin/download-defaults", methods=["GET"])
     @require_admin
     def admin_download_defaults():
         defaults = {
-            key: ("" if (value := app_config.get(key, field.default)) is None else value)
+            key: (
+                "" if (value := app_config.get(key, field.default)) is None else value
+            )
             for key, field in _get_ordered_user_overridable_fields("downloads")
         }
 
@@ -161,12 +168,14 @@ def register_admin_settings_routes(
     @app.route("/api/admin/booklore-options", methods=["GET"])
     @require_admin
     def admin_booklore_options():
-        from shelfmark.core import admin_routes
+        from shelfmark.core import admin_routes  # noqa: PLC0415
 
-        return jsonify({
-            "libraries": admin_routes.get_booklore_library_options(),
-            "paths": admin_routes.get_booklore_path_options(),
-        })
+        return jsonify(
+            {
+                "libraries": admin_routes.get_booklore_library_options(),
+                "paths": admin_routes.get_booklore_path_options(),
+            }
+        )
 
     @app.route("/api/admin/users/<int:user_id>/delivery-preferences", methods=["GET"])
     @require_admin
@@ -196,7 +205,9 @@ def register_admin_settings_routes(
 
         return jsonify(payload)
 
-    @app.route("/api/admin/users/<int:user_id>/notification-preferences", methods=["GET"])
+    @app.route(
+        "/api/admin/users/<int:user_id>/notification-preferences", methods=["GET"]
+    )
     @require_admin
     def admin_get_notification_preferences(user_id):
         user = user_db.get_user(user_id=user_id)
@@ -210,7 +221,9 @@ def register_admin_settings_routes(
 
         return jsonify(payload)
 
-    @app.route("/api/admin/users/<int:user_id>/notification-preferences/test", methods=["POST"])
+    @app.route(
+        "/api/admin/users/<int:user_id>/notification-preferences/test", methods=["POST"]
+    )
     @require_admin
     def admin_test_notification_preferences(user_id):
         user = user_db.get_user(user_id=user_id)
@@ -233,7 +246,9 @@ def register_admin_settings_routes(
         if not settings_registry.get_settings_tab(tab_name):
             return jsonify({"error": f"Unknown settings tab: {tab_name}"}), 404
 
-        overridable_keys = list(settings_registry.get_user_overridable_fields(tab_name=tab_name))
+        overridable_keys = list(
+            settings_registry.get_user_overridable_fields(tab_name=tab_name)
+        )
         keys_payload: dict[str, dict[str, Any]] = {}
 
         for user_record in user_db.list_users():
@@ -245,11 +260,13 @@ def register_admin_settings_routes(
                 if key not in user_settings or user_settings[key] is None:
                     continue
                 entry = keys_payload.setdefault(key, {"count": 0, "users": []})
-                entry["users"].append({
-                    "userId": user_record["id"],
-                    "username": user_record["username"],
-                    "value": user_settings[key],
-                })
+                entry["users"].append(
+                    {
+                        "userId": user_record["id"],
+                        "username": user_record["username"],
+                        "value": user_settings[key],
+                    }
+                )
 
         for summary in keys_payload.values():
             summary["count"] = len(summary["users"])
@@ -263,8 +280,8 @@ def register_admin_settings_routes(
         if not user:
             return jsonify({"error": "User not found"}), 404
 
-        from shelfmark.core.config import config as app_config
-        from shelfmark.core.settings_registry import is_value_from_env
+        from shelfmark.core.config import config as app_config  # noqa: PLC0415
+        from shelfmark.core.settings_registry import is_value_from_env  # noqa: PLC0415
 
         field_map = _get_settings_registry().get_user_overridable_fields()
         user_settings = user_db.get_user_settings(user_id)
@@ -281,7 +298,9 @@ def register_admin_settings_routes(
                 source = "user_override"
                 value = user_settings[key]
             else:
-                tab_config = tab_config_cache.setdefault(tab_name, load_config_file(tab_name))
+                tab_config = tab_config_cache.setdefault(
+                    tab_name, load_config_file(tab_name)
+                )
                 if key in tab_config:
                     source = "global_config"
 

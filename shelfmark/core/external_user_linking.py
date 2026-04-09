@@ -21,18 +21,18 @@ MatchReason = Literal[
 logger = setup_logger(__name__)
 
 
-def _normalize_username(value: Any) -> str:
+def _normalize_username(value: object) -> str:
     return str(value or "").strip()
 
 
-def _normalize_email(value: Any) -> str | None:
+def _normalize_email(value: object) -> str | None:
     if value is None:
         return None
     email = str(value).strip()
     return email or None
 
 
-def _normalize_display_name(value: Any) -> str | None:
+def _normalize_display_name(value: object) -> str | None:
     if value is None:
         return None
     name = str(value).strip()
@@ -43,11 +43,13 @@ def _email_key(value: str | None) -> str:
     return (value or "").strip().lower()
 
 
-def _normalize_role(value: Any) -> str:
+def _normalize_role(value: object) -> str:
     return "admin" if str(value or "").strip().lower() == "admin" else "user"
 
 
-def _get_by_subject(user_db: UserDB, subject_field: str | None, subject: str | None) -> dict[str, Any] | None:
+def _get_by_subject(
+    user_db: UserDB, subject_field: str | None, subject: str | None
+) -> dict[str, Any] | None:
     if not subject_field or not subject:
         return None
     if subject_field == "oidc_subject":
@@ -55,7 +57,9 @@ def _get_by_subject(user_db: UserDB, subject_field: str | None, subject: str | N
     return None
 
 
-def find_unique_user_by_email(user_db: UserDB, email: str | None) -> dict[str, Any] | None:
+def find_unique_user_by_email(
+    user_db: UserDB, email: str | None
+) -> dict[str, Any] | None:
     key = _email_key(_normalize_email(email))
     if not key:
         return None
@@ -83,14 +87,20 @@ def find_external_user_match(
         return by_subject, "subject_match"
 
     by_username = user_db.get_user(username=normalized_username)
-    if by_username and normalize_auth_source(
-        by_username.get("auth_source"),
-        by_username.get("oidc_subject"),
-    ) == auth_source:
+    if (
+        by_username
+        and normalize_auth_source(
+            by_username.get("auth_source"),
+            by_username.get("oidc_subject"),
+        )
+        == auth_source
+    ):
         return by_username, "existing_source_username_match"
 
     if allow_email_link:
-        return find_unique_user_by_email(user_db, normalized_email), "unique_email_match"
+        return find_unique_user_by_email(
+            user_db, normalized_email
+        ), "unique_email_match"
     return None, None
 
 
@@ -133,9 +143,11 @@ def _find_existing_alias_user(
 ) -> dict[str, Any] | None:
     pattern = re.compile(rf"^{re.escape(alias_base)}(?:_\d+)?$")
     candidates = [
-        user for user in user_db.list_users()
+        user
+        for user in user_db.list_users()
         if pattern.match(str(user.get("username") or ""))
-        and normalize_auth_source(user.get("auth_source"), user.get("oidc_subject")) == auth_source
+        and normalize_auth_source(user.get("auth_source"), user.get("oidc_subject"))
+        == auth_source
     ]
     if not candidates:
         return None
@@ -158,7 +170,11 @@ def _resolve_create_username(
         return None, existing, "username_collision_takeover"
 
     if strategy == "suffix":
-        return _next_suffix_username(user_db, requested_username), None, "username_collision_suffix"
+        return (
+            _next_suffix_username(user_db, requested_username),
+            None,
+            "username_collision_suffix",
+        )
 
     alias_base = f"{requested_username}{alias_suffix}"
     alias_existing = _find_existing_alias_user(
@@ -197,7 +213,8 @@ def upsert_external_user(
     """
     normalized_username = _normalize_username(username)
     if not normalized_username:
-        raise ValueError("External username is required")
+        msg = "External username is required"
+        raise ValueError(msg)
 
     normalized_email = _normalize_email(email) if email is not UNSET else None
     normalized_display_name = (
@@ -227,18 +244,20 @@ def upsert_external_user(
         user_db.update_user(matched["id"], **updates)
         mapped = user_db.get_user(user_id=matched["id"]) or matched
         logger.info(
-            "External user mapped to existing Shelfmark user "
-            f"(source={auth_source}, context={context or 'unspecified'}, reason={match_reason}, "
-            f"external_username={normalized_username}, shelfmark_user_id={mapped['id']}, "
-            f"shelfmark_username={mapped['username']})"
+            "External user mapped to existing Shelfmark user (source=%s, context=%s, reason=%s, external_username=%s, shelfmark_user_id=%s, shelfmark_username=%s)",  # noqa: E501
+            context or "unspecified",
+            match_reason,
+            normalized_username,
+            mapped["id"],
+            mapped["username"],
         )
         return mapped, "updated"
 
     if not allow_create:
         logger.info(
-            "External user could not be mapped and creation is disabled "
-            f"(source={auth_source}, context={context or 'unspecified'}, "
-            f"external_username={normalized_username})"
+            "External user could not be mapped and creation is disabled (source=%s, context=%s, external_username=%s)",  # noqa: E501
+            context or "unspecified",
+            normalized_username,
         )
         return None, "not_found"
 
@@ -254,10 +273,12 @@ def upsert_external_user(
         user_db.update_user(takeover_target["id"], **updates)
         mapped = user_db.get_user(user_id=takeover_target["id"]) or takeover_target
         logger.info(
-            "External user mapped to existing Shelfmark user "
-            f"(source={auth_source}, context={context or 'unspecified'}, reason={create_reason}, "
-            f"external_username={normalized_username}, shelfmark_user_id={mapped['id']}, "
-            f"shelfmark_username={mapped['username']})"
+            "External user mapped to existing Shelfmark user (source=%s, context=%s, reason=%s, external_username=%s, shelfmark_user_id=%s, shelfmark_username=%s)",
+            auth_source,  # noqa: E501
+            create_reason,
+            normalized_username,
+            mapped["id"],
+            mapped["username"],
         )
         return mapped, "updated"
 
@@ -275,9 +296,11 @@ def upsert_external_user(
 
     created = user_db.create_user(**create_kwargs)
     logger.info(
-        "External user created Shelfmark user "
-        f"(source={auth_source}, context={context or 'unspecified'}, reason={create_reason}, "
-        f"external_username={normalized_username}, shelfmark_user_id={created['id']}, "
-        f"shelfmark_username={created['username']})"
+        "External user created Shelfmark user (source=%s, context=%s, reason=%s, external_username=%s, shelfmark_user_id=%s, shelfmark_username=%s)",
+        auth_source,
+        context or "unspecified",  # noqa: E501
+        normalized_username,
+        created["id"],
+        created["username"],
     )
     return created, "created"

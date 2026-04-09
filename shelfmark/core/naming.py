@@ -120,7 +120,7 @@ def parse_naming_template(
             return None
 
         prefix = content[:idx]
-        suffix = content[idx + len(token):]
+        suffix = content[idx + len(token) :]
         value = token_value(token)
         if not value:
             return ""
@@ -139,7 +139,7 @@ def parse_naming_template(
         parts: list[str] = []
         cursor = 0
         for idx, match in enumerate(matches):
-            parts.append(template[cursor:match.start()])
+            parts.append(template[cursor : match.start()])
             content = match.group(1)
             rendered = render_block(content)
 
@@ -208,9 +208,8 @@ def build_library_path(
     try:
         full_path.relative_to(base)
     except ValueError as exc:
-        raise ValueError(
-            "Path traversal detected: template would escape library directory"
-        ) from exc
+        msg = "Path traversal detected: template would escape library directory"
+        raise ValueError(msg) from exc
 
     if extension:
         ext = extension.lstrip(".")
@@ -234,14 +233,16 @@ def same_filesystem(path1: str | Path, path2: str | Path) -> bool:
                     break
             return p.stat().st_dev
         except (OSError, PermissionError) as e:
-            logger.debug(f"Cannot stat {p}: {e}")
+            logger.debug("Cannot stat %s: %s", p, e)
             return None
 
     dev1 = get_device(path1)
     dev2 = get_device(path2)
 
     if dev1 is None or dev2 is None:
-        logger.warning("Cannot determine filesystem for hardlink check, falling back to copy")
+        logger.warning(
+            "Cannot determine filesystem for hardlink check, falling back to copy"
+        )
         return False
 
     return dev1 == dev2

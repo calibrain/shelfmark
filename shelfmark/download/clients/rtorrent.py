@@ -4,7 +4,6 @@ Uses xmlrpc to communicate with rTorrent's RPC interface.
 """
 
 import ssl
-from typing import Any
 from urllib.parse import urlparse
 
 from shelfmark.core.config import config
@@ -23,7 +22,10 @@ from shelfmark.download.network import get_ssl_verify
 logger = setup_logger(__name__)
 
 
-def _create_rtorrent_server_proxy(url: str) -> Any:
+_ETA_MAX_SECONDS = 604800
+
+
+def _create_rtorrent_server_proxy(url: str) -> object:
     """Create an XML-RPC ServerProxy honoring certificate validation mode."""
     xmlrpc_client = get_hardened_xmlrpc_client()
 
@@ -53,11 +55,13 @@ class RTorrentClient(DownloadClient):
         """Initialize rTorrent client with settings from config."""
         raw_url = config.get("RTORRENT_URL", "")
         if not raw_url:
-            raise ValueError("RTORRENT_URL is required")
+            msg = "RTORRENT_URL is required"
+            raise ValueError(msg)
 
         self._base_url = normalize_http_url(raw_url)
         if not self._base_url:
-            raise ValueError("RTORRENT_URL is invalid")
+            msg = "RTORRENT_URL is invalid"
+            raise ValueError(msg)
 
         username = config.get("RTORRENT_USERNAME", "")
         password = config.get("RTORRENT_PASSWORD", "")
@@ -83,7 +87,7 @@ class RTorrentClient(DownloadClient):
         """Test connection to rTorrent."""
         try:
             version = self._rpc.system.client_version()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to rTorrent {version}"
@@ -118,21 +122,31 @@ class RTorrentClient(DownloadClient):
 
             label = category or self._label
             if label:
-                logger.debug(f"Setting rTorrent label: {label}")
+                logger.debug("Setting rTorrent label: %s", label)
                 commands.append(f"d.custom1.set={label}")
 
             download_dir = self._download_dir or self._get_download_dir()
             if download_dir:
-                logger.debug(f"Setting rTorrent download directory: {download_dir}")
+                logger.debug("Setting rTorrent download directory: %s", download_dir)
                 commands.append(f"d.directory.set={download_dir}")
 
             if torrent_info.torrent_data:
-                logger.debug(f"Adding torrent data directly to rTorrent for: {name} with commands: {commands} with data size: {len(torrent_info.torrent_data)}")
+                logger.debug(
+                    "Adding torrent data directly to rTorrent for: %s with commands: %s with data size: %s",
+                    name,
+                    commands,
+                    len(torrent_info.torrent_data),
+                )
                 self._rpc.load.raw_start(
                     "", torrent_info.torrent_data, ";".join(commands)
                 )
             else:
-                logger.debug(f"Adding torrent URL to rTorrent for: {name} with commands: {commands} with URL: {url}")
+                logger.debug(
+                    "Adding torrent URL to rTorrent for: %s with commands: %s with URL: %s",
+                    name,
+                    commands,
+                    url,
+                )
                 add_url = torrent_info.magnet_url or url
                 self._rpc.load.start("", add_url, ";".join(commands))
 
@@ -140,7 +154,7 @@ class RTorrentClient(DownloadClient):
             if not torrent_hash:
                 _raise_runtime_error("Could not determine torrent hash from URL")
 
-            logger.debug(f"Added torrent to rTorrent: {torrent_hash}")
+            logger.debug("Added torrent to rTorrent: %s", torrent_hash)
 
         except Exception:
             logger.exception("rTorrent add failed")
@@ -174,17 +188,21 @@ class RTorrentClient(DownloadClient):
                 "d.complete=",
             )
             torrent_list = [t for t in all_torrents if t and t[0] == download_id]
-            logger.debug(f"Fetched torrent status from rTorrent for: {download_id} - {torrent_list}")
+            logger.debug(
+                "Fetched torrent status from rTorrent for: %s - %s",
+                download_id,
+                torrent_list,
+            )
             if not torrent_list:
-                logger.warning(f"Torrent not found in rTorrent: {download_id}")
+                logger.warning("Torrent not found in rTorrent: %s", download_id)
                 return DownloadStatus.error("Torrent not found")
 
             torrent = torrent_list[0]
             if not torrent:
-                logger.warning(f"Torrent data is empty for: {download_id}")
+                logger.warning("Torrent data is empty for: %s", download_id)
                 return DownloadStatus.error("Torrent not found")
 
-            logger.debug(f"Torrent data for {download_id}: {torrent}")
+            logger.debug("Torrent data for %s: %s", download_id, torrent)
             (
                 torrent_hash,
                 state,
@@ -198,7 +216,7 @@ class RTorrentClient(DownloadClient):
 
             try:
                 state = int(state)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 state = 0
 
             complete = bool(complete)
@@ -223,7 +241,7 @@ class RTorrentClient(DownloadClient):
             eta = None
             if down_rate > 0 and bytes_left > 0:
                 eta_seconds = bytes_left / down_rate
-                if eta_seconds < 604800:
+                if eta_seconds < _ETA_MAX_SECONDS:
                     eta = int(eta_seconds)
 
             file_path = None
@@ -242,7 +260,7 @@ class RTorrentClient(DownloadClient):
 
         except Exception as e:
             error_type = type(e).__name__
-            logger.exception(f"rTorrent get_status failed ({error_type})")
+            logger.exception("rTorrent get_status failed (%s)", error_type)
             return DownloadStatus.error(f"{error_type}: {e}")
 
     def remove(self, download_id: str, delete_files: bool = False) -> bool:
@@ -270,7 +288,7 @@ class RTorrentClient(DownloadClient):
             )
         except Exception as e:
             error_type = type(e).__name__
-            logger.exception(f"rTorrent remove failed ({error_type})")
+            logger.exception("rTorrent remove failed (%s)", error_type)
             return False
         else:
             return True
@@ -287,9 +305,9 @@ class RTorrentClient(DownloadClient):
         """
         try:
             return self._get_torrent_path(download_id)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             error_type = type(e).__name__
-            logger.debug(f"rTorrent get_download_path failed ({error_type}): {e}")
+            logger.debug("rTorrent get_download_path failed (%s): %s", error_type, e)
             return None
 
     def find_existing(
@@ -305,10 +323,10 @@ class RTorrentClient(DownloadClient):
                 status = self.get_status(torrent_info.info_hash)
                 if status.state != DownloadStatus.error("").state:
                     return (torrent_info.info_hash, status)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
-        except Exception as e:
-            logger.debug(f"Error checking for existing torrent: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Error checking for existing torrent: %s", e)
             return None
         else:
             return None
@@ -317,7 +335,7 @@ class RTorrentClient(DownloadClient):
         """Get the download directory from rTorrent config."""
         try:
             return self._rpc.directory.default()
-        except Exception:
+        except Exception:  # noqa: BLE001
             return "/downloads"
 
     def _get_torrent_path(self, download_id: str) -> str | None:
@@ -339,7 +357,7 @@ class RTorrentClient(DownloadClient):
             if not details:
                 return None
             path = details[0][0]
-        except Exception:
+        except Exception:  # noqa: BLE001
             return None
         else:
             return path or None

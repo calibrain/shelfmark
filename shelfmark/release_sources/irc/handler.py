@@ -31,7 +31,7 @@ class IRCDownloadHandler(DownloadHandler):
     ) -> str | None:
         """Download a release via IRC DCC. task.task_id contains the IRC request string."""
         download_request = task.task_id
-        logger.info(f"IRC download: {download_request[:60]}...")
+        logger.info("IRC download: %s...", download_request[:60])
 
         # Get IRC settings
         server = config.get("IRC_SERVER", "")
@@ -100,7 +100,8 @@ class IRCDownloadHandler(DownloadHandler):
             ext = Path(offer.filename).suffix.lstrip(".") or task.format or "epub"
 
             # Stage to temp directory (lazy import to avoid circular import)
-            from shelfmark.download.staging import get_staging_path
+            from shelfmark.download.staging import get_staging_path  # noqa: PLC0415
+
             staging_path = get_staging_path(task.task_id, ext)
 
             download_dcc(
@@ -120,7 +121,7 @@ class IRCDownloadHandler(DownloadHandler):
                 status_callback("cancelled", "Cancelled")
                 return None
 
-            logger.info(f"Download complete: {staging_path}")
+            logger.info("Download complete: %s", staging_path)
             return str(staging_path)
 
         except DCCError as e:
@@ -139,5 +140,5 @@ class IRCDownloadHandler(DownloadHandler):
 
     def cancel(self, task_id: str) -> bool:
         """Cancel an in-progress download (cleanup if cancel_flag fails)."""
-        logger.debug(f"Cancel requested for IRC task: {task_id}")
+        logger.debug("Cancel requested for IRC task: %s", task_id)
         return True

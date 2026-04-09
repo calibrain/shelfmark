@@ -33,6 +33,11 @@ from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
 
+MIN_DAEMON_HOST_ENTRY_LENGTH = 2
+MIN_DAEMON_HOST_STATUS_ENTRY_LENGTH = 4
+DOWNLOAD_COMPLETE_PROGRESS = 100
+ONE_WEEK_IN_SECONDS = 604800
+
 
 class DelugeRpcError(RuntimeError):
     def __init__(self, message: str, code: int | None = None):
@@ -40,7 +45,7 @@ class DelugeRpcError(RuntimeError):
         self.code = code
 
 
-def _get_error_message(error: Any) -> tuple[str, int | None]:
+def _get_error_message(error: object) -> tuple[str, int | None]:
     if isinstance(error, dict):
         return str(error.get("message") or error), error.get("code")
     return str(error), None
@@ -63,18 +68,23 @@ class DelugeClient(DownloadClient):
         password = str(config.get("DELUGE_PASSWORD", "") or "")
 
         if not raw_host:
-            raise ValueError("DELUGE_HOST is required")
+            msg = "DELUGE_HOST is required"
+            raise ValueError(msg)
         if not password:
-            raise ValueError("DELUGE_PASSWORD is required")
+            msg = "DELUGE_PASSWORD is required"
+            raise ValueError(msg)
 
         scheme = "http"
         base_path = ""
 
         # Allow DELUGE_HOST to be either a hostname OR a full URL
         # (useful when Deluge is behind a reverse proxy path).
-        raw_host = normalize_http_url(raw_host, strip_trailing_slash=False) if raw_host else ""
+        raw_host = (
+            normalize_http_url(raw_host, strip_trailing_slash=False) if raw_host else ""
+        )
         if not raw_host:
-            raise ValueError("DELUGE_HOST is invalid")
+            msg = "DELUGE_HOST is invalid"
+            raise ValueError(msg)
 
         host = raw_host
         port = int(raw_port)
@@ -108,14 +118,19 @@ class DelugeClient(DownloadClient):
         self._rpc_id += 1
         return self._rpc_id
 
-    def _rpc_call(self, method: str, *params: Any, timeout: int = 15) -> Any:
+    def _rpc_call(self, method: str, *params: object, timeout: int = 15) -> object:
         payload = {
             "id": self._next_rpc_id(),
             "method": method,
             "params": list(params),
         }
 
-        response = self._session.post(self._rpc_url, json=payload, timeout=timeout, verify=get_ssl_verify(self._rpc_url))
+        response = self._session.post(
+            self._rpc_url,
+            json=payload,
+            timeout=timeout,
+            verify=get_ssl_verify(self._rpc_url),
+        )
         response.raise_for_status()
 
         data = response.json()
@@ -128,7 +143,8 @@ class DelugeClient(DownloadClient):
     def _login(self) -> None:
         result = self._rpc_call("auth.login", self._password)
         if result is not True:
-            raise DelugeRpcError("Deluge Web UI authentication failed")
+            msg = "Deluge Web UI authentication failed"
+            raise DelugeRpcError(msg)
         self._authenticated = True
 
     def _select_daemon_host_id(self, hosts: list) -> str:
@@ -137,11 +153,19 @@ class DelugeClient(DownloadClient):
         preferred_hosts = {"127.0.0.1", "localhost"}
 
         for entry in hosts:
-            if isinstance(entry, list) and len(entry) >= 2 and entry[1] in preferred_hosts:
+            if (
+                isinstance(entry, list)
+                and len(entry) >= MIN_DAEMON_HOST_ENTRY_LENGTH
+                and entry[1] in preferred_hosts
+            ):
                 return str(entry[0])
 
         for entry in hosts:
-            if isinstance(entry, list) and len(entry) >= 4 and str(entry[3]).lower() == "online":
+            if (
+                isinstance(entry, list)
+                and len(entry) >= MIN_DAEMON_HOST_STATUS_ENTRY_LENGTH
+                and str(entry[3]).lower() == "online"
+            ):
                 return str(entry[0])
 
         return str(hosts[0][0])
@@ -159,29 +183,31 @@ class DelugeClient(DownloadClient):
 
         hosts = self._rpc_call("web.get_hosts") or []
         if not hosts:
-            raise DelugeRpcError(
+            msg = (
                 "Deluge Web UI isn't connected to Deluge core (no hosts configured). "
                 "Add/connect a daemon in Deluge Web UI → Connection Manager."
             )
+            raise DelugeRpcError(msg)
 
         host_id = self._select_daemon_host_id(hosts)
         self._rpc_call("web.connect", host_id)
 
         if self._rpc_call("web.connected") is not True:
-            raise DelugeRpcError(
+            msg = (
                 "Deluge Web UI couldn't connect to Deluge core. "
                 "Check daemon status in Deluge Web UI → Connection Manager."
             )
+            raise DelugeRpcError(msg)
 
         self._connected = True
 
-    def _get_daemon_version(self) -> Any:
+    def _get_daemon_version(self) -> object:
         """Fetch daemon version, preferring daemon.get_version when available."""
         try:
             methods = self._rpc_call("system.listMethods")
             if isinstance(methods, list) and "daemon.get_version" in methods:
                 return self._rpc_call("daemon.get_version")
-        except Exception:
+        except Exception:  # noqa: BLE001
             # Fall back to daemon.info to preserve existing behavior.
             pass
 
@@ -198,8 +224,10 @@ class DelugeClient(DownloadClient):
                 self._rpc_call("label.add", label)
 
             self._rpc_call("label.set_torrent", torrent_id, label)
-        except Exception as e:
-            logger.debug(f"Could not set Deluge label '{label}' for {torrent_id}: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.debug(
+                "Could not set Deluge label '%s' for %s: %s", label, torrent_id, e
+            )
 
     @staticmethod
     def is_configured() -> bool:
@@ -212,7 +240,7 @@ class DelugeClient(DownloadClient):
         try:
             self._ensure_connected()
             version = self._get_daemon_version()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self._authenticated = False
             self._connected = False
             return False, f"Connection failed: {e!s}"
@@ -251,7 +279,9 @@ class DelugeClient(DownloadClient):
 
             if torrent_info.is_magnet:
                 magnet_url = torrent_info.magnet_url or url
-                torrent_id = self._rpc_call("core.add_torrent_magnet", magnet_url, options)
+                torrent_id = self._rpc_call(
+                    "core.add_torrent_magnet", magnet_url, options
+                )
             else:
                 torrent_data = torrent_info.torrent_data
                 if torrent_data is None:
@@ -272,7 +302,7 @@ class DelugeClient(DownloadClient):
             torrent_id = str(torrent_id).lower()
             self._try_set_label(torrent_id, category_value)
 
-            logger.info(f"Added torrent to Deluge: {torrent_id}")
+            logger.info("Added torrent to Deluge: %s", torrent_id)
 
         except Exception:
             self._authenticated = False
@@ -289,7 +319,14 @@ class DelugeClient(DownloadClient):
             status = self._rpc_call(
                 "core.get_torrent_status",
                 download_id,
-                ["state", "progress", "download_payload_rate", "eta", "save_path", "name"],
+                [
+                    "state",
+                    "progress",
+                    "download_payload_rate",
+                    "eta",
+                    "save_path",
+                    "name",
+                ],
             )
 
             if not status:
@@ -308,11 +345,15 @@ class DelugeClient(DownloadClient):
             }
 
             deluge_state = status.get("state", "Unknown")
-            state, message = state_map.get(str(deluge_state), ("unknown", str(deluge_state)))
+            state, message = state_map.get(
+                str(deluge_state), ("unknown", str(deluge_state))
+            )
 
             progress = float(status.get("progress", 0))
             # Don't mark complete while files are being moved
-            complete = progress >= 100 and deluge_state != "Moving"
+            complete = (
+                progress >= DOWNLOAD_COMPLETE_PROGRESS and deluge_state != "Moving"
+            )
 
             if complete:
                 message = "Complete"
@@ -321,10 +362,10 @@ class DelugeClient(DownloadClient):
             if eta is not None:
                 try:
                     eta = int(eta)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     eta = None
 
-            if eta is not None and (eta < 0 or eta > 604800):
+            if eta is not None and (eta < 0 or eta > ONE_WEEK_IN_SECONDS):
                 eta = None
 
             file_path = None
@@ -345,7 +386,7 @@ class DelugeClient(DownloadClient):
                 eta=eta,
             )
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, delete_files: bool = False) -> bool:
@@ -360,7 +401,7 @@ class DelugeClient(DownloadClient):
                 )
                 return True
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self._log_error("remove", e)
             return False
         else:
@@ -382,7 +423,7 @@ class DelugeClient(DownloadClient):
                     str(status.get("name", "")),
                 )
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self._log_error("get_download_path", e, level="debug")
             return None
         else:
@@ -408,10 +449,10 @@ class DelugeClient(DownloadClient):
                 full_status = self.get_status(torrent_info.info_hash)
                 return (torrent_info.info_hash, full_status)
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self._authenticated = False
             self._connected = False
-            logger.debug(f"Error checking for existing torrent: {e}")
+            logger.debug("Error checking for existing torrent: %s", e)
             return None
         else:
             return None

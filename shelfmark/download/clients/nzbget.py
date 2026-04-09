@@ -4,7 +4,6 @@ Uses NZBGet's JSON-RPC API directly via requests (no external dependency).
 """
 
 import json
-from typing import Any
 
 import requests
 
@@ -33,11 +32,13 @@ class NZBGetClient(DownloadClient):
         """Initialize NZBGet client with settings from config."""
         raw_url = config.get("NZBGET_URL", "")
         if not raw_url:
-            raise ValueError("NZBGET_URL is required")
+            msg = "NZBGET_URL is required"
+            raise ValueError(msg)
 
         self.url = normalize_http_url(raw_url)
         if not self.url:
-            raise ValueError("NZBGET_URL is invalid")
+            msg = "NZBGET_URL is invalid"
+            raise ValueError(msg)
         self.username = config.get("NZBGET_USERNAME", "nzbget")
         self.password = config.get("NZBGET_PASSWORD", "")
         self._category = config.get("NZBGET_CATEGORY", "Books")
@@ -49,19 +50,21 @@ class NZBGetClient(DownloadClient):
         url = normalize_http_url(config.get("NZBGET_URL", ""))
         return client == "nzbget" and bool(url)
 
-    def _try_remove_command(self, command: str, nzb_id: int, download_id: str) -> tuple[bool, Exception | None]:
+    def _try_remove_command(
+        self, command: str, nzb_id: int, download_id: str
+    ) -> tuple[bool, Exception | None]:
         """Try one NZBGet delete command and return any error."""
         try:
             result = self._rpc_call("editqueue", [command, 0, "", nzb_id])
             if result:
-                logger.info(f"Removed NZB from NZBGet ({command}): {download_id}")
+                logger.info("Removed NZB from NZBGet (%s): %s", command, download_id)
                 return True, None
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return False, e
         return False, None
 
     @with_retry()
-    def _rpc_call(self, method: str, params: list | None = None) -> Any:
+    def _rpc_call(self, method: str, params: list | None = None) -> object:
         """Make a JSON-RPC call to NZBGet.
 
         Args:
@@ -77,12 +80,15 @@ class NZBGetClient(DownloadClient):
         """
         rpc_url = f"{self.url}/jsonrpc"
 
-        payload = json.dumps({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": method,
-            "params": params or [],
-        }, separators=(",", ":"))
+        payload = json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": method,
+                "params": params or [],
+            },
+            separators=(",", ":"),
+        )
 
         response = requests.post(
             rpc_url,
@@ -109,7 +115,7 @@ class NZBGetClient(DownloadClient):
             return False, "Could not connect to NZBGet"
         except requests.exceptions.Timeout:
             return False, "Connection timed out"
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to NZBGet {version}"
@@ -140,17 +146,18 @@ class NZBGetClient(DownloadClient):
             Exception: If adding fails.
 
         """
-        import base64
+        import base64  # noqa: PLC0415
 
         # Use configured category if not explicitly provided
         category = category or self._category
 
         def _raise_invalid_nzb_id() -> None:
-            raise RuntimeError("NZBGet returned invalid ID")
+            msg = "NZBGet returned invalid ID"
+            raise RuntimeError(msg)
 
         try:
             # Fetch NZB content from the URL (handles Prowlarr proxy redirects)
-            logger.debug(f"Fetching NZB from: {url}")
+            logger.debug("Fetching NZB from: %s", url)
             response = requests.get(url, timeout=30, verify=get_ssl_verify(url))
             response.raise_for_status()
             nzb_content = base64.b64encode(response.content).decode("ascii")
@@ -178,13 +185,14 @@ class NZBGetClient(DownloadClient):
             )
 
             if nzb_id and nzb_id > 0:
-                logger.info(f"Added NZB to NZBGet: {nzb_id}")
+                logger.info("Added NZB to NZBGet: %s", nzb_id)
                 return str(nzb_id)
 
             _raise_invalid_nzb_id()
         except requests.RequestException as e:
             logger.exception("Failed to fetch NZB from URL")
-            raise RuntimeError(f"Failed to fetch NZB: {e}") from e
+            msg = f"Failed to fetch NZB: {e}"
+            raise RuntimeError(msg) from e
         except Exception:
             logger.exception("NZBGet add failed")
             raise
@@ -262,12 +270,11 @@ class NZBGetClient(DownloadClient):
 
                     # Normalize for consistent downstream use.
                     if isinstance(file_path, str) and file_path:
-                        import os
+                        import os  # noqa: PLC0415
 
                         file_path = os.path.normpath(file_path)
                     else:
                         file_path = None
-
 
                     if "SUCCESS" in status:
                         return DownloadStatus(
@@ -287,7 +294,7 @@ class NZBGetClient(DownloadClient):
 
             # Not found in queue or history
             return DownloadStatus.error("Download not found")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, delete_files: bool = False) -> bool:

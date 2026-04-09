@@ -66,7 +66,8 @@ def parse_dcc_send(text: str) -> DCCOffer:
     """Parse a DCC SEND message into a DCCOffer. Raises DCCParseError on failure."""
     match = DCC_REGEX.search(text)
     if not match:
-        raise DCCParseError(f"Invalid DCC SEND format: {text[:100]}")
+        msg = f"Invalid DCC SEND format: {text[:100]}"
+        raise DCCParseError(msg)
 
     filename = match.group(1).strip('"')
     ip_int = int(match.group(2))
@@ -89,14 +90,15 @@ def download_dcc(
     timeout: float = 30.0,
 ) -> None:
     """Download file via DCC protocol to dest_path. Raises DCCError on failure."""
-    logger.info(f"DCC connecting to {offer.ip}:{offer.port} for {offer.filename}")
+    logger.info("DCC connecting to %s:%s for %s", offer.ip, offer.port, offer.filename)
 
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
         sock.connect(offer.address)
     except OSError as e:
-        raise DCCConnectionError(f"Failed to connect to {offer.ip}:{offer.port}: {e}") from e
+        msg = f"Failed to connect to {offer.ip}:{offer.port}: {e}"
+        raise DCCConnectionError(msg) from e
 
     try:
         received = 0
@@ -113,7 +115,8 @@ def download_dcc(
                 try:
                     chunk = sock.recv(BUFFER_SIZE)
                 except TimeoutError as e:
-                    raise DCCError(f"Timeout reading from {offer.ip}:{offer.port}") from e
+                    msg = f"Timeout reading from {offer.ip}:{offer.port}"
+                    raise DCCError(msg) from e
 
                 if not chunk:
                     # Connection closed prematurely
@@ -131,11 +134,10 @@ def download_dcc(
 
         # Verify downloaded size matches expected
         if received != offer.size:
-            raise DCCSizeError(
-                f"Size mismatch: expected {offer.size} bytes, got {received}"
-            )
+            msg = f"Size mismatch: expected {offer.size} bytes, got {received}"
+            raise DCCSizeError(msg)
 
-        logger.info(f"DCC download complete: {received} bytes")
+        logger.info("DCC download complete: %s bytes", received)
 
     finally:
         sock.close()

@@ -18,10 +18,10 @@ from shelfmark.metadata_providers import BookMetadata
 class ReleaseProtocol(str, Enum):
     """Protocol for downloading a release."""
 
-    HTTP = "http"       # Direct HTTP download
-    TORRENT = "torrent" # BitTorrent
-    NZB = "nzb"         # Usenet NZB
-    DCC = "dcc"         # IRC DCC
+    HTTP = "http"  # Direct HTTP download
+    TORRENT = "torrent"  # BitTorrent
+    NZB = "nzb"  # Usenet NZB
+    DCC = "dcc"  # IRC DCC
 
 
 class SourceUnavailableError(Exception):
@@ -58,19 +58,21 @@ class BrowseRecord:
 class Release:
     """A downloadable release - all sources return this same structure."""
 
-    source: str                      # "direct", "prowlarr", "irc", etc.
-    source_id: str                   # ID within that source
+    source: str  # "direct", "prowlarr", "irc", etc.
+    source_id: str  # ID within that source
     title: str
     format: str | None = None
-    language: str | None = None   # ISO 639-1 code (e.g., "en", "de", "fr")
+    language: str | None = None  # ISO 639-1 code (e.g., "en", "de", "fr")
     size: str | None = None
     size_bytes: int | None = None
     download_url: str | None = None
-    info_url: str | None = None   # Link to release info page (e.g., tracker) - makes title clickable
+    info_url: str | None = (
+        None  # Link to release info page (e.g., tracker) - makes title clickable
+    )
     protocol: ReleaseProtocol | None = None
-    indexer: str | None = None    # Source name for display
-    seeders: int | None = None    # For torrents
-    peers: str | None = None      # For torrents: "seeders/leechers" display string
+    indexer: str | None = None  # Source name for display
+    seeders: int | None = None  # For torrents
+    peers: str | None = None  # For torrents: "seeders/leechers" display string
     content_type: str | None = None  # "ebook" or "audiobook" - preserved from search
     extra: dict = field(default_factory=dict)  # Source-specific metadata
 
@@ -79,8 +81,8 @@ class Release:
 class DownloadProgress:
     """DEPRECATED: Use progress_callback and status_callback instead."""
 
-    status: str                      # "queued", "resolving", "downloading", "complete", "failed"
-    progress: float                  # 0-100
+    status: str  # "queued", "resolving", "downloading", "complete", "failed"
+    progress: float  # 0-100
     status_message: str | None = None
     download_speed: int | None = None
     eta: int | None = None
@@ -89,17 +91,18 @@ class DownloadProgress:
 
 # --- Column Schema for Plugin-Driven UI ---
 
+
 class ColumnRenderType(str, Enum):
     """How the frontend should render the column value."""
 
-    TEXT = "text"           # Plain text
-    BADGE = "badge"         # Colored badge (format, language)
-    TAGS = "tags"           # List of colored badges
-    SIZE = "size"           # File size formatting
-    NUMBER = "number"       # Numeric value
-    PEERS = "peers"         # Peers display: "S/L" with color based on seeder count
+    TEXT = "text"  # Plain text
+    BADGE = "badge"  # Colored badge (format, language)
+    TAGS = "tags"  # List of colored badges
+    SIZE = "size"  # File size formatting
+    NUMBER = "number"  # Numeric value
+    PEERS = "peers"  # Peers display: "S/L" with color based on seeder count
     INDEXER_PROTOCOL = "indexer_protocol"  # Text + colored dot for torrent/usenet
-    FLAG_ICON = "flag_icon"                # Icon with tooltip (VIP, freeleech, etc.)
+    FLAG_ICON = "flag_icon"  # Icon with tooltip (VIP, freeleech, etc.)
     FORMAT_CONTENT_TYPE = "format_content_type"  # Content type icon + format badge
 
 
@@ -115,33 +118,35 @@ class ColumnAlign(str, Enum):
 class ColumnColorHint:
     """Color hint for badge-type columns."""
 
-    type: Literal["map", "static"]   # "map" uses frontend colorMaps, "static" is fixed class
-    value: str                        # Map name ("format", "language") or Tailwind class
+    type: Literal[
+        "map", "static"
+    ]  # "map" uses frontend colorMaps, "static" is fixed class
+    value: str  # Map name ("format", "language") or Tailwind class
 
 
 @dataclass
 class ColumnSchema:
     """Definition for a single column in the release list."""
 
-    key: str                                      # Data path (e.g., "format", "extra.language")
-    label: str                                    # Accessibility label
+    key: str  # Data path (e.g., "format", "extra.language")
+    label: str  # Accessibility label
     render_type: ColumnRenderType = ColumnRenderType.TEXT
     align: ColumnAlign = ColumnAlign.LEFT
-    width: str = "auto"                           # CSS width (e.g., "80px", "minmax(0,2fr)")
-    hide_mobile: bool = False                     # Hide on small screens
+    width: str = "auto"  # CSS width (e.g., "80px", "minmax(0,2fr)")
+    hide_mobile: bool = False  # Hide on small screens
     color_hint: ColumnColorHint | None = None  # For BADGE render type
-    fallback: str = "-"                           # Value to show when data is missing
-    uppercase: bool = False                       # Force uppercase display
-    sortable: bool = False                        # Show in sort dropdown (opt-in)
-    sort_key: str | None = None                # Field to sort by (defaults to `key` if None)
+    fallback: str = "-"  # Value to show when data is missing
+    uppercase: bool = False  # Force uppercase display
+    sortable: bool = False  # Show in sort dropdown (opt-in)
+    sort_key: str | None = None  # Field to sort by (defaults to `key` if None)
 
 
 class LeadingCellType(str, Enum):
     """Type of leading cell to display in release rows."""
 
     THUMBNAIL = "thumbnail"  # Show book cover image
-    BADGE = "badge"          # Show colored badge (e.g., "Torrent", "Usenet")
-    NONE = "none"            # No leading cell
+    BADGE = "badge"  # Show colored badge (e.g., "Torrent", "Usenet")
+    NONE = "none"  # No leading cell
 
 
 @dataclass
@@ -149,25 +154,27 @@ class LeadingCellConfig:
     """Configuration for the leading cell in release rows."""
 
     type: LeadingCellType = LeadingCellType.THUMBNAIL
-    key: str | None = None                     # Field path for data (e.g., "extra.preview" or "extra.download_type")
+    key: str | None = (
+        None  # Field path for data (e.g., "extra.preview" or "extra.download_type")
+    )
     color_hint: ColumnColorHint | None = None  # For badge type - maps values to colors
-    uppercase: bool = False                       # Force uppercase for badge text
+    uppercase: bool = False  # Force uppercase for badge text
 
 
 @dataclass
 class SortOption:
     """A sort option that appears in the sort dropdown without being tied to a column."""
 
-    label: str                                    # Display label in the sort dropdown
-    sort_key: str                                 # Field to sort by on the Release object
+    label: str  # Display label in the sort dropdown
+    sort_key: str  # Field to sort by on the Release object
 
 
 @dataclass
 class SourceActionButton:
     """Action button configuration for a release source."""
 
-    label: str                    # Button text (e.g., "Refresh search")
-    action: str = "expand"        # Action type: "expand" triggers expand_search
+    label: str  # Button text (e.g., "Refresh search")
+    action: str = "expand"  # Action type: "expand" triggers expand_search
 
 
 @dataclass
@@ -176,14 +183,26 @@ class ReleaseColumnConfig:
 
     columns: list[ColumnSchema]
     grid_template: str = "minmax(0,2fr) 60px 80px 80px"  # CSS grid-template-columns
-    leading_cell: LeadingCellConfig | None = None     # Defaults to thumbnail mode if None
-    online_servers: list[str] | None = None           # For IRC: list of currently online server nicks
-    available_indexers: list[str] | None = None       # For Prowlarr: list of all enabled indexer names
-    default_indexers: list[str] | None = None         # For Prowlarr: indexers selected in settings (pre-selected in filter)
-    cache_ttl_seconds: int | None = None              # How long to cache results (default: 5 min)
-    supported_filters: list[str] | None = None        # Which filters this source supports: ["format", "language", "indexer"]
-    extra_sort_options: list[SortOption] | None = None # Additional sort options not tied to a column
-    action_button: SourceActionButton | None = None   # Custom action button (replaces default expand search)
+    leading_cell: LeadingCellConfig | None = None  # Defaults to thumbnail mode if None
+    online_servers: list[str] | None = (
+        None  # For IRC: list of currently online server nicks
+    )
+    available_indexers: list[str] | None = (
+        None  # For Prowlarr: list of all enabled indexer names
+    )
+    default_indexers: list[str] | None = (
+        None  # For Prowlarr: indexers selected in settings (pre-selected in filter)
+    )
+    cache_ttl_seconds: int | None = None  # How long to cache results (default: 5 min)
+    supported_filters: list[str] | None = (
+        None  # Which filters this source supports: ["format", "language", "indexer"]
+    )
+    extra_sort_options: list[SortOption] | None = (
+        None  # Additional sort options not tied to a column
+    )
+    action_button: SourceActionButton | None = (
+        None  # Custom action button (replaces default expand search)
+    )
 
 
 def serialize_column_config(config: ReleaseColumnConfig) -> dict[str, Any]:
@@ -199,8 +218,10 @@ def serialize_column_config(config: ReleaseColumnConfig) -> dict[str, Any]:
                 "hide_mobile": col.hide_mobile,
                 "color_hint": {
                     "type": col.color_hint.type,
-                    "value": col.color_hint.value
-                } if col.color_hint else None,
+                    "value": col.color_hint.value,
+                }
+                if col.color_hint
+                else None,
                 "fallback": col.fallback,
                 "uppercase": col.uppercase,
                 "sortable": col.sortable,
@@ -218,8 +239,10 @@ def serialize_column_config(config: ReleaseColumnConfig) -> dict[str, Any]:
             "key": config.leading_cell.key,
             "color_hint": {
                 "type": config.leading_cell.color_hint.type,
-                "value": config.leading_cell.color_hint.value
-            } if config.leading_cell.color_hint else None,
+                "value": config.leading_cell.color_hint.value,
+            }
+            if config.leading_cell.color_hint
+            else None,
             "uppercase": config.leading_cell.uppercase,
         }
 
@@ -301,10 +324,15 @@ def _default_column_config() -> ReleaseColumnConfig:
 class ReleaseSource(ABC):
     """Interface for searching a release source."""
 
-    name: str                        # "direct", "prowlarr"
-    display_name: str                # "Direct Download", "Prowlarr"
-    supported_content_types: list[str] = ["ebook", "audiobook"]  # Content types this source supports
-    can_be_default: bool = True      # Whether this source can be selected as default in settings
+    name: str  # "direct", "prowlarr"
+    display_name: str  # "Direct Download", "Prowlarr"
+    supported_content_types: list[str] = [
+        "ebook",
+        "audiobook",
+    ]  # Content types this source supports
+    can_be_default: bool = (
+        True  # Whether this source can be selected as default in settings
+    )
 
     @abstractmethod
     def search(
@@ -312,7 +340,7 @@ class ReleaseSource(ABC):
         book: BookMetadata,
         plan: "ReleaseSearchPlan",
         expand_search: bool = False,
-        content_type: str = "ebook"
+        content_type: str = "ebook",
     ) -> list[Release]:
         """Search for releases of a book."""
 
@@ -331,7 +359,8 @@ class ReleaseSource(ABC):
         fetch_download_count: bool = True,
     ) -> BrowseRecord | None:
         """Resolve a source-native record for browse flows."""
-        raise NotImplementedError(f"{self.display_name} does not support record lookup")
+        msg = f"{self.display_name} does not support record lookup"
+        raise NotImplementedError(msg)
 
     def search_results_are_releases(self) -> bool:
         """Whether source-native browse results already represent concrete releases."""
@@ -359,7 +388,7 @@ class DownloadHandler(ABC):
         task: DownloadTask,
         cancel_flag: Event,
         progress_callback: Callable[[float], None],
-        status_callback: Callable[[str, str | None], None]
+        status_callback: Callable[[str, str | None], None],
     ) -> str | None:
         """Execute download and return a path to the downloaded payload."""
 
@@ -384,31 +413,37 @@ _HANDLERS: dict[str, type[DownloadHandler]] = {}
 
 def register_source(name: str):
     """Decorator to register a release source."""
+
     def decorator(cls):
         _SOURCES[name] = cls
         return cls
+
     return decorator
 
 
 def register_handler(name: str):
     """Decorator to register a download handler."""
+
     def decorator(cls):
         _HANDLERS[name] = cls
         return cls
+
     return decorator
 
 
 def get_source(name: str) -> ReleaseSource:
     """Get a release source instance by name."""
     if name not in _SOURCES:
-        raise ValueError(f"Unknown release source: {name}")
+        msg = f"Unknown release source: {name}"
+        raise ValueError(msg)
     return _SOURCES[name]()
 
 
 def get_handler(name: str) -> DownloadHandler:
     """Get a download handler instance by name."""
     if name not in _HANDLERS:
-        raise ValueError(f"Unknown download handler: {name}")
+        msg = f"Unknown download handler: {name}"
+        raise ValueError(msg)
     return _HANDLERS[name]()
 
 
@@ -417,14 +452,18 @@ def list_available_sources() -> list[dict]:
     result = []
     for name, src_class in _SOURCES.items():
         instance = src_class()
-        result.append({
-            "name": name,
-            "display_name": instance.display_name,
-            "enabled": instance.is_available(),
-            "supported_content_types": getattr(instance, "supported_content_types", ["ebook", "audiobook"]),
-            "browse_results_are_releases": instance.search_results_are_releases(),
-            "can_be_default": getattr(instance, "can_be_default", True),
-        })
+        result.append(
+            {
+                "name": name,
+                "display_name": instance.display_name,
+                "enabled": instance.is_available(),
+                "supported_content_types": getattr(
+                    instance, "supported_content_types", ["ebook", "audiobook"]
+                ),
+                "browse_results_are_releases": instance.search_results_are_releases(),
+                "can_be_default": getattr(instance, "can_be_default", True),
+            }
+        )
     return result
 
 
@@ -442,7 +481,9 @@ def browse_record_to_book_metadata(
     author_override: str | None = None,
 ) -> BookMetadata:
     """Convert a source-native browse record into generic book metadata."""
-    resolved_title = title_override or str(record.title or "").strip() or "Unknown title"
+    resolved_title = (
+        title_override or str(record.title or "").strip() or "Unknown title"
+    )
     resolved_author = author_override or str(record.author or "").strip()
     authors = [part.strip() for part in resolved_author.split(",") if part.strip()]
     publish_year = None

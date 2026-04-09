@@ -19,11 +19,36 @@ logger = setup_logger(__name__)
 # User-configured formats are used separately for filtering.
 ALL_RECOGNIZED_FORMATS = {
     # Ebook formats
-    "epub", "mobi", "azw3", "azw", "pdf", "doc", "docx",
-    "html", "htm", "rtf", "txt", "lit", "fb2", "djvu",
-    "cbr", "cbz", "cdr", "jpg", "rar", "zip",
+    "epub",
+    "mobi",
+    "azw3",
+    "azw",
+    "pdf",
+    "doc",
+    "docx",
+    "html",
+    "htm",
+    "rtf",
+    "txt",
+    "lit",
+    "fb2",
+    "djvu",
+    "cbr",
+    "cbz",
+    "cdr",
+    "jpg",
+    "rar",
+    "zip",
     # Audiobook formats
-    "m4b", "mp3", "m4a", "flac", "ogg", "wma", "aac", "wav", "opus"
+    "m4b",
+    "mp3",
+    "m4a",
+    "flac",
+    "ogg",
+    "wma",
+    "aac",
+    "wav",
+    "opus",
 }
 
 
@@ -32,18 +57,21 @@ def _get_supported_formats(content_type: str | None = None) -> set[str]:
     if check_audiobook(content_type):
         formats = config.get("SUPPORTED_AUDIOBOOK_FORMATS", ["m4b", "mp3"])
     else:
-        formats = config.get("SUPPORTED_FORMATS", ["epub", "mobi", "azw3", "fb2", "djvu", "cbz", "cbr"])
+        formats = config.get(
+            "SUPPORTED_FORMATS", ["epub", "mobi", "azw3", "fb2", "djvu", "cbz", "cbr"]
+        )
 
     if isinstance(formats, str):
         return {fmt.strip().lower() for fmt in formats.split(",") if fmt.strip()}
     return {fmt.lower() for fmt in formats}
 
+
 # Regex to parse result lines
 # Format: !Server Author - Title.format ::INFO:: size
 RESULT_LINE_REGEX = re.compile(
-    r"^!(\S+)\s+"           # !ServerName
-    r"(.+?)\s+-\s+"         # Author Name -
-    r"(.+?)\.(\w+)"         # Title.format
+    r"^!(\S+)\s+"  # !ServerName
+    r"(.+?)\s+-\s+"  # Author Name -
+    r"(.+?)\.(\w+)"  # Title.format
     r"(?:\s+::INFO::\s*(.+?))?"  # Optional ::INFO:: metadata
     r"(?:\s+::HASH::\s*(\S+))?"  # Optional ::HASH::
     r"\s*$"
@@ -59,12 +87,12 @@ SIMPLE_RESULT_REGEX = re.compile(
 class SearchResult:
     """Parsed search result entry."""
 
-    server: str           # Bot name (without !)
-    author: str           # Author name
-    title: str            # Book title
-    format: str           # File format (epub, mobi, etc)
-    size: str | None   # Human-readable size
-    full_line: str        # Original line for download request
+    server: str  # Bot name (without !)
+    author: str  # Author name
+    title: str  # Book title
+    format: str  # File format (epub, mobi, etc)
+    size: str | None  # Human-readable size
+    full_line: str  # Original line for download request
 
     @property
     def download_request(self) -> str:
@@ -139,11 +167,13 @@ def parse_result_line(line: str) -> SearchResult | None:
             full_line=line,
         )
 
-    logger.debug(f"Could not parse line: {line[:80]}...")
+    logger.debug("Could not parse line: %s...", line[:80])
     return None
 
 
-def parse_results_file(content: str, content_type: str | None = None) -> list[SearchResult]:
+def parse_results_file(
+    content: str, content_type: str | None = None
+) -> list[SearchResult]:
     """Parse a search results file into SearchResult objects."""
     results = []
     supported = _get_supported_formats(content_type)
@@ -154,7 +184,7 @@ def parse_results_file(content: str, content_type: str | None = None) -> list[Se
             # Filter to user's configured formats
             results.append(result)
 
-    logger.info(f"Parsed {len(results)} results from search file")
+    logger.info("Parsed %s results from search file", len(results))
     return results
 
 
@@ -164,7 +194,8 @@ def extract_results_from_zip(zip_path: Path) -> str:
         # Should contain exactly one text file
         names = zf.namelist()
         if not names:
-            raise ValueError("Empty ZIP file")
+            msg = "Empty ZIP file"
+            raise ValueError(msg)
 
         # Find the text file
         txt_file = None

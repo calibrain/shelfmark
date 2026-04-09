@@ -17,21 +17,35 @@ logger = setup_logger(__name__)
 class FieldBase:
     """Base class for all settings fields."""
 
-    key: str                              # Environment variable / config key
-    label: str                            # Display label in UI
-    description: str = ""                 # Help text
-    default: Any = None                   # Default value if not set
-    required: bool = False                # Whether field must have a value
-    env_var: str | None = None         # Override env var name (defaults to key)
-    env_supported: bool = True            # Whether this setting can be set via ENV var (False = UI-only)
-    user_overridable: bool = False        # Whether admins can set per-user overrides for this field
-    disabled: bool = False                # Whether field is disabled/greyed out
-    disabled_reason: str = ""             # Explanation shown when disabled
-    show_when: dict[str, Any] | list[dict[str, Any]] | None = None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
-    disabled_when: dict[str, Any] | None = None  # Conditional disable: {"field": "key", "value": "expected", "reason": "..."}
-    requires_restart: bool = False        # Whether changing this setting requires a container restart
-    universal_only: bool = False          # Only show in Universal search mode (hide in Direct mode)
-    hidden_in_ui: bool = False            # Keep field in schema/save path but hide default renderer
+    key: str  # Environment variable / config key
+    label: str  # Display label in UI
+    description: str = ""  # Help text
+    default: object = None  # Default value if not set
+    required: bool = False  # Whether field must have a value
+    env_var: str | None = None  # Override env var name (defaults to key)
+    env_supported: bool = (
+        True  # Whether this setting can be set via ENV var (False = UI-only)
+    )
+    user_overridable: bool = (
+        False  # Whether admins can set per-user overrides for this field
+    )
+    disabled: bool = False  # Whether field is disabled/greyed out
+    disabled_reason: str = ""  # Explanation shown when disabled
+    show_when: dict[str, Any] | list[dict[str, Any]] | None = (
+        None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
+    )
+    disabled_when: dict[str, Any] | None = (
+        None  # Conditional disable: {"field": "key", "value": "expected", "reason": "..."}
+    )
+    requires_restart: bool = (
+        False  # Whether changing this setting requires a container restart
+    )
+    universal_only: bool = (
+        False  # Only show in Universal search mode (hide in Direct mode)
+    )
+    hidden_in_ui: bool = (
+        False  # Keep field in schema/save path but hide default renderer
+    )
 
     def get_env_var_name(self) -> str:
         """Get the environment variable name for this field."""
@@ -79,8 +93,12 @@ class SelectField(FieldBase):
     """Single-choice dropdown."""
 
     # Options can be a list or a callable that returns a list (for lazy evaluation)
-    options: Any = field(default_factory=list)  # [{value: "", label: ""}] or callable
-    filter_by_field: str | None = None  # Field key whose value filters options via childOf property
+    options: object = field(
+        default_factory=list
+    )  # [{value: "", label: ""}] or callable
+    filter_by_field: str | None = (
+        None  # Field key whose value filters options via childOf property
+    )
 
 
 @dataclass
@@ -88,9 +106,13 @@ class MultiSelectField(FieldBase):
     """Multiple-choice selection."""
 
     # Options can be a list or a callable that returns a list (for lazy evaluation)
-    options: Any = field(default_factory=list)  # [{value: "", label: ""}] or callable
+    options: object = field(
+        default_factory=list
+    )  # [{value: "", label: ""}] or callable
     default: list[str] = field(default_factory=list)
-    variant: str = "pills"  # "pills" (default) or "dropdown" for checkbox dropdown style
+    variant: str = (
+        "pills"  # "pills" (default) or "dropdown" for checkbox dropdown style
+    )
 
 
 @dataclass
@@ -108,7 +130,7 @@ class OrderableListField(FieldBase):
     # Each option: {id, label, description?, disabledReason?, isLocked?, section?, isPinned?}
     # - isLocked: toggle is disabled (can't enable/disable)
     # - isPinned: can't be reordered (but toggle may still work if not also isLocked)
-    options: Any = field(default_factory=list)
+    options: object = field(default_factory=list)
     # Default value: [{id, enabled}, ...] in priority order
     default: list[dict[str, Any]] = field(default_factory=list)
 
@@ -118,7 +140,7 @@ class TableField(FieldBase):
     """Editable table of structured rows."""
 
     # Column definitions: [{key, label, type, placeholder?, options?, defaultValue?}, ...]
-    columns: Any = field(default_factory=list)  # list or callable
+    columns: object = field(default_factory=list)  # list or callable
 
     # Value format: list of objects
     default: list[dict[str, Any]] = field(default_factory=list)
@@ -132,12 +154,18 @@ class CustomComponentField:
     """Render a custom frontend component inside settings content."""
 
     key: str
-    component: str                        # Frontend component registry key
+    component: str  # Frontend component registry key
     label: str = ""
     description: str = ""
-    bind_keys: list[str] = field(default_factory=list)  # Related value keys this component edits
-    value_fields: list[Any] = field(default_factory=list)  # Backing value schema for this component
-    wrap_in_field_wrapper: bool = False   # Whether to render with standard FieldWrapper layout
+    bind_keys: list[str] = field(
+        default_factory=list
+    )  # Related value keys this component edits
+    value_fields: list[Any] = field(
+        default_factory=list
+    )  # Backing value schema for this component
+    wrap_in_field_wrapper: bool = (
+        False  # Whether to render with standard FieldWrapper layout
+    )
     disabled: bool = False
     disabled_reason: str = ""
     show_when: dict[str, Any] | list[dict[str, Any]] | None = None
@@ -154,15 +182,21 @@ class CustomComponentField:
 
 @dataclass
 class ActionButton:
-    key: str                              # Action identifier
-    label: str                            # Button text
-    description: str = ""                 # Help text
-    style: str = "default"                # "default", "primary", "danger"
-    callback: Callable[..., dict[str, Any]] | None = None  # Returns {"success": bool, "message": str}
-    disabled: bool = False                # Whether button is disabled/greyed out
-    disabled_reason: str = ""             # Explanation shown when disabled
-    show_when: dict[str, Any] | list[dict[str, Any]] | None = None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
-    disabled_when: dict[str, Any] | None = None  # Conditional disable: {"field": "key", "value": "expected", "reason": "..."}
+    key: str  # Action identifier
+    label: str  # Button text
+    description: str = ""  # Help text
+    style: str = "default"  # "default", "primary", "danger"
+    callback: Callable[..., dict[str, Any]] | None = (
+        None  # Returns {"success": bool, "message": str}
+    )
+    disabled: bool = False  # Whether button is disabled/greyed out
+    disabled_reason: str = ""  # Explanation shown when disabled
+    show_when: dict[str, Any] | list[dict[str, Any]] | None = (
+        None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
+    )
+    disabled_when: dict[str, Any] | None = (
+        None  # Conditional disable: {"field": "key", "value": "expected", "reason": "..."}
+    )
 
     def get_field_type(self) -> str:
         return "ActionButton"
@@ -176,14 +210,20 @@ class HeadingField:
     Not an input field - purely for display.
     """
 
-    key: str                              # Unique identifier
-    title: str                            # Heading title
-    description: str = ""                 # Description text (supports markdown-style links)
-    description_by_auth_mode: dict[str, str] | None = None  # Optional auth-mode specific description map
-    link_url: str = ""                    # Optional URL for a link
-    link_text: str = ""                   # Text for the link (defaults to URL if not provided)
-    show_when: dict[str, Any] | list[dict[str, Any]] | None = None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
-    universal_only: bool = False          # Only show in Universal search mode (hide in Direct mode)
+    key: str  # Unique identifier
+    title: str  # Heading title
+    description: str = ""  # Description text (supports markdown-style links)
+    description_by_auth_mode: dict[str, str] | None = (
+        None  # Optional auth-mode specific description map
+    )
+    link_url: str = ""  # Optional URL for a link
+    link_text: str = ""  # Text for the link (defaults to URL if not provided)
+    show_when: dict[str, Any] | list[dict[str, Any]] | None = (
+        None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
+    )
+    universal_only: bool = (
+        False  # Only show in Universal search mode (hide in Direct mode)
+    )
 
     def get_field_type(self) -> str:
         return "HeadingField"
@@ -210,22 +250,22 @@ SettingsField = (
 class SettingsTab:
     """A tab/section in the settings UI."""
 
-    name: str                             # Internal name (used in URLs)
-    display_name: str                     # Display name in UI
+    name: str  # Internal name (used in URLs)
+    display_name: str  # Display name in UI
     fields: list[SettingsField] = field(default_factory=list)
-    icon: str | None = None            # Icon name for UI
-    order: int = 100                      # Sort order (lower = earlier)
-    group: str | None = None           # Group name this tab belongs to
+    icon: str | None = None  # Icon name for UI
+    order: int = 100  # Sort order (lower = earlier)
+    group: str | None = None  # Group name this tab belongs to
 
 
 @dataclass
 class SettingsGroup:
     """A collapsible group of settings tabs in the UI."""
 
-    name: str                             # Internal name
-    display_name: str                     # Display name in UI
-    icon: str | None = None            # Icon name for UI
-    order: int = 100                      # Sort order (lower = earlier)
+    name: str  # Internal name
+    display_name: str  # Display name in UI
+    icon: str | None = None  # Icon name for UI
+    order: int = 100  # Sort order (lower = earlier)
 
 
 _SETTINGS_REGISTRY: dict[str, SettingsTab] = {}
@@ -235,10 +275,7 @@ _REGISTRY_LOCK = Lock()
 
 
 def register_group(
-    name: str,
-    display_name: str,
-    icon: str | None = None,
-    order: int = 100
+    name: str, display_name: str, icon: str | None = None, order: int = 100
 ) -> None:
     with _REGISTRY_LOCK:
         group = SettingsGroup(
@@ -248,7 +285,7 @@ def register_group(
             order=order,
         )
         _GROUPS_REGISTRY[name] = group
-        logger.debug(f"Registered settings group: {name}")
+        logger.debug("Registered settings group: %s", name)
 
 
 def register_settings(
@@ -256,7 +293,7 @@ def register_settings(
     display_name: str,
     icon: str | None = None,
     order: int = 100,
-    group: str | None = None
+    group: str | None = None,
 ):
     def decorator(func: Callable[[], list[SettingsField]]):
         with _REGISTRY_LOCK:
@@ -270,22 +307,26 @@ def register_settings(
                 group=group,
             )
             _SETTINGS_REGISTRY[name] = tab
-            logger.debug(f"Registered settings tab: {name} ({len(fields)} fields)" +
-                        (f" in group {group}" if group else ""))
+            logger.debug(
+                f"Registered settings tab: {name} ({len(fields)} fields)"
+                + (f" in group {group}" if group else "")
+            )
         return func
+
     return decorator
 
 
 def register_on_save(
-    tab_name: str,
-    handler: Callable[[dict[str, Any]], dict[str, Any]]
+    tab_name: str, handler: Callable[[dict[str, Any]], dict[str, Any]]
 ) -> None:
     with _REGISTRY_LOCK:
         _ON_SAVE_HANDLERS[tab_name] = handler
-        logger.debug(f"Registered on_save handler for tab: {tab_name}")
+        logger.debug("Registered on_save handler for tab: %s", tab_name)
 
 
-def get_on_save_handler(tab_name: str) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
+def get_on_save_handler(
+    tab_name: str,
+) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
     """Get the on_save handler for a settings tab, if any."""
     return _ON_SAVE_HANDLERS.get(tab_name)
 
@@ -305,7 +346,9 @@ def _iter_value_fields(tab: SettingsTab):
     for settings_field in tab.fields:
         if isinstance(settings_field, CustomComponentField):
             for value_field in settings_field.value_fields:
-                if isinstance(value_field, (ActionButton, HeadingField, CustomComponentField)):
+                if isinstance(
+                    value_field, (ActionButton, HeadingField, CustomComponentField)
+                ):
                     continue
                 yield value_field
             continue
@@ -314,7 +357,9 @@ def _iter_value_fields(tab: SettingsTab):
         yield settings_field
 
 
-def get_settings_field_map(tab_name: str | None = None) -> dict[str, tuple[SettingsField, str]]:
+def get_settings_field_map(
+    tab_name: str | None = None,
+) -> dict[str, tuple[SettingsField, str]]:
     """Return key -> (field, tab_name) map for value-bearing settings fields."""
     tabs: list[SettingsTab]
     if tab_name:
@@ -332,7 +377,9 @@ def get_settings_field_map(tab_name: str | None = None) -> dict[str, tuple[Setti
     return field_map
 
 
-def get_user_overridable_fields(tab_name: str | None = None) -> dict[str, tuple[SettingsField, str]]:
+def get_user_overridable_fields(
+    tab_name: str | None = None,
+) -> dict[str, tuple[SettingsField, str]]:
     """Return key -> (field, tab_name) map for fields marked user_overridable."""
     field_map = get_settings_field_map(tab_name=tab_name)
     return {
@@ -349,7 +396,8 @@ def list_registered_settings() -> list[str]:
 
 def _get_config_dir() -> Path:
     """Get the config directory path."""
-    from shelfmark.config.env import CONFIG_DIR
+    from shelfmark.config.env import CONFIG_DIR  # noqa: PLC0415
+
     return Path(CONFIG_DIR)
 
 
@@ -362,7 +410,8 @@ def _get_config_file_path(tab_name: str) -> Path:
     # Sanitize tab_name to prevent path traversal
     safe_name = Path(tab_name).name
     if not safe_name or safe_name != tab_name:
-        raise ValueError(f"Invalid tab name: {tab_name}")
+        msg = f"Invalid tab name: {tab_name}"
+        raise ValueError(msg)
     return config_dir / "plugins" / f"{safe_name}.json"
 
 
@@ -382,7 +431,7 @@ def load_config_file(tab_name: str) -> dict[str, Any]:
         with config_path.open() as f:
             return json.load(f)
     except json.JSONDecodeError:
-        logger.exception(f"Invalid JSON in config file {config_path}")
+        logger.exception("Invalid JSON in config file %s", config_path)
         return {}
 
 
@@ -398,9 +447,9 @@ def save_config_file(tab_name: str, values: dict[str, Any]) -> bool:
         with config_path.open("w") as f:
             json.dump(existing, f, indent=2)
 
-        logger.info(f"Saved settings to {config_path}")
+        logger.info("Saved settings to %s", config_path)
     except Exception:
-        logger.exception(f"Error saving config file for {tab_name}")
+        logger.exception("Error saving config file for %s", tab_name)
         return False
     else:
         return True
@@ -423,7 +472,7 @@ def initialize_default_configs() -> bool:
 
         # Check if config directory exists and is writable
         if not config_dir.exists():
-            logger.warning(f"Config directory does not exist: {config_dir}")
+            logger.warning("Config directory does not exist: %s", config_dir)
             return False
 
         # Test writability
@@ -432,7 +481,7 @@ def initialize_default_configs() -> bool:
             test_file.touch()
             test_file.unlink()
         except (OSError, PermissionError) as e:
-            logger.warning(f"Config directory is not writable: {config_dir} - {e}")
+            logger.warning("Config directory is not writable: %s - %s", config_dir, e)
             return False
 
         initialized_tabs = []
@@ -459,10 +508,10 @@ def initialize_default_configs() -> bool:
                         json.dump(defaults, f, indent=2)
                     initialized_tabs.append(tab.name)
                 except Exception:
-                    logger.exception(f"Failed to initialize config for {tab.name}")
+                    logger.exception("Failed to initialize config for %s", tab.name)
 
         if initialized_tabs:
-            logger.info(f"Initialized default configs for: {initialized_tabs}")
+            logger.info("Initialized default configs for: %s", initialized_tabs)
 
     except Exception:
         logger.exception("Error during config initialization")
@@ -495,7 +544,12 @@ def sync_env_to_config() -> None:
         # Save synced values to config file (merge with existing)
         if values_to_sync:
             save_config_file(tab.name, values_to_sync)
-            logger.debug(f"Synced {len(values_to_sync)} ENV values to {tab.name} config: {list(values_to_sync.keys())}")
+            logger.debug(
+                "Synced %s ENV values to %s config: %s",
+                len(values_to_sync),
+                tab.name,
+                list(values_to_sync.keys()),
+            )
 
     migrate_legacy_settings()
     migrate_download_to_browser_settings()
@@ -512,10 +566,10 @@ def migrate_mirror_settings() -> None:
 
     Also handles legacy migration from AA_ADDITIONAL_URLS.
     """
-    import hashlib
+    import hashlib  # noqa: PLC0415
 
-    from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS
-    from shelfmark.core.utils import normalize_http_url
+    from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS  # noqa: PLC0415
+    from shelfmark.core.utils import normalize_http_url  # noqa: PLC0415
 
     def _normalize_list(values: list[str]) -> list[str]:
         out: list[str] = []
@@ -546,10 +600,12 @@ def migrate_mirror_settings() -> None:
 
     # Defaults changed since last startup — push new mirrors to config
     if stored_hash != current_defaults_hash:
-        _save_mirrors({
-            "AA_MIRROR_URLS": normalized_defaults,
-            "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-        })
+        _save_mirrors(
+            {
+                "AA_MIRROR_URLS": normalized_defaults,
+                "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+            }
+        )
         return
 
     # --- Legacy migration (only runs if hash already matches / first time) ---
@@ -559,10 +615,12 @@ def migrate_mirror_settings() -> None:
         normalized = _normalize_list([str(v) for v in raw_list])
         if normalized:
             return
-        _save_mirrors({
-            "AA_MIRROR_URLS": normalized_defaults,
-            "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-        })
+        _save_mirrors(
+            {
+                "AA_MIRROR_URLS": normalized_defaults,
+                "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+            }
+        )
         return
 
     # If saved as a string, convert to list.
@@ -570,15 +628,19 @@ def migrate_mirror_settings() -> None:
         parts = [p.strip() for p in raw_list.split(",") if p.strip()]
         normalized = _normalize_list(parts)
         if normalized:
-            _save_mirrors({
-                "AA_MIRROR_URLS": normalized,
-                "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-            })
+            _save_mirrors(
+                {
+                    "AA_MIRROR_URLS": normalized,
+                    "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+                }
+            )
             return
-        _save_mirrors({
-            "AA_MIRROR_URLS": normalized_defaults,
-            "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-        })
+        _save_mirrors(
+            {
+                "AA_MIRROR_URLS": normalized_defaults,
+                "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+            }
+        )
         return
 
     # If there's legacy additional mirrors, seed the full list.
@@ -586,17 +648,21 @@ def migrate_mirror_settings() -> None:
         additional_parts = [p.strip() for p in raw_additional.split(",") if p.strip()]
         combined = _normalize_list(DEFAULT_AA_MIRRORS + additional_parts)
         if combined:
-            _save_mirrors({
-                "AA_MIRROR_URLS": combined,
-                "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-            })
+            _save_mirrors(
+                {
+                    "AA_MIRROR_URLS": combined,
+                    "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+                }
+            )
             return
 
     # No config at all yet — write defaults
-    _save_mirrors({
-        "AA_MIRROR_URLS": normalized_defaults,
-        "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-    })
+    _save_mirrors(
+        {
+            "AA_MIRROR_URLS": normalized_defaults,
+            "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+        }
+    )
 
 
 def migrate_legacy_settings() -> None:
@@ -619,9 +685,16 @@ def migrate_legacy_settings() -> None:
 
     # Skip migration if no legacy settings exist (fresh install)
     legacy_keys = {
-        "PROCESSING_MODE", "INGEST_DIR", "LIBRARY_PATH", "USE_BOOK_TITLE",
-        "LIBRARY_TEMPLATE", "PROCESSING_MODE_AUDIOBOOK", "INGEST_DIR_AUDIOBOOK",
-        "LIBRARY_PATH_AUDIOBOOK", "LIBRARY_TEMPLATE_AUDIOBOOK", "TORRENT_HARDLINK",
+        "PROCESSING_MODE",
+        "INGEST_DIR",
+        "LIBRARY_PATH",
+        "USE_BOOK_TITLE",
+        "LIBRARY_TEMPLATE",
+        "PROCESSING_MODE_AUDIOBOOK",
+        "INGEST_DIR_AUDIOBOOK",
+        "LIBRARY_PATH_AUDIOBOOK",
+        "LIBRARY_TEMPLATE_AUDIOBOOK",
+        "TORRENT_HARDLINK",
         "USE_CONTENT_TYPE_DIRECTORIES",
     }
     if not any(key in downloads_config for key in legacy_keys):
@@ -654,7 +727,9 @@ def migrate_legacy_settings() -> None:
     old_mode_ab = downloads_config.get("PROCESSING_MODE_AUDIOBOOK", "ingest")
     old_ingest_dir_ab = downloads_config.get("INGEST_DIR_AUDIOBOOK", "")
     old_library_path_ab = downloads_config.get("LIBRARY_PATH_AUDIOBOOK", "")
-    old_library_template_ab = downloads_config.get("LIBRARY_TEMPLATE_AUDIOBOOK", "{Author}/{Title}")
+    old_library_template_ab = downloads_config.get(
+        "LIBRARY_TEMPLATE_AUDIOBOOK", "{Author}/{Title}"
+    )
 
     if old_mode_ab == "library":
         migrated_downloads["FILE_ORGANIZATION_AUDIOBOOK"] = "organize"
@@ -700,11 +775,13 @@ def migrate_legacy_settings() -> None:
     # Save migrated settings
     if migrated_downloads:
         save_config_file("downloads", migrated_downloads)
-        logger.info(f"Migrated download settings: {list(migrated_downloads.keys())}")
+        logger.info("Migrated download settings: %s", list(migrated_downloads.keys()))
 
     if migrated_sources:
         save_config_file("download_sources", migrated_sources)
-        logger.info(f"Migrated content-type routing settings: {list(migrated_sources.keys())}")
+        logger.info(
+            "Migrated content-type routing settings: %s", list(migrated_sources.keys())
+        )
 
 
 def migrate_download_to_browser_settings() -> None:
@@ -714,13 +791,17 @@ def migrate_download_to_browser_settings() -> None:
     new_key = "DOWNLOAD_TO_BROWSER_CONTENT_TYPES"
     config_path = _get_config_file_path("downloads")
 
-    legacy_value: Any = None
+    legacy_value: object = None
     legacy_present = False
 
     if legacy_key in downloads_config:
         legacy_value = downloads_config.get(legacy_key)
         legacy_present = True
-    elif new_key not in downloads_config and os.environ.get(new_key) is None and legacy_key in os.environ:
+    elif (
+        new_key not in downloads_config
+        and os.environ.get(new_key) is None
+        and legacy_key in os.environ
+    ):
         legacy_value = os.environ.get(legacy_key)
         legacy_present = True
 
@@ -758,7 +839,7 @@ def migrate_download_to_browser_settings() -> None:
         logger.exception("Failed to migrate download-to-browser settings")
 
 
-def get_setting_value(field: SettingsField, tab_name: str) -> Any:
+def get_setting_value(field: SettingsField, tab_name: str) -> object:
     if isinstance(field, (ActionButton, HeadingField, CustomComponentField)):
         return None  # Actions and headings don't have values
 
@@ -778,7 +859,7 @@ def get_setting_value(field: SettingsField, tab_name: str) -> Any:
     return field.default
 
 
-def _parse_env_value(value: str, field: SettingsField) -> Any:
+def _parse_env_value(value: str, field: SettingsField) -> object:
     """Parse an environment variable value to the appropriate type."""
     if isinstance(field, CheckboxField):
         return value.lower() in ("true", "1", "yes", "on")
@@ -796,7 +877,7 @@ def _parse_env_value(value: str, field: SettingsField) -> Any:
         try:
             return json.loads(value)
         except json.JSONDecodeError:
-            logger.warning(f"Invalid JSON for {field.key}, using default")
+            logger.warning("Invalid JSON for %s, using default", field.key)
             return field.default
     elif isinstance(field, TableField):
         # Parse JSON array: [{"col": "value"}, ...]
@@ -804,7 +885,7 @@ def _parse_env_value(value: str, field: SettingsField) -> Any:
             parsed = json.loads(value)
             return parsed if isinstance(parsed, list) else field.default
         except json.JSONDecodeError:
-            logger.warning(f"Invalid JSON for {field.key}, using default")
+            logger.warning("Invalid JSON for %s, using default", field.key)
             return field.default
     else:
         return value
@@ -820,7 +901,9 @@ def is_value_from_env(field: SettingsField) -> bool:
     return field.get_env_var_name() in os.environ
 
 
-def serialize_field(field: SettingsField, tab_name: str, include_value: bool = True) -> dict[str, Any]:
+def serialize_field(
+    field: SettingsField, tab_name: str, include_value: bool = True
+) -> dict[str, Any]:
     """Serialize a field for API response.
 
     Args:
@@ -942,7 +1025,9 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
         result["style"] = field.style
         result["description"] = field.description
 
-    if include_value and not isinstance(field, (ActionButton, HeadingField, CustomComponentField)):
+    if include_value and not isinstance(
+        field, (ActionButton, HeadingField, CustomComponentField)
+    ):
         value = get_setting_value(field, tab_name)
 
         # Ensure select values are serialized as strings so the frontend can
@@ -970,7 +1055,9 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
                 value = [v.strip() for v in value.split(",") if v.strip()]
             else:
                 value = []
-        elif isinstance(field, TableField) and (value is None or not isinstance(value, list)):
+        elif isinstance(field, TableField) and (
+            value is None or not isinstance(value, list)
+        ):
             value = []
 
         result["value"] = value if value is not None else ""
@@ -1016,7 +1103,9 @@ def serialize_all_settings(include_values: bool = True) -> dict[str, Any]:
     }
 
 
-def execute_action(tab_name: str, action_key: str, current_values: dict[str, Any] | None = None) -> dict[str, Any]:
+def execute_action(
+    tab_name: str, action_key: str, current_values: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Execute an action button's callback.
 
     Args:
@@ -1029,23 +1118,28 @@ def execute_action(tab_name: str, action_key: str, current_values: dict[str, Any
         Dict with "success" (bool) and "message" (str).
 
     """
-    import inspect
+    import inspect  # noqa: PLC0415
 
     tab = get_settings_tab(tab_name)
     if not tab:
         return {"success": False, "message": f"Unknown settings tab: {tab_name}"}
 
     for settings_field in tab.fields:
-        if isinstance(settings_field, ActionButton) and settings_field.key == action_key:
+        if (
+            isinstance(settings_field, ActionButton)
+            and settings_field.key == action_key
+        ):
             if settings_field.callback:
                 try:
                     # Check if callback accepts current_values parameter
                     sig = inspect.signature(settings_field.callback)
                     if "current_values" in sig.parameters:
-                        return settings_field.callback(current_values=current_values or {})
+                        return settings_field.callback(
+                            current_values=current_values or {}
+                        )
                     return settings_field.callback()
                 except Exception as e:
-                    logger.exception(f"Action {action_key} failed")
+                    logger.exception("Action %s failed", action_key)
                     return {"success": False, "message": str(e)}
             else:
                 return {"success": False, "message": "Action has no callback defined"}
@@ -1060,7 +1154,8 @@ def _sync_metadata_provider_selection() -> None:
     the first enabled provider if the current selection is invalid.
     """
     try:
-        from shelfmark.metadata_providers import sync_metadata_provider_selection
+        from shelfmark.metadata_providers import sync_metadata_provider_selection  # noqa: PLC0415
+
         sync_metadata_provider_selection()
     except ImportError:
         pass  # Metadata providers module not available
@@ -1073,7 +1168,7 @@ def _apply_dns_settings(config) -> None:
     a container restart.
     """
     try:
-        from shelfmark.download import network
+        from shelfmark.download import network  # noqa: PLC0415
 
         provider = config.get("CUSTOM_DNS", "auto")
         use_doh = config.get("USE_DOH", False)
@@ -1088,8 +1183,9 @@ def _apply_dns_settings(config) -> None:
         network.set_dns_provider(provider, manual_servers, use_doh=use_doh)
     except ImportError:
         pass  # Network module not available
-    except Exception as e:
-        logger.warning(f"Failed to apply DNS settings: {e}")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Failed to apply DNS settings: %s", e)
+
 
 def _apply_aa_mirror_settings(config) -> None:
     """Apply AA mirror settings changes to the network module.
@@ -1098,20 +1194,25 @@ def _apply_aa_mirror_settings(config) -> None:
     without requiring a container restart.
     """
     try:
-        from shelfmark.download import network
+        from shelfmark.download import network  # noqa: PLC0415
 
         # Reload AA mirror list and configured base URL from refreshed config.
         network.init_aa(force=True)
     except ImportError:
         pass  # Network module not available
-    except Exception as e:
-        logger.warning(f"Failed to apply AA mirror settings: {e}")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Failed to apply AA mirror settings: %s", e)
 
 
 def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
     tab = get_settings_tab(tab_name)
     if not tab:
-        return {"success": False, "message": f"Unknown settings tab: {tab_name}", "updated": [], "requiresRestart": False}
+        return {
+            "success": False,
+            "message": f"Unknown settings tab: {tab_name}",
+            "updated": [],
+            "requiresRestart": False,
+        }
 
     # Build a map of field keys to fields (exclude non-value fields)
     field_map = {
@@ -1149,7 +1250,12 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
         message = "No settings to update"
         if skipped_env:
             message += f". Skipped (set via env): {', '.join(skipped_env)}"
-        return {"success": True, "message": message, "updated": [], "requiresRestart": False}
+        return {
+            "success": True,
+            "message": message,
+            "updated": [],
+            "requiresRestart": False,
+        }
 
     # Call on_save handler if registered (for custom validation/transformation)
     on_save_handler = get_on_save_handler(tab_name)
@@ -1161,17 +1267,17 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
                     "success": False,
                     "message": result.get("message", "Validation failed"),
                     "updated": [],
-                    "requiresRestart": False
+                    "requiresRestart": False,
                 }
             # Use the transformed values
             values_to_save = result.get("values", values_to_save)
         except Exception as e:
-            logger.exception(f"on_save handler for {tab_name} failed")
+            logger.exception("on_save handler for %s failed", tab_name)
             return {
                 "success": False,
                 "message": f"Save handler error: {e!s}",
                 "updated": [],
-                "requiresRestart": False
+                "requiresRestart": False,
             }
 
     # Save to config file
@@ -1179,7 +1285,7 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
         # Refresh the config singleton so live settings take effect immediately
         config_obj = None
         try:
-            from shelfmark.core.config import config as config_obj
+            from shelfmark.core.config import config as config_obj  # noqa: PLC0415
 
             config_obj.refresh()
         except ImportError:
@@ -1201,10 +1307,13 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
             and "CERTIFICATE_VALIDATION" in values_to_save
         ):
             try:
-                from shelfmark.download.network import _apply_ssl_warning_suppression
+                from shelfmark.download.network import (  # noqa: PLC0415
+                    _apply_ssl_warning_suppression,
+                )
+
                 _apply_ssl_warning_suppression()
-            except Exception as e:
-                logger.warning(f"Failed to apply certificate validation setting: {e}")
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Failed to apply certificate validation setting: %s", e)
 
         # Apply AA mirror settings changes live (mirrors tab)
         aa_keys = {"AA_BASE_URL", "AA_MIRROR_URLS", "AA_ADDITIONAL_URLS"}
@@ -1232,4 +1341,9 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
             "requiresRestart": requires_restart,
             "restartRequiredFor": restart_required_keys,
         }
-    return {"success": False, "message": "Failed to save settings", "updated": [], "requiresRestart": False}
+    return {
+        "success": False,
+        "message": "Failed to save settings",
+        "updated": [],
+        "requiresRestart": False,
+    }

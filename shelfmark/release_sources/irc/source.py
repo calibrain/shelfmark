@@ -46,6 +46,7 @@ def _emit_status(message: str, phase: str = "searching") -> None:
         phase=phase,
     )
 
+
 # Rate limiting to avoid server throttling
 MIN_SEARCH_INTERVAL = 15.0
 _last_search_time: float = 0
@@ -58,7 +59,7 @@ def _enforce_rate_limit() -> None:
     elapsed = time.time() - _last_search_time
     if elapsed < MIN_SEARCH_INTERVAL:
         wait_time = MIN_SEARCH_INTERVAL - elapsed
-        logger.info(f"Rate limiting: waiting {wait_time:.1f}s")
+        logger.info("Rate limiting: waiting %.1fs", wait_time)
         time.sleep(wait_time)
 
     _last_search_time = time.time()
@@ -71,7 +72,9 @@ class IRCReleaseSource(ReleaseSource):
     name = "irc"
     display_name = "IRC"
     supported_content_types = ["ebook", "audiobook"]
-    can_be_default = False  # Exclude from default source options (requires deliberate selection)
+    can_be_default = (
+        False  # Exclude from default source options (requires deliberate selection)
+    )
 
     def __init__(self):
         # Track online servers from most recent search
@@ -126,14 +129,14 @@ class IRCReleaseSource(ReleaseSource):
         book: BookMetadata,
         plan: "ReleaseSearchPlan",
         expand_search: bool = False,
-        content_type: str = "ebook"
+        content_type: str = "ebook",
     ) -> list[Release]:
         """Search IRC for books matching metadata.
 
         The expand_search parameter is repurposed for IRC as a "refresh" flag.
         When True, it bypasses the cache and forces a fresh search.
         """
-        from .cache import cache_results, get_cached_results
+        from .cache import cache_results, get_cached_results  # noqa: PLC0415
 
         if not self.is_available():
             logger.debug("IRC source is disabled, skipping search")
@@ -141,7 +144,9 @@ class IRCReleaseSource(ReleaseSource):
 
         # Check cache first (unless expand_search/refresh is requested)
         if not expand_search:
-            cached = get_cached_results(book.provider, book.provider_id, content_type=content_type)
+            cached = get_cached_results(
+                book.provider, book.provider_id, content_type=content_type
+            )
             if cached:
                 _emit_status("Using cached results", phase="complete")
                 self._online_servers = set(cached.get("online_servers", []))
@@ -153,7 +158,7 @@ class IRCReleaseSource(ReleaseSource):
             logger.warning("No search query could be built")
             return []
 
-        logger.info(f"IRC search: {query}")
+        logger.info("IRC search: %s", query)
 
         # Enforce rate limit
         _enforce_rate_limit()
@@ -186,7 +191,9 @@ class IRCReleaseSource(ReleaseSource):
             client.send_message(f"#{channel}", search_msg)
 
             # Wait for results DCC - this is the long wait
-            _emit_status(f"Connected to #{channel} - Waiting for results...", phase="searching")
+            _emit_status(
+                f"Connected to #{channel} - Waiting for results...", phase="searching"
+            )
             offer = client.wait_for_dcc(timeout=60.0, result_type=True)
             if not offer:
                 logger.info("No search results received")
@@ -200,12 +207,16 @@ class IRCReleaseSource(ReleaseSource):
                     book.title,
                     [],
                     content_type=content_type,
-                    online_servers=list(self._online_servers) if self._online_servers else None,
+                    online_servers=list(self._online_servers)
+                    if self._online_servers
+                    else None,
                 )
                 return []
 
             # Download results file
-            _emit_status(f"Connected to #{channel} - Downloading results...", phase="downloading")
+            _emit_status(
+                f"Connected to #{channel} - Downloading results...", phase="downloading"
+            )
             with tempfile.TemporaryDirectory() as tmpdir:
                 result_path = Path(tmpdir) / offer.filename
                 download_dcc(offer, result_path, timeout=30.0)
@@ -230,7 +241,9 @@ class IRCReleaseSource(ReleaseSource):
                 book.title,
                 releases,
                 content_type=content_type,
-                online_servers=list(self._online_servers) if self._online_servers else None,
+                online_servers=list(self._online_servers)
+                if self._online_servers
+                else None,
             )
 
         except DCCError as e:
@@ -341,8 +354,8 @@ class IRCReleaseSource(ReleaseSource):
             format_priority = format_priority_map.get(fmt, 99)
             return (
                 0 if is_online else 1,  # Online first
-                format_priority,         # Then by format
-                server.lower(),          # Then alphabetically by server
+                format_priority,  # Then by format
+                server.lower(),  # Then alphabetically by server
             )
 
         releases.sort(key=sort_key)
@@ -371,7 +384,7 @@ class IRCReleaseSource(ReleaseSource):
         for suffix, mult in multipliers:
             if size_str.endswith(suffix):
                 try:
-                    num = float(size_str[:-len(suffix)].strip())
+                    num = float(size_str[: -len(suffix)].strip())
                     return int(num * mult)
                 except ValueError:
                     return None

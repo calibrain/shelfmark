@@ -6,8 +6,15 @@ from urllib.parse import urlparse
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
-from shelfmark.download.clients import DownloadClient, get_client, list_configured_clients
-from shelfmark.download.clients.base_handler import DownloadRequest, ExternalClientHandler
+from shelfmark.download.clients import (
+    DownloadClient,
+    get_client,
+    list_configured_clients,
+)
+from shelfmark.download.clients.base_handler import (
+    DownloadRequest,
+    ExternalClientHandler,
+)
 from shelfmark.release_sources import register_handler
 from shelfmark.release_sources.audiobookbay import scraper
 from shelfmark.release_sources.audiobookbay.utils import normalize_hostname
@@ -49,7 +56,9 @@ class AudiobookBayHandler(ExternalClientHandler):
         detail_url = self._resolve_detail_url(task)
         if not detail_url:
             status_callback("error", "Missing AudiobookBay details URL")
-            logger.warning(f"Missing details URL for AudiobookBay task: {task.task_id}")
+            logger.warning(
+                "Missing details URL for AudiobookBay task: %s", task.task_id
+            )
             return None
 
         hostname = normalize_hostname(config.get("ABB_HOSTNAME", ""))
@@ -63,7 +72,7 @@ class AudiobookBayHandler(ExternalClientHandler):
             status_callback("error", "Failed to extract magnet link from detail page")
             return None
 
-        logger.info(f"Extracted magnet link for task {task.task_id}")
+        logger.info("Extracted magnet link for task %s", task.task_id)
 
         return DownloadRequest(
             url=magnet_link,
@@ -79,5 +88,5 @@ class AudiobookBayHandler(ExternalClientHandler):
         been sent to the torrent client we do not remove it client-side. Users must
         cancel/remove it in their torrent client UI.
         """
-        logger.debug(f"Cancel requested for AudiobookBay task: {task_id}")
+        logger.debug("Cancel requested for AudiobookBay task: %s", task_id)
         return False

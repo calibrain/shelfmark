@@ -60,6 +60,7 @@ class IRCConnectionManager:
 
     def _start_cleanup_thread(self) -> None:
         """Start background thread to clean up idle connections."""
+
         def cleanup_loop():
             while self._running:
                 time.sleep(30)  # Check every 30 seconds
@@ -84,11 +85,11 @@ class IRCConnectionManager:
                 self._channels.pop(key, None)
 
                 if client:
-                    logger.info(f"Closing idle IRC connection: {key}")
+                    logger.info("Closing idle IRC connection: %s", key)
                     try:
                         client.disconnect()
-                    except Exception as e:
-                        logger.debug(f"Error closing idle connection: {e}")
+                    except Exception as e:  # noqa: BLE001
+                        logger.debug("Error closing idle connection: %s", e)
 
     def get_connection(
         self,
@@ -123,13 +124,13 @@ class IRCConnectionManager:
             existing = self._connections.get(key)
 
             if existing and existing.is_connected:
-                logger.info(f"Reusing existing IRC connection to {server}")
+                logger.info("Reusing existing IRC connection to %s", server)
                 self._last_used[key] = time.time()
 
                 # Check if we need to join a different channel
                 current_channel = self._channels.get(key)
                 if current_channel != channel:
-                    logger.debug(f"Joining channel #{channel}")
+                    logger.debug("Joining channel #%s", channel)
                     existing.join_channel(channel)
                     self._channels[key] = channel
 
@@ -137,13 +138,13 @@ class IRCConnectionManager:
 
             # Check if another thread is already connecting
             if self._connecting.get(key):
-                logger.debug(f"Another thread is connecting to {key}, waiting...")
+                logger.debug("Another thread is connecting to %s, waiting...", key)
                 # Release lock and wait, then retry
                 # Fall through to retry logic below
             else:
                 # Clean up dead connection if it exists
                 if existing:
-                    logger.debug(f"Removing dead connection: {key}")
+                    logger.debug("Removing dead connection: %s", key)
                     self._connections.pop(key, None)
                     self._last_used.pop(key, None)
                     self._channels.pop(key, None)
@@ -165,7 +166,7 @@ class IRCConnectionManager:
 
         # Create new connection OUTSIDE the lock to avoid blocking other threads
         try:
-            logger.info(f"Creating new IRC connection to {server}:{port}")
+            logger.info("Creating new IRC connection to %s:%s", server, port)
             client = IRCClient(nick, server, port, use_tls=use_tls)
             client.connect()
             client.join_channel(channel)
@@ -196,7 +197,7 @@ class IRCConnectionManager:
         with self._conn_lock:
             if key in self._connections:
                 self._last_used[key] = time.time()
-                logger.debug(f"Released IRC connection for reuse: {key}")
+                logger.debug("Released IRC connection for reuse: %s", key)
 
     def close_connection(self, client: IRCClient) -> None:
         """Explicitly close a connection (e.g., on error).
@@ -213,10 +214,10 @@ class IRCConnectionManager:
 
         try:
             client.disconnect()
-        except Exception as e:
-            logger.debug(f"Error closing connection: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Error closing connection: %s", e)
 
-        logger.debug(f"Closed IRC connection: {key}")
+        logger.debug("Closed IRC connection: %s", key)
 
     def close_all(self) -> None:
         """Close all connections (for shutdown)."""
@@ -235,8 +236,8 @@ class IRCConnectionManager:
         """Disconnect one IRC client and log failures."""
         try:
             client.disconnect()
-        except Exception as e:
-            logger.debug(f"Error closing connection {key}: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Error closing connection %s: %s", key, e)
 
 
 # Global singleton instance

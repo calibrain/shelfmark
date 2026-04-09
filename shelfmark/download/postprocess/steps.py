@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from shelfmark.core.logger import setup_logger
 
 from .types import PlanStep
@@ -9,7 +7,7 @@ from .types import PlanStep
 logger = setup_logger("shelfmark.download.postprocess.pipeline")
 
 
-def record_step(steps: list[PlanStep], name: str, **details: Any) -> None:
+def record_step(steps: list[PlanStep], name: str, **details: object) -> None:
     steps.append(PlanStep(name=name, details=details))
 
 

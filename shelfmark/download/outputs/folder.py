@@ -43,12 +43,12 @@ def _build_processing_plan(
     task: DownloadTask,
     status_callback,
 ) -> _ProcessingPlan | None:
-    from shelfmark.download.postprocess.pipeline import (
+    from shelfmark.download.postprocess.pipeline import (  # noqa: PLC0415
         build_output_plan,
         get_final_destination,
         validate_destination,
     )
-    from shelfmark.download.postprocess.policy import get_file_organization
+    from shelfmark.download.postprocess.policy import get_file_organization  # noqa: PLC0415
 
     is_audiobook = check_audiobook(task.content_type)
     organization_mode = get_file_organization(is_audiobook)
@@ -90,7 +90,7 @@ def process_folder_output(
     preserve_source_on_failure: bool = False,
 ) -> str | None:
     """Post-process download to the configured folder destination."""
-    from shelfmark.download.postprocess.pipeline import (
+    from shelfmark.download.postprocess.pipeline import (  # noqa: PLC0415
         CustomScriptContext,
         CustomScriptTransferSummary,
         cleanup_output_staging,
@@ -107,8 +107,7 @@ def process_folder_output(
         return None
 
     logger.debug(
-        "Processing plan for task %s: mode=%s destination=%s hardlink=%s stage_action=%s extract_archives=%s",
-        task.task_id,
+        "Processing plan for task %s: mode=%s destination=%s hardlink=%s stage_action=%s extract_archives=%s",  # noqa: E501
         plan.organization_mode,
         plan.destination,
         plan.use_hardlink,
@@ -130,13 +129,22 @@ def process_folder_output(
     steps: list[Any] = []
     if prepared.output_plan.stage_action != STAGE_NONE:
         step_name = f"stage_{prepared.output_plan.stage_action}"
-        record_step(steps, step_name, source=str(temp_file), dest=str(prepared.output_plan.staging_dir))
+        record_step(
+            steps,
+            step_name,
+            source=str(temp_file),
+            dest=str(prepared.output_plan.staging_dir),
+        )
 
     # Custom script is run post-transfer (see below).
 
     # If we staged into TMP_DIR, transfer from the staged path and disable hardlinking.
     use_hardlink = plan.use_hardlink and prepared.output_plan.stage_action == STAGE_NONE
-    source_path = plan.hardlink_source if use_hardlink and plan.hardlink_source else prepared.working_path
+    source_path = (
+        plan.hardlink_source
+        if use_hardlink and plan.hardlink_source
+        else prepared.working_path
+    )
     is_torrent = is_torrent_source(source_path, task)
 
     usenet_action = core_config.config.get("PROWLARR_USENET_ACTION", "move")
@@ -146,7 +154,9 @@ def process_folder_output(
     # "Move" is implemented as a client-side cleanup after import.
     preserve_source = is_usenet or preserve_source_on_failure
 
-    copy_for_label = is_torrent or preserve_source or prepared.output_plan.stage_action != STAGE_NONE
+    copy_for_label = (
+        is_torrent or preserve_source or prepared.output_plan.stage_action != STAGE_NONE
+    )
 
     if cancel_flag.is_set():
         logger.info("Task %s: cancelled before final transfer", task.task_id)
@@ -160,7 +170,11 @@ def process_folder_output(
 
     if use_hardlink:
         op_label = "Hardlinking"
-    elif is_usenet and usenet_action == "move" and prepared.output_plan.stage_action == STAGE_NONE:
+    elif (
+        is_usenet
+        and usenet_action == "move"
+        and prepared.output_plan.stage_action == STAGE_NONE
+    ):
         # Presented as a move, but implemented as copy + client cleanup.
         op_label = "Moving"
     elif copy_for_label:
@@ -227,7 +241,9 @@ def process_folder_output(
         ),
     )
 
-    if not maybe_run_custom_script(script_context, status_callback=status_callback, steps=steps):
+    if not maybe_run_custom_script(
+        script_context, status_callback=status_callback, steps=steps
+    ):
         if not preserve_source_on_failure:
             cleanup_output_staging(
                 prepared.output_plan,
@@ -244,7 +260,9 @@ def process_folder_output(
         prepared.cleanup_paths,
     )
 
-    message = "Complete" if len(final_paths) == 1 else f"Complete ({len(final_paths)} files)"
+    message = (
+        "Complete" if len(final_paths) == 1 else f"Complete ({len(final_paths)} files)"
+    )
     status_callback("complete", message)
 
     return str(final_paths[0])

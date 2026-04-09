@@ -35,7 +35,7 @@ class WebSocketManager:
             self._connection_count += 1
             current_count = self._connection_count
 
-        logger.debug(f"Client connected. Active connections: {current_count}")
+        logger.debug("Client connected. Active connections: %s", current_count)
 
     def client_disconnected(self):
         """Track a client disconnection. Call this from the disconnect event handler."""
@@ -43,7 +43,7 @@ class WebSocketManager:
             self._connection_count = max(0, self._connection_count - 1)
             current_count = self._connection_count
 
-        logger.debug(f"Client disconnected. Active connections: {current_count}")
+        logger.debug("Client disconnected. Active connections: %s", current_count)
 
     def is_enabled(self) -> bool:
         """Check if WebSocket is enabled and ready."""
@@ -95,7 +95,9 @@ class WebSocketManager:
         """Join the appropriate room based on user role."""
         self.sync_user_room(sid, is_admin, db_user_id)
 
-    def leave_user_room(self, sid: str, is_admin: bool = False, db_user_id: int | None = None):
+    def leave_user_room(
+        self, sid: str, is_admin: bool = False, db_user_id: int | None = None
+    ):
         """Leave whichever room the SID currently belongs to."""
         del is_admin, db_user_id  # Backward-compatible signature; routing is SID-based.
         with self._rooms_lock:
@@ -127,23 +129,23 @@ class WebSocketManager:
         try:
             # Extract user_id from room name "user_123"
             uid = int(room.split("_", 1)[1])
-            filtered = self._queue_status_fn(user_id=uid) if self._queue_status_fn else None
+            filtered = (
+                self._queue_status_fn(user_id=uid) if self._queue_status_fn else None
+            )
             if filtered is not None:
                 self.socketio.emit("status_update", filtered, to=room)
         except Exception:
-            logger.exception(f"Failed to send status update for room {room}")
+            logger.exception("Failed to send status update for room %s", room)
 
-    def broadcast_download_progress(self, book_id: str, progress: float, status: str, user_id: int | None = None):
+    def broadcast_download_progress(
+        self, book_id: str, progress: float, status: str, user_id: int | None = None
+    ):
         """Broadcast download progress update for a specific book."""
         if not self.is_enabled():
             return
 
         try:
-            data = {
-                "book_id": book_id,
-                "progress": progress,
-                "status": status
-            }
+            data = {"book_id": book_id, "progress": progress, "status": status}
             # Admins always see all progress
             self.socketio.emit("download_progress", data, to="admins")
             # If task belongs to a specific user, send to their room too
@@ -152,7 +154,7 @@ class WebSocketManager:
                 with self._rooms_lock:
                     if room in self._user_rooms:
                         self.socketio.emit("download_progress", data, to=room)
-            logger.debug(f"Broadcasted progress for book {book_id}: {progress}%")
+            logger.debug("Broadcasted progress for book %s: %s%%", book_id, progress)
         except Exception:
             logger.exception("Error broadcasting download progress")
 
@@ -162,7 +164,7 @@ class WebSocketManager:
         provider: str,
         book_id: str,
         message: str,
-        phase: str = "searching"
+        phase: str = "searching",
     ):
         """Broadcast search status update for a release source search."""
         if not self.is_enabled():

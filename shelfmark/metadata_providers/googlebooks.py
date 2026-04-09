@@ -7,6 +7,7 @@ API Documentation: https://developers.google.com/books/docs/v1/using
 """
 
 from contextlib import suppress
+from http import HTTPStatus
 from typing import Any
 
 import requests
@@ -36,6 +37,10 @@ from shelfmark.metadata_providers import (
 )
 
 logger = setup_logger(__name__)
+
+_HTTP_STATUS_FORBIDDEN = HTTPStatus.FORBIDDEN
+_HTTP_STATUS_BAD_REQUEST = HTTPStatus.BAD_REQUEST
+_HTTP_STATUS_NOT_FOUND = HTTPStatus.NOT_FOUND
 
 GOOGLE_BOOKS_BASE_URL = "https://www.googleapis.com/books/v1"
 
@@ -162,7 +167,9 @@ class GoogleBooksProvider(MetadataProvider):
                     if book:
                         books.append(book)
 
-                logger.info(f"Google Books search '{query}' returned {len(books)} results")
+                logger.info(
+                    "Google Books search '%s' returned %s results", query, len(books)
+                )
 
         except Exception:
             logger.exception("Google Books search error")
@@ -210,7 +217,7 @@ class GoogleBooksProvider(MetadataProvider):
 
             items = result.get("items", [])
             if not items:
-                logger.debug(f"No Google Books result for ISBN: {isbn}")
+                logger.debug("No Google Books result for ISBN: %s", isbn)
                 return None
 
             return self._parse_volume(items[0])
@@ -233,7 +240,9 @@ class GoogleBooksProvider(MetadataProvider):
         url = f"{GOOGLE_BOOKS_BASE_URL}{endpoint}"
 
         try:
-            response = self.session.get(url, params=params, timeout=15, verify=get_ssl_verify(url))
+            response = self.session.get(
+                url, params=params, timeout=15, verify=get_ssl_verify(url)
+            )
             response.raise_for_status()
             return response.json()
 
@@ -242,14 +251,14 @@ class GoogleBooksProvider(MetadataProvider):
             return None
         except requests.HTTPError as e:
             if e.response is not None:
-                if e.response.status_code == 403:
+                if e.response.status_code == _HTTP_STATUS_FORBIDDEN:
                     # Quota exceeded or invalid API key
                     logger.exception(
                         "Google Books API: quota exceeded or invalid API key (HTTP 403)"
                     )
-                elif e.response.status_code == 400:
-                    logger.warning(f"Google Books API: bad request - {e}")
-                elif e.response.status_code == 404:
+                elif e.response.status_code == _HTTP_STATUS_BAD_REQUEST:
+                    logger.warning("Google Books API: bad request - %s", e)
+                elif e.response.status_code == _HTTP_STATUS_NOT_FOUND:
                     logger.debug("Google Books: volume not found")
                 else:
                     logger.exception("Google Books API HTTP error")
@@ -352,17 +361,21 @@ class GoogleBooksProvider(MetadataProvider):
                 display_fields=display_fields,
             )
 
-        except Exception as e:
-            logger.debug(f"Failed to parse Google Books volume: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Failed to parse Google Books volume: %s", e)
             return None
 
 
-def _test_googlebooks_connection(current_values: dict[str, Any] = None) -> dict[str, Any]:
+def _test_googlebooks_connection(
+    current_values: dict[str, Any] = None,
+) -> dict[str, Any]:
     """Test the Google Books API connection using current form values."""
     current_values = current_values or {}
 
     # Use current form values first, fall back to saved config
-    api_key = current_values.get("GOOGLEBOOKS_API_KEY") or app_config.get("GOOGLEBOOKS_API_KEY", "")
+    api_key = current_values.get("GOOGLEBOOKS_API_KEY") or app_config.get(
+        "GOOGLEBOOKS_API_KEY", ""
+    )
 
     if not api_key:
         return {
@@ -428,8 +441,7 @@ def googlebooks_settings():
             key="GOOGLEBOOKS_API_KEY",
             label="API Key",
             description=(
-                "Get your API key from Google Cloud Console "
-                "(APIs & Services > Credentials)"
+                "Get your API key from Google Cloud Console (APIs & Services > Credentials)"
             ),
             required=True,
         ),

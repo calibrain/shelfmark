@@ -29,9 +29,15 @@ from shelfmark.release_sources import (
 )
 from shelfmark.release_sources.prowlarr.api import ProwlarrClient
 from shelfmark.release_sources.prowlarr.cache import cache_release
-from shelfmark.release_sources.prowlarr.utils import get_preferred_download_url, get_protocol
+from shelfmark.release_sources.prowlarr.utils import (
+    get_preferred_download_url,
+    get_protocol,
+)
 
 logger = setup_logger(__name__)
+
+_SIZE_UNIT_BASE = 1024
+_TWO_FORMATS = 2
 
 
 def _raise_timeout_error(message: str):
@@ -47,8 +53,8 @@ def _parse_size(size_bytes: int | None) -> str | None:
     size = float(size_bytes)
     unit_index = 0
 
-    while size >= 1024 and unit_index < len(units) - 1:
-        size /= 1024
+    while size >= _SIZE_UNIT_BASE and unit_index < len(units) - 1:
+        size /= _SIZE_UNIT_BASE
         unit_index += 1
 
     if unit_index == 0:
@@ -58,7 +64,20 @@ def _parse_size(size_bytes: int | None) -> str | None:
 
 
 # Common ebook formats in priority order
-EBOOK_FORMATS = ["epub", "mobi", "azw3", "azw", "pdf", "cbz", "cbr", "fb2", "djvu", "lit", "pdb", "txt"]
+EBOOK_FORMATS = [
+    "epub",
+    "mobi",
+    "azw3",
+    "azw",
+    "pdf",
+    "cbz",
+    "cbr",
+    "fb2",
+    "djvu",
+    "lit",
+    "pdb",
+    "txt",
+]
 
 # Common audiobook formats
 AUDIOBOOK_FORMATS = ["m4b", "mp3", "m4a", "flac", "ogg", "wma", "aac", "wav", "opus"]
@@ -122,9 +141,9 @@ def _extract_format(title: str) -> str | None:
     # Pattern priority: file extension > bracketed > standalone word
     # Use %s placeholder since {fmt} conflicts with regex syntax
     pattern_templates = [
-        r'\.%s(?:["\'\s\]\)]|$)',   # .format at end or followed by delimiter
-        r"[\[\(\{]%s[\]\)\}]",       # [EPUB], (PDF), {mobi}
-        r"\b%s\b",                    # standalone word
+        r'\.%s(?:["\'\s\]\)]|$)',  # .format at end or followed by delimiter
+        r"[\[\(\{]%s[\]\)\}]",  # [EPUB], (PDF), {mobi}
+        r"\b%s\b",  # standalone word
     ]
 
     for template in pattern_templates:
@@ -200,7 +219,7 @@ def _formats_display(formats: list[str]) -> str | None:
         return None
     if len(formats) == 1:
         return formats[0]
-    if len(formats) == 2:
+    if len(formats) == _TWO_FORMATS:
         return f"{formats[0]}, {formats[1]}"
     # Show first two formats + count of others to prevent overflow
     return f"{formats[0]}, {formats[1]} +{len(formats) - 2}"
@@ -212,7 +231,9 @@ AUDIOBOOK_CATEGORY_IDS = {3000, 3030}  # 3000 = Audio, 3030 = Audio/Audiobook
 BOOK_CATEGORY_RANGE = range(7000, 8000)  # 7000-7999 = Books (all subcategories)
 
 
-def _detect_content_type_from_categories(categories: list, fallback: str = "book") -> str:
+def _detect_content_type_from_categories(
+    categories: list, fallback: str = "book"
+) -> str:
     """Detect content type from Prowlarr category IDs. Returns 'audiobook', 'book', or 'other'."""
     # Normalize fallback - convert "ebook" to "book" for display consistency
     normalized_fallback = "book" if fallback == "ebook" else fallback
@@ -262,7 +283,9 @@ def _extract_capability_category_ids(categories: list[dict]) -> set[int]:
     return category_ids
 
 
-def _indexer_supports_search_categories(indexer: dict, categories: list[int] | None) -> bool:
+def _indexer_supports_search_categories(
+    indexer: dict, categories: list[int] | None
+) -> bool:
     """Return whether an indexer should be queried for the requested categories."""
     if not categories:
         return True
@@ -273,7 +296,7 @@ def _indexer_supports_search_categories(indexer: dict, categories: list[int] | N
         return True
 
     for requested_category in categories:
-        if requested_category == 7000:
+        if requested_category in BOOK_CATEGORY_RANGE:
             if any(cat_id in BOOK_CATEGORY_RANGE for cat_id in category_ids):
                 return True
             continue
@@ -387,7 +410,9 @@ def _prowlarr_result_to_release(
         indexer=indexer,
         seeders=seeders if is_torrent else None,
         peers=peers_display,
-        content_type=_detect_content_type_from_categories(categories, search_content_type),
+        content_type=_detect_content_type_from_categories(
+            categories, search_content_type
+        ),
         extra={
             "publish_date": result.get("publishDate"),
             "categories": categories,
@@ -418,7 +443,10 @@ class ProwlarrSource(ReleaseSource):
 
     name = "prowlarr"
     display_name = "Prowlarr"
-    supported_content_types = ["ebook", "audiobook"]  # Explicitly declare support for both
+    supported_content_types = [
+        "ebook",
+        "audiobook",
+    ]  # Explicitly declare support for both
 
     def __init__(self):
         self.last_search_type: str | None = None
@@ -455,11 +483,15 @@ class ProwlarrSource(ReleaseSource):
                         except (TypeError, ValueError):
                             pass
 
-                available_indexers = sorted(all_indexer_names) if all_indexer_names else None
+                available_indexers = (
+                    sorted(all_indexer_names) if all_indexer_names else None
+                )
                 # Only set default_indexers if user has selected specific ones
-                default_indexers = sorted(selected_indexer_names) if selected_indexer_names else None
-            except Exception as e:
-                logger.warning(f"Failed to fetch indexer list for column config: {e}")
+                default_indexers = (
+                    sorted(selected_indexer_names) if selected_indexer_names else None
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Failed to fetch indexer list for column config: %s", e)
 
         return ReleaseColumnConfig(
             columns=[
@@ -520,10 +552,15 @@ class ProwlarrSource(ReleaseSource):
                 SortOption(label="Peers", sort_key="seeders"),
             ],
             grid_template="minmax(0,2fr) minmax(140px,1fr) 50px 50px 90px 80px",
-            leading_cell=LeadingCellConfig(type=LeadingCellType.NONE),  # No leading cell for Prowlarr
+            leading_cell=LeadingCellConfig(
+                type=LeadingCellType.NONE
+            ),  # No leading cell for Prowlarr
             available_indexers=available_indexers,
             default_indexers=default_indexers,
-            supported_filters=["language", "indexer"],  # Enables multi-language query expansion and indexer filtering
+            supported_filters=[
+                "language",
+                "indexer",
+            ],  # Enables multi-language query expansion and indexer filtering
         )
 
     def _get_client(self) -> ProwlarrClient | None:
@@ -559,7 +596,7 @@ class ProwlarrSource(ReleaseSource):
                 # Comma-separated string from env var
                 ids = [int(x.strip()) for x in selected.split(",") if x.strip()]
         except (ValueError, TypeError) as e:
-            logger.warning(f"Invalid PROWLARR_INDEXERS format: {selected} ({e})")
+            logger.warning("Invalid PROWLARR_INDEXERS format: %s (%s)", selected, e)
             return None
         else:
             return ids or None
@@ -588,8 +625,8 @@ class ProwlarrSource(ReleaseSource):
                 if idx_id is not None:
                     with suppress(TypeError, ValueError):
                         ids.append(int(idx_id))
-        except Exception as e:
-            logger.warning(f"Failed to resolve indexer names to IDs: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Failed to resolve indexer names to IDs: %s", e)
             return None
         else:
             return ids or None
@@ -606,8 +643,8 @@ class ProwlarrSource(ReleaseSource):
 
         try:
             enabled_indexers = client.get_enabled_indexers_detailed()
-        except Exception as e:
-            logger.warning(f"Failed to load enabled Prowlarr indexers: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Failed to load enabled Prowlarr indexers: %s", e)
             return []
 
         indexer_ids: list[int] = []
@@ -628,7 +665,7 @@ class ProwlarrSource(ReleaseSource):
         book: BookMetadata,
         plan: "ReleaseSearchPlan",
         expand_search: bool = False,
-        content_type: str = "ebook"
+        content_type: str = "ebook",
     ) -> list[Release]:
         """Search Prowlarr indexers for releases matching the book."""
         client = self._get_client()
@@ -651,7 +688,11 @@ class ProwlarrSource(ReleaseSource):
         # Get indexer IDs: prefer plan.indexers (from filter), else use settings
         if plan.indexers:
             indexer_ids = self._resolve_indexer_ids_from_names(client, plan.indexers)
-            logger.debug(f"Using filter-specified indexers: {plan.indexers} -> IDs {indexer_ids}")
+            logger.debug(
+                "Using filter-specified indexers: %s -> IDs %s",
+                plan.indexers,
+                indexer_ids,
+            )
         else:
             indexer_ids = self._get_selected_indexer_ids()
 
@@ -664,7 +705,9 @@ class ProwlarrSource(ReleaseSource):
         # - expand: rerun without categories
         if plan.manual_query:
             categories = None if expand_search else search_categories
-            self.last_search_type = "manual_expanded" if expand_search else "manual_query"
+            self.last_search_type = (
+                "manual_expanded" if expand_search else "manual_query"
+            )
         else:
             categories = None if expand_search else search_categories
             self.last_search_type = "expanded" if expand_search else "categories"
@@ -676,21 +719,33 @@ class ProwlarrSource(ReleaseSource):
         else:
             query_type = "title"
 
-        indexer_desc = f"indexers={indexer_ids}" if indexer_ids else "all enabled indexers"
+        indexer_desc = (
+            f"indexers={indexer_ids}" if indexer_ids else "all enabled indexers"
+        )
         if len(variants) == 1:
             logger.debug(
-                f"Searching Prowlarr: {query_type}='{variants[0].title}', {indexer_desc}, categories={categories}"
+                "Searching Prowlarr: %s='%s', %s, categories=%s",
+                query_type,
+                variants[0].title,
+                indexer_desc,
+                categories,
             )
         else:
             logger.debug(
-                f"Searching Prowlarr: {query_type} ({len(variants)} variants), {indexer_desc}, categories={categories}"
+                "Searching Prowlarr: %s (%s variants), %s, categories=%s",
+                query_type,
+                len(variants),
+                indexer_desc,
+                categories,
             )
 
         try:
             auto_expand_enabled = config.get("PROWLARR_AUTO_EXPAND", False)
             deadline = time.monotonic() + PROWLARR_SEARCH_TIMEOUT_SECONDS
             # Some indexers benefit from title+author queries and extra format detection.
-            enriched_indexer_ids = client.get_enriched_indexer_ids(restrict_to=indexer_ids)
+            enriched_indexer_ids = client.get_enriched_indexer_ids(
+                restrict_to=indexer_ids
+            )
             enriched_indexer_ids_set = set(enriched_indexer_ids)
 
             def _check_timeout() -> None:
@@ -699,16 +754,24 @@ class ProwlarrSource(ReleaseSource):
                         f"Prowlarr search timed out after {int(PROWLARR_SEARCH_TIMEOUT_SECONDS)}s"
                     )
 
-            def search_indexers(query: str, cats: list[int] | None, *, enriched_query: str | None = None) -> list[dict]:
+            def search_indexers(
+                query: str, cats: list[int] | None, *, enriched_query: str | None = None
+            ) -> list[dict]:
                 """Search indexers with given categories via Torznab/Newznab."""
                 results: list[dict] = []
-                target_indexer_ids = self._get_search_indexer_ids(client, indexer_ids, cats)
+                target_indexer_ids = self._get_search_indexer_ids(
+                    client, indexer_ids, cats
+                )
                 if not target_indexer_ids:
                     return results
 
                 for indexer_id in target_indexer_ids:
                     _check_timeout()
-                    indexer_query = enriched_query if indexer_id in enriched_indexer_ids_set and enriched_query else query
+                    indexer_query = (
+                        enriched_query
+                        if indexer_id in enriched_indexer_ids_set and enriched_query
+                        else query
+                    )
                     raw = client.torznab_search(
                         indexer_id=indexer_id,
                         query=indexer_query,
@@ -719,6 +782,7 @@ class ProwlarrSource(ReleaseSource):
                         results.extend(raw)
 
                 return results
+
             seen_keys: set[str] = set()
             all_results: list[dict] = []
 
@@ -728,15 +792,23 @@ class ProwlarrSource(ReleaseSource):
                 enriched_query = variant.query  # title + author
 
                 if len(variants) > 1:
-                    logger.debug(f"Prowlarr query {idx}/{len(variants)}: '{query}'")
+                    logger.debug(
+                        "Prowlarr query %s/%s: '%s'", idx, len(variants), query
+                    )
 
-                raw_results = search_indexers(query=query, cats=categories, enriched_query=enriched_query)
+                raw_results = search_indexers(
+                    query=query, cats=categories, enriched_query=enriched_query
+                )
 
                 # Auto-expand: if no results with categories and auto-expand enabled, retry without
                 if not raw_results and categories and auto_expand_enabled:
                     _check_timeout()
-                    logger.info(f"Prowlarr: no results for query '{query}' with category filter, auto-expanding search")
-                    raw_results = search_indexers(query=query, cats=None, enriched_query=enriched_query)
+                    logger.info(
+                        "Prowlarr: no results for query '%s' with category filter, auto-expanding search",  # noqa: E501
+                    )
+                    raw_results = search_indexers(
+                        query=query, cats=None, enriched_query=enriched_query
+                    )
                     self.last_search_type = "expanded"
 
                 for r in raw_results:
@@ -762,7 +834,9 @@ class ProwlarrSource(ReleaseSource):
                 except (TypeError, ValueError):
                     idx_id_int = None
 
-                is_enriched = bool(idx_id_int is not None and idx_id_int in enriched_indexer_ids_set)
+                is_enriched = bool(
+                    idx_id_int is not None and idx_id_int in enriched_indexer_ids_set
+                )
                 release = _prowlarr_result_to_release(
                     r,
                     content_type,
@@ -774,19 +848,27 @@ class ProwlarrSource(ReleaseSource):
                     enriched_source_ids.add(release.source_id)
 
             # Sort results: enriched indexers first, then others
-            results.sort(key=lambda r: (0 if r.source_id in enriched_source_ids else 1))
+            results.sort(key=lambda r: 0 if r.source_id in enriched_source_ids else 1)
 
             if results:
-                torrent_count = sum(1 for r in results if r.protocol == ReleaseProtocol.TORRENT)
+                torrent_count = sum(
+                    1 for r in results if r.protocol == ReleaseProtocol.TORRENT
+                )
                 nzb_count = sum(1 for r in results if r.protocol == ReleaseProtocol.NZB)
                 indexers = sorted({r.indexer for r in results if r.indexer})
                 indexer_str = ", ".join(indexers) if indexers else "unknown"
-                logger.info(f"Prowlarr: {len(results)} results ({torrent_count} torrent, {nzb_count} nzb) from {indexer_str}")
+                logger.info(
+                    "Prowlarr: %s results (%s torrent, %s nzb) from %s",
+                    len(results),
+                    torrent_count,
+                    nzb_count,
+                    indexer_str,
+                )
             else:
                 logger.debug("Prowlarr: no results found")
 
         except TimeoutError as e:
-            logger.warning(f"Prowlarr search timed out: {e}")
+            logger.warning("Prowlarr search timed out: %s", e)
             raise
         except Exception:
             logger.exception("Prowlarr search failed")

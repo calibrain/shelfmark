@@ -1,5 +1,6 @@
 """Prowlarr API client for connection testing, indexer listing, and search."""
 
+from http import HTTPStatus
 from typing import Any
 
 import requests
@@ -11,6 +12,10 @@ from shelfmark.release_sources.prowlarr.torznab import parse_torznab_xml
 
 logger = setup_logger(__name__)
 
+_HTTP_STATUS_UNAUTHORIZED = HTTPStatus.UNAUTHORIZED
+_BOOK_CATEGORY_RANGE_START = 7000
+_BOOK_CATEGORY_RANGE_END = 8000
+
 
 class ProwlarrClient:
     """Client for interacting with the Prowlarr API."""
@@ -20,10 +25,12 @@ class ProwlarrClient:
         self.api_key = api_key
         self.timeout = timeout
         self._session = requests.Session()
-        self._session.headers.update({
-            "X-Api-Key": api_key,
-            "Accept": "application/json",
-        })
+        self._session.headers.update(
+            {
+                "X-Api-Key": api_key,
+                "Accept": "application/json",
+            }
+        )
 
     def _request(
         self,
@@ -31,10 +38,10 @@ class ProwlarrClient:
         endpoint: str,
         params: dict[str, Any] | None = None,
         json_data: dict[str, Any] | None = None,
-    ) -> Any:
+    ) -> object:
         """Make an API request to Prowlarr. Returns parsed JSON response."""
         url = self.base_url + endpoint
-        logger.debug(f"Prowlarr API: {method} {url}")
+        logger.debug("Prowlarr API: %s %s", method, url)
 
         try:
             response = self._session.request(
@@ -49,8 +56,8 @@ class ProwlarrClient:
             if not response.ok:
                 try:
                     error_body = response.text[:500]
-                    logger.error(f"Prowlarr API error response: {error_body}")
-                except Exception:
+                    logger.error("Prowlarr API error response: %s", error_body)
+                except Exception:  # noqa: BLE001
                     pass
 
             response.raise_for_status()
@@ -58,9 +65,14 @@ class ProwlarrClient:
 
         except requests.exceptions.JSONDecodeError as e:
             logger.exception("Invalid JSON response from Prowlarr")
-            raise ValueError(f"Invalid JSON response: {e}") from e
+            msg = f"Invalid JSON response: {e}"
+            raise ValueError(msg) from e
         except requests.exceptions.HTTPError as e:
-            logger.exception(f"Prowlarr API HTTP error: {e.response.status_code} {e.response.reason}")
+            logger.exception(
+                "Prowlarr API HTTP error: %s %s",
+                e.response.status_code,
+                e.response.reason,
+            )
             raise
         except requests.exceptions.RequestException:
             logger.exception("Prowlarr API request failed")
@@ -68,7 +80,7 @@ class ProwlarrClient:
 
     def test_connection(self) -> tuple[bool, str]:
         """Test connection to Prowlarr. Returns (success, message)."""
-        logger.info(f"Testing Prowlarr connection to: {self.base_url}")
+        logger.info("Testing Prowlarr connection to: %s", self.base_url)
         try:
             data = self._request("GET", "/api/v1/system/status")
             version = data.get("version", "unknown")
@@ -76,13 +88,13 @@ class ProwlarrClient:
             return False, "Could not connect to Prowlarr. Check the URL."
         except requests.exceptions.HTTPError as e:
             status = e.response.status_code if e.response is not None else "unknown"
-            if e.response is not None and e.response.status_code == 401:
+            if e.response is not None and e.response.status_code == _HTTP_STATUS_UNAUTHORIZED:
                 return False, "Invalid API key"
             return False, f"HTTP error {status}"
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return False, f"Connection failed: {e!s}"
         else:
-            logger.info(f"Prowlarr connection successful: version {version}")
+            logger.info("Prowlarr connection successful: version %s", version)
             return True, f"Connected to Prowlarr {version}"
 
     def get_indexers(self) -> list[dict[str, Any]]:
@@ -102,7 +114,9 @@ class ProwlarrClient:
         indexers = self.get_indexers()
         return [idx for idx in indexers if idx.get("enable", False)]
 
-    def get_enriched_indexer_ids(self, *, restrict_to: list[int] | None = None) -> list[int]:
+    def get_enriched_indexer_ids(
+        self, *, restrict_to: list[int] | None = None
+    ) -> list[int]:
         """Return enabled indexer IDs that benefit from extra Torznab handling.
 
         Args:
@@ -123,7 +137,12 @@ class ProwlarrClient:
             if restrict_to is not None and idx_id_int not in restrict_to:
                 continue
 
-            impl = str(idx.get("implementation") or idx.get("implementationName") or idx.get("definitionName") or "")
+            impl = str(
+                idx.get("implementation")
+                or idx.get("implementationName")
+                or idx.get("definitionName")
+                or ""
+            )
             # Currently only MyAnonamouse provides consistently rich Torznab metadata.
             if impl.strip().lower() == "myanonamouse":
                 enriched_ids.append(idx_id_int)
@@ -143,12 +162,14 @@ class ProwlarrClient:
             categories = idx.get("capabilities", {}).get("categories", [])
             has_books = self._has_book_categories(categories)
 
-            result.append({
-                "id": idx.get("id"),
-                "name": idx.get("name"),
-                "protocol": idx.get("protocol"),
-                "has_books": has_books,
-            })
+            result.append(
+                {
+                    "id": idx.get("id"),
+                    "name": idx.get("name"),
+                    "protocol": idx.get("protocol"),
+                    "has_books": has_books,
+                }
+            )
 
         return result
 
@@ -182,7 +203,7 @@ class ProwlarrClient:
         if categories:
             params["cat"] = ",".join(str(c) for c in categories)
 
-        logger.debug(f"Prowlarr API: GET {url} (torznab)")
+        logger.debug("Prowlarr API: GET %s (torznab)", url)
 
         try:
             response = self._session.get(
@@ -198,8 +219,8 @@ class ProwlarrClient:
             if not response.ok:
                 try:
                     error_body = response.text[:500]
-                    logger.error(f"Prowlarr Torznab error response: {error_body}")
-                except Exception:
+                    logger.error("Prowlarr Torznab error response: %s", error_body)
+                except Exception:  # noqa: BLE001
                     pass
             response.raise_for_status()
 
@@ -209,7 +230,9 @@ class ProwlarrClient:
                 if r.get("indexerId") is None:
                     r["indexerId"] = int(indexer_id)
         except Exception:
-            logger.exception("Prowlarr Torznab search failed for indexer %s", indexer_id)
+            logger.exception(
+                "Prowlarr Torznab search failed for indexer %s", indexer_id
+            )
             return []
         else:
             return results
@@ -218,9 +241,9 @@ class ProwlarrClient:
         """Check if any category or subcategory is in the book range (7000-7999)."""
         for cat in categories:
             cat_id = cat.get("id", 0)
-            if 7000 <= cat_id <= 7999:
+            if _BOOK_CATEGORY_RANGE_START <= cat_id < _BOOK_CATEGORY_RANGE_END:
                 return True
             for subcat in cat.get("subCategories", []):
-                if 7000 <= subcat.get("id", 0) <= 7999:
+                if _BOOK_CATEGORY_RANGE_START <= subcat.get("id", 0) < _BOOK_CATEGORY_RANGE_END:
                     return True
         return False

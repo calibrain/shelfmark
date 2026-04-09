@@ -96,8 +96,16 @@ def parse_torznab_xml(xml_text: str) -> list[dict[str, Any]]:
             download_url = enclosure_url.strip() or None
 
         prowlarr_indexer_el = item.find("prowlarrindexer")
-        indexer_id = _coerce_int(prowlarr_indexer_el.get("id")) if prowlarr_indexer_el is not None else None
-        indexer_name = (prowlarr_indexer_el.text or "").strip() if prowlarr_indexer_el is not None else ""
+        indexer_id = (
+            _coerce_int(prowlarr_indexer_el.get("id"))
+            if prowlarr_indexer_el is not None
+            else None
+        )
+        indexer_name = (
+            (prowlarr_indexer_el.text or "").strip()
+            if prowlarr_indexer_el is not None
+            else ""
+        )
 
         categories: list[int] = []
         for cat_el in item.findall("category"):
@@ -138,32 +146,34 @@ def parse_torznab_xml(xml_text: str) -> list[dict[str, Any]]:
 
         cleaned_title = _strip_author_from_title(title, author)
 
-        results.append({
-            "title": cleaned_title or title,
-            "guid": guid or info_url or download_url or f"{indexer_id}:{title}",
-            "size": size,
-            "protocol": protocol or "unknown",
-            "downloadUrl": download_url,
-            "infoUrl": info_url,
-            "publishDate": pub_date,
-            "indexer": indexer_name or None,
-            "indexerId": indexer_id,
-            "categories": categories,
-            "seeders": seeders,
-            "leechers": leechers,
-            "files": _coerce_int(attrs.get("files")),
-            "grabs": _coerce_int(attrs.get("grabs")),
-            "infoHash": info_hash,
-            "indexerFlags": tags,
-            # Optional richer fields (not available via JSON search)
-            "author": author,
-            "bookTitle": book_title,
-            "downloadVolumeFactor": download_volume_factor,
-            "uploadVolumeFactor": upload_volume_factor,
-            "minimumRatio": minimum_ratio,
-            "minimumSeedTime": minimum_seed_time,
-            # Pass through all torznab attributes for tooltip display
-            "torznabAttrs": attrs,
-        })
+        results.append(
+            {
+                "title": cleaned_title or title,
+                "guid": guid or info_url or download_url or f"{indexer_id}:{title}",
+                "size": size,
+                "protocol": protocol or "unknown",
+                "downloadUrl": download_url,
+                "infoUrl": info_url,
+                "publishDate": pub_date,
+                "indexer": indexer_name or None,
+                "indexerId": indexer_id,
+                "categories": categories,
+                "seeders": seeders,
+                "leechers": leechers,
+                "files": _coerce_int(attrs.get("files")),
+                "grabs": _coerce_int(attrs.get("grabs")),
+                "infoHash": info_hash,
+                "indexerFlags": tags,
+                # Optional richer fields (not available via JSON search)
+                "author": author,
+                "bookTitle": book_title,
+                "downloadVolumeFactor": download_volume_factor,
+                "uploadVolumeFactor": upload_volume_factor,
+                "minimumRatio": minimum_ratio,
+                "minimumSeedTime": minimum_seed_time,
+                # Pass through all torznab attributes for tooltip display
+                "torznabAttrs": attrs,
+            }
+        )
 
     return results

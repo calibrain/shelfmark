@@ -16,51 +16,58 @@ USER_VIEWER_SCOPE_PREFIX = "user:"
 
 def user_viewer_scope(user_id: int) -> str:
     if not isinstance(user_id, int) or user_id < 1:
-        raise ValueError("user_id must be a positive integer")
+        msg = "user_id must be a positive integer"
+        raise ValueError(msg)
     return f"{USER_VIEWER_SCOPE_PREFIX}{user_id}"
 
 
-def normalize_viewer_scope(viewer_scope: Any) -> str:
+def normalize_viewer_scope(viewer_scope: object) -> str:
     if not isinstance(viewer_scope, str) or not viewer_scope.strip():
-        raise ValueError("viewer_scope must be a non-empty string")
+        msg = "viewer_scope must be a non-empty string"
+        raise ValueError(msg)
 
     normalized = viewer_scope.strip()
     if normalized in {ADMIN_VIEWER_SCOPE, NOAUTH_VIEWER_SCOPE}:
         return normalized
 
     if not normalized.startswith(USER_VIEWER_SCOPE_PREFIX):
-        raise ValueError(
-            "viewer_scope must be one of: admin:shared, noauth:shared, or user:<id>"
-        )
+        msg = "viewer_scope must be one of: admin:shared, noauth:shared, or user:<id>"
+        raise ValueError(msg)
 
-    raw_user_id = normalized[len(USER_VIEWER_SCOPE_PREFIX):].strip()
+    raw_user_id = normalized[len(USER_VIEWER_SCOPE_PREFIX) :].strip()
     try:
         parsed_user_id = int(raw_user_id)
     except (TypeError, ValueError) as exc:
-        raise ValueError("viewer_scope user id must be a positive integer") from exc
+        msg = "viewer_scope user id must be a positive integer"
+        raise ValueError(msg) from exc
 
     return user_viewer_scope(parsed_user_id)
 
 
-def _normalize_item_type(item_type: Any) -> str:
+def _normalize_item_type(item_type: object) -> str:
     if not isinstance(item_type, str) or not item_type.strip():
-        raise ValueError("item_type must be a non-empty string")
+        msg = "item_type must be a non-empty string"
+        raise ValueError(msg)
     normalized = item_type.strip().lower()
     if normalized not in VALID_ACTIVITY_ITEM_TYPES:
-        raise ValueError("item_type must be one of: download, request")
+        msg = "item_type must be one of: download, request"
+        raise ValueError(msg)
     return normalized
 
 
-def _normalize_item_key(item_key: Any, *, item_type: str) -> str:
+def _normalize_item_key(item_key: object, *, item_type: str) -> str:
     if not isinstance(item_key, str) or not item_key.strip():
-        raise ValueError("item_key must be a non-empty string")
+        msg = "item_key must be a non-empty string"
+        raise ValueError(msg)
 
     normalized = item_key.strip()
     expected_prefix = f"{item_type}:"
     if not normalized.startswith(expected_prefix):
-        raise ValueError(f"item_key must be in the format {expected_prefix}<id>")
+        msg_0 = f"item_key must be in the format {expected_prefix}<id>"
+        raise ValueError(msg_0)
     if not normalized.split(":", 1)[1].strip():
-        raise ValueError(f"item_key must be in the format {expected_prefix}<id>")
+        msg_0 = f"item_key must be in the format {expected_prefix}<id>"
+        raise ValueError(msg_0)
     return normalized
 
 
@@ -184,7 +191,9 @@ class ActivityViewStateService:
         normalized_items: list[tuple[str, str]] = []
         for item in items:
             normalized_type = _normalize_item_type(item.get("item_type"))
-            normalized_key = _normalize_item_key(item.get("item_key"), item_type=normalized_type)
+            normalized_key = _normalize_item_key(
+                item.get("item_key"), item_type=normalized_type
+            )
             marker = (normalized_type, normalized_key)
             if marker in seen:
                 continue
@@ -214,9 +223,16 @@ class ActivityViewStateService:
                             dismissed_at = excluded.dismissed_at,
                             cleared_at = NULL
                         """,
-                        (normalized_scope, normalized_type, normalized_key, dismissed_at),
+                        (
+                            normalized_scope,
+                            normalized_type,
+                            normalized_key,
+                            dismissed_at,
+                        ),
                     )
-                    rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
+                    rowcount = (
+                        int(cursor.rowcount) if cursor.rowcount is not None else 0
+                    )
                     total += max(rowcount, 0)
                 conn.commit()
                 return total

@@ -9,6 +9,7 @@ from shelfmark.core.settings_registry import (
 
 # ==================== Register Settings ====================
 
+
 @register_settings("audiobookbay_config", "AudiobookBay", icon="download", order=45)
 def audiobookbay_config_settings():
     """AudiobookBay configuration settings."""
@@ -22,8 +23,7 @@ def audiobookbay_config_settings():
         TextField(
             key="ABB_HOSTNAME",
             label="Hostname",
-            description="AudiobookBay domain (e.g., audiobookbay.lu, audiobookbay.is). Required to enable searches.",
-            placeholder="",
+            description="AudiobookBay domain (e.g., audiobookbay.lu, audiobookbay.is). Required to enable searches.",  # noqa: E501
             default="",
             required=True,
             show_when={"field": "ABB_ENABLED", "value": True},
@@ -40,8 +40,7 @@ def audiobookbay_config_settings():
         CheckboxField(
             key="ABB_EXACT_PHRASE",
             label="Prefer Exact-Phrase Search",
-            description="Wrap generated queries in quotes for stricter matching. If no results are found, Shelfmark retries without quotes.",
-            default=False,
+            description="Wrap generated queries in quotes for stricter matching. If no results are found, Shelfmark retries without quotes.",  # noqa: E501
             show_when={"field": "ABB_ENABLED", "value": True},
         ),
         NumberField(

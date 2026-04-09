@@ -10,7 +10,12 @@ from typing import Any
 
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import TERMINAL_QUEUE_STATUSES, DownloadTask, QueueItem, QueueStatus
+from shelfmark.core.models import (
+    TERMINAL_QUEUE_STATUSES,
+    DownloadTask,
+    QueueItem,
+    QueueStatus,
+)
 
 logger = setup_logger(__name__)
 
@@ -23,10 +28,18 @@ class BookQueue:
         self._lock = Lock()
         self._status: dict[str, QueueStatus] = {}
         self._task_data: dict[str, DownloadTask] = {}
-        self._status_timestamps: dict[str, datetime] = {}  # Track when each status was last updated
-        self._cancel_flags: dict[str, Event] = {}  # Cancellation flags for active downloads
-        self._active_downloads: dict[str, bool] = {}  # Track currently downloading tasks
-        self._terminal_status_hook: Callable[[str, QueueStatus, DownloadTask], None] | None = None
+        self._status_timestamps: dict[
+            str, datetime
+        ] = {}  # Track when each status was last updated
+        self._cancel_flags: dict[
+            str, Event
+        ] = {}  # Cancellation flags for active downloads
+        self._active_downloads: dict[
+            str, bool
+        ] = {}  # Track currently downloading tasks
+        self._terminal_status_hook: (
+            Callable[[str, QueueStatus, DownloadTask], None] | None
+        ) = None
         self._queue_hook: Callable[[str, DownloadTask], None] | None = None
 
     @property
@@ -41,7 +54,10 @@ class BookQueue:
             task_id = task.task_id
 
             # Don't add if already exists and not in error/cancelled state
-            if task_id in self._status and self._status[task_id] not in [QueueStatus.ERROR, QueueStatus.CANCELLED]:
+            if task_id in self._status and self._status[task_id] not in [
+                QueueStatus.ERROR,
+                QueueStatus.CANCELLED,
+            ]:
                 return False
 
             # Ensure added_time is set
@@ -57,8 +73,10 @@ class BookQueue:
         if hook is not None:
             try:
                 hook(task_id, task)
-            except Exception as exc:
-                logger.warning("Queue hook failed while adding task %s: %s", task_id, exc)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Queue hook failed while adding task %s: %s", task_id, exc
+                )
         return True
 
     def get_next(self) -> tuple[str, Event] | None:
@@ -71,7 +89,10 @@ class BookQueue:
 
                 with self._lock:
                     # Check if task was cancelled while in queue
-                    if task_id in self._status and self._status[task_id] == QueueStatus.CANCELLED:
+                    if (
+                        task_id in self._status
+                        and self._status[task_id] == QueueStatus.CANCELLED
+                    ):
                         continue  # Skip cancelled items, try next
 
                     # Create cancellation flag for this download
@@ -158,7 +179,9 @@ class BookQueue:
             if task_id in self._task_data:
                 self._task_data[task_id].status_message = message
 
-    def get_status(self, user_id: int | None = None) -> dict[QueueStatus, dict[str, DownloadTask]]:
+    def get_status(
+        self, user_id: int | None = None
+    ) -> dict[QueueStatus, dict[str, DownloadTask]]:
         """Get current queue status grouped by status.
 
         Args:
@@ -168,7 +191,9 @@ class BookQueue:
         """
         self.refresh()
         with self._lock:
-            result: dict[QueueStatus, dict[str, DownloadTask]] = {status: {} for status in QueueStatus}
+            result: dict[QueueStatus, dict[str, DownloadTask]] = {
+                status: {} for status in QueueStatus
+            }
             for task_id, status in self._status.items():
                 if task_id in self._task_data:
                     task = self._task_data[task_id]
@@ -190,14 +215,16 @@ class BookQueue:
                 task_id = item.book_id  # QueueItem uses book_id as the ID field
                 if task_id in self._task_data:
                     task = self._task_data[task_id]
-                    queue_items.append({
-                        "id": task_id,
-                        "title": task.title,
-                        "author": task.author,
-                        "priority": item.priority,
-                        "added_time": item.added_time,
-                        "status": self._status.get(task_id, QueueStatus.QUEUED)
-                    })
+                    queue_items.append(
+                        {
+                            "id": task_id,
+                            "title": task.title,
+                            "author": task.author,
+                            "priority": item.priority,
+                            "added_time": item.added_time,
+                            "status": self._status.get(task_id, QueueStatus.QUEUED),
+                        }
+                    )
 
             # Put items back in queue
             for item in temp_items:
@@ -210,7 +237,11 @@ class BookQueue:
         with self._lock:
             current_status = self._status.get(task_id)
 
-            if current_status in [QueueStatus.RESOLVING, QueueStatus.LOCATING, QueueStatus.DOWNLOADING]:
+            if current_status in [
+                QueueStatus.RESOLVING,
+                QueueStatus.LOCATING,
+                QueueStatus.DOWNLOADING,
+            ]:
                 # Signal active download to stop
                 if task_id in self._cancel_flags:
                     self._cancel_flags[task_id].set()
@@ -224,7 +255,10 @@ class BookQueue:
     def set_priority(self, task_id: str, new_priority: int) -> bool:
         """Change the priority of a queued task (lower = higher priority)."""
         with self._lock:
-            if task_id not in self._status or self._status[task_id] != QueueStatus.QUEUED:
+            if (
+                task_id not in self._status
+                or self._status[task_id] != QueueStatus.QUEUED
+            ):
                 return False
 
             # Remove task from queue and re-add with new priority
@@ -288,8 +322,10 @@ class BookQueue:
         if hook is not None and hook_task is not None:
             try:
                 hook(task_id, hook_task)
-            except Exception as exc:
-                logger.warning("Queue hook failed while requeueing task %s: %s", task_id, exc)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Queue hook failed while requeueing task %s: %s", task_id, exc
+                )
         return True
 
     def reorder_queue(self, task_priorities: dict[str, int]) -> bool:
@@ -345,7 +381,11 @@ class BookQueue:
 
                 # Check for stale status entries
                 last_update = self._status_timestamps.get(task_id)
-                if last_update and (current_time - last_update) > self._status_timeout and status in terminal_statuses:
+                if (
+                    last_update
+                    and (current_time - last_update) > self._status_timeout
+                    and status in terminal_statuses
+                ):
                     to_remove.append(task_id)
 
             # Remove stale entries
@@ -353,6 +393,7 @@ class BookQueue:
                 self._status.pop(task_id, None)
                 self._status_timestamps.pop(task_id, None)
                 self._task_data.pop(task_id, None)
+
 
 # Global instance of BookQueue
 book_queue = BookQueue()

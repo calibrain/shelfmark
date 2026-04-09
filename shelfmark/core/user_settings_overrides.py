@@ -8,11 +8,11 @@ from shelfmark.core.user_db import UserDB
 
 def get_settings_registry():
     # Ensure settings modules are loaded before reading registry metadata.
-    import shelfmark.config.notifications_settings
-    import shelfmark.config.security
-    import shelfmark.config.settings
-    import shelfmark.config.users_settings  # noqa: F401
-    from shelfmark.core import settings_registry
+    import shelfmark.config.notifications_settings  # noqa: PLC0415
+    import shelfmark.config.security  # noqa: PLC0415
+    import shelfmark.config.settings  # noqa: PLC0415
+    import shelfmark.config.users_settings  # noqa: F401, PLC0415
+    from shelfmark.core import settings_registry  # noqa: PLC0415
 
     return settings_registry
 
@@ -26,14 +26,17 @@ def get_ordered_user_overridable_fields(tab_name: str) -> list[tuple[str, Any]]:
     return [(field.key, field) for field in tab.fields if field.key in overridable_map]
 
 
-def build_user_preferences_payload(user_db: UserDB, user_id: int, tab_name: str) -> dict[str, Any]:
-    from shelfmark.core.config import config as app_config
+def build_user_preferences_payload(
+    user_db: UserDB, user_id: int, tab_name: str
+) -> dict[str, Any]:
+    from shelfmark.core.config import config as app_config  # noqa: PLC0415
 
     settings_registry = get_settings_registry()
     ordered_fields = get_ordered_user_overridable_fields(tab_name)
     if not ordered_fields:
         tab_label = tab_name.capitalize()
-        raise ValueError(f"{tab_label} settings tab not found")
+        msg = f"{tab_label} settings tab not found"
+        raise ValueError(msg)
 
     tab_config = load_config_file(tab_name)
     user_settings = user_db.get_user_settings(user_id)
@@ -44,8 +47,12 @@ def build_user_preferences_payload(user_db: UserDB, user_id: int, tab_name: str)
     effective: dict[str, dict[str, Any]] = {}
 
     for key, field in ordered_fields:
-        serialized = settings_registry.serialize_field(field, tab_name, include_value=False)
-        serialized["fromEnv"] = bool(field.env_supported and settings_registry.is_value_from_env(field))
+        serialized = settings_registry.serialize_field(
+            field, tab_name, include_value=False
+        )
+        serialized["fromEnv"] = bool(
+            field.env_supported and settings_registry.is_value_from_env(field)
+        )
         fields_payload.append(serialized)
 
         global_values[key] = app_config.get(key, field.default)

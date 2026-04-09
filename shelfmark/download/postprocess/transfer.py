@@ -14,7 +14,12 @@ from shelfmark.core.naming import (
     sanitize_filename,
 )
 from shelfmark.core.utils import is_audiobook as check_audiobook
-from shelfmark.download.fs import atomic_copy, atomic_hardlink, atomic_move, run_blocking_io
+from shelfmark.download.fs import (
+    atomic_copy,
+    atomic_hardlink,
+    atomic_move,
+    run_blocking_io,
+)
 from shelfmark.download.postprocess.policy import get_file_organization, get_template
 
 from .scan import collect_directory_files, scan_directory_tree
@@ -42,7 +47,6 @@ def should_hardlink(task: DownloadTask) -> bool:
     return bool(hardlink_enabled)
 
 
-
 def build_metadata_dict(task: DownloadTask) -> dict:
     return {
         "Author": task.author,
@@ -55,7 +59,9 @@ def build_metadata_dict(task: DownloadTask) -> dict:
     }
 
 
-def build_file_metadata(task: DownloadTask, source_file: Path, part_number: str | None = None) -> dict:
+def build_file_metadata(
+    task: DownloadTask, source_file: Path, part_number: str | None = None
+) -> dict:
     metadata = build_metadata_dict(task)
     metadata["OriginalName"] = source_file.stem
     if part_number is not None:
@@ -77,16 +83,22 @@ def resolve_hardlink_source(
     if hardlink_enabled and task.original_download_path:
         hardlink_source = Path(task.original_download_path)
         hardlink_source_exists = run_blocking_io(hardlink_source.exists)
-        if destination and hardlink_source_exists and run_blocking_io(same_filesystem, hardlink_source, destination):
+        if (
+            destination
+            and hardlink_source_exists
+            and run_blocking_io(same_filesystem, hardlink_source, destination)
+        ):
             use_hardlink = True
             source_path = hardlink_source
         elif hardlink_source_exists:
             logger.warning(
-                f"Cannot hardlink: {hardlink_source} and {destination} are on different filesystems. "
-                "Falling back to copy. To fix: ensure torrent client downloads to same filesystem as destination."
+                "Cannot hardlink: %s and %s are on different filesystems. Falling back to copy. To fix: ensure torrent client downloads to same filesystem as destination.",  # noqa: E501
+                destination,
             )
             if status_callback:
-                status_callback("resolving", "Cannot hardlink (different filesystems), using copy")
+                status_callback(
+                    "resolving", "Cannot hardlink (different filesystems), using copy"
+                )
 
     return TransferPlan(
         source_path=source_path,
@@ -103,11 +115,15 @@ def is_torrent_source(source_path: Path, task: DownloadTask) -> bool:
 
     original_path = Path(task.original_download_path)
     try:
-        return run_blocking_io(source_path.resolve) == run_blocking_io(original_path.resolve)
+        return run_blocking_io(source_path.resolve) == run_blocking_io(
+            original_path.resolve
+        )
     except (OSError, ValueError):
         try:
-            return os.path.normpath(str(source_path)) == os.path.normpath(str(original_path))
-        except Exception:
+            return os.path.normpath(str(source_path)) == os.path.normpath(
+                str(original_path)
+            )
+        except Exception:  # noqa: BLE001
             return False
 
 
@@ -128,7 +144,10 @@ def _transfer_single_file(
     if use_hardlink:
         final_path = atomic_hardlink(source_path, dest_path, max_attempts=max_attempts)
         try:
-            if run_blocking_io(source_path.stat).st_ino == run_blocking_io(final_path.stat).st_ino:
+            if (
+                run_blocking_io(source_path.stat).st_ino
+                == run_blocking_io(final_path.stat).st_ino
+            ):
                 return final_path, "hardlink"
         except OSError:
             return final_path, "hardlink"
@@ -185,14 +204,16 @@ def transfer_book_files(
             )
             final_paths.append(final_path)
             op_counts[op] = op_counts.get(op, 0) + 1
-            logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
+            logger.debug("%s to destination: %s", op.capitalize(), final_path.name)
         else:
             zero_pad_width = max(len(str(len(book_files))), 2)
             files_with_parts = assign_part_numbers(book_files, zero_pad_width)
 
             for source_file, part_number in files_with_parts:
                 ext = source_file.suffix.lstrip(".") or task.format or ""
-                file_metadata = build_file_metadata(task, source_file, part_number=part_number)
+                file_metadata = build_file_metadata(
+                    task, source_file, part_number=part_number
+                )
                 dest_path = run_blocking_io(
                     build_library_path,
                     str(destination),
@@ -212,7 +233,7 @@ def transfer_book_files(
                 )
                 final_paths.append(final_path)
                 op_counts[op] = op_counts.get(op, 0) + 1
-                logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
+                logger.debug("%s to destination: %s", op.capitalize(), final_path.name)
 
         return final_paths, None, op_counts
 
@@ -225,7 +246,9 @@ def transfer_book_files(
             metadata = build_file_metadata(task, book_file)
             extension = book_file.suffix.lstrip(".") or task.format or ""
 
-            filename = parse_naming_template(template, metadata, allow_path_separators=False)
+            filename = parse_naming_template(
+                template, metadata, allow_path_separators=False
+            )
             filename = Path(filename).name if filename else ""
             if filename and extension:
                 filename = f"{sanitize_filename(filename)}.{extension}"
@@ -245,7 +268,7 @@ def transfer_book_files(
         )
         final_paths.append(final_path)
         op_counts[op] = op_counts.get(op, 0) + 1
-        logger.debug(f"{op.capitalize()} to destination: {final_path.name}")
+        logger.debug("%s to destination: %s", op.capitalize(), final_path.name)
 
     return final_paths, None, op_counts
 
@@ -296,8 +319,10 @@ def process_directory(
 
         processed_paths = final_paths
 
-    except Exception as exc:
-        logger.error_trace("Task %s: error processing directory %s: %s", task.task_id, directory, exc)
+    except Exception as exc:  # noqa: BLE001
+        logger.error_trace(
+            "Task %s: error processing directory %s: %s", task.task_id, directory, exc
+        )
         if not is_torrent_source(directory, task):
             safe_cleanup_path(directory, task)
         return [], str(exc)
@@ -318,7 +343,9 @@ def transfer_file_to_library(
     extension = source_path.suffix.lstrip(".") or task.format
     template_metadata = dict(metadata)
     template_metadata.setdefault("OriginalName", source_path.stem)
-    dest_path = run_blocking_io(build_library_path, library_base, template, template_metadata, extension)
+    dest_path = run_blocking_io(
+        build_library_path, library_base, template, template_metadata, extension
+    )
     run_blocking_io(dest_path.parent.mkdir, parents=True, exist_ok=True)
 
     is_torrent = is_torrent_source(source_path, task)
@@ -329,7 +356,7 @@ def transfer_file_to_library(
         is_torrent,
         max_attempts=_max_attempts_for_batch(1),
     )
-    logger.info(f"Library {op}: {final_path}")
+    logger.info("Library %s: %s", op, final_path)
     if use_hardlink and op != "hardlink":
         logger.warning(
             "Library hardlink requested but %s used instead for %s",
@@ -364,7 +391,7 @@ def transfer_directory_to_library(
         return None
 
     if not source_files:
-        logger.warning(f"No supported files in {source_dir.name}")
+        logger.warning("No supported files in %s", source_dir.name)
         status_callback("error", "No supported file formats found")
         if temp_file:
             safe_cleanup_path(temp_file, task)
@@ -395,7 +422,7 @@ def transfer_directory_to_library(
             is_torrent,
             max_attempts=max_attempts,
         )
-        logger.debug(f"Library {op}: {source_file.name} -> {final_path}")
+        logger.debug("Library %s: %s -> %s", op, source_file.name, final_path)
         transferred_paths.append(final_path)
         op_counts[op] = op_counts.get(op, 0) + 1
     else:
@@ -405,7 +432,9 @@ def transfer_directory_to_library(
         for source_file, part_number in files_with_parts:
             ext = source_file.suffix.lstrip(".")
             file_metadata = {**metadata, "PartNumber": part_number}
-            file_path = run_blocking_io(build_library_path, library_base, template, file_metadata, extension=ext)
+            file_path = run_blocking_io(
+                build_library_path, library_base, template, file_metadata, extension=ext
+            )
             run_blocking_io(file_path.parent.mkdir, parents=True, exist_ok=True)
 
             final_path, op = _transfer_single_file(
@@ -415,13 +444,13 @@ def transfer_directory_to_library(
                 is_torrent,
                 max_attempts=max_attempts,
             )
-            logger.debug(f"Library {op}: {source_file.name} -> {final_path}")
+            logger.debug("Library %s: %s -> %s", op, source_file.name, final_path)
             transferred_paths.append(final_path)
             op_counts[op] = op_counts.get(op, 0) + 1
 
-    op_summary = ", ".join(
-        f"{op}={count}" for op, count in op_counts.items() if count
-    ) or "none"
+    op_summary = (
+        ", ".join(f"{op}={count}" for op, count in op_counts.items() if count) or "none"
+    )
     logger.info(
         "Created %d library file(s) in %s (ops: %s)",
         len(transferred_paths),
@@ -441,7 +470,11 @@ def transfer_directory_to_library(
         safe_cleanup_path(temp_file, task)
         safe_cleanup_path(source_dir, task)
 
-    message = f"Complete ({len(transferred_paths)} files)" if len(transferred_paths) > 1 else "Complete"
+    message = (
+        f"Complete ({len(transferred_paths)} files)"
+        if len(transferred_paths) > 1
+        else "Complete"
+    )
     status_callback("complete", message)
 
     return str(transferred_paths[0])

@@ -16,7 +16,7 @@ def normalize_hostname(raw: str | None) -> str:
     # Strip scheme
     for prefix in ("https://", "http://"):
         if cleaned.lower().startswith(prefix):
-            cleaned = cleaned[len(prefix):]
+            cleaned = cleaned[len(prefix) :]
             break
     # Strip path and trailing slashes
     return cleaned.split("/")[0].strip()
@@ -46,9 +46,9 @@ def parse_size(size_str: str | None) -> int | None:
     multipliers = {
         "B": 1,
         "KB": 1024,
-        "MB": 1024 ** 2,
-        "GB": 1024 ** 3,
-        "TB": 1024 ** 4,
+        "MB": 1024**2,
+        "GB": 1024**3,
+        "TB": 1024**4,
     }
 
     return int(value * multipliers.get(unit, 1))

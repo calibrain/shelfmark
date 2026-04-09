@@ -11,19 +11,19 @@ class SearchType(str, Enum):
     """Type of search to perform."""
 
     GENERAL = "general"  # Search all fields (title, author, ISBN, etc.)
-    TITLE = "title"      # Search by title only
-    AUTHOR = "author"    # Search by author only
-    ISBN = "isbn"        # Search by ISBN
+    TITLE = "title"  # Search by title only
+    AUTHOR = "author"  # Search by author only
+    ISBN = "isbn"  # Search by ISBN
 
 
 class SortOrder(str, Enum):
     """Sort order for search results."""
 
-    RELEVANCE = "relevance"    # Best match first (default)
+    RELEVANCE = "relevance"  # Best match first (default)
     POPULARITY = "popularity"  # Most popular first
-    RATING = "rating"          # Highest rated first
-    NEWEST = "newest"          # Most recently published first
-    OLDEST = "oldest"          # Oldest published first
+    RATING = "rating"  # Highest rated first
+    NEWEST = "newest"  # Most recently published first
+    OLDEST = "oldest"  # Oldest published first
     SERIES_ORDER = "series_order"  # By series position (requires series field)
 
 
@@ -51,12 +51,12 @@ class MetadataCapability:
 class TextSearchField:
     """Text input search field."""
 
-    key: str                              # Field identifier (e.g., "author", "publisher")
-    label: str                            # Display label in UI
-    placeholder: str = ""                 # Placeholder text
-    description: str = ""                 # Help text
+    key: str  # Field identifier (e.g., "author", "publisher")
+    label: str  # Display label in UI
+    placeholder: str = ""  # Placeholder text
+    description: str = ""  # Help text
     suggestions_endpoint: str | None = None  # Remote suggestions endpoint for typeahead
-    suggestions_min_query_length: int = 2       # Minimum chars before requesting suggestions
+    suggestions_min_query_length: int = 2  # Minimum chars before requesting suggestions
 
 
 @dataclass
@@ -78,7 +78,9 @@ class SelectSearchField:
 
     key: str
     label: str
-    options: list[dict[str, str]] = field(default_factory=list)  # [{value: "", label: ""}]
+    options: list[dict[str, str]] = field(
+        default_factory=list
+    )  # [{value: "", label: ""}]
     placeholder: str = ""
     description: str = ""
 
@@ -147,7 +149,9 @@ def serialize_search_field(search_field: SearchField) -> dict[str, Any]:
     elif isinstance(search_field, TextSearchField):
         if search_field.suggestions_endpoint:
             result["suggestions_endpoint"] = search_field.suggestions_endpoint
-            result["suggestions_min_query_length"] = search_field.suggestions_min_query_length
+            result["suggestions_min_query_length"] = (
+                search_field.suggestions_min_query_length
+            )
     elif isinstance(search_field, SelectSearchField):
         result["options"] = search_field.options
     elif isinstance(search_field, CheckboxSearchField):
@@ -175,17 +179,17 @@ class MetadataSearchOptions:
 class DisplayField:
     """A display field for metadata cards (ratings, page counts, etc.)."""
 
-    label: str                       # e.g., "Rating", "Pages", "Readers"
-    value: str                       # e.g., "4.5", "496", "8,041"
-    icon: str | None = None       # Icon name: "star", "book", "users", "editions"
+    label: str  # e.g., "Rating", "Pages", "Readers"
+    value: str  # e.g., "4.5", "496", "8,041"
+    icon: str | None = None  # Icon name: "star", "book", "users", "editions"
 
 
 @dataclass
 class BookMetadata:
     """Book from metadata provider (not a specific release)."""
 
-    provider: str                    # Which provider this came from (internal name)
-    provider_id: str                 # ID in that provider's system
+    provider: str  # Which provider this came from (internal name)
+    provider_id: str  # ID in that provider's system
     title: str
 
     # Provider display name for UI (e.g., "Open Library" instead of "openlibrary")
@@ -203,8 +207,12 @@ class BookMetadata:
     genres: list[str] = field(default_factory=list)
     source_url: str | None = None  # Link to book on provider's site
     subtitle: str | None = None  # Book subtitle, if any
-    search_title: str | None = None  # Cleaner title for search queries (provider-specific)
-    search_author: str | None = None  # Cleaner author for search queries (provider-specific)
+    search_title: str | None = (
+        None  # Cleaner title for search queries (provider-specific)
+    )
+    search_author: str | None = (
+        None  # Cleaner author for search queries (provider-specific)
+    )
 
     # Cover aspect ratio hint for the frontend ("portrait" or "square")
     cover_aspect: str | None = None
@@ -213,10 +221,12 @@ class BookMetadata:
     display_fields: list[DisplayField] = field(default_factory=list)
 
     # Series info (if book is part of a series)
-    series_id: str | None = None        # Provider-specific series ID
-    series_name: str | None = None      # Name of the series
-    series_position: float | None = None  # This book's position (e.g., 3, 1.5 for novellas)
-    series_count: int | None = None     # Total books in the series
+    series_id: str | None = None  # Provider-specific series ID
+    series_name: str | None = None  # Name of the series
+    series_position: float | None = (
+        None  # This book's position (e.g., 3, 1.5 for novellas)
+    )
+    series_count: int | None = None  # Total books in the series
 
     # Alternative titles by language (for localized searches)
     # Maps language code (e.g., "de", "German") to localized title
@@ -328,7 +338,9 @@ class SearchResult:
     page: int = 1
     total_found: int = 0  # Total matching results (if known)
     has_more: bool = False  # True if more results available
-    source_url: str | None = None  # External URL for the result set (e.g. Hardcover list page)
+    source_url: str | None = (
+        None  # External URL for the result set (e.g. Hardcover list page)
+    )
     source_title: str | None = None  # Display title for the result set (e.g. list name)
 
 
@@ -380,7 +392,7 @@ class MetadataProvider(ABC):
             books=books,
             page=options.page,
             total_found=0,  # Unknown without provider-specific implementation
-            has_more=has_more
+            has_more=has_more,
         )
 
     def get_search_field_options(
@@ -393,15 +405,20 @@ class MetadataProvider(ABC):
 
     def get_book_targets(self, book_id: str) -> list[dict[str, Any]]:
         """Get provider-managed list or status targets for a specific book."""
-        raise NotImplementedError(f"{self.display_name} does not support book targets")
+        msg = f"{self.display_name} does not support book targets"
+        raise NotImplementedError(msg)
 
-    def get_book_targets_batch(self, book_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+    def get_book_targets_batch(
+        self, book_ids: list[str]
+    ) -> dict[str, list[dict[str, Any]]]:
         """Get provider-managed targets for multiple books.
 
         Returns a dict mapping each book_id to its list of target options.
         Default implementation calls get_book_targets per book.
         """
-        return {book_id: self._get_book_targets_for_batch(book_id) for book_id in book_ids}
+        return {
+            book_id: self._get_book_targets_for_batch(book_id) for book_id in book_ids
+        }
 
     def _get_book_targets_for_batch(self, book_id: str) -> list[dict[str, Any]]:
         """Safely fetch targets for one book, falling back to an empty list."""
@@ -420,7 +437,8 @@ class MetadataProvider(ABC):
 
         Returns a dict with at least ``{"changed": bool}``.
         """
-        raise NotImplementedError(f"{self.display_name} does not support book targets")
+        msg = f"{self.display_name} does not support book targets"
+        raise NotImplementedError(msg)
 
 
 # Provider registry
@@ -430,9 +448,11 @@ _PROVIDER_KWARGS_FACTORIES: dict[str, Any] = {}  # Callable[[], Dict]
 
 def register_provider(name: str):
     """Decorator to register a metadata provider."""
+
     def decorator(cls):
         _PROVIDERS[name] = cls
         return cls
+
     return decorator
 
 
@@ -450,16 +470,19 @@ def register_provider_kwargs(name: str):
             return {"api_key": config.get("HARDCOVER_API_KEY", "")}
 
     """
+
     def decorator(fn):
         _PROVIDER_KWARGS_FACTORIES[name] = fn
         return fn
+
     return decorator
 
 
 def get_provider(name: str, **kwargs) -> MetadataProvider:
     """Factory - instantiate any registered provider."""
     if name not in _PROVIDERS:
-        raise ValueError(f"Unknown metadata provider: {name}")
+        msg = f"Unknown metadata provider: {name}"
+        raise ValueError(msg)
     return _PROVIDERS[name](**kwargs)
 
 
@@ -486,7 +509,7 @@ def is_provider_registered(provider_name: str) -> bool:
 
 def is_provider_enabled(provider_name: str) -> bool:
     """Check if a provider is enabled in settings."""
-    from shelfmark.core.config import config as app_config
+    from shelfmark.core.config import config as app_config  # noqa: PLC0415
 
     # Refresh config to get latest settings
     app_config.refresh()
@@ -506,14 +529,16 @@ def get_configured_provider(
     user_id: int | None = None,
 ) -> MetadataProvider | None:
     """Get the currently configured metadata provider for the content type."""
-    from shelfmark.core.config import config as app_config
+    from shelfmark.core.config import config as app_config  # noqa: PLC0415
 
     # Refresh config to ensure we have the latest saved settings
     app_config.refresh()
 
     # For audiobooks, try audiobook-specific provider first, then fall back to main provider
     if content_type == "audiobook":
-        metadata_provider = app_config.get("METADATA_PROVIDER_AUDIOBOOK", "", user_id=user_id)
+        metadata_provider = app_config.get(
+            "METADATA_PROVIDER_AUDIOBOOK", "", user_id=user_id
+        )
         if not metadata_provider:
             metadata_provider = app_config.get("METADATA_PROVIDER", "", user_id=user_id)
     else:
@@ -539,7 +564,7 @@ def get_configured_provider_name(
     fallback_to_main: bool = True,
 ) -> str:
     """Get the configured metadata provider name for a content type."""
-    from shelfmark.core.config import config as app_config
+    from shelfmark.core.config import config as app_config  # noqa: PLC0415
 
     app_config.refresh()
 
@@ -623,7 +648,7 @@ def get_provider_default_sort(
     user_id: int | None = None,
 ) -> str:
     """Get the default sort order for a metadata provider."""
-    from shelfmark.core.config import config as app_config
+    from shelfmark.core.config import config as app_config  # noqa: PLC0415
 
     if provider_name is None:
         provider_name = get_configured_provider_name(user_id=user_id)
@@ -643,8 +668,8 @@ def sync_metadata_provider_selection() -> None:
     auto-select the first enabled provider. This should be called after
     enabling/disabling a provider.
     """
-    from shelfmark.core.config import config as app_config
-    from shelfmark.core.settings_registry import load_config_file, save_config_file
+    from shelfmark.core.config import config as app_config  # noqa: PLC0415
+    from shelfmark.core.settings_registry import load_config_file, save_config_file  # noqa: PLC0415
 
     app_config.refresh()
 

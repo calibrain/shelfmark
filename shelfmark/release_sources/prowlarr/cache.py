@@ -43,7 +43,7 @@ def get_release(source_id: str) -> dict | None:
     """
     with _cache_lock:
         if source_id not in _cache:
-            logger.debug(f"Prowlarr release not in cache: {source_id}")
+            logger.debug("Prowlarr release not in cache: %s", source_id)
             return None
 
         release_data, cached_at = _cache[source_id]
@@ -52,7 +52,7 @@ def get_release(source_id: str) -> dict | None:
         if age > RELEASE_CACHE_TTL:
             # Expired - remove from cache
             del _cache[source_id]
-            logger.debug(f"Prowlarr release expired: {source_id}")
+            logger.debug("Prowlarr release expired: %s", source_id)
             return None
 
         return release_data
@@ -68,7 +68,7 @@ def remove_release(source_id: str) -> None:
     with _cache_lock:
         if source_id in _cache:
             del _cache[source_id]
-            logger.debug(f"Removed Prowlarr release from cache: {source_id}")
+            logger.debug("Removed Prowlarr release from cache: %s", source_id)
 
 
 def cleanup_expired() -> int:
@@ -92,7 +92,7 @@ def cleanup_expired() -> int:
             removed += 1
 
     if removed:
-        logger.debug(f"Cleaned up {removed} expired Prowlarr cache entries")
+        logger.debug("Cleaned up %s expired Prowlarr cache entries", removed)
 
     return removed
 

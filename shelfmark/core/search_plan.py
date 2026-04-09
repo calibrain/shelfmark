@@ -102,7 +102,9 @@ def build_release_search_plan(
 
     if resolved_manual_query:
         # Manual override: use the raw query as-is (no language/title expansion).
-        variant = ReleaseSearchVariant(title=resolved_manual_query, author="", languages=None)
+        variant = ReleaseSearchVariant(
+            title=resolved_manual_query, author="", languages=None
+        )
         return ReleaseSearchPlan(
             languages=resolved_languages,
             isbn_candidates=[],

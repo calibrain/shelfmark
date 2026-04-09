@@ -19,25 +19,25 @@ AUTH_SOURCE_SET = frozenset(AUTH_SOURCES)
 _ALWAYS_ADMIN_SETTINGS_TABS = frozenset({"security", "users"})
 
 
-def has_local_password_admin(user_db: Any | None = None) -> bool:
+def has_local_password_admin(user_db: object | None = None) -> bool:
     """Return True when at least one local admin with a password exists."""
     try:
         db = user_db
         if db is None:
-            from shelfmark.core.user_db import UserDB
+            from shelfmark.core.user_db import UserDB  # noqa: PLC0415
 
             config_root = os.environ.get("CONFIG_DIR", "/config")
             db = UserDB(str(Path(config_root) / "users.db"))
             db.initialize()
 
         return db.has_admin_with_password()
-    except Exception:
+    except Exception:  # noqa: BLE001
         return False
 
 
 def normalize_auth_source(
-    source: Any,
-    oidc_subject: Any = None,
+    source: object,
+    oidc_subject: object = None,
 ) -> str:
     """Resolve a stable auth source value from persisted fields."""
     normalized = str(source or "").strip().lower()
@@ -50,7 +50,7 @@ def normalize_auth_source(
 
 def determine_auth_mode(
     security_config: Mapping[str, Any],
-    cwa_db_path: Any | None,
+    cwa_db_path: object | None,
     *,
     has_local_admin: bool = True,
 ) -> str:
@@ -78,13 +78,13 @@ def determine_auth_mode(
 
 
 def load_active_auth_mode(
-    cwa_db_path: Any | None,
+    cwa_db_path: object | None,
     *,
-    user_db: Any | None = None,
+    user_db: object | None = None,
 ) -> str:
     """Resolve active auth mode using current security config and runtime prerequisites."""
     try:
-        from shelfmark.core.config import config as app_config
+        from shelfmark.core.config import config as app_config  # noqa: PLC0415
 
         security_config = {
             "AUTH_METHOD": app_config.get("AUTH_METHOD", "none"),
@@ -97,7 +97,7 @@ def load_active_auth_mode(
             cwa_db_path,
             has_local_admin=has_local_password_admin(user_db),
         )
-    except Exception:
+    except Exception:  # noqa: BLE001
         return "none"
 
 
@@ -119,7 +119,7 @@ def get_settings_tab_from_path(path: str) -> str | None:
     if not path.startswith("/api/settings/"):
         return None
 
-    suffix = path[len("/api/settings/"):]
+    suffix = path[len("/api/settings/") :]
     if not suffix:
         return None
 

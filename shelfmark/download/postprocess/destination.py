@@ -21,13 +21,13 @@ logger = setup_logger("shelfmark.download.postprocess.pipeline")
 def validate_destination(destination: Path, status_callback) -> bool:
     """Validate destination path is absolute, exists, and writable."""
     if not destination.is_absolute():
-        logger.warning(f"Destination must be absolute: {destination}")
+        logger.warning("Destination must be absolute: %s", destination)
         status_callback("error", f"Destination must be absolute: {destination}")
         return False
 
     destination_exists = run_blocking_io(destination.exists)
     if destination_exists and not run_blocking_io(destination.is_dir):
-        logger.warning(f"Destination is not a directory: {destination}")
+        logger.warning("Destination is not a directory: %s", destination)
         status_callback("error", f"Destination is not a directory: {destination}")
         return False
 
@@ -36,8 +36,10 @@ def validate_destination(destination: Path, status_callback) -> bool:
             run_blocking_io(destination.mkdir, parents=True, exist_ok=True)
         except (OSError, PermissionError) as exc:
             log_path_permission_context("destination_create", destination)
-            logger.warning(f"Cannot create destination: {destination} ({exc})")
-            status_callback("error", f"Cannot create destination: {destination} ({exc})")
+            logger.warning("Cannot create destination: %s (%s)", destination, exc)
+            status_callback(
+                "error", f"Cannot create destination: {destination} ({exc})"
+            )
             return False
 
     test_path = destination / f".shelfmark_write_test_{uuid.uuid4().hex}.tmp"
@@ -49,10 +51,10 @@ def validate_destination(destination: Path, status_callback) -> bool:
         )
         run_blocking_io(test_path.write_text, test_content)
         run_blocking_io(test_path.unlink, missing_ok=True)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.debug("Destination write probe path: %s", test_path)
         log_path_permission_context("destination_write_probe", destination)
-        logger.warning(f"Destination not writable: {destination} ({exc})")
+        logger.warning("Destination not writable: %s (%s)", destination, exc)
         status_callback("error", f"Destination not writable: {destination} ({exc})")
         return False
 

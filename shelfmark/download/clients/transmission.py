@@ -5,7 +5,6 @@ Uses the transmission-rpc library to communicate with Transmission's RPC API.
 
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
-from typing import Any
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -23,6 +22,9 @@ from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
 
+_SEEDING_PROGRESS_PERCENT = 100
+_ETA_MAX_SECONDS = 604800
+
 
 @contextmanager
 def _transmission_session_verify_override(url: str) -> Iterator[None]:
@@ -37,15 +39,15 @@ def _transmission_session_verify_override(url: str) -> Iterator[None]:
         return
 
     try:
-        import transmission_rpc.client as transmission_rpc_client
-    except Exception:
+        import transmission_rpc.client as transmission_rpc_client  # noqa: PLC0415
+    except Exception:  # noqa: BLE001
         # If internals differ, gracefully fall back to default behavior.
         yield
         return
 
     original_session_factory = transmission_rpc_client.requests.Session
 
-    def _session_factory(*args: Any, **kwargs: Any) -> Any:
+    def _session_factory(*args: object, **kwargs: object) -> object:
         session = original_session_factory(*args, **kwargs)
         session.verify = False
         return session
@@ -57,14 +59,14 @@ def _transmission_session_verify_override(url: str) -> Iterator[None]:
         transmission_rpc_client.requests.Session = original_session_factory
 
 
-def _apply_transmission_ssl_verify(client: Any, url: str) -> None:
+def _apply_transmission_ssl_verify(client: object, url: str) -> None:
     """Apply global certificate validation policy to transmission-rpc client."""
     session = getattr(client, "_http_session", None)
     if session is None:
         return
     try:
         session.verify = get_ssl_verify(url)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.debug("Unable to apply Transmission TLS verify setting: %s", e)
 
 
@@ -77,15 +79,17 @@ class TransmissionClient(DownloadClient):
 
     def __init__(self):
         """Initialize Transmission client with settings from config."""
-        from transmission_rpc import Client
+        from transmission_rpc import Client  # noqa: PLC0415
 
         raw_url = config.get("TRANSMISSION_URL", "")
         if not raw_url:
-            raise ValueError("TRANSMISSION_URL is required")
+            msg = "TRANSMISSION_URL is required"
+            raise ValueError(msg)
 
         url = normalize_http_url(raw_url)
         if not url:
-            raise ValueError("TRANSMISSION_URL is invalid")
+            msg = "TRANSMISSION_URL is invalid"
+            raise ValueError(msg)
 
         username = config.get("TRANSMISSION_USERNAME", "")
         password = config.get("TRANSMISSION_PASSWORD", "")
@@ -131,7 +135,7 @@ class TransmissionClient(DownloadClient):
         try:
             session = self._client.get_session()
             version = session.version
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to Transmission {version}"
@@ -184,7 +188,7 @@ class TransmissionClient(DownloadClient):
                 )
 
             torrent_hash = torrent.hashString.lower()
-            logger.info(f"Added torrent to Transmission: {torrent_hash}")
+            logger.info("Added torrent to Transmission: %s", torrent_hash)
 
             # Apply per-torrent seeding limits from indexer
             seed_kwargs = {}
@@ -199,8 +203,10 @@ class TransmissionClient(DownloadClient):
             if seed_kwargs:
                 try:
                     self._client.change_torrent(ids=torrent_hash, **seed_kwargs)
-                except Exception as e:
-                    logger.warning(f"Failed to set seeding limits for {torrent_hash}: {e}")
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(
+                        "Failed to set seeding limits for %s: %s", torrent_hash, e
+                    )
 
         except Exception:
             logger.exception("Transmission add failed")
@@ -230,7 +236,11 @@ class TransmissionClient(DownloadClient):
             # 5: seed pending
             # 6: seeding
             # torrent.status is an enum with .value as string
-            status_value = torrent.status.value if hasattr(torrent.status, "value") else str(torrent.status)
+            status_value = (
+                torrent.status.value
+                if hasattr(torrent.status, "value")
+                else str(torrent.status)
+            )
             status_map = {
                 "stopped": ("paused", "Paused"),
                 "check pending": ("checking", "Waiting to check"),
@@ -241,10 +251,12 @@ class TransmissionClient(DownloadClient):
                 "seeding": ("seeding", "Seeding"),
             }
 
-            state, message = status_map.get(status_value, ("downloading", "Downloading"))
+            state, message = status_map.get(
+                status_value, ("downloading", "Downloading")
+            )
             progress = torrent.percent_done * 100
             # Only mark complete when seeding - seed pending means files still being moved
-            complete = progress >= 100 and status_value == "seeding"
+            complete = progress >= _SEEDING_PROGRESS_PERCENT and status_value == "seeding"
 
             if complete:
                 message = "Complete"
@@ -253,11 +265,13 @@ class TransmissionClient(DownloadClient):
             eta = None
             if hasattr(torrent, "eta") and torrent.eta:
                 eta_seconds = torrent.eta.total_seconds()
-                if 0 < eta_seconds < 604800:
+                if 0 < eta_seconds < _ETA_MAX_SECONDS:
                     eta = int(eta_seconds)
 
             # Get download speed
-            download_speed = torrent.rate_download if hasattr(torrent, "rate_download") else None
+            download_speed = (
+                torrent.rate_download if hasattr(torrent, "rate_download") else None
+            )
 
             # Get file path for completed downloads
             file_path = None
@@ -283,7 +297,7 @@ class TransmissionClient(DownloadClient):
 
         except KeyError:
             return DownloadStatus.error("Torrent not found")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, delete_files: bool = False) -> bool:
@@ -306,7 +320,7 @@ class TransmissionClient(DownloadClient):
                 f"Removed torrent from Transmission: {download_id}"
                 + (" (with files)" if delete_files else "")
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self._log_error("remove", e)
             return False
         else:
@@ -323,15 +337,15 @@ class TransmissionClient(DownloadClient):
 
         """
         try:
-             torrent = self._client.get_torrent(download_id)
-             torrent_name = getattr(torrent, "name", "")
-             if isinstance(torrent_name, str):
-                 torrent_name = torrent_name.replace(":", "_")
-             return self._build_path(
-                 getattr(torrent, "download_dir", ""),
-                 torrent_name,
-             )
-        except Exception as e:
+            torrent = self._client.get_torrent(download_id)
+            torrent_name = getattr(torrent, "name", "")
+            if isinstance(torrent_name, str):
+                torrent_name = torrent_name.replace(":", "_")
+            return self._build_path(
+                getattr(torrent, "download_dir", ""),
+                torrent_name,
+            )
+        except Exception as e:  # noqa: BLE001
             self._log_error("get_download_path", e, level="debug")
             return None
 
@@ -351,6 +365,6 @@ class TransmissionClient(DownloadClient):
                 return None
             else:
                 return (torrent_info.info_hash, status)
-        except Exception as e:
-            logger.debug(f"Error checking for existing torrent: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Error checking for existing torrent: %s", e)
             return None

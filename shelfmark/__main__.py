@@ -5,4 +5,6 @@ from shelfmark.core.config import config
 from shelfmark.main import app, socketio
 
 if __name__ == "__main__":
-    socketio.run(app, host=FLASK_HOST, port=FLASK_PORT, debug=config.get("DEBUG", False))
+    socketio.run(
+        app, host=FLASK_HOST, port=FLASK_PORT, debug=config.get("DEBUG", False)
+    )

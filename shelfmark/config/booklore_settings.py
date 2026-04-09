@@ -164,11 +164,13 @@ def get_booklore_path_options() -> list[dict[str, Any]]:
         return path_options
 
 
-def test_booklore_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
+def test_booklore_connection(
+    current_values: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Test the Booklore connection using current form values."""
     current_values = current_values or {}
 
-    def _get_value(key: str, default: Any = None) -> Any:
+    def _get_value(key: str, default: object = None) -> object:
         value = current_values.get(key)
         if value not in (None, ""):
             return value

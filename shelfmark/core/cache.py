@@ -5,7 +5,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, TypeVar
+from typing import TypeVar
 
 from shelfmark.core.logger import setup_logger
 
@@ -18,7 +18,7 @@ T = TypeVar("T")
 class CacheEntry:
     """A cached value with expiration time."""
 
-    value: Any
+    value: object
     expires_at: float
 
 
@@ -31,7 +31,7 @@ class CacheService:
         self._lock = threading.Lock()
         self._max_size = max_size
 
-    def get(self, key: str) -> Any | None:
+    def get(self, key: str) -> object | None:
         """Get cached value if not expired."""
         with self._lock:
             entry = self._cache.get(key)
@@ -44,17 +44,14 @@ class CacheService:
 
             return entry.value
 
-    def set(self, key: str, value: Any, ttl: int) -> None:
+    def set(self, key: str, value: object, ttl: int) -> None:
         """Cache value with TTL in seconds."""
         with self._lock:
             # Evict oldest entries if at capacity
             if len(self._cache) >= self._max_size:
                 self._evict_oldest()
 
-            self._cache[key] = CacheEntry(
-                value=value,
-                expires_at=time.time() + ttl
-            )
+            self._cache[key] = CacheEntry(value=value, expires_at=time.time() + ttl)
 
     def invalidate(self, key: str) -> bool:
         """Remove specific cache entry. Returns True if found."""
@@ -82,8 +79,7 @@ class CacheService:
         with self._lock:
             now = time.time()
             expired_keys = [
-                key for key, entry in self._cache.items()
-                if entry.expires_at < now
+                key for key, entry in self._cache.items() if entry.expires_at < now
             ]
             for key in expired_keys:
                 del self._cache[key]
@@ -96,10 +92,7 @@ class CacheService:
 
         # Remove ~10% of entries, oldest first
         entries_to_remove = max(1, len(self._cache) // 10)
-        sorted_entries = sorted(
-            self._cache.items(),
-            key=lambda x: x[1].expires_at
-        )
+        sorted_entries = sorted(self._cache.items(), key=lambda x: x[1].expires_at)
 
         for key, _ in sorted_entries[:entries_to_remove]:
             del self._cache[key]
@@ -107,10 +100,7 @@ class CacheService:
     def stats(self) -> dict[str, int]:
         """Get cache statistics (size, max_size)."""
         with self._lock:
-            return {
-                "size": len(self._cache),
-                "max_size": self._max_size
-            }
+            return {"size": len(self._cache), "max_size": self._max_size}
 
 
 # Global cache instance for metadata providers
@@ -133,14 +123,15 @@ def cacheable(
     ttl: int | None = None,
     ttl_key: str | None = None,
     ttl_default: int = 300,
-    key_prefix: str = ""
+    key_prefix: str = "",
 ):
     """Decorator for caching function results. Use ttl (static) or ttl_key (from config)."""
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         def wrapper(*args, **kwargs) -> T:
             # Check if metadata caching is enabled
-            from shelfmark.core.config import config
+            from shelfmark.core.config import config  # noqa: PLC0415
 
             if not config.get("METADATA_CACHE_ENABLED", True):
                 # Caching disabled, execute function directly
@@ -158,11 +149,7 @@ def cacheable(
             # Skip 'self' argument if present (first arg of method)
             cache_args = args[1:] if args and hasattr(args[0], func.__name__) else args
 
-            key = cache_key(
-                key_prefix or func.__name__,
-                *cache_args,
-                **kwargs
-            )
+            key = cache_key(key_prefix or func.__name__, *cache_args, **kwargs)
 
             # Check cache
             cached = _metadata_cache.get(key)
@@ -179,4 +166,5 @@ def cacheable(
             return result
 
         return wrapper
+
     return decorator

@@ -16,7 +16,7 @@ from shelfmark.core.settings_registry import (
 
 def _clear_irc_cache():
     """Clear all cached IRC search results."""
-    from shelfmark.release_sources.irc.cache import clear_cache, get_cache_stats
+    from shelfmark.release_sources.irc.cache import clear_cache, get_cache_stats  # noqa: PLC0415
 
     stats = get_cache_stats()
     count = clear_cache()
@@ -46,7 +46,6 @@ def irc_settings():
                 "which may not work behind strict firewalls or NAT."
             ),
         ),
-
         TextField(
             key="IRC_SERVER",
             label="Server",
@@ -55,7 +54,6 @@ def irc_settings():
             required=True,
             env_supported=True,
         ),
-
         NumberField(
             key="IRC_PORT",
             label="Port",
@@ -63,15 +61,12 @@ def irc_settings():
             description="IRC server port (usually 6697 for TLS, 6667 for plain)",
             env_supported=True,
         ),
-
         CheckboxField(
             key="IRC_USE_TLS",
             label="Use TLS",
             default=True,
-            description="Enable TLS/SSL encryption for the IRC connection. Disable for servers that don't support TLS.",
-            env_supported=True,
+            description="Enable TLS/SSL encryption for the IRC connection. Disable for servers that don't support TLS.",  # noqa: E501
         ),
-
         TextField(
             key="IRC_CHANNEL",
             label="Channel",
@@ -80,7 +75,6 @@ def irc_settings():
             required=True,
             env_supported=True,
         ),
-
         TextField(
             key="IRC_NICK",
             label="Nickname",
@@ -89,7 +83,6 @@ def irc_settings():
             required=True,
             env_supported=True,
         ),
-
         TextField(
             key="IRC_SEARCH_BOT",
             label="Search bot",
@@ -97,7 +90,6 @@ def irc_settings():
             description="The search bot to query for results",
             env_supported=True,
         ),
-
         HeadingField(
             key="cache_heading",
             title="Search Cache",
@@ -106,7 +98,6 @@ def irc_settings():
                 "Use the Refresh button in the release modal to force a new search."
             ),
         ),
-
         SelectField(
             key="IRC_CACHE_TTL",
             label="Cache Duration",
@@ -117,7 +108,6 @@ def irc_settings():
             ],
             default="2592000",  # 30 days
         ),
-
         ActionButton(
             key="clear_irc_cache",
             label="Clear Cache",

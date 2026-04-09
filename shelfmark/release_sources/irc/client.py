@@ -20,7 +20,7 @@ logger = setup_logger(__name__)
 
 
 # Timing
-SOCKET_TIMEOUT = 300.0    # 5 minutes - long because we wait for DCC offers
+SOCKET_TIMEOUT = 300.0  # 5 minutes - long because we wait for DCC offers
 RECV_BUFFER = 4096
 
 # IRC channel user prefixes that indicate elevated status (ops, voice, etc.)
@@ -31,16 +31,16 @@ ELEVATED_PREFIXES = frozenset({"~", "&", "@", "%", "+"})
 class IRCEvent(Enum):
     """Events detected from IRC messages."""
 
-    MESSAGE = auto()           # Generic message
-    SEARCH_RESULT = auto()     # DCC SEND with "_results_for"
-    BOOK_RESULT = auto()       # DCC SEND for actual book
-    NO_RESULTS = auto()        # "Sorry" notice
-    BAD_SERVER = auto()        # "try another server" notice
-    SEARCH_ACCEPTED = auto()   # "has been accepted" notice
-    MATCHES_FOUND = auto()     # "X matches" notice
-    SERVER_LIST = auto()       # User list (353/366)
-    PING = auto()              # Server PING
-    VERSION = auto()           # CTCP VERSION request
+    MESSAGE = auto()  # Generic message
+    SEARCH_RESULT = auto()  # DCC SEND with "_results_for"
+    BOOK_RESULT = auto()  # DCC SEND for actual book
+    NO_RESULTS = auto()  # "Sorry" notice
+    BAD_SERVER = auto()  # "try another server" notice
+    SEARCH_ACCEPTED = auto()  # "has been accepted" notice
+    MATCHES_FOUND = auto()  # "X matches" notice
+    SERVER_LIST = auto()  # User list (353/366)
+    PING = auto()  # Server PING
+    VERSION = auto()  # CTCP VERSION request
 
 
 @dataclass
@@ -75,11 +75,14 @@ class IRCClient:
         version: str = "Shelfmark 1.0",
     ):
         if not nick:
-            raise IRCError("IRC nickname is required")
+            msg = "IRC nickname is required"
+            raise IRCError(msg)
         if not server:
-            raise IRCError("IRC server is required")
+            msg = "IRC server is required"
+            raise IRCError(msg)
         if not port:
-            raise IRCError("IRC port is required")
+            msg = "IRC port is required"
+            raise IRCError(msg)
         self.nick = nick
         self.server = server
         self.port = port
@@ -95,7 +98,9 @@ class IRCClient:
 
     def connect(self) -> None:
         """Connect to IRC server, send USER/NICK, and wait for welcome."""
-        logger.info(f"Connecting to {self.server}:{self.port} (TLS={self.use_tls})")
+        logger.info(
+            "Connecting to %s:%s (TLS=%s)", self.server, self.port, self.use_tls
+        )
 
         try:
             # Create socket
@@ -114,7 +119,8 @@ class IRCClient:
             self._socket = sock
 
         except OSError as e:
-            raise IRCConnectionError(f"Failed to connect: {e}") from e
+            msg = f"Failed to connect: {e}"
+            raise IRCConnectionError(msg) from e
 
         # Send authentication (USER before NICK per IRC protocol)
         self._send(f"USER {self.nick} 0 * :{self.nick}")
@@ -132,7 +138,8 @@ class IRCClient:
             try:
                 data = self._socket.recv(RECV_BUFFER)
                 if not data:
-                    raise IRCConnectionError("Connection closed during registration")
+                    msg = "Connection closed during registration"
+                    raise IRCConnectionError(msg)
                 self._buffer += data.decode("utf-8", errors="replace")
             except TimeoutError:
                 continue
@@ -147,23 +154,26 @@ class IRCClient:
                 if line.startswith("PING"):
                     pong = line.replace("PING", "PONG", 1)
                     self._send(pong)
-                    logger.debug(f"PONG {pong.split(':')[-1] if ':' in pong else ''}")
+                    logger.debug("PONG %s", pong.split(":")[-1] if ":" in pong else "")
                     continue
 
                 # 001 = RPL_WELCOME - registration complete
                 if " 001 " in line:
                     self._socket.settimeout(SOCKET_TIMEOUT)  # Restore timeout
                     self._connected = True
-                    logger.info(f"Connected as {self.nick}")
+                    logger.info("Connected as %s", self.nick)
                     return
 
                 # Check for fatal errors
                 if " 433 " in line:  # Nickname in use
-                    raise IRCConnectionError("Nickname already in use")
+                    msg = "Nickname already in use"
+                    raise IRCConnectionError(msg)
                 if " 432 " in line:  # Erroneous nickname
-                    raise IRCConnectionError("Invalid nickname")
+                    msg = "Invalid nickname"
+                    raise IRCConnectionError(msg)
 
-        raise IRCConnectionError("Timeout waiting for server welcome")
+        msg = "Timeout waiting for server welcome"
+        raise IRCConnectionError(msg)
 
     def disconnect(self) -> None:
         """Gracefully disconnect from server."""
@@ -181,7 +191,7 @@ class IRCClient:
     def join_channel(self, channel: str, wait_for_join: bool = True) -> None:
         """Join an IRC channel (without # prefix) and capture online servers."""
         self._send(f"JOIN #{channel}")
-        logger.debug(f"Sent JOIN #{channel}")
+        logger.debug("Sent JOIN #%s", channel)
 
         # Clear any existing server list before joining
         self.online_servers.clear()
@@ -212,7 +222,7 @@ class IRCClient:
                             continue
 
                         msg = self._parse_message(line)
-                        logger.debug(f"JOIN wait recv: {msg.command} - {line[:80]}")
+                        logger.debug("JOIN wait recv: %s - %s", msg.command, line[:80])
 
                         # Handle PING during join wait
                         if msg.event == IRCEvent.PING:
@@ -226,15 +236,19 @@ class IRCClient:
 
                         # 366 = RPL_ENDOFNAMES - channel join is complete
                         if msg.command == "366":
-                            logger.info(f"Joined #{channel} - {len(self.online_servers)} servers online")
+                            logger.info(
+                                "Joined #%s - %s servers online",
+                                channel,
+                                len(self.online_servers),
+                            )
                             return
 
                         # Check for errors (e.g., banned, channel doesn't exist)
                         if msg.command in ("473", "474", "475", "403"):
-                            logger.error(f"Cannot join #{channel}: {msg.trailing}")
+                            logger.error("Cannot join #%s: %s", channel, msg.trailing)
                             return
 
-                logger.warning(f"Timeout waiting for JOIN confirmation on #{channel}")
+                logger.warning("Timeout waiting for JOIN confirmation on #%s", channel)
 
             finally:
                 # Restore original socket timeout
@@ -243,7 +257,7 @@ class IRCClient:
     def send_message(self, target: str, message: str) -> None:
         """Send a PRIVMSG to a channel or user."""
         self._send(f"PRIVMSG {target} :{message}")
-        logger.debug(f"Sent to {target}: {message[:50]}...")
+        logger.debug("Sent to %s: %s...", target, message[:50])
 
     def send_notice(self, target: str, message: str) -> None:
         """Send a NOTICE to a user."""
@@ -252,7 +266,11 @@ class IRCClient:
     def _parse_names_list(self, names_data: str) -> None:
         """Parse 353 NAMES reply and extract elevated users (download servers)."""
         # Extract the trailing part after the last colon (the actual names)
-        names_part = names_data.rsplit(" :", maxsplit=1)[-1] if " :" in names_data else names_data
+        names_part = (
+            names_data.rsplit(" :", maxsplit=1)[-1]
+            if " :" in names_data
+            else names_data
+        )
 
         for name in names_part.split():
             # Check if user has an elevated prefix
@@ -264,7 +282,8 @@ class IRCClient:
     def _send(self, message: str) -> None:
         """Send raw IRC message."""
         if not self._socket:
-            raise IRCError("Not connected")
+            msg = "Not connected"
+            raise IRCError(msg)
 
         data = f"{message}\r\n".encode()
         self._socket.sendall(data)
@@ -287,7 +306,7 @@ class IRCClient:
             except TimeoutError:
                 continue  # Keep waiting
             except OSError as e:
-                logger.warning(f"Socket error: {e}")
+                logger.warning("Socket error: %s", e)
                 return  # Connection error
 
     def _parse_message(self, line: str) -> IRCMessage:
@@ -302,12 +321,12 @@ class IRCClient:
             space_idx = line.find(" ")
             if space_idx != -1:
                 msg.prefix = line[1:space_idx]
-                line = line[space_idx + 1:]
+                line = line[space_idx + 1 :]
 
         # Extract trailing if present
         if " :" in line:
             idx = line.find(" :")
-            msg.trailing = line[idx + 2:]
+            msg.trailing = line[idx + 2 :]
             line = line[:idx]
 
         # Split remaining into command and params
@@ -362,7 +381,7 @@ class IRCClient:
         # PING message format: PING :server
         server = msg.trailing or self.server
         self._send(f"PONG :{server}")
-        logger.debug(f"PONG {server}")
+        logger.debug("PONG %s", server)
 
     def _handle_version(self, msg: IRCMessage) -> None:
         """Respond to CTCP VERSION request."""
@@ -370,7 +389,7 @@ class IRCClient:
             # Extract nick from prefix (nick!user@host)
             sender = msg.prefix.split("!")[0]
             self.send_notice(sender, f"\x01VERSION {self.version}\x01")
-            logger.debug(f"Sent VERSION to {sender}")
+            logger.debug("Sent VERSION to %s", sender)
 
     def read_messages(self, auto_handle: bool = True) -> Iterator[IRCMessage]:
         """Read and yield IRC messages, optionally auto-handling PING/VERSION."""
@@ -406,7 +425,7 @@ class IRCClient:
             if msg.event == target_event:
                 try:
                     offer = parse_dcc_send(msg.raw)
-                    logger.info(f"Received DCC offer: {offer.filename}")
+                    logger.info("Received DCC offer: %s", offer.filename)
                 except Exception:
                     logger.exception("Failed to parse DCC")
                     return None
@@ -422,12 +441,16 @@ class IRCClient:
                 return None
             if msg.event == IRCEvent.SEARCH_ACCEPTED:
                 logger.info("Search accepted, waiting for results...")
-            elif msg.event == IRCEvent.MATCHES_FOUND and msg.trailing and "returned" in msg.trailing:
+            elif (
+                msg.event == IRCEvent.MATCHES_FOUND
+                and msg.trailing
+                and "returned" in msg.trailing
+            ):
                 # Extract count from "returned X matches"
                 match = re.search(r"returned\s+(\d+)\s+matches", msg.trailing)
                 if match:
                     count = match.group(1)
-                    logger.info(f"Found {count} matches")
+                    logger.info("Found %s matches", count)
 
         return None
 

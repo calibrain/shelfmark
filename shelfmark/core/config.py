@@ -12,12 +12,15 @@ _registry_module = None
 _env_module = None
 _user_db_module = None
 
+_SETTINGS_REFRESH_COOLDOWN_SECONDS = 0.05
+
 
 def _get_registry():
     """Lazy import of settings registry to avoid circular imports."""
     global _registry_module
     if _registry_module is None:
-        from shelfmark.core import settings_registry
+        from shelfmark.core import settings_registry  # noqa: PLC0415
+
         _registry_module = settings_registry
     return _registry_module
 
@@ -26,7 +29,8 @@ def _get_env():
     """Lazy import of env module for fallback values."""
     global _env_module
     if _env_module is None:
-        from shelfmark.config import env
+        from shelfmark.config import env  # noqa: PLC0415
+
         _env_module = env
     return _env_module
 
@@ -35,7 +39,8 @@ def _get_user_db_module():
     """Lazy import of user DB module to avoid optional dependency loops."""
     global _user_db_module
     if _user_db_module is None:
-        from shelfmark.core.user_db import UserDB
+        from shelfmark.core.user_db import UserDB  # noqa: PLC0415
+
         _user_db_module = UserDB
     return _user_db_module
 
@@ -49,6 +54,7 @@ class Config:
 
     _instance: Optional["Config"] = None
     _lock = Lock()
+
     def __new__(cls) -> "Config":
         if cls._instance is None:
             with cls._lock:
@@ -85,12 +91,12 @@ class Config:
         # Ensure all settings modules are imported before loading
         # This handles cases where config is accessed before settings are registered
         try:
-            import shelfmark.config.notifications_settings
-            import shelfmark.config.security
-            import shelfmark.config.settings
-            import shelfmark.config.users_settings
-            import shelfmark.metadata_providers
-            import shelfmark.release_sources  # noqa: F401 - plugin settings
+            import shelfmark.config.notifications_settings  # noqa: PLC0415
+            import shelfmark.config.security  # noqa: PLC0415
+            import shelfmark.config.settings  # noqa: PLC0415
+            import shelfmark.config.users_settings  # noqa: PLC0415
+            import shelfmark.metadata_providers  # noqa: PLC0415
+            import shelfmark.release_sources  # noqa: F401, PLC0415
         except ImportError:
             pass
 
@@ -124,7 +130,10 @@ class Config:
         (e.g. after a settings write).
         """
         now = time.monotonic()
-        if not force and (now - self._last_refresh_time) < 0.05:
+        if (
+            not force
+            and (now - self._last_refresh_time) < _SETTINGS_REFRESH_COOLDOWN_SECONDS
+        ):
             return
 
         with self._cache_lock:
@@ -149,7 +158,7 @@ class Config:
             db_path = str(Path(os.environ.get("CONFIG_DIR", "/config")) / "users.db")
             user_db = user_db_cls(db_path)
             user_db.initialize()
-        except Exception:
+        except Exception:  # noqa: BLE001
             # Multi-user support is optional; fall back to global config when unavailable.
             return None
         else:
@@ -178,12 +187,14 @@ class Config:
             self._user_settings_cache[user_id] = settings
         return settings
 
-    def _get_user_override(self, user_id: int, key: str) -> Any:
+    def _get_user_override(self, user_id: int, key: str) -> object:
         """Get a user override for a specific key."""
         user_settings = self._get_user_settings(user_id)
         return user_settings.get(key)
 
-    def get(self, key: str, default: Any = None, user_id: int | None = None) -> Any:
+    def get(
+        self, key: str, default: object = None, user_id: int | None = None
+    ) -> object:
         """Get a setting value by key.
 
         Args:
@@ -213,14 +224,15 @@ class Config:
 
         return self._cache.get(key, default)
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> object:
         """Allow attribute-style access to settings.
 
         Example: config.MAX_RETRY instead of config.get('MAX_RETRY')
         """
         # Avoid recursion for internal attributes
         if name.startswith("_"):
-            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+            msg = f"'{type(self).__name__}' object has no attribute '{name}'"
+            raise AttributeError(msg)
 
         self._ensure_loaded()
 
@@ -233,7 +245,8 @@ class Config:
         if hasattr(env, name):
             return getattr(env, name)
 
-        raise AttributeError(f"Setting '{name}' not found in config or env")
+        msg = f"Setting '{name}' not found in config or env"
+        raise AttributeError(msg)
 
     def is_from_env(self, key: str) -> bool:
         """Check if a setting's value comes from an environment variable.

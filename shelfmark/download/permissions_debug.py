@@ -33,8 +33,10 @@ def _log_path_permissions(probe: Path, label: str) -> None:
             _run_io(probe.exists),
             _run_io(probe.is_dir),
         )
-    except Exception as stat_error:
-        logger.debug("Path permissions (%s): stat failed for %s: %s", label, probe, stat_error)
+    except Exception as stat_error:  # noqa: BLE001
+        logger.debug(
+            "Path permissions (%s): stat failed for %s: %s", label, probe, stat_error
+        )
 
 
 def _run_io(func, *args, **kwargs):
@@ -44,32 +46,32 @@ def _run_io(func, *args, **kwargs):
     so we only import `run_blocking_io` lazily at call-time.
     """
     try:
-        from shelfmark.download.fs import run_blocking_io as _run_blocking_io
-    except Exception:
+        from shelfmark.download.fs import run_blocking_io as _run_blocking_io  # noqa: PLC0415
+    except Exception:  # noqa: BLE001
         return func(*args, **kwargs)
 
     try:
         return _run_blocking_io(func, *args, **kwargs)
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Fall back to direct call if threadpool offload is unavailable.
         return func(*args, **kwargs)
 
 
 def _format_uid(uid: int) -> str:
     try:
-        import pwd
+        import pwd  # noqa: PLC0415
 
         return pwd.getpwuid(uid).pw_name
-    except Exception:
+    except Exception:  # noqa: BLE001
         return str(uid)
 
 
 def _format_gid(gid: int) -> str:
     try:
-        import grp
+        import grp  # noqa: PLC0415
 
         return grp.getgrgid(gid).gr_name
-    except Exception:
+    except Exception:  # noqa: BLE001
         return str(gid)
 
 
@@ -97,14 +99,13 @@ def log_path_permission_context(label: str, path: Path) -> None:
         for probe in [path, path.parent]:
             try:
                 resolved = _run_io(probe.resolve)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 resolved = probe
 
             try:
                 st = _run_io(probe.stat)
                 logger.debug(
-                    "Path permissions (%s): path=%s resolved=%s mode=%s owner=%s(%d) group=%s(%d) dir=%s symlink=%s",
-                    label,
+                    "Path permissions (%s): path=%s resolved=%s mode=%s owner=%s(%d) group=%s(%d) dir=%s symlink=%s",  # noqa: E501
                     probe,
                     resolved,
                     oct(st.st_mode & 0o777),
@@ -115,13 +116,22 @@ def log_path_permission_context(label: str, path: Path) -> None:
                     _run_io(probe.is_dir),
                     _run_io(probe.is_symlink),
                 )
-            except Exception as stat_error:
-                logger.debug("Path permissions (%s): stat failed for %s: %s", label, probe, stat_error)
-    except Exception as context_error:
-        logger.debug("Permission context (%s): failed to collect: %s", label, context_error)
+            except Exception as stat_error:  # noqa: BLE001
+                logger.debug(
+                    "Path permissions (%s): stat failed for %s: %s",
+                    label,
+                    probe,
+                    stat_error,
+                )
+    except Exception as context_error:  # noqa: BLE001
+        logger.debug(
+            "Permission context (%s): failed to collect: %s", label, context_error
+        )
 
 
-def log_transfer_permission_context(label: str, source: Path, dest: Path, error: Exception) -> None:
+def log_transfer_permission_context(
+    label: str, source: Path, dest: Path, error: Exception
+) -> None:
     """Log useful permission/ownership context when a file transfer fails."""
     try:
         euid = os.geteuid() if hasattr(os, "geteuid") else None
@@ -142,5 +152,7 @@ def log_transfer_permission_context(label: str, source: Path, dest: Path, error:
 
         for probe in [source, dest, dest.parent]:
             _log_path_permissions(probe, label)
-    except Exception as context_error:
-        logger.debug("Permission context (%s): failed to collect: %s", label, context_error)
+    except Exception as context_error:  # noqa: BLE001
+        logger.debug(
+            "Permission context (%s): failed to collect: %s", label, context_error
+        )

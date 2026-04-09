@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
 from pathlib import Path
-from typing import Any, TypeVar, cast
+from typing import TypeVar, cast
 
 import requests
 
@@ -34,6 +34,9 @@ RETRYABLE_EXCEPTIONS = (
     requests.exceptions.Timeout,
     requests.exceptions.HTTPError,
 )
+_MIN_RETRYABLE_STATUS = 500
+_MIN_PROGRESS_PERCENT = 0
+_MAX_PROGRESS_PERCENT = 100
 
 
 def with_retry(
@@ -60,6 +63,7 @@ def with_retry(
         - Other exceptions (programming errors)
 
     """
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         def wrapper(*args, **kwargs) -> T:
@@ -70,7 +74,10 @@ def with_retry(
                     return func(*args, **kwargs)
                 except requests.exceptions.HTTPError as e:
                     # Only retry on server errors (5xx), not client errors (4xx)
-                    if e.response is not None and e.response.status_code < 500:
+                    if (
+                        e.response is not None
+                        and e.response.status_code < _MIN_RETRYABLE_STATUS
+                    ):
                         raise
                     last_exception = e
                 except RETRYABLE_EXCEPTIONS as e:
@@ -82,17 +89,25 @@ def with_retry(
                     # Add jitter to prevent thundering herd
                     delay += random.uniform(0, delay * jitter)
                     _logger.debug(
-                        f"Retry {attempt}/{max_attempts} for {func.__name__} "
-                        f"after {delay:.1f}s (error: {last_exception})"
+                        _logger.debug(
+                            "Retry %s/%s for %s after %.1fs (error: %s)",
+                            attempt,
+                            max_attempts,
+                            func.__name__,
+                            delay,
+                            last_exception,
+                        )
                     )
                     time.sleep(delay)
 
             # All retries exhausted
             if last_exception is None:
-                raise RuntimeError("Retry failed without exception")
+                msg = "Retry failed without exception"
+                raise RuntimeError(msg)
             raise cast("Exception", last_exception)
 
         return wrapper
+
     return decorator
 
 
@@ -142,11 +157,19 @@ class DownloadStatus:
                 object.__setattr__(self, "state", normalized_state)
             except ValueError:
                 # Unknown state string - keep as-is for backwards compatibility
-                _logger.warning(f"Unknown download state '{self.state}', keeping as string")
+                _logger.warning(
+                    _logger.warning(
+                        "Unknown download state '%s', keeping as string", self.state
+                    )
+                )
 
         # Validate progress is in range
-        if not 0 <= self.progress <= 100:
-            _logger.debug(f"Progress {self.progress} out of range, clamping to [0, 100]")
+        if not _MIN_PROGRESS_PERCENT <= self.progress <= _MAX_PROGRESS_PERCENT:
+            _logger.debug(
+                _logger.debug(
+                    "Progress %s out of range, clamping to [0, 100]", self.progress
+                )
+            )
             object.__setattr__(self, "progress", max(0, min(100, self.progress)))
 
     @property
@@ -226,15 +249,16 @@ class DownloadClient(ABC):
 
         # Validate protocol attribute
         if not hasattr(cls, "protocol") or not cls.protocol:
-            raise TypeError(f"{cls.__name__} must define 'protocol' class attribute")
+            msg = f"{cls.__name__} must define 'protocol' class attribute"
+            raise TypeError(msg)
         if cls.protocol not in ("torrent", "usenet"):
-            raise TypeError(
-                f"{cls.__name__}.protocol must be 'torrent' or 'usenet', got '{cls.protocol}'"
-            )
+            msg = f"{cls.__name__}.protocol must be 'torrent' or 'usenet', got '{cls.protocol}'"
+            raise TypeError(msg)
 
         # Validate name attribute
         if not hasattr(cls, "name") or not cls.name:
-            raise TypeError(f"{cls.__name__} must define 'name' class attribute")
+            msg = f"{cls.__name__} must define 'name' class attribute"
+            raise TypeError(msg)
 
     @staticmethod
     @abstractmethod
@@ -262,7 +286,7 @@ class DownloadClient(ABC):
         name: str,
         category: str | None = None,
         expected_hash: str | None = None,
-        **kwargs: Any,
+        **kwargs: object,
     ) -> str:
         """Add a download to the client.
 

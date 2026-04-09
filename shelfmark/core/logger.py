@@ -4,7 +4,6 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any
 
 from shelfmark.config.env import ENABLE_LOGGING, LOG_FILE, LOG_LEVEL
 
@@ -12,13 +11,13 @@ from shelfmark.config.env import ENABLE_LOGGING, LOG_FILE, LOG_LEVEL
 class CustomLogger(logging.Logger):
     """Custom logger class with additional error_trace method."""
 
-    def error_trace(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+    def error_trace(self, msg: object, *args: object, **kwargs: object) -> None:
         """Log an error message with full stack trace."""
         self.log_resource_usage()
         kwargs.pop("exc_info", None)
         self.error(msg, *args, exc_info=True, **kwargs)
 
-    def debug_trace(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+    def debug_trace(self, msg: object, *args: object, **kwargs: object) -> None:
         """Log a debug message (stack trace only if exception active)."""
         kwargs.pop("exc_info", None)
         # Only include exc_info if there's actually an exception
@@ -28,14 +27,19 @@ class CustomLogger(logging.Logger):
     def log_resource_usage(self):
         # Best-effort only; this should never raise during exception logging.
         try:
-            import psutil
+            import psutil  # noqa: PLC0415
 
-            def _get_process_rss_mb(proc: Any) -> float | None:
+            def _get_process_rss_mb(proc: object) -> float | None:
                 try:
                     mem = proc.info.get("memory_info")
                     if mem:
                         return mem.rss / (1024 * 1024)
-                except (psutil.NoSuchProcess, psutil.AccessDenied, KeyError, AttributeError):
+                except (
+                    psutil.NoSuchProcess,
+                    psutil.AccessDenied,
+                    KeyError,
+                    AttributeError,
+                ):
                     return None
                 return None
 
@@ -50,7 +54,7 @@ class CustomLogger(logging.Logger):
             except (PermissionError, psutil.AccessDenied, OSError):
                 try:
                     app_memory_mb = psutil.Process().memory_info().rss / (1024 * 1024)
-                except Exception:
+                except Exception:  # noqa: BLE001
                     app_memory_mb = 0.0
 
             memory = psutil.virtual_memory()
@@ -61,7 +65,7 @@ class CustomLogger(logging.Logger):
                 f"Container Memory: App={app_memory_mb:.2f} MB, System={system_used_mb:.2f} MB, "
                 f"Available={available_mb:.2f} MB, CPU: {cpu_percent:.2f}%"
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             # Avoid breaking the original log call if psutil is missing or restricted.
             return
 
@@ -93,12 +97,14 @@ def setup_logger(name: str, log_file: Path = LOG_FILE) -> CustomLogger:
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
     console_handler.setLevel(log_level)
-    console_handler.addFilter(lambda record: record.levelno < logging.ERROR)  # Only allow logs below ERROR to stdout
+    console_handler.addFilter(
+        lambda record: record.levelno < logging.ERROR
+    )  # Only allow logs below ERROR to stdout
     logger.addHandler(console_handler)
 
     # Error handler for stderr
     error_handler = logging.StreamHandler(sys.stderr)
-    error_handler.setLevel(logging.ERROR) # Error and above go to stderr
+    error_handler.setLevel(logging.ERROR)  # Error and above go to stderr
     error_handler.setFormatter(formatter)
     logger.addHandler(error_handler)
 
@@ -111,11 +117,11 @@ def setup_logger(name: str, log_file: Path = LOG_FILE) -> CustomLogger:
             file_handler = RotatingFileHandler(
                 log_file,
                 maxBytes=10485760,  # 10MB
-                backupCount=5
+                backupCount=5,
             )
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error_trace(f"Failed to create log file: {e}", exc_info=True)
 
     return logger

@@ -43,13 +43,22 @@ class QueueStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-TERMINAL_QUEUE_STATUSES: frozenset[QueueStatus] = frozenset({
-    QueueStatus.COMPLETE, QueueStatus.ERROR, QueueStatus.CANCELLED,
-})
+TERMINAL_QUEUE_STATUSES: frozenset[QueueStatus] = frozenset(
+    {
+        QueueStatus.COMPLETE,
+        QueueStatus.ERROR,
+        QueueStatus.CANCELLED,
+    }
+)
 
-ACTIVE_QUEUE_STATUSES: frozenset[QueueStatus] = frozenset({
-    QueueStatus.QUEUED, QueueStatus.RESOLVING, QueueStatus.LOCATING, QueueStatus.DOWNLOADING,
-})
+ACTIVE_QUEUE_STATUSES: frozenset[QueueStatus] = frozenset(
+    {
+        QueueStatus.QUEUED,
+        QueueStatus.RESOLVING,
+        QueueStatus.LOCATING,
+        QueueStatus.DOWNLOADING,
+    }
+)
 
 
 class SearchMode(str, Enum):
@@ -74,9 +83,9 @@ class QueueItem:
 
 @dataclass
 class DownloadTask:
-    task_id: str                                # Unique ID (e.g., AA MD5 hash, Prowlarr GUID)
-    source: str                                 # Handler name ("direct_download", "prowlarr")
-    title: str                                  # Display title for queue sidebar
+    task_id: str  # Unique ID (e.g., AA MD5 hash, Prowlarr GUID)
+    source: str  # Handler name ("direct_download", "prowlarr")
+    title: str  # Display title for queue sidebar
 
     # Display info for queue sidebar
     author: str | None = None
@@ -85,14 +94,28 @@ class DownloadTask:
     size: str | None = None
     preview: str | None = None
     content_type: str | None = None  # "book (fiction)", "audiobook", "magazine", etc.
-    source_url: str | None = None  # Original release URL used by source-specific handlers
-    retry_download_url: str | None = None  # Resolved download URL for restart-safe retries
-    retry_download_protocol: str | None = None  # Protocol for retry_download_url (e.g. torrent, usenet)
-    retry_release_name: str | None = None  # Display name to send back to external download clients
-    retry_expected_hash: str | None = None  # Optional torrent hash used to match client downloads
+    source_url: str | None = (
+        None  # Original release URL used by source-specific handlers
+    )
+    retry_download_url: str | None = (
+        None  # Resolved download URL for restart-safe retries
+    )
+    retry_download_protocol: str | None = (
+        None  # Protocol for retry_download_url (e.g. torrent, usenet)
+    )
+    retry_release_name: str | None = (
+        None  # Display name to send back to external download clients
+    )
+    retry_expected_hash: str | None = (
+        None  # Optional torrent hash used to match client downloads
+    )
     retry_ratio_limit: float | None = None  # Optional post-download seeding ratio
-    retry_seeding_time_limit_minutes: int | None = None  # Optional post-download seeding time limit
-    can_retry_without_staged_source: bool = True  # Whether the source can restart without a preserved staged file
+    retry_seeding_time_limit_minutes: int | None = (
+        None  # Optional post-download seeding time limit
+    )
+    can_retry_without_staged_source: bool = (
+        True  # Whether the source can restart without a preserved staged file
+    )
 
     # Series info (for library naming templates)
     series_name: str | None = None
@@ -100,21 +123,28 @@ class DownloadTask:
     subtitle: str | None = None  # Book subtitle for naming templates
 
     # Hardlinking support
-    original_download_path: str | None = None  # Path in download client (for hardlinking)
+    original_download_path: str | None = (
+        None  # Path in download client (for hardlinking)
+    )
 
     # Search mode - determines post-download processing behavior
     # See SearchMode enum for behavioral differences
     search_mode: SearchMode | None = None
 
     # Output selection for post-processing.
-    # This is captured at queue time so in-flight tasks are not affected if the user changes settings later.
-    output_mode: str | None = None  # e.g. "folder", "booklore", "email"
-    output_args: dict[str, Any] = field(default_factory=dict)  # Per-output parameters (e.g. email recipient)
+    # This is captured at queue time so in-flight tasks are not affected if the user changes settings later.  # noqa: E501
+    output_mode: str | None = None
+
+    output_args: dict[str, Any] = field(
+        default_factory=dict
+    )  # Per-output parameters (e.g. email recipient)
 
     # User association (multi-user support)
     user_id: int | None = None  # DB user ID who queued this download
     username: str | None = None  # Username for {User} template variable
-    request_id: int | None = None  # Origin request ID when queued from request fulfilment
+    request_id: int | None = (
+        None  # Origin request ID when queued from request fulfilment
+    )
 
     # Runtime state
     priority: int = 0

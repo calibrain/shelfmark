@@ -1,6 +1,5 @@
 """Centralized mirror configuration for all download sources."""
 
-
 from shelfmark.core.utils import normalize_http_url
 
 # Lazy import to avoid circular imports
@@ -11,7 +10,8 @@ def _get_config():
     """Lazy import of config module to avoid circular imports."""
     global _config_module
     if _config_module is None:
-        from shelfmark.core.config import config
+        from shelfmark.core.config import config  # noqa: PLC0415
+
         _config_module = config
     return _config_module
 
@@ -125,7 +125,9 @@ def get_zlib_mirrors() -> list[str]:
     """
     config = _get_config()
 
-    primary = _normalize_mirror_url(config.get("ZLIB_PRIMARY_URL", DEFAULT_ZLIB_MIRRORS[0]))
+    primary = _normalize_mirror_url(
+        config.get("ZLIB_PRIMARY_URL", DEFAULT_ZLIB_MIRRORS[0])
+    )
     if not primary:
         primary = _normalize_mirror_url(DEFAULT_ZLIB_MIRRORS[0])
     mirrors = [primary]
@@ -155,7 +157,9 @@ def get_zlib_primary_url() -> str:
 
     """
     config = _get_config()
-    primary = _normalize_mirror_url(config.get("ZLIB_PRIMARY_URL", DEFAULT_ZLIB_MIRRORS[0]))
+    primary = _normalize_mirror_url(
+        config.get("ZLIB_PRIMARY_URL", DEFAULT_ZLIB_MIRRORS[0])
+    )
     return primary or _normalize_mirror_url(DEFAULT_ZLIB_MIRRORS[0])
 
 
@@ -179,7 +183,9 @@ def get_welib_mirrors() -> list[str]:
     """
     config = _get_config()
 
-    primary = _normalize_mirror_url(config.get("WELIB_PRIMARY_URL", DEFAULT_WELIB_MIRRORS[0]))
+    primary = _normalize_mirror_url(
+        config.get("WELIB_PRIMARY_URL", DEFAULT_WELIB_MIRRORS[0])
+    )
     if not primary:
         primary = _normalize_mirror_url(DEFAULT_WELIB_MIRRORS[0])
     mirrors = [primary]
@@ -209,7 +215,9 @@ def get_welib_primary_url() -> str:
 
     """
     config = _get_config()
-    primary = _normalize_mirror_url(config.get("WELIB_PRIMARY_URL", DEFAULT_WELIB_MIRRORS[0]))
+    primary = _normalize_mirror_url(
+        config.get("WELIB_PRIMARY_URL", DEFAULT_WELIB_MIRRORS[0])
+    )
     return primary or _normalize_mirror_url(DEFAULT_WELIB_MIRRORS[0])
 
 
@@ -239,7 +247,9 @@ def get_zlib_cookie_domains() -> set:
     for url in DEFAULT_ZLIB_MIRRORS:
         normalized = _normalize_mirror_url(url)
         if normalized:
-            domain = normalized.replace("https://", "").replace("http://", "").split("/")[0]
+            domain = (
+                normalized.replace("https://", "").replace("http://", "").split("/")[0]
+            )
             domains.add(domain)
 
     # Add custom domains
@@ -249,7 +259,11 @@ def get_zlib_cookie_domains() -> set:
         for url in additional.split(","):
             normalized = _normalize_mirror_url(url)
             if normalized:
-                domain = normalized.replace("https://", "").replace("http://", "").split("/")[0]
+                domain = (
+                    normalized.replace("https://", "")
+                    .replace("http://", "")
+                    .split("/")[0]
+                )
                 domains.add(domain)
 
     return domains
