@@ -22,7 +22,6 @@ def build_output_plan(
     status_callback=None,
 ) -> OutputPlan:
     """Build an output plan that describes staging behavior for file-based outputs."""
-
     transfer_plan = resolve_hardlink_source(temp_file, task, destination, status_callback)
     staging_dir = get_staging_dir()
 

@@ -96,6 +96,7 @@ class QBittorrentClient(DownloadClient):
 
         Notes:
             A false result with no error means "not loaded yet".
+
         """
         import requests
 
@@ -179,6 +180,7 @@ class QBittorrentClient(DownloadClient):
 
         Returns:
             (torrents, error_message)
+
         """
         import requests
 
@@ -281,7 +283,7 @@ class QBittorrentClient(DownloadClient):
             self._client.auth_log_in()
             api_version = self._client.app.web_api_version
         except Exception as e:
-            return False, f"Connection failed: {str(e)}"
+            return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to qBittorrent (API v{api_version})"
 
@@ -293,8 +295,7 @@ class QBittorrentClient(DownloadClient):
         expected_hash: str | None = None,
         **kwargs,
     ) -> str:
-        """
-        Add torrent by URL (magnet or .torrent).
+        """Add torrent by URL (magnet or .torrent).
 
         Args:
             url: Magnet link or .torrent URL
@@ -307,6 +308,7 @@ class QBittorrentClient(DownloadClient):
 
         Raises:
             Exception: If adding fails.
+
         """
         try:
             # Use configured category if not explicitly provided
@@ -393,14 +395,14 @@ class QBittorrentClient(DownloadClient):
             return expected_hash
 
     def get_status(self, download_id: str) -> DownloadStatus:
-        """
-        Get torrent status by hash.
+        """Get torrent status by hash.
 
         Args:
             download_id: Torrent info_hash
 
         Returns:
             Current download status.
+
         """
         try:
             torrents, error = self._get_torrents_info(download_id)
@@ -479,8 +481,7 @@ class QBittorrentClient(DownloadClient):
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, delete_files: bool = False) -> bool:
-        """
-        Remove a torrent from qBittorrent.
+        """Remove a torrent from qBittorrent.
 
         Args:
             download_id: Torrent info_hash
@@ -488,6 +489,7 @@ class QBittorrentClient(DownloadClient):
 
         Returns:
             True if successful.
+
         """
         try:
             self._client.torrents_delete(
@@ -514,7 +516,6 @@ class QBittorrentClient(DownloadClient):
         - `/api/v2/torrents/files?hash=<hash>` for the first file name
         - join `save_path` with the torrent's top-level directory
         """
-
         try:
             torrents, error = self._get_torrents_info(download_id)
             if error:
@@ -546,7 +547,6 @@ class QBittorrentClient(DownloadClient):
         - otherwise derive via properties+files
         - finally fall back to `save_path + name`
         """
-
         # Prefer content_path, but treat content_path == save_path as invalid.
         content_path = getattr(torrent, "content_path", "")
         save_path = getattr(torrent, "save_path", "")

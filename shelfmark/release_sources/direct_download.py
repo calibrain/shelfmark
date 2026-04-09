@@ -135,7 +135,7 @@ def _is_source_enabled(source_id: str) -> bool:
     return False
 
 
-_SIZE_UNIT_PATTERN = re.compile(r'(kb|mb|gb|tb)', re.IGNORECASE)
+_SIZE_UNIT_PATTERN = re.compile(r"(kb|mb|gb|tb)", re.IGNORECASE)
 
 
 def _normalize_size(size_str: str) -> str:
@@ -160,6 +160,7 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
     Raises:
         SearchUnavailable: If Anna's Archive cannot be reached
         Exception: If parsing fails
+
     """
     query_html = quote(query)
 
@@ -246,6 +247,7 @@ def get_book_info(book_id: str, fetch_download_count: bool = True) -> BrowseReco
 
     Returns:
         BrowseRecord: Detailed book information including download URLs
+
     """
     url = f"{network.get_aa_base_url()}/md5/{book_id}"
     selector = network.AAMirrorSelector()
@@ -315,7 +317,7 @@ def _parse_book_info_page(soup: BeautifulSoup, book_id: str, fetch_download_coun
 
             next_text = ""
             if anchor.next and anchor.next.next:
-                next_text = getattr(anchor.next.next, 'text', str(anchor.next.next)).strip().lower()
+                next_text = getattr(anchor.next.next, "text", str(anchor.next.next)).strip().lower()
 
             if text.startswith("slow partner server") and "waitlist" in next_text:
                 if "no waitlist" in next_text:
@@ -513,6 +515,7 @@ def _get_source_info(link: str) -> tuple[str, str]:
 
     Returns:
         Tuple of (log_label, friendly_name)
+
     """
     # Check detailed source type mapping first (for AA slow distinction)
     if link in _url_source_types:
@@ -855,6 +858,7 @@ def _get_download_url(
         status_callback: Optional callback for status updates
         selector: Optional AA mirror selector
         source_context: Optional context string like "Welib (1/12)" for status messages
+
     """
     sel = selector or network.AAMirrorSelector()
 
@@ -956,7 +960,7 @@ def _extract_slow_download_url(
         if code_elem:
             return code_elem.get_text(strip=True)
         for sibling in parent.find_next_siblings():
-            text = sibling.get_text(strip=True) if hasattr(sibling, 'get_text') else str(sibling).strip()
+            text = sibling.get_text(strip=True) if hasattr(sibling, "get_text") else str(sibling).strip()
             if text.startswith("http"):
                 return text
 
@@ -1009,18 +1013,18 @@ def _extract_countdown_seconds(soup: BeautifulSoup, html_str: str) -> int:
         if 0 < seconds < 300:
             return seconds
 
-    js_countdown = re.search(r'countdown:\s*(\d+)', html_str)
+    js_countdown = re.search(r"countdown:\s*(\d+)", html_str)
     if js_countdown:
         seconds = int(js_countdown.group(1))
         if 0 < seconds < 300:
             return seconds
-    js_var = re.search(r'(?:var|let|const)\s+countdown\s*=\s*(\d+)', html_str)
+    js_var = re.search(r"(?:var|let|const)\s+countdown\s*=\s*(\d+)", html_str)
     if js_var:
         seconds = int(js_var.group(1))
         if 0 < seconds < 300:
             return seconds
 
-    countdown_secs = re.search(r'countdownSeconds\s*=\s*(\d+)', html_str)
+    countdown_secs = re.search(r"countdownSeconds\s*=\s*(\d+)", html_str)
     if countdown_secs:
         seconds = int(countdown_secs.group(1))
         if 0 < seconds < 300:
@@ -1032,7 +1036,7 @@ def _extract_countdown_seconds(soup: BeautifulSoup, html_str: str) -> int:
         if 0 < seconds < 300:
             return seconds
 
-    wait_text = re.search(r'wait\s+(\d+)\s+seconds', html_str, re.IGNORECASE)
+    wait_text = re.search(r"wait\s+(\d+)\s+seconds", html_str, re.IGNORECASE)
     if wait_text:
         seconds = int(wait_text.group(1))
         if 0 < seconds < 300:
@@ -1085,12 +1089,12 @@ def _browse_record_to_release(record: BrowseRecord) -> Release:
 
 @register_source("direct_download")
 class DirectDownloadSource(ReleaseSource):
-    """
-    Direct download source - searches web sources for books.
+    """Direct download source - searches web sources for books.
 
     This wraps the search_books() functionality to provide releases
     via the plugin interface.
     """
+
     name = "direct_download"
     display_name = "Direct Download"
     supported_content_types = ["ebook"]  # Direct downloads only support ebooks
@@ -1189,8 +1193,7 @@ class DirectDownloadSource(ReleaseSource):
         expand_search: bool = False,
         content_type: str = "ebook"
     ) -> list[Release]:
-        """
-        Search for releases using the book's metadata.
+        """Search for releases using the book's metadata.
 
         Priority: ISBN search first (most precise), then title+author fallback.
         For non-English languages, uses localized titles from book.titles_by_language.
@@ -1200,6 +1203,7 @@ class DirectDownloadSource(ReleaseSource):
             expand_search: If True, skip ISBN and use title+author directly
             languages: Language codes to filter by (overrides book.language/config)
             content_type: Ignored - Direct download uses format filtering instead
+
         """
         lang_filter = plan.languages
 
@@ -1290,8 +1294,7 @@ class DirectDownloadSource(ReleaseSource):
 
 @register_handler("direct_download")
 class DirectDownloadHandler(DownloadHandler):
-    """
-    Handler for direct HTTP downloads from Anna's Archive, Libgen, etc.
+    """Handler for direct HTTP downloads from Anna's Archive, Libgen, etc.
 
     Receives a DownloadTask with task_id (AA MD5 hash) and cascades through
     sources in priority order. The AA page is only fetched if AA slow sources
@@ -1305,8 +1308,7 @@ class DirectDownloadHandler(DownloadHandler):
         progress_callback: Callable[[float], None],
         status_callback: Callable[[str, str | None], None]
     ) -> str | None:
-        """
-        Execute a direct HTTP download.
+        """Execute a direct HTTP download.
 
         Uses task.task_id (AA MD5 hash) to cascade through sources in priority
         order. The AA page is only fetched if AA slow sources are enabled.
@@ -1319,6 +1321,7 @@ class DirectDownloadHandler(DownloadHandler):
 
         Returns:
             Path to downloaded file if successful, None otherwise
+
         """
         try:
             # Check for cancellation before starting
@@ -1364,8 +1367,7 @@ class DirectDownloadHandler(DownloadHandler):
         progress_callback: Callable[[float], None],
         status_callback: Callable[[str, str | None], None]
     ) -> str | None:
-        """
-        Internal method to execute the download with fetched browse record.
+        """Internal method to execute the download with fetched browse record.
 
         This contains the core download logic: cascade through sources,
         handle bypass, move to final location.

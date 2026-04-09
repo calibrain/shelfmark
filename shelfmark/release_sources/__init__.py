@@ -17,6 +17,7 @@ from shelfmark.metadata_providers import BookMetadata
 
 class ReleaseProtocol(str, Enum):
     """Protocol for downloading a release."""
+
     HTTP = "http"       # Direct HTTP download
     TORRENT = "torrent" # BitTorrent
     NZB = "nzb"         # Usenet NZB
@@ -30,6 +31,7 @@ class SourceUnavailableError(Exception):
 @dataclass
 class BrowseRecord:
     """Source-native browse/search record used before normalization to Release."""
+
     id: str
     title: str
     source: str
@@ -55,6 +57,7 @@ class BrowseRecord:
 @dataclass
 class Release:
     """A downloadable release - all sources return this same structure."""
+
     source: str                      # "direct", "prowlarr", "irc", etc.
     source_id: str                   # ID within that source
     title: str
@@ -75,6 +78,7 @@ class Release:
 @dataclass
 class DownloadProgress:
     """DEPRECATED: Use progress_callback and status_callback instead."""
+
     status: str                      # "queued", "resolving", "downloading", "complete", "failed"
     progress: float                  # 0-100
     status_message: str | None = None
@@ -87,6 +91,7 @@ class DownloadProgress:
 
 class ColumnRenderType(str, Enum):
     """How the frontend should render the column value."""
+
     TEXT = "text"           # Plain text
     BADGE = "badge"         # Colored badge (format, language)
     TAGS = "tags"           # List of colored badges
@@ -100,6 +105,7 @@ class ColumnRenderType(str, Enum):
 
 class ColumnAlign(str, Enum):
     """Column alignment options."""
+
     LEFT = "left"
     CENTER = "center"
     RIGHT = "right"
@@ -108,6 +114,7 @@ class ColumnAlign(str, Enum):
 @dataclass
 class ColumnColorHint:
     """Color hint for badge-type columns."""
+
     type: Literal["map", "static"]   # "map" uses frontend colorMaps, "static" is fixed class
     value: str                        # Map name ("format", "language") or Tailwind class
 
@@ -115,6 +122,7 @@ class ColumnColorHint:
 @dataclass
 class ColumnSchema:
     """Definition for a single column in the release list."""
+
     key: str                                      # Data path (e.g., "format", "extra.language")
     label: str                                    # Accessibility label
     render_type: ColumnRenderType = ColumnRenderType.TEXT
@@ -130,6 +138,7 @@ class ColumnSchema:
 
 class LeadingCellType(str, Enum):
     """Type of leading cell to display in release rows."""
+
     THUMBNAIL = "thumbnail"  # Show book cover image
     BADGE = "badge"          # Show colored badge (e.g., "Torrent", "Usenet")
     NONE = "none"            # No leading cell
@@ -138,6 +147,7 @@ class LeadingCellType(str, Enum):
 @dataclass
 class LeadingCellConfig:
     """Configuration for the leading cell in release rows."""
+
     type: LeadingCellType = LeadingCellType.THUMBNAIL
     key: str | None = None                     # Field path for data (e.g., "extra.preview" or "extra.download_type")
     color_hint: ColumnColorHint | None = None  # For badge type - maps values to colors
@@ -147,6 +157,7 @@ class LeadingCellConfig:
 @dataclass
 class SortOption:
     """A sort option that appears in the sort dropdown without being tied to a column."""
+
     label: str                                    # Display label in the sort dropdown
     sort_key: str                                 # Field to sort by on the Release object
 
@@ -154,6 +165,7 @@ class SortOption:
 @dataclass
 class SourceActionButton:
     """Action button configuration for a release source."""
+
     label: str                    # Button text (e.g., "Refresh search")
     action: str = "expand"        # Action type: "expand" triggers expand_search
 
@@ -161,6 +173,7 @@ class SourceActionButton:
 @dataclass
 class ReleaseColumnConfig:
     """Complete column configuration for a release source."""
+
     columns: list[ColumnSchema]
     grid_template: str = "minmax(0,2fr) 60px 80px 80px"  # CSS grid-template-columns
     leading_cell: LeadingCellConfig | None = None     # Defaults to thumbnail mode if None
@@ -287,6 +300,7 @@ def _default_column_config() -> ReleaseColumnConfig:
 
 class ReleaseSource(ABC):
     """Interface for searching a release source."""
+
     name: str                        # "direct", "prowlarr"
     display_name: str                # "Direct Download", "Prowlarr"
     supported_content_types: list[str] = ["ebook", "audiobook"]  # Content types this source supports
@@ -407,9 +421,9 @@ def list_available_sources() -> list[dict]:
             "name": name,
             "display_name": instance.display_name,
             "enabled": instance.is_available(),
-            "supported_content_types": getattr(instance, 'supported_content_types', ["ebook", "audiobook"]),
+            "supported_content_types": getattr(instance, "supported_content_types", ["ebook", "audiobook"]),
             "browse_results_are_releases": instance.search_results_are_releases(),
-            "can_be_default": getattr(instance, 'can_be_default', True),
+            "can_be_default": getattr(instance, "can_be_default", True),
         })
     return result
 
@@ -418,7 +432,7 @@ def get_source_display_name(name: str) -> str:
     """Get display name for a source by its identifier."""
     if name in _SOURCES:
         return _SOURCES[name]().display_name
-    return name.replace('_', ' ').title()
+    return name.replace("_", " ").title()
 
 
 def browse_record_to_book_metadata(
@@ -467,8 +481,8 @@ def source_results_are_releases(name: str) -> bool:
 # Import source implementations to trigger registration
 # These must be imported AFTER the base classes and registry are defined
 from shelfmark.release_sources import (
-    audiobookbay,  # noqa: F401, E402
-    direct_download,  # noqa: F401, E402
-    irc,  # noqa: F401, E402
-    prowlarr,  # noqa: F401, E402
+    audiobookbay,  # noqa: F401
+    direct_download,  # noqa: F401
+    irc,  # noqa: F401
+    prowlarr,  # noqa: F401
 )

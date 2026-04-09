@@ -9,6 +9,7 @@ from typing import Any
 
 class SearchType(str, Enum):
     """Type of search to perform."""
+
     GENERAL = "general"  # Search all fields (title, author, ISBN, etc.)
     TITLE = "title"      # Search by title only
     AUTHOR = "author"    # Search by author only
@@ -17,6 +18,7 @@ class SearchType(str, Enum):
 
 class SortOrder(str, Enum):
     """Sort order for search results."""
+
     RELEVANCE = "relevance"    # Best match first (default)
     POPULARITY = "popularity"  # Most popular first
     RATING = "rating"          # Highest rated first
@@ -39,6 +41,7 @@ SORT_LABELS: dict[SortOrder, str] = {
 @dataclass
 class MetadataCapability:
     """Declarative provider capability consumed by shared UI code."""
+
     key: str
     field_key: str | None = None
     sort: SortOrder | None = None
@@ -47,6 +50,7 @@ class MetadataCapability:
 @dataclass
 class TextSearchField:
     """Text input search field."""
+
     key: str                              # Field identifier (e.g., "author", "publisher")
     label: str                            # Display label in UI
     placeholder: str = ""                 # Placeholder text
@@ -58,6 +62,7 @@ class TextSearchField:
 @dataclass
 class NumberSearchField:
     """Numeric input search field."""
+
     key: str
     label: str
     placeholder: str = ""
@@ -70,6 +75,7 @@ class NumberSearchField:
 @dataclass
 class SelectSearchField:
     """Single-choice dropdown search field."""
+
     key: str
     label: str
     options: list[dict[str, str]] = field(default_factory=list)  # [{value: "", label: ""}]
@@ -80,6 +86,7 @@ class SelectSearchField:
 @dataclass
 class CheckboxSearchField:
     """Boolean checkbox search field."""
+
     key: str
     label: str
     description: str = ""
@@ -89,6 +96,7 @@ class CheckboxSearchField:
 @dataclass
 class DynamicSelectSearchField:
     """Single-choice dropdown field with options loaded from an API endpoint."""
+
     key: str
     label: str
     options_endpoint: str
@@ -127,8 +135,8 @@ def serialize_search_field(search_field: SearchField) -> dict[str, Any]:
         "key": search_field.key,
         "label": search_field.label,
         "type": search_field.__class__.__name__,
-        "placeholder": getattr(search_field, 'placeholder', ''),
-        "description": getattr(search_field, 'description', ''),
+        "placeholder": getattr(search_field, "placeholder", ""),
+        "description": getattr(search_field, "description", ""),
     }
 
     # Add type-specific properties
@@ -153,6 +161,7 @@ def serialize_search_field(search_field: SearchField) -> dict[str, Any]:
 @dataclass
 class MetadataSearchOptions:
     """Options for metadata search queries across all providers."""
+
     query: str
     search_type: SearchType = SearchType.GENERAL
     language: str | None = None  # ISO 639-1 code (e.g., "en", "fr")
@@ -165,6 +174,7 @@ class MetadataSearchOptions:
 @dataclass
 class DisplayField:
     """A display field for metadata cards (ratings, page counts, etc.)."""
+
     label: str                       # e.g., "Rating", "Pages", "Readers"
     value: str                       # e.g., "4.5", "496", "8,041"
     icon: str | None = None       # Icon name: "star", "book", "users", "editions"
@@ -173,6 +183,7 @@ class DisplayField:
 @dataclass
 class BookMetadata:
     """Book from metadata provider (not a specific release)."""
+
     provider: str                    # Which provider this came from (internal name)
     provider_id: str                 # ID in that provider's system
     title: str
@@ -231,6 +242,7 @@ def group_languages_by_localized_title(
     Returns:
         List of (title, languages) tuples. If languages is None/empty, returns
         [(base_title, None)].
+
     """
     if not base_title:
         return []
@@ -275,6 +287,7 @@ def build_localized_search_titles(
 
     Returns:
         List of unique titles to search for, in priority order.
+
     """
     if not base_title:
         return []
@@ -310,6 +323,7 @@ def build_localized_search_titles(
 @dataclass
 class SearchResult:
     """Result from a metadata search with pagination info."""
+
     books: list[BookMetadata]
     page: int = 1
     total_found: int = 0  # Total matching results (if known)
@@ -331,7 +345,9 @@ class MetadataProvider(ABC):
         supported_sorts: List of SortOrder values this provider supports
         search_fields: List of provider-specific search fields
         capabilities: Declarative capabilities exposed to shared UI code
+
     """
+
     name: str
     display_name: str
     requires_auth: bool
@@ -432,6 +448,7 @@ def register_provider_kwargs(name: str):
         def _hardcover_kwargs() -> Dict:
             from shelfmark.core.config import config
             return {"api_key": config.get("HARDCOVER_API_KEY", "")}
+
     """
     def decorator(fn):
         _PROVIDER_KWARGS_FACTORIES[name] = fn
@@ -557,7 +574,7 @@ def get_provider_sort_options(
 
     if provider_name and provider_name in _PROVIDERS:
         provider_class = _PROVIDERS[provider_name]
-        supported = getattr(provider_class, 'supported_sorts', [SortOrder.RELEVANCE])
+        supported = getattr(provider_class, "supported_sorts", [SortOrder.RELEVANCE])
     else:
         supported = [SortOrder.RELEVANCE]
 
@@ -577,7 +594,7 @@ def get_provider_search_fields(
 
     if provider_name and provider_name in _PROVIDERS:
         provider_class = _PROVIDERS[provider_name]
-        fields = getattr(provider_class, 'search_fields', [])
+        fields = getattr(provider_class, "search_fields", [])
     else:
         fields = []
 
@@ -652,10 +669,10 @@ def sync_metadata_provider_selection() -> None:
 # Import provider implementations to trigger registration
 # These must be imported AFTER the base classes and registry are defined
 with suppress(ImportError):
-    from shelfmark.metadata_providers import hardcover  # noqa: F401, E402
+    from shelfmark.metadata_providers import hardcover  # noqa: F401
 
 with suppress(ImportError):
-    from shelfmark.metadata_providers import openlibrary  # noqa: F401, E402
+    from shelfmark.metadata_providers import openlibrary  # noqa: F401
 
 with suppress(ImportError):
-    from shelfmark.metadata_providers import googlebooks  # noqa: F401, E402
+    from shelfmark.metadata_providers import googlebooks  # noqa: F401

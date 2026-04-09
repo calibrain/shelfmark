@@ -1,5 +1,4 @@
-"""
-Transmission download client for Prowlarr integration.
+"""Transmission download client for Prowlarr integration.
 
 Uses the transmission-rpc library to communicate with Transmission's RPC API.
 """
@@ -133,7 +132,7 @@ class TransmissionClient(DownloadClient):
             session = self._client.get_session()
             version = session.version
         except Exception as e:
-            return False, f"Connection failed: {str(e)}"
+            return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to Transmission {version}"
 
@@ -145,8 +144,7 @@ class TransmissionClient(DownloadClient):
         expected_hash: str | None = None,
         **kwargs,
     ) -> str:
-        """
-        Add torrent by URL (magnet or .torrent).
+        """Add torrent by URL (magnet or .torrent).
 
         Args:
             url: Magnet link or .torrent URL
@@ -159,6 +157,7 @@ class TransmissionClient(DownloadClient):
 
         Raises:
             Exception: If adding fails.
+
         """
         try:
             resolved_category = category or self._category or ""
@@ -210,14 +209,14 @@ class TransmissionClient(DownloadClient):
             return torrent_hash
 
     def get_status(self, download_id: str) -> DownloadStatus:
-        """
-        Get torrent status by hash.
+        """Get torrent status by hash.
 
         Args:
             download_id: Torrent info_hash
 
         Returns:
             Current download status.
+
         """
         try:
             torrent = self._client.get_torrent(download_id)
@@ -231,7 +230,7 @@ class TransmissionClient(DownloadClient):
             # 5: seed pending
             # 6: seeding
             # torrent.status is an enum with .value as string
-            status_value = torrent.status.value if hasattr(torrent.status, 'value') else str(torrent.status)
+            status_value = torrent.status.value if hasattr(torrent.status, "value") else str(torrent.status)
             status_map = {
                 "stopped": ("paused", "Paused"),
                 "check pending": ("checking", "Waiting to check"),
@@ -252,23 +251,23 @@ class TransmissionClient(DownloadClient):
 
             # Get ETA if available and reasonable (less than 1 week)
             eta = None
-            if hasattr(torrent, 'eta') and torrent.eta:
+            if hasattr(torrent, "eta") and torrent.eta:
                 eta_seconds = torrent.eta.total_seconds()
                 if 0 < eta_seconds < 604800:
                     eta = int(eta_seconds)
 
             # Get download speed
-            download_speed = torrent.rate_download if hasattr(torrent, 'rate_download') else None
+            download_speed = torrent.rate_download if hasattr(torrent, "rate_download") else None
 
             # Get file path for completed downloads
             file_path = None
             if complete:
                 # Output path is downloadDir + torrent name (with ':' replaced)
-                torrent_name = getattr(torrent, 'name', '')
+                torrent_name = getattr(torrent, "name", "")
                 if isinstance(torrent_name, str):
-                    torrent_name = torrent_name.replace(':', '_')
+                    torrent_name = torrent_name.replace(":", "_")
                 file_path = self._build_path(
-                    getattr(torrent, 'download_dir', ''),
+                    getattr(torrent, "download_dir", ""),
                     torrent_name,
                 )
 
@@ -288,8 +287,7 @@ class TransmissionClient(DownloadClient):
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, delete_files: bool = False) -> bool:
-        """
-        Remove a torrent from Transmission.
+        """Remove a torrent from Transmission.
 
         Args:
             download_id: Torrent info_hash
@@ -297,6 +295,7 @@ class TransmissionClient(DownloadClient):
 
         Returns:
             True if successful.
+
         """
         try:
             self._client.remove_torrent(
@@ -314,22 +313,22 @@ class TransmissionClient(DownloadClient):
             return True
 
     def get_download_path(self, download_id: str) -> str | None:
-        """
-        Get the path where torrent files are located.
+        """Get the path where torrent files are located.
 
         Args:
             download_id: Torrent info_hash
 
         Returns:
             Content path (file or directory), or None.
+
         """
         try:
              torrent = self._client.get_torrent(download_id)
-             torrent_name = getattr(torrent, 'name', '')
+             torrent_name = getattr(torrent, "name", "")
              if isinstance(torrent_name, str):
-                 torrent_name = torrent_name.replace(':', '_')
+                 torrent_name = torrent_name.replace(":", "_")
              return self._build_path(
-                 getattr(torrent, 'download_dir', ''),
+                 getattr(torrent, "download_dir", ""),
                  torrent_name,
              )
         except Exception as e:

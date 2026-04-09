@@ -20,7 +20,6 @@ def _tmp_dir() -> Path:
 
 def is_within_tmp_dir(path: Path) -> bool:
     """Legacy helper: True if path is inside TMP_DIR."""
-
     # Fast path: avoid `resolve()` (can block on NFS) for obviously-non-TMP paths.
     # This is a *negative* check only; for potential TMP paths we still resolve to
     # prevent symlink escapes from being treated as managed.
@@ -46,7 +45,6 @@ def is_managed_workspace_path(path: Path) -> bool:
     The managed workspace is `TMP_DIR`. Anything outside it should be treated as
     read-only for safety (e.g. torrent seeding directories).
     """
-
     return is_within_tmp_dir(path)
 
 
@@ -62,7 +60,6 @@ def _is_original_download(path: Path | None, task: DownloadTask) -> bool:
 
 def safe_cleanup_path(path: Path | None, task: DownloadTask) -> None:
     """Remove a temp path only if it is safe and in our managed workspace."""
-
     if not path or _is_original_download(path, task):
         return
 

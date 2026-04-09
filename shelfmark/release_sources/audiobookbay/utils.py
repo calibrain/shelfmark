@@ -30,6 +30,7 @@ def parse_size(size_str: str | None) -> int | None:
 
     Returns:
         Size in bytes, or None if parsing fails
+
     """
     if not size_str:
         return None

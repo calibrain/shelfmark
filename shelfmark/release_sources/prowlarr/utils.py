@@ -1,5 +1,4 @@
-"""
-Shared utilities for Prowlarr release source.
+"""Shared utilities for Prowlarr release source.
 
 Provides common helper functions used across the Prowlarr plugin.
 """
@@ -91,14 +90,14 @@ def sanitize_download_url(download_url: str) -> str:
 
 
 def get_protocol_display(result: dict) -> str:
-    """
-    Get a user-friendly display label for the protocol.
+    """Get a user-friendly display label for the protocol.
 
     Args:
         result: Prowlarr search result dictionary
 
     Returns:
         Display label: "torrent", "nzb", or "unknown"
+
     """
     protocol = get_protocol(result)
     if protocol == "usenet":
@@ -107,8 +106,7 @@ def get_protocol_display(result: dict) -> str:
 
 
 def get_unique_path(staging_dir: Path, name: str, suffix: str = "") -> Path:
-    """
-    Generate a unique path in staging_dir, appending _N if needed.
+    """Generate a unique path in staging_dir, appending _N if needed.
 
     Args:
         staging_dir: Directory to create the path in
@@ -117,6 +115,7 @@ def get_unique_path(staging_dir: Path, name: str, suffix: str = "") -> Path:
 
     Returns:
         Unique Path that doesn't exist in staging_dir
+
     """
     staged_path = staging_dir / (name + suffix)
     if not staged_path.exists():

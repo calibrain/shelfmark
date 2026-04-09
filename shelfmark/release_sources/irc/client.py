@@ -25,11 +25,12 @@ RECV_BUFFER = 4096
 
 # IRC channel user prefixes that indicate elevated status (ops, voice, etc.)
 # These are the download bots/servers
-ELEVATED_PREFIXES = frozenset({'~', '&', '@', '%', '+'})
+ELEVATED_PREFIXES = frozenset({"~", "&", "@", "%", "+"})
 
 
 class IRCEvent(Enum):
     """Events detected from IRC messages."""
+
     MESSAGE = auto()           # Generic message
     SEARCH_RESULT = auto()     # DCC SEND with "_results_for"
     BOOK_RESULT = auto()       # DCC SEND for actual book
@@ -45,6 +46,7 @@ class IRCEvent(Enum):
 @dataclass
 class IRCMessage:
     """Parsed IRC message."""
+
     raw: str
     prefix: str | None = None
     command: str = ""
@@ -131,13 +133,13 @@ class IRCClient:
                 data = self._socket.recv(RECV_BUFFER)
                 if not data:
                     raise IRCConnectionError("Connection closed during registration")
-                self._buffer += data.decode('utf-8', errors='replace')
+                self._buffer += data.decode("utf-8", errors="replace")
             except TimeoutError:
                 continue
 
             # Process lines looking for 001 or errors
-            while '\r\n' in self._buffer:
-                line, self._buffer = self._buffer.split('\r\n', 1)
+            while "\r\n" in self._buffer:
+                line, self._buffer = self._buffer.split("\r\n", 1)
                 if not line:
                     continue
 
@@ -199,13 +201,13 @@ class IRCClient:
                         data = self._socket.recv(RECV_BUFFER)
                         if not data:
                             break
-                        self._buffer += data.decode('utf-8', errors='replace')
+                        self._buffer += data.decode("utf-8", errors="replace")
                     except TimeoutError:
                         continue  # No data yet, check time and retry
 
                     # Process any complete lines in buffer
-                    while '\r\n' in self._buffer:
-                        line, self._buffer = self._buffer.split('\r\n', 1)
+                    while "\r\n" in self._buffer:
+                        line, self._buffer = self._buffer.split("\r\n", 1)
                         if not line:
                             continue
 
@@ -250,7 +252,7 @@ class IRCClient:
     def _parse_names_list(self, names_data: str) -> None:
         """Parse 353 NAMES reply and extract elevated users (download servers)."""
         # Extract the trailing part after the last colon (the actual names)
-        names_part = names_data.split(' :')[-1] if ' :' in names_data else names_data
+        names_part = names_data.rsplit(" :", maxsplit=1)[-1] if " :" in names_data else names_data
 
         for name in names_part.split():
             # Check if user has an elevated prefix
@@ -271,8 +273,8 @@ class IRCClient:
         """Receive and yield complete CRLF-delimited IRC lines."""
         while True:
             # Check if we have a complete line in buffer
-            while '\r\n' in self._buffer:
-                line, self._buffer = self._buffer.split('\r\n', 1)
+            while "\r\n" in self._buffer:
+                line, self._buffer = self._buffer.split("\r\n", 1)
                 if line:
                     yield line
 
@@ -281,7 +283,7 @@ class IRCClient:
                 data = self._socket.recv(RECV_BUFFER)
                 if not data:
                     return  # Connection closed
-                self._buffer += data.decode('utf-8', errors='replace')
+                self._buffer += data.decode("utf-8", errors="replace")
             except TimeoutError:
                 continue  # Keep waiting
             except OSError as e:
@@ -296,15 +298,15 @@ class IRCClient:
         msg = IRCMessage(raw=line)
 
         # Extract prefix if present
-        if line.startswith(':'):
-            space_idx = line.find(' ')
+        if line.startswith(":"):
+            space_idx = line.find(" ")
             if space_idx != -1:
                 msg.prefix = line[1:space_idx]
                 line = line[space_idx + 1:]
 
         # Extract trailing if present
-        if ' :' in line:
-            idx = line.find(' :')
+        if " :" in line:
+            idx = line.find(" :")
             msg.trailing = line[idx + 2:]
             line = line[:idx]
 
@@ -366,7 +368,7 @@ class IRCClient:
         """Respond to CTCP VERSION request."""
         if msg.prefix:
             # Extract nick from prefix (nick!user@host)
-            sender = msg.prefix.split('!')[0]
+            sender = msg.prefix.split("!")[0]
             self.send_notice(sender, f"\x01VERSION {self.version}\x01")
             logger.debug(f"Sent VERSION to {sender}")
 
@@ -422,7 +424,7 @@ class IRCClient:
                 logger.info("Search accepted, waiting for results...")
             elif msg.event == IRCEvent.MATCHES_FOUND and msg.trailing and "returned" in msg.trailing:
                 # Extract count from "returned X matches"
-                match = re.search(r'returned\s+(\d+)\s+matches', msg.trailing)
+                match = re.search(r"returned\s+(\d+)\s+matches", msg.trailing)
                 if match:
                     count = match.group(1)
                     logger.info(f"Found {count} matches")

@@ -50,8 +50,7 @@ def _normalize_mirror_url(url: str) -> str:
 
 
 def get_aa_mirrors() -> list[str]:
-    """
-    Get Anna's Archive mirrors.
+    """Get Anna's Archive mirrors.
 
     Returns:
         Ordered list of AA mirror URLs.
@@ -59,9 +58,10 @@ def get_aa_mirrors() -> list[str]:
         If AA_MIRROR_URLS is configured, it is treated as the full list.
         Otherwise, defaults are used and AA_ADDITIONAL_URLS (legacy) is appended.
 
-        Notes:
+    Notes:
         - The list is used to populate the AA mirror dropdown in Settings.
         - When AA_BASE_URL is set to 'auto', mirrors are tried in the order listed.
+
     """
     config = _get_config()
 
@@ -96,11 +96,11 @@ def get_aa_mirrors() -> list[str]:
 
 
 def get_libgen_mirrors() -> list[str]:
-    """
-    Get LibGen mirrors: defaults + any additional from config.
+    """Get LibGen mirrors: defaults + any additional from config.
 
     Returns:
         List of LibGen mirror URLs (defaults first, then custom additions).
+
     """
     mirrors = [_normalize_mirror_url(url) for url in DEFAULT_LIBGEN_MIRRORS]
     mirrors = [url for url in mirrors if url]
@@ -117,11 +117,11 @@ def get_libgen_mirrors() -> list[str]:
 
 
 def get_zlib_mirrors() -> list[str]:
-    """
-    Get Z-Library mirrors, with primary first.
+    """Get Z-Library mirrors, with primary first.
 
     Returns:
         List of Z-Library mirror URLs, primary first.
+
     """
     config = _get_config()
 
@@ -148,11 +148,11 @@ def get_zlib_mirrors() -> list[str]:
 
 
 def get_zlib_primary_url() -> str:
-    """
-    Get the primary Z-Library mirror URL.
+    """Get the primary Z-Library mirror URL.
 
     Returns:
         Primary Z-Library mirror URL.
+
     """
     config = _get_config()
     primary = _normalize_mirror_url(config.get("ZLIB_PRIMARY_URL", DEFAULT_ZLIB_MIRRORS[0]))
@@ -160,22 +160,22 @@ def get_zlib_primary_url() -> str:
 
 
 def get_zlib_url_template() -> str:
-    """
-    Get Z-Library URL template using configured primary mirror.
+    """Get Z-Library URL template using configured primary mirror.
 
     Returns:
         URL template with {md5} placeholder.
+
     """
     primary = get_zlib_primary_url()
     return f"{primary}/md5/{{md5}}"
 
 
 def get_welib_mirrors() -> list[str]:
-    """
-    Get Welib mirrors, with primary first.
+    """Get Welib mirrors, with primary first.
 
     Returns:
         List of Welib mirror URLs, primary first.
+
     """
     config = _get_config()
 
@@ -202,11 +202,11 @@ def get_welib_mirrors() -> list[str]:
 
 
 def get_welib_primary_url() -> str:
-    """
-    Get the primary Welib mirror URL.
+    """Get the primary Welib mirror URL.
 
     Returns:
         Primary Welib mirror URL.
+
     """
     config = _get_config()
     primary = _normalize_mirror_url(config.get("WELIB_PRIMARY_URL", DEFAULT_WELIB_MIRRORS[0]))
@@ -214,24 +214,24 @@ def get_welib_primary_url() -> str:
 
 
 def get_welib_url_template() -> str:
-    """
-    Get Welib URL template using configured primary mirror.
+    """Get Welib URL template using configured primary mirror.
 
     Returns:
         URL template with {md5} placeholder.
+
     """
     primary = get_welib_primary_url()
     return f"{primary}/md5/{{md5}}"
 
 
 def get_zlib_cookie_domains() -> set:
-    """
-    Get set of Z-Library domains that need full cookie handling.
+    """Get set of Z-Library domains that need full cookie handling.
 
     Used by internal_bypasser for CF bypass cookie management.
 
     Returns:
         Set of domain strings (without protocol).
+
     """
     domains = set()
 

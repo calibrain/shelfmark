@@ -164,6 +164,7 @@ class BookQueue:
         Args:
             user_id: If provided, only return tasks belonging to this user.
                      If None, return all.
+
         """
         self.refresh()
         with self._lock:
@@ -190,19 +191,19 @@ class BookQueue:
                 if task_id in self._task_data:
                     task = self._task_data[task_id]
                     queue_items.append({
-                        'id': task_id,
-                        'title': task.title,
-                        'author': task.author,
-                        'priority': item.priority,
-                        'added_time': item.added_time,
-                        'status': self._status.get(task_id, QueueStatus.QUEUED)
+                        "id": task_id,
+                        "title": task.title,
+                        "author": task.author,
+                        "priority": item.priority,
+                        "added_time": item.added_time,
+                        "status": self._status.get(task_id, QueueStatus.QUEUED)
                     })
 
             # Put items back in queue
             for item in temp_items:
                 self._queue.put(item)
 
-            return sorted(queue_items, key=lambda x: (x['priority'], x['added_time']))
+            return sorted(queue_items, key=lambda x: (x["priority"], x["added_time"]))
 
     def cancel_download(self, task_id: str) -> bool:
         """Cancel an active or queued download."""

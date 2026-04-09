@@ -1,5 +1,4 @@
-"""
-rTorrent download client for Prowlarr integration.
+"""rTorrent download client for Prowlarr integration.
 
 Uses xmlrpc to communicate with rTorrent's RPC interface.
 """
@@ -85,7 +84,7 @@ class RTorrentClient(DownloadClient):
         try:
             version = self._rpc.system.client_version()
         except Exception as e:
-            return False, f"Connection failed: {str(e)}"
+            return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to rTorrent {version}"
 
@@ -97,8 +96,7 @@ class RTorrentClient(DownloadClient):
         expected_hash: str | None = None,
         **kwargs,
     ) -> str:
-        """
-        Add torrent by URL (magnet or .torrent).
+        """Add torrent by URL (magnet or .torrent).
 
         Args:
             url: Magnet link or .torrent URL
@@ -111,6 +109,7 @@ class RTorrentClient(DownloadClient):
 
         Raises:
             Exception: If adding fails.
+
         """
         try:
             torrent_info = extract_torrent_info(url, expected_hash=expected_hash)
@@ -150,14 +149,14 @@ class RTorrentClient(DownloadClient):
             return torrent_hash
 
     def get_status(self, download_id: str) -> DownloadStatus:
-        """
-        Get torrent status by hash.
+        """Get torrent status by hash.
 
         Args:
             download_id: Torrent info_hash
 
         Returns:
             Current download status.
+
         """
         try:
             # rtorrent is somehow case sensitive and requires uppercase hashes for look
@@ -247,8 +246,7 @@ class RTorrentClient(DownloadClient):
             return DownloadStatus.error(f"{error_type}: {e}")
 
     def remove(self, download_id: str, delete_files: bool = False) -> bool:
-        """
-        Remove a torrent from rTorrent.
+        """Remove a torrent from rTorrent.
 
         Args:
             download_id: Torrent info_hash
@@ -256,6 +254,7 @@ class RTorrentClient(DownloadClient):
 
         Returns:
             True if successful.
+
         """
         try:
             if delete_files:
@@ -277,14 +276,14 @@ class RTorrentClient(DownloadClient):
             return True
 
     def get_download_path(self, download_id: str) -> str | None:
-        """
-        Get the path where torrent files are located.
+        """Get the path where torrent files are located.
 
         Args:
             download_id: Torrent info_hash
 
         Returns:
             Content path (file or directory), or None.
+
         """
         try:
             return self._get_torrent_path(download_id)

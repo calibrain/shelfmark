@@ -43,17 +43,17 @@ class DownloadRequest:
 
 
 def _diagnose_path_issue(path: str) -> str:
-    """
-    Analyze a path and return diagnostic hints for common issues.
+    """Analyze a path and return diagnostic hints for common issues.
 
     Args:
         path: The path that failed to be accessed
 
     Returns:
         A hint string to help users diagnose the issue.
+
     """
     # Detect Windows-style paths (won't work in Linux containers)
-    if len(path) >= 2 and path[1] == ':':
+    if len(path) >= 2 and path[1] == ":":
         return (
             f"Path '{path}' appears to be a Windows path. "
             f"Shelfmark runs in Linux and cannot access Windows paths directly. "
@@ -233,7 +233,6 @@ class ExternalClientHandler(DownloadHandler, ABC):
         - torrents: never remove or delete client data (avoid breaking seeding)
         - usenet: keep legacy behavior (delete client files on removal)
         """
-
         if protocol != "usenet":
             logger.info(
                 "Skipping download client cleanup for protocol=%s after %s (client=%s id=%s)",

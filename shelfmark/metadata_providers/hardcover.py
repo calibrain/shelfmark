@@ -404,6 +404,7 @@ HARDCOVER_WRITABLE_TARGET_GROUPS = {HARDCOVER_STATUS_GROUP, "My Lists"}
 @dataclass(frozen=True)
 class HardcoverBookTargetState:
     """Current Hardcover target state for a specific book."""
+
     user_book_id: int | None
     status_id: int | None
     list_book_ids: dict[int, int]
@@ -2633,7 +2634,7 @@ def _test_hardcover_connection(current_values: dict[str, Any] | None = None) -> 
     except Exception as e:
         logger.exception("Hardcover connection test failed")
         _save_connected_user(None, None)
-        return {"success": False, "message": f"Connection failed: {str(e)}"}
+        return {"success": False, "message": f"Connection failed: {e!s}"}
 
     return connection_result
 

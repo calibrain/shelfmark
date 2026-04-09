@@ -1,5 +1,4 @@
-"""
-SABnzbd download client for Prowlarr integration.
+"""SABnzbd download client for Prowlarr integration.
 
 Uses SABnzbd's REST API directly via requests (no external dependency).
 """
@@ -126,8 +125,7 @@ class SABnzbdClient(DownloadClient):
 
     @with_retry()
     def _api_call(self, mode: str, params: dict | None = None) -> Any:
-        """
-        Make an API call to SABnzbd.
+        """Make an API call to SABnzbd.
 
         Args:
             mode: API mode (e.g., "version", "addurl", "queue", "history")
@@ -138,6 +136,7 @@ class SABnzbdClient(DownloadClient):
 
         Raises:
             Exception: If API call fails after retries.
+
         """
         api_url = f"{self.url}/api"
 
@@ -162,11 +161,11 @@ class SABnzbdClient(DownloadClient):
         return result
 
     def _api_post_file(self, nzb_content: bytes, filename: str, nzb_name: str, category: str) -> Any:
-        """
-        Upload an NZB file to SABnzbd using addfile.
+        """Upload an NZB file to SABnzbd using addfile.
 
         Returns:
             JSON response from SABnzbd.
+
         """
         api_url = f"{self.url}/api"
         request_params = {
@@ -266,7 +265,7 @@ class SABnzbdClient(DownloadClient):
         except requests.exceptions.Timeout:
             return False, "Connection timed out"
         except Exception as e:
-            return False, f"Connection failed: {str(e)}"
+            return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to SABnzbd {version}"
 
@@ -278,8 +277,7 @@ class SABnzbdClient(DownloadClient):
         expected_hash: str | None = None,
         **kwargs,
     ) -> str:
-        """
-        Add NZB by URL.
+        """Add NZB by URL.
 
         Args:
             url: NZB URL (can be Prowlarr proxy URL)
@@ -292,6 +290,7 @@ class SABnzbdClient(DownloadClient):
 
         Raises:
             Exception: If adding fails.
+
         """
         # Use configured category if not explicitly provided
         category = category or self._category
@@ -326,14 +325,14 @@ class SABnzbdClient(DownloadClient):
             return nzo_id
 
     def get_status(self, download_id: str) -> DownloadStatus:
-        """
-        Get NZB status by nzo_id.
+        """Get NZB status by nzo_id.
 
         Args:
             download_id: SABnzbd nzo_id
 
         Returns:
             Current download status.
+
         """
         try:
             # Check active queue first
@@ -428,8 +427,7 @@ class SABnzbdClient(DownloadClient):
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, delete_files: bool = False, archive: bool = True) -> bool:
-        """
-        Remove a download from SABnzbd.
+        """Remove a download from SABnzbd.
 
         Args:
             download_id: SABnzbd nzo_id
@@ -438,6 +436,7 @@ class SABnzbdClient(DownloadClient):
 
         Returns:
             True if successful.
+
         """
         # First try to remove from queue. If it isn't there (common for completed jobs),
         # fall back to history removal instead of failing fast on a SABnzbd error response.
@@ -480,14 +479,14 @@ class SABnzbdClient(DownloadClient):
         return False
 
     def get_download_path(self, download_id: str) -> str | None:
-        """
-        Get the path where NZB files are located.
+        """Get the path where NZB files are located.
 
         Args:
             download_id: SABnzbd nzo_id
 
         Returns:
             Storage directory, or None.
+
         """
         status = self.get_status(download_id)
         return status.file_path
@@ -495,8 +494,7 @@ class SABnzbdClient(DownloadClient):
     def find_existing(
         self, url: str, category: str | None = None
     ) -> tuple[str, DownloadStatus] | None:
-        """
-        Check if an NZB for this URL already exists in SABnzbd.
+        """Check if an NZB for this URL already exists in SABnzbd.
 
         Note: Unlike torrents which have a unique info_hash, usenet NZBs don't have
         a universal unique identifier. SABnzbd generates an nzo_id when adding,
@@ -509,6 +507,7 @@ class SABnzbdClient(DownloadClient):
 
         Returns:
             Tuple of (nzo_id, status) if found, None if not found.
+
         """
         try:
             # Extract NZB name from URL (last path component without extension)

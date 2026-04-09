@@ -97,7 +97,7 @@ class IRCDownloadHandler(DownloadHandler):
             status_callback("downloading", "")
 
             # Get file extension from offer filename
-            ext = Path(offer.filename).suffix.lstrip('.') or task.format or "epub"
+            ext = Path(offer.filename).suffix.lstrip(".") or task.format or "epub"
 
             # Stage to temp directory (lazy import to avoid circular import)
             from shelfmark.download.staging import get_staging_path

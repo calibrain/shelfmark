@@ -28,7 +28,6 @@ def post_process_download(
     preserve_source_on_failure: bool = False,
 ) -> str | None:
     """Post-process download using the selected output handler."""
-
     if task.search_mode is None:
         logger.warning(
             "Task %s: missing search_mode; defaulting to Direct mode behavior",

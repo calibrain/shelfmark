@@ -106,7 +106,6 @@ def scan_directory_tree(
     content_type: str | None,
 ) -> tuple[list[Path], list[Path], list[Path], str | None]:
     """Scan a directory tree for book files, trackable-but-unsupported files, and archives."""
-
     try:
         def _probe_dir() -> None:
             # Force a fast error if the dir is missing/inaccessible.
@@ -127,11 +126,11 @@ def scan_directory_tree(
 
     is_audiobook = check_audiobook(content_type)
     if is_audiobook:
-        trackable_exts = {'.m4b', '.mp3', '.m4a', '.flac', '.ogg', '.wma', '.aac', '.wav'}
+        trackable_exts = {".m4b", ".mp3", ".m4a", ".flac", ".ogg", ".wma", ".aac", ".wav"}
     else:
         trackable_exts = {
-            '.pdf', '.epub', '.mobi', '.azw', '.azw3', '.fb2', '.djvu', '.cbz', '.cbr',
-            '.doc', '.docx', '.rtf', '.txt',
+            ".pdf", ".epub", ".mobi", ".azw", ".azw3", ".fb2", ".djvu", ".cbz", ".cbr",
+            ".doc", ".docx", ".rtf", ".txt",
         }
 
     logged_walk_permission_context = False
@@ -333,11 +332,11 @@ def collect_staged_files(
 
     is_audiobook = check_audiobook(task.content_type)
     if is_audiobook:
-        trackable_exts = {'.m4b', '.mp3', '.m4a', '.flac', '.ogg', '.wma', '.aac', '.wav'}
+        trackable_exts = {".m4b", ".mp3", ".m4a", ".flac", ".ogg", ".wma", ".aac", ".wav"}
     else:
         trackable_exts = {
-            '.pdf', '.epub', '.mobi', '.azw', '.azw3', '.fb2', '.djvu', '.cbz', '.cbr',
-            '.doc', '.docx', '.rtf', '.txt',
+            ".pdf", ".epub", ".mobi", ".azw", ".azw3", ".fb2", ".djvu", ".cbz", ".cbr",
+            ".doc", ".docx", ".rtf", ".txt",
         }
 
     if suffix in supported_exts:

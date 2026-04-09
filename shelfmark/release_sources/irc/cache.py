@@ -78,8 +78,7 @@ def get_cached_results(
     content_type: str | None = None,
     ttl_seconds: int | None = None
 ) -> dict[str, Any] | None:
-    """
-    Get cached search results for a book.
+    """Get cached search results for a book.
 
     Args:
         provider: Metadata provider name (e.g., "hardcover", "openlibrary")
@@ -90,6 +89,7 @@ def get_cached_results(
     Returns:
         Dict with 'releases' (List[Release]) and 'online_servers' (List[str]),
         or None if not cached or expired
+
     """
     from shelfmark.core.config import config
 
@@ -100,7 +100,7 @@ def get_cached_results(
 
     # TTL of 0 means cache forever
     if ttl_seconds == 0:
-        ttl_seconds = float('inf')
+        ttl_seconds = float("inf")
 
     cache_key = _generate_cache_key(provider, provider_id, content_type)
 
@@ -143,8 +143,7 @@ def cache_results(
     content_type: str | None = None,
     online_servers: list[str] | None = None
 ) -> None:
-    """
-    Cache search results for a book.
+    """Cache search results for a book.
 
     Args:
         provider: Metadata provider name
@@ -153,6 +152,7 @@ def cache_results(
         releases: List of Release objects from search
         content_type: Search content type for cache isolation
         online_servers: List of online server nicks (optional)
+
     """
     cache_key = _generate_cache_key(provider, provider_id, content_type)
 
@@ -177,8 +177,7 @@ def cache_results(
 
 
 def invalidate_cache(provider: str, provider_id: str, content_type: str | None = None) -> bool:
-    """
-    Remove a specific entry from the cache.
+    """Remove a specific entry from the cache.
 
     Args:
         provider: Metadata provider name
@@ -187,6 +186,7 @@ def invalidate_cache(provider: str, provider_id: str, content_type: str | None =
 
     Returns:
         True if entry was found and removed
+
     """
     cache_key = _generate_cache_key(provider, provider_id, content_type)
 
@@ -205,11 +205,11 @@ def invalidate_cache(provider: str, provider_id: str, content_type: str | None =
 
 
 def clear_cache() -> int:
-    """
-    Clear all cached entries.
+    """Clear all cached entries.
 
     Returns:
         Number of entries cleared
+
     """
     with _cache_lock:
         cache = _load_cache()
@@ -221,11 +221,11 @@ def clear_cache() -> int:
 
 
 def cleanup_expired(ttl_seconds: int | None = None) -> int:
-    """
-    Remove all expired entries from the cache.
+    """Remove all expired entries from the cache.
 
     Returns:
         Number of entries removed
+
     """
     from shelfmark.core.config import config
 
@@ -258,11 +258,11 @@ def cleanup_expired(ttl_seconds: int | None = None) -> int:
 
 
 def get_cache_stats() -> dict[str, Any]:
-    """
-    Get cache statistics.
+    """Get cache statistics.
 
     Returns:
         Dict with cache stats
+
     """
     from shelfmark.core.config import config
 

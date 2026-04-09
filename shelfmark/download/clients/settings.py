@@ -74,7 +74,7 @@ def _test_qbittorrent_connection(current_values: dict[str, Any] | None = None) -
     except ImportError:
         return {"success": False, "message": "qbittorrent-api package not installed"}
     except Exception as e:
-        return {"success": False, "message": f"Connection failed: {str(e)}"}
+        return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": True, "message": f"Connected to qBittorrent (API v{api_version})"}
 
@@ -136,7 +136,7 @@ def _test_transmission_connection(current_values: dict[str, Any] | None = None) 
     except ImportError:
         return {"success": False, "message": "transmission-rpc package not installed"}
     except Exception as e:
-        return {"success": False, "message": f"Connection failed: {str(e)}"}
+        return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": True, "message": f"Connected to Transmission {version}"}
 
@@ -180,13 +180,12 @@ def _test_deluge_connection(current_values: dict[str, Any] | None = None) -> dic
         if parsed.port is not None:
             port = parsed.port
         base_path = (parsed.path or "").rstrip("/")
-    else:
-        # Allow "host:port" in DELUGE_HOST for convenience.
-        if ":" in raw_host and raw_host.count(":") == 1:
-            host_part, port_part = raw_host.split(":", 1)
-            if host_part and port_part.isdigit():
-                host = host_part
-                port = int(port_part)
+    # Allow "host:port" in DELUGE_HOST for convenience.
+    elif ":" in raw_host and raw_host.count(":") == 1:
+        host_part, port_part = raw_host.split(":", 1)
+        if host_part and port_part.isdigit():
+            host = host_part
+            port = int(port_part)
 
     rpc_url = f"{scheme}://{host}:{port}{base_path}/json"
 
@@ -247,7 +246,7 @@ def _test_deluge_connection(current_values: dict[str, Any] | None = None) -> dic
     except requests.exceptions.Timeout:
         return {"success": False, "message": "Connection timed out"}
     except Exception as e:
-        return {"success": False, "message": f"Connection failed: {str(e)}"}
+        return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": True, "message": f"Connected to Deluge {version}"}
 
@@ -295,7 +294,7 @@ def _test_rtorrent_connection(current_values: dict[str, Any] | None = None) -> d
 
         version = rpc.system.client_version()
     except Exception as e:
-        return {"success": False, "message": f"Connection failed: {str(e)}"}
+        return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": True, "message": f"Connected to rTorrent {version}"}
 
@@ -325,7 +324,7 @@ def _test_nzbget_connection(current_values: dict[str, Any] | None = None) -> dic
         response = requests.post(rpc_url, json=payload, auth=(username, password), timeout=30, verify=get_ssl_verify(rpc_url))
         response.raise_for_status()
         result = response.json()
-        if "error" in result and result["error"]:
+        if result.get("error"):
             _raise_runtime_error(result["error"].get("message", "RPC error"))
         version = result.get("result", {}).get("Version", "unknown")
     except requests.exceptions.ConnectionError:
@@ -333,7 +332,7 @@ def _test_nzbget_connection(current_values: dict[str, Any] | None = None) -> dic
     except requests.exceptions.Timeout:
         return {"success": False, "message": "Connection timed out"}
     except Exception as e:
-        return {"success": False, "message": f"Connection failed: {str(e)}"}
+        return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": True, "message": f"Connected to NZBGet {version}"}
 
@@ -370,7 +369,7 @@ def _test_sabnzbd_connection(current_values: dict[str, Any] | None = None) -> di
     except requests.exceptions.Timeout:
         return {"success": False, "message": "Connection timed out"}
     except Exception as e:
-        return {"success": False, "message": f"Connection failed: {str(e)}"}
+        return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": True, "message": f"Connected to SABnzbd {version}"}
 

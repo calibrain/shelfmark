@@ -53,16 +53,16 @@ def _fetch_via_bypasser(target_url: str) -> str | None:
         response.raise_for_status()
         result = response.json()
 
-        status = result.get('status', 'unknown')
-        message = result.get('message', '')
+        status = result.get("status", "unknown")
+        message = result.get("message", "")
         logger.debug(f"External bypasser response for '{target_url}': {status} - {message}")
 
-        if status != 'ok':
+        if status != "ok":
             logger.warning(f"External bypasser failed for '{target_url}': {status} - {message}")
             return None
 
-        solution = result.get('solution')
-        html = solution.get('response', '') if solution else ''
+        solution = result.get("solution")
+        html = solution.get("response", "") if solution else ""
 
         if not html:
             logger.warning(f"External bypasser returned empty response for '{target_url}'")

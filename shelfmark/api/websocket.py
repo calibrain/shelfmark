@@ -108,7 +108,7 @@ class WebSocketManager:
 
         try:
             # Admins (and no-auth users) get full status
-            self.socketio.emit('status_update', status_data, to="admins")
+            self.socketio.emit("status_update", status_data, to="admins")
 
             # Each user room gets filtered status
             with self._rooms_lock:
@@ -129,7 +129,7 @@ class WebSocketManager:
             uid = int(room.split("_", 1)[1])
             filtered = self._queue_status_fn(user_id=uid) if self._queue_status_fn else None
             if filtered is not None:
-                self.socketio.emit('status_update', filtered, to=room)
+                self.socketio.emit("status_update", filtered, to=room)
         except Exception:
             logger.exception(f"Failed to send status update for room {room}")
 
@@ -140,18 +140,18 @@ class WebSocketManager:
 
         try:
             data = {
-                'book_id': book_id,
-                'progress': progress,
-                'status': status
+                "book_id": book_id,
+                "progress": progress,
+                "status": status
             }
             # Admins always see all progress
-            self.socketio.emit('download_progress', data, to="admins")
+            self.socketio.emit("download_progress", data, to="admins")
             # If task belongs to a specific user, send to their room too
             if user_id is not None:
                 room = f"user_{user_id}"
                 with self._rooms_lock:
                     if room in self._user_rooms:
-                        self.socketio.emit('download_progress', data, to=room)
+                        self.socketio.emit("download_progress", data, to=room)
             logger.debug(f"Broadcasted progress for book {book_id}: {progress}%")
         except Exception:
             logger.exception("Error broadcasting download progress")
@@ -162,7 +162,7 @@ class WebSocketManager:
         provider: str,
         book_id: str,
         message: str,
-        phase: str = 'searching'
+        phase: str = "searching"
     ):
         """Broadcast search status update for a release source search."""
         if not self.is_enabled():
@@ -170,13 +170,13 @@ class WebSocketManager:
 
         try:
             data = {
-                'source': source,
-                'provider': provider,
-                'book_id': book_id,
-                'message': message,
-                'phase': phase,
+                "source": source,
+                "provider": provider,
+                "book_id": book_id,
+                "message": message,
+                "phase": phase,
             }
-            self.socketio.emit('search_status', data)
+            self.socketio.emit("search_status", data)
         except Exception:
             logger.exception("Error broadcasting search status")
 

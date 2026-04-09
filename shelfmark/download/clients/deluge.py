@@ -86,13 +86,12 @@ class DelugeClient(DownloadClient):
             if parsed.port is not None:
                 port = parsed.port
             base_path = (parsed.path or "").rstrip("/")
-        else:
-            # Allow "host:port" in DELUGE_HOST for convenience.
-            if ":" in raw_host and raw_host.count(":") == 1:
-                host_part, port_part = raw_host.split(":", 1)
-                if host_part and port_part.isdigit():
-                    host = host_part
-                    port = int(port_part)
+        # Allow "host:port" in DELUGE_HOST for convenience.
+        elif ":" in raw_host and raw_host.count(":") == 1:
+            host_part, port_part = raw_host.split(":", 1)
+            if host_part and port_part.isdigit():
+                host = host_part
+                port = int(port_part)
 
         self._rpc_url = f"{scheme}://{host}:{port}{base_path}/json"
         self._password = password
@@ -216,7 +215,7 @@ class DelugeClient(DownloadClient):
         except Exception as e:
             self._authenticated = False
             self._connected = False
-            return False, f"Connection failed: {str(e)}"
+            return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to Deluge {version}"
 

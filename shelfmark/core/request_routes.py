@@ -328,10 +328,8 @@ def _prepare_request_create_arguments(
         effective.get("MAX_PENDING_REQUESTS_PER_USER"),
         default=20,
     )
-    if max_pending < 1:
-        max_pending = 1
-    if max_pending > 1000:
-        max_pending = 1000
+    max_pending = max(max_pending, 1)
+    max_pending = min(max_pending, 1000)
     allow_notes = coerce_bool(effective.get("REQUESTS_ALLOW_NOTES"), default=True)
     note_value = data.get("note") if allow_notes else None
 

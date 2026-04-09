@@ -123,8 +123,8 @@ def _extract_format(title: str) -> str | None:
     # Use %s placeholder since {fmt} conflicts with regex syntax
     pattern_templates = [
         r'\.%s(?:["\'\s\]\)]|$)',   # .format at end or followed by delimiter
-        r'[\[\(\{]%s[\]\)\}]',       # [EPUB], (PDF), {mobi}
-        r'\b%s\b',                    # standalone word
+        r"[\[\(\{]%s[\]\)\}]",       # [EPUB], (PDF), {mobi}
+        r"\b%s\b",                    # standalone word
     ]
 
     for template in pattern_templates:
@@ -136,8 +136,7 @@ def _extract_format(title: str) -> str | None:
 
 
 def _extract_mam_language(raw_title: str) -> str | None:
-    """
-    Extract the language code from MyAnonamouse titles.
+    """Extract the language code from MyAnonamouse titles.
 
     Prowlarr's MAM parser appends a structured bracket segment like:
       [ENG / EPUB MOBI PDF]
@@ -165,8 +164,7 @@ def _extract_mam_language(raw_title: str) -> str | None:
 
 
 def _extract_mam_formats(raw_title: str) -> list[str]:
-    """
-    Extract a list of formats from MyAnonamouse titles.
+    """Extract a list of formats from MyAnonamouse titles.
 
     Prowlarr's MAM parser appends a structured bracket segment like:
       [ENG / EPUB MOBI PDF]
@@ -543,8 +541,7 @@ class ProwlarrSource(ReleaseSource):
         return ProwlarrClient(url, api_key)
 
     def _get_selected_indexer_ids(self) -> list[int] | None:
-        """
-        Get list of selected indexer IDs from config.
+        """Get list of selected indexer IDs from config.
 
         Returns None if no indexers are selected (search all).
         Returns list of IDs if specific indexers are selected.
@@ -570,8 +567,7 @@ class ProwlarrSource(ReleaseSource):
     def _resolve_indexer_ids_from_names(
         self, client: ProwlarrClient, names: list[str]
     ) -> list[int] | None:
-        """
-        Convert indexer names to IDs by looking up enabled indexers.
+        """Convert indexer names to IDs by looking up enabled indexers.
 
         Returns None if no names could be resolved.
         """
@@ -630,7 +626,7 @@ class ProwlarrSource(ReleaseSource):
     def search(
         self,
         book: BookMetadata,
-        plan: "ReleaseSearchPlan",  # noqa: F821
+        plan: "ReleaseSearchPlan",
         expand_search: bool = False,
         content_type: str = "ebook"
     ) -> list[Release]:

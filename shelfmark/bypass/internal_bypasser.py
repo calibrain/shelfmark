@@ -129,24 +129,24 @@ _cf_cookies_lock = threading.Lock()
 _cf_user_agents: dict[str, str] = {}
 
 # Protection cookie names we care about (Cloudflare and DDoS-Guard)
-CF_COOKIE_NAMES = {'cf_clearance', '__cf_bm', 'cf_chl_2', 'cf_chl_prog'}
-DDG_COOKIE_NAMES = {'__ddg1_', '__ddg2_', '__ddg5_', '__ddg8_', '__ddg9_', '__ddg10_', '__ddgid_', '__ddgmark_', 'ddg_last_challenge'}
+CF_COOKIE_NAMES = {"cf_clearance", "__cf_bm", "cf_chl_2", "cf_chl_prog"}
+DDG_COOKIE_NAMES = {"__ddg1_", "__ddg2_", "__ddg5_", "__ddg8_", "__ddg9_", "__ddg10_", "__ddgid_", "__ddgmark_", "ddg_last_challenge"}
 
 # Domains requiring full session cookies (not just protection cookies)
-FULL_COOKIE_DOMAINS = {'z-lib.fm', 'z-lib.gs', 'z-lib.id', 'z-library.sk', 'zlibrary-global.se'}
+FULL_COOKIE_DOMAINS = {"z-lib.fm", "z-lib.gs", "z-lib.id", "z-library.sk", "zlibrary-global.se"}
 
 
 def _get_base_domain(domain: str) -> str:
     """Extract base domain from hostname (e.g., 'www.example.com' -> 'example.com')."""
-    return '.'.join(domain.split('.')[-2:]) if '.' in domain else domain
+    return ".".join(domain.split(".")[-2:]) if "." in domain else domain
 
 
 def _should_extract_cookie(name: str, extract_all: bool) -> bool:
     """Determine if a cookie should be extracted based on its name."""
     if extract_all:
         return True
-    is_cf = name in CF_COOKIE_NAMES or name.startswith('cf_')
-    is_ddg = name in DDG_COOKIE_NAMES or name.startswith('__ddg')
+    is_cf = name in CF_COOKIE_NAMES or name.startswith("cf_")
+    is_ddg = name in DDG_COOKIE_NAMES or name.startswith("__ddg")
     return is_cf or is_ddg
 
 
@@ -228,17 +228,17 @@ def get_cf_cookies_for_domain(domain: str) -> dict[str, str]:
         if not cookies:
             return {}
 
-        cf_clearance = cookies.get('cf_clearance', {})
+        cf_clearance = cookies.get("cf_clearance", {})
         if cf_clearance:
-            expiry = cf_clearance.get('expiry')
+            expiry = cf_clearance.get("expiry")
             if expiry is None:
-                expiry = cf_clearance.get('expires')
+                expiry = cf_clearance.get("expires")
             if expiry and expiry > 0 and time.time() > expiry:
                 logger.debug(f"CF cookies expired for {base_domain}")
                 _cf_cookies.pop(base_domain, None)
                 return {}
 
-        return {name: c['value'] for name, c in cookies.items()}
+        return {name: c["value"] for name, c in cookies.items()}
 
 
 def has_valid_cf_cookies(domain: str) -> bool:
@@ -290,7 +290,7 @@ def _cleanup_orphan_processes() -> int:
             if result.returncode != 0 or not result.stdout.strip():
                 continue
 
-            pids = result.stdout.strip().split('\n')
+            pids = result.stdout.strip().split("\n")
             count = len(pids)
             logger.info(f"Found {count} orphan {proc_name} process(es), killing...")
 
@@ -961,7 +961,7 @@ def _try_with_cached_cookies(url: str, hostname: str) -> str | None:
         headers = {}
         stored_ua = get_cf_user_agent_for_domain(hostname)
         if stored_ua:
-            headers['User-Agent'] = stored_ua
+            headers["User-Agent"] = stored_ua
 
         logger.debug(f"Trying request with cached cookies: {url}")
         response = requests.get(url, cookies=cookies, headers=headers, proxies=get_proxies(url), timeout=(5, 10), verify=get_ssl_verify(url))

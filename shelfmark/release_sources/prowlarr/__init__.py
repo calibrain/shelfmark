@@ -1,5 +1,4 @@
-"""
-Prowlarr release source plugin.
+"""Prowlarr release source plugin.
 
 This plugin integrates with Prowlarr to search for book releases
 across multiple indexers (torrent and usenet).

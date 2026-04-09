@@ -15,12 +15,12 @@ class CustomLogger(logging.Logger):
     def error_trace(self, msg: Any, *args: Any, **kwargs: Any) -> None:
         """Log an error message with full stack trace."""
         self.log_resource_usage()
-        kwargs.pop('exc_info', None)
+        kwargs.pop("exc_info", None)
         self.error(msg, *args, exc_info=True, **kwargs)
 
     def debug_trace(self, msg: Any, *args: Any, **kwargs: Any) -> None:
         """Log a debug message (stack trace only if exception active)."""
-        kwargs.pop('exc_info', None)
+        kwargs.pop("exc_info", None)
         # Only include exc_info if there's actually an exception
         has_exception = sys.exc_info()[0] is not None
         self.debug(msg, *args, exc_info=has_exception, **kwargs)
@@ -32,7 +32,7 @@ class CustomLogger(logging.Logger):
 
             def _get_process_rss_mb(proc: Any) -> float | None:
                 try:
-                    mem = proc.info.get('memory_info')
+                    mem = proc.info.get("memory_info")
                     if mem:
                         return mem.rss / (1024 * 1024)
                 except (psutil.NoSuchProcess, psutil.AccessDenied, KeyError, AttributeError):
@@ -43,7 +43,7 @@ class CustomLogger(logging.Logger):
             # but fall back gracefully on platforms that restrict process enumeration.
             app_memory_mb = 0.0
             try:
-                for proc in psutil.process_iter(['memory_info']):
+                for proc in psutil.process_iter(["memory_info"]):
                     proc_rss_mb = _get_process_rss_mb(proc)
                     if proc_rss_mb is not None:
                         app_memory_mb += proc_rss_mb
@@ -75,6 +75,7 @@ def setup_logger(name: str, log_file: Path = LOG_FILE) -> CustomLogger:
 
     Returns:
         CustomLogger: Configured logger instance with error_trace method
+
     """
     # Register our custom logger class
     logging.setLoggerClass(CustomLogger)
@@ -85,7 +86,7 @@ def setup_logger(name: str, log_file: Path = LOG_FILE) -> CustomLogger:
     logger.setLevel(log_level)
 
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
+        "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
     )
 
     # Console handler for Docker output

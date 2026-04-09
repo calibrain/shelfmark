@@ -16,6 +16,7 @@ logger = setup_logger(__name__)
 @dataclass
 class FieldBase:
     """Base class for all settings fields."""
+
     key: str                              # Environment variable / config key
     label: str                            # Display label in UI
     description: str = ""                 # Help text
@@ -44,6 +45,7 @@ class FieldBase:
 @dataclass
 class TextField(FieldBase):
     """Single-line text input."""
+
     placeholder: str = ""
     max_length: int | None = None
 
@@ -51,12 +53,14 @@ class TextField(FieldBase):
 @dataclass
 class PasswordField(FieldBase):
     """Password input (masked in UI, not returned in API responses)."""
+
     placeholder: str = ""
 
 
 @dataclass
 class NumberField(FieldBase):
     """Numeric input."""
+
     min_value: float | None = None
     max_value: float | None = None
     step: float = 1
@@ -66,12 +70,14 @@ class NumberField(FieldBase):
 @dataclass
 class CheckboxField(FieldBase):
     """Boolean checkbox."""
+
     default: bool = False
 
 
 @dataclass
 class SelectField(FieldBase):
     """Single-choice dropdown."""
+
     # Options can be a list or a callable that returns a list (for lazy evaluation)
     options: Any = field(default_factory=list)  # [{value: "", label: ""}] or callable
     filter_by_field: str | None = None  # Field key whose value filters options via childOf property
@@ -80,6 +86,7 @@ class SelectField(FieldBase):
 @dataclass
 class MultiSelectField(FieldBase):
     """Multiple-choice selection."""
+
     # Options can be a list or a callable that returns a list (for lazy evaluation)
     options: Any = field(default_factory=list)  # [{value: "", label: ""}] or callable
     default: list[str] = field(default_factory=list)
@@ -89,6 +96,7 @@ class MultiSelectField(FieldBase):
 @dataclass
 class TagListField(FieldBase):
     """Editable list of free-form string values (tag/chip input)."""
+
     placeholder: str = ""
     default: list[str] = field(default_factory=list)
     normalize_urls: bool = True
@@ -162,12 +170,12 @@ class ActionButton:
 
 @dataclass
 class HeadingField:
-    """
-    Display-only heading with title and description.
+    """Display-only heading with title and description.
 
     Used to add section titles and descriptive text to settings pages.
     Not an input field - purely for display.
     """
+
     key: str                              # Unique identifier
     title: str                            # Heading title
     description: str = ""                 # Description text (supports markdown-style links)
@@ -201,6 +209,7 @@ SettingsField = (
 @dataclass
 class SettingsTab:
     """A tab/section in the settings UI."""
+
     name: str                             # Internal name (used in URLs)
     display_name: str                     # Display name in UI
     fields: list[SettingsField] = field(default_factory=list)
@@ -212,6 +221,7 @@ class SettingsTab:
 @dataclass
 class SettingsGroup:
     """A collapsible group of settings tabs in the UI."""
+
     name: str                             # Internal name
     display_name: str                     # Display name in UI
     icon: str | None = None            # Icon name for UI
@@ -385,7 +395,7 @@ def save_config_file(tab_name: str, values: dict[str, Any]) -> bool:
         existing = load_config_file(tab_name)
         existing.update(values)
 
-        with config_path.open('w') as f:
+        with config_path.open("w") as f:
             json.dump(existing, f, indent=2)
 
         logger.info(f"Saved settings to {config_path}")
@@ -406,6 +416,7 @@ def initialize_default_configs() -> bool:
     Returns:
         True if initialization succeeded or was skipped (already initialized),
         False if there was an error accessing the config directory.
+
     """
     try:
         config_dir = _get_config_dir()
@@ -444,7 +455,7 @@ def initialize_default_configs() -> bool:
             if defaults:
                 _ensure_config_dir(tab.name)
                 try:
-                    with config_path.open('w') as f:
+                    with config_path.open("w") as f:
                         json.dump(defaults, f, indent=2)
                     initialized_tabs.append(tab.name)
                 except Exception:
@@ -469,7 +480,7 @@ def sync_env_to_config() -> None:
 
         for settings_field in _iter_value_fields(tab):
             # Skip fields that don't support ENV vars
-            if not getattr(settings_field, 'env_supported', True):
+            if not getattr(settings_field, "env_supported", True):
                 continue
 
             # Check if ENV var is set
@@ -492,8 +503,7 @@ def sync_env_to_config() -> None:
 
 
 def migrate_mirror_settings() -> None:
-    """
-    Sync AA mirror list when code defaults change between versions.
+    """Sync AA mirror list when code defaults change between versions.
 
     On startup, compares a hash of DEFAULT_AA_MIRRORS against the hash stored
     in the config file. If they differ (i.e., an update shipped new defaults),
@@ -771,16 +781,16 @@ def get_setting_value(field: SettingsField, tab_name: str) -> Any:
 def _parse_env_value(value: str, field: SettingsField) -> Any:
     """Parse an environment variable value to the appropriate type."""
     if isinstance(field, CheckboxField):
-        return value.lower() in ('true', '1', 'yes', 'on')
+        return value.lower() in ("true", "1", "yes", "on")
     if isinstance(field, NumberField):
         try:
-            if '.' in value:
+            if "." in value:
                 return float(value)
             return int(value)
         except ValueError:
             return field.default
     elif isinstance(field, (MultiSelectField, TagListField)):
-        return [v.strip() for v in value.split(',') if v.strip()]
+        return [v.strip() for v in value.split(",") if v.strip()]
     elif isinstance(field, OrderableListField):
         # Parse JSON array: [{"id": "...", "enabled": true}, ...]
         try:
@@ -805,14 +815,13 @@ def is_value_from_env(field: SettingsField) -> bool:
     if isinstance(field, (ActionButton, HeadingField, CustomComponentField)):
         return False
     # UI-only settings never come from ENV (env_supported=False)
-    if not getattr(field, 'env_supported', True):
+    if not getattr(field, "env_supported", True):
         return False
     return field.get_env_var_name() in os.environ
 
 
 def serialize_field(field: SettingsField, tab_name: str, include_value: bool = True) -> dict[str, Any]:
-    """
-    Serialize a field for API response.
+    """Serialize a field for API response.
 
     Args:
         field: The settings field.
@@ -821,6 +830,7 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
 
     Returns:
         Dict representation of the field.
+
     """
     # CustomComponentField has a custom structure - handle separately
     if isinstance(field, CustomComponentField):
@@ -875,21 +885,21 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
         "key": field.key,
         "label": field.label,
         "type": field.get_field_type(),
-        "description": getattr(field, 'description', ''),
-        "required": getattr(field, 'required', False),
-        "disabled": getattr(field, 'disabled', False),
-        "disabledReason": getattr(field, 'disabled_reason', ''),
-        "requiresRestart": getattr(field, 'requires_restart', False),
-        "userOverridable": getattr(field, 'user_overridable', False),
-        "hiddenInUi": getattr(field, 'hidden_in_ui', False),
+        "description": getattr(field, "description", ""),
+        "required": getattr(field, "required", False),
+        "disabled": getattr(field, "disabled", False),
+        "disabledReason": getattr(field, "disabled_reason", ""),
+        "requiresRestart": getattr(field, "requires_restart", False),
+        "userOverridable": getattr(field, "user_overridable", False),
+        "hiddenInUi": getattr(field, "hidden_in_ui", False),
     }
 
     # Add optional properties if set
-    if getattr(field, 'show_when', None):
+    if getattr(field, "show_when", None):
         result["showWhen"] = field.show_when
-    if getattr(field, 'disabled_when', None):
+    if getattr(field, "disabled_when", None):
         result["disabledWhen"] = field.disabled_when
-    if getattr(field, 'universal_only', False):
+    if getattr(field, "universal_only", False):
         result["universalOnly"] = True
 
     # Add type-specific properties
@@ -1007,8 +1017,7 @@ def serialize_all_settings(include_values: bool = True) -> dict[str, Any]:
 
 
 def execute_action(tab_name: str, action_key: str, current_values: dict[str, Any] | None = None) -> dict[str, Any]:
-    """
-    Execute an action button's callback.
+    """Execute an action button's callback.
 
     Args:
         tab_name: The settings tab name.
@@ -1018,6 +1027,7 @@ def execute_action(tab_name: str, action_key: str, current_values: dict[str, Any
 
     Returns:
         Dict with "success" (bool) and "message" (str).
+
     """
     import inspect
 
@@ -1044,8 +1054,7 @@ def execute_action(tab_name: str, action_key: str, current_values: dict[str, Any
 
 
 def _sync_metadata_provider_selection() -> None:
-    """
-    Sync the METADATA_PROVIDER setting based on enabled providers.
+    """Sync the METADATA_PROVIDER setting based on enabled providers.
 
     Called after saving metadata provider settings to auto-select
     the first enabled provider if the current selection is invalid.
@@ -1058,8 +1067,7 @@ def _sync_metadata_provider_selection() -> None:
 
 
 def _apply_dns_settings(config) -> None:
-    """
-    Apply DNS settings changes to the network module.
+    """Apply DNS settings changes to the network module.
 
     This ensures DNS changes take effect immediately without requiring
     a container restart.
@@ -1084,8 +1092,7 @@ def _apply_dns_settings(config) -> None:
         logger.warning(f"Failed to apply DNS settings: {e}")
 
 def _apply_aa_mirror_settings(config) -> None:
-    """
-    Apply AA mirror settings changes to the network module.
+    """Apply AA mirror settings changes to the network module.
 
     This ensures AA_BASE_URL / AA_ADDITIONAL_URLS changes take effect immediately
     without requiring a container restart.
@@ -1135,7 +1142,7 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
         values_to_save[key] = value
 
         # Track if this field requires restart
-        if getattr(field, 'requires_restart', False):
+        if getattr(field, "requires_restart", False):
             restart_required_keys.append(key)
 
     if not values_to_save:
@@ -1162,7 +1169,7 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
             logger.exception(f"on_save handler for {tab_name} failed")
             return {
                 "success": False,
-                "message": f"Save handler error: {str(e)}",
+                "message": f"Save handler error: {e!s}",
                 "updated": [],
                 "requiresRestart": False
             }

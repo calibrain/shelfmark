@@ -1,5 +1,4 @@
-"""
-Shared download client infrastructure for external release sources.
+"""Shared download client infrastructure for external release sources.
 
 This module provides:
 - DownloadState: Enum of valid download states
@@ -27,7 +26,7 @@ import requests
 _logger = logging.getLogger(__name__)
 
 # Type variable for generic return type
-T = TypeVar('T')
+T = TypeVar("T")
 
 # Exceptions that should trigger a retry
 RETRYABLE_EXCEPTIONS = (
@@ -43,8 +42,7 @@ def with_retry(
     max_delay: float = 10.0,
     jitter: float = 0.5,
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
-    """
-    Decorator for retrying API calls with exponential backoff.
+    """Decorator for retrying API calls with exponential backoff.
 
     Args:
         max_attempts: Maximum number of attempts (default 3)
@@ -60,6 +58,7 @@ def with_retry(
     Does NOT retry on:
         - HTTP 4xx client errors (bad request, auth failures)
         - Other exceptions (programming errors)
+
     """
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
@@ -91,7 +90,7 @@ def with_retry(
             # All retries exhausted
             if last_exception is None:
                 raise RuntimeError("Retry failed without exception")
-            raise cast(Exception, last_exception)
+            raise cast("Exception", last_exception)
 
         return wrapper
     return decorator
@@ -140,7 +139,7 @@ class DownloadStatus:
         if isinstance(self.state, str):
             try:
                 normalized_state = DownloadState(self.state)
-                object.__setattr__(self, 'state', normalized_state)
+                object.__setattr__(self, "state", normalized_state)
             except ValueError:
                 # Unknown state string - keep as-is for backwards compatibility
                 _logger.warning(f"Unknown download state '{self.state}', keeping as string")
@@ -148,7 +147,7 @@ class DownloadStatus:
         # Validate progress is in range
         if not 0 <= self.progress <= 100:
             _logger.debug(f"Progress {self.progress} out of range, clamping to [0, 100]")
-            object.__setattr__(self, 'progress', max(0, min(100, self.progress)))
+            object.__setattr__(self, "progress", max(0, min(100, self.progress)))
 
     @property
     def state_value(self) -> str:
@@ -159,8 +158,7 @@ class DownloadStatus:
 
 
 class DownloadClient(ABC):
-    """
-    Base class for external download clients.
+    """Base class for external download clients.
 
     Subclasses implement protocol-specific download management:
     - Torrent clients: qBittorrent, Transmission, Deluge
@@ -176,8 +174,7 @@ class DownloadClient(ABC):
     name: str
 
     def _log_error(self, method: str, e: Exception, level: str = "error") -> str:
-        """
-        Log a client error with consistent formatting.
+        """Log a client error with consistent formatting.
 
         Args:
             method: Name of the method that failed (e.g., "get_status")
@@ -186,6 +183,7 @@ class DownloadClient(ABC):
 
         Returns:
             Formatted error message string (for use in DownloadStatus.error())
+
         """
         error_type = type(e).__name__
         msg = f"{self.name} {method} failed ({error_type}): {e}"
@@ -201,14 +199,14 @@ class DownloadClient(ABC):
         return f"{error_type}: {e}"
 
     def _build_path(self, *components: str) -> str | None:
-        """
-        Safely build a file path from components.
+        """Safely build a file path from components.
 
         Args:
             *components: Path components to join (e.g., save_path, name)
 
         Returns:
             Normalized path string, or None if any component is empty/None.
+
         """
         # Filter out empty/None components
         valid = [c for c in components if c]
@@ -227,34 +225,34 @@ class DownloadClient(ABC):
             return
 
         # Validate protocol attribute
-        if not hasattr(cls, 'protocol') or not cls.protocol:
+        if not hasattr(cls, "protocol") or not cls.protocol:
             raise TypeError(f"{cls.__name__} must define 'protocol' class attribute")
-        if cls.protocol not in ('torrent', 'usenet'):
+        if cls.protocol not in ("torrent", "usenet"):
             raise TypeError(
                 f"{cls.__name__}.protocol must be 'torrent' or 'usenet', got '{cls.protocol}'"
             )
 
         # Validate name attribute
-        if not hasattr(cls, 'name') or not cls.name:
+        if not hasattr(cls, "name") or not cls.name:
             raise TypeError(f"{cls.__name__} must define 'name' class attribute")
 
     @staticmethod
     @abstractmethod
     def is_configured() -> bool:
-        """
-        Check if this client is configured.
+        """Check if this client is configured.
 
         Returns:
             True if required settings (URL, etc.) are present.
+
         """
 
     @abstractmethod
     def test_connection(self) -> tuple[bool, str]:
-        """
-        Test connectivity to the client.
+        """Test connectivity to the client.
 
         Returns:
             Tuple of (success, message).
+
         """
 
     @abstractmethod
@@ -266,7 +264,6 @@ class DownloadClient(ABC):
         expected_hash: str | None = None,
         **kwargs: Any,
     ) -> str:
-
         """Add a download to the client.
 
         Args:
@@ -280,24 +277,24 @@ class DownloadClient(ABC):
 
         Raises:
             Exception: If adding fails.
+
         """
 
     @abstractmethod
     def get_status(self, download_id: str) -> DownloadStatus:
-        """
-        Get status of a download.
+        """Get status of a download.
 
         Args:
             download_id: The ID returned by add_download()
 
         Returns:
             Current download status.
+
         """
 
     @abstractmethod
     def remove(self, download_id: str, delete_files: bool = False) -> bool:
-        """
-        Remove a download from the client.
+        """Remove a download from the client.
 
         Args:
             download_id: The ID returned by add_download()
@@ -305,25 +302,25 @@ class DownloadClient(ABC):
 
         Returns:
             True if removal succeeded.
+
         """
 
     @abstractmethod
     def get_download_path(self, download_id: str) -> str | None:
-        """
-        Get the path where files were downloaded.
+        """Get the path where files were downloaded.
 
         Args:
             download_id: The ID returned by add_download()
 
         Returns:
             File or directory path, or None if not available.
+
         """
 
     def find_existing(
         self, url: str, category: str | None = None
     ) -> tuple[str, DownloadStatus] | None:
-        """
-        Check if a download for this URL already exists in the client.
+        """Check if a download for this URL already exists in the client.
 
         This is useful for detecting already-completed downloads so we can
         skip re-downloading and just copy the existing file.
@@ -335,6 +332,7 @@ class DownloadClient(ABC):
         Returns:
             Tuple of (download_id, status) if found, None if not found.
             Default implementation returns None.
+
         """
         return None
 
@@ -344,8 +342,7 @@ _CLIENTS: dict[str, list[type[DownloadClient]]] = {}
 
 
 def register_client(protocol: str):
-    """
-    Decorator to register a download client for a protocol.
+    """Decorator to register a download client for a protocol.
 
     Multiple clients can be registered for the same protocol.
     The `is_configured()` method determines which one is active.
@@ -357,6 +354,7 @@ def register_client(protocol: str):
         @register_client("torrent")
         class QBittorrentClient(DownloadClient):
             ...
+
     """
 
     def decorator(cls: type[DownloadClient]) -> type[DownloadClient]:
@@ -369,8 +367,7 @@ def register_client(protocol: str):
 
 
 def get_client(protocol: str) -> DownloadClient | None:
-    """
-    Get a configured client instance for the given protocol.
+    """Get a configured client instance for the given protocol.
 
     Iterates through all registered clients for the protocol and
     returns the first one that is configured.
@@ -380,6 +377,7 @@ def get_client(protocol: str) -> DownloadClient | None:
 
     Returns:
         Configured client instance, or None if not available/configured.
+
     """
     if protocol not in _CLIENTS:
         return None
@@ -392,11 +390,11 @@ def get_client(protocol: str) -> DownloadClient | None:
 
 
 def list_configured_clients() -> list[str]:
-    """
-    List protocols that have configured clients.
+    """List protocols that have configured clients.
 
     Returns:
         List of protocol names (e.g., ["torrent", "usenet"]).
+
     """
     result = []
     for protocol, client_classes in _CLIENTS.items():
@@ -408,11 +406,11 @@ def list_configured_clients() -> list[str]:
 
 
 def get_all_clients() -> dict[str, list[type[DownloadClient]]]:
-    """
-    Get all registered client classes.
+    """Get all registered client classes.
 
     Returns:
         Dict of protocol -> list of client classes.
+
     """
     return dict(_CLIENTS)
 
@@ -420,10 +418,10 @@ def get_all_clients() -> dict[str, list[type[DownloadClient]]]:
 # Import client implementations to trigger registration
 # These imports are at the bottom to avoid circular imports
 from shelfmark.download.clients import (
-    deluge,  # noqa: F401, E402
-    nzbget,  # noqa: F401, E402
-    qbittorrent,  # noqa: F401, E402
-    rtorrent,  # noqa: F401, E402
-    sabnzbd,  # noqa: F401, E402
-    transmission,  # noqa: F401, E402
+    deluge,  # noqa: F401
+    nzbget,  # noqa: F401
+    qbittorrent,  # noqa: F401
+    rtorrent,  # noqa: F401
+    sabnzbd,  # noqa: F401
+    transmission,  # noqa: F401
 )

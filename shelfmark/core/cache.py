@@ -17,6 +17,7 @@ T = TypeVar("T")
 @dataclass
 class CacheEntry:
     """A cached value with expiration time."""
+
     value: Any
     expires_at: float
 

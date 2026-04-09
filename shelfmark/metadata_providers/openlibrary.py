@@ -461,7 +461,7 @@ class OpenLibraryProvider(MetadataProvider):
             publish_date = edition.get("publish_date", "")
             if publish_date:
                 # Try to extract year from various formats
-                year_match = re.search(r'\b(19|20)\d{2}\b', publish_date)
+                year_match = re.search(r"\b(19|20)\d{2}\b", publish_date)
                 if year_match:
                     publish_year = int(year_match.group())
 
@@ -520,9 +520,9 @@ def _test_openlibrary_connection() -> dict[str, Any]:
     except requests.Timeout:
         return {"success": False, "message": "Connection timed out"}
     except requests.RequestException as e:
-        return {"success": False, "message": f"Connection failed: {str(e)}"}
+        return {"success": False, "message": f"Connection failed: {e!s}"}
     except Exception as e:
-        return {"success": False, "message": f"Error: {str(e)}"}
+        return {"success": False, "message": f"Error: {e!s}"}
     return connection_result
 
 

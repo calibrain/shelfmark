@@ -23,7 +23,7 @@ def build_filename(
         parts.append(f" ({year})")
 
     filename = "".join(parts)
-    filename = re.sub(r'[\\/:*?"<>|]', '_', filename.strip())[:245]
+    filename = re.sub(r'[\\/:*?"<>|]', "_", filename.strip())[:245]
 
     if fmt:
         filename = f"{filename}.{fmt}"
@@ -33,6 +33,7 @@ def build_filename(
 
 class QueueStatus(str, Enum):
     """Enum for possible book queue statuses."""
+
     QUEUED = "queued"
     RESOLVING = "resolving"
     LOCATING = "locating"
@@ -59,6 +60,7 @@ class SearchMode(str, Enum):
 @dataclass
 class QueueItem:
     """Queue item with priority and metadata."""
+
     book_id: str
     priority: int
     added_time: float
@@ -141,6 +143,7 @@ class DownloadTask:
 @dataclass
 class SearchFilters:
     """Filters for book search queries."""
+
     isbn: list[str] | None = None
     author: list[str] | None = None
     title: list[str] | None = None

@@ -55,13 +55,13 @@ from .workspace import (
 )
 
 __all__ = [
+    "CustomScriptContext",
+    "CustomScriptExecution",
+    "CustomScriptTransferSummary",
     "OutputPlan",
     "PlanStep",
     "PreparedFiles",
     "TransferPlan",
-    "CustomScriptExecution",
-    "CustomScriptContext",
-    "CustomScriptTransferSummary",
     "build_metadata_dict",
     "build_output_plan",
     "cleanup_output_staging",
@@ -75,12 +75,13 @@ __all__ = [
     "is_within_tmp_dir",
     "log_plan_steps",
     "maybe_run_custom_script",
-    "prepare_output_files",
     "prepare_custom_script_execution",
+    "prepare_output_files",
     "process_directory",
     "record_step",
-    "resolve_hardlink_source",
     "resolve_custom_script_target",
+    "resolve_hardlink_source",
+    "run_custom_script",
     "safe_cleanup_path",
     "scan_directory_tree",
     "should_hardlink",
@@ -88,5 +89,4 @@ __all__ = [
     "transfer_directory_to_library",
     "transfer_file_to_library",
     "validate_destination",
-    "run_custom_script",
 ]

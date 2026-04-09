@@ -26,7 +26,6 @@ logger = setup_logger("shelfmark.download.postprocess.pipeline")
 
 def should_hardlink(task: DownloadTask) -> bool:
     """Check if hardlinking is enabled for this task (Prowlarr torrents only)."""
-
     if task.source != "prowlarr":
         return False
 
@@ -71,7 +70,6 @@ def resolve_hardlink_source(
     status_callback=None,
 ) -> TransferPlan:
     """Resolve hardlink eligibility and source path for transfers."""
-
     use_hardlink = False
     source_path = temp_file
     hardlink_enabled = should_hardlink(task)
@@ -100,7 +98,6 @@ def resolve_hardlink_source(
 
 def is_torrent_source(source_path: Path, task: DownloadTask) -> bool:
     """Check if source is the torrent client path (needs copy to preserve seeding)."""
-
     if not task.original_download_path:
         return False
 
@@ -261,7 +258,6 @@ def process_directory(
     use_hardlink: bool | None = None,
 ) -> tuple[list[Path], str | None]:
     """Process staged directory: find book files, extract archives, move to ingest."""
-
     try:
         is_torrent = is_torrent_source(directory, task)
         book_files, _, cleanup_paths, error = collect_directory_files(

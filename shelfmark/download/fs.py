@@ -78,8 +78,8 @@ def run_blocking_io(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     if _use_gevent_threadpool():
         ok, result = _get_io_threadpool().apply(_call_and_capture, (func, args, kwargs))
         if ok:
-            return cast(T, result)
-        exc = cast(Exception, result)
+            return cast("T", result)
+        exc = cast("Exception", result)
         raise exc
     return func(*args, **kwargs)
 
@@ -173,6 +173,7 @@ def atomic_write(dest_path: Path, data: bytes, max_attempts: int = 100) -> Path:
 
     Raises:
         RuntimeError: If no unique path found after max_attempts
+
     """
     base = dest_path.stem
     ext = dest_path.suffix
@@ -381,6 +382,7 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
 
     Raises:
         RuntimeError: If no unique path found after max_attempts
+
     """
     base = dest_path.stem
     ext = dest_path.suffix
@@ -525,6 +527,7 @@ def atomic_hardlink(source_path: Path, dest_path: Path, max_attempts: int = 100)
 
     Raises:
         RuntimeError: If no unique path found after max_attempts
+
     """
     base = dest_path.stem
     ext = dest_path.suffix
@@ -578,6 +581,7 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
 
     Raises:
         RuntimeError: If no unique path found after max_attempts
+
     """
     base = dest_path.stem
     ext = dest_path.suffix

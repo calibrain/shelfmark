@@ -71,10 +71,10 @@ def _is_supported_file(file_path: Path, content_type: str | None = None) -> bool
 
 
 # All known ebook extensions (superset of what user might enable)
-ALL_EBOOK_EXTENSIONS = {'.pdf', '.epub', '.mobi', '.azw', '.azw3', '.fb2', '.djvu', '.cbz', '.cbr', '.doc', '.docx', '.rtf', '.txt'}
+ALL_EBOOK_EXTENSIONS = {".pdf", ".epub", ".mobi", ".azw", ".azw3", ".fb2", ".djvu", ".cbz", ".cbr", ".doc", ".docx", ".rtf", ".txt"}
 
 # All known audio extensions (superset of what user might enable for audiobooks)
-ALL_AUDIO_EXTENSIONS = {'.m4b', '.mp3', '.m4a', '.aac', '.flac', '.ogg', '.wma', '.wav', '.opus'}
+ALL_AUDIO_EXTENSIONS = {".m4b", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".wma", ".wav", ".opus"}
 
 
 def _filter_files(

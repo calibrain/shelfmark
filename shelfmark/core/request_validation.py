@@ -11,6 +11,7 @@ from shelfmark.core.request_policy import parse_policy_mode
 
 class RequestStatus(str, Enum):
     """Enum for request lifecycle statuses."""
+
     PENDING = "pending"
     FULFILLED = "fulfilled"
     REJECTED = "rejected"

@@ -112,6 +112,7 @@ class IRCConnectionManager:
 
         Returns:
             Connected IRCClient instance that has joined the channel
+
         """
         key = self._connection_key(server, port, nick)
         need_new_connection = False

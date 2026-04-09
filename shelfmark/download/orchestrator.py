@@ -74,6 +74,7 @@ def _resolve_email_destination(
 
     Returns:
       (email_to, error_message)
+
     """
     configured_recipient = str(config.get("EMAIL_RECIPIENT", "", user_id=user_id) or "").strip()
     if configured_recipient:
@@ -164,34 +165,34 @@ def queue_release(
 ) -> tuple[bool, str | None]:
     """Add a release to the download queue. Returns (success, error_message)."""
     try:
-        source = release_data['source']
-        extra = release_data.get('extra', {})
-        raw_request_id = release_data.get('_request_id')
+        source = release_data["source"]
+        extra = release_data.get("extra", {})
+        raw_request_id = release_data.get("_request_id")
         request_id: int | None = None
         if isinstance(raw_request_id, int) and raw_request_id > 0:
             request_id = raw_request_id
         search_mode = _parse_release_search_mode(release_data.get("search_mode"))
 
         # Get author, year, preview, and content_type from top-level (preferred) or extra (fallback)
-        author = release_data.get('author') or extra.get('author')
-        year = release_data.get('year') or extra.get('year')
-        preview = release_data.get('preview') or extra.get('preview')
-        content_type = release_data.get('content_type') or extra.get('content_type')
+        author = release_data.get("author") or extra.get("author")
+        year = release_data.get("year") or extra.get("year")
+        preview = release_data.get("preview") or extra.get("preview")
+        content_type = release_data.get("content_type") or extra.get("content_type")
         source_url_raw = (
-            release_data.get('download_url')
-            or release_data.get('source_url')
-            or release_data.get('info_url')
-            or extra.get('detail_url')
-            or extra.get('source_url')
+            release_data.get("download_url")
+            or release_data.get("source_url")
+            or release_data.get("info_url")
+            or extra.get("detail_url")
+            or extra.get("source_url")
         )
         source_url = source_url_raw.strip() if isinstance(source_url_raw, str) else None
         if source_url == "":
             source_url = None
 
         # Get series info for library naming templates
-        series_name = release_data.get('series_name') or extra.get('series_name')
-        series_position = release_data.get('series_position') or extra.get('series_position')
-        subtitle = release_data.get('subtitle') or extra.get('subtitle')
+        series_name = release_data.get("series_name") or extra.get("series_name")
+        series_position = release_data.get("series_position") or extra.get("series_position")
+        subtitle = release_data.get("subtitle") or extra.get("subtitle")
 
         books_output_mode = str(
             config.get("BOOKS_OUTPUT_MODE", "folder", user_id=user_id) or "folder"
@@ -211,13 +212,13 @@ def queue_release(
 
         # Create a source-agnostic download task from release data
         task = DownloadTask(
-            task_id=release_data['source_id'],
+            task_id=release_data["source_id"],
             source=source,
-            title=release_data.get('title', 'Unknown'),
+            title=release_data.get("title", "Unknown"),
             author=author,
             year=year,
-            format=release_data.get('format'),
-            size=release_data.get('size'),
+            format=release_data.get("format"),
+            size=release_data.get("size"),
             preview=preview,
             content_type=content_type,
             source_url=source_url,
@@ -489,25 +490,25 @@ def _task_to_dict(
     retry_status = current_status or book_queue.get_task_status(task.task_id)
 
     return {
-        'id': task.task_id,
-        'title': task.title,
-        'author': task.author,
-        'format': task.format,
-        'size': task.size,
-        'preview': preview,
-        'content_type': task.content_type,
-        'source': task.source,
-        'source_display_name': get_source_display_name(task.source),
-        'priority': task.priority,
-        'added_time': task.added_time,
-        'progress': task.progress,
-        'status': task.status,
-        'status_message': task.status_message,
-        'download_path': task.download_path,
-        'user_id': task.user_id,
-        'username': task.username,
-        'request_id': task.request_id,
-        'retry_available': can_retry_download_task(task, retry_status),
+        "id": task.task_id,
+        "title": task.title,
+        "author": task.author,
+        "format": task.format,
+        "size": task.size,
+        "preview": preview,
+        "content_type": task.content_type,
+        "source": task.source,
+        "source_display_name": get_source_display_name(task.source),
+        "priority": task.priority,
+        "added_time": task.added_time,
+        "progress": task.progress,
+        "status": task.status,
+        "status_message": task.status_message,
+        "download_path": task.download_path,
+        "user_id": task.user_id,
+        "username": task.username,
+        "request_id": task.request_id,
+        "retry_available": can_retry_download_task(task, retry_status),
     }
 
 
@@ -692,17 +693,17 @@ def update_download_progress(book_id: str, progress: float) -> None:
         if last_progress is None or progress != last_progress:
             _last_activity[book_id] = time.time()
         _last_progress_value[book_id] = progress
-    
+
     # Broadcast progress via WebSocket with throttling
     if ws_manager:
         current_time = time.time()
         should_broadcast = False
-        
+
         with _progress_lock:
             last_broadcast = _progress_last_broadcast.get(book_id, 0)
             last_progress = _progress_last_broadcast.get(f"{book_id}_progress", 0)
             time_elapsed = current_time - last_broadcast
-            
+
             # Always broadcast at start (0%) or completion (>=99%)
             should_broadcast = (
                 progress <= 1
@@ -710,15 +711,15 @@ def update_download_progress(book_id: str, progress: float) -> None:
                 or time_elapsed >= config.DOWNLOAD_PROGRESS_UPDATE_INTERVAL
                 or progress - last_progress >= 10
             )
-            
+
             if should_broadcast:
                 _progress_last_broadcast[book_id] = current_time
                 _progress_last_broadcast[f"{book_id}_progress"] = progress
-        
+
         if should_broadcast:
             task = book_queue.get_task(book_id)
             task_user_id = task.user_id if task else None
-            ws_manager.broadcast_download_progress(book_id, progress, 'downloading', user_id=task_user_id)
+            ws_manager.broadcast_download_progress(book_id, progress, "downloading", user_id=task_user_id)
 
 def update_download_status(book_id: str, status: str, message: str | None = None) -> None:
     """Update download status with optional message for UI display."""
@@ -749,11 +750,11 @@ def update_download_status(book_id: str, status: str, message: str | None = None
 def cancel_download(book_id: str) -> bool:
     """Cancel a download."""
     result = book_queue.cancel_download(book_id)
-    
+
     # Broadcast status update via WebSocket
     if result and ws_manager and ws_manager.is_enabled():
         ws_manager.broadcast_status_update(queue_status())
-    
+
     return result
 
 
@@ -869,7 +870,7 @@ def _process_single_download(task_id: str, cancel_flag: Event) -> None:
             if task:
                 _capture_task_error(
                     task,
-                    message=f"Download failed: {type(e).__name__}: {str(e)}",
+                    message=f"Download failed: {type(e).__name__}: {e!s}",
                     exc_type=type(e).__name__,
                 )
             _finalize_download_failure(task_id)

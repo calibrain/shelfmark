@@ -20,7 +20,6 @@ logger = setup_logger("shelfmark.download.postprocess.pipeline")
 
 def validate_destination(destination: Path, status_callback) -> bool:
     """Validate destination path is absolute, exists, and writable."""
-
     if not destination.is_absolute():
         logger.warning(f"Destination must be absolute: {destination}")
         status_callback("error", f"Destination must be absolute: {destination}")
@@ -62,7 +61,6 @@ def validate_destination(destination: Path, status_callback) -> bool:
 
 def get_final_destination(task: DownloadTask) -> Path:
     """Get final destination directory, with content-type routing support."""
-
     is_audiobook = check_audiobook(task.content_type)
 
     try:

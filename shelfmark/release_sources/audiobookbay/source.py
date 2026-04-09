@@ -73,6 +73,7 @@ def _split_title_and_author(raw_title: str) -> tuple[str, str | None]:
 
     Returns:
         (title, author) where author is None if split is unavailable.
+
     """
     if not raw_title:
         return "", None
@@ -98,10 +99,11 @@ def _map_language(language: str) -> str | None:
         
     Returns:
         ISO 639-1 code (e.g., "en"), or original string if no mapping found, or None if input is empty
+
     """
     if not language:
         return None
-    
+
     lang_lower = language.lower().strip()
     return LANGUAGE_MAP.get(lang_lower, lang_lower)
 
@@ -114,6 +116,7 @@ def _parse_bitrate_to_kbps(bitrate: str | None) -> int | None:
 
     Returns:
         Bitrate value in Kbps as integer, or None if parsing fails.
+
     """
     if not bitrate:
         return None
@@ -136,11 +139,11 @@ def _generate_source_id(detail_url: str) -> str:
 @register_source("audiobookbay")
 class AudiobookBaySource(ReleaseSource):
     """Release source for AudiobookBay audiobook torrents."""
-    
+
     name = "audiobookbay"
     display_name = "AudiobookBay"
     supported_content_types = ["audiobook"]  # ONLY audiobooks
-    
+
     def search(
         self,
         book: BookMetadata,
@@ -158,18 +161,19 @@ class AudiobookBaySource(ReleaseSource):
             
         Returns:
             List of Release objects
+
         """
         # Only search for audiobooks
         if content_type != "audiobook":
             return []
-        
+
         hostname = normalize_hostname(config.get("ABB_HOSTNAME", ""))
         if not hostname:
             logger.debug("AudiobookBay hostname is not configured")
             return []
         max_pages = config.get("ABB_PAGE_LIMIT", 1)
         exact_phrase = bool(config.get("ABB_EXACT_PHRASE", False))
-        
+
         # Build search query candidates from plan.
         query_candidates: list[str] = []
         if plan.manual_query:
@@ -204,7 +208,7 @@ class AudiobookBaySource(ReleaseSource):
 
         results = []
         query_lower = deduped_queries[0].lower()
-        
+
         try:
             for index, query in enumerate(deduped_queries):
                 query_lower = query.lower()
@@ -237,35 +241,35 @@ class AudiobookBaySource(ReleaseSource):
                         query_lower,
                         deduped_queries[index + 1].lower(),
                     )
-            
+
             # Extract query words for relevance checking
             query_words = {word.lower() for word in query_lower.split() if len(word) > 2}
-            
+
             releases = []
             for result in results:
                 try:
-                    raw_title = result['title']
+                    raw_title = result["title"]
                     title, author = _split_title_and_author(raw_title)
                     title_for_filter = raw_title.lower()
-                    
+
                     # Basic relevance check: ensure title contains at least one query word
                     # This filters out homepage "Latest" feed items that may leak through
                     if query_words and not any(word in title_for_filter for word in query_words):
                         logger.debug(f"Filtering out irrelevant result: {title}")
                         continue
-                    
+
                     # Generate unique source ID
-                    source_id = _generate_source_id(result['link'])
-                    
+                    source_id = _generate_source_id(result["link"])
+
                     # Extract and parse metadata
-                    format_type = result.get('format')
-                    size_str = result.get('size')
+                    format_type = result.get("format")
+                    size_str = result.get("size")
                     size_bytes = parse_size(size_str) if size_str else None
-                    language_raw = result.get('language')
+                    language_raw = result.get("language")
                     language_code = _map_language(language_raw) if language_raw else None
-                    bitrate = result.get('bitrate')
+                    bitrate = result.get("bitrate")
                     bitrate_kbps = _parse_bitrate_to_kbps(bitrate)
-                    
+
                     # Create Release object
                     release = Release(
                         source="audiobookbay",
@@ -275,19 +279,19 @@ class AudiobookBaySource(ReleaseSource):
                         language=language_code,
                         size=size_str,
                         size_bytes=size_bytes,
-                        download_url=result['link'],  # Detail page URL (used by handler)
-                        info_url=result['link'],  # Make title clickable
+                        download_url=result["link"],  # Detail page URL (used by handler)
+                        info_url=result["link"],  # Make title clickable
                         protocol=ReleaseProtocol.TORRENT,
                         indexer="AudiobookBay",
                         seeders=None,  # Not available on search page
                         peers=None,
                         content_type="audiobook",
                         extra={
-                            "preview": result.get('cover'),
-                            "detail_url": result['link'],
+                            "preview": result.get("cover"),
+                            "detail_url": result["link"],
                             "bitrate": bitrate,
                             "bitrate_value": bitrate_kbps,
-                            "posted_date": result.get('posted_date'),
+                            "posted_date": result.get("posted_date"),
                             "title_raw": raw_title,
                             "language_raw": language_raw,  # Keep original for reference
                             "author": author,  # Parsed author from title pattern
@@ -305,11 +309,11 @@ class AudiobookBaySource(ReleaseSource):
         else:
             logger.info(f"Found {len(releases)} releases from AudiobookBay")
             return releases
-    
+
     def is_available(self) -> bool:
         """Check if AudiobookBay source is enabled and configured."""
         return config.get("ABB_ENABLED", False) is True and bool(normalize_hostname(config.get("ABB_HOSTNAME", "")))
-    
+
     def get_column_config(self) -> ReleaseColumnConfig:
         """Get column configuration for AudiobookBay releases.
         

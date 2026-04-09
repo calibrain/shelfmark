@@ -341,7 +341,6 @@ def resolve_policy_mode(
     - sources whose browse results are already concrete releases normalize
       request_book to request_release.
     """
-
     effective = merge_request_policy_settings(global_settings, user_settings)
     normalized_source = normalize_source(source)
     normalized_content_type = normalize_content_type(content_type)

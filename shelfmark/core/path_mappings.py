@@ -128,7 +128,6 @@ def get_client_host_identifier(client: Any) -> str | None:
     Sonarr uses the download client's configured host. Shelfmark currently uses
     the download client 'name' (e.g. qbittorrent, sabnzbd).
     """
-
     name = getattr(client, "name", None)
     if isinstance(name, str) and name.strip():
         return name.strip().lower()

@@ -78,7 +78,6 @@ def log_path_permission_context(label: str, path: Path) -> None:
 
     Only call this from failure paths.
     """
-
     try:
         euid = os.geteuid() if hasattr(os, "geteuid") else None
         egid = os.getegid() if hasattr(os, "getegid") else None
@@ -124,7 +123,6 @@ def log_path_permission_context(label: str, path: Path) -> None:
 
 def log_transfer_permission_context(label: str, source: Path, dest: Path, error: Exception) -> None:
     """Log useful permission/ownership context when a file transfer fails."""
-
     try:
         euid = os.geteuid() if hasattr(os, "geteuid") else None
         egid = os.getegid() if hasattr(os, "getegid") else None

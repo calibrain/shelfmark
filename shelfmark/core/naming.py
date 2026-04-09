@@ -12,19 +12,19 @@ logger = setup_logger(__name__)
 # Known variable tokens, sorted longest-first to avoid partial matches
 # e.g., "SeriesPosition" must match before "Series"
 KNOWN_TOKENS = [
-    'seriesposition',
-    'originalname',
-    'partnumber',
-    'subtitle',
-    'author',
-    'series',
-    'title',
-    'year',
-    'user',
+    "seriesposition",
+    "originalname",
+    "partnumber",
+    "subtitle",
+    "author",
+    "series",
+    "title",
+    "year",
+    "user",
 ]
 
 # Match any {...} block for template parsing
-BRACE_PATTERN = re.compile(r'\{([^}]+)\}')
+BRACE_PATTERN = re.compile(r"\{([^}]+)\}")
 
 # Characters that are invalid in filenames on various filesystems
 INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
@@ -35,9 +35,9 @@ def _sanitize(name: str | None, max_length: int = 245) -> str:
     if not name:
         return ""
 
-    sanitized = INVALID_CHARS.sub('_', name)
-    sanitized = re.sub(r'^[\s.]+|[\s.]+$', '', sanitized)  # Strip whitespace and dots
-    sanitized = re.sub(r'_+', '_', sanitized)  # Collapse underscores
+    sanitized = INVALID_CHARS.sub("_", name)
+    sanitized = re.sub(r"^[\s.]+|[\s.]+$", "", sanitized)  # Strip whitespace and dots
+    sanitized = re.sub(r"_+", "_", sanitized)  # Collapse underscores
     return sanitized[:max_length]
 
 
@@ -50,7 +50,7 @@ def sanitize_filename(name: str | None, max_length: int = 245) -> str:
 sanitize_path_component = sanitize_filename
 
 
-def format_series_position(position: str | int | float | None) -> str:
+def format_series_position(position: str | float | None) -> str:
     if position is None:
         return ""
 
@@ -62,7 +62,7 @@ def format_series_position(position: str | int | float | None) -> str:
 
 
 # Pads numbers to 9 digits for natural sorting (e.g., "Part 2" -> "Part 000000002")
-PAD_NUMBERS_PATTERN = re.compile(r'\d+')
+PAD_NUMBERS_PATTERN = re.compile(r"\d+")
 
 
 def natural_sort_key(path: str | Path) -> str:
@@ -108,7 +108,7 @@ def parse_naming_template(
 
     def token_value(token: str) -> str:
         value = normalized.get(token)
-        if token == 'seriesposition':
+        if token == "seriesposition":
             value = format_series_position(value)
         if value is None:
             return ""
@@ -167,22 +167,22 @@ def parse_naming_template(
         result = "".join(parts)
 
     # Clean up any double slashes that might result from empty tokens
-    result = re.sub(r'/+', '/', result)
+    result = re.sub(r"/+", "/", result)
 
     # Remove leading/trailing slashes
-    result = result.strip('/')
+    result = result.strip("/")
 
     # Clean up any orphaned separators (e.g., " - " at start/end, or " -  - ")
-    result = re.sub(r'^[\s\-_.]+', '', result)
-    result = re.sub(r'[\s\-_.]+$', '', result)
-    result = re.sub(r'(\s*-\s*){2,}', ' - ', result)
+    result = re.sub(r"^[\s\-_.]+", "", result)
+    result = re.sub(r"[\s\-_.]+$", "", result)
+    result = re.sub(r"(\s*-\s*){2,}", " - ", result)
 
     # Clean up empty parentheses/brackets
-    result = re.sub(r'\(\s*\)', '', result)
-    result = re.sub(r'\[\s*\]', '', result)
+    result = re.sub(r"\(\s*\)", "", result)
+    result = re.sub(r"\[\s*\]", "", result)
 
     # Final trim of any trailing separators left after cleanup
-    return re.sub(r'[\s\-_.]+$', '', result)
+    return re.sub(r"[\s\-_.]+$", "", result)
 
 
 def build_library_path(
@@ -195,11 +195,11 @@ def build_library_path(
 
     if not relative:
         # Fallback to title if template produces empty result
-        title = metadata.get('Title') or metadata.get('title') or 'Unknown'
+        title = metadata.get("Title") or metadata.get("title") or "Unknown"
         relative = sanitize_filename(str(title))
 
     # Remove any path traversal attempts
-    relative = relative.replace('..', '')
+    relative = relative.replace("..", "")
 
     base = Path(base_path).resolve()
     full_path = (base / relative).resolve()
@@ -213,7 +213,7 @@ def build_library_path(
         ) from exc
 
     if extension:
-        ext = extension.lstrip('.')
+        ext = extension.lstrip(".")
         # Don't use with_suffix() - it replaces everything after the first dot
         # e.g., "2.5 - Title" would become "2.epub" instead of "2.5 - Title.epub"
         full_path = Path(f"{full_path}.{ext}")

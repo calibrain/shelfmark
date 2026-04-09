@@ -85,13 +85,13 @@ def _raise_runtime_error(message: str):
 
 # Project root is one level up from this package
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-FRONTEND_DIST = PROJECT_ROOT / 'frontend-dist'
+FRONTEND_DIST = PROJECT_ROOT / "frontend-dist"
 
 BASE_PATH = normalize_base_path(app_config.get("URL_BASE", ""))
 
 app = Flask(__name__)
-app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable caching
-app.config['APPLICATION_ROOT'] = BASE_PATH or '/'
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0  # Disable caching
+app.config["APPLICATION_ROOT"] = BASE_PATH or "/"
 app.wsgi_app = ProxyFix(app.wsgi_app)  # type: ignore
 if BASE_PATH:
     app.wsgi_app = PrefixMiddleware(app.wsgi_app, BASE_PATH, bypass_paths={"/api/health"})
@@ -99,7 +99,7 @@ if BASE_PATH:
 # Socket.IO async mode.
 # We run this app under Gunicorn with a gevent websocket worker (even when DEBUG=true),
 # so Socket.IO should always use gevent here.
-async_mode = 'gevent'
+async_mode = "gevent"
 socketio_cors_allowed_origins = "*"
 
 # Initialize Flask-SocketIO with reverse proxy support
@@ -115,7 +115,7 @@ socketio = SocketIO(
     ping_timeout=60,  # Time to wait for pong response
     ping_interval=25,  # Send ping every 25 seconds
     # Allow both websocket and polling for better compatibility
-    transports=['websocket', 'polling'],
+    transports=["websocket", "polling"],
     # Enable CORS for all origins (you can restrict this in production)
     allow_upgrades=True,
     # Important for proxies that buffer
@@ -132,7 +132,7 @@ logger.info("Socket.IO CORS allowed origins: %s", socketio_cors_allowed_origins)
 # This prevents a race condition where the download loop could try to process
 # a queued task before its handler (e.g., prowlarr) is registered.
 try:
-    import shelfmark.metadata_providers  # noqa: F401
+    import shelfmark.metadata_providers
     import shelfmark.release_sources  # noqa: F401
     logger.debug("Plugin modules loaded successfully")
 except ImportError as e:
@@ -189,7 +189,7 @@ def cleanup_old_lockouts() -> None:
     current_time = datetime.now()
     expired_users = [
         username for username, data in failed_login_attempts.items()
-        if 'lockout_until' in data and data['lockout_until'] < current_time
+        if "lockout_until" in data and data["lockout_until"] < current_time
     ]
     for username in expired_users:
         logger.info(f"Lockout expired for user: {username}")
@@ -202,7 +202,7 @@ def is_account_locked(username: str) -> bool:
     if username not in failed_login_attempts:
         return False
 
-    lockout_until = failed_login_attempts[username].get('lockout_until')
+    lockout_until = failed_login_attempts[username].get("lockout_until")
     return lockout_until is not None and datetime.now() < lockout_until
 
 def record_failed_login(username: str, ip_address: str) -> bool:
@@ -211,16 +211,16 @@ def record_failed_login(username: str, ip_address: str) -> bool:
     Returns True if account is now locked, False otherwise.
     """
     if username not in failed_login_attempts:
-        failed_login_attempts[username] = {'count': 0}
+        failed_login_attempts[username] = {"count": 0}
 
-    failed_login_attempts[username]['count'] += 1
-    count = failed_login_attempts[username]['count']
+    failed_login_attempts[username]["count"] += 1
+    count = failed_login_attempts[username]["count"]
 
     logger.warning(f"Failed login attempt {count}/{MAX_LOGIN_ATTEMPTS} for user '{username}' from IP {ip_address}")
 
     if count >= MAX_LOGIN_ATTEMPTS:
         lockout_until = datetime.now() + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
-        failed_login_attempts[username]['lockout_until'] = lockout_until
+        failed_login_attempts[username]["lockout_until"] = lockout_until
         logger.warning(f"Account locked for user '{username}' until {lockout_until.strftime('%Y-%m-%d %H:%M:%S')} due to {count} failed login attempts")
         return True
 
@@ -235,10 +235,10 @@ def clear_failed_logins(username: str) -> None:
 
 def get_client_ip() -> str:
     """Extract client IP address from request, handling reverse proxy forwarding."""
-    ip_address = request.headers.get('X-Forwarded-For', request.remote_addr) or 'unknown'
+    ip_address = request.headers.get("X-Forwarded-For", request.remote_addr) or "unknown"
     # X-Forwarded-For can contain multiple IPs, take the first one
-    if ',' in ip_address:
-        ip_address = ip_address.split(',')[0].strip()
+    if "," in ip_address:
+        ip_address = ip_address.split(",")[0].strip()
     return ip_address
 
 
@@ -468,25 +468,26 @@ class LogNoiseFilter(logging.Filter):
     WebSocket upgrade errors are benign - Flask-SocketIO automatically falls back to polling transport.
     The error occurs because Werkzeug's built-in server doesn't fully support WebSocket upgrades.
     """
+
     def filter(self, record):
-        message = record.getMessage() if hasattr(record, 'getMessage') else str(record.msg)
+        message = record.getMessage() if hasattr(record, "getMessage") else str(record.msg)
 
         # Exclude GET /api/status requests (polling noise)
-        if 'GET /api/status' in message:
+        if "GET /api/status" in message:
             return False
 
         # Exclude WebSocket upgrade errors (benign - falls back to polling)
-        if 'write() before start_response' in message:
+        if "write() before start_response" in message:
             return False
 
         # Exclude the Error on request line that precedes WebSocket errors
         if record.levelno == logging.ERROR:
-            if 'Error on request:' in message:
+            if "Error on request:" in message:
                 return False
             # Filter WebSocket-related AssertionError tracebacks
-            if hasattr(record, 'exc_info') and record.exc_info:
+            if hasattr(record, "exc_info") and record.exc_info:
                 exc_type, exc_value = record.exc_info[0], record.exc_info[1]
-                if exc_type and exc_type.__name__ == 'AssertionError' and exc_value and 'write() before start_response' in str(exc_value):
+                if exc_type and exc_type.__name__ == "AssertionError" and exc_value and "write() before start_response" in str(exc_value):
                     return False
 
         return True
@@ -495,7 +496,7 @@ class LogNoiseFilter(logging.Filter):
 app.logger.handlers = logger.handlers
 app.logger.setLevel(logger.level)
 # Also handle Werkzeug's logger
-werkzeug_logger = logging.getLogger('werkzeug')
+werkzeug_logger = logging.getLogger("werkzeug")
 werkzeug_logger.handlers = logger.handlers
 werkzeug_logger.setLevel(logger.level)
 # Add filter to suppress routine status endpoint polling logs and WebSocket upgrade errors
@@ -542,7 +543,7 @@ def _load_or_create_secret_key() -> bytes:
 app.config.update(
     SECRET_KEY = _load_or_create_secret_key(),
     SESSION_COOKIE_HTTPONLY = True,
-    SESSION_COOKIE_SAMESITE = 'Lax',
+    SESSION_COOKIE_SAMESITE = "Lax",
     SESSION_COOKIE_SECURE = SESSION_COOKIE_SECURE,
     SESSION_COOKIE_NAME = SESSION_COOKIE_NAME,
     PERMANENT_SESSION_LIFETIME = 604800  # 7 days in seconds
@@ -553,20 +554,19 @@ logger.info(f"Session cookie name: {SESSION_COOKIE_NAME}")
 
 @app.before_request
 def proxy_auth_middleware():
-    """
-    Middleware to handle proxy authentication.
+    """Middleware to handle proxy authentication.
     
     When AUTH_METHOD is set to "proxy", this middleware automatically
     authenticates users based on headers set by the reverse proxy.
     """
     auth_mode = get_auth_mode()
-    
+
     # Only run for proxy auth mode
     if auth_mode != "proxy":
         return None
-    
+
     # Skip for public endpoints that don't need auth
-    if request.path == '/api/health':
+    if request.path == "/api/health":
         return None
 
     def get_proxy_header(header_name: str) -> str | None:
@@ -593,12 +593,12 @@ def proxy_auth_middleware():
         username = get_proxy_header(user_header)
 
         if not username:
-            if request.path.startswith('/api/auth/'):
+            if request.path.startswith("/api/auth/"):
                 return None
 
             logger.warning(f"Proxy auth enabled but no username found in header '{user_header}'")
             return jsonify({"error": "Authentication required. Proxy header not set."}), 401
-        
+
         # Resolve admin role for proxy sessions.
         # If an admin group is configured, derive from groups header.
         # Otherwise preserve existing DB role for known users and default
@@ -616,21 +616,21 @@ def proxy_auth_middleware():
             existing_db_user = user_db.get_user(username=username)
             if existing_db_user:
                 is_admin = existing_db_user.get("role") == "admin"
-        
+
         # Create or update session
-        previous_username = session.get('user_id')
+        previous_username = session.get("user_id")
         if previous_username and previous_username != username:
             # Header identity changed mid-session; force reprovision for the new user.
-            session.pop('db_user_id', None)
+            session.pop("db_user_id", None)
 
-        session['user_id'] = username
-        session['is_admin'] = is_admin
+        session["user_id"] = username
+        session["is_admin"] = is_admin
 
         # Provision proxy-authenticated users into users.db for multi-user features.
         # Re-provision when db_user_id is missing/stale/mismatched to avoid broken
         # sessions after DB resets or auth-mode transitions.
         if user_db is not None:
-            raw_db_user_id = session.get('db_user_id')
+            raw_db_user_id = session.get("db_user_id")
             session_db_user = None
 
             if raw_db_user_id is not None:
@@ -659,7 +659,7 @@ def proxy_auth_middleware():
                 if db_user is None:
                     _raise_runtime_error("Unexpected proxy user sync result: no user returned")
 
-                session['db_user_id'] = db_user["id"]
+                session["db_user_id"] = db_user["id"]
 
         session.permanent = False
     except Exception:
@@ -696,7 +696,7 @@ def login_required(f):
             return jsonify({"error": "Internal Server Error"}), 500
 
         # Check if user has a valid session
-        if 'user_id' not in session:
+        if "user_id" not in session:
             return jsonify({"error": "Unauthorized"}), 401
 
         # Check admin access for settings/onboarding endpoints.
@@ -704,7 +704,7 @@ def login_required(f):
             try:
                 if (
                     requires_admin_for_settings_access(request.path, {})
-                    and not session.get('is_admin', False)
+                    and not session.get("is_admin", False)
                 ):
                     return jsonify({"error": "Admin access required"}), 403
 
@@ -727,54 +727,50 @@ def _base_href() -> str:
 
 def _serve_index_html() -> Response:
     """Serve index.html with an adjusted base tag for subpath deployments."""
-    index_path = FRONTEND_DIST / 'index.html'
+    index_path = FRONTEND_DIST / "index.html"
     try:
-        with index_path.open(encoding='utf-8') as handle:
+        with index_path.open(encoding="utf-8") as handle:
             html = handle.read()
     except OSError:
-        return send_from_directory(FRONTEND_DIST, 'index.html')
+        return send_from_directory(FRONTEND_DIST, "index.html")
 
     if BASE_PATH and _BASE_TAG in html:
         html = html.replace(_BASE_TAG, f'<base href="{_base_href()}" data-shelfmark-base />', 1)
 
-    return Response(html, mimetype='text/html')
+    return Response(html, mimetype="text/html")
 
 
 # Serve frontend static files
-@app.route('/assets/<path:filename>')
+@app.route("/assets/<path:filename>")
 def serve_frontend_assets(filename: str) -> Response:
+    """Serve static assets from the built frontend.
     """
-    Serve static assets from the built frontend.
-    """
-    return send_from_directory(FRONTEND_DIST / 'assets', filename)
+    return send_from_directory(FRONTEND_DIST / "assets", filename)
 
-@app.route('/')
+@app.route("/")
 def index() -> Response:
-    """
-    Serve the React frontend application.
+    """Serve the React frontend application.
     Authentication is handled by the React app itself.
     """
     return _serve_index_html()
 
-@app.route('/theme-init.js')
+@app.route("/theme-init.js")
 def theme_init_js() -> Response:
     """Serve the blocking theme-init script."""
-    return send_from_directory(FRONTEND_DIST, 'theme-init.js', mimetype='application/javascript')
+    return send_from_directory(FRONTEND_DIST, "theme-init.js", mimetype="application/javascript")
 
-@app.route('/logo.png')
+@app.route("/logo.png")
 def logo() -> Response:
+    """Serve logo from built frontend assets.
     """
-    Serve logo from built frontend assets.
-    """
-    return send_from_directory(FRONTEND_DIST, 'logo.png', mimetype='image/png')
+    return send_from_directory(FRONTEND_DIST, "logo.png", mimetype="image/png")
 
-@app.route('/favicon.ico')
-@app.route('/favico<path:_>')
+@app.route("/favicon.ico")
+@app.route("/favico<path:_>")
 def favicon(_: Any = None) -> Response:
+    """Serve favicon from built frontend assets.
     """
-    Serve favicon from built frontend assets.
-    """
-    return send_from_directory(FRONTEND_DIST, 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+    return send_from_directory(FRONTEND_DIST, "favicon.ico", mimetype="image/vnd.microsoft.icon")
 
 if DEBUG:
     import subprocess
@@ -784,11 +780,10 @@ if DEBUG:
     else:
         from shelfmark.bypass.internal_bypasser import _cleanup_orphan_processes as _stop_gui
 
-    @app.route('/api/debug', methods=['GET'])
+    @app.route("/api/debug", methods=["GET"])
     @login_required
     def debug() -> Response | tuple[Response, int]:
-        """
-        This will run the /app/genDebug.sh script, which will generate a debug zip with all the logs
+        """This will run the /app/genDebug.sh script, which will generate a debug zip with all the logs
         The file will be named /tmp/shelfmark-debug.zip
         And then return it to the user
         """
@@ -796,11 +791,11 @@ if DEBUG:
             logger.info("Debug endpoint called, stopping GUI and generating debug info...")
             _stop_gui()
             time.sleep(1)
-            result = subprocess.run(['/app/genDebug.sh'], capture_output=True, text=True, check=True)
+            result = subprocess.run(["/app/genDebug.sh"], capture_output=True, text=True, check=True)
             if result.returncode != 0:
                 _raise_runtime_error(f"Debug script failed: {result.stderr}")
             logger.info(f"Debug script executed: {result.stdout}")
-            debug_file_path = result.stdout.strip().split('\n')[-1]
+            debug_file_path = result.stdout.strip().split("\n")[-1]
             if not Path(debug_file_path).exists():
                 logger.error(f"Debug zip file not found at: {debug_file_path}")
                 return jsonify({"error": "Failed to generate debug information"}), 500
@@ -808,7 +803,7 @@ if DEBUG:
             logger.info(f"Sending debug file: {debug_file_path}")
             return send_file(
                 debug_file_path,
-                mimetype='application/zip',
+                mimetype="application/zip",
                 download_name=Path(debug_file_path).name,
                 as_attachment=True
             )
@@ -819,24 +814,23 @@ if DEBUG:
             logger.error_trace(f"Debug endpoint error: {e}")
             return jsonify({"error": str(e)}), 500
 
-    @app.route('/api/restart', methods=['GET'])
+    @app.route("/api/restart", methods=["GET"])
     @login_required
     def restart() -> Response | tuple[Response, int]:
-        """
-        Restart the application
+        """Restart the application
         """
         os._exit(0)
 
 def _parse_search_filters_from_request() -> SearchFilters:
     """Parse direct/source browse filters from query parameters."""
     return SearchFilters(
-        isbn=request.args.getlist('isbn'),
-        author=request.args.getlist('author'),
-        title=request.args.getlist('title'),
-        lang=request.args.getlist('lang'),
-        sort=request.args.get('sort'),
-        content=request.args.getlist('content'),
-        format=request.args.getlist('format'),
+        isbn=request.args.getlist("isbn"),
+        author=request.args.getlist("author"),
+        title=request.args.getlist("title"),
+        lang=request.args.getlist("lang"),
+        sort=request.args.get("sort"),
+        content=request.args.getlist("content"),
+        format=request.args.getlist("format"),
     )
 
 
@@ -901,11 +895,10 @@ def _serialize_release(release) -> dict:
     return result
 
 
-@app.route('/api/releases/download', methods=['POST'])
+@app.route("/api/releases/download", methods=["POST"])
 @login_required
 def api_download_release() -> Response | tuple[Response, int]:
-    """
-    Queue a release for download.
+    """Queue a release for download.
 
     This endpoint is used when downloading from the ReleaseModal where the
     frontend already has all the release data from the search results.
@@ -920,18 +913,19 @@ def api_download_release() -> Response | tuple[Response, int]:
 
     Returns:
         flask.Response: JSON status object indicating success or failure.
+
     """
     try:
         data = request.get_json()
         if not data:
             return jsonify({"error": "No data provided"}), 400
 
-        if 'source_id' not in data:
+        if "source_id" not in data:
             return jsonify({"error": "source_id is required"}), 400
-        if 'source' not in data:
+        if "source" not in data:
             return jsonify({"error": "source is required"}), 400
 
-        source = data['source']
+        source = data["source"]
         resolved_content_type, inferred_content_type = _resolve_release_content_type(data, source)
         policy_mode = _resolve_policy_mode_for_current_user(
             source=source,
@@ -945,10 +939,10 @@ def api_download_release() -> Response | tuple[Response, int]:
             release_payload = dict(data)
             release_payload["content_type"] = resolved_content_type
 
-        priority = data.get('priority', 0)
+        priority = data.get("priority", 0)
         # Per-user download overrides
-        db_user_id = session.get('db_user_id')
-        _username = session.get('user_id')
+        db_user_id = session.get("db_user_id")
+        _username = session.get("user_id")
         db_user_id, _username, on_behalf_error = _resolve_download_user_context(
             db_user_id,
             _username,
@@ -969,11 +963,10 @@ def api_download_release() -> Response | tuple[Response, int]:
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/config', methods=['GET'])
+@app.route("/api/config", methods=["GET"])
 @login_required
 def api_config() -> Response | tuple[Response, int]:
-    """
-    Get application configuration for frontend.
+    """Get application configuration for frontend.
 
     Uses the dynamic config singleton to ensure settings changes
     are reflected without requiring a container restart.
@@ -1048,14 +1041,14 @@ def api_config() -> Response | tuple[Response, int]:
         logger.error_trace(f"Config error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/health', methods=['GET'])
+@app.route("/api/health", methods=["GET"])
 def api_health() -> Response | tuple[Response, int]:
-    """
-    Health check endpoint for container orchestration.
+    """Health check endpoint for container orchestration.
     No authentication required.
 
     Returns:
         flask.Response: JSON with status "ok" and optional degraded features.
+
     """
     response = {"status": "ok"}
 
@@ -1071,15 +1064,16 @@ def _resolve_status_scope(*, require_authenticated: bool = True) -> tuple[bool, 
 
     Returns:
         (is_admin, db_user_id, can_access_status)
+
     """
     auth_mode = get_auth_mode()
     if auth_mode == "none":
         return True, None, True
 
-    if require_authenticated and 'user_id' not in session:
+    if require_authenticated and "user_id" not in session:
         return False, None, False
 
-    is_admin = bool(session.get('is_admin', False))
+    is_admin = bool(session.get("is_admin", False))
     if is_admin:
         return True, None, True
 
@@ -1361,14 +1355,14 @@ def _emit_request_update_events(updated_requests: list[dict[str, Any]]) -> None:
         logger.warning(f"Failed to emit delivery request_update events: {exc}")
 
 
-@app.route('/api/status', methods=['GET'])
+@app.route("/api/status", methods=["GET"])
 @login_required
 def api_status() -> Response | tuple[Response, int]:
-    """
-    Get current download queue status.
+    """Get current download queue status.
 
     Returns:
         flask.Response: JSON object with queue status.
+
     """
     try:
         is_admin, db_user_id, can_access_status = _resolve_status_scope()
@@ -1389,19 +1383,19 @@ def api_status() -> Response | tuple[Response, int]:
         logger.error_trace(f"Status error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/localdownload', methods=['GET'])
+@app.route("/api/localdownload", methods=["GET"])
 @login_required
 def api_local_download() -> Response | tuple[Response, int]:
-    """
-    Download an EPUB file from local storage if available.
+    """Download an EPUB file from local storage if available.
 
     Query Parameters:
         id (str): Book identifier (MD5 hash)
 
     Returns:
         flask.Response: The EPUB file if found, otherwise an error response.
+
     """
-    book_id = request.args.get('id', '')
+    book_id = request.args.get("id", "")
     if not book_id:
         return jsonify({"error": "No book ID provided"}), 400
 
@@ -1441,10 +1435,9 @@ def api_local_download() -> Response | tuple[Response, int]:
         logger.error_trace(f"Local download error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/covers/<cover_id>', methods=['GET'])
+@app.route("/api/covers/<cover_id>", methods=["GET"])
 def api_cover(cover_id: str) -> Response | tuple[Response, int]:
-    """
-    Serve a cached book cover image.
+    """Serve a cached book cover image.
 
     This endpoint proxies and caches cover images from external sources.
     Images are cached to disk for faster subsequent requests.
@@ -1457,6 +1450,7 @@ def api_cover(cover_id: str) -> Response | tuple[Response, int]:
 
     Returns:
         flask.Response: Binary image data with appropriate Content-Type, or 404.
+
     """
     try:
         import base64
@@ -1479,12 +1473,12 @@ def api_cover(cover_id: str) -> Response | tuple[Response, int]:
                 status=200,
                 mimetype=content_type
             )
-            response.headers['Cache-Control'] = 'public, max-age=86400'
-            response.headers['X-Cache'] = 'HIT'
+            response.headers["Cache-Control"] = "public, max-age=86400"
+            response.headers["X-Cache"] = "HIT"
             return response
 
         # Cache miss - get URL from query parameter
-        encoded_url = request.args.get('url')
+        encoded_url = request.args.get("url")
         if not encoded_url:
             return jsonify({"error": "Cover URL not provided"}), 404
 
@@ -1505,8 +1499,8 @@ def api_cover(cover_id: str) -> Response | tuple[Response, int]:
             status=200,
             mimetype=content_type
         )
-        response.headers['Cache-Control'] = 'public, max-age=86400'
-        response.headers['X-Cache'] = 'MISS'
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        response.headers["X-Cache"] = "MISS"
     except Exception as e:
         logger.error_trace(f"Cover fetch error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -1514,17 +1508,17 @@ def api_cover(cover_id: str) -> Response | tuple[Response, int]:
         return response
 
 
-@app.route('/api/download/<path:book_id>/cancel', methods=['DELETE'])
+@app.route("/api/download/<path:book_id>/cancel", methods=["DELETE"])
 @login_required
 def api_cancel_download(book_id: str) -> Response | tuple[Response, int]:
-    """
-    Cancel a download.
+    """Cancel a download.
 
     Path Parameters:
         book_id (str): Book identifier to cancel
 
     Returns:
         flask.Response: JSON status indicating success or failure.
+
     """
     try:
         task = backend.book_queue.get_task(book_id)
@@ -1557,7 +1551,7 @@ def api_cancel_download(book_id: str) -> Response | tuple[Response, int]:
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/download/<path:book_id>/retry', methods=['POST'])
+@app.route("/api/download/<path:book_id>/retry", methods=["POST"])
 @login_required
 def api_retry_download(book_id: str) -> Response | tuple[Response, int]:
     """Retry a failed download."""
@@ -1625,11 +1619,10 @@ def api_retry_download(book_id: str) -> Response | tuple[Response, int]:
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/queue/<path:book_id>/priority', methods=['PUT'])
+@app.route("/api/queue/<path:book_id>/priority", methods=["PUT"])
 @login_required
 def api_set_priority(book_id: str) -> Response | tuple[Response, int]:
-    """
-    Set priority for a queued book.
+    """Set priority for a queued book.
 
     Path Parameters:
         book_id (str): Book identifier
@@ -1639,15 +1632,16 @@ def api_set_priority(book_id: str) -> Response | tuple[Response, int]:
 
     Returns:
         flask.Response: JSON status indicating success or failure.
+
     """
     try:
         data = request.get_json()
-        if not data or 'priority' not in data:
+        if not data or "priority" not in data:
             return jsonify({"error": "Priority not provided"}), 400
-            
-        priority = int(data['priority'])
+
+        priority = int(data["priority"])
         success = backend.set_book_priority(book_id, priority)
-        
+
         if success:
             return jsonify({"status": "updated", "book_id": book_id, "priority": priority})
         return jsonify({"error": "Failed to update priority or book not found"}), 404
@@ -1657,34 +1651,34 @@ def api_set_priority(book_id: str) -> Response | tuple[Response, int]:
         logger.error_trace(f"Set priority error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/queue/reorder', methods=['POST'])
+@app.route("/api/queue/reorder", methods=["POST"])
 @login_required
 def api_reorder_queue() -> Response | tuple[Response, int]:
-    """
-    Bulk reorder queue by setting new priorities.
+    """Bulk reorder queue by setting new priorities.
 
     Request Body:
         book_priorities (dict): Mapping of book_id to new priority
 
     Returns:
         flask.Response: JSON status indicating success or failure.
+
     """
     try:
         data = request.get_json()
-        if not data or 'book_priorities' not in data:
+        if not data or "book_priorities" not in data:
             return jsonify({"error": "book_priorities not provided"}), 400
-            
-        book_priorities = data['book_priorities']
+
+        book_priorities = data["book_priorities"]
         if not isinstance(book_priorities, dict):
             return jsonify({"error": "book_priorities must be a dictionary"}), 400
-            
+
         # Validate all priorities are integers
         for book_id, priority in book_priorities.items():
             if not isinstance(priority, int):
                 return jsonify({"error": f"Invalid priority for book {book_id}"}), 400
-                
+
         success = backend.reorder_queue(book_priorities)
-        
+
         if success:
             return jsonify({"status": "reordered", "updated_count": len(book_priorities)})
         return jsonify({"error": "Failed to reorder queue"}), 500
@@ -1692,14 +1686,14 @@ def api_reorder_queue() -> Response | tuple[Response, int]:
         logger.error_trace(f"Reorder queue error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/queue/order', methods=['GET'])
+@app.route("/api/queue/order", methods=["GET"])
 @login_required
 def api_queue_order() -> Response | tuple[Response, int]:
-    """
-    Get current queue order for display.
+    """Get current queue order for display.
 
     Returns:
         flask.Response: JSON array of queued books with their order and priorities.
+
     """
     try:
         queue_order = backend.get_queue_order()
@@ -1708,14 +1702,14 @@ def api_queue_order() -> Response | tuple[Response, int]:
         logger.error_trace(f"Queue order error: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/downloads/active', methods=['GET'])
+@app.route("/api/downloads/active", methods=["GET"])
 @login_required
 def api_active_downloads() -> Response | tuple[Response, int]:
-    """
-    Get list of currently active downloads.
+    """Get list of currently active downloads.
 
     Returns:
         flask.Response: JSON array of active download book IDs.
+
     """
     try:
         active_downloads = backend.get_active_downloads()
@@ -1726,28 +1720,28 @@ def api_active_downloads() -> Response | tuple[Response, int]:
 
 @app.errorhandler(404)
 def not_found_error(error: Exception) -> Response | tuple[Response, int]:
-    """
-    Handle 404 (Not Found) errors.
+    """Handle 404 (Not Found) errors.
 
     Args:
         error (HTTPException): The 404 error raised by Flask.
 
     Returns:
         flask.Response: JSON error message with 404 status.
+
     """
     logger.warning(f"404 error: {request.url} : {error}")
     return jsonify({"error": "Resource not found"}), 404
 
 @app.errorhandler(500)
 def internal_error(error: Exception) -> Response | tuple[Response, int]:
-    """
-    Handle 500 (Internal Server) errors.
+    """Handle 500 (Internal Server) errors.
 
     Args:
         error (HTTPException): The 500 error raised by Flask.
 
     Returns:
         flask.Response: JSON error message with 500 status.
+
     """
     logger.error_trace(f"500 error: {error}")
     return jsonify({"error": "Internal server error"}), 500
@@ -1761,7 +1755,7 @@ def _failed_login_response(username: str, ip_address: str) -> tuple[Response, in
             "error": f"Account locked due to {MAX_LOGIN_ATTEMPTS} failed login attempts. Try again in {LOCKOUT_DURATION_MINUTES} minutes."
         }), 429
 
-    attempts_remaining = MAX_LOGIN_ATTEMPTS - failed_login_attempts[username]['count']
+    attempts_remaining = MAX_LOGIN_ATTEMPTS - failed_login_attempts[username]["count"]
     if attempts_remaining <= 5:
         return jsonify({
             "error": f"Invalid username or password. {attempts_remaining} attempts remaining."
@@ -1770,10 +1764,9 @@ def _failed_login_response(username: str, ip_address: str) -> tuple[Response, in
     return jsonify({"error": "Invalid username or password."}), 401
 
 
-@app.route('/api/auth/login', methods=['POST'])
+@app.route("/api/auth/login", methods=["POST"])
 def api_login() -> Response | tuple[Response, int]:
-    """
-    Login endpoint that validates credentials and creates a session.
+    """Login endpoint that validates credentials and creates a session.
     Supports both built-in credentials and CWA database authentication.
     Includes rate limiting: 10 failed attempts = 30 minute lockout.
 
@@ -1784,6 +1777,7 @@ def api_login() -> Response | tuple[Response, int]:
 
     Returns:
         flask.Response: JSON with success status or error message.
+
     """
     try:
         ip_address = get_client_ip()
@@ -1798,16 +1792,16 @@ def api_login() -> Response | tuple[Response, int]:
         if auth_mode == "oidc" and HIDE_LOCAL_AUTH:
             return jsonify({"error": "Local authentication is disabled"}), 403
 
-        username = data.get('username', '').strip()
-        password = data.get('password', '')
-        remember_me = data.get('remember_me', False)
+        username = data.get("username", "").strip()
+        password = data.get("password", "")
+        remember_me = data.get("remember_me", False)
 
         if not username or not password:
             return jsonify({"error": "Username and password are required"}), 400
 
         # Check if account is locked due to failed login attempts
         if is_account_locked(username):
-            lockout_until = failed_login_attempts[username].get('lockout_until')
+            lockout_until = failed_login_attempts[username].get("lockout_until")
             remaining_time = (lockout_until - datetime.now()).total_seconds() / 60
             logger.warning(f"Login attempt blocked for locked account '{username}' from IP {ip_address}")
             return jsonify({
@@ -1816,7 +1810,7 @@ def api_login() -> Response | tuple[Response, int]:
 
         # If no authentication is configured, authentication always succeeds
         if auth_mode == "none":
-            session['user_id'] = username
+            session["user_id"] = username
             session.permanent = remember_me
             clear_failed_logins(username)
             logger.info(f"Login successful for user '{username}' from IP {ip_address} (no auth configured)")
@@ -1840,9 +1834,9 @@ def api_login() -> Response | tuple[Response, int]:
                         return _failed_login_response(username, ip_address)
 
                     is_admin = db_user["role"] == "admin"
-                    session['user_id'] = username
-                    session['db_user_id'] = db_user["id"]
-                    session['is_admin'] = is_admin
+                    session["user_id"] = username
+                    session["db_user_id"] = db_user["id"]
+                    session["is_admin"] = is_admin
                     session.permanent = remember_me
                     clear_failed_logins(username)
                     logger.info(f"Login successful for user '{username}' from IP {ip_address} ({auth_mode} auth, is_admin={is_admin}, remember_me={remember_me})")
@@ -1892,10 +1886,10 @@ def api_login() -> Response | tuple[Response, int]:
                     db_user_id = db_user["id"]
 
                 # Successful authentication - create session and clear failed attempts
-                session['user_id'] = username
-                session['is_admin'] = is_admin
+                session["user_id"] = username
+                session["is_admin"] = is_admin
                 if db_user_id is not None:
-                    session['db_user_id'] = db_user_id
+                    session["db_user_id"] = db_user_id
                 session.permanent = remember_me
                 clear_failed_logins(username)
                 logger.info(f"Login successful for user '{username}' from IP {ip_address} (CWA auth, is_admin={is_admin}, remember_me={remember_me})")
@@ -1912,41 +1906,41 @@ def api_login() -> Response | tuple[Response, int]:
         logger.error_trace(f"Login error: {e}")
         return jsonify({"error": "Login failed"}), 500
 
-@app.route('/api/auth/logout', methods=['POST'])
+@app.route("/api/auth/logout", methods=["POST"])
 def api_logout() -> Response | tuple[Response, int]:
-    """
-    Logout endpoint that clears the session.
+    """Logout endpoint that clears the session.
     For proxy auth, returns the logout URL if configured.
     
     Returns:
         flask.Response: JSON with success status and optional logout_url.
+
     """
     try:
         auth_mode = get_auth_mode()
         ip_address = get_client_ip()
-        username = session.get('user_id', 'unknown')
+        username = session.get("user_id", "unknown")
         session.clear()
         logger.info(f"Logout successful for user '{username}' from IP {ip_address}")
-        
+
         # For proxy auth, include logout URL if configured
         if auth_mode == "proxy":
             logout_url = app_config.get("PROXY_AUTH_LOGOUT_URL", "")
             if logout_url:
                 return jsonify({"success": True, "logout_url": logout_url})
-        
+
         return jsonify({"success": True})
     except Exception as e:
         logger.error_trace(f"Logout error: {e}")
         return jsonify({"error": "Logout failed"}), 500
 
-@app.route('/api/auth/check', methods=['GET'])
+@app.route("/api/auth/check", methods=["GET"])
 def api_auth_check() -> Response | tuple[Response, int]:
-    """
-    Check if user has a valid session.
+    """Check if user has a valid session.
 
     Returns:
         flask.Response: JSON with authentication status, whether auth is required,
         which auth mode is active, and whether user has admin privileges.
+
     """
     try:
         auth_mode = get_auth_mode()
@@ -1961,14 +1955,14 @@ def api_auth_check() -> Response | tuple[Response, int]:
             })
 
         # Check if user has a valid session
-        is_authenticated = 'user_id' in session
+        is_authenticated = "user_id" in session
 
         is_admin = get_auth_check_admin_status(auth_mode, {}, session)
 
         display_name = None
-        if is_authenticated and session.get('db_user_id') and user_db is not None:
+        if is_authenticated and session.get("db_user_id") and user_db is not None:
             try:
-                db_user = user_db.get_user(user_id=session['db_user_id'])
+                db_user = user_db.get_user(user_id=session["db_user_id"])
                 if db_user:
                     display_name = db_user.get("display_name") or None
             except Exception:
@@ -1979,10 +1973,10 @@ def api_auth_check() -> Response | tuple[Response, int]:
             "auth_required": True,
             "auth_mode": auth_mode,
             "is_admin": is_admin if is_authenticated else False,
-            "username": session.get('user_id') if is_authenticated else None,
+            "username": session.get("user_id") if is_authenticated else None,
             "display_name": display_name,
         }
-        
+
         # Add logout URL for proxy auth if configured
         if auth_mode == "proxy" and app_config.get("PROXY_AUTH_USER_HEADER", ""):
             logout_url = app_config.get("PROXY_AUTH_LOGOUT_URL", "")
@@ -1998,7 +1992,7 @@ def api_auth_check() -> Response | tuple[Response, int]:
                 response_data["hide_local_auth"] = True
             if OIDC_AUTO_REDIRECT:
                 response_data["oidc_auto_redirect"] = True
-        
+
         return jsonify(response_data)
     except Exception as e:
         logger.error_trace(f"Auth check error: {e}")
@@ -2010,14 +2004,14 @@ def api_auth_check() -> Response | tuple[Response, int]:
         })
 
 
-@app.route('/api/metadata/providers', methods=['GET'])
+@app.route("/api/metadata/providers", methods=["GET"])
 @login_required
 def api_metadata_providers() -> Response | tuple[Response, int]:
-    """
-    Get list of available metadata providers.
+    """Get list of available metadata providers.
 
     Returns:
         flask.Response: JSON with list of providers and their status.
+
     """
     try:
         from shelfmark.metadata_providers import (
@@ -2076,7 +2070,7 @@ def api_metadata_providers() -> Response | tuple[Response, int]:
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/metadata/config', methods=['GET'])
+@app.route("/api/metadata/config", methods=["GET"])
 @login_required
 def api_metadata_config() -> Response | tuple[Response, int]:
     """Return provider-specific metadata search config for the active session."""
@@ -2093,8 +2087,8 @@ def api_metadata_config() -> Response | tuple[Response, int]:
         )
 
         app_config.refresh()
-        content_type = request.args.get('content_type', 'ebook').strip()
-        provider_name = request.args.get('provider', '').strip()
+        content_type = request.args.get("content_type", "ebook").strip()
+        provider_name = request.args.get("provider", "").strip()
 
         db_user_id = get_session_db_user_id(session)
 
@@ -2141,11 +2135,10 @@ def api_metadata_config() -> Response | tuple[Response, int]:
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/metadata/search', methods=['GET'])
+@app.route("/api/metadata/search", methods=["GET"])
 @login_required
 def api_metadata_search() -> Response | tuple[Response, int]:
-    """
-    Search for books using the configured metadata provider.
+    """Search for books using the configured metadata provider.
 
     Query Parameters:
         query (str): Search query (required)
@@ -2155,6 +2148,7 @@ def api_metadata_search() -> Response | tuple[Response, int]:
 
     Returns:
         flask.Response: JSON with list of books from metadata provider.
+
     """
     try:
         from dataclasses import asdict
@@ -2171,22 +2165,22 @@ def api_metadata_search() -> Response | tuple[Response, int]:
             is_provider_registered,
         )
 
-        query = request.args.get('query', '').strip()
-        content_type = request.args.get('content_type', 'ebook').strip()
-        provider_name = request.args.get('provider', '').strip()
+        query = request.args.get("query", "").strip()
+        content_type = request.args.get("content_type", "ebook").strip()
+        provider_name = request.args.get("provider", "").strip()
 
         try:
-            limit = min(int(request.args.get('limit', 40)), 100)
+            limit = min(int(request.args.get("limit", 40)), 100)
         except ValueError:
             limit = 40
 
         try:
-            page = max(1, int(request.args.get('page', 1)))
+            page = max(1, int(request.args.get("page", 1)))
         except ValueError:
             page = 1
 
         # Parse sort parameter
-        sort_value = request.args.get('sort', 'relevance').lower()
+        sort_value = request.args.get("sort", "relevance").lower()
         try:
             sort_order = SortOrder(sort_value)
         except ValueError:
@@ -2233,7 +2227,7 @@ def api_metadata_search() -> Response | tuple[Response, int]:
                 if value != "":
                     # Parse value based on field type
                     if isinstance(search_field, CheckboxSearchField):
-                        fields[search_field.key] = value.lower() in ('true', '1', 'yes', 'on')
+                        fields[search_field.key] = value.lower() in ("true", "1", "yes", "on")
                     elif isinstance(search_field, NumberSearchField):
                         with suppress(ValueError):
                             fields[search_field.key] = int(value)
@@ -2253,9 +2247,9 @@ def api_metadata_search() -> Response | tuple[Response, int]:
         # Transform cover_url to local proxy URLs when caching is enabled
         from shelfmark.core.utils import transform_cover_url
         for book_dict in books_data:
-            if book_dict.get('cover_url'):
+            if book_dict.get("cover_url"):
                 cache_id = f"{book_dict['provider']}_{book_dict['provider_id']}"
-                book_dict['cover_url'] = transform_cover_url(book_dict['cover_url'], cache_id)
+                book_dict["cover_url"] = transform_cover_url(book_dict["cover_url"], cache_id)
 
         response_data = {
             "books": books_data,
@@ -2275,7 +2269,7 @@ def api_metadata_search() -> Response | tuple[Response, int]:
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/metadata/field-options', methods=['GET'])
+@app.route("/api/metadata/field-options", methods=["GET"])
 @login_required
 def api_metadata_field_options() -> Response:
     """Return dynamic search-field options for a metadata provider."""
@@ -2287,10 +2281,10 @@ def api_metadata_field_options() -> Response:
             is_provider_registered,
         )
 
-        field_key = request.args.get('field', '').strip()
-        provider_name = request.args.get('provider', '').strip()
-        content_type = request.args.get('content_type', 'ebook').strip()
-        query_text = request.args.get('query', '').strip()
+        field_key = request.args.get("field", "").strip()
+        provider_name = request.args.get("provider", "").strip()
+        content_type = request.args.get("content_type", "ebook").strip()
+        query_text = request.args.get("query", "").strip()
 
         if not field_key:
             return jsonify({"options": []})
@@ -2339,11 +2333,10 @@ def _resolve_metadata_provider(provider_name: str):
     return prov
 
 
-@app.route('/api/metadata/book/<provider>/<book_id>', methods=['GET'])
+@app.route("/api/metadata/book/<provider>/<book_id>", methods=["GET"])
 @login_required
 def api_metadata_book(provider: str, book_id: str) -> Response | tuple[Response, int]:
-    """
-    Get detailed book information from a metadata provider.
+    """Get detailed book information from a metadata provider.
 
     Path Parameters:
         provider (str): Provider name (e.g., "hardcover", "openlibrary")
@@ -2351,6 +2344,7 @@ def api_metadata_book(provider: str, book_id: str) -> Response | tuple[Response,
 
     Returns:
         flask.Response: JSON with book details.
+
     """
     try:
         from dataclasses import asdict
@@ -2365,9 +2359,9 @@ def api_metadata_book(provider: str, book_id: str) -> Response | tuple[Response,
 
         # Transform cover_url to local proxy URL when caching is enabled
         from shelfmark.core.utils import transform_cover_url
-        if book_dict.get('cover_url'):
+        if book_dict.get("cover_url"):
             cache_id = f"{provider}_{book_id}"
-            book_dict['cover_url'] = transform_cover_url(book_dict['cover_url'], cache_id)
+            book_dict["cover_url"] = transform_cover_url(book_dict["cover_url"], cache_id)
 
         return jsonify(book_dict)
     except ValueError as e:
@@ -2397,7 +2391,7 @@ def _handle_target_errors(fallback_message: str):
     return decorator
 
 
-@app.route('/api/metadata/book/<provider>/<book_id>/targets', methods=['GET'])
+@app.route("/api/metadata/book/<provider>/<book_id>/targets", methods=["GET"])
 @login_required
 @_handle_target_errors("Failed to load book targets")
 def api_metadata_book_targets(provider: str, book_id: str) -> Response | tuple[Response, int]:
@@ -2406,7 +2400,7 @@ def api_metadata_book_targets(provider: str, book_id: str) -> Response | tuple[R
     return jsonify({"options": prov.get_book_targets(book_id)})
 
 
-@app.route('/api/metadata/book/<provider>/targets/batch', methods=['POST'])
+@app.route("/api/metadata/book/<provider>/targets/batch", methods=["POST"])
 @login_required
 @_handle_target_errors("Failed to load book targets")
 def api_metadata_book_targets_batch(provider: str) -> Response | tuple[Response, int]:
@@ -2423,7 +2417,7 @@ def api_metadata_book_targets_batch(provider: str) -> Response | tuple[Response,
     return jsonify({"results": prov.get_book_targets_batch(book_ids)})
 
 
-@app.route('/api/metadata/book/<provider>/<book_id>/targets', methods=['PUT'])
+@app.route("/api/metadata/book/<provider>/<book_id>/targets", methods=["PUT"])
 @login_required
 @_handle_target_errors("Failed to update book targets")
 def api_metadata_book_targets_update(provider: str, book_id: str) -> Response | tuple[Response, int]:
@@ -2450,11 +2444,10 @@ def api_metadata_book_targets_update(provider: str, book_id: str) -> Response | 
     return jsonify(response)
 
 
-@app.route('/api/releases', methods=['GET'])
+@app.route("/api/releases", methods=["GET"])
 @login_required
 def api_releases() -> Response | tuple[Response, int]:
-    """
-    Search for downloadable releases of a book.
+    """Search for downloadable releases of a book.
 
     This endpoint takes book metadata and searches available release sources
     (e.g., Anna's Archive, Libgen) for downloadable files.
@@ -2466,6 +2459,7 @@ def api_releases() -> Response | tuple[Response, int]:
 
     Returns:
         flask.Response: JSON with list of available releases.
+
     """
     try:
         from dataclasses import asdict
@@ -2521,29 +2515,29 @@ def api_releases() -> Response | tuple[Response, int]:
                 return None, [], f"Unknown source: {source_name}"
             except Exception as e:
                 logger.warning(f"Release search failed for source {source_name}: {e}")
-                return None, [], f"{source_name}: {str(e)}"
+                return None, [], f"{source_name}: {e!s}"
             else:
                 return source, releases, None
 
-        provider = request.args.get('provider', '').strip()
-        book_id = request.args.get('book_id', '').strip()
-        source_filter = request.args.get('source', '').strip()
-        query_text = request.args.get('query', '').strip()
+        provider = request.args.get("provider", "").strip()
+        book_id = request.args.get("book_id", "").strip()
+        source_filter = request.args.get("source", "").strip()
+        query_text = request.args.get("query", "").strip()
         # Accept title/author from frontend to avoid re-fetching metadata
-        title_param = request.args.get('title', '').strip()
-        author_param = request.args.get('author', '').strip()
-        expand_search = request.args.get('expand_search', '').lower() == 'true'
+        title_param = request.args.get("title", "").strip()
+        author_param = request.args.get("author", "").strip()
+        expand_search = request.args.get("expand_search", "").lower() == "true"
         # Accept language codes for filtering (comma-separated)
-        languages_param = request.args.get('languages', '').strip()
-        languages = [lang.strip() for lang in languages_param.split(',') if lang.strip()] if languages_param else None
+        languages_param = request.args.get("languages", "").strip()
+        languages = [lang.strip() for lang in languages_param.split(",") if lang.strip()] if languages_param else None
         # Content type for audiobook vs ebook search
-        content_type = request.args.get('content_type', 'ebook').strip()
+        content_type = request.args.get("content_type", "ebook").strip()
 
-        manual_query = request.args.get('manual_query', '').strip()
+        manual_query = request.args.get("manual_query", "").strip()
 
         # Accept indexer names for Prowlarr filtering (comma-separated)
-        indexers_param = request.args.get('indexers', '').strip()
-        indexers = [idx.strip() for idx in indexers_param.split(',') if idx.strip()] if indexers_param else None
+        indexers_param = request.args.get("indexers", "").strip()
+        indexers = [idx.strip() for idx in indexers_param.split(",") if idx.strip()] if indexers_param else None
         browse_filters = _parse_search_filters_from_request()
         has_browse_filters = bool(query_text or any(vars(browse_filters).values()))
 
@@ -2644,13 +2638,13 @@ def api_releases() -> Response | tuple[Response, int]:
         # Convert book to dict and transform cover_url
         book_dict = asdict(book)
         from shelfmark.core.utils import transform_cover_url
-        if book_dict.get('cover_url'):
+        if book_dict.get("cover_url"):
             cache_id = f"{provider}_{book_id}"
-            book_dict['cover_url'] = transform_cover_url(book_dict['cover_url'], cache_id)
+            book_dict["cover_url"] = transform_cover_url(book_dict["cover_url"], cache_id)
 
         search_info = {}
         for source_name, source_instance in source_instances.items():
-            if hasattr(source_instance, 'last_search_type') and source_instance.last_search_type:
+            if hasattr(source_instance, "last_search_type") and source_instance.last_search_type:
                 search_info[source_name] = {
                     "search_type": source_instance.last_search_type
                 }
@@ -2686,14 +2680,14 @@ def api_releases() -> Response | tuple[Response, int]:
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/release-sources', methods=['GET'])
+@app.route("/api/release-sources", methods=["GET"])
 @login_required
 def api_release_sources() -> Response | tuple[Response, int]:
-    """
-    Get available release sources from the plugin registry.
+    """Get available release sources from the plugin registry.
 
     Returns:
         flask.Response: JSON list of available release sources.
+
     """
     try:
         from shelfmark.release_sources import list_available_sources
@@ -2704,7 +2698,7 @@ def api_release_sources() -> Response | tuple[Response, int]:
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/release-sources/<source_name>/records/<path:record_id>', methods=['GET'])
+@app.route("/api/release-sources/<source_name>/records/<path:record_id>", methods=["GET"])
 @login_required
 def api_release_source_record(source_name: str, record_id: str) -> Response | tuple[Response, int]:
     """Resolve a source-native browse record for a release source."""
@@ -2726,22 +2720,22 @@ def api_release_source_record(source_name: str, record_id: str) -> Response | tu
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/settings', methods=['GET'])
+@app.route("/api/settings", methods=["GET"])
 @login_required
 def api_settings_get_all() -> Response | tuple[Response, int]:
-    """
-    Get all settings tabs with their fields and current values.
+    """Get all settings tabs with their fields and current values.
 
     Returns:
         flask.Response: JSON with all settings tabs.
+
     """
     try:
-        import shelfmark.config.notifications_settings  # noqa: F401
-        import shelfmark.config.security  # noqa: F401
+        import shelfmark.config.notifications_settings
+        import shelfmark.config.security
 
         # Ensure settings are registered by importing settings modules
         # This triggers the @register_settings decorators
-        import shelfmark.config.settings  # noqa: F401
+        import shelfmark.config.settings
         import shelfmark.config.users_settings  # noqa: F401
         from shelfmark.core.settings_registry import serialize_all_settings
 
@@ -2752,24 +2746,24 @@ def api_settings_get_all() -> Response | tuple[Response, int]:
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/settings/<tab_name>', methods=['GET'])
+@app.route("/api/settings/<tab_name>", methods=["GET"])
 @login_required
 def api_settings_get_tab(tab_name: str) -> Response | tuple[Response, int]:
-    """
-    Get settings for a specific tab.
+    """Get settings for a specific tab.
 
     Path Parameters:
         tab_name (str): Settings tab name (e.g., "general", "hardcover")
 
     Returns:
         flask.Response: JSON with tab settings and values.
+
     """
     try:
-        import shelfmark.config.notifications_settings  # noqa: F401
-        import shelfmark.config.security  # noqa: F401
+        import shelfmark.config.notifications_settings
+        import shelfmark.config.security
 
         # Ensure settings are registered
-        import shelfmark.config.settings  # noqa: F401
+        import shelfmark.config.settings
         import shelfmark.config.users_settings  # noqa: F401
         from shelfmark.core.settings_registry import (
             get_settings_tab,
@@ -2786,11 +2780,10 @@ def api_settings_get_tab(tab_name: str) -> Response | tuple[Response, int]:
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/settings/<tab_name>', methods=['PUT'])
+@app.route("/api/settings/<tab_name>", methods=["PUT"])
 @login_required
 def api_settings_update_tab(tab_name: str) -> Response | tuple[Response, int]:
-    """
-    Update settings for a specific tab.
+    """Update settings for a specific tab.
 
     Path Parameters:
         tab_name (str): Settings tab name
@@ -2800,13 +2793,14 @@ def api_settings_update_tab(tab_name: str) -> Response | tuple[Response, int]:
 
     Returns:
         flask.Response: JSON with update result.
+
     """
     try:
-        import shelfmark.config.notifications_settings  # noqa: F401
-        import shelfmark.config.security  # noqa: F401
+        import shelfmark.config.notifications_settings
+        import shelfmark.config.security
 
         # Ensure settings are registered
-        import shelfmark.config.settings  # noqa: F401
+        import shelfmark.config.settings
         import shelfmark.config.users_settings  # noqa: F401
         from shelfmark.core.settings_registry import (
             get_settings_tab,
@@ -2835,11 +2829,10 @@ def api_settings_update_tab(tab_name: str) -> Response | tuple[Response, int]:
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/settings/<tab_name>/action/<action_key>', methods=['POST'])
+@app.route("/api/settings/<tab_name>/action/<action_key>", methods=["POST"])
 @login_required
 def api_settings_execute_action(tab_name: str, action_key: str) -> Response | tuple[Response, int]:
-    """
-    Execute a settings action (e.g., test connection).
+    """Execute a settings action (e.g., test connection).
 
     Path Parameters:
         tab_name (str): Settings tab name
@@ -2850,13 +2843,14 @@ def api_settings_execute_action(tab_name: str, action_key: str) -> Response | tu
 
     Returns:
         flask.Response: JSON with action result.
+
     """
     try:
-        import shelfmark.config.notifications_settings  # noqa: F401
-        import shelfmark.config.security  # noqa: F401
+        import shelfmark.config.notifications_settings
+        import shelfmark.config.security
 
         # Ensure settings are registered
-        import shelfmark.config.settings  # noqa: F401
+        import shelfmark.config.settings
         import shelfmark.config.users_settings  # noqa: F401
         from shelfmark.core.settings_registry import execute_action
 
@@ -2878,14 +2872,14 @@ def api_settings_execute_action(tab_name: str, action_key: str) -> Response | tu
 # =============================================================================
 
 
-@app.route('/api/onboarding', methods=['GET'])
+@app.route("/api/onboarding", methods=["GET"])
 @login_required
 def api_onboarding_get() -> Response | tuple[Response, int]:
-    """
-    Get onboarding configuration including steps, fields, and current values.
+    """Get onboarding configuration including steps, fields, and current values.
 
     Returns:
         flask.Response: JSON with onboarding steps and values.
+
     """
     try:
         # Ensure settings are registered
@@ -2899,17 +2893,17 @@ def api_onboarding_get() -> Response | tuple[Response, int]:
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/onboarding', methods=['POST'])
+@app.route("/api/onboarding", methods=["POST"])
 @login_required
 def api_onboarding_save() -> Response | tuple[Response, int]:
-    """
-    Save onboarding settings and mark as complete.
+    """Save onboarding settings and mark as complete.
 
     Request Body:
         JSON object with all onboarding field values
 
     Returns:
         flask.Response: JSON with success/error status.
+
     """
     try:
         # Ensure settings are registered
@@ -2930,14 +2924,14 @@ def api_onboarding_save() -> Response | tuple[Response, int]:
         return jsonify({"error": str(e)}), 500
 
 
-@app.route('/api/onboarding/skip', methods=['POST'])
+@app.route("/api/onboarding/skip", methods=["POST"])
 @login_required
 def api_onboarding_skip() -> Response | tuple[Response, int]:
-    """
-    Skip onboarding and mark as complete without saving any settings.
+    """Skip onboarding and mark as complete without saving any settings.
 
     Returns:
         flask.Response: JSON with success status.
+
     """
     try:
         from shelfmark.core.onboarding import mark_onboarding_complete
@@ -2951,10 +2945,9 @@ def api_onboarding_skip() -> Response | tuple[Response, int]:
 
 # Catch-all route for React Router (must be last)
 # This handles client-side routing by serving index.html for any unmatched routes
-@app.route('/<path:path>')
+@app.route("/<path:path>")
 def catch_all(path: str) -> Response:
-    """
-    Serve the React app for any route not matched by API endpoints.
+    """Serve the React app for any route not matched by API endpoints.
     This allows React Router to handle client-side routing.
     Authentication is handled by the React app itself.
     """
@@ -2965,7 +2958,7 @@ def catch_all(path: str) -> Response:
     return _serve_index_html()
 
 # WebSocket event handlers
-@socketio.on('connect')
+@socketio.on("connect")
 def handle_connect():
     """Handle client connection."""
     logger.info("WebSocket client connected")
@@ -2980,16 +2973,16 @@ def handle_connect():
     # Send initial status to the newly connected client (filtered)
     try:
         if not can_access_status:
-            emit('status_update', {})
+            emit("status_update", {})
             return
 
         user_id = None if is_admin else db_user_id
         status = backend.queue_status(user_id=user_id)
-        emit('status_update', status)
+        emit("status_update", status)
     except Exception:
         logger.exception("Error sending initial status")
 
-@socketio.on('disconnect')
+@socketio.on("disconnect")
 def handle_disconnect():
     """Handle client disconnection."""
     logger.info("WebSocket client disconnected")
@@ -3000,7 +2993,7 @@ def handle_disconnect():
     # Track the disconnection
     ws_manager.client_disconnected()
 
-@socketio.on('request_status')
+@socketio.on("request_status")
 def handle_status_request():
     """Handle manual status request from client."""
     try:
@@ -3008,15 +3001,15 @@ def handle_status_request():
         ws_manager.sync_user_room(request.sid, is_admin, db_user_id)
 
         if not can_access_status:
-            emit('status_update', {})
+            emit("status_update", {})
             return
 
         user_id = None if is_admin else db_user_id
         status = backend.queue_status(user_id=user_id)
-        emit('status_update', status)
+        emit("status_update", status)
     except Exception:
         logger.exception("Error handling status request")
-        emit('error', {'message': 'Failed to get status'})
+        emit("error", {"message": "Failed to get status"})
 
 logger.log_resource_usage()
 
@@ -3027,7 +3020,7 @@ if not _is_config_dir_writable():
         "Mount a config volume to enable settings persistence (see docs for details)."
     )
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     logger.info(f"Starting Flask application with WebSocket support on {FLASK_HOST}:{FLASK_PORT} (debug={DEBUG})")
     socketio.run(
         app,

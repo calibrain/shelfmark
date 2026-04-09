@@ -17,8 +17,7 @@ from shelfmark.core.utils import normalize_http_url
 
 
 def _get_indexer_options() -> list[dict[str, str]]:
-    """
-    Fetch available indexers from Prowlarr for the multi-select field.
+    """Fetch available indexers from Prowlarr for the multi-select field.
 
     Returns list of {value: "id", label: "name (protocol)"} options.
     """
@@ -94,7 +93,7 @@ def _test_prowlarr_connection(current_values: dict[str, Any] | None = None) -> d
         client = ProwlarrClient(url, api_key)
         success, message = client.test_connection()
     except Exception as e:
-        return {"success": False, "message": f"Connection failed: {str(e)}"}
+        return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": success, "message": message}
 

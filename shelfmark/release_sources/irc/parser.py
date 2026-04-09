@@ -19,11 +19,11 @@ logger = setup_logger(__name__)
 # User-configured formats are used separately for filtering.
 ALL_RECOGNIZED_FORMATS = {
     # Ebook formats
-    'epub', 'mobi', 'azw3', 'azw', 'pdf', 'doc', 'docx',
-    'html', 'htm', 'rtf', 'txt', 'lit', 'fb2', 'djvu',
-    'cbr', 'cbz', 'cdr', 'jpg', 'rar', 'zip',
+    "epub", "mobi", "azw3", "azw", "pdf", "doc", "docx",
+    "html", "htm", "rtf", "txt", "lit", "fb2", "djvu",
+    "cbr", "cbz", "cdr", "jpg", "rar", "zip",
     # Audiobook formats
-    'm4b', 'mp3', 'm4a', 'flac', 'ogg', 'wma', 'aac', 'wav', 'opus'
+    "m4b", "mp3", "m4a", "flac", "ogg", "wma", "aac", "wav", "opus"
 }
 
 
@@ -41,23 +41,24 @@ def _get_supported_formats(content_type: str | None = None) -> set[str]:
 # Regex to parse result lines
 # Format: !Server Author - Title.format ::INFO:: size
 RESULT_LINE_REGEX = re.compile(
-    r'^!(\S+)\s+'           # !ServerName
-    r'(.+?)\s+-\s+'         # Author Name -
-    r'(.+?)\.(\w+)'         # Title.format
-    r'(?:\s+::INFO::\s*(.+?))?'  # Optional ::INFO:: metadata
-    r'(?:\s+::HASH::\s*(\S+))?'  # Optional ::HASH::
-    r'\s*$'
+    r"^!(\S+)\s+"           # !ServerName
+    r"(.+?)\s+-\s+"         # Author Name -
+    r"(.+?)\.(\w+)"         # Title.format
+    r"(?:\s+::INFO::\s*(.+?))?"  # Optional ::INFO:: metadata
+    r"(?:\s+::HASH::\s*(\S+))?"  # Optional ::HASH::
+    r"\s*$"
 )
 
 # Simpler fallback pattern
 SIMPLE_RESULT_REGEX = re.compile(
-    r'^!(\S+)\s+(.+)$'  # !Server everything_else
+    r"^!(\S+)\s+(.+)$"  # !Server everything_else
 )
 
 
 @dataclass
 class SearchResult:
     """Parsed search result entry."""
+
     server: str           # Bot name (without !)
     author: str           # Author name
     title: str            # Book title
@@ -81,7 +82,7 @@ def parse_result_line(line: str) -> SearchResult | None:
     line = line.strip()
 
     # Must start with !
-    if not line.startswith('!'):
+    if not line.startswith("!"):
         return None
 
     # Try detailed pattern first
@@ -105,13 +106,13 @@ def parse_result_line(line: str) -> SearchResult | None:
         # Try to extract format from the line
         fmt = None
         for known_fmt in ALL_RECOGNIZED_FORMATS:
-            if f'.{known_fmt}' in rest.lower():
+            if f".{known_fmt}" in rest.lower():
                 fmt = known_fmt
                 break
 
         # Try to split author - title
-        if ' - ' in rest:
-            parts = rest.split(' - ', 1)
+        if " - " in rest:
+            parts = rest.split(" - ", 1)
             author = parts[0].strip()
             title_part = parts[1].strip() if len(parts) > 1 else rest
         else:
@@ -120,20 +121,20 @@ def parse_result_line(line: str) -> SearchResult | None:
 
         # Extract size if present
         size = None
-        if '::INFO::' in title_part:
-            title_part, info = title_part.split('::INFO::', 1)
-            size = info.split('::')[0].strip()
+        if "::INFO::" in title_part:
+            title_part, info = title_part.split("::INFO::", 1)
+            size = info.split("::")[0].strip()
 
         # Clean up title (remove extension)
         title = title_part
         for known_fmt in ALL_RECOGNIZED_FORMATS:
-            title = re.sub(rf'\.{known_fmt}\b', '', title, flags=re.IGNORECASE)
+            title = re.sub(rf"\.{known_fmt}\b", "", title, flags=re.IGNORECASE)
 
         return SearchResult(
             server=server,
             author=author,
             title=title.strip(),
-            format=fmt or 'unknown',
+            format=fmt or "unknown",
             size=size,
             full_line=line,
         )
@@ -149,7 +150,7 @@ def parse_results_file(content: str, content_type: str | None = None) -> list[Se
 
     for line in content.splitlines():
         result = parse_result_line(line)
-        if result and (result.format in supported or result.format == 'unknown'):
+        if result and (result.format in supported or result.format == "unknown"):
             # Filter to user's configured formats
             results.append(result)
 
@@ -159,7 +160,7 @@ def parse_results_file(content: str, content_type: str | None = None) -> list[Se
 
 def extract_results_from_zip(zip_path: Path) -> str:
     """Extract and return text content from a search results ZIP."""
-    with zipfile.ZipFile(zip_path, 'r') as zf:
+    with zipfile.ZipFile(zip_path, "r") as zf:
         # Should contain exactly one text file
         names = zf.namelist()
         if not names:
@@ -168,7 +169,7 @@ def extract_results_from_zip(zip_path: Path) -> str:
         # Find the text file
         txt_file = None
         for name in names:
-            if name.endswith('.txt'):
+            if name.endswith(".txt"):
                 txt_file = name
                 break
 
@@ -179,13 +180,13 @@ def extract_results_from_zip(zip_path: Path) -> str:
         content = zf.read(txt_file)
 
         # Try different encodings
-        for encoding in ['utf-8', 'latin-1', 'cp1252']:
+        for encoding in ["utf-8", "latin-1", "cp1252"]:
             decoded = _decode_content_with_encoding(content, encoding)
             if decoded is not None:
                 return decoded
 
         # Last resort
-        return content.decode('utf-8', errors='replace')
+        return content.decode("utf-8", errors="replace")
 
 
 def _decode_content_with_encoding(content: bytes, encoding: str) -> str | None:

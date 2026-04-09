@@ -1,5 +1,4 @@
-"""
-NZBGet download client for Prowlarr integration.
+"""NZBGet download client for Prowlarr integration.
 
 Uses NZBGet's JSON-RPC API directly via requests (no external dependency).
 """
@@ -63,8 +62,7 @@ class NZBGetClient(DownloadClient):
 
     @with_retry()
     def _rpc_call(self, method: str, params: list | None = None) -> Any:
-        """
-        Make a JSON-RPC call to NZBGet.
+        """Make a JSON-RPC call to NZBGet.
 
         Args:
             method: RPC method name
@@ -75,6 +73,7 @@ class NZBGetClient(DownloadClient):
 
         Raises:
             Exception: If RPC call fails after retries.
+
         """
         rpc_url = f"{self.url}/jsonrpc"
 
@@ -83,7 +82,7 @@ class NZBGetClient(DownloadClient):
             "id": 1,
             "method": method,
             "params": params or [],
-        }, separators=(',', ':'))
+        }, separators=(",", ":"))
 
         response = requests.post(
             rpc_url,
@@ -96,7 +95,7 @@ class NZBGetClient(DownloadClient):
         response.raise_for_status()
 
         result = response.json()
-        if "error" in result and result["error"]:
+        if result.get("error"):
             raise RuntimeError(result["error"].get("message", "RPC error"))
 
         return result.get("result")
@@ -111,7 +110,7 @@ class NZBGetClient(DownloadClient):
         except requests.exceptions.Timeout:
             return False, "Connection timed out"
         except Exception as e:
-            return False, f"Connection failed: {str(e)}"
+            return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to NZBGet {version}"
 
@@ -123,8 +122,7 @@ class NZBGetClient(DownloadClient):
         expected_hash: str | None = None,
         **kwargs,
     ) -> str:
-        """
-        Add NZB by URL.
+        """Add NZB by URL.
 
         Fetches the NZB content from the URL (e.g., Prowlarr proxy) and sends
         it base64-encoded to NZBGet, since NZBGet may not handle redirects well.
@@ -140,6 +138,7 @@ class NZBGetClient(DownloadClient):
 
         Raises:
             Exception: If adding fails.
+
         """
         import base64
 
@@ -154,10 +153,10 @@ class NZBGetClient(DownloadClient):
             logger.debug(f"Fetching NZB from: {url}")
             response = requests.get(url, timeout=30, verify=get_ssl_verify(url))
             response.raise_for_status()
-            nzb_content = base64.b64encode(response.content).decode('ascii')
+            nzb_content = base64.b64encode(response.content).decode("ascii")
 
             # Ensure filename has .nzb extension
-            nzb_filename = name if name.endswith('.nzb') else f"{name}.nzb"
+            nzb_filename = name if name.endswith(".nzb") else f"{name}.nzb"
 
             # NZBGet append method parameters (all 10 required):
             # NZBFilename, Content, Category, Priority, AddToTop, AddPaused,
@@ -191,14 +190,14 @@ class NZBGetClient(DownloadClient):
             raise
 
     def get_status(self, download_id: str) -> DownloadStatus:
-        """
-        Get NZB status by ID.
+        """Get NZB status by ID.
 
         Args:
             download_id: NZBGet NZBID
 
         Returns:
             Current download status.
+
         """
         try:
             nzb_id = int(download_id)
@@ -303,6 +302,7 @@ class NZBGetClient(DownloadClient):
 
         Returns:
             True if successful.
+
         """
         try:
             nzb_id = int(download_id)
@@ -330,14 +330,14 @@ class NZBGetClient(DownloadClient):
         return False
 
     def get_download_path(self, download_id: str) -> str | None:
-        """
-        Get the path where NZB files are located.
+        """Get the path where NZB files are located.
 
         Args:
             download_id: NZBGet NZBID
 
         Returns:
             Destination directory, or None.
+
         """
         status = self.get_status(download_id)
         return status.file_path

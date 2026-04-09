@@ -104,7 +104,7 @@ def _apply_cf_bypass(url: str, headers: dict) -> dict:
     cookies = get_cf_cookies_for_domain(hostname)
     stored_ua = get_cf_user_agent_for_domain(hostname)
     if stored_ua:
-        headers['User-Agent'] = stored_ua
+        headers["User-Agent"] = stored_ua
     return cookies
 
 
@@ -117,12 +117,12 @@ RETRYABLE_CODES = (429, 500, 502, 503, 504)
 CONNECTION_ERRORS = (requests.exceptions.ConnectionError, requests.exceptions.Timeout,
                      requests.exceptions.SSLError, requests.exceptions.ChunkedEncodingError)
 DOWNLOAD_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
 }
 
 
@@ -193,6 +193,7 @@ def html_get_page(
         include_response_url: If True, return `(html, final_url)` to expose the
             resolved response URL after redirects.
         success_delay: Optional delay (seconds) after successful fetch.
+
     """
     def _result(html: str, response_url: str) -> str | tuple[str, str]:
         if include_response_url:
@@ -388,7 +389,7 @@ def download_url(
     # Build headers with optional referer
     headers = DOWNLOAD_HEADERS.copy()
     if referer:
-        headers['Referer'] = referer
+        headers["Referer"] = referer
     total_size = parse_size_string(size) or 0
 
     attempt = 0
@@ -414,8 +415,8 @@ def download_url(
             if status_callback:
                 status_callback("downloading", "")
 
-            total_size = total_size or float(response.headers.get('content-length', 0))
-            pbar = tqdm(total=total_size, unit='B', unit_scale=True, desc='Downloading')
+            total_size = total_size or float(response.headers.get("content-length", 0))
+            pbar = tqdm(total=total_size, unit="B", unit_scale=True, desc="Downloading")
 
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
@@ -430,7 +431,7 @@ def download_url(
             pbar.close()
 
             # Validate - check we didn't get HTML instead of file
-            if total_size > 0 and bytes_downloaded < total_size * 0.9 and response.headers.get('content-type', '').startswith('text/html'):
+            if total_size > 0 and bytes_downloaded < total_size * 0.9 and response.headers.get("content-type", "").startswith("text/html"):
                 logger.warning(f"Received HTML instead of file: {current_url}")
                 return None
 
@@ -443,7 +444,7 @@ def download_url(
             # Z-Library 403 - try refreshing cookies via bypasser once before giving up
             if status == 403 and _is_cf_bypass_enabled() and not zlib_cookie_refresh_attempted:
                 parsed = urlparse(current_url)
-                if parsed.hostname and 'z-lib' in parsed.hostname and referer:
+                if parsed.hostname and "z-lib" in parsed.hostname and referer:
                     zlib_cookie_refresh_attempted = True
                     logger.info(f"Z-Library 403 - refreshing cookies via referer: {referer}")
                     try:
@@ -515,13 +516,13 @@ def _try_resume(
 
         try:
             # Try with CF cookies/UA if available
-            resume_headers = {**(base_headers or DOWNLOAD_HEADERS), 'Range': f'bytes={start_byte}-'}
+            resume_headers = {**(base_headers or DOWNLOAD_HEADERS), "Range": f"bytes={start_byte}-"}
             cookies = _apply_cf_bypass(url, resume_headers)
             response = requests.get(
                 url, stream=True, proxies=get_proxies(url), timeout=REQUEST_TIMEOUT,
                 headers=resume_headers, cookies=cookies, verify=get_ssl_verify(url)
             )
-            
+
             # Check resume support
             if response.status_code == 200:  # Server doesn't support resume
                 logger.info("Server doesn't support resume")
@@ -531,8 +532,8 @@ def _try_resume(
                 return None
             if response.status_code != 206:
                 response.raise_for_status()
-            
-            pbar = tqdm(total=total_size, initial=start_byte, unit='B', unit_scale=True, desc='Resuming')
+
+            pbar = tqdm(total=total_size, initial=start_byte, unit="B", unit_scale=True, desc="Resuming")
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     buffer.write(chunk)
@@ -544,14 +545,14 @@ def _try_resume(
                         pbar.close()
                         return None
             pbar.close()
-            
+
             logger.info(f"Resume completed: {start_byte} bytes")
-            
+
         except requests.exceptions.RequestException as e:
             logger.debug(f"Resume attempt {attempt + 1} failed: {e}")
         else:
             return buffer
-    
+
     logger.warning(f"Resume failed after {MAX_RESUME_ATTEMPTS} attempts")
     return None
 

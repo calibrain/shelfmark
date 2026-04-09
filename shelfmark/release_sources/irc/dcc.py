@@ -28,6 +28,7 @@ BUFFER_SIZE = 4096
 @dataclass
 class DCCOffer:
     """Parsed DCC SEND offer."""
+
     filename: str
     ip: str
     port: int
@@ -57,8 +58,8 @@ class DCCConnectionError(DCCError):
 
 def int_to_ip(ip_int: int) -> str:
     """Convert 32-bit integer (DCC format) to dotted IP notation."""
-    packed = struct.pack('>I', ip_int)
-    return '.'.join(str(b) for b in packed)
+    packed = struct.pack(">I", ip_int)
+    return ".".join(str(b) for b in packed)
 
 
 def parse_dcc_send(text: str) -> DCCOffer:
@@ -101,7 +102,7 @@ def download_dcc(
         received = 0
         last_progress = -1
 
-        with dest_path.open('wb') as f:
+        with dest_path.open("wb") as f:
             while received < offer.size:
                 # Check for cancellation
                 if cancel_flag and cancel_flag.is_set():

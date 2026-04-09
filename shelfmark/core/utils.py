@@ -25,7 +25,7 @@ def normalize_http_url(
     if not normalized:
         return ""
 
-    if (normalized.startswith("\"") and normalized.endswith("\"")) or (
+    if (normalized.startswith('"') and normalized.endswith('"')) or (
         normalized.startswith("'") and normalized.endswith("'")
     ):
         normalized = normalized[1:-1].strip()
@@ -276,7 +276,7 @@ def transform_cover_url(cover_url: str | None, cache_id: str) -> str | None:
         return cover_url
 
     # Skip if already a local URL (starts with /)
-    if cover_url.startswith('/'):
+    if cover_url.startswith("/"):
         return cover_url
 
     # Check if cover caching is enabled

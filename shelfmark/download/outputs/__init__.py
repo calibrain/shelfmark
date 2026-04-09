@@ -67,7 +67,6 @@ def _derive_output_mode(task: DownloadTask) -> str:
     Prefer the mode captured at queue time. Fall back to current config for
     legacy tasks that do not have `output_mode` populated.
     """
-
     mode = _normalize_output_mode(getattr(task, "output_mode", None))
     if mode:
         return mode

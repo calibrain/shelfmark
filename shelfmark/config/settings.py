@@ -75,7 +75,7 @@ logger = setup_logger(__name__)
 
 # Log bootstrap configuration values at DEBUG level
 logger.debug("Bootstrap configuration:")
-for key in ['CONFIG_DIR', 'LOG_DIR', 'TMP_DIR', 'INGEST_DIR', 'DEBUG', 'DOCKERMODE']:
+for key in ["CONFIG_DIR", "LOG_DIR", "TMP_DIR", "INGEST_DIR", "DEBUG", "DOCKERMODE"]:
     if hasattr(env, key):
         logger.debug(f"  {key}: {getattr(env, key)}")
 
@@ -347,7 +347,7 @@ def _clear_covers_cache(current_values: dict) -> dict:
         logger.exception("Failed to clear cover cache")
         return {
             "success": False,
-            "message": f"Failed to clear cache: {str(e)}",
+            "message": f"Failed to clear cache: {e!s}",
         }
     else:
         return {
@@ -373,7 +373,7 @@ def _clear_metadata_cache(current_values: dict) -> dict:
         logger.exception("Failed to clear metadata cache")
         return {
             "success": False,
-            "message": f"Failed to clear cache: {str(e)}",
+            "message": f"Failed to clear cache: {e!s}",
         }
 
 

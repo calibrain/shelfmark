@@ -57,6 +57,7 @@ def extract_torrent_info(
 
         Redirects to magnet links are handled explicitly so we can extract a
         hash from the magnet when available.
+
     """
     is_magnet = url.startswith("magnet:")
 
@@ -154,30 +155,30 @@ def parse_transmission_url(url: str) -> tuple[str, str, int, str]:
 
 def bencode_decode(data: bytes) -> tuple:
     """Decode bencoded data. Returns (value, remaining_bytes)."""
-    if data[0:1] == b'd':
+    if data[0:1] == b"d":
         # Dictionary
         result = {}
         data = data[1:]
-        while data[0:1] != b'e':
+        while data[0:1] != b"e":
             key, data = bencode_decode(data)
             value, data = bencode_decode(data)
             result[key] = value
         return result, data[1:]
-    if data[0:1] == b'l':
+    if data[0:1] == b"l":
         # List
         result = []
         data = data[1:]
-        while data[0:1] != b'e':
+        while data[0:1] != b"e":
             value, data = bencode_decode(data)
             result.append(value)
         return result, data[1:]
-    if data[0:1] == b'i':
+    if data[0:1] == b"i":
         # Integer
-        end = data.index(b'e')
+        end = data.index(b"e")
         return int(data[1:end]), data[end + 1:]
     if data[0:1].isdigit():
         # Byte string
-        colon = data.index(b':')
+        colon = data.index(b":")
         length = int(data[:colon])
         start = colon + 1
         return data[start:start + length], data[start + length:]
@@ -192,25 +193,25 @@ def bencode_encode(data) -> bytes:
     """Encode data to bencode format."""
     if isinstance(data, dict):
         # Keys must be sorted (bencode spec requirement)
-        result = b'd'
+        result = b"d"
         for key in sorted(data.keys()):
             result += bencode_encode(key)
             result += bencode_encode(data[key])
-        result += b'e'
+        result += b"e"
         return result
     if isinstance(data, list):
-        result = b'l'
+        result = b"l"
         for item in data:
             result += bencode_encode(item)
-        result += b'e'
+        result += b"e"
         return result
     if isinstance(data, int):
-        return f'i{data}e'.encode()
+        return f"i{data}e".encode()
     if isinstance(data, bytes):
-        return f'{len(data)}:'.encode() + data
+        return f"{len(data)}:".encode() + data
     if isinstance(data, str):
-        encoded = data.encode('utf-8')
-        return f'{len(encoded)}:'.encode() + encoded
+        encoded = data.encode("utf-8")
+        return f"{len(encoded)}:".encode() + encoded
     raise ValueError(
         f"Cannot bencode type {type(data).__name__}: "
         f"expected dict, list, int, bytes, or str. Value: {data!r}"
@@ -221,12 +222,12 @@ def extract_info_hash_from_torrent(torrent_data: bytes) -> str | None:
     """Extract info_hash from .torrent file data."""
     try:
         decoded, _ = bencode_decode(torrent_data)
-        if b'info' not in decoded:
+        if b"info" not in decoded:
             return None
 
-        info_bencoded = bencode_encode(decoded[b'info'])
-        info_dict = decoded[b'info']
-        if isinstance(info_dict, dict) and b'pieces' in info_dict:
+        info_bencoded = bencode_encode(decoded[b"info"])
+        info_dict = decoded[b"info"]
+        if isinstance(info_dict, dict) and b"pieces" in info_dict:
             return hashlib.sha1(info_bencoded).hexdigest().lower()
         return hashlib.sha256(info_bencoded).hexdigest().lower()
     except Exception as e:
@@ -284,11 +285,11 @@ def extract_hash_from_magnet(magnet_url: str) -> str | None:
             hash_value = match.group(1)
 
             # 40-char hex or 32-char hex (ED2K) - return as-is
-            if len(hash_value) == 40 or re.match(r'^[a-fA-F0-9]{32}$', hash_value):
+            if len(hash_value) == 40 or re.match(r"^[a-fA-F0-9]{32}$", hash_value):
                 return hash_value.lower()
 
             # 32-char base32 - decode to hex
-            if re.match(r'^[A-Z2-7]{32}$', hash_value.upper()):
+            if re.match(r"^[A-Z2-7]{32}$", hash_value.upper()):
                 try:
                     return base64.b32decode(hash_value.upper()).hex().lower()
                 except Exception:

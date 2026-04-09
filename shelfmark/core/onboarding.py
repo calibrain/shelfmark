@@ -1,5 +1,4 @@
-"""
-Onboarding wizard configuration.
+"""Onboarding wizard configuration.
 
 Defines the steps and fields for the first-run onboarding experience.
 Reuses field definitions from the settings registry where possible.
@@ -63,8 +62,7 @@ def mark_onboarding_complete() -> bool:
 
 
 def _get_field_from_tab(tab_name: str, field_key: str) -> SettingsField | None:
-    """
-    Extract a specific field from a registered settings tab.
+    """Extract a specific field from a registered settings tab.
 
     Args:
         tab_name: Name of the settings tab (e.g., 'search_mode', 'hardcover')
@@ -72,6 +70,7 @@ def _get_field_from_tab(tab_name: str, field_key: str) -> SettingsField | None:
 
     Returns:
         The field if found, None otherwise
+
     """
     tab = get_settings_tab(tab_name)
     if not tab:
@@ -79,7 +78,7 @@ def _get_field_from_tab(tab_name: str, field_key: str) -> SettingsField | None:
         return None
 
     for field in tab.fields:
-        if hasattr(field, 'key') and field.key == field_key:
+        if hasattr(field, "key") and field.key == field_key:
             return field
 
     logger.warning(f"Field {field_key} not found in tab {tab_name}")
@@ -87,8 +86,7 @@ def _get_field_from_tab(tab_name: str, field_key: str) -> SettingsField | None:
 
 
 def _clone_field_with_overrides(field: SettingsField, **overrides) -> SettingsField:
-    """
-    Clone a field with optional attribute overrides.
+    """Clone a field with optional attribute overrides.
 
     Useful for customizing labels, descriptions, or defaults for onboarding context.
     """
@@ -317,8 +315,7 @@ ONBOARDING_STEPS = [
 
 
 def get_onboarding_config() -> dict[str, Any]:
-    """
-    Get the full onboarding configuration including steps and current values.
+    """Get the full onboarding configuration including steps and current values.
     """
     steps = []
     all_values = {}
@@ -334,9 +331,9 @@ def get_onboarding_config() -> dict[str, Any]:
             serialized_fields.append(serialized)
 
             # Collect values (skip HeadingFields)
-            if hasattr(field, 'key') and field.key and not isinstance(field, HeadingField):
+            if hasattr(field, "key") and field.key and not isinstance(field, HeadingField):
                 value = get_setting_value(field, tab_name)
-                all_values[field.key] = value if value is not None else getattr(field, 'default', '')
+                all_values[field.key] = value if value is not None else getattr(field, "default", "")
 
         step = {
             "id": step_config["id"],
@@ -360,14 +357,14 @@ def get_onboarding_config() -> dict[str, Any]:
 
 
 def save_onboarding_settings(values: dict[str, Any]) -> dict[str, Any]:
-    """
-    Save onboarding settings and mark as complete.
+    """Save onboarding settings and mark as complete.
 
     Args:
         values: Dict of field key -> value
 
     Returns:
         Dict with success status and message
+
     """
     try:
         # Group values by their target tab

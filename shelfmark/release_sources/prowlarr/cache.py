@@ -1,5 +1,4 @@
-"""
-Prowlarr release cache.
+"""Prowlarr release cache.
 
 Stores search results so the handler can look up releases by source_id.
 This keeps all Prowlarr-specific data within the plugin.
@@ -21,26 +20,26 @@ _cache_lock = Lock()
 
 
 def cache_release(source_id: str, release_data: dict) -> None:
-    """
-    Cache a release by its source_id.
+    """Cache a release by its source_id.
 
     Args:
         source_id: The unique identifier for this release (GUID)
         release_data: The full Prowlarr API result dict
+
     """
     with _cache_lock:
         _cache[source_id] = (release_data, time.time())
 
 
 def get_release(source_id: str) -> dict | None:
-    """
-    Get a cached release by source_id.
+    """Get a cached release by source_id.
 
     Args:
         source_id: The unique identifier for the release
 
     Returns:
         The cached release dict, or None if not found or expired
+
     """
     with _cache_lock:
         if source_id not in _cache:
@@ -60,11 +59,11 @@ def get_release(source_id: str) -> dict | None:
 
 
 def remove_release(source_id: str) -> None:
-    """
-    Remove a release from the cache (e.g., after successful download).
+    """Remove a release from the cache (e.g., after successful download).
 
     Args:
         source_id: The unique identifier for the release
+
     """
     with _cache_lock:
         if source_id in _cache:
@@ -73,11 +72,11 @@ def remove_release(source_id: str) -> None:
 
 
 def cleanup_expired() -> int:
-    """
-    Remove all expired entries from the cache.
+    """Remove all expired entries from the cache.
 
     Returns:
         Number of entries removed
+
     """
     current_time = time.time()
     removed = 0
@@ -99,11 +98,11 @@ def cleanup_expired() -> int:
 
 
 def get_cache_stats() -> dict:
-    """
-    Get cache statistics for debugging.
+    """Get cache statistics for debugging.
 
     Returns:
         Dict with cache stats
+
     """
     with _cache_lock:
         return {

@@ -391,7 +391,7 @@ def _test_googlebooks_connection(current_values: dict[str, Any] = None) -> dict[
             }
     except Exception as e:
         logger.exception("Google Books connection test failed")
-        return {"success": False, "message": f"Connection failed: {str(e)}"}
+        return {"success": False, "message": f"Connection failed: {e!s}"}
     return test_result
 
 

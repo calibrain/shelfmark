@@ -29,7 +29,6 @@ def resolve_custom_script_target(target_path: Path, destination: Path, path_mode
     target is not within the destination, fall back to just the filename to
     avoid leaking unrelated absolute paths.
     """
-
     mode = (path_mode or "absolute").strip().lower()
     if mode != "relative":
         return target_path
@@ -243,7 +242,6 @@ def maybe_run_custom_script(
     This function is responsible for choosing the script target, building the
     optional JSON payload, and executing the script.
     """
-
     script_path = getattr(core_config.config, "CUSTOM_SCRIPT", None)
     if not isinstance(script_path, str) or not script_path.strip():
         return True

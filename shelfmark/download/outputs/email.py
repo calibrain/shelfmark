@@ -189,7 +189,6 @@ def _create_tls_context(allow_unverified: bool) -> ssl.SSLContext:
 
 def test_smtp_connection(smtp_config: EmailSmtpConfig) -> None:
     """Connect and (optionally) authenticate to the SMTP server. Does not send mail."""
-
     smtp: smtplib.SMTP | None = None
     try:
         if smtp_config.security == SECURITY_SSL:

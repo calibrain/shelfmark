@@ -80,7 +80,7 @@ class ProwlarrClient:
                 return False, "Invalid API key"
             return False, f"HTTP error {status}"
         except Exception as e:
-            return False, f"Connection failed: {str(e)}"
+            return False, f"Connection failed: {e!s}"
         else:
             logger.info(f"Prowlarr connection successful: version {version}")
             return True, f"Connected to Prowlarr {version}"
@@ -94,8 +94,7 @@ class ProwlarrClient:
             return []
 
     def get_enabled_indexers_detailed(self) -> list[dict[str, Any]]:
-        """
-        Get enabled indexers, including implementation metadata.
+        """Get enabled indexers, including implementation metadata.
 
         Note: Prowlarr indexer "name" is user-configurable; prefer
         "implementation"/"implementationName" for stable identification.
@@ -104,11 +103,11 @@ class ProwlarrClient:
         return [idx for idx in indexers if idx.get("enable", False)]
 
     def get_enriched_indexer_ids(self, *, restrict_to: list[int] | None = None) -> list[int]:
-        """
-        Return enabled indexer IDs that benefit from extra Torznab handling.
+        """Return enabled indexer IDs that benefit from extra Torznab handling.
 
         Args:
             restrict_to: Optional list of candidate indexer IDs to consider.
+
         """
         enriched_ids: list[int] = []
 
@@ -163,8 +162,7 @@ class ProwlarrClient:
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
-        """
-        Search a specific indexer via Prowlarr's Torznab/Newznab endpoint.
+        """Search a specific indexer via Prowlarr's Torznab/Newznab endpoint.
 
         This returns richer fields (e.g., author/booktitle, torznab tags like
         FreeLeech) than the JSON /api/v1/search endpoint.

@@ -41,16 +41,15 @@ def _get_user_db_module():
 
 
 class Config:
-    """
-    Dynamic configuration singleton that provides live settings access.
+    """Dynamic configuration singleton that provides live settings access.
 
     Settings are resolved with priority: ENV var > config file > default.
     Values are cached for performance and can be refreshed when settings change.
     """
 
-    _instance: Optional['Config'] = None
+    _instance: Optional["Config"] = None
     _lock = Lock()
-    def __new__(cls) -> 'Config':
+    def __new__(cls) -> "Config":
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -86,11 +85,11 @@ class Config:
         # Ensure all settings modules are imported before loading
         # This handles cases where config is accessed before settings are registered
         try:
-            import shelfmark.config.notifications_settings  # noqa: F401 - notifications settings
-            import shelfmark.config.security  # noqa: F401 - security/auth settings
-            import shelfmark.config.settings  # noqa: F401 - main app settings
-            import shelfmark.config.users_settings  # noqa: F401 - users/request settings
-            import shelfmark.metadata_providers  # noqa: F401 - plugin settings
+            import shelfmark.config.notifications_settings
+            import shelfmark.config.security
+            import shelfmark.config.settings
+            import shelfmark.config.users_settings
+            import shelfmark.metadata_providers
             import shelfmark.release_sources  # noqa: F401 - plugin settings
         except ImportError:
             pass
@@ -99,7 +98,7 @@ class Config:
 
         # On first load, sync ENV values to config files
         # This ensures ENV values persist even if ENV vars are later removed
-        if not hasattr(self, '_env_synced'):
+        if not hasattr(self, "_env_synced"):
             registry.sync_env_to_config()
             self._env_synced = True
 
@@ -114,8 +113,7 @@ class Config:
         self._loaded = True
 
     def refresh(self, force: bool = False) -> None:
-        """
-        Refresh all cached settings from config files.
+        """Refresh all cached settings from config files.
 
         Call this after settings are updated via the UI to ensure
         the config singleton reflects the new values.
@@ -186,8 +184,7 @@ class Config:
         return user_settings.get(key)
 
     def get(self, key: str, default: Any = None, user_id: int | None = None) -> Any:
-        """
-        Get a setting value by key.
+        """Get a setting value by key.
 
         Args:
             key: The setting key (e.g., 'MAX_RETRY')
@@ -196,6 +193,7 @@ class Config:
 
         Returns:
             The setting value, or default if not found
+
         """
         self._ensure_loaded()
 
@@ -216,13 +214,12 @@ class Config:
         return self._cache.get(key, default)
 
     def __getattr__(self, name: str) -> Any:
-        """
-        Allow attribute-style access to settings.
+        """Allow attribute-style access to settings.
 
         Example: config.MAX_RETRY instead of config.get('MAX_RETRY')
         """
         # Avoid recursion for internal attributes
-        if name.startswith('_'):
+        if name.startswith("_"):
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
         self._ensure_loaded()
@@ -239,14 +236,14 @@ class Config:
         raise AttributeError(f"Setting '{name}' not found in config or env")
 
     def is_from_env(self, key: str) -> bool:
-        """
-        Check if a setting's value comes from an environment variable.
+        """Check if a setting's value comes from an environment variable.
 
         Args:
             key: The setting key
 
         Returns:
             True if the value is set via ENV var, False otherwise
+
         """
         self._ensure_loaded()
 
@@ -258,11 +255,11 @@ class Config:
         return registry.is_value_from_env(field)
 
     def get_all(self) -> dict[str, Any]:
-        """
-        Get all cached settings as a dictionary.
+        """Get all cached settings as a dictionary.
 
         Returns:
             Dict of all setting keys to their current values
+
         """
         self._ensure_loaded()
         return dict(self._cache)
