@@ -294,6 +294,7 @@ def _post_process_booklore(
     task: DownloadTask,
     cancel_flag: Event,
     status_callback,
+    *,
     preserve_source_on_failure: bool = False,
 ) -> str | None:
     from shelfmark.download.postprocess.pipeline import (  # noqa: PLC0415
@@ -475,6 +476,7 @@ def process_booklore_output(
     task: DownloadTask,
     cancel_flag: Event,
     status_callback,
+    *,
     preserve_source_on_failure: bool = False,
 ) -> str | None:
     return _post_process_booklore(

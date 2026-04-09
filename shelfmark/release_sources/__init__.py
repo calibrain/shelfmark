@@ -339,6 +339,7 @@ class ReleaseSource(ABC):
         self,
         book: BookMetadata,
         plan: "ReleaseSearchPlan",
+        *,
         expand_search: bool = False,
         content_type: str = "ebook",
     ) -> list[Release]:
@@ -392,7 +393,7 @@ class DownloadHandler(ABC):
     ) -> str | None:
         """Execute download and return a path to the downloaded payload."""
 
-    def post_process_cleanup(self, task: DownloadTask, success: bool) -> None:
+    def post_process_cleanup(self, task: DownloadTask, *, success: bool) -> None:
         """Optional hook called after orchestrator post-processing.
 
         This is primarily used for external download clients, where the handler may need

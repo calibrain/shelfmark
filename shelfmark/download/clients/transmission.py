@@ -300,7 +300,7 @@ class TransmissionClient(DownloadClient):
         except Exception as e:  # noqa: BLE001
             return DownloadStatus.error(self._log_error("get_status", e))
 
-    def remove(self, download_id: str, delete_files: bool = False) -> bool:
+    def remove(self, download_id: str, *, delete_files: bool = False) -> bool:
         """Remove a torrent from Transmission.
 
         Args:

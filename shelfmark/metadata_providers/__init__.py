@@ -432,6 +432,7 @@ class MetadataProvider(ABC):
         self,
         book_id: str,
         target: str,
+        *,
         selected: bool,
     ) -> dict[str, Any]:
         """Set whether a book belongs to a provider-managed list or shelf.
@@ -562,6 +563,7 @@ def get_configured_provider(
 def get_configured_provider_name(
     content_type: str = "ebook",
     user_id: int | None = None,
+    *,
     fallback_to_main: bool = True,
 ) -> str:
     """Get the configured metadata provider name for a content type."""

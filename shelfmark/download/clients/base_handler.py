@@ -132,7 +132,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         audiobook_key = audiobook_keys.get(client.name)
         return config.get(audiobook_key, "") or None if audiobook_key else None
 
-    def post_process_cleanup(self, task: DownloadTask, success: bool) -> None:
+    def post_process_cleanup(self, task: DownloadTask, *, success: bool) -> None:
         if not success:
             self._cleanup_refs.pop(task.task_id, None)
             return

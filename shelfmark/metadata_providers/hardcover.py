@@ -1344,6 +1344,7 @@ class HardcoverProvider(MetadataProvider):
     def _fetch_series_ordered_rows(
         self,
         series_id: int,
+        *,
         exclude_compilations: bool,
         exclude_unreleased: bool,
     ) -> dict[str, Any]:
@@ -1415,11 +1416,16 @@ class HardcoverProvider(MetadataProvider):
         series_id: int,
         page: int,
         limit: int,
+        *,
         exclude_compilations: bool,
         exclude_unreleased: bool,
     ) -> SearchResult:
         """Fetch books for a Hardcover series in canonical series order."""
-        cached = self._fetch_series_ordered_rows(series_id, exclude_compilations, exclude_unreleased)
+        cached = self._fetch_series_ordered_rows(
+            series_id,
+            exclude_compilations=exclude_compilations,
+            exclude_unreleased=exclude_unreleased,
+        )
         ordered_rows = cached["rows"]
         series_name = cached["series_name"]
         total_found = cached["total"]
@@ -1650,7 +1656,7 @@ class HardcoverProvider(MetadataProvider):
 
         return options
 
-    def set_book_target_state(self, book_id: str, target: str, selected: bool) -> dict[str, Any]:
+    def set_book_target_state(self, book_id: str, target: str, *, selected: bool) -> dict[str, Any]:
         """Set whether a Hardcover book belongs to a status shelf or user list."""
         if not self.api_key:
             raise ValueError("Hardcover is not configured")
@@ -1674,7 +1680,12 @@ class HardcoverProvider(MetadataProvider):
         if selected_target.startswith(HARDCOVER_STATUS_PREFIX):
             status_id = self._parse_prefixed_int(selected_target, "status target")
             previous_status_id = state.status_id
-            changed = self._set_status_target_state(book_id_int, status_id, selected, state)
+            changed = self._set_status_target_state(
+                book_id_int,
+                status_id,
+                selected=selected,
+                state=state,
+            )
             if changed:
                 if previous_status_id is not None:
                     status_ids_to_invalidate.add(previous_status_id)
@@ -1683,7 +1694,12 @@ class HardcoverProvider(MetadataProvider):
                 status_ids_to_invalidate.add(status_id)
         elif selected_target.startswith(HARDCOVER_LIST_ID_PREFIX):
             list_id = self._parse_prefixed_int(selected_target, "list target")
-            changed = self._set_list_target_state(book_id_int, list_id, selected, state)
+            changed = self._set_list_target_state(
+                book_id_int,
+                list_id,
+                selected=selected,
+                state=state,
+            )
             if changed:
                 list_ids_to_invalidate.add(list_id)
         else:
@@ -1869,6 +1885,7 @@ class HardcoverProvider(MetadataProvider):
         self,
         book_id: int,
         status_id: int,
+        *,
         selected: bool,
         state: HardcoverBookTargetState,
     ) -> bool:
@@ -1909,6 +1926,7 @@ class HardcoverProvider(MetadataProvider):
         self,
         book_id: int,
         list_id: int,
+        *,
         selected: bool,
         state: HardcoverBookTargetState,
     ) -> bool:

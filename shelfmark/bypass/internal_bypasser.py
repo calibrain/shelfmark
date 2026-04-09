@@ -141,7 +141,7 @@ def _get_base_domain(domain: str) -> str:
     return ".".join(domain.split(".")[-2:]) if "." in domain else domain
 
 
-def _should_extract_cookie(name: str, extract_all: bool) -> bool:
+def _should_extract_cookie(name: str, *, extract_all: bool) -> bool:
     """Determine if a cookie should be extracted based on its name."""
     if extract_all:
         return True
@@ -168,7 +168,7 @@ def _store_extracted_cookies(
     cookies_found: dict[str, dict[str, Any]] = {}
     for cookie in cookies:
         name = getattr(cookie, "name", "") or ""
-        if not _should_extract_cookie(name, extract_all):
+        if not _should_extract_cookie(name, extract_all=extract_all):
             continue
         expires = getattr(cookie, "expires", None)
         if expires is not None and expires <= 0:
@@ -371,7 +371,7 @@ async def _detect_challenge_type(page) -> str:
 
         return "none"
 
-async def _is_bypassed(page, escape_emojis: bool = True) -> bool:
+async def _is_bypassed(page, *, escape_emojis: bool = True) -> bool:
     """Check if the protection has been bypassed."""
     try:
         title, body, current_url = await _get_page_info(page)

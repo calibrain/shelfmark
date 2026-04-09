@@ -317,7 +317,7 @@ class DownloadClient(ABC):
         """
 
     @abstractmethod
-    def remove(self, download_id: str, delete_files: bool = False) -> bool:
+    def remove(self, download_id: str, *, delete_files: bool = False) -> bool:
         """Remove a download from the client.
 
         Args:

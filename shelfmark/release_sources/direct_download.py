@@ -238,7 +238,7 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
     return books
 
 
-def get_book_info(book_id: str, fetch_download_count: bool = True) -> BrowseRecord:
+def get_book_info(book_id: str, *, fetch_download_count: bool = True) -> BrowseRecord:
     """Get detailed information for a specific book.
 
     Args:
@@ -259,7 +259,7 @@ def get_book_info(book_id: str, fetch_download_count: bool = True) -> BrowseReco
 
     soup = BeautifulSoup(html, "html.parser")
 
-    return _parse_book_info_page(soup, book_id, fetch_download_count)
+    return _parse_book_info_page(soup, book_id, fetch_download_count=fetch_download_count)
 
 
 def _parse_search_result_row(row: Tag) -> BrowseRecord | None:
@@ -289,7 +289,12 @@ def _parse_search_result_row(row: Tag) -> BrowseRecord | None:
         return None
 
 
-def _parse_book_info_page(soup: BeautifulSoup, book_id: str, fetch_download_count: bool = True) -> BrowseRecord:
+def _parse_book_info_page(
+    soup: BeautifulSoup,
+    book_id: str,
+    *,
+    fetch_download_count: bool = True,
+) -> BrowseRecord:
     """Parse the book info page HTML into a browse record."""
     data = soup.select_one("body > main > div:nth-of-type(1)")
 
@@ -426,7 +431,7 @@ def _parse_book_info_page(soup: BeautifulSoup, book_id: str, fetch_download_coun
     return book_info
 
 
-def _find_in_divs(divs: list, text: str, is_class: bool = False) -> list[str]:
+def _find_in_divs(divs: list, text: str, *, is_class: bool = False) -> list[str]:
     """Find divs containing text or having a specific class."""
     results = []
     for div in divs:
@@ -1189,6 +1194,7 @@ class DirectDownloadSource(ReleaseSource):
         self,
         book: BookMetadata,
         plan: "ReleaseSearchPlan",  # noqa: F821
+        *,
         expand_search: bool = False,
         content_type: str = "ebook"
     ) -> list[Release]:

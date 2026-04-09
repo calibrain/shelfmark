@@ -136,6 +136,7 @@ def _max_attempts_for_batch(file_count: int, default: int = 100) -> int:
 def _transfer_single_file(
     source_path: Path,
     dest_path: Path,
+    *,
     use_hardlink: bool,
     is_torrent: bool,
     preserve_source: bool = False,
@@ -163,6 +164,7 @@ def transfer_book_files(
     book_files: list[Path],
     destination: Path,
     task: DownloadTask,
+    *,
     use_hardlink: bool,
     is_torrent: bool,
     preserve_source: bool = False,
@@ -172,14 +174,16 @@ def transfer_book_files(
         return [], "No book files found", {"hardlink": 0, "copy": 0, "move": 0}
 
     is_audiobook = check_audiobook(task.content_type)
-    organization_mode = organization_mode or get_file_organization(is_audiobook)
+    organization_mode = organization_mode or get_file_organization(
+        is_audiobook=is_audiobook
+    )
     max_attempts = _max_attempts_for_batch(len(book_files))
 
     final_paths: list[Path] = []
     op_counts: dict[str, int] = {"hardlink": 0, "copy": 0, "move": 0}
 
     if organization_mode == "organize":
-        template = get_template(is_audiobook, "organize")
+        template = get_template(is_audiobook=is_audiobook, organization_mode="organize")
 
         if len(book_files) == 1:
             source_file = book_files[0]
@@ -197,8 +201,8 @@ def transfer_book_files(
             final_path, op = _transfer_single_file(
                 source_file,
                 dest_path,
-                use_hardlink,
-                is_torrent,
+                use_hardlink=use_hardlink,
+                is_torrent=is_torrent,
                 preserve_source=preserve_source,
                 max_attempts=max_attempts,
             )
@@ -226,8 +230,8 @@ def transfer_book_files(
                 final_path, op = _transfer_single_file(
                     source_file,
                     dest_path,
-                    use_hardlink,
-                    is_torrent,
+                    use_hardlink=use_hardlink,
+                    is_torrent=is_torrent,
                     preserve_source=preserve_source,
                     max_attempts=max_attempts,
                 )
@@ -242,7 +246,7 @@ def transfer_book_files(
             if not task.format:
                 task.format = book_file.suffix.lower().lstrip(".")
 
-            template = get_template(is_audiobook, "rename")
+            template = get_template(is_audiobook=is_audiobook, organization_mode="rename")
             metadata = build_file_metadata(task, book_file)
             extension = book_file.suffix.lstrip(".") or task.format or ""
 
@@ -261,8 +265,8 @@ def transfer_book_files(
         final_path, op = _transfer_single_file(
             book_file,
             dest_path,
-            use_hardlink,
-            is_torrent,
+            use_hardlink=use_hardlink,
+            is_torrent=is_torrent,
             preserve_source=preserve_source,
             max_attempts=max_attempts,
         )
@@ -277,6 +281,7 @@ def process_directory(
     directory: Path,
     ingest_dir: Path,
     task: DownloadTask,
+    *,
     allow_archive_extraction: bool = True,
     use_hardlink: bool | None = None,
 ) -> tuple[list[Path], str | None]:
@@ -338,6 +343,7 @@ def transfer_file_to_library(
     task: DownloadTask,
     temp_file: Path | None,
     status_callback,
+    *,
     use_hardlink: bool,
 ) -> str | None:
     extension = source_path.suffix.lstrip(".") or task.format
@@ -352,8 +358,8 @@ def transfer_file_to_library(
     final_path, op = _transfer_single_file(
         source_path,
         dest_path,
-        use_hardlink,
-        is_torrent,
+        use_hardlink=use_hardlink,
+        is_torrent=is_torrent,
         max_attempts=_max_attempts_for_batch(1),
     )
     logger.info("Library %s: %s", op, final_path)
@@ -379,6 +385,7 @@ def transfer_directory_to_library(
     task: DownloadTask,
     temp_file: Path | None,
     status_callback,
+    *,
     use_hardlink: bool,
 ) -> str | None:
     content_type = task.content_type.lower() if task.content_type else None
@@ -418,8 +425,8 @@ def transfer_directory_to_library(
         final_path, op = _transfer_single_file(
             source_file,
             dest_path,
-            use_hardlink,
-            is_torrent,
+            use_hardlink=use_hardlink,
+            is_torrent=is_torrent,
             max_attempts=max_attempts,
         )
         logger.debug("Library %s: %s -> %s", op, source_file.name, final_path)
@@ -440,8 +447,8 @@ def transfer_directory_to_library(
             final_path, op = _transfer_single_file(
                 source_file,
                 file_path,
-                use_hardlink,
-                is_torrent,
+                use_hardlink=use_hardlink,
+                is_torrent=is_torrent,
                 max_attempts=max_attempts,
             )
             logger.debug("Library %s: %s -> %s", op, source_file.name, final_path)

@@ -48,7 +48,7 @@ def load_users_request_policy_settings() -> dict[str, Any]:
     return {key: app_config.get(key) for key in REQUEST_POLICY_KEYS}
 
 
-def coerce_bool(value: object, default: bool = False) -> bool:
+def coerce_bool(value: object, *, default: bool = False) -> bool:
     """Coerce arbitrary values into booleans with string-friendly semantics."""
     if isinstance(value, bool):
         return value

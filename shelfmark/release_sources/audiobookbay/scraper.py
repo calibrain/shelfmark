@@ -65,7 +65,7 @@ def _is_homepage_redirect(final_url: str, hostname: str) -> bool:
     return normalized_final in {normalized_home, f"{normalized_home}/"}
 
 
-def _encode_search_query(query: str, exact_phrase: bool) -> str:
+def _encode_search_query(query: str, *, exact_phrase: bool) -> str:
     """Encode search query using ABB's space-plus style and optional exact phrase wrapping."""
     search_query = query.strip()
     if exact_phrase and search_query and not (search_query.startswith('"') and search_query.endswith('"')):
@@ -109,6 +109,7 @@ def search_audiobookbay(
     query: str,
     max_pages: int = 1,
     hostname: str = "audiobookbay.lu",
+    *,
     exact_phrase: bool = False,
 ) -> list[dict[str, str]]:
     """Search AudiobookBay for audiobooks matching the query.
@@ -135,7 +136,7 @@ def search_audiobookbay(
     for page in range(1, max_pages + 1):
         # Construct URL - use + for spaces (matching audiobookbay-automated implementation)
         # This avoids aggressive encoding that PHP-based sites may reject.
-        query_encoded = _encode_search_query(query, exact_phrase)
+        query_encoded = _encode_search_query(query, exact_phrase=exact_phrase)
         # ABB search expects the legacy category query parameter.
         primary_url = _build_search_url(
             hostname,

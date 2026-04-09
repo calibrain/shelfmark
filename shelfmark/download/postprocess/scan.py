@@ -52,6 +52,7 @@ def extract_archive_files(
     archive_path: Path,
     output_dir: Path,
     task: DownloadTask,
+    *,
     cleanup_archive: bool,
 ) -> tuple[list[Path], list[Path], list[Path], str | None]:
     content_type = task.content_type
@@ -185,6 +186,7 @@ def scan_directory_tree(
 def collect_directory_files(
     directory: Path,
     task: DownloadTask,
+    *,
     allow_archive_extraction: bool,
     status_callback=None,
     cleanup_archives: bool = False,
@@ -277,6 +279,7 @@ def collect_directory_files(
 def collect_staged_files(
     working_path: Path,
     task: DownloadTask,
+    *,
     allow_archive_extraction: bool,
     status_callback,
     cleanup_archives: bool,

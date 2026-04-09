@@ -176,7 +176,7 @@ def compose_email_message(
     return message
 
 
-def _create_tls_context(allow_unverified: bool) -> ssl.SSLContext:
+def _create_tls_context(*, allow_unverified: bool) -> ssl.SSLContext:
     context = ssl.create_default_context()
     if allow_unverified:
         context.check_hostname = False
@@ -189,7 +189,9 @@ def test_smtp_connection(smtp_config: EmailSmtpConfig) -> None:
     smtp: smtplib.SMTP | None = None
     try:
         if smtp_config.security == SECURITY_SSL:
-            context = _create_tls_context(smtp_config.allow_unverified_tls)
+            context = _create_tls_context(
+                allow_unverified=smtp_config.allow_unverified_tls
+            )
             smtp = smtplib.SMTP_SSL(
                 smtp_config.host,
                 smtp_config.port,
@@ -202,7 +204,9 @@ def test_smtp_connection(smtp_config: EmailSmtpConfig) -> None:
         smtp.ehlo()
 
         if smtp_config.security == SECURITY_STARTTLS:
-            context = _create_tls_context(smtp_config.allow_unverified_tls)
+            context = _create_tls_context(
+                allow_unverified=smtp_config.allow_unverified_tls
+            )
             smtp.starttls(context=context)
             smtp.ehlo()
 
@@ -224,7 +228,9 @@ def send_email_message(smtp_config: EmailSmtpConfig, message: EmailMessage) -> N
     smtp: smtplib.SMTP | None = None
     try:
         if smtp_config.security == SECURITY_SSL:
-            context = _create_tls_context(smtp_config.allow_unverified_tls)
+            context = _create_tls_context(
+                allow_unverified=smtp_config.allow_unverified_tls
+            )
             smtp = smtplib.SMTP_SSL(
                 smtp_config.host,
                 smtp_config.port,
@@ -237,7 +243,9 @@ def send_email_message(smtp_config: EmailSmtpConfig, message: EmailMessage) -> N
         smtp.ehlo()
 
         if smtp_config.security == SECURITY_STARTTLS:
-            context = _create_tls_context(smtp_config.allow_unverified_tls)
+            context = _create_tls_context(
+                allow_unverified=smtp_config.allow_unverified_tls
+            )
             smtp.starttls(context=context)
             smtp.ehlo()
 
@@ -266,6 +274,7 @@ def _post_process_email(
     task: DownloadTask,
     cancel_flag: Event,
     status_callback,
+    *,
     preserve_source_on_failure: bool = False,
 ) -> str | None:
     from shelfmark.download.postprocess.pipeline import (
@@ -433,6 +442,7 @@ def process_email_output(
     task: DownloadTask,
     cancel_flag: Event,
     status_callback,
+    *,
     preserve_source_on_failure: bool = False,
 ) -> str | None:
     return _post_process_email(

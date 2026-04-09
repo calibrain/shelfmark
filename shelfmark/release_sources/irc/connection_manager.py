@@ -96,6 +96,7 @@ class IRCConnectionManager:
         server: str,
         port: int,
         nick: str,
+        *,
         use_tls: bool,
         channel: str,
     ) -> IRCClient:
@@ -162,7 +163,13 @@ class IRCConnectionManager:
         # If another thread is connecting, wait and retry
         if not need_new_connection:
             time.sleep(0.5)
-            return self.get_connection(server, port, nick, use_tls, channel)
+            return self.get_connection(
+                server=server,
+                port=port,
+                nick=nick,
+                use_tls=use_tls,
+                channel=channel,
+            )
 
         # Create new connection OUTSIDE the lock to avoid blocking other threads
         try:

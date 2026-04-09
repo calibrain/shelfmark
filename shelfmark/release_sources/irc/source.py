@@ -128,6 +128,7 @@ class IRCReleaseSource(ReleaseSource):
         self,
         book: BookMetadata,
         plan: "ReleaseSearchPlan",
+        *,
         expand_search: bool = False,
         content_type: str = "ebook",
     ) -> list[Release]:

@@ -543,7 +543,13 @@ def create_custom_getaddrinfo(
         host_str = _decode_host(host)
         port_int = _decode_port(port)
 
-        def _log_results(source: str, provider_label: str, res: Sequence[tuple[AddressFamily, SocketKind, int, str, tuple[Any, ...]]], is_bypass: bool = False) -> None:
+        def _log_results(
+            source: str,
+            provider_label: str,
+            res: Sequence[tuple[AddressFamily, SocketKind, int, str, tuple[Any, ...]]],
+            *,
+            is_bypass: bool = False,
+        ) -> None:
             """Emit a unified resolver log with the IPs returned.
             
             Args:
@@ -810,7 +816,7 @@ def rotate_dns_and_reset_aa() -> bool:
         _save_state(aa_url=_aa_base_url)
     return True
 
-def set_dns_provider(provider: str, manual_servers: list[str] | None = None, use_doh: bool | None = None) -> bool:
+def set_dns_provider(provider: str, manual_servers: list[str] | None = None, *, use_doh: bool | None = None) -> bool:
     """Set DNS to a specific provider or manual servers.
 
     Args:
@@ -1014,7 +1020,7 @@ def _initialize_aa_state() -> None:
 
     logger.info("AA_BASE_URL: %s", _aa_base_url)
 
-def init_dns(force: bool = False) -> None:
+def init_dns(*, force: bool = False) -> None:
     """Initialize DNS state and resolvers using set_dns_provider() for consistency."""
     global state, _dns_initialized, _current_dns_index
     if _dns_initialized and not force:
@@ -1048,7 +1054,7 @@ def init_dns(force: bool = False) -> None:
         # Only set flag AFTER work completes successfully.
         _dns_initialized = True
 
-def init_aa(force: bool = False) -> None:
+def init_aa(*, force: bool = False) -> None:
     """Initialize AA mirror selection."""
     global state, _aa_initialized
     if _aa_initialized and not force:
@@ -1063,7 +1069,7 @@ def init_aa(force: bool = False) -> None:
         # Only set flag AFTER work completes successfully.
         _aa_initialized = True
 
-def init(force: bool = False) -> None:
+def init(*, force: bool = False) -> None:
     """Initialize network state (DNS resolvers and AA mirror selection).
 
     Called lazily on first network operation. Safe to call repeatedly;
@@ -1125,7 +1131,7 @@ class AAMirrorSelector:
     def __init__(self) -> None:
         self._ensure_fresh_state(reset_attempts=True)
 
-    def _ensure_fresh_state(self, reset_attempts: bool = False) -> None:
+    def _ensure_fresh_state(self, *, reset_attempts: bool = False) -> None:
         _ensure_initialized()
         self.aa_urls = get_available_aa_urls()
         self._index = self._safe_index(get_aa_base_url())
@@ -1145,7 +1151,7 @@ class AAMirrorSelector:
                 return url.replace(base, self.current_base, 1)
         return url
 
-    def next_mirror_or_rotate_dns(self, allow_dns: bool = True) -> tuple[str | None, str]:
+    def next_mirror_or_rotate_dns(self, *, allow_dns: bool = True) -> tuple[str | None, str]:
         """Advance to next mirror; if exhausted and allowed, rotate DNS and reset to first.
         Returns (new_base, action) where action is 'mirror', 'dns', or 'exhausted'.
         """

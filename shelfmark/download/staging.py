@@ -49,7 +49,7 @@ def build_staging_dir(prefix: str | None, task_id: str) -> Path:
     return staging_dir
 
 
-def stage_file(source_path: Path, task_id: str, copy: bool = False) -> Path:
+def stage_file(source_path: Path, task_id: str, *, copy: bool = False) -> Path:
     """Stage a file for ingest processing. Use copy=True for torrents to preserve seeding."""
     staging_dir = get_staging_dir()
     return stage_path(source_path, staging_dir, STAGE_COPY if copy else STAGE_MOVE)

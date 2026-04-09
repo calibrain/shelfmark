@@ -49,6 +49,7 @@ def extract_user_info(id_token: dict[str, Any]) -> dict[str, Any]:
 def provision_oidc_user(
     db: UserDB,
     user_info: dict[str, Any],
+    *,
     is_admin: bool | None = None,
     allow_email_link: bool = False,
     allow_create: bool = True,

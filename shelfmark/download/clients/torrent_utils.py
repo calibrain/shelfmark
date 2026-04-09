@@ -53,6 +53,7 @@ class TorrentInfo:
 
 def extract_torrent_info(
     url: str,
+    *,
     fetch_torrent: bool = True,
     expected_hash: str | None = None,
 ) -> TorrentInfo:

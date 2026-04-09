@@ -122,7 +122,7 @@ class Config:
 
         self._loaded = True
 
-    def refresh(self, force: bool = False) -> None:
+    def refresh(self, *, force: bool = False) -> None:
         """Refresh all cached settings from config files.
 
         Call this after settings are updated via the UI to ensure

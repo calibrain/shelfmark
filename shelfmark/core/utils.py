@@ -197,6 +197,7 @@ def _expand_user_destination_placeholder(
 
 
 def get_destination(
+    *,
     is_audiobook: bool = False,
     user_id: int | None = None,
     username: str | None = None,

@@ -217,7 +217,7 @@ def _system_op(op: str, source: Path, dest: Path) -> None:
     )
 
 
-def _perform_nfs_fallback(source: Path, dest: Path, is_move: bool) -> None:
+def _perform_nfs_fallback(source: Path, dest: Path, *, is_move: bool) -> None:
     """Handle NFS/SMB permission errors by falling back to copyfile -> system op."""
     expected_size = run_blocking_io(source.stat).st_size
 

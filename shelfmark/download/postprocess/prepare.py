@@ -48,6 +48,7 @@ def prepare_output_files(
     status_callback,
     destination: Path | None = None,
     output_plan: OutputPlan | None = None,
+    *,
     preserve_source_on_failure: bool = False,
 ) -> PreparedFiles | None:
     if output_plan is None:

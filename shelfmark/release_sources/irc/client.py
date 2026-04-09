@@ -71,6 +71,7 @@ class IRCClient:
         nick: str,
         server: str,
         port: int,
+        *,
         use_tls: bool = True,
         version: str = "Shelfmark 1.0",
     ):
@@ -188,7 +189,7 @@ class IRCClient:
             self._connected = False
             logger.info("Disconnected from IRC")
 
-    def join_channel(self, channel: str, wait_for_join: bool = True) -> None:
+    def join_channel(self, channel: str, *, wait_for_join: bool = True) -> None:
         """Join an IRC channel (without # prefix) and capture online servers."""
         self._send(f"JOIN #{channel}")
         logger.debug("Sent JOIN #%s", channel)
@@ -391,7 +392,7 @@ class IRCClient:
             self.send_notice(sender, f"\x01VERSION {self.version}\x01")
             logger.debug("Sent VERSION to %s", sender)
 
-    def read_messages(self, auto_handle: bool = True) -> Iterator[IRCMessage]:
+    def read_messages(self, *, auto_handle: bool = True) -> Iterator[IRCMessage]:
         """Read and yield IRC messages, optionally auto-handling PING/VERSION."""
         for line in self._recv_lines():
             msg = self._parse_message(line)
@@ -411,6 +412,7 @@ class IRCClient:
     def wait_for_dcc(
         self,
         timeout: float = 60.0,
+        *,
         result_type: bool = False,
     ) -> DCCOffer | None:
         """Wait for a DCC SEND offer. Returns None on timeout or no results."""

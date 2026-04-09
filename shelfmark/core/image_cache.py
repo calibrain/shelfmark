@@ -385,7 +385,7 @@ class ImageCacheService:
             self._save_index()
             return True
 
-    def put_negative(self, cache_id: str, transient: bool = False) -> None:
+    def put_negative(self, cache_id: str, *, transient: bool = False) -> None:
         """Store a negative cache entry (failed fetch).
 
         Args:

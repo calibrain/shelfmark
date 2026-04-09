@@ -80,7 +80,13 @@ class WebSocketManager:
             if room.startswith("user_"):
                 self._increment_user_room_locked(room)
 
-    def sync_user_room(self, sid: str, is_admin: bool, db_user_id: int | None = None):
+    def sync_user_room(
+        self,
+        sid: str,
+        *,
+        is_admin: bool,
+        db_user_id: int | None = None,
+    ):
         """Ensure a SID is in exactly one room matching the current session scope."""
         room: str | None = None
         if is_admin:
@@ -91,12 +97,22 @@ class WebSocketManager:
         with self._rooms_lock:
             self._set_sid_room_locked(sid, room)
 
-    def join_user_room(self, sid: str, is_admin: bool, db_user_id: int | None = None):
+    def join_user_room(
+        self,
+        sid: str,
+        *,
+        is_admin: bool,
+        db_user_id: int | None = None,
+    ):
         """Join the appropriate room based on user role."""
-        self.sync_user_room(sid, is_admin, db_user_id)
+        self.sync_user_room(sid, is_admin=is_admin, db_user_id=db_user_id)
 
     def leave_user_room(
-        self, sid: str, is_admin: bool = False, db_user_id: int | None = None
+        self,
+        sid: str,
+        *,
+        is_admin: bool = False,
+        db_user_id: int | None = None,
     ):
         """Leave whichever room the SID currently belongs to."""
         del is_admin, db_user_id  # Backward-compatible signature; routing is SID-based.

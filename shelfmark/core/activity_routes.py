@@ -145,8 +145,8 @@ def _require_authenticated(
 
 
 def _resolve_db_user_id(
-    require_in_auth_mode: bool = True,
     *,
+    require_in_auth_mode: bool = True,
     user_db: UserDB | None = None,
     action: str | None = None,
     auth_mode: str | None = None,

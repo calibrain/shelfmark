@@ -264,7 +264,7 @@ class RTorrentClient(DownloadClient):
             logger.exception("rTorrent get_status failed (%s)", error_type)
             return DownloadStatus.error(f"{error_type}: {e}")
 
-    def remove(self, download_id: str, delete_files: bool = False) -> bool:
+    def remove(self, download_id: str, *, delete_files: bool = False) -> bool:
         """Remove a torrent from rTorrent.
 
         Args:

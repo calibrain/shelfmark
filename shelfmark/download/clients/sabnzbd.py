@@ -463,7 +463,7 @@ class SABnzbdClient(DownloadClient):
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(
-        self, download_id: str, delete_files: bool = False, archive: bool = True
+        self, download_id: str, *, delete_files: bool = False, archive: bool = True
     ) -> bool:
         """Remove a download from SABnzbd.
 

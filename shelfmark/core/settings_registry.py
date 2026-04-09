@@ -902,7 +902,10 @@ def is_value_from_env(field: SettingsField) -> bool:
 
 
 def serialize_field(
-    field: SettingsField, tab_name: str, include_value: bool = True
+    field: SettingsField,
+    tab_name: str,
+    *,
+    include_value: bool = True,
 ) -> dict[str, Any]:
     """Serialize a field for API response.
 
@@ -1066,7 +1069,11 @@ def serialize_field(
     return result
 
 
-def serialize_tab(tab: SettingsTab, include_values: bool = True) -> dict[str, Any]:
+def serialize_tab(
+    tab: SettingsTab,
+    *,
+    include_values: bool = True,
+) -> dict[str, Any]:
     """Serialize a settings tab for API response."""
     return {
         "name": tab.name,
@@ -1074,7 +1081,9 @@ def serialize_tab(tab: SettingsTab, include_values: bool = True) -> dict[str, An
         "icon": tab.icon,
         "order": tab.order,
         "group": tab.group,
-        "fields": [serialize_field(f, tab.name, include_values) for f in tab.fields],
+        "fields": [
+            serialize_field(f, tab.name, include_value=include_values) for f in tab.fields
+        ],
     }
 
 
@@ -1093,12 +1102,12 @@ def get_all_groups() -> list[SettingsGroup]:
     return sorted(_GROUPS_REGISTRY.values(), key=lambda g: (g.order, g.name))
 
 
-def serialize_all_settings(include_values: bool = True) -> dict[str, Any]:
+def serialize_all_settings(*, include_values: bool = True) -> dict[str, Any]:
     """Serialize all settings for API response."""
     tabs = get_all_settings_tabs()
     groups = get_all_groups()
     return {
-        "tabs": [serialize_tab(t, include_values) for t in tabs],
+        "tabs": [serialize_tab(t, include_values=include_values) for t in tabs],
         "groups": [serialize_group(g) for g in groups],
     }
 

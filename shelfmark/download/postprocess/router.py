@@ -25,6 +25,7 @@ def post_process_download(
     task: DownloadTask,
     cancel_flag: Event,
     status_callback,
+    *,
     preserve_source_on_failure: bool = False,
 ) -> str | None:
     """Post-process download using the selected output handler."""
@@ -48,7 +49,7 @@ def post_process_download(
             task,
             cancel_flag,
             status_callback,
-            preserve_source_on_failure,
+            preserve_source_on_failure=preserve_source_on_failure,
         )
 
     from shelfmark.download.outputs.folder import process_folder_output  # noqa: PLC0415
@@ -59,5 +60,5 @@ def post_process_download(
         task,
         cancel_flag,
         status_callback,
-        preserve_source_on_failure,
+        preserve_source_on_failure=preserve_source_on_failure,
     )

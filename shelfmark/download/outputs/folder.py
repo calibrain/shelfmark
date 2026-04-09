@@ -51,7 +51,7 @@ def _build_processing_plan(
     from shelfmark.download.postprocess.policy import get_file_organization  # noqa: PLC0415
 
     is_audiobook = check_audiobook(task.content_type)
-    organization_mode = get_file_organization(is_audiobook)
+    organization_mode = get_file_organization(is_audiobook=is_audiobook)
     destination = get_final_destination(task)
 
     if not validate_destination(destination, status_callback):
@@ -87,6 +87,7 @@ def process_folder_output(
     task: DownloadTask,
     cancel_flag: Event,
     status_callback,
+    *,
     preserve_source_on_failure: bool = False,
 ) -> str | None:
     """Post-process download to the configured folder destination."""

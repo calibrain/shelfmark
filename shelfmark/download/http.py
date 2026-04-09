@@ -205,10 +205,11 @@ def _try_rotation(
 def html_get_page(
     url: str,
     retry: int | None = None,
-    use_bypasser: bool = False,
     selector: network.AAMirrorSelector | None = None,
     cancel_flag: Event | None = None,
     status_callback: Callable[[str, str | None], None] | None = None,
+    *,
+    use_bypasser: bool = False,
     allow_bypasser_fallback: bool = True,
     include_response_url: bool = False,
     success_delay: float = 1.0,
