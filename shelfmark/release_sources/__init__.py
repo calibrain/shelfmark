@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from threading import Event
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
@@ -326,7 +326,7 @@ class ReleaseSource(ABC):
 
     name: str  # "direct", "prowlarr"
     display_name: str  # "Direct Download", "Prowlarr"
-    supported_content_types: list[str] = [
+    supported_content_types: ClassVar[list[str]] = [
         "ebook",
         "audiobook",
     ]  # Content types this source supports

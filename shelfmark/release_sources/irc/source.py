@@ -6,7 +6,7 @@ Searches IRC channels for ebook and audiobook releases.
 import tempfile
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
@@ -71,7 +71,7 @@ class IRCReleaseSource(ReleaseSource):
 
     name = "irc"
     display_name = "IRC"
-    supported_content_types = ["ebook", "audiobook"]
+    supported_content_types: ClassVar[list[str]] = ["ebook", "audiobook"]
     can_be_default = (
         False  # Exclude from default source options (requires deliberate selection)
     )
@@ -280,7 +280,7 @@ class IRCReleaseSource(ReleaseSource):
         return " ".join(parts)
 
     # Format priority for sorting (lower = higher priority)
-    EBOOK_FORMAT_PRIORITY = {
+    EBOOK_FORMAT_PRIORITY: ClassVar[dict[str, int]] = {
         "epub": 0,
         "mobi": 1,
         "azw3": 2,
@@ -300,7 +300,7 @@ class IRCReleaseSource(ReleaseSource):
         "zip": 16,
     }
 
-    AUDIOBOOK_FORMAT_PRIORITY = {
+    AUDIOBOOK_FORMAT_PRIORITY: ClassVar[dict[str, int]] = {
         "m4b": 0,
         "mp3": 1,
         "m4a": 2,

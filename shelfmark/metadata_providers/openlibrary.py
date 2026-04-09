@@ -4,7 +4,7 @@ import re
 import threading
 import time
 from collections import deque
-from typing import Any
+from typing import Any, ClassVar
 
 import requests
 
@@ -106,12 +106,12 @@ class OpenLibraryProvider(MetadataProvider):
     name = "openlibrary"
     display_name = "Open Library"
     requires_auth = False
-    supported_sorts = [
+    supported_sorts: ClassVar[tuple[SortOrder, ...]] = (
         SortOrder.RELEVANCE,
         SortOrder.NEWEST,
         SortOrder.OLDEST,
-    ]
-    search_fields = [
+    )
+    search_fields: ClassVar[tuple[TextSearchField, ...]] = (
         TextSearchField(
             key="author",
             label="Author",
@@ -122,7 +122,7 @@ class OpenLibraryProvider(MetadataProvider):
             label="Title",
             description="Search by book title",
         ),
-    ]
+    )
 
     def __init__(self) -> None:
         """Initialize provider."""

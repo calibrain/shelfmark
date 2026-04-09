@@ -4,7 +4,7 @@ import re
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, ClassVar
 from urllib.parse import urlparse
 
 import requests
@@ -800,22 +800,22 @@ class HardcoverProvider(MetadataProvider):
     name = "hardcover"
     display_name = "Hardcover"
     requires_auth = True
-    supported_sorts = [
+    supported_sorts: ClassVar[tuple[SortOrder, ...]] = (
         SortOrder.RELEVANCE,
         SortOrder.POPULARITY,
         SortOrder.RATING,
         SortOrder.NEWEST,
         SortOrder.OLDEST,
         SortOrder.SERIES_ORDER,
-    ]
-    capabilities = [
+    )
+    capabilities: ClassVar[tuple[MetadataCapability, ...]] = (
         MetadataCapability(
             key="view_series",
             field_key="series",
             sort=SortOrder.SERIES_ORDER,
         ),
-    ]
-    search_fields = [
+    )
+    search_fields: ClassVar[tuple[TextSearchField | DynamicSelectSearchField, ...]] = (
         TextSearchField(
             key="author",
             label="Author",
@@ -842,7 +842,7 @@ class HardcoverProvider(MetadataProvider):
             placeholder="Browse a list...",
             description="Browse books from a Hardcover list",
         ),
-    ]
+    )
 
     def __init__(self, api_key: str | None = None) -> None:
         """Initialize provider with optional API key (falls back to config)."""

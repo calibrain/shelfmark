@@ -8,7 +8,7 @@ API Documentation: https://developers.google.com/books/docs/v1/using
 
 from contextlib import suppress
 from http import HTTPStatus
-from typing import Any
+from typing import Any, ClassVar
 
 import requests
 
@@ -66,8 +66,11 @@ class GoogleBooksProvider(MetadataProvider):
     name = "googlebooks"
     display_name = "Google Books"
     requires_auth = True
-    supported_sorts = [SortOrder.RELEVANCE, SortOrder.NEWEST]
-    search_fields = [
+    supported_sorts: ClassVar[tuple[SortOrder, ...]] = (
+        SortOrder.RELEVANCE,
+        SortOrder.NEWEST,
+    )
+    search_fields: ClassVar[tuple[TextSearchField, ...]] = (
         TextSearchField(
             key="author",
             label="Author",
@@ -78,7 +81,7 @@ class GoogleBooksProvider(MetadataProvider):
             label="Title",
             description="Search by book title",
         ),
-    ]
+    )
 
     def __init__(self, api_key: str | None = None) -> None:
         """Initialize provider with optional API key (falls back to config)."""

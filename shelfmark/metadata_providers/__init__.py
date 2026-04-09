@@ -5,7 +5,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, ClassVar
 
 
 class SearchType(str, Enum):
@@ -364,9 +364,9 @@ class MetadataProvider(ABC):
     name: str
     display_name: str
     requires_auth: bool
-    supported_sorts: list[SortOrder] = [SortOrder.RELEVANCE]
-    search_fields: list[SearchField] = []
-    capabilities: list[MetadataCapability] = []
+    supported_sorts: ClassVar[tuple[SortOrder, ...]] = (SortOrder.RELEVANCE,)
+    search_fields: ClassVar[tuple[SearchField, ...]] = ()
+    capabilities: ClassVar[tuple[MetadataCapability, ...]] = ()
 
     @abstractmethod
     def search(self, options: MetadataSearchOptions) -> list[BookMetadata]:

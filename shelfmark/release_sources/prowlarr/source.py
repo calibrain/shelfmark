@@ -3,7 +3,7 @@
 import re
 import time
 from contextlib import suppress
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, ClassVar, NoReturn
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
@@ -443,7 +443,7 @@ class ProwlarrSource(ReleaseSource):
 
     name = "prowlarr"
     display_name = "Prowlarr"
-    supported_content_types = [
+    supported_content_types: ClassVar[list[str]] = [
         "ebook",
         "audiobook",
     ]  # Explicitly declare support for both

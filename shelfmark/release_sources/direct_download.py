@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from threading import Event
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, ClassVar, NoReturn
 from urllib.parse import quote
 
 import requests
@@ -1106,7 +1106,7 @@ class DirectDownloadSource(ReleaseSource):
 
     name = "direct_download"
     display_name = "Direct Download"
-    supported_content_types = ["ebook"]  # Direct downloads only support ebooks
+    supported_content_types: ClassVar[list[str]] = ["ebook"]  # Direct downloads only support ebooks
 
     def __init__(self) -> None:
         # Tracks which search method was used in the last search() call

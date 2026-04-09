@@ -5,7 +5,7 @@ import os
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from shelfmark.core.activity_view_state_service import user_viewer_scope
 from shelfmark.core.auth_modes import AUTH_SOURCE_BUILTIN, AUTH_SOURCE_SET
@@ -170,7 +170,7 @@ def sync_builtin_admin_user(
 class UserDB:
     """Thread-safe SQLite user database."""
 
-    _VALID_AUTH_SOURCES = set(AUTH_SOURCE_SET)
+    _VALID_AUTH_SOURCES: ClassVar[frozenset[str]] = frozenset(AUTH_SOURCE_SET)
 
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
@@ -331,14 +331,14 @@ class UserDB:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         return dict(row) if row else None
 
-    _ALLOWED_UPDATE_COLUMNS = {
+    _ALLOWED_UPDATE_COLUMNS: ClassVar[frozenset[str]] = frozenset({
         "email",
         "display_name",
         "password_hash",
         "oidc_subject",
         "auth_source",
         "role",
-    }
+    })
 
     def update_user(self, user_id: int, **kwargs) -> None:
         """Update user fields. Raises ValueError if user not found or invalid column."""
@@ -671,7 +671,7 @@ class UserDB:
         finally:
             conn.close()
 
-    _ALLOWED_REQUEST_UPDATE_COLUMNS = {
+    _ALLOWED_REQUEST_UPDATE_COLUMNS: ClassVar[frozenset[str]] = frozenset({
         "status",
         "source_hint",
         "content_type",
@@ -686,7 +686,7 @@ class UserDB:
         "delivery_state",
         "delivery_updated_at",
         "last_failure_reason",
-    }
+    })
 
     def update_request(
         self,

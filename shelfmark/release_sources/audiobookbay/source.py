@@ -2,7 +2,7 @@
 
 import hashlib
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
@@ -142,7 +142,7 @@ class AudiobookBaySource(ReleaseSource):
 
     name = "audiobookbay"
     display_name = "AudiobookBay"
-    supported_content_types = ["audiobook"]  # ONLY audiobooks
+    supported_content_types: ClassVar[list[str]] = ["audiobook"]  # ONLY audiobooks
 
     def search(
         self,
