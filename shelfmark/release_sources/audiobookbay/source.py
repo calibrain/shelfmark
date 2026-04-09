@@ -239,7 +239,7 @@ class AudiobookBaySource(ReleaseSource):
                     )
             
             # Extract query words for relevance checking
-            query_words = set(word.lower() for word in query_lower.split() if len(word) > 2)
+            query_words = {word.lower() for word in query_lower.split() if len(word) > 2}
             
             releases = []
             for result in results:

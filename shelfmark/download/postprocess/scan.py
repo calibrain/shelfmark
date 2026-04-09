@@ -29,7 +29,7 @@ def get_supported_formats(content_type: str | None = None) -> list[str]:
 def _format_not_supported_error(rejected_files: list[Path], task: DownloadTask) -> str:
     content_type = task.content_type
     file_type_label = "audiobook" if check_audiobook(content_type) else "book"
-    rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
+    rejected_exts = sorted({f.suffix.lower() for f in rejected_files})
     rejected_list = ", ".join(rejected_exts)
     supported_formats = get_supported_formats(content_type)
 
@@ -207,7 +207,7 @@ def collect_directory_files(
                 len(book_files),
             )
         if rejected_files:
-            rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
+            rejected_exts = sorted({f.suffix.lower() for f in rejected_files})
             logger.debug(
                 "Task %s: also found %d file(s) with unsupported formats: %s",
                 task.task_id,

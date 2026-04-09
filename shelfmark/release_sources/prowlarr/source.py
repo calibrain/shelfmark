@@ -779,7 +779,7 @@ class ProwlarrSource(ReleaseSource):
             if results:
                 torrent_count = sum(1 for r in results if r.protocol == ReleaseProtocol.TORRENT)
                 nzb_count = sum(1 for r in results if r.protocol == ReleaseProtocol.NZB)
-                indexers = sorted(set(r.indexer for r in results if r.indexer))
+                indexers = sorted({r.indexer for r in results if r.indexer})
                 indexer_str = ", ".join(indexers) if indexers else "unknown"
                 logger.info(f"Prowlarr: {len(results)} results ({torrent_count} torrent, {nzb_count} nzb) from {indexer_str}")
             else:

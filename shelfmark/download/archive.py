@@ -118,7 +118,7 @@ def extract_archive(
             logger.warning(f"Failed to delete rejected {file_type_label} file {rejected_file}: {e}")
 
     if rejected_files:
-        rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
+        rejected_exts = sorted({f.suffix.lower() for f in rejected_files})
         warnings.append(f"Skipped {len(rejected_files)} {file_type_label}(s) with unsupported format: {', '.join(rejected_exts)}")
 
     # Delete other files (images, html, etc)

@@ -151,7 +151,7 @@ ONBOARDING = string_to_bool(os.getenv("ONBOARDING", "true"))
 # Debug: skip specific download sources for testing fallback chains
 # Comma-separated values: aa-fast, aa-slow-nowait, aa-slow-wait, libgen, zlib, welib
 _DEBUG_SKIP_SOURCES_RAW = os.getenv("DEBUG_SKIP_SOURCES", "").strip().lower()
-DEBUG_SKIP_SOURCES = set(s.strip() for s in _DEBUG_SKIP_SOURCES_RAW.split(",") if s.strip())
+DEBUG_SKIP_SOURCES = {s.strip() for s in _DEBUG_SKIP_SOURCES_RAW.split(",") if s.strip()}
 
 
 # =============================================================================

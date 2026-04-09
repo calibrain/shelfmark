@@ -236,7 +236,7 @@ def _get_booklore_settings() -> dict[str, Any]:
 
 
 def _booklore_format_error(rejected_files: list[Path]) -> str:
-    rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
+    rejected_exts = sorted({f.suffix.lower() for f in rejected_files})
     rejected_list = ", ".join(rejected_exts)
     return (
         f"{BOOKLORE_DISPLAY_NAME} does not support {rejected_list}. "
