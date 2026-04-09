@@ -1,6 +1,6 @@
 """Authentication settings registration."""
 
-from typing import Any, Dict, Callable
+from typing import Any, Callable, Dict
 
 from shelfmark.config.migrations import migrate_security_settings
 from shelfmark.config.security_handlers import (
@@ -10,16 +10,16 @@ from shelfmark.config.security_handlers import (
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import (
-    register_settings,
-    register_on_save,
-    load_config_file,
-    TextField,
-    SelectField,
-    PasswordField,
-    CheckboxField,
     ActionButton,
-    TagListField,
+    CheckboxField,
     CustomComponentField,
+    PasswordField,
+    SelectField,
+    TagListField,
+    TextField,
+    load_config_file,
+    register_on_save,
+    register_settings,
 )
 from shelfmark.core.user_db import sync_builtin_admin_user
 
@@ -36,8 +36,8 @@ def _auth_field(factory: Callable[..., Any], auth_method: str, **kwargs: Any) ->
 
 def _migrate_security_settings() -> None:
     from shelfmark.core.settings_registry import (
-        _get_config_file_path,
         _ensure_config_dir,
+        _get_config_file_path,
         save_config_file,
     )
 

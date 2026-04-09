@@ -19,7 +19,8 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask, QueueStatus, SearchMode
 from shelfmark.core.queue import book_queue
 from shelfmark.core.request_helpers import normalize_optional_text, normalize_positive_int
-from shelfmark.core.utils import transform_cover_url, is_audiobook as check_audiobook
+from shelfmark.core.utils import is_audiobook as check_audiobook
+from shelfmark.core.utils import transform_cover_url
 from shelfmark.download.fs import run_blocking_io
 from shelfmark.download.postprocess.pipeline import is_torrent_source, safe_cleanup_path
 from shelfmark.download.postprocess.router import post_process_download

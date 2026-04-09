@@ -3,14 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
-from typing import Any, Optional, List
+from typing import Any, List, Optional
 
 import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download.outputs import register_output
-from shelfmark.download.staging import StageAction, STAGE_NONE
+from shelfmark.download.staging import STAGE_NONE, StageAction
 
 logger = setup_logger(__name__)
 
@@ -96,8 +96,8 @@ def process_folder_output(
         cleanup_output_staging,
         is_torrent_source,
         log_plan_steps,
-        prepare_output_files,
         maybe_run_custom_script,
+        prepare_output_files,
         record_step,
         transfer_book_files,
     )

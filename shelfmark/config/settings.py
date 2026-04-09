@@ -1,7 +1,7 @@
 """Core settings registration and derived configuration values."""
 
-from pathlib import Path
 import json
+from pathlib import Path
 from typing import Any, Dict
 
 
@@ -115,23 +115,22 @@ def _log_external_bypasser_warning() -> None:
 
 
 from shelfmark.core.settings_registry import (
-    register_settings,
+    ActionButton,
+    CheckboxField,
+    HeadingField,
+    MultiSelectField,
+    NumberField,
+    OrderableListField,
+    PasswordField,
+    SelectField,
+    TableField,
+    TagListField,
+    TextField,
+    load_config_file,
     register_group,
     register_on_save,
-    load_config_file,
-    TextField,
-    PasswordField,
-    NumberField,
-    CheckboxField,
-    SelectField,
-    MultiSelectField,
-    TagListField,
-    OrderableListField,
-    TableField,
-    HeadingField,
-    ActionButton,
+    register_settings,
 )
-
 
 register_group(
     "direct_download",
@@ -204,7 +203,7 @@ _DOWNLOAD_TO_BROWSER_CONTENT_TYPE_VALUES = {
 
 def _get_metadata_provider_options():
     """Build metadata provider options dynamically from enabled providers only."""
-    from shelfmark.metadata_providers import list_providers, is_provider_enabled
+    from shelfmark.metadata_providers import is_provider_enabled, list_providers
 
     options = []
     for provider in list_providers():
@@ -255,8 +254,8 @@ _LANGUAGE_OPTIONS = [{"value": lang["code"], "label": lang["language"]} for lang
 
 def _get_aa_base_url_options():
     """Build AA URL options dynamically, including additional mirrors from config."""
-    from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS, get_aa_mirrors
     from shelfmark.core.config import config
+    from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS, get_aa_mirrors
     from shelfmark.core.utils import normalize_http_url
 
     options = [{"value": "auto", "label": "Auto (Recommended)"}]
@@ -287,8 +286,8 @@ def _get_aa_base_url_options():
 
 def _get_zlib_mirror_options():
     """Build Z-Library mirror options for SelectField."""
-    from shelfmark.core.mirrors import DEFAULT_ZLIB_MIRRORS
     from shelfmark.core.config import config
+    from shelfmark.core.mirrors import DEFAULT_ZLIB_MIRRORS
 
     options = []
 
@@ -311,8 +310,8 @@ def _get_zlib_mirror_options():
 
 def _get_welib_mirror_options():
     """Build Welib mirror options for SelectField."""
-    from shelfmark.core.mirrors import DEFAULT_WELIB_MIRRORS
     from shelfmark.core.config import config
+    from shelfmark.core.mirrors import DEFAULT_WELIB_MIRRORS
 
     options = []
 
@@ -532,8 +531,7 @@ def search_mode_settings():
 @register_settings("network", "Network", icon="globe", order=10)
 def network_settings():
     """Network and connectivity settings."""
-    # Check if Tor variant is available and if Tor is currently enabled
-    tor_available = env.TOR_VARIANT_AVAILABLE
+    # Check if Tor is currently enabled.
     tor_enabled = env.USING_TOR
 
     # When Tor is enabled, DNS/proxy settings are overridden by iptables rules
@@ -1518,7 +1516,11 @@ register_on_save("mirrors", _on_save_mirrors)
 @register_settings("mirrors", "Mirrors", icon="globe", order=23, group="direct_download")
 def mirror_settings():
     """Configure download source mirrors."""
-    from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS, DEFAULT_ZLIB_MIRRORS, DEFAULT_WELIB_MIRRORS
+    from shelfmark.core.mirrors import (
+        DEFAULT_AA_MIRRORS,
+        DEFAULT_WELIB_MIRRORS,
+        DEFAULT_ZLIB_MIRRORS,
+    )
 
     return [
         # === PRIMARY SOURCE ===

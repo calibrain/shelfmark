@@ -4,12 +4,12 @@ import queue
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from threading import Lock, Event
-from typing import Dict, List, Optional, Tuple, Any, Callable
+from threading import Event, Lock
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import QueueStatus, QueueItem, DownloadTask, TERMINAL_QUEUE_STATUSES
+from shelfmark.core.models import TERMINAL_QUEUE_STATUSES, DownloadTask, QueueItem, QueueStatus
 
 logger = setup_logger(__name__)
 

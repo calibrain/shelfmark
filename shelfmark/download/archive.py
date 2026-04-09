@@ -5,12 +5,12 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import is_audiobook as check_audiobook
+from shelfmark.download.fs import atomic_write
 from shelfmark.download.postprocess.policy import (
     get_supported_audiobook_formats,
     get_supported_formats,
 )
-from shelfmark.core.utils import is_audiobook as check_audiobook
-from shelfmark.download.fs import atomic_write
 
 logger = setup_logger(__name__)
 

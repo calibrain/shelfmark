@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import json
-from typing import Any, Callable, TYPE_CHECKING
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any, Callable
 
-from shelfmark.core.request_policy import normalize_content_type
 from shelfmark.core.models import QueueStatus
+from shelfmark.core.request_helpers import extract_release_source_id, normalize_positive_int
+from shelfmark.core.request_policy import normalize_content_type
 from shelfmark.core.request_validation import (
     DELIVERY_STATE_NONE,
     RequestStatus,
     normalize_policy_mode,
     validate_request_level_payload,
 )
-from shelfmark.core.request_helpers import extract_release_source_id, normalize_positive_int
-
 
 MAX_REQUEST_NOTE_LENGTH = 1000
 MAX_REQUEST_JSON_BLOB_BYTES = 10 * 1024

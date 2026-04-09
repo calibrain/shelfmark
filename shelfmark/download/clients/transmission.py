@@ -7,11 +7,9 @@ Uses the transmission-rpc library to communicate with Transmission's RPC API.
 from contextlib import contextmanager
 from typing import Any, Iterator, Optional, Tuple
 
-
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
-from shelfmark.download.network import get_ssl_verify
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
@@ -21,6 +19,7 @@ from shelfmark.download.clients.torrent_utils import (
     extract_torrent_info,
     parse_transmission_url,
 )
+from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
 

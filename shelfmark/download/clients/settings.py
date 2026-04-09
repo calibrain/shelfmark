@@ -4,17 +4,16 @@ from contextlib import contextmanager
 from typing import Any, Dict, Optional
 
 from shelfmark.core.settings_registry import (
-    register_settings,
-    HeadingField,
-    TextField,
-    PasswordField,
     ActionButton,
+    HeadingField,
+    PasswordField,
     SelectField,
     TagListField,
+    TextField,
+    register_settings,
 )
-from shelfmark.core.utils import normalize_http_url, get_hardened_xmlrpc_client
+from shelfmark.core.utils import get_hardened_xmlrpc_client, normalize_http_url
 from shelfmark.download.network import get_ssl_verify
-
 
 # ==================== Test Connection Callbacks ====================
 
@@ -144,6 +143,7 @@ def _test_deluge_connection(current_values: Optional[Dict[str, Any]] = None) -> 
     from urllib.parse import urlparse
 
     import requests
+
     from shelfmark.core.config import config
 
     current_values = current_values or {}
@@ -251,9 +251,10 @@ def _test_deluge_connection(current_values: Optional[Dict[str, Any]] = None) -> 
 
 def _test_rtorrent_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Test the rTorrent connection using current form values."""
-    from shelfmark.core.config import config
     import ssl
     from urllib.parse import urlparse
+
+    from shelfmark.core.config import config
 
     current_values = current_values or {}
 
@@ -298,6 +299,7 @@ def _test_rtorrent_connection(current_values: Optional[Dict[str, Any]] = None) -
 def _test_nzbget_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Test the NZBGet connection using current form values."""
     import requests
+
     from shelfmark.core.config import config
 
     current_values = current_values or {}
@@ -334,6 +336,7 @@ def _test_nzbget_connection(current_values: Optional[Dict[str, Any]] = None) -> 
 def _test_sabnzbd_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Test the SABnzbd connection using current form values."""
     import requests
+
     from shelfmark.core.config import config
 
     current_values = current_values or {}

@@ -4,9 +4,9 @@ import base64
 import importlib
 import os
 import re
+from pathlib import Path
 from threading import Lock
 from types import ModuleType
-from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 

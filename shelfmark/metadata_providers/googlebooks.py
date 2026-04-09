@@ -6,20 +6,21 @@ Requires a free API key from Google Cloud Console (~1000 requests/day quota).
 API Documentation: https://developers.google.com/books/docs/v1/using
 """
 
-import requests
 from typing import Any, Dict, List, Optional
 
+import requests
+
 from shelfmark.core.cache import cacheable
+from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import (
-    register_settings,
+    ActionButton,
     CheckboxField,
+    HeadingField,
     PasswordField,
     SelectField,
-    ActionButton,
-    HeadingField,
+    register_settings,
 )
-from shelfmark.core.config import config as app_config
 from shelfmark.download.network import get_ssl_verify
 from shelfmark.metadata_providers import (
     BookMetadata,
@@ -28,11 +29,10 @@ from shelfmark.metadata_providers import (
     MetadataSearchOptions,
     SearchType,
     SortOrder,
+    TextSearchField,
     register_provider,
     register_provider_kwargs,
-    TextSearchField,
 )
-
 
 logger = setup_logger(__name__)
 

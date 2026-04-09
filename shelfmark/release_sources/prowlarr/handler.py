@@ -9,8 +9,14 @@ from shelfmark.core.request_helpers import normalize_optional_text
 from shelfmark.download.clients import DownloadClient, get_client, list_configured_clients
 from shelfmark.download.clients.base_handler import (
     COMPLETED_PATH_MAX_ATTEMPTS as _DEFAULT_COMPLETED_PATH_MAX_ATTEMPTS,
+)
+from shelfmark.download.clients.base_handler import (
     COMPLETED_PATH_RETRY_INTERVAL as _DEFAULT_COMPLETED_PATH_RETRY_INTERVAL,
+)
+from shelfmark.download.clients.base_handler import (
     POLL_INTERVAL as _DEFAULT_POLL_INTERVAL,
+)
+from shelfmark.download.clients.base_handler import (
     DownloadRequest,
     ExternalClientHandler,
 )

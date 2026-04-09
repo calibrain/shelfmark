@@ -4,21 +4,25 @@ from typing import Any, Callable
 
 from flask import Flask, jsonify, request
 
-from shelfmark.core.config import config as app_config
 from shelfmark.config.notifications_settings import (
     build_notification_test_result,
     is_valid_notification_url,
     normalize_notification_routes,
 )
 from shelfmark.config.users_settings import validate_search_preference_value
+from shelfmark.core.config import config as app_config
+from shelfmark.core.request_policy import parse_policy_mode, validate_policy_rules
 from shelfmark.core.settings_registry import load_config_file
+from shelfmark.core.user_db import UserDB
 from shelfmark.core.user_settings_overrides import (
     build_user_preferences_payload as _build_user_preferences_payload,
+)
+from shelfmark.core.user_settings_overrides import (
     get_ordered_user_overridable_fields as _get_ordered_user_overridable_fields,
+)
+from shelfmark.core.user_settings_overrides import (
     get_settings_registry as _get_settings_registry,
 )
-from shelfmark.core.user_db import UserDB
-from shelfmark.core.request_policy import parse_policy_mode, validate_policy_rules
 
 
 def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:

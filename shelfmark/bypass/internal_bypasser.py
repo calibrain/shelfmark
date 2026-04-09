@@ -922,7 +922,6 @@ def _stop_ffmpeg_recording() -> None:
     import signal
     global DISPLAY
     proc = DISPLAY.get("ffmpeg")
-    output_file = DISPLAY.get("ffmpeg_output")
     if not proc:
         return
     if proc.poll() is not None:

@@ -12,13 +12,13 @@ import requests
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
-from shelfmark.download.network import get_ssl_verify
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
     register_client,
     with_retry,
 )
+from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
 

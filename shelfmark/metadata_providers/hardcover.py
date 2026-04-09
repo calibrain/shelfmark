@@ -1,38 +1,39 @@
 """Hardcover.app metadata provider. Requires API key."""
 
 import re
-import requests
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
+import requests
+
 from shelfmark.core.cache import cache_key, cacheable, get_metadata_cache
+from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import coerce_int
 from shelfmark.core.settings_registry import (
-    register_settings,
+    ActionButton,
     CheckboxField,
+    HeadingField,
     PasswordField,
     SelectField,
-    ActionButton,
-    HeadingField,
+    register_settings,
 )
-from shelfmark.core.config import config as app_config
-from shelfmark.core.request_helpers import coerce_int
 from shelfmark.download.network import get_ssl_verify
 from shelfmark.metadata_providers import (
     BookMetadata,
     DisplayField,
+    DynamicSelectSearchField,
     MetadataCapability,
     MetadataProvider,
     MetadataSearchOptions,
     SearchResult,
     SearchType,
     SortOrder,
+    TextSearchField,
     register_provider,
     register_provider_kwargs,
-    DynamicSelectSearchField,
-    TextSearchField,
 )
 
 logger = setup_logger(__name__)
@@ -2643,7 +2644,7 @@ def _test_hardcover_connection(current_values: Optional[Dict[str, Any]] = None) 
 
 def _save_connected_user(user_id: Optional[str], username: Optional[str]) -> None:
     """Save or clear connected user metadata in config."""
-    from shelfmark.core.settings_registry import save_config_file, load_config_file
+    from shelfmark.core.settings_registry import load_config_file, save_config_file
 
     config = load_config_file("hardcover")
     if user_id:

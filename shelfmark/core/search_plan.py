@@ -9,8 +9,8 @@ from shelfmark.core.config import config
 from shelfmark.core.models import SearchFilters
 from shelfmark.metadata_providers import (
     BookMetadata,
-    group_languages_by_localized_title,
     build_localized_search_titles,
+    group_languages_by_localized_title,
 )
 
 

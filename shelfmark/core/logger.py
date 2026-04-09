@@ -2,11 +2,11 @@
 
 import logging
 import sys
-from pathlib import Path
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import Any
 
-from shelfmark.config.env import LOG_FILE, ENABLE_LOGGING, LOG_LEVEL
+from shelfmark.config.env import ENABLE_LOGGING, LOG_FILE, LOG_LEVEL
 
 
 class CustomLogger(logging.Logger):

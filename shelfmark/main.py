@@ -17,26 +17,48 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash
 from werkzeug.wrappers import Response
 
-from shelfmark.download import orchestrator as backend
-from shelfmark.release_sources import SourceUnavailableError, get_source_display_name
-from shelfmark.config.settings import _SUPPORTED_BOOK_LANGUAGE
+from shelfmark.api.websocket import ws_manager
 from shelfmark.config.env import (
-    BUILD_VERSION, CONFIG_DIR, CWA_DB_PATH, DEBUG, HIDE_LOCAL_AUTH,
-    FLASK_HOST, FLASK_PORT, OIDC_AUTO_REDIRECT, RELEASE_VERSION,
+    BUILD_VERSION,
+    CONFIG_DIR,
+    CWA_DB_PATH,
+    DEBUG,
+    FLASK_HOST,
+    FLASK_PORT,
+    HIDE_LOCAL_AUTH,
+    OIDC_AUTO_REDIRECT,
+    RELEASE_VERSION,
     _is_config_dir_writable,
 )
-from shelfmark.core.config import config as app_config
-from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import SearchFilters, QueueStatus, TERMINAL_QUEUE_STATUSES
-from shelfmark.core.prefix_middleware import PrefixMiddleware
+from shelfmark.config.settings import _SUPPORTED_BOOK_LANGUAGE
+from shelfmark.core.activity_view_state_service import ActivityViewStateService
 from shelfmark.core.auth_modes import (
     get_auth_check_admin_status,
     is_settings_or_onboarding_path,
     load_active_auth_mode,
     requires_admin_for_settings_access,
 )
+from shelfmark.core.config import config as app_config
 from shelfmark.core.cwa_user_sync import upsert_cwa_user
+from shelfmark.core.download_history_service import DownloadHistoryService
 from shelfmark.core.external_user_linking import upsert_external_user
+from shelfmark.core.logger import setup_logger
+from shelfmark.core.models import TERMINAL_QUEUE_STATUSES, QueueStatus, SearchFilters
+from shelfmark.core.notifications import (
+    NotificationContext,
+    NotificationEvent,
+    notify_admin,
+    notify_user,
+)
+from shelfmark.core.prefix_middleware import PrefixMiddleware
+from shelfmark.core.request_helpers import (
+    coerce_bool,
+    emit_ws_event,
+    get_session_db_user_id,
+    load_users_request_policy_settings,
+    normalize_optional_text,
+    normalize_positive_int,
+)
 from shelfmark.core.request_policy import (
     PolicyMode,
     get_source_content_type_capabilities,
@@ -49,19 +71,9 @@ from shelfmark.core.requests_service import (
     reopen_failed_request,
     sync_delivery_states_from_queue_status,
 )
-from shelfmark.core.activity_view_state_service import ActivityViewStateService
-from shelfmark.core.download_history_service import DownloadHistoryService
-from shelfmark.core.notifications import NotificationContext, NotificationEvent, notify_admin, notify_user
-from shelfmark.core.request_helpers import (
-    emit_ws_event,
-    coerce_bool,
-    get_session_db_user_id,
-    load_users_request_policy_settings,
-    normalize_optional_text,
-    normalize_positive_int,
-)
 from shelfmark.core.utils import normalize_base_path
-from shelfmark.api.websocket import ws_manager
+from shelfmark.download import orchestrator as backend
+from shelfmark.release_sources import SourceUnavailableError, get_source_display_name
 
 logger = setup_logger(__name__)
 
@@ -122,12 +134,15 @@ except ImportError as e:
 
 # Migrate legacy security settings if needed
 from shelfmark.config.security import _migrate_security_settings
+
 _migrate_security_settings()
 
 # Initialize user database and register multi-user routes
 # If CONFIG_DIR doesn't exist or is read-only, multi-user features will be disabled
 import os as _os
+
 from shelfmark.core.user_db import UserDB
+
 _user_db_path = _os.path.join(_os.environ.get("CONFIG_DIR", "/config"), "users.db")
 user_db: UserDB | None = None
 download_history_service: DownloadHistoryService | None = None
@@ -138,8 +153,8 @@ try:
     download_history_service = DownloadHistoryService(_user_db_path)
     activity_view_state_service = ActivityViewStateService(_user_db_path)
     import shelfmark.config.users_settings as _  # noqa: F401 - registers users tab
-    from shelfmark.core.oidc_routes import register_oidc_routes
     from shelfmark.core.admin_routes import register_admin_routes
+    from shelfmark.core.oidc_routes import register_oidc_routes
     from shelfmark.core.self_user_routes import register_self_user_routes
     register_oidc_routes(app, user_db)
     register_admin_routes(app, user_db)
@@ -403,8 +418,8 @@ def _resolve_download_user_context(
 
 if user_db is not None:
     try:
-        from shelfmark.core.request_routes import register_request_routes
         from shelfmark.core.activity_routes import register_activity_routes
+        from shelfmark.core.request_routes import register_request_routes
 
         register_request_routes(
             app,
@@ -867,6 +882,7 @@ def _serialize_browse_record(record) -> dict:
 def _serialize_release(release) -> dict:
     """Serialize a release for the frontend, normalizing preview URLs."""
     from dataclasses import asdict
+
     from shelfmark.core.utils import transform_cover_url
 
     result = asdict(release)
@@ -959,13 +975,13 @@ def api_config() -> Union[Response, Tuple[Response, int]]:
     are reflected without requiring a container restart.
     """
     try:
-        from shelfmark.metadata_providers import (
-            get_provider_sort_options,
-            get_provider_search_fields,
-            get_provider_default_sort,
-        )
         from shelfmark.config.env import _is_config_dir_writable
         from shelfmark.core.onboarding import is_onboarding_complete as _get_onboarding_complete
+        from shelfmark.metadata_providers import (
+            get_provider_default_sort,
+            get_provider_search_fields,
+            get_provider_sort_options,
+        )
 
         db_user_id = get_session_db_user_id(session)
 
@@ -1440,8 +1456,9 @@ def api_cover(cover_id: str) -> Union[Response, Tuple[Response, int]]:
     """
     try:
         import base64
-        from shelfmark.core.image_cache import get_image_cache
+
         from shelfmark.config.env import is_covers_cache_enabled
+        from shelfmark.core.image_cache import get_image_cache
 
         # Check if caching is enabled
         if not is_covers_cache_enabled():
@@ -2001,9 +2018,9 @@ def api_metadata_providers() -> Union[Response, Tuple[Response, int]]:
     try:
         from shelfmark.metadata_providers import (
             get_configured_provider_name,
-            list_providers,
             get_provider,
             get_provider_kwargs,
+            list_providers,
         )
 
         app_config.refresh()
@@ -2062,8 +2079,8 @@ def api_metadata_config() -> Union[Response, Tuple[Response, int]]:
     try:
         from shelfmark.metadata_providers import (
             get_configured_provider_name,
-            get_provider_capabilities,
             get_provider,
+            get_provider_capabilities,
             get_provider_default_sort,
             get_provider_kwargs,
             get_provider_search_fields,
@@ -2136,18 +2153,19 @@ def api_metadata_search() -> Union[Response, Tuple[Response, int]]:
         flask.Response: JSON with list of books from metadata provider.
     """
     try:
+        from dataclasses import asdict
+
         from shelfmark.metadata_providers import (
-            get_provider,
+            CheckboxSearchField,
+            MetadataSearchOptions,
+            NumberSearchField,
+            SortOrder,
             get_configured_provider,
+            get_provider,
             get_provider_kwargs,
             is_provider_enabled,
             is_provider_registered,
-            MetadataSearchOptions,
-            SortOrder,
-            CheckboxSearchField,
-            NumberSearchField,
         )
-        from dataclasses import asdict
 
         query = request.args.get('query', '').strip()
         content_type = request.args.get('content_type', 'ebook').strip()
@@ -2449,11 +2467,13 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
     """
     try:
         from dataclasses import asdict
+
+        from shelfmark.core.search_plan import build_release_search_plan
         from shelfmark.metadata_providers import (
             BookMetadata,
             get_provider,
-            is_provider_registered,
             get_provider_kwargs,
+            is_provider_registered,
         )
         from shelfmark.release_sources import (
             browse_record_to_book_metadata,
@@ -2462,7 +2482,6 @@ def api_releases() -> Union[Response, Tuple[Response, int]]:
             serialize_column_config,
             source_results_are_releases,
         )
-        from shelfmark.core.search_plan import build_release_search_plan
         provider = request.args.get('provider', '').strip()
         book_id = request.args.get('book_id', '').strip()
         source_filter = request.args.get('source', '').strip()
@@ -2707,14 +2726,14 @@ def api_settings_get_all() -> Union[Response, Tuple[Response, int]]:
         flask.Response: JSON with all settings tabs.
     """
     try:
-        from shelfmark.core.settings_registry import serialize_all_settings
+        import shelfmark.config.notifications_settings  # noqa: F401
+        import shelfmark.config.security  # noqa: F401
 
         # Ensure settings are registered by importing settings modules
         # This triggers the @register_settings decorators
         import shelfmark.config.settings  # noqa: F401
-        import shelfmark.config.security  # noqa: F401
         import shelfmark.config.users_settings  # noqa: F401
-        import shelfmark.config.notifications_settings  # noqa: F401
+        from shelfmark.core.settings_registry import serialize_all_settings
 
         data = serialize_all_settings(include_values=True)
         return jsonify(data)
@@ -2736,16 +2755,16 @@ def api_settings_get_tab(tab_name: str) -> Union[Response, Tuple[Response, int]]
         flask.Response: JSON with tab settings and values.
     """
     try:
+        import shelfmark.config.notifications_settings  # noqa: F401
+        import shelfmark.config.security  # noqa: F401
+
+        # Ensure settings are registered
+        import shelfmark.config.settings  # noqa: F401
+        import shelfmark.config.users_settings  # noqa: F401
         from shelfmark.core.settings_registry import (
             get_settings_tab,
             serialize_tab,
         )
-
-        # Ensure settings are registered
-        import shelfmark.config.settings  # noqa: F401
-        import shelfmark.config.security  # noqa: F401
-        import shelfmark.config.users_settings  # noqa: F401
-        import shelfmark.config.notifications_settings  # noqa: F401
 
         tab = get_settings_tab(tab_name)
         if not tab:
@@ -2773,16 +2792,16 @@ def api_settings_update_tab(tab_name: str) -> Union[Response, Tuple[Response, in
         flask.Response: JSON with update result.
     """
     try:
+        import shelfmark.config.notifications_settings  # noqa: F401
+        import shelfmark.config.security  # noqa: F401
+
+        # Ensure settings are registered
+        import shelfmark.config.settings  # noqa: F401
+        import shelfmark.config.users_settings  # noqa: F401
         from shelfmark.core.settings_registry import (
             get_settings_tab,
             update_settings,
         )
-
-        # Ensure settings are registered
-        import shelfmark.config.settings  # noqa: F401
-        import shelfmark.config.security  # noqa: F401
-        import shelfmark.config.users_settings  # noqa: F401
-        import shelfmark.config.notifications_settings  # noqa: F401
 
         tab = get_settings_tab(tab_name)
         if not tab:
@@ -2824,13 +2843,13 @@ def api_settings_execute_action(tab_name: str, action_key: str) -> Union[Respons
         flask.Response: JSON with action result.
     """
     try:
-        from shelfmark.core.settings_registry import execute_action
+        import shelfmark.config.notifications_settings  # noqa: F401
+        import shelfmark.config.security  # noqa: F401
 
         # Ensure settings are registered
         import shelfmark.config.settings  # noqa: F401
-        import shelfmark.config.security  # noqa: F401
         import shelfmark.config.users_settings  # noqa: F401
-        import shelfmark.config.notifications_settings  # noqa: F401
+        from shelfmark.core.settings_registry import execute_action
 
         # Get current form values if provided (for testing with unsaved values)
         current_values = request.get_json(silent=True) or {}
@@ -2861,10 +2880,9 @@ def api_onboarding_get() -> Union[Response, Tuple[Response, int]]:
         flask.Response: JSON with onboarding steps and values.
     """
     try:
-        from shelfmark.core.onboarding import get_onboarding_config
-
         # Ensure settings are registered
         import shelfmark.config.settings  # noqa: F401
+        from shelfmark.core.onboarding import get_onboarding_config
 
         config = get_onboarding_config()
         return jsonify(config)
@@ -2886,10 +2904,9 @@ def api_onboarding_save() -> Union[Response, Tuple[Response, int]]:
         flask.Response: JSON with success/error status.
     """
     try:
-        from shelfmark.core.onboarding import save_onboarding_settings
-
         # Ensure settings are registered
         import shelfmark.config.settings  # noqa: F401
+        from shelfmark.core.onboarding import save_onboarding_settings
 
         data = request.get_json()
         if not data:

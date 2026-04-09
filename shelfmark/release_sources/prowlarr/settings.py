@@ -3,16 +3,15 @@
 from typing import Any, Dict, List, Optional
 
 from shelfmark.core.settings_registry import (
-    register_settings,
+    ActionButton,
     CheckboxField,
     HeadingField,
-    TextField,
-    PasswordField,
-    ActionButton,
     MultiSelectField,
+    PasswordField,
+    TextField,
+    register_settings,
 )
 from shelfmark.core.utils import normalize_http_url
-
 
 # ==================== Dynamic Options Loaders ====================
 

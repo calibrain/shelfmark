@@ -8,7 +8,6 @@ from typing import Any
 
 from shelfmark.core.request_helpers import now_utc_iso
 
-
 VALID_ACTIVITY_ITEM_TYPES = frozenset({"download", "request"})
 ADMIN_VIEWER_SCOPE = "admin:shared"
 NOAUTH_VIEWER_SCOPE = "noauth:shared"

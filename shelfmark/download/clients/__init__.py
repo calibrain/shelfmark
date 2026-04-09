@@ -18,7 +18,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union, cast, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union, cast
 
 import requests
 
@@ -423,9 +423,11 @@ def get_all_clients() -> Dict[str, List[Type[DownloadClient]]]:
 
 # Import client implementations to trigger registration
 # These imports are at the bottom to avoid circular imports
-from shelfmark.download.clients import qbittorrent  # noqa: F401, E402
-from shelfmark.download.clients import nzbget  # noqa: F401, E402
-from shelfmark.download.clients import sabnzbd  # noqa: F401, E402
-from shelfmark.download.clients import transmission  # noqa: F401, E402
-from shelfmark.download.clients import deluge  # noqa: F401, E402
-from shelfmark.download.clients import rtorrent  # noqa: F401, E402
+from shelfmark.download.clients import (
+    deluge,  # noqa: F401, E402
+    nzbget,  # noqa: F401, E402
+    qbittorrent,  # noqa: F401, E402
+    rtorrent,  # noqa: F401, E402
+    sabnzbd,  # noqa: F401, E402
+    transmission,  # noqa: F401, E402
+)

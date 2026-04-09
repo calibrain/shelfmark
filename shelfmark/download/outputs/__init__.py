@@ -48,9 +48,11 @@ def load_output_handlers() -> None:
     if _OUTPUTS_LOADED:
         return
 
-    from . import booklore  # noqa: F401
-    from . import email  # noqa: F401
-    from . import folder  # noqa: F401
+    from . import (
+        booklore,  # noqa: F401
+        email,  # noqa: F401
+        folder,  # noqa: F401
+    )
 
     _OUTPUTS_LOADED = True
 

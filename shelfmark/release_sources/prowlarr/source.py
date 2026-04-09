@@ -2,32 +2,31 @@
 
 import re
 import time
-from typing import List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
 
-from shelfmark.core.search_plan import ReleaseSearchVariant
-
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.search_plan import ReleaseSearchVariant
+from shelfmark.core.utils import normalize_http_url
 from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources import (
-    Release,
-    ReleaseProtocol,
-    ReleaseSource,
-    register_source,
-    ReleaseColumnConfig,
-    ColumnSchema,
-    ColumnRenderType,
     ColumnAlign,
     ColumnColorHint,
+    ColumnRenderType,
+    ColumnSchema,
     LeadingCellConfig,
     LeadingCellType,
+    Release,
+    ReleaseColumnConfig,
+    ReleaseProtocol,
+    ReleaseSource,
     SortOption,
+    register_source,
 )
 from shelfmark.release_sources.prowlarr.api import ProwlarrClient
-from shelfmark.core.utils import normalize_http_url
 from shelfmark.release_sources.prowlarr.cache import cache_release
 from shelfmark.release_sources.prowlarr.utils import get_preferred_download_url, get_protocol
 

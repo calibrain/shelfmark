@@ -12,16 +12,20 @@ from shelfmark.core.activity_view_state_service import (
     ActivityViewStateService,
     user_viewer_scope,
 )
-from shelfmark.core.download_history_service import ACTIVE_DOWNLOAD_STATUS, DownloadHistoryService, VALID_TERMINAL_STATUSES
+from shelfmark.core.download_history_service import (
+    ACTIVE_DOWNLOAD_STATUS,
+    VALID_TERMINAL_STATUSES,
+    DownloadHistoryService,
+)
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import ACTIVE_QUEUE_STATUSES, QueueStatus, TERMINAL_QUEUE_STATUSES
-from shelfmark.core.request_validation import RequestStatus
+from shelfmark.core.models import ACTIVE_QUEUE_STATUSES, TERMINAL_QUEUE_STATUSES, QueueStatus
 from shelfmark.core.request_helpers import (
     emit_ws_event,
     extract_release_source_id,
     normalize_positive_int,
     populate_request_usernames,
 )
+from shelfmark.core.request_validation import RequestStatus
 from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)

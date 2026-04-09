@@ -3,10 +3,9 @@
 import os
 from typing import Any, Callable
 
-from shelfmark.core.utils import normalize_http_url
 from shelfmark.core.user_db import UserDB
+from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.network import get_ssl_verify
-
 
 _OIDC_LOCKOUT_MESSAGE = "A local admin account with a password is required before enabling OIDC. Use the 'Go to Users' button above to create one. This ensures you can still sign in if your identity provider is unavailable."
 

@@ -22,11 +22,13 @@ from shelfmark.core.auth_modes import (
 )
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import load_config_file
+from shelfmark.core.user_db import UserDB
 from shelfmark.core.user_settings_overrides import (
     build_user_preferences_payload as _build_user_preferences_payload,
+)
+from shelfmark.core.user_settings_overrides import (
     get_ordered_user_overridable_fields as _get_ordered_user_overridable_fields,
 )
-from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
 

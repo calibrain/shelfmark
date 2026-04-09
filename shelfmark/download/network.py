@@ -1,19 +1,20 @@
 """DNS rotation, mirror selection, and network utilities."""
 
 import fnmatch
-import requests
-import urllib.request
-from typing import Sequence, Tuple, Any, Union, cast, List, Optional, Callable
-import socket
-import dns.resolver
-from socket import AddressFamily, SocketKind
-import urllib.parse
 import ipaddress
-
-from shelfmark.core.logger import setup_logger
-from shelfmark.core.config import config as app_config
-from shelfmark.core.utils import normalize_http_url
+import socket
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta
+from socket import AddressFamily, SocketKind
+from typing import Any, Callable, List, Optional, Sequence, Tuple, Union, cast
+
+import dns.resolver
+import requests
+
+from shelfmark.core.config import config as app_config
+from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import normalize_http_url
 
 
 def _get_no_proxy_patterns() -> List[str]:

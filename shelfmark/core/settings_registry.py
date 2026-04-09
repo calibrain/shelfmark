@@ -4,8 +4,8 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
 from threading import Lock
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from shelfmark.core.logger import setup_logger
 
@@ -291,16 +291,16 @@ def get_all_settings_tabs() -> List[SettingsTab]:
 
 def _iter_value_fields(tab: SettingsTab):
     """Yield value-bearing fields for a tab."""
-    for field in tab.fields:
-        if isinstance(field, CustomComponentField):
-            for value_field in field.value_fields:
+    for settings_field in tab.fields:
+        if isinstance(settings_field, CustomComponentField):
+            for value_field in settings_field.value_fields:
                 if isinstance(value_field, (ActionButton, HeadingField, CustomComponentField)):
                     continue
                 yield value_field
             continue
-        if isinstance(field, (ActionButton, HeadingField)):
+        if isinstance(settings_field, (ActionButton, HeadingField)):
             continue
-        yield field
+        yield settings_field
 
 
 def get_settings_field_map(tab_name: Optional[str] = None) -> Dict[str, tuple[SettingsField, str]]:
@@ -316,8 +316,8 @@ def get_settings_field_map(tab_name: Optional[str] = None) -> Dict[str, tuple[Se
 
     field_map: Dict[str, tuple[SettingsField, str]] = {}
     for tab in tabs:
-        for field in _iter_value_fields(tab):
-            field_map[field.key] = (field, tab.name)
+        for settings_field in _iter_value_fields(tab):
+            field_map[settings_field.key] = (settings_field, tab.name)
     return field_map
 
 
@@ -465,19 +465,19 @@ def sync_env_to_config() -> None:
     for tab in get_all_settings_tabs():
         values_to_sync = {}
 
-        for field in _iter_value_fields(tab):
+        for settings_field in _iter_value_fields(tab):
             # Skip fields that don't support ENV vars
-            if not getattr(field, 'env_supported', True):
+            if not getattr(settings_field, 'env_supported', True):
                 continue
 
             # Check if ENV var is set
-            env_var_name = field.get_env_var_name()
+            env_var_name = settings_field.get_env_var_name()
             env_value = os.environ.get(env_var_name)
 
             if env_value is not None:
                 # Parse the ENV value to the appropriate type
-                parsed_value = _parse_env_value(env_value, field)
-                values_to_sync[field.key] = parsed_value
+                parsed_value = _parse_env_value(env_value, settings_field)
+                values_to_sync[settings_field.key] = parsed_value
 
         # Save synced values to config file (merge with existing)
         if values_to_sync:
@@ -600,7 +600,6 @@ def migrate_legacy_settings() -> None:
     """
     # Load existing downloads config
     downloads_config = load_config_file("downloads")
-    source_config = load_config_file("download_sources")
 
     # Skip migration if already using new settings
     if "FILE_ORGANIZATION" in downloads_config or "DESTINATION" in downloads_config:
@@ -1029,16 +1028,16 @@ def execute_action(tab_name: str, action_key: str, current_values: Optional[Dict
     if not tab:
         return {"success": False, "message": f"Unknown settings tab: {tab_name}"}
 
-    for field in tab.fields:
-        if isinstance(field, ActionButton) and field.key == action_key:
-            if field.callback:
+    for settings_field in tab.fields:
+        if isinstance(settings_field, ActionButton) and settings_field.key == action_key:
+            if settings_field.callback:
                 try:
                     # Check if callback accepts current_values parameter
-                    sig = inspect.signature(field.callback)
+                    sig = inspect.signature(settings_field.callback)
                     if "current_values" in sig.parameters:
-                        return field.callback(current_values=current_values or {})
+                        return settings_field.callback(current_values=current_values or {})
                     else:
-                        return field.callback()
+                        return settings_field.callback()
                 except Exception as e:
                     logger.error(f"Action {action_key} failed: {e}")
                     return {"success": False, "message": str(e)}

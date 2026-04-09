@@ -1,12 +1,11 @@
 """AudiobookBay settings registration."""
 
 from shelfmark.core.settings_registry import (
-    register_settings,
     CheckboxField,
-    TextField,
     NumberField,
+    TextField,
+    register_settings,
 )
-
 
 # ==================== Register Settings ====================
 

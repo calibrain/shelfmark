@@ -2,7 +2,7 @@
 
 import logging
 import threading
-from typing import Optional, Dict, Any, Callable
+from typing import Any, Callable, Dict, Optional
 
 from flask_socketio import SocketIO, join_room, leave_room
 

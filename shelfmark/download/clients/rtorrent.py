@@ -10,8 +10,7 @@ from urllib.parse import urlparse
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.utils import normalize_http_url, get_hardened_xmlrpc_client
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.core.utils import get_hardened_xmlrpc_client, normalize_http_url
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
@@ -20,6 +19,7 @@ from shelfmark.download.clients import (
 from shelfmark.download.clients.torrent_utils import (
     extract_torrent_info,
 )
+from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
 

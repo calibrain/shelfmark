@@ -1,8 +1,8 @@
 """Open Library metadata provider. No API key required, rate limited."""
 
 import re
-import time
 import threading
+import time
 from collections import deque
 from typing import Any, Deque, Dict, List, Optional
 
@@ -10,14 +10,14 @@ import requests
 
 from shelfmark.core.cache import cacheable
 from shelfmark.core.logger import setup_logger
-from shelfmark.download.network import get_ssl_verify
 from shelfmark.core.settings_registry import (
-    register_settings,
-    CheckboxField,
-    SelectField,
     ActionButton,
+    CheckboxField,
     HeadingField,
+    SelectField,
+    register_settings,
 )
+from shelfmark.download.network import get_ssl_verify
 from shelfmark.metadata_providers import (
     BookMetadata,
     DisplayField,
@@ -25,8 +25,8 @@ from shelfmark.metadata_providers import (
     MetadataSearchOptions,
     SearchType,
     SortOrder,
-    register_provider,
     TextSearchField,
+    register_provider,
 )
 
 logger = setup_logger(__name__)

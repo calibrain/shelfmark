@@ -3,7 +3,6 @@
 import json
 from typing import Any, Callable
 
-
 _DEPRECATED_SETTINGS_RESTRICTION_KEYS = (
     "PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN",
     "CWA_RESTRICT_SETTINGS_TO_ADMIN",

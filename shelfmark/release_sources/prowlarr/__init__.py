@@ -10,9 +10,11 @@ Includes:
 """
 
 # Import submodules to trigger decorator registration
-from shelfmark.release_sources.prowlarr import source  # noqa: F401
-from shelfmark.release_sources.prowlarr import handler  # noqa: F401
-from shelfmark.release_sources.prowlarr import settings  # noqa: F401
+from shelfmark.release_sources.prowlarr import (
+    handler,  # noqa: F401
+    settings,  # noqa: F401
+    source,  # noqa: F401
+)
 
 # Import shared download clients/settings to trigger registration.
 # This is in a try/except to handle optional dependencies gracefully.

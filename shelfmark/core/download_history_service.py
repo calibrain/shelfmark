@@ -11,7 +11,11 @@ from typing import Any
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import TERMINAL_QUEUE_STATUSES
-from shelfmark.core.request_helpers import normalize_optional_positive_int, normalize_optional_text, now_utc_iso
+from shelfmark.core.request_helpers import (
+    normalize_optional_positive_int,
+    normalize_optional_text,
+    now_utc_iso,
+)
 
 logger = setup_logger(__name__)
 

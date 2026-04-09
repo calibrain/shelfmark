@@ -1,41 +1,41 @@
 """Direct download source - Anna's Archive/Libgen with fallback cascade."""
 
-from dataclasses import replace
 import itertools
 import json
 import re
 import time
+from dataclasses import replace
 from pathlib import Path
 from threading import Event
 from typing import Callable, Dict, List, Optional
 from urllib.parse import quote
 
 import requests
-
 from bs4 import BeautifulSoup, NavigableString, Tag
 
-from shelfmark.download import http as downloader
-from shelfmark.download import network
 from shelfmark.config.env import DEBUG_SKIP_SOURCES, TMP_DIR
 from shelfmark.core.config import config
-from shelfmark.core.utils import CONTENT_TYPES, get_aa_content_type_dir, is_audiobook as check_audiobook
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import SearchFilters, DownloadTask, build_filename
+from shelfmark.core.models import DownloadTask, SearchFilters, build_filename
+from shelfmark.core.utils import CONTENT_TYPES, get_aa_content_type_dir
+from shelfmark.core.utils import is_audiobook as check_audiobook
+from shelfmark.download import http as downloader
+from shelfmark.download import network
 from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources import (
     BrowseRecord,
-    Release,
-    ReleaseProtocol,
-    ReleaseSource,
-    DownloadHandler,
-    SourceUnavailableError,
-    register_source,
-    register_handler,
-    ReleaseColumnConfig,
-    ColumnSchema,
-    ColumnRenderType,
     ColumnAlign,
     ColumnColorHint,
+    ColumnRenderType,
+    ColumnSchema,
+    DownloadHandler,
+    Release,
+    ReleaseColumnConfig,
+    ReleaseProtocol,
+    ReleaseSource,
+    SourceUnavailableError,
+    register_handler,
+    register_source,
 )
 
 logger = setup_logger(__name__)
@@ -453,7 +453,6 @@ def _extract_book_description(soup: BeautifulSoup) -> Optional[str]:
     if not container:
         return None
 
-    description: Optional[str] = None
     alternative: Optional[str] = None
 
     label_divs = container.select("div.text-xs.text-gray-500.uppercase")

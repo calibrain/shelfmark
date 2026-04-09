@@ -7,8 +7,8 @@ Business logic remains in oidc_auth.py.
 from typing import Any
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
-from authlib.jose.errors import InvalidClaimError
 from authlib.integrations.flask_client import OAuth
+from authlib.jose.errors import InvalidClaimError
 from flask import Flask, jsonify, redirect, request, session
 
 from shelfmark.core.config import config as app_config

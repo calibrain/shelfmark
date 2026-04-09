@@ -3,7 +3,7 @@
 import os
 import re
 from pathlib import Path
-from typing import Optional, Union, Mapping
+from typing import Mapping, Optional, Union
 
 from shelfmark.core.logger import setup_logger
 

@@ -629,7 +629,7 @@ def sync_metadata_provider_selection() -> None:
     enabling/disabling a provider.
     """
     from shelfmark.core.config import config as app_config
-    from shelfmark.core.settings_registry import save_config_file, load_config_file
+    from shelfmark.core.settings_registry import load_config_file, save_config_file
 
     app_config.refresh()
 

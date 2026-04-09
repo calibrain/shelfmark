@@ -6,8 +6,8 @@ import sqlite3
 import threading
 from typing import Any, Dict, List, Optional
 
-from shelfmark.core.auth_modes import AUTH_SOURCE_BUILTIN, AUTH_SOURCE_SET
 from shelfmark.core.activity_view_state_service import user_viewer_scope
+from shelfmark.core.auth_modes import AUTH_SOURCE_BUILTIN, AUTH_SOURCE_SET
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import QueueStatus
 from shelfmark.core.request_validation import (

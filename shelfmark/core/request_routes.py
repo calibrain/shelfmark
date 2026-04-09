@@ -7,9 +7,24 @@ from typing import Any, Callable
 from flask import Flask, jsonify, request, session
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.notifications import (
+    NotificationContext,
+    NotificationEvent,
+    notify_admin,
+    notify_user,
+)
+from shelfmark.core.request_helpers import (
+    coerce_bool,
+    coerce_int,
+    emit_ws_event,
+    load_users_request_policy_settings,
+    normalize_optional_text,
+    normalize_positive_int,
+    populate_request_usernames,
+)
 from shelfmark.core.request_policy import (
-    PolicyMode,
     REQUEST_POLICY_DEFAULT_FALLBACK_MODE,
+    PolicyMode,
     get_source_content_type_capabilities,
     merge_request_policy_settings,
     normalize_content_type,
@@ -25,21 +40,6 @@ from shelfmark.core.requests_service import (
     create_requests,
     fulfil_request,
     reject_request,
-)
-from shelfmark.core.notifications import (
-    NotificationContext,
-    NotificationEvent,
-    notify_admin,
-    notify_user,
-)
-from shelfmark.core.request_helpers import (
-    coerce_bool,
-    coerce_int,
-    emit_ws_event,
-    load_users_request_policy_settings,
-    normalize_optional_text,
-    normalize_positive_int,
-    populate_request_usernames,
 )
 from shelfmark.core.user_db import UserDB
 

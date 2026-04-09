@@ -2,7 +2,7 @@
 
 import re
 import time
-from typing import List, Optional, Dict
+from typing import Dict, List, Optional
 from urllib.parse import quote
 
 import requests

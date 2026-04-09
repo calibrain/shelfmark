@@ -4,16 +4,15 @@ Registers /api/admin/users CRUD endpoints for managing users.
 All endpoints require admin session.
 """
 
-from functools import wraps
 import os
 import sqlite3
+from functools import wraps
 from typing import Any
 
 from flask import Flask, g, jsonify, request, session
 from werkzeug.security import generate_password_hash
 
 from shelfmark.config.env import CWA_DB_PATH
-from shelfmark.core.config import config as app_config
 from shelfmark.core.admin_settings_routes import (
     register_admin_settings_routes,
     validate_user_settings,
@@ -27,6 +26,7 @@ from shelfmark.core.auth_modes import (
     load_active_auth_mode,
     normalize_auth_source,
 )
+from shelfmark.core.config import config as app_config
 from shelfmark.core.cwa_user_sync import sync_cwa_users_from_rows
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.user_db import UserDB

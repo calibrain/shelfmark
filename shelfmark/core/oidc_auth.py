@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from shelfmark.core.external_user_linking import upsert_external_user
 from shelfmark.core.user_db import UserDB
 
+
 def parse_group_claims(id_token: Dict[str, Any], group_claim: str) -> List[str]:
     """Extract group list from an ID token claim.
 

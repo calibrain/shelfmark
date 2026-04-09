@@ -14,10 +14,10 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import (
     HeadingField,
     SettingsField,
-    get_settings_tab,
-    serialize_field,
-    save_config_file,
     get_setting_value,
+    get_settings_tab,
+    save_config_file,
+    serialize_field,
 )
 
 logger = setup_logger(__name__)

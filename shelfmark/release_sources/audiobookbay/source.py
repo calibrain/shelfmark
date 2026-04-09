@@ -2,7 +2,7 @@
 
 import hashlib
 import re
-from typing import List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
@@ -11,15 +11,15 @@ from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources import (
+    ColumnAlign,
+    ColumnColorHint,
+    ColumnRenderType,
+    ColumnSchema,
     Release,
+    ReleaseColumnConfig,
     ReleaseProtocol,
     ReleaseSource,
     register_source,
-    ReleaseColumnConfig,
-    ColumnSchema,
-    ColumnRenderType,
-    ColumnAlign,
-    ColumnColorHint,
 )
 from shelfmark.release_sources.audiobookbay import scraper
 from shelfmark.release_sources.audiobookbay.utils import normalize_hostname, parse_size

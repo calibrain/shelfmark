@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from shelfmark.core.config import config
-from shelfmark.download.outputs.email import EmailOutputError, build_email_smtp_config, test_smtp_connection
+from shelfmark.download.outputs.email import (
+    EmailOutputError,
+    build_email_smtp_config,
+    test_smtp_connection,
+)
 
 
 def test_email_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:

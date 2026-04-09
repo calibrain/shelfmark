@@ -6,7 +6,7 @@ Searches IRC channels for ebook and audiobook releases.
 import tempfile
 import time
 from pathlib import Path
-from typing import List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
@@ -133,7 +133,7 @@ class IRCReleaseSource(ReleaseSource):
         The expand_search parameter is repurposed for IRC as a "refresh" flag.
         When True, it bypasses the cache and forces a fresh search.
         """
-        from .cache import get_cached_results, cache_results
+        from .cache import cache_results, get_cached_results
 
         if not self.is_available():
             logger.debug("IRC source is disabled, skipping search")

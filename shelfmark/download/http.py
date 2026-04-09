@@ -5,15 +5,15 @@ import time
 from io import BytesIO
 from threading import Event, Thread
 from typing import Callable, Optional
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urljoin, urlparse
 
 import requests
 from tqdm import tqdm
 
-from shelfmark.download import network
-from shelfmark.download.network import get_proxies, get_ssl_verify
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
+from shelfmark.download import network
+from shelfmark.download.network import get_proxies, get_ssl_verify
 
 logger = setup_logger(__name__)
 

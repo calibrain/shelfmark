@@ -7,6 +7,11 @@ that talks to /api/admin/users endpoints.
 
 from typing import Any
 
+from shelfmark.core.request_policy import (
+    get_source_content_type_capabilities,
+    parse_policy_mode,
+    validate_policy_rules,
+)
 from shelfmark.core.settings_registry import (
     CheckboxField,
     CustomComponentField,
@@ -18,12 +23,6 @@ from shelfmark.core.settings_registry import (
     register_on_save,
     register_settings,
 )
-from shelfmark.core.request_policy import (
-    get_source_content_type_capabilities,
-    parse_policy_mode,
-    validate_policy_rules,
-)
-
 
 _REQUEST_DEFAULT_MODE_OPTIONS = [
     {

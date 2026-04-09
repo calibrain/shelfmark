@@ -15,7 +15,13 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download.outputs import register_output
-from shelfmark.download.staging import STAGE_COPY, STAGE_MOVE, STAGE_NONE, build_staging_dir, get_staging_dir
+from shelfmark.download.staging import (
+    STAGE_COPY,
+    STAGE_MOVE,
+    STAGE_NONE,
+    build_staging_dir,
+    get_staging_dir,
+)
 
 logger = setup_logger(__name__)
 
