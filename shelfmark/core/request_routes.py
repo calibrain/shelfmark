@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from flask import Flask, jsonify, request, session
+from flask import Flask, Response, jsonify, request, session
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.notifications import (
@@ -53,7 +53,7 @@ def _error_response(
     *,
     code: str | None = None,
     required_mode: str | None = None,
-):
+) -> tuple[Response, int]:
     payload: dict[str, Any] = {"error": message}
     if code is not None:
         payload["code"] = code
@@ -62,7 +62,9 @@ def _error_response(
     return jsonify(payload), status_code
 
 
-def _require_request_endpoints_available(resolve_auth_mode: Callable[[], str]):
+def _require_request_endpoints_available(
+    resolve_auth_mode: Callable[[], str],
+) -> tuple[Response, int] | None:
     auth_mode = resolve_auth_mode()
     if auth_mode == "none":
         return _error_response(
@@ -542,7 +544,7 @@ def register_request_routes(
     """Register request policy and request lifecycle routes."""
 
     @app.route("/api/request-policy", methods=["GET"])
-    def api_request_policy():
+    def api_request_policy() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -629,7 +631,7 @@ def register_request_routes(
         )
 
     @app.route("/api/requests", methods=["POST"])
-    def api_create_request():
+    def api_create_request() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -695,7 +697,7 @@ def register_request_routes(
         return jsonify(created), 201
 
     @app.route("/api/requests/batch", methods=["POST"])
-    def api_create_requests_batch():
+    def api_create_requests_batch() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -814,7 +816,7 @@ def register_request_routes(
         return jsonify(ordered_results), status_code
 
     @app.route("/api/requests", methods=["GET"])
-    def api_list_requests():
+    def api_list_requests() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -839,7 +841,7 @@ def register_request_routes(
         return jsonify(rows)
 
     @app.route("/api/requests/<int:request_id>", methods=["DELETE"])
-    def api_cancel_request(request_id: int):
+    def api_cancel_request(request_id: int) -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -887,7 +889,7 @@ def register_request_routes(
         return jsonify(updated)
 
     @app.route("/api/admin/requests", methods=["GET"])
-    def api_admin_list_requests():
+    def api_admin_list_requests() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -908,7 +910,7 @@ def register_request_routes(
         return jsonify(rows)
 
     @app.route("/api/admin/requests/count", methods=["GET"])
-    def api_admin_request_counts():
+    def api_admin_request_counts() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -928,7 +930,7 @@ def register_request_routes(
         )
 
     @app.route("/api/admin/requests/<int:request_id>/fulfil", methods=["POST"])
-    def api_admin_fulfil_request(request_id: int):
+    def api_admin_fulfil_request(request_id: int) -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -992,7 +994,7 @@ def register_request_routes(
         return jsonify(updated)
 
     @app.route("/api/admin/requests/<int:request_id>/reject", methods=["POST"])
-    def api_admin_reject_request(request_id: int):
+    def api_admin_reject_request(request_id: int) -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate

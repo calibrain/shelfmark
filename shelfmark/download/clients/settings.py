@@ -1,7 +1,8 @@
 """Shared download client settings registration."""
 
+from collections.abc import Iterator
 from contextlib import contextmanager, suppress
-from typing import Any
+from typing import Any, NoReturn
 
 from shelfmark.core.settings_registry import (
     ActionButton,
@@ -17,11 +18,11 @@ from shelfmark.download.network import get_ssl_verify
 
 # ==================== Test Connection Callbacks ====================
 
-def _raise_runtime_error(message: str):
+def _raise_runtime_error(message: str) -> NoReturn:
     raise RuntimeError(message)
 
 @contextmanager
-def _transmission_session_verify_override(url: str):
+def _transmission_session_verify_override(url: str) -> Iterator[None]:
     """Ensure transmission-rpc constructor uses the configured TLS verify mode."""
     verify = get_ssl_verify(url)
     if verify:

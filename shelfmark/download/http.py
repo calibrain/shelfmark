@@ -6,6 +6,8 @@ from collections.abc import Callable
 from http import HTTPStatus
 from io import BytesIO
 from threading import Event, Thread
+from types import ModuleType
+from typing import NoReturn
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -32,11 +34,11 @@ _internal_bypasser = None
 _external_bypasser = None
 
 
-def _raise_too_many_redirects(message: str):
+def _raise_too_many_redirects(message: str) -> NoReturn:
     raise requests.exceptions.TooManyRedirects(message)
 
 
-def _get_internal_bypasser():
+def _get_internal_bypasser() -> ModuleType:
     """Lazy import of internal bypasser module."""
     global _internal_bypasser
     if _internal_bypasser is None:
@@ -54,7 +56,7 @@ def _get_internal_bypasser():
     return _internal_bypasser
 
 
-def _get_external_bypasser():
+def _get_external_bypasser() -> ModuleType:
     """Lazy import of external bypasser module."""
     global _external_bypasser
     if _external_bypasser is None:

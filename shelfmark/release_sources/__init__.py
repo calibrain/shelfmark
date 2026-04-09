@@ -414,7 +414,7 @@ _HANDLERS: dict[str, type[DownloadHandler]] = {}
 def register_source(name: str):
     """Decorator to register a release source."""
 
-    def decorator(cls):
+    def decorator(cls: type[ReleaseSource]) -> type[ReleaseSource]:
         _SOURCES[name] = cls
         return cls
 
@@ -424,7 +424,7 @@ def register_source(name: str):
 def register_handler(name: str):
     """Decorator to register a download handler."""
 
-    def decorator(cls):
+    def decorator(cls: type[DownloadHandler]) -> type[DownloadHandler]:
         _HANDLERS[name] = cls
         return cls
 

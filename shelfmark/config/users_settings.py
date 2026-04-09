@@ -103,7 +103,7 @@ _USERS_HEADING_DESCRIPTION_BY_AUTH_MODE = {
 }
 
 
-def _get_request_source_options():
+def _get_request_source_options() -> list[dict[str, str]]:
     """Build request-policy source options from registered release sources."""
     from shelfmark.release_sources import list_available_sources
 
@@ -128,7 +128,7 @@ def _get_valid_release_source_names_for_content_type(content_type: str) -> set[s
     return valid_sources
 
 
-def _get_request_policy_rule_columns():
+def _get_request_policy_rule_columns() -> list[dict[str, object]]:
     source_capabilities = get_source_content_type_capabilities()
     content_type_options = []
 
@@ -221,7 +221,7 @@ def validate_search_preference_value(key: str, value: Any) -> tuple[Any, str | N
     return value, None
 
 
-def _on_save_users(values):
+def _on_save_users(values: dict[str, object]) -> dict[str, object]:
     """Validate users/request-policy settings before persistence."""
     if "VISIBLE_SELF_SETTINGS_SECTIONS" in values:
         raw_sections = values["VISIBLE_SELF_SETTINGS_SECTIONS"]

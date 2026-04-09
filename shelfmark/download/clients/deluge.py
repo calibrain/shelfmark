@@ -13,7 +13,7 @@ Requirements:
 
 import base64
 from contextlib import suppress
-from typing import Any
+from typing import Any, NoReturn
 from urllib.parse import urlparse
 
 import requests
@@ -51,7 +51,7 @@ def _get_error_message(error: object) -> tuple[str, int | None]:
     return str(error), None
 
 
-def _raise_runtime_error(message: str):
+def _raise_runtime_error(message: str) -> NoReturn:
     raise RuntimeError(message)
 
 

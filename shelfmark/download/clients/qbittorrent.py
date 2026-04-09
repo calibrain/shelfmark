@@ -4,6 +4,7 @@ import time
 from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
+from typing import NoReturn
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -47,7 +48,7 @@ def _hashes_match(hash1: str, hash2: str) -> bool:
     return False
 
 
-def _raise_runtime_error(message: str):
+def _raise_runtime_error(message: str) -> NoReturn:
     raise RuntimeError(message)
 
 

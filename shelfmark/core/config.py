@@ -5,7 +5,11 @@ import sqlite3
 import time
 from pathlib import Path
 from threading import Lock
-from typing import Any, Optional
+from types import ModuleType
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from shelfmark.core.user_db import UserDB
 
 # Import lazily to avoid circular imports
 _registry_module = None
@@ -15,7 +19,7 @@ _user_db_module = None
 _SETTINGS_REFRESH_COOLDOWN_SECONDS = 0.05
 
 
-def _get_registry():
+def _get_registry() -> ModuleType:
     """Lazy import of settings registry to avoid circular imports."""
     global _registry_module
     if _registry_module is None:
@@ -25,7 +29,7 @@ def _get_registry():
     return _registry_module
 
 
-def _get_env():
+def _get_env() -> ModuleType:
     """Lazy import of env module for fallback values."""
     global _env_module
     if _env_module is None:
@@ -35,7 +39,7 @@ def _get_env():
     return _env_module
 
 
-def _get_user_db_module():
+def _get_user_db_module() -> type["UserDB"]:
     """Lazy import of user DB module to avoid optional dependency loops."""
     global _user_db_module
     if _user_db_module is None:
@@ -145,7 +149,7 @@ class Config:
         self._user_db_load_attempted = False
         self._last_refresh_time = time.monotonic()
 
-    def _get_user_db(self):
+    def _get_user_db(self) -> "UserDB | None":
         """Get or initialize a UserDB handle if available."""
         if self._user_db is not None:
             return self._user_db

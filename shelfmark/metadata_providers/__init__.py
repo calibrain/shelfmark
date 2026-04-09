@@ -1,6 +1,7 @@
 """Metadata provider plugin system - base classes and registry."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import Enum
@@ -449,7 +450,7 @@ _PROVIDER_KWARGS_FACTORIES: dict[str, Any] = {}  # Callable[[], Dict]
 def register_provider(name: str):
     """Decorator to register a metadata provider."""
 
-    def decorator(cls):
+    def decorator(cls: type[object]) -> type[object]:
         _PROVIDERS[name] = cls
         return cls
 
@@ -471,7 +472,7 @@ def register_provider_kwargs(name: str):
 
     """
 
-    def decorator(fn):
+    def decorator(fn: Callable[[], dict[str, Any]]) -> Callable[[], dict[str, Any]]:
         _PROVIDER_KWARGS_FACTORIES[name] = fn
         return fn
 

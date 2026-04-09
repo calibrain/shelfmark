@@ -4,6 +4,7 @@ Uses xmlrpc to communicate with rTorrent's RPC interface.
 """
 
 import ssl
+from typing import NoReturn
 from urllib.parse import urlparse
 
 from shelfmark.core.config import config
@@ -40,7 +41,7 @@ def _create_rtorrent_server_proxy(url: str) -> object:
     return xmlrpc_client.ServerProxy(url)
 
 
-def _raise_runtime_error(message: str):
+def _raise_runtime_error(message: str) -> NoReturn:
     raise RuntimeError(message)
 
 

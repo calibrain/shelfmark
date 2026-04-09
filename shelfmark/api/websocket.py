@@ -53,17 +53,17 @@ class WebSocketManager:
         """Set the queue_status function reference for per-room filtering."""
         self._queue_status_fn = fn
 
-    def _increment_user_room_locked(self, room: str):
+    def _increment_user_room_locked(self, room: str) -> None:
         self._user_rooms[room] = self._user_rooms.get(room, 0) + 1
 
-    def _decrement_user_room_locked(self, room: str):
+    def _decrement_user_room_locked(self, room: str) -> None:
         count = self._user_rooms.get(room, 1) - 1
         if count <= 0:
             self._user_rooms.pop(room, None)
         else:
             self._user_rooms[room] = count
 
-    def _set_sid_room_locked(self, sid: str, room: str | None):
+    def _set_sid_room_locked(self, sid: str, room: str | None) -> None:
         current_room = self._sid_rooms.get(sid)
         if current_room == room:
             return

@@ -2,7 +2,7 @@
 
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
@@ -294,8 +294,8 @@ def register_settings(
     icon: str | None = None,
     order: int = 100,
     group: str | None = None,
-):
-    def decorator(func: Callable[[], list[SettingsField]]):
+)-> Callable[[Callable[[], list[SettingsField]]], Callable[[], list[SettingsField]]]:
+    def decorator(func: Callable[[], list[SettingsField]]) -> Callable[[], list[SettingsField]]:
         with _REGISTRY_LOCK:
             fields = func()
             tab = SettingsTab(
@@ -341,7 +341,7 @@ def get_all_settings_tabs() -> list[SettingsTab]:
     return sorted(_SETTINGS_REGISTRY.values(), key=lambda t: (t.order, t.name))
 
 
-def _iter_value_fields(tab: SettingsTab):
+def _iter_value_fields(tab: SettingsTab) -> Iterator[SettingsField]:
     """Yield value-bearing fields for a tab."""
     for settings_field in tab.fields:
         if isinstance(settings_field, CustomComponentField):

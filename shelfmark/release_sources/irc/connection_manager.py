@@ -61,7 +61,7 @@ class IRCConnectionManager:
     def _start_cleanup_thread(self) -> None:
         """Start background thread to clean up idle connections."""
 
-        def cleanup_loop():
+        def cleanup_loop() -> None:
             while self._running:
                 time.sleep(30)  # Check every 30 seconds
                 self._cleanup_idle_connections()

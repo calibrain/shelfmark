@@ -10,11 +10,15 @@ original error.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any, TypeVar
 
 from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
+
+_T = TypeVar("_T")
 
 
 def _log_path_permissions(probe: Path, label: str) -> None:
@@ -39,7 +43,9 @@ def _log_path_permissions(probe: Path, label: str) -> None:
         )
 
 
-def _run_io(func, *args, **kwargs):
+def _run_io(
+    func: Callable[..., _T], *args: Any, **kwargs: Any
+) -> _T:
     """Best-effort offload for potentially blocking filesystem calls.
 
     Keep this module import-cycle safe: `shelfmark.download.fs` imports this module,

@@ -10,7 +10,7 @@ from contextlib import suppress
 from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Callable, NoReturn
 
 from flask import Flask, jsonify, request, send_file, send_from_directory, session
 from flask_cors import CORS
@@ -77,10 +77,13 @@ from shelfmark.core.utils import normalize_base_path
 from shelfmark.download import orchestrator as backend
 from shelfmark.release_sources import SourceUnavailableError, get_source_display_name
 
+if TYPE_CHECKING:
+    from shelfmark.metadata_providers import BookMetadata, MetadataProvider
+
 logger = setup_logger(__name__)
 
 
-def _raise_runtime_error(message: str):
+def _raise_runtime_error(message: str) -> NoReturn:
     raise RuntimeError(message)
 
 # Project root is one level up from this package
@@ -362,7 +365,7 @@ def _resolve_policy_mode_for_current_user(*, source: Any, content_type: Any) -> 
     return resolved_mode
 
 
-def _policy_block_response(mode: PolicyMode):
+def _policy_block_response(mode: PolicyMode) -> tuple[Response, int]:
     logger.debug(
         "download policy guard user=%s db_user_id=%s mode=%s",
         session.get("user_id"),
@@ -677,9 +680,11 @@ def set_security_headers(response: Response) -> Response:
     return response
 
 
-def login_required(f):
+def login_required(
+    f: Callable[..., Response | tuple[Response, int]],
+) -> Callable[..., Response | tuple[Response, int]]:
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    def decorated_function(*args, **kwargs) -> Response | tuple[Response, int]:
         auth_mode = get_auth_mode()
 
         # If no authentication is configured, allow access
@@ -830,7 +835,7 @@ def _parse_search_filters_from_request() -> SearchFilters:
     )
 
 
-def _build_source_query_book(query_text: str, filters: SearchFilters):
+def _build_source_query_book(query_text: str, filters: SearchFilters) -> BookMetadata:
     """Build a synthetic book context for source-native browse searches."""
     from shelfmark.metadata_providers import BookMetadata
 
@@ -2306,7 +2311,7 @@ def api_metadata_field_options() -> Response:
         return jsonify({"options": []})
 
 
-def _resolve_metadata_provider(provider_name: str):
+def _resolve_metadata_provider(provider_name: str) -> MetadataProvider:
     """Validate, instantiate and return a ready metadata provider.
 
     Raises appropriate HTTP-friendly exceptions on failure.
@@ -2369,11 +2374,15 @@ def api_metadata_book(provider: str, book_id: str) -> Response | tuple[Response,
         return jsonify({"error": str(e)}), 500
 
 
-def _handle_target_errors(fallback_message: str):
+def _handle_target_errors(
+    fallback_message: str,
+) -> Callable[[Callable[..., Response | tuple[Response, int]]], Callable[..., Response | tuple[Response, int]]]:
     """Decorator that wraps a metadata-target route with standard error handling."""
-    def decorator(fn):
+    def decorator(
+        fn: Callable[..., Response | tuple[Response, int]],
+    ) -> Callable[..., Response | tuple[Response, int]]:
         @wraps(fn)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args, **kwargs) -> Response | tuple[Response, int]:
             try:
                 return fn(*args, **kwargs)
             except (NotImplementedError, ValueError) as e:

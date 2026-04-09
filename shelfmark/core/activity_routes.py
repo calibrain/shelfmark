@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, NamedTuple
 
-from flask import Flask, jsonify, request, session
+from flask import Flask, Response, jsonify, request, session
 
 from shelfmark.core.activity_view_state_service import (
     ADMIN_VIEWER_SCOPE,
@@ -104,7 +104,7 @@ def _activity_error_response(
     owner_user_id: object = None,
     final_status: object = None,
     request_id: object = None,
-):
+) -> tuple[Response, int]:
     _log_activity_rejection(
         action,
         status_code=status_code,
@@ -128,7 +128,9 @@ def _activity_error_response(
     return jsonify(payload), status_code
 
 
-def _require_authenticated(resolve_auth_mode: Callable[[], str], *, action: str):
+def _require_authenticated(
+    resolve_auth_mode: Callable[[], str], *, action: str
+) -> tuple[Response, int] | None:
     auth_mode = resolve_auth_mode()
     if auth_mode == "none":
         return None
@@ -148,7 +150,7 @@ def _resolve_db_user_id(
     user_db: UserDB | None = None,
     action: str | None = None,
     auth_mode: str | None = None,
-):
+) -> tuple[int | None, tuple[Response, int] | None]:
     raw_db_user_id = session.get("db_user_id")
     if raw_db_user_id is None:
         if not require_in_auth_mode:
@@ -507,7 +509,7 @@ def register_activity_routes(
     """Register activity routes."""
 
     @app.route("/api/activity/snapshot", methods=["GET"])
-    def api_activity_snapshot():
+    def api_activity_snapshot() -> Response | tuple[Response, int]:
         auth_gate = _require_authenticated(resolve_auth_mode, action="snapshot")
         if auth_gate is not None:
             return auth_gate
@@ -582,7 +584,7 @@ def register_activity_routes(
         )
 
     @app.route("/api/activity/dismiss", methods=["POST"])
-    def api_activity_dismiss():
+    def api_activity_dismiss() -> Response | tuple[Response, int]:
         auth_gate = _require_authenticated(resolve_auth_mode, action="dismiss")
         if auth_gate is not None:
             return auth_gate
@@ -759,7 +761,7 @@ def register_activity_routes(
         return jsonify({"status": "dismissed", "item": dismissal_item})
 
     @app.route("/api/activity/dismiss-many", methods=["POST"])
-    def api_activity_dismiss_many():
+    def api_activity_dismiss_many() -> Response | tuple[Response, int]:
         auth_gate = _require_authenticated(resolve_auth_mode, action="dismiss_many")
         if auth_gate is not None:
             return auth_gate
@@ -956,7 +958,7 @@ def register_activity_routes(
         return jsonify({"status": "dismissed", "count": dismissed_count})
 
     @app.route("/api/activity/history", methods=["GET"])
-    def api_activity_history():
+    def api_activity_history() -> Response | tuple[Response, int]:
         auth_gate = _require_authenticated(resolve_auth_mode, action="history")
         if auth_gate is not None:
             return auth_gate
@@ -1068,7 +1070,7 @@ def register_activity_routes(
         return jsonify(payload)
 
     @app.route("/api/activity/history", methods=["DELETE"])
-    def api_activity_history_clear():
+    def api_activity_history_clear() -> Response | tuple[Response, int]:
         auth_gate = _require_authenticated(resolve_auth_mode, action="history_clear")
         if auth_gate is not None:
             return auth_gate

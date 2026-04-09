@@ -3,7 +3,7 @@
 import re
 import time
 from contextlib import suppress
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
@@ -40,7 +40,7 @@ _SIZE_UNIT_BASE = 1024
 _TWO_FORMATS = 2
 
 
-def _raise_timeout_error(message: str):
+def _raise_timeout_error(message: str) -> NoReturn:
     raise TimeoutError(message)
 
 

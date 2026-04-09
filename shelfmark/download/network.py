@@ -213,7 +213,7 @@ def _notify_dns_rotation(provider_name: str, servers: list[str], doh_url: str) -
         _call_dns_rotation_callback(callback, provider_name, servers, doh_url)
 
 
-def _load_state():
+def _load_state() -> dict[str, Any]:
     """Return current in-memory network state (no disk persistence)."""
     if state.get("chosen_at"):
         chosen = datetime.fromisoformat(state["chosen_at"])
@@ -221,7 +221,7 @@ def _load_state():
             state.clear()
     return state
 
-def _save_state(aa_url=None, dns_provider=None):
+def _save_state(aa_url: str | None = None, dns_provider: str | None = None) -> None:
     """Update in-memory network state (no disk persistence)."""
     if aa_url:
         state["aa_base_url"] = aa_url
@@ -695,7 +695,7 @@ def _init_doh_resolver_internal(doh_server: str) -> DoHResolver:
     return doh_resolver
 
 
-def _init_custom_resolver_internal(servers: list[str]):
+def _init_custom_resolver_internal(servers: list[str]) -> dns.resolver.Resolver:
     """Internal: Initialize custom DNS resolver with specified servers.
     
     Args:

@@ -14,7 +14,7 @@ from shelfmark.core.settings_registry import (
 )
 
 
-def _clear_irc_cache():
+def _clear_irc_cache() -> dict[str, str | int | bool]:
     """Clear all cached IRC search results."""
     from shelfmark.release_sources.irc.cache import clear_cache, get_cache_stats  # noqa: PLC0415
 

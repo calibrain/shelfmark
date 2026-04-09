@@ -201,7 +201,7 @@ _DOWNLOAD_TO_BROWSER_CONTENT_TYPE_VALUES = {
 }
 
 
-def _get_metadata_provider_options():
+def _get_metadata_provider_options() -> list[dict[str, str]]:
     """Build metadata provider options dynamically from enabled providers only."""
     from shelfmark.metadata_providers import is_provider_enabled, list_providers
 
@@ -220,12 +220,12 @@ def _get_metadata_provider_options():
     return options
 
 
-def _get_metadata_provider_options_with_none():
+def _get_metadata_provider_options_with_none() -> list[dict[str, str]]:
     """Build metadata provider options with a 'Use main provider' option first."""
     return [{"value": "", "label": "Use book provider"}] + _get_metadata_provider_options()
 
 
-def _get_release_source_options_for_content_type(content_type: str):
+def _get_release_source_options_for_content_type(content_type: str) -> list[dict[str, str]]:
     """Build release source options dynamically for a specific content type."""
     from shelfmark.release_sources import list_available_sources
 
@@ -237,12 +237,12 @@ def _get_release_source_options_for_content_type(content_type: str):
     ]
 
 
-def _get_book_release_source_options():
+def _get_book_release_source_options() -> list[dict[str, str]]:
     """Build default release source options for book searches."""
     return _get_release_source_options_for_content_type("ebook")
 
 
-def _get_audiobook_release_source_options():
+def _get_audiobook_release_source_options() -> list[dict[str, str]]:
     """Build default release source options for audiobook searches."""
     return [{"value": "", "label": "Use book release source"}] + _get_release_source_options_for_content_type(
         "audiobook"
@@ -252,7 +252,7 @@ def _get_audiobook_release_source_options():
 
 _LANGUAGE_OPTIONS = [{"value": lang["code"], "label": lang["language"]} for lang in _SUPPORTED_BOOK_LANGUAGE]
 
-def _get_aa_base_url_options():
+def _get_aa_base_url_options() -> list[dict[str, str]]:
     """Build AA URL options dynamically, including additional mirrors from config."""
     from shelfmark.core.config import config
     from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS, get_aa_mirrors
@@ -284,7 +284,7 @@ def _get_aa_base_url_options():
     return options
 
 
-def _get_zlib_mirror_options():
+def _get_zlib_mirror_options() -> list[dict[str, str]]:
     """Build Z-Library mirror options for SelectField."""
     from shelfmark.core.config import config
     from shelfmark.core.mirrors import DEFAULT_ZLIB_MIRRORS
@@ -308,7 +308,7 @@ def _get_zlib_mirror_options():
     return options
 
 
-def _get_welib_mirror_options():
+def _get_welib_mirror_options() -> list[dict[str, str]]:
     """Build Welib mirror options for SelectField."""
     from shelfmark.core.config import config
     from shelfmark.core.mirrors import DEFAULT_WELIB_MIRRORS
@@ -1237,7 +1237,7 @@ def download_settings():
 register_on_save("downloads", _on_save_downloads)
 
 
-def _get_fast_source_options():
+def _get_fast_source_options() -> list[dict[str, str | bool | int | None]]:
     """Fast download sources - configurable list shown in settings."""
     from shelfmark.core.config import config
 
@@ -1261,7 +1261,7 @@ def _get_fast_source_options():
     ]
 
 
-def _get_fast_source_defaults():
+def _get_fast_source_defaults() -> list[dict[str, str | bool]]:
     """Default values for fast sources display."""
     return [
         {"id": "aa-fast", "enabled": True},
@@ -1269,7 +1269,7 @@ def _get_fast_source_defaults():
     ]
 
 
-def _get_slow_source_options():
+def _get_slow_source_options() -> list[dict[str, str | bool | None]]:
     """Slow download sources - configurable order. All require bypasser."""
     from shelfmark.core.config import config
 
@@ -1309,7 +1309,7 @@ def _get_slow_source_options():
     ]
 
 
-def _get_slow_source_defaults():
+def _get_slow_source_defaults() -> list[dict[str, str | bool]]:
     """Default source priority order for slow sources."""
     from shelfmark.config.env import _LEGACY_ALLOW_USE_WELIB
 

@@ -9,7 +9,7 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from authlib.integrations.flask_client import OAuth
 from authlib.jose.errors import InvalidClaimError
-from flask import Flask, jsonify, redirect, request, session
+from flask import Flask, Response, jsonify, redirect, request, session
 
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
@@ -143,7 +143,7 @@ def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
     if admin_group and use_admin_group and group_claim and group_claim not in scopes:
         scopes.append(group_claim)
 
-    def _ssl_compliance_fix(session, **kwargs):
+    def _ssl_compliance_fix(session: Any, **kwargs: Any) -> Any:
         """Set session.verify based on the Certificate Validation setting."""
         session.verify = get_ssl_verify(discovery_url)
         return session
@@ -181,7 +181,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
     oauth.init_app(app)
 
     @app.route("/api/auth/oidc/login", methods=["GET"])
-    def oidc_login():
+    def oidc_login() -> Response | tuple[Response, int]:
         """Initiate OIDC login flow and redirect to the provider."""
         try:
             client, _ = _get_oidc_client()
@@ -199,7 +199,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             return jsonify({"error": "OIDC login failed"}), 500
 
     @app.route("/api/auth/oidc/callback", methods=["GET"])
-    def oidc_callback():
+    def oidc_callback() -> Response | tuple[Response, int]:
         """Handle OIDC callback from identity provider."""
         try:
             error = request.args.get("error")

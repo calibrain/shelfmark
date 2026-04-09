@@ -6,10 +6,11 @@ All endpoints require admin session.
 
 import os
 import sqlite3
+from collections.abc import Callable
 from functools import wraps
 from typing import Any
 
-from flask import Flask, g, jsonify, request, session
+from flask import Flask, Response, g, jsonify, request, session
 from werkzeug.security import generate_password_hash
 
 from shelfmark.config.booklore_settings import (
@@ -139,7 +140,9 @@ def _sync_all_cwa_users(user_db: UserDB) -> dict[str, int]:
 def register_admin_routes(app: Flask, user_db: UserDB) -> None:
     """Register admin user management routes on the Flask app."""
 
-    def _require_admin(f):
+    def _require_admin(
+        f: Callable[..., Response | tuple[Response, int]],
+    ) -> Callable[..., Response | tuple[Response, int]]:
         """Decorator to require admin session for admin routes.
 
         In no-auth mode, everyone has access (is_admin defaults True).
@@ -147,7 +150,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         Caches the resolved auth_mode in ``g.auth_mode`` for the request.
         """
         @wraps(f)
-        def decorated(*args, **kwargs):
+        def decorated(*args, **kwargs) -> Response | tuple[Response, int]:
             auth_mode = load_active_auth_mode(CWA_DB_PATH, user_db=user_db)
             g.auth_mode = auth_mode
             if auth_mode != "none":
@@ -160,7 +163,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
     @app.route("/api/admin/users", methods=["GET"])
     @_require_admin
-    def admin_list_users():
+    def admin_list_users() -> Response | tuple[Response, int]:
         """List all users."""
         users = user_db.list_users()
         auth_mode = g.auth_mode
@@ -171,7 +174,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
     @app.route("/api/admin/users", methods=["POST"])
     @_require_admin
-    def admin_create_user():
+    def admin_create_user() -> Response | tuple[Response, int]:
         """Create a new user with password authentication."""
         data = request.get_json() or {}
         auth_mode = g.auth_mode
@@ -229,7 +232,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
     @app.route("/api/admin/users/<int:user_id>", methods=["GET"])
     @_require_admin
-    def admin_get_user(user_id):
+    def admin_get_user(user_id) -> Response | tuple[Response, int]:
         """Get a user by ID with their settings."""
         user = user_db.get_user(user_id=user_id)
         if not user:
@@ -244,7 +247,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
     @app.route("/api/admin/users/<int:user_id>", methods=["PUT"])
     @_require_admin
-    def admin_update_user(user_id):
+    def admin_update_user(user_id) -> Response | tuple[Response, int]:
         """Update user fields and/or settings."""
         user = user_db.get_user(user_id=user_id)
         if not user:
@@ -358,7 +361,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
     @app.route("/api/admin/users/sync-cwa", methods=["POST"])
     @_require_admin
-    def admin_sync_cwa_users():
+    def admin_sync_cwa_users() -> Response | tuple[Response, int]:
         """Manually sync users from Calibre-Web into users.db."""
         if g.auth_mode != AUTH_SOURCE_CWA:
             return jsonify({
@@ -394,7 +397,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
     @app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
     @_require_admin
-    def admin_delete_user(user_id):
+    def admin_delete_user(user_id) -> Response | tuple[Response, int]:
         """Delete a user."""
         # Prevent self-deletion
         if session.get("db_user_id") == user_id:

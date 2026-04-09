@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from threading import Event
+from typing import NoReturn
 from urllib.parse import quote
 
 import requests
@@ -41,7 +42,7 @@ from shelfmark.release_sources import (
 logger = setup_logger(__name__)
 
 
-def _raise_runtime_error(message: str):
+def _raise_runtime_error(message: str) -> NoReturn:
     raise RuntimeError(message)
 
 _aa_slow_rotation = itertools.count()

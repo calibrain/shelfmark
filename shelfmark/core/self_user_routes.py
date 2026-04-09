@@ -4,7 +4,7 @@ from collections.abc import Callable, Mapping
 from functools import wraps
 from typing import Any
 
-from flask import Flask, g, jsonify, request, session
+from flask import Flask, Response, g, jsonify, request, session
 from werkzeug.security import generate_password_hash
 
 from shelfmark.config.env import CWA_DB_PATH
@@ -148,14 +148,16 @@ def _get_allowed_self_settings_keys(visible_sections: list[str]) -> set[str]:
 def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
     """Register self-service user endpoints."""
 
-    def _require_authenticated_user(f: Callable[..., object]) -> Callable[..., object]:
+    def _require_authenticated_user(
+        f: Callable[..., Response | tuple[Response, int]],
+    ) -> Callable[..., Response | tuple[Response, int]]:
         """Decorator requiring an authenticated session linked to a local user row.
 
         Caches the resolved auth_mode in ``g.auth_mode`` for the request.
         """
 
         @wraps(f)
-        def decorated(*args, **kwargs):
+        def decorated(*args, **kwargs) -> Response | tuple[Response, int]:
             auth_mode = load_active_auth_mode(CWA_DB_PATH, user_db=user_db)
             g.auth_mode = auth_mode
             if auth_mode != "none" and "user_id" not in session:
@@ -170,7 +172,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
 
     @app.route("/api/users/me/edit-context", methods=["GET"])
     @_require_authenticated_user
-    def users_me_edit_context():
+    def users_me_edit_context() -> Response | tuple[Response, int]:
         user_id, user, user_error = _get_current_user(user_db)
         if user_error:
             return user_error
@@ -250,7 +252,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
 
     @app.route("/api/users/me/notification-preferences/test", methods=["POST"])
     @_require_authenticated_user
-    def users_me_test_notification_preferences():
+    def users_me_test_notification_preferences() -> Response | tuple[Response, int]:
         user_id, _user, user_error = _get_current_user(user_db)
         if user_error:
             return user_error
@@ -266,7 +268,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
 
     @app.route("/api/users/me", methods=["PUT"])
     @_require_authenticated_user
-    def users_me_update():
+    def users_me_update() -> Response | tuple[Response, int]:
         user_id, user, user_error = _get_current_user(user_db)
         if user_error:
             return user_error

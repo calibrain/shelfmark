@@ -1,12 +1,14 @@
 """Centralized mirror configuration for all download sources."""
 
+# Lazy import to avoid circular imports
+from types import ModuleType
+
 from shelfmark.core.utils import normalize_http_url
 
-# Lazy import to avoid circular imports
 _config_module = None
 
 
-def _get_config():
+def _get_config() -> ModuleType:
     """Lazy import of config module to avoid circular imports."""
     global _config_module
     if _config_module is None:
