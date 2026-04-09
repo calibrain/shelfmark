@@ -120,7 +120,7 @@ def _resolve_effective_policy(
         user_db.get_user_settings(db_user_id) if db_user_id is not None else {}
     )
     effective = merge_request_policy_settings(global_settings, user_settings)
-    requests_enabled = coerce_bool(effective.get("REQUESTS_ENABLED"), False)
+    requests_enabled = coerce_bool(effective.get("REQUESTS_ENABLED"), default=False)
     return global_settings, user_settings, effective, requests_enabled
 
 

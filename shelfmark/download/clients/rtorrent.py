@@ -205,13 +205,13 @@ class RTorrentClient(DownloadClient):
 
             logger.debug("Torrent data for %s: %s", download_id, torrent)
             (
-                torrent_hash,
+                _torrent_hash,
                 state,
                 bytes_downloaded,
                 bytes_total,
                 down_rate,
-                up_rate,
-                custom_category,
+                _up_rate,
+                _custom_category,
                 complete,
             ) = torrent
 
@@ -284,8 +284,9 @@ class RTorrentClient(DownloadClient):
                 self._rpc.d.erase(download_id)
 
             logger.info(
-                f"Removed torrent from rTorrent: {download_id}"
-                + (" (with files)" if delete_files else "")
+                "Removed torrent from rTorrent: %s%s",
+                download_id,
+                " (with files)" if delete_files else "",
             )
         except Exception as e:
             error_type = type(e).__name__

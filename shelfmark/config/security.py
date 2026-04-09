@@ -59,7 +59,7 @@ def _on_save_security(values: dict[str, Any]) -> dict[str, Any]:
     return on_save_security(values)
 
 
-def _test_oidc_connection(current_values: dict[str, Any] = None) -> dict[str, Any]:
+def _test_oidc_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     return test_oidc_connection(
         load_security_config=lambda: {
             "OIDC_DISCOVERY_URL": app_config.get("OIDC_DISCOVERY_URL", ""),

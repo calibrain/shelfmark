@@ -666,7 +666,7 @@ def _simplify_author_for_search(author: str) -> str | None:
     if "," in normalized:
         parts = [p.strip() for p in normalized.split(",") if p.strip()]
         if len(parts) >= 2:
-            normalized = " ".join(parts[1:] + [parts[0]]).strip()
+            normalized = " ".join([*parts[1:], parts[0]]).strip()
 
     tokens = normalized.split(" ")
     if len(tokens) < 2:

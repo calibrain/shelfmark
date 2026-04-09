@@ -317,8 +317,9 @@ class TransmissionClient(DownloadClient):
                 delete_data=delete_files,
             )
             logger.info(
-                f"Removed torrent from Transmission: {download_id}"
-                + (" (with files)" if delete_files else "")
+                "Removed torrent from Transmission: %s%s",
+                download_id,
+                " (with files)" if delete_files else "",
             )
         except Exception as e:
             self._log_error("remove", e)

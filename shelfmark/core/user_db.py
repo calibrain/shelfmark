@@ -356,7 +356,7 @@ class UserDB:
                 if not self._get_user_by_id(conn, user_id):
                     raise ValueError(f"User {user_id} not found")
                 sets = ", ".join(f"{k} = ?" for k in kwargs)
-                values = list(kwargs.values()) + [user_id]
+                values = [*list(kwargs.values()), user_id]
                 conn.execute(f"UPDATE users SET {sets} WHERE id = ?", values)
                 conn.commit()
             finally:
@@ -765,7 +765,7 @@ class UserDB:
                     )
 
                 set_clause = ", ".join(f"{column} = ?" for column in updates)
-                values = list(updates.values()) + [request_id]
+                values = [*list(updates.values()), request_id]
                 conn.execute(
                     f"UPDATE download_requests SET {set_clause} WHERE id = ?",
                     values,

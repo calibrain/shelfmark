@@ -135,7 +135,7 @@ def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
     else:
         scope_values = []
 
-    scopes = list(dict.fromkeys(["openid"] + scope_values))
+    scopes = list(dict.fromkeys(["openid", *scope_values]))
 
     admin_group = app_config.get("OIDC_ADMIN_GROUP", "")
     group_claim = app_config.get("OIDC_GROUP_CLAIM", "groups")

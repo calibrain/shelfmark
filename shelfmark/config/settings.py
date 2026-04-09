@@ -223,7 +223,7 @@ def _get_metadata_provider_options() -> list[dict[str, str]]:
 
 def _get_metadata_provider_options_with_none() -> list[dict[str, str]]:
     """Build metadata provider options with a 'Use main provider' option first."""
-    return [{"value": "", "label": "Use book provider"}] + _get_metadata_provider_options()
+    return [{"value": "", "label": "Use book provider"}, *_get_metadata_provider_options()]
 
 
 def _get_release_source_options_for_content_type(content_type: str) -> list[dict[str, str]]:
@@ -245,9 +245,10 @@ def _get_book_release_source_options() -> list[dict[str, str]]:
 
 def _get_audiobook_release_source_options() -> list[dict[str, str]]:
     """Build default release source options for audiobook searches."""
-    return [{"value": "", "label": "Use book release source"}] + _get_release_source_options_for_content_type(
-        "audiobook"
-    )
+    return [
+        {"value": "", "label": "Use book release source"},
+        *_get_release_source_options_for_content_type("audiobook"),
+    ]
 
 
 
@@ -272,7 +273,7 @@ def _get_aa_base_url_options() -> list[dict[str, str]]:
         allow_special=("auto",),
     )
     if configured_url and configured_url != "auto" and configured_url not in all_mirrors:
-        all_mirrors = [configured_url] + all_mirrors
+        all_mirrors = [configured_url, *all_mirrors]
 
     for url in all_mirrors:
         domain = url.replace("https://", "").replace("http://", "")

@@ -530,8 +530,9 @@ class QBittorrentClient(DownloadClient):
                 torrent_hashes=download_id, delete_files=delete_files
             )
             logger.info(
-                f"Removed torrent from qBittorrent: {download_id}"
-                + (" (with files)" if delete_files else "")
+                "Removed torrent from qBittorrent: %s%s",
+                download_id,
+                " (with files)" if delete_files else "",
             )
         except Exception as e:
             self._log_error("remove", e)

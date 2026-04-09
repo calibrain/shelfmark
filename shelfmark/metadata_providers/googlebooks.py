@@ -368,7 +368,7 @@ class GoogleBooksProvider(MetadataProvider):
 
 
 def _test_googlebooks_connection(
-    current_values: dict[str, Any] = None,
+    current_values: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Test the Google Books API connection using current form values."""
     current_values = current_values or {}

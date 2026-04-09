@@ -33,7 +33,7 @@ def test_email_connection(
         "EMAIL_FROM": _get_value("EMAIL_FROM", ""),
         "EMAIL_SUBJECT_TEMPLATE": _get_value("EMAIL_SUBJECT_TEMPLATE", "{Title}"),
         "EMAIL_SMTP_TIMEOUT_SECONDS": _get_value("EMAIL_SMTP_TIMEOUT_SECONDS", 60),
-        "EMAIL_ALLOW_UNVERIFIED_TLS": _get_value("EMAIL_ALLOW_UNVERIFIED_TLS", False),
+        "EMAIL_ALLOW_UNVERIFIED_TLS": _get_value("EMAIL_ALLOW_UNVERIFIED_TLS", default=False),
     }
 
     try:

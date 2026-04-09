@@ -350,7 +350,7 @@ def _resolve_policy_mode_for_current_user(*, source: Any, content_type: Any) -> 
             user_settings = None
 
     effective = merge_request_policy_settings(global_settings, user_settings)
-    if not coerce_bool(effective.get("REQUESTS_ENABLED"), False):
+    if not coerce_bool(effective.get("REQUESTS_ENABLED"), default=False):
         return None
 
     resolved_mode = resolve_policy_mode(
@@ -427,6 +427,26 @@ def _resolve_download_user_context(
     return target_user["id"], target_user["username"], None
 
 
+def _emit_request_updates(rows: list[dict[str, Any]]) -> None:
+    """Defer request update emission until the runtime hook is available."""
+    _emit_request_update_events(rows)
+
+
+def _resolve_auth_mode_for_routes() -> str:
+    """Resolve auth mode lazily so tests and runtime patches still take effect."""
+    return get_auth_mode()
+
+
+def _queue_release_for_routes(*args: Any, **kwargs: Any) -> Any:
+    """Queue a release via the current backend instance."""
+    return backend.queue_release(*args, **kwargs)
+
+
+def _queue_status_for_routes(user_id: int | None = None) -> dict[str, dict[str, Any]]:
+    """Read queue status via the current backend instance."""
+    return backend.queue_status(user_id=user_id)
+
+
 if user_db is not None:
     try:
         from shelfmark.core.activity_routes import register_activity_routes
@@ -435,8 +455,8 @@ if user_db is not None:
         register_request_routes(
             app,
             user_db,
-            resolve_auth_mode=lambda: get_auth_mode(),
-            queue_release=lambda *args, **kwargs: backend.queue_release(*args, **kwargs),
+            resolve_auth_mode=_resolve_auth_mode_for_routes,
+            queue_release=_queue_release_for_routes,
             ws_manager=ws_manager,
         )
         if download_history_service is not None and activity_view_state_service is not None:
@@ -445,10 +465,10 @@ if user_db is not None:
                 user_db,
                 activity_view_state_service=activity_view_state_service,
                 download_history_service=download_history_service,
-                resolve_auth_mode=lambda: get_auth_mode(),
-                queue_status=lambda user_id=None: backend.queue_status(user_id=user_id),
+                resolve_auth_mode=_resolve_auth_mode_for_routes,
+                queue_status=_queue_status_for_routes,
                 sync_request_delivery_states=sync_delivery_states_from_queue_status,
-                emit_request_updates=lambda rows: _emit_request_update_events(rows),
+                emit_request_updates=_emit_request_updates,
                 ws_manager=ws_manager,
             )
     except Exception as e:
@@ -782,8 +802,11 @@ def favicon(_: Any = None) -> Response:
 if DEBUG:
     import subprocess
 
+    def _stop_gui() -> None:
+        return None
+
     if app_config.get("USING_EXTERNAL_BYPASSER", False):
-        _stop_gui = lambda: None
+        pass
     else:
         from shelfmark.bypass.internal_bypasser import _cleanup_orphan_processes as _stop_gui
 

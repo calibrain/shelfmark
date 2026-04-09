@@ -396,8 +396,9 @@ class DelugeClient(DownloadClient):
             result = self._rpc_call("core.remove_torrent", download_id, delete_files)
             if result:
                 logger.info(
-                    f"Removed torrent from Deluge: {download_id}"
-                    + (" (with files)" if delete_files else "")
+                    "Removed torrent from Deluge: %s%s",
+                    download_id,
+                    " (with files)" if delete_files else "",
                 )
                 return True
 

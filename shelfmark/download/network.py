@@ -589,7 +589,7 @@ def create_custom_getaddrinfo(
 
         try:
             # Try IPv4 (IPv6 disabled to avoid noisy AAAA failures)
-            if family == 0 or family == socket.AF_INET:
+            if family in {0, socket.AF_INET}:
                 ipv4_answers = resolve_ipv4(host_str)
                 results.extend(
                     [(socket.AF_INET, cast("SocketKind", type), proto, "", (answer, port_int)) for answer in ipv4_answers]
@@ -614,7 +614,7 @@ def create_custom_getaddrinfo(
         except Exception:
             logger.exception("System DNS resolution also failed for %s", host_str)
             # Last resort: Try to connect to the hostname directly
-            if family == 0 or family == socket.AF_INET:
+            if family in {0, socket.AF_INET}:
                 logger.warning("Using direct hostname as last resort for %s", host_str)
                 return [(socket.AF_INET, cast("SocketKind", type), proto, "", (host_str, port_int))]
             raise  # Re-raise the exception if we can't provide a last resort
@@ -998,7 +998,7 @@ def _initialize_aa_state() -> None:
     # If AA_BASE_URL is pinned to a custom URL that's not in the mirror list, we still
     # want to treat it as the active base (and rewrite known mirror links to it).
     if configured_url != "auto" and configured_url not in _aa_urls:
-        _aa_urls = [configured_url] + _aa_urls
+        _aa_urls = [configured_url, *_aa_urls]
 
     if configured_url == "auto":
         if state.get("aa_base_url") and state["aa_base_url"] in _aa_urls:

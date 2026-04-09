@@ -311,8 +311,10 @@ def register_settings(
             )
             _SETTINGS_REGISTRY[name] = tab
             logger.debug(
-                f"Registered settings tab: {name} ({len(fields)} fields)"
-                + (f" in group {group}" if group else "")
+                "Registered settings tab: %s (%s fields)%s",
+                name,
+                len(fields),
+                f" in group {group}" if group else "",
             )
         return func
 
