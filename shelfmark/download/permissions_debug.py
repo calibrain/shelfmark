@@ -10,11 +10,13 @@ original error.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
-from pathlib import Path
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from shelfmark.core.logger import setup_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
 
 logger = setup_logger(__name__)
 

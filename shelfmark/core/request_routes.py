@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from flask import Flask, Response, jsonify, request, session
 
@@ -43,6 +42,9 @@ from shelfmark.core.requests_service import (
     reject_request,
 )
 from shelfmark.core.user_db import UserDB
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = setup_logger(__name__)
 

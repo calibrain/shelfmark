@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
@@ -26,6 +26,9 @@ from shelfmark.download.postprocess.policy import get_file_organization, get_tem
 from .scan import collect_directory_files, scan_directory_tree
 from .types import TransferPlan
 from .workspace import safe_cleanup_path
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = setup_logger("shelfmark.download.postprocess.pipeline")
 

@@ -3,14 +3,11 @@ from __future__ import annotations
 import mimetypes
 import smtplib
 import ssl
-from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid, parseaddr
-from pathlib import Path
-from threading import Event
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
@@ -24,6 +21,11 @@ from shelfmark.download.staging import (
     build_staging_dir,
     get_staging_dir,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+    from pathlib import Path
+    from threading import Event
 
 logger = setup_logger(__name__)
 

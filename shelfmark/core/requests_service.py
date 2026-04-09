@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -25,6 +24,8 @@ MAX_REQUEST_JSON_BLOB_BYTES = 10 * 1024
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from shelfmark.core.user_db import UserDB
 
 

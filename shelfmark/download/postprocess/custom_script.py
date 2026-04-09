@@ -3,10 +3,9 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
@@ -15,6 +14,9 @@ from shelfmark.download.fs import run_blocking_io
 
 from .steps import log_plan_steps, record_step
 from .types import PlanStep
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = setup_logger(__name__)
 

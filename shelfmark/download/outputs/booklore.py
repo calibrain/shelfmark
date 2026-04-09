@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from threading import Event
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import requests
 
@@ -21,6 +19,10 @@ from shelfmark.download.staging import (
     build_staging_dir,
     get_staging_dir,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+    from threading import Event
 
 logger = setup_logger(__name__)
 

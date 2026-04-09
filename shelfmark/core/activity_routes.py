@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from flask import Flask, Response, jsonify, request, session
 
@@ -32,6 +31,9 @@ from shelfmark.core.request_helpers import (
 )
 from shelfmark.core.request_validation import RequestStatus
 from shelfmark.core.user_db import UserDB
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = setup_logger(__name__)
 

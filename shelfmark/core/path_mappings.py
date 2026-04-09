@@ -9,9 +9,12 @@ A mapping rewrites a remote path prefix into a local path prefix.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 _WINDOWS_DRIVE_PREFIX_LENGTH = 2
 

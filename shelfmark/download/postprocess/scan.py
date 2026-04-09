@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
@@ -17,6 +17,9 @@ from shelfmark.download.postprocess.policy import (
     get_supported_formats as get_book_formats,
 )
 from shelfmark.download.staging import build_staging_dir
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = setup_logger("shelfmark.download.postprocess.pipeline")
 

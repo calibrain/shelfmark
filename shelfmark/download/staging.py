@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import shutil
-from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from shelfmark.config import env as env_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.download.fs import run_blocking_io
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = setup_logger(__name__)
 

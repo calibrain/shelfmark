@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 try:
@@ -19,6 +18,9 @@ except ImportError:  # pragma: no cover - exercised in tests via monkeypatch
 
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
 
 logger = setup_logger(__name__)
 
