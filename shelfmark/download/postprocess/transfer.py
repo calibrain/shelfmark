@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask
 from shelfmark.core.naming import (
     assign_part_numbers,
     build_library_path,
@@ -29,6 +28,8 @@ from .workspace import safe_cleanup_path
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from shelfmark.core.models import DownloadTask
 
 logger = setup_logger("shelfmark.download.postprocess.pipeline")
 

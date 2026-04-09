@@ -30,10 +30,11 @@ from shelfmark.core.request_helpers import (
     populate_request_usernames,
 )
 from shelfmark.core.request_validation import RequestStatus
-from shelfmark.core.user_db import UserDB
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
 

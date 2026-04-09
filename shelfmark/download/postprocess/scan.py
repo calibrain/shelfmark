@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download.archive import ArchiveExtractionError, extract_archive, is_archive
 from shelfmark.download.fs import run_blocking_io
@@ -20,6 +19,8 @@ from shelfmark.download.staging import build_staging_dir
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from shelfmark.core.models import DownloadTask
 
 logger = setup_logger("shelfmark.download.postprocess.pipeline")
 

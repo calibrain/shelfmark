@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 MANUAL_QUERY_MAX_LEN = 256
 
 from shelfmark.core.config import config
-from shelfmark.core.models import SearchFilters
 from shelfmark.metadata_providers import (
     BookMetadata,
     build_localized_search_titles,
     group_languages_by_localized_title,
 )
+
+if TYPE_CHECKING:
+    from shelfmark.core.models import SearchFilters
 
 
 @dataclass(frozen=True)

@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from shelfmark.config import env as env_config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask
 from shelfmark.download.fs import run_blocking_io
 from shelfmark.download.staging import STAGE_NONE
 
-from .types import OutputPlan
+if TYPE_CHECKING:
+    from shelfmark.core.models import DownloadTask
+
+    from .types import OutputPlan
 
 logger = setup_logger("shelfmark.download.postprocess.pipeline")
 

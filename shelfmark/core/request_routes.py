@@ -41,10 +41,11 @@ from shelfmark.core.requests_service import (
     fulfil_request,
     reject_request,
 )
-from shelfmark.core.user_db import UserDB
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
 

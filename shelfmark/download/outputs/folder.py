@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any
 
 import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download.outputs import StatusCallback, register_output
 from shelfmark.download.staging import STAGE_NONE, StageAction
@@ -13,6 +12,8 @@ from shelfmark.download.staging import STAGE_NONE, StageAction
 if TYPE_CHECKING:
     from pathlib import Path
     from threading import Event
+
+    from shelfmark.core.models import DownloadTask
 
 logger = setup_logger(__name__)
 

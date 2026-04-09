@@ -4,7 +4,6 @@ import uuid
 from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import (
     get_destination,
 )
@@ -18,6 +17,8 @@ from shelfmark.release_sources import get_source
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
+
+    from shelfmark.core.models import DownloadTask
 
 logger = setup_logger("shelfmark.download.postprocess.pipeline")
 

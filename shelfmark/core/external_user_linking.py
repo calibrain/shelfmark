@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from shelfmark.core.auth_modes import normalize_auth_source
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.user_db import UserDB
+
+if TYPE_CHECKING:
+    from shelfmark.core.user_db import UserDB
 
 UNSET = object()
 

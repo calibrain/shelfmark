@@ -9,14 +9,16 @@ from typing import TYPE_CHECKING, Any
 
 import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask
 from shelfmark.download.fs import run_blocking_io
 
 from .steps import log_plan_steps, record_step
-from .types import PlanStep
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from shelfmark.core.models import DownloadTask
+
+    from .types import PlanStep
 
 logger = setup_logger(__name__)
 

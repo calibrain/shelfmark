@@ -6,10 +6,11 @@ from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.auth_modes import AUTH_SOURCE_CWA, normalize_auth_source
 from shelfmark.core.external_user_linking import upsert_external_user
-from shelfmark.core.user_db import UserDB
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    from shelfmark.core.user_db import UserDB
 
 _CWA_ALIAS_SUFFIX = "__cwa"
 
