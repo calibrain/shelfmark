@@ -44,10 +44,9 @@ def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], li
                 valid[key] = None
                 continue
 
-            if key in {"REQUEST_POLICY_DEFAULT_EBOOK", "REQUEST_POLICY_DEFAULT_AUDIOBOOK"}:
-                if parse_policy_mode(value) is None:
-                    errors.append(f"Invalid policy mode for {key}: {value}")
-                    continue
+            if key in {"REQUEST_POLICY_DEFAULT_EBOOK", "REQUEST_POLICY_DEFAULT_AUDIOBOOK"} and parse_policy_mode(value) is None:
+                errors.append(f"Invalid policy mode for {key}: {value}")
+                continue
 
             if key == "REQUEST_POLICY_RULES":
                 normalized_rules, rule_errors = validate_policy_rules(value)

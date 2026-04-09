@@ -107,15 +107,13 @@ def _get_request_source_options():
     """Build request-policy source options from registered release sources."""
     from shelfmark.release_sources import list_available_sources
 
-    options = []
-    for source in list_available_sources():
-        options.append(
-            {
-                "value": source["name"],
-                "label": source["display_name"],
-            }
-        )
-    return options
+    return [
+        {
+            "value": source["name"],
+            "label": source["display_name"],
+        }
+        for source in list_available_sources()
+    ]
 
 
 def _get_valid_release_source_names_for_content_type(content_type: str) -> set[str]:
@@ -136,14 +134,14 @@ def _get_request_policy_rule_columns():
 
     for source_name, supported_types in source_capabilities.items():
         normalized_types = [t for t in ("ebook", "audiobook") if t in supported_types]
-        for content_type in normalized_types:
-            content_type_options.append(
-                {
-                    "value": content_type,
-                    "label": "Ebook" if content_type == "ebook" else "Audiobook",
-                    "childOf": source_name,
-                }
-            )
+        content_type_options.extend(
+            {
+                "value": content_type,
+                "label": "Ebook" if content_type == "ebook" else "Audiobook",
+                "childOf": source_name,
+            }
+            for content_type in normalized_types
+        )
 
     return [
         {
@@ -257,21 +255,19 @@ def _on_save_users(values):
 
         values["VISIBLE_SELF_SETTINGS_SECTIONS"] = normalized_sections
 
-    if "REQUEST_POLICY_DEFAULT_EBOOK" in values:
-        if parse_policy_mode(values["REQUEST_POLICY_DEFAULT_EBOOK"]) is None:
-            return {
-                "error": True,
-                "message": "REQUEST_POLICY_DEFAULT_EBOOK must be a valid policy mode",
-                "values": values,
-            }
+    if "REQUEST_POLICY_DEFAULT_EBOOK" in values and parse_policy_mode(values["REQUEST_POLICY_DEFAULT_EBOOK"]) is None:
+        return {
+            "error": True,
+            "message": "REQUEST_POLICY_DEFAULT_EBOOK must be a valid policy mode",
+            "values": values,
+        }
 
-    if "REQUEST_POLICY_DEFAULT_AUDIOBOOK" in values:
-        if parse_policy_mode(values["REQUEST_POLICY_DEFAULT_AUDIOBOOK"]) is None:
-            return {
-                "error": True,
-                "message": "REQUEST_POLICY_DEFAULT_AUDIOBOOK must be a valid policy mode",
-                "values": values,
-            }
+    if "REQUEST_POLICY_DEFAULT_AUDIOBOOK" in values and parse_policy_mode(values["REQUEST_POLICY_DEFAULT_AUDIOBOOK"]) is None:
+        return {
+            "error": True,
+            "message": "REQUEST_POLICY_DEFAULT_AUDIOBOOK must be a valid policy mode",
+            "values": values,
+        }
 
     if "REQUEST_POLICY_RULES" in values:
         normalized_rules, errors = validate_policy_rules(values["REQUEST_POLICY_RULES"])

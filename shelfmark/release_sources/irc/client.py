@@ -8,6 +8,7 @@ import socket
 import ssl
 import time
 from collections.abc import Iterator
+from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import Enum, auto
 
@@ -54,12 +55,10 @@ class IRCMessage:
 
 class IRCError(Exception):
     """Base IRC error."""
-    pass
 
 
 class IRCConnectionError(IRCError):
     """Connection failed."""
-    pass
 
 
 class IRCClient:
@@ -167,15 +166,11 @@ class IRCClient:
     def disconnect(self) -> None:
         """Gracefully disconnect from server."""
         if self._socket:
-            try:
+            with suppress(Exception):
                 self._send("QUIT :Goodbye")
-            except Exception:
-                pass  # Best effort
 
-            try:
+            with suppress(Exception):
                 self._socket.close()
-            except Exception:
-                pass
 
             self._socket = None
             self._connected = False
@@ -255,10 +250,7 @@ class IRCClient:
     def _parse_names_list(self, names_data: str) -> None:
         """Parse 353 NAMES reply and extract elevated users (download servers)."""
         # Extract the trailing part after the last colon (the actual names)
-        if ' :' in names_data:
-            names_part = names_data.split(' :')[-1]
-        else:
-            names_part = names_data
+        names_part = names_data.split(' :')[-1] if ' :' in names_data else names_data
 
         for name in names_part.split():
             # Check if user has an elevated prefix
@@ -422,21 +414,17 @@ class IRCClient:
             if msg.event == IRCEvent.NO_RESULTS:
                 logger.info("Server reports no results")
                 return None
-            elif msg.event == IRCEvent.BAD_SERVER:
+            if msg.event == IRCEvent.BAD_SERVER:
                 logger.warning("Server unavailable")
                 return None
-            elif msg.event == IRCEvent.SEARCH_ACCEPTED:
+            if msg.event == IRCEvent.SEARCH_ACCEPTED:
                 logger.info("Search accepted, waiting for results...")
-            elif msg.event == IRCEvent.MATCHES_FOUND:
+            elif msg.event == IRCEvent.MATCHES_FOUND and msg.trailing and "returned" in msg.trailing:
                 # Extract count from "returned X matches"
-                if msg.trailing and "returned" in msg.trailing:
-                    try:
-                        match = re.search(r'returned\s+(\d+)\s+matches', msg.trailing)
-                        if match:
-                            count = match.group(1)
-                            logger.info(f"Found {count} matches")
-                    except Exception:
-                        pass
+                match = re.search(r'returned\s+(\d+)\s+matches', msg.trailing)
+                if match:
+                    count = match.group(1)
+                    logger.info(f"Found {count} matches")
 
         return None
 

@@ -184,22 +184,19 @@ class BookQueue:
             # Get items from priority queue without removing them
             temp_items = []
             while not self._queue.empty():
-                try:
-                    item = self._queue.get_nowait()
-                    temp_items.append(item)
-                    task_id = item.book_id  # QueueItem uses book_id as the ID field
-                    if task_id in self._task_data:
-                        task = self._task_data[task_id]
-                        queue_items.append({
-                            'id': task_id,
-                            'title': task.title,
-                            'author': task.author,
-                            'priority': item.priority,
-                            'added_time': item.added_time,
-                            'status': self._status.get(task_id, QueueStatus.QUEUED)
-                        })
-                except queue.Empty:
-                    break
+                item = self._queue.get_nowait()
+                temp_items.append(item)
+                task_id = item.book_id  # QueueItem uses book_id as the ID field
+                if task_id in self._task_data:
+                    task = self._task_data[task_id]
+                    queue_items.append({
+                        'id': task_id,
+                        'title': task.title,
+                        'author': task.author,
+                        'priority': item.priority,
+                        'added_time': item.added_time,
+                        'status': self._status.get(task_id, QueueStatus.QUEUED)
+                    })
 
             # Put items back in queue
             for item in temp_items:
@@ -216,7 +213,7 @@ class BookQueue:
                 # Signal active download to stop
                 if task_id in self._cancel_flags:
                     self._cancel_flags[task_id].set()
-            elif current_status not in [QueueStatus.QUEUED]:
+            elif current_status != QueueStatus.QUEUED:
                 # Not in a cancellable state
                 return False
 
@@ -234,20 +231,17 @@ class BookQueue:
             found = False
 
             while not self._queue.empty():
-                try:
-                    item = self._queue.get_nowait()
-                    if item.book_id == task_id:  # QueueItem uses book_id as the ID field
-                        # Create new item with updated priority
-                        new_item = QueueItem(task_id, new_priority, item.added_time)
-                        temp_items.append(new_item)
-                        found = True
-                        # Update task data priority
-                        if task_id in self._task_data:
-                            self._task_data[task_id].priority = new_priority
-                    else:
-                        temp_items.append(item)
-                except queue.Empty:
-                    break
+                item = self._queue.get_nowait()
+                if item.book_id == task_id:  # QueueItem uses book_id as the ID field
+                    # Create new item with updated priority
+                    new_item = QueueItem(task_id, new_priority, item.added_time)
+                    temp_items.append(new_item)
+                    found = True
+                    # Update task data priority
+                    if task_id in self._task_data:
+                        self._task_data[task_id].priority = new_priority
+                else:
+                    temp_items.append(item)
 
             # Put all items back
             for item in temp_items:
@@ -277,10 +271,7 @@ class BookQueue:
             # De-duplicate queue entries for this task id.
             temp_items: list[QueueItem] = []
             while not self._queue.empty():
-                try:
-                    item = self._queue.get_nowait()
-                except queue.Empty:
-                    break
+                item = self._queue.get_nowait()
                 if item.book_id != task_id:
                     temp_items.append(item)
 
@@ -306,19 +297,16 @@ class BookQueue:
             # Extract all items from queue
             all_items = []
             while not self._queue.empty():
-                try:
-                    item = self._queue.get_nowait()
-                    task_id = item.book_id  # QueueItem uses book_id as the ID field
-                    # Update priority if specified
-                    if task_id in task_priorities:
-                        new_priority = task_priorities[task_id]
-                        item = QueueItem(task_id, new_priority, item.added_time)
-                        # Update task data priority
-                        if task_id in self._task_data:
-                            self._task_data[task_id].priority = new_priority
-                    all_items.append(item)
-                except queue.Empty:
-                    break
+                item = self._queue.get_nowait()
+                task_id = item.book_id  # QueueItem uses book_id as the ID field
+                # Update priority if specified
+                if task_id in task_priorities:
+                    new_priority = task_priorities[task_id]
+                    item = QueueItem(task_id, new_priority, item.added_time)
+                    # Update task data priority
+                    if task_id in self._task_data:
+                        self._task_data[task_id].priority = new_priority
+                all_items.append(item)
 
             # Put all items back with updated priorities
             for item in all_items:
@@ -356,9 +344,8 @@ class BookQueue:
 
                 # Check for stale status entries
                 last_update = self._status_timestamps.get(task_id)
-                if last_update and (current_time - last_update) > self._status_timeout:
-                    if status in terminal_statuses:
-                        to_remove.append(task_id)
+                if last_update and (current_time - last_update) > self._status_timeout and status in terminal_statuses:
+                    to_remove.append(task_id)
 
             # Remove stale entries
             for task_id in to_remove:

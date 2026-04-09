@@ -26,9 +26,8 @@ def is_within_tmp_dir(path: Path) -> bool:
     # prevent symlink escapes from being treated as managed.
     tmp_dir = _tmp_dir()
     try:
-        if path.is_absolute() and tmp_dir.is_absolute():
-            if path != tmp_dir and tmp_dir not in path.parents:
-                return False
+        if path.is_absolute() and tmp_dir.is_absolute() and path != tmp_dir and tmp_dir not in path.parents:
+            return False
     except Exception:
         # Fall back to the slower resolve-based check below.
         pass

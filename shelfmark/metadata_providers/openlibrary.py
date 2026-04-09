@@ -516,8 +516,7 @@ def _test_openlibrary_connection() -> dict[str, Any]:
         data = response.json()
         if "docs" in data:
             return {"success": True, "message": "Successfully connected to Open Library API"}
-        else:
-            return {"success": False, "message": "Unexpected response from API"}
+        return {"success": False, "message": "Unexpected response from API"}
     except requests.Timeout:
         return {"success": False, "message": "Connection timed out"}
     except requests.RequestException as e:

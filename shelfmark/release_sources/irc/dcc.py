@@ -41,22 +41,18 @@ class DCCOffer:
 
 class DCCError(Exception):
     """Base exception for DCC operations."""
-    pass
 
 
 class DCCParseError(DCCError):
     """Failed to parse DCC SEND string."""
-    pass
 
 
 class DCCSizeError(DCCError):
     """Downloaded size doesn't match expected size."""
-    pass
 
 
 class DCCConnectionError(DCCError):
     """Failed to connect to DCC sender."""
-    pass
 
 
 def int_to_ip(ip_int: int) -> str:
@@ -105,7 +101,7 @@ def download_dcc(
         received = 0
         last_progress = -1
 
-        with open(dest_path, 'wb') as f:
+        with dest_path.open('wb') as f:
             while received < offer.size:
                 # Check for cancellation
                 if cancel_flag and cancel_flag.is_set():

@@ -396,7 +396,7 @@ class SABnzbdClient(DownloadClient):
                             complete=True,
                             file_path=resolved_storage,
                         )
-                    elif status_text == "FAILED":
+                    if status_text == "FAILED":
                         fail_message = slot.get("fail_message", "Download failed")
                         title = slot.get("name") or slot.get("nzb_name") or ""
                         resolved_storage = self._resolve_completed_storage_path(storage, title)
@@ -407,17 +407,16 @@ class SABnzbdClient(DownloadClient):
                             complete=True,
                             file_path=resolved_storage,
                         )
-                    else:
-                        # Post-processing states: Queued, QuickCheck, Verifying,
-                        # Repairing, Fetching, Extracting, Moving, Running
-                        # Keep polling - not yet complete
-                        return DownloadStatus(
-                            progress=100,
-                            state="processing",
-                            message=status_text.title(),
-                            complete=False,
-                            file_path=None,
-                        )
+                    # Post-processing states: Queued, QuickCheck, Verifying,
+                    # Repairing, Fetching, Extracting, Moving, Running
+                    # Keep polling - not yet complete
+                    return DownloadStatus(
+                        progress=100,
+                        state="processing",
+                        message=status_text.title(),
+                        complete=False,
+                        file_path=None,
+                    )
 
             # Not found
             logger.warning(f"SABnzbd: download {download_id} not found in queue or history")
@@ -515,10 +514,7 @@ class SABnzbdClient(DownloadClient):
             path = unquote(parsed.path)
 
             # Get filename from path
-            if "/" in path:
-                filename = path.rsplit("/", 1)[-1]
-            else:
-                filename = path
+            filename = path.rsplit("/", 1)[-1] if "/" in path else path
 
             # Remove common NZB extensions
             for ext in [".nzb", ".nzb.gz"]:

@@ -87,8 +87,7 @@ class ProwlarrClient:
     def get_indexers(self) -> list[dict[str, Any]]:
         """Get all configured indexers."""
         try:
-            indexers = self._request("GET", "/api/v1/indexer")
-            return indexers
+            return self._request("GET", "/api/v1/indexer")
         except Exception as e:
             logger.error(f"Failed to get indexers: {e}")
             return []

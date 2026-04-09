@@ -45,7 +45,7 @@ def is_onboarding_complete() -> bool:
         return False
 
     try:
-        with open(config_file) as f:
+        with config_file.open() as f:
             config = json.load(f)
             return config.get(ONBOARDING_STORAGE_KEY, False)
     except (json.JSONDecodeError, OSError) as e:

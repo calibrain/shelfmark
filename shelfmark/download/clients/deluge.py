@@ -12,6 +12,7 @@ Requirements:
 """
 
 import base64
+from contextlib import suppress
 from typing import Any
 from urllib.parse import urlparse
 
@@ -190,10 +191,8 @@ class DelugeClient(DownloadClient):
 
         try:
             # label.add will error if the plugin is unavailable or the label exists.
-            try:
+            with suppress(Exception):
                 self._rpc_call("label.add", label)
-            except Exception:
-                pass
 
             self._rpc_call("label.set_torrent", torrent_id, label)
         except Exception as e:

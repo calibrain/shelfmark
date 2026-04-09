@@ -6,6 +6,7 @@ Requires a free API key from Google Cloud Console (~1000 requests/day quota).
 API Documentation: https://developers.google.com/books/docs/v1/using
 """
 
+from contextlib import suppress
 from typing import Any
 
 import requests
@@ -307,10 +308,8 @@ class GoogleBooksProvider(MetadataProvider):
             publish_year = None
             published_date = volume_info.get("publishedDate", "")
             if published_date:
-                try:
+                with suppress(ValueError, TypeError):
                     publish_year = int(published_date[:4])
-                except (ValueError, TypeError):
-                    pass
 
             # Language
             language = volume_info.get("language")
@@ -383,16 +382,15 @@ def _test_googlebooks_connection(current_values: dict[str, Any] = None) -> dict[
                 "success": True,
                 "message": "Successfully connected to Google Books API",
             }
-        elif result is not None:
+        if result is not None:
             return {
                 "success": True,
                 "message": "API connected but returned no results for test query",
             }
-        else:
-            return {
-                "success": False,
-                "message": "API request failed - check your API key",
-            }
+        return {
+            "success": False,
+            "message": "API request failed - check your API key",
+        }
     except Exception as e:
         logger.exception("Google Books connection test failed")
         return {"success": False, "message": f"Connection failed: {str(e)}"}

@@ -64,7 +64,7 @@ def sanitize_download_url(download_url: str) -> str:
         return normalized
 
     lower = normalized.lower()
-    if not (lower.startswith("http://") or lower.startswith("https://")):
+    if not lower.startswith(("http://", "https://")):
         return normalized
 
     if " " not in normalized:

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import threading
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from shelfmark.core.logger import setup_logger
@@ -100,7 +100,7 @@ class DownloadHistoryService:
         normalized = normalize_optional_text(value)
         if normalized is None:
             return None
-        return normalized if os.path.exists(normalized) else None
+        return normalized if Path(normalized).exists() else None
 
     @staticmethod
     def _serialize_retry_payload(payload: Any) -> str | None:
@@ -130,7 +130,7 @@ class DownloadHistoryService:
         normalized_staged_path = normalize_optional_text(staged_path)
         if normalized_staged_path is None:
             return False
-        return os.path.exists(normalized_staged_path)
+        return Path(normalized_staged_path).exists()
 
     @staticmethod
     def _can_retry_without_staged_source(retry_payload: dict[str, Any]) -> bool:

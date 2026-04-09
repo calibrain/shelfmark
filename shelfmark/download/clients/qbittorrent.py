@@ -1,6 +1,7 @@
 """qBittorrent download client for Prowlarr integration."""
 
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 from shelfmark.core.config import config
@@ -607,7 +608,7 @@ class QBittorrentClient(DownloadClient):
             if not top_level:
                 return None
 
-            return os.path.normpath(os.path.join(save_path, top_level))
+            return os.path.normpath(str(Path(save_path) / top_level))
         except Exception as e:
             logger.debug(f"qBittorrent could not derive path from files: {type(e).__name__}: {e}")
             return None

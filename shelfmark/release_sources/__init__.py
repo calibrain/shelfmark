@@ -301,12 +301,10 @@ class ReleaseSource(ABC):
         content_type: str = "ebook"
     ) -> list[Release]:
         """Search for releases of a book."""
-        pass
 
     @abstractmethod
     def is_available(self) -> bool:
         """Check if this source is configured and reachable."""
-        pass
 
     def get_column_config(self) -> ReleaseColumnConfig:
         """Get column configuration for release list UI. Override for custom columns."""
@@ -350,7 +348,6 @@ class DownloadHandler(ABC):
         status_callback: Callable[[str, str | None], None]
     ) -> str | None:
         """Execute download and return a path to the downloaded payload."""
-        pass
 
     def post_process_cleanup(self, task: DownloadTask, success: bool) -> None:
         """Optional hook called after orchestrator post-processing.
@@ -363,7 +360,6 @@ class DownloadHandler(ABC):
     @abstractmethod
     def cancel(self, task_id: str) -> bool:
         """Cancel an in-progress download."""
-        pass
 
 
 # --- Registry ---

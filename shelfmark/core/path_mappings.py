@@ -105,8 +105,7 @@ def remap_remote_to_local_with_match(
             remainder = remote_normalized[len(remote_prefix):]
             local_prefix = _normalize_prefix(mapping.local_path)
 
-            if remainder.startswith("/"):
-                remainder = remainder[1:]
+            remainder = remainder.removeprefix("/")
 
             remapped = Path(local_prefix) / remainder if remainder else Path(local_prefix)
             return remapped, True

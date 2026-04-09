@@ -6,7 +6,7 @@ import logging
 import threading
 from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -352,10 +352,8 @@ def _plugin_label(plugin: Any, fallback_scheme: str) -> str:
     app_id = getattr(plugin, "app_id", None)
     if app_id and str(app_id) != fallback_scheme:
         privacy_url: str | None = None
-        try:
+        with suppress(Exception):
             privacy_url = plugin.url(privacy=True)
-        except Exception:
-            pass
 
         suffix = str(app_id)
         if privacy_url:

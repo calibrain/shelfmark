@@ -82,10 +82,8 @@ def _normalize_return_to(raw_return_to: Any) -> str | None:
             path = path[len(script_root):] or "/"
 
     if (
-        path == "/login"
-        or path.startswith("/login/")
-        or path == "/api"
-        or path.startswith("/api/")
+        path in {"/login", "/api"}
+        or path.startswith(("/login/", "/api/"))
     ):
         return None
 

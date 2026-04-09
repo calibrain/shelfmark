@@ -306,7 +306,7 @@ class IRCReleaseSource(ReleaseSource):
     ) -> list[Release]:
         """Convert parsed results to Release objects, sorted by online/format/server."""
         releases = []
-        online_servers = self._online_servers if self._online_servers else set()
+        online_servers = self._online_servers or set()
         format_priority_map = (
             self.AUDIOBOOK_FORMAT_PRIORITY
             if content_type == "audiobook"

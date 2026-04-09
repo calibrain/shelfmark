@@ -116,17 +116,22 @@ class WebSocketManager:
 
             if active_rooms and self._queue_status_fn:
                 for room in active_rooms:
-                    try:
-                        # Extract user_id from room name "user_123"
-                        uid = int(room.split("_", 1)[1])
-                        filtered = self._queue_status_fn(user_id=uid)
-                        self.socketio.emit('status_update', filtered, to=room)
-                    except Exception as e:
-                        logger.error(f"Failed to send status update for room {room}: {e}")
+                    self._broadcast_status_update_to_room(room)
 
             logger.debug("Broadcasted status update to all rooms")
         except Exception as e:
             logger.error(f"Error broadcasting status update: {e}")
+
+    def _broadcast_status_update_to_room(self, room: str) -> None:
+        """Broadcast status update to one user room."""
+        try:
+            # Extract user_id from room name "user_123"
+            uid = int(room.split("_", 1)[1])
+            filtered = self._queue_status_fn(user_id=uid) if self._queue_status_fn else None
+            if filtered is not None:
+                self.socketio.emit('status_update', filtered, to=room)
+        except Exception as e:
+            logger.error(f"Failed to send status update for room {room}: {e}")
 
     def broadcast_download_progress(self, book_id: str, progress: float, status: str, user_id: int | None = None):
         """Broadcast download progress update for a specific book."""

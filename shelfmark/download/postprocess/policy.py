@@ -74,10 +74,7 @@ def get_template(is_audiobook: bool, organization_mode: str) -> str:
         else:
             key = "TEMPLATE_AUDIOBOOK_RENAME"
     else:
-        if organization_mode == "organize":
-            key = "TEMPLATE_ORGANIZE"
-        else:
-            key = "TEMPLATE_RENAME"
+        key = "TEMPLATE_ORGANIZE" if organization_mode == "organize" else "TEMPLATE_RENAME"
 
     template = core_config.config.get(key, "")
 

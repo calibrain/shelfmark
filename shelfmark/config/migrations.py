@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 _DEPRECATED_SETTINGS_RESTRICTION_KEYS = (
@@ -82,14 +83,13 @@ def migrate_security_settings(
         # Backfill AUTH_METHOD for configs that have builtin credentials but
         # were never migrated from USE_CWA_AUTH (e.g. dev builds that predated
         # the AUTH_METHOD field).
-        if "AUTH_METHOD" not in config:
-            if config.get("BUILTIN_USERNAME") and config.get("BUILTIN_PASSWORD_HASH"):
-                config["AUTH_METHOD"] = "builtin"
-                migrated_security = True
-                logger.info(
-                    "Backfilled AUTH_METHOD='builtin' from legacy "
-                    "BUILTIN_USERNAME/BUILTIN_PASSWORD_HASH credentials"
-                )
+        if "AUTH_METHOD" not in config and config.get("BUILTIN_USERNAME") and config.get("BUILTIN_PASSWORD_HASH"):
+            config["AUTH_METHOD"] = "builtin"
+            migrated_security = True
+            logger.info(
+                "Backfilled AUTH_METHOD='builtin' from legacy "
+                "BUILTIN_USERNAME/BUILTIN_PASSWORD_HASH credentials"
+            )
 
         if "RESTRICT_SETTINGS_TO_ADMIN" not in users_config:
             legacy_restrict = _pick_legacy_settings_restriction(config)
@@ -120,8 +120,8 @@ def migrate_security_settings(
 
         if migrated_security:
             ensure_config_dir()
-            config_path = get_config_path()
-            with open(config_path, "w") as f:
+            config_path = Path(get_config_path())
+            with config_path.open("w") as f:
                 json.dump(config, f, indent=2)
             logger.info("Security settings migration completed successfully")
         elif migrated_users:

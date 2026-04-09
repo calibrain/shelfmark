@@ -5,6 +5,7 @@ Maintains persistent IRC connections to avoid reconnecting between search and do
 
 import threading
 import time
+from contextlib import suppress
 from typing import Optional
 
 from shelfmark.core.logger import setup_logger
@@ -137,7 +138,7 @@ class IRCConnectionManager:
             if self._connecting.get(key):
                 logger.debug(f"Another thread is connecting to {key}, waiting...")
                 # Release lock and wait, then retry
-                pass  # Fall through to retry logic below
+                # Fall through to retry logic below
             else:
                 # Clean up dead connection if it exists
                 if existing:
@@ -153,10 +154,8 @@ class IRCConnectionManager:
 
         # Clean up dead client outside lock
         if dead_client:
-            try:
+            with suppress(Exception):
                 dead_client.disconnect()
-            except Exception:
-                pass
 
         # If another thread is connecting, wait and retry
         if not need_new_connection:
@@ -221,16 +220,21 @@ class IRCConnectionManager:
         """Close all connections (for shutdown)."""
         with self._conn_lock:
             for key, client in list(self._connections.items()):
-                try:
-                    client.disconnect()
-                except Exception as e:
-                    logger.debug(f"Error closing connection {key}: {e}")
+                self._close_connection(client, key)
 
             self._connections.clear()
             self._last_used.clear()
             self._channels.clear()
 
         logger.info("Closed all IRC connections")
+
+    @staticmethod
+    def _close_connection(client, key: str) -> None:
+        """Disconnect one IRC client and log failures."""
+        try:
+            client.disconnect()
+        except Exception as e:
+            logger.debug(f"Error closing connection {key}: {e}")
 
 
 # Global singleton instance

@@ -426,10 +426,9 @@ def download_url(
             pbar.close()
 
             # Validate - check we didn't get HTML instead of file
-            if total_size > 0 and bytes_downloaded < total_size * 0.9:
-                if response.headers.get('content-type', '').startswith('text/html'):
-                    logger.warning(f"Received HTML instead of file: {current_url}")
-                    return None
+            if total_size > 0 and bytes_downloaded < total_size * 0.9 and response.headers.get('content-type', '').startswith('text/html'):
+                logger.warning(f"Received HTML instead of file: {current_url}")
+                return None
 
             logger.debug(f"Download completed: {bytes_downloaded} bytes")
             return buffer

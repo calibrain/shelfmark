@@ -198,10 +198,7 @@ class RTorrentClient(DownloadClient):
 
             complete = bool(complete)
 
-            if bytes_total > 0:
-                progress = (bytes_downloaded / bytes_total) * 100
-            else:
-                progress = 0
+            progress = (bytes_downloaded / bytes_total) * 100 if bytes_total > 0 else 0
 
             bytes_left = max(0, bytes_total - bytes_downloaded)
 
@@ -313,8 +310,7 @@ class RTorrentClient(DownloadClient):
     def _get_download_dir(self) -> str:
         """Get the download directory from rTorrent config."""
         try:
-            download_dir = self._rpc.directory.default()
-            return download_dir
+            return self._rpc.directory.default()
         except Exception:
             return "/downloads"
 
@@ -337,6 +333,6 @@ class RTorrentClient(DownloadClient):
             if not details:
                 return None
             path = details[0][0]
-            return path if path else None
+            return path or None
         except Exception:
             return None

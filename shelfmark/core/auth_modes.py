@@ -2,6 +2,7 @@
 
 import os
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 AUTH_SOURCE_BUILTIN = "builtin"
@@ -26,7 +27,7 @@ def has_local_password_admin(user_db: Any | None = None) -> bool:
             from shelfmark.core.user_db import UserDB
 
             config_root = os.environ.get("CONFIG_DIR", "/config")
-            db = UserDB(os.path.join(config_root, "users.db"))
+            db = UserDB(str(Path(config_root) / "users.db"))
             db.initialize()
 
         return db.has_admin_with_password()
@@ -110,7 +111,7 @@ def is_user_active_for_auth_mode(user: Mapping[str, Any], auth_mode: str) -> boo
 
 def is_settings_or_onboarding_path(path: str) -> bool:
     """Return True when request path targets protected admin settings routes."""
-    return path.startswith("/api/settings") or path.startswith("/api/onboarding")
+    return path.startswith(("/api/settings", "/api/onboarding"))
 
 
 def get_settings_tab_from_path(path: str) -> str | None:

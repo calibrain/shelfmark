@@ -23,7 +23,7 @@ def _read_debug_from_config() -> bool:
 
     if config_file.exists():
         try:
-            with open(config_file) as f:
+            with config_file.open() as f:
                 config = json.load(f)
                 if "DEBUG" in config:
                     return bool(config["DEBUG"])
@@ -36,7 +36,7 @@ def _read_debug_from_config() -> bool:
 def _is_sqlite_file(path: Path) -> bool:
     """Check if a file is a valid SQLite database by reading magic bytes."""
     try:
-        with open(path, "rb") as f:
+        with path.open("rb") as f:
             header = f.read(16)
             return header[:16] == b"SQLite format 3\x00"
     except (OSError, PermissionError):

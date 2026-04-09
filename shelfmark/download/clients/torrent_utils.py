@@ -163,7 +163,7 @@ def bencode_decode(data: bytes) -> tuple:
             value, data = bencode_decode(data)
             result[key] = value
         return result, data[1:]
-    elif data[0:1] == b'l':
+    if data[0:1] == b'l':
         # List
         result = []
         data = data[1:]
@@ -171,22 +171,21 @@ def bencode_decode(data: bytes) -> tuple:
             value, data = bencode_decode(data)
             result.append(value)
         return result, data[1:]
-    elif data[0:1] == b'i':
+    if data[0:1] == b'i':
         # Integer
         end = data.index(b'e')
         return int(data[1:end]), data[end + 1:]
-    elif data[0:1].isdigit():
+    if data[0:1].isdigit():
         # Byte string
         colon = data.index(b':')
         length = int(data[:colon])
         start = colon + 1
         return data[start:start + length], data[start + length:]
-    else:
-        first_byte = data[0:1]
-        raise ValueError(
-            f"Invalid bencode data: expected 'd', 'l', 'i', or digit, "
-            f"got {first_byte!r}. First 20 bytes: {data[:20]!r}"
-        )
+    first_byte = data[0:1]
+    raise ValueError(
+        f"Invalid bencode data: expected 'd', 'l', 'i', or digit, "
+        f"got {first_byte!r}. First 20 bytes: {data[:20]!r}"
+    )
 
 
 def bencode_encode(data) -> bytes:
@@ -199,24 +198,23 @@ def bencode_encode(data) -> bytes:
             result += bencode_encode(data[key])
         result += b'e'
         return result
-    elif isinstance(data, list):
+    if isinstance(data, list):
         result = b'l'
         for item in data:
             result += bencode_encode(item)
         result += b'e'
         return result
-    elif isinstance(data, int):
+    if isinstance(data, int):
         return f'i{data}e'.encode()
-    elif isinstance(data, bytes):
+    if isinstance(data, bytes):
         return f'{len(data)}:'.encode() + data
-    elif isinstance(data, str):
+    if isinstance(data, str):
         encoded = data.encode('utf-8')
         return f'{len(encoded)}:'.encode() + encoded
-    else:
-        raise ValueError(
-            f"Cannot bencode type {type(data).__name__}: "
-            f"expected dict, list, int, bytes, or str. Value: {data!r}"
-        )
+    raise ValueError(
+        f"Cannot bencode type {type(data).__name__}: "
+        f"expected dict, list, int, bytes, or str. Value: {data!r}"
+    )
 
 
 def extract_info_hash_from_torrent(torrent_data: bytes) -> str | None:

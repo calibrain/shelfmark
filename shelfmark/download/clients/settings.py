@@ -1,6 +1,6 @@
 """Shared download client settings registration."""
 
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from typing import Any
 
 from shelfmark.core.settings_registry import (
@@ -105,8 +105,8 @@ def _test_transmission_connection(current_values: dict[str, Any] | None = None) 
             "host": host,
             "port": port,
             "path": path,
-            "username": username if username else None,
-            "password": password if password else None,
+            "username": username or None,
+            "password": password or None,
             "protocol": protocol,
         }
         try:
@@ -118,13 +118,11 @@ def _test_transmission_connection(current_values: dict[str, Any] | None = None) 
             client_kwargs.pop("protocol", None)
             with _transmission_session_verify_override(url):
                 client = Client(**client_kwargs)
-            if protocol == "https" and hasattr(client, "protocol"):
-                try:
-                    client.protocol = protocol
-                except Exception:
-                    pass
+        if protocol == "https" and hasattr(client, "protocol"):
+            with suppress(Exception):
+                client.protocol = protocol
 
-        # Keep session verify aligned for subsequent calls beyond constructor bootstrap.
+    # Keep session verify aligned for subsequent calls beyond constructor bootstrap.
         http_session = getattr(client, "_http_session", None)
         if http_session is not None:
             http_session.verify = get_ssl_verify(url)

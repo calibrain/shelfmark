@@ -30,17 +30,23 @@ class CustomLogger(logging.Logger):
         try:
             import psutil
 
+            def _get_process_rss_mb(proc: Any) -> float | None:
+                try:
+                    mem = proc.info.get('memory_info')
+                    if mem:
+                        return mem.rss / (1024 * 1024)
+                except (psutil.NoSuchProcess, psutil.AccessDenied, KeyError, AttributeError):
+                    return None
+                return None
+
             # Sum RSS of all processes for actual app memory (container-friendly),
             # but fall back gracefully on platforms that restrict process enumeration.
             app_memory_mb = 0.0
             try:
                 for proc in psutil.process_iter(['memory_info']):
-                    try:
-                        mem = proc.info.get('memory_info')
-                        if mem:
-                            app_memory_mb += mem.rss / (1024 * 1024)
-                    except (psutil.NoSuchProcess, psutil.AccessDenied, KeyError, AttributeError):
-                        continue
+                    proc_rss_mb = _get_process_rss_mb(proc)
+                    if proc_rss_mb is not None:
+                        app_memory_mb += proc_rss_mb
             except (PermissionError, psutil.AccessDenied, OSError):
                 try:
                     app_memory_mb = psutil.Process().memory_info().rss / (1024 * 1024)

@@ -50,6 +50,17 @@ class NZBGetClient(DownloadClient):
         url = normalize_http_url(config.get("NZBGET_URL", ""))
         return client == "nzbget" and bool(url)
 
+    def _try_remove_command(self, command: str, nzb_id: int, download_id: str) -> tuple[bool, Exception | None]:
+        """Try one NZBGet delete command and return any error."""
+        try:
+            result = self._rpc_call("editqueue", [command, 0, "", nzb_id])
+            if result:
+                logger.info(f"Removed NZB from NZBGet ({command}): {download_id}")
+                return True, None
+        except Exception as e:
+            return False, e
+        return False, None
+
     @with_retry()
     def _rpc_call(self, method: str, params: list | None = None) -> Any:
         """
@@ -263,14 +274,13 @@ class NZBGetClient(DownloadClient):
                             complete=True,
                             file_path=file_path,
                         )
-                    else:
-                        return DownloadStatus(
-                            progress=100,
-                            state="error",
-                            message=f"Download failed: {status}",
-                            complete=True,
-                            file_path=file_path,
-                        )
+                    return DownloadStatus(
+                        progress=100,
+                        state="error",
+                        message=f"Download failed: {status}",
+                        complete=True,
+                        file_path=file_path,
+                    )
 
             # Not found in queue or history
             return DownloadStatus.error("Download not found")
@@ -305,13 +315,11 @@ class NZBGetClient(DownloadClient):
 
         last_error: Exception | None = None
         for command in commands:
-            try:
-                result = self._rpc_call("editqueue", [command, 0, "", nzb_id])
-                if result:
-                    logger.info(f"Removed NZB from NZBGet ({command}): {download_id}")
-                    return True
-            except Exception as e:
-                last_error = e
+            success, error = self._try_remove_command(command, nzb_id, download_id)
+            if success:
+                return True
+            if error is not None:
+                last_error = error
 
         if last_error is not None:
             self._log_error("remove", last_error)

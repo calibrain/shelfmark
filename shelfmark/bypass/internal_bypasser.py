@@ -8,7 +8,9 @@ import subprocess
 import threading
 import time
 import traceback
+from contextlib import suppress
 from datetime import datetime
+from pathlib import Path
 from threading import Event
 from typing import Any
 from urllib.parse import urlparse
@@ -28,8 +30,8 @@ from shelfmark.download.network import get_proxies, get_ssl_verify
 
 logger = setup_logger(__name__)
 
-SELENIUMBASE_RUNTIME_ROOT = "/tmp/shelfmark/seleniumbase"
-SELENIUMBASE_DOWNLOADS_DIR = os.path.join(SELENIUMBASE_RUNTIME_ROOT, "downloaded_files")
+SELENIUMBASE_RUNTIME_ROOT = Path("/tmp/shelfmark/seleniumbase")
+SELENIUMBASE_DOWNLOADS_DIR = SELENIUMBASE_RUNTIME_ROOT / "downloaded_files"
 
 # Challenge detection indicators
 CLOUDFLARE_INDICATORS = [
@@ -54,13 +56,14 @@ DISPLAY = {
 LOCKED = threading.Lock()
 
 
-def _describe_runtime_path(path: str) -> str:
+def _describe_runtime_path(path: str | Path) -> str:
     """Return compact ownership/mode info for a runtime path."""
     try:
+        path = Path(path)
         link_target = ""
-        if os.path.islink(path):
-            link_target = f" -> {os.readlink(path)}"
-        st = os.stat(path)
+        if path.is_symlink():
+            link_target = f" -> {path.readlink()}"
+        st = path.stat()
         mode = stat.S_IMODE(st.st_mode)
         return f"{path}{link_target} exists uid={st.st_uid} gid={st.st_gid} mode={oct(mode)}"
     except FileNotFoundError:
@@ -697,10 +700,8 @@ async def _get(url: str, driver, cancel_flag: Event | None = None) -> str:
 
     logger.debug("Opening URL with SeleniumBase CDP...")
     page = await driver.get(url)
-    try:
+    with suppress(Exception):
         await page.wait()
-    except Exception:
-        pass
 
     _check_cancellation(cancel_flag, "Bypass cancelled after page load")
 
@@ -807,7 +808,7 @@ async def _create_cdp_browser(url: str) -> Any:
         logger.warning(f"Pure CDP browser startup failed: {type(e).__name__}: {e}")
         logger.warning(
             "SeleniumBase runtime paths: "
-            f"cwd={os.getcwd()}; "
+            f"cwd={Path.cwd()}; "
             f"{_describe_runtime_path(SELENIUMBASE_DOWNLOADS_DIR)}; "
             f"{_describe_runtime_path('/app/downloaded_files')}; "
             f"{_describe_runtime_path('downloaded_files')}; "
@@ -846,10 +847,7 @@ async def _close_cdp_driver(driver) -> None:
         if hasattr(driver, "targets") and driver.targets:
             connections.extend(driver.targets)
         for conn in connections:
-            try:
-                await conn.aclose()
-            except Exception as e:
-                logger.debug(f"Failed to close websocket connection: {e}")
+            await _close_websocket_connection(conn)
     except Exception as e:
         logger.debug(f"Error during connection cleanup: {e}")
 
@@ -886,6 +884,14 @@ async def _close_cdp_driver(driver) -> None:
             logger.debug(f"Process cleanup failed: {e}")
 
     logger.log_resource_usage()
+
+
+async def _close_websocket_connection(conn) -> None:
+    """Close one websocket-like connection, ignoring best-effort failures."""
+    try:
+        await conn.aclose()
+    except Exception as e:
+        logger.debug(f"Failed to close websocket connection: {e}")
 
 
 def _start_ffmpeg_recording(display: str) -> None:
@@ -935,15 +941,11 @@ def _stop_ffmpeg_recording() -> None:
         logger.debug("Stopped ffmpeg recording")
     except Exception as e:
         logger.debug(f"ffmpeg stop: {e}")
-        try:
+        with suppress(Exception):
             proc.terminate()
             proc.wait(timeout=2)
-        except Exception:
-            pass
-        try:
+        with suppress(Exception):
             proc.kill()
-        except Exception:
-            pass
     DISPLAY["ffmpeg"] = None
     DISPLAY["ffmpeg_output"] = None
 

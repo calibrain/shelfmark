@@ -16,6 +16,27 @@ from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
 
+
+def _log_path_permissions(probe: Path, label: str) -> None:
+    """Best-effort logging for one path probe."""
+    try:
+        st = _run_io(probe.stat)
+        logger.debug(
+            "Path permissions (%s): path=%s mode=%s owner=%s(%d) group=%s(%d) exists=%s dir=%s",
+            label,
+            probe,
+            oct(st.st_mode & 0o777),
+            _format_uid(st.st_uid),
+            st.st_uid,
+            _format_gid(st.st_gid),
+            st.st_gid,
+            _run_io(probe.exists),
+            _run_io(probe.is_dir),
+        )
+    except Exception as stat_error:
+        logger.debug("Path permissions (%s): stat failed for %s: %s", label, probe, stat_error)
+
+
 def _run_io(func, *args, **kwargs):
     """Best-effort offload for potentially blocking filesystem calls.
 
@@ -122,21 +143,6 @@ def log_transfer_permission_context(label: str, source: Path, dest: Path, error:
             )
 
         for probe in [source, dest, dest.parent]:
-            try:
-                st = _run_io(probe.stat)
-                logger.debug(
-                    "Path permissions (%s): path=%s mode=%s owner=%s(%d) group=%s(%d) exists=%s dir=%s",
-                    label,
-                    probe,
-                    oct(st.st_mode & 0o777),
-                    _format_uid(st.st_uid),
-                    st.st_uid,
-                    _format_gid(st.st_gid),
-                    st.st_gid,
-                    _run_io(probe.exists),
-                    _run_io(probe.is_dir),
-                )
-            except Exception as stat_error:
-                logger.debug("Path permissions (%s): stat failed for %s: %s", label, probe, stat_error)
+            _log_path_permissions(probe, label)
     except Exception as context_error:
         logger.debug("Permission context (%s): failed to collect: %s", label, context_error)

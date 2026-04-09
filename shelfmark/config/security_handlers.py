@@ -2,6 +2,7 @@
 
 import os
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from shelfmark.core.user_db import UserDB
@@ -13,7 +14,7 @@ _OIDC_LOCKOUT_MESSAGE = "A local admin account with a password is required befor
 
 def _has_local_password_admin() -> bool:
     root = os.environ.get("CONFIG_DIR", "/config")
-    user_db = UserDB(os.path.join(root, "users.db"))
+    user_db = UserDB(str(Path(root) / "users.db"))
     user_db.initialize()
     return any(user.get("password_hash") and user.get("role") == "admin" for user in user_db.list_users())
 

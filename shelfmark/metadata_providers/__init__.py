@@ -1,6 +1,7 @@
 """Metadata provider plugin system - base classes and registry."""
 
 from abc import ABC, abstractmethod
+from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -341,22 +342,18 @@ class MetadataProvider(ABC):
     @abstractmethod
     def search(self, options: MetadataSearchOptions) -> list[BookMetadata]:
         """Search for books using the provided options."""
-        pass
 
     @abstractmethod
     def get_book(self, book_id: str) -> BookMetadata | None:
         """Get a specific book by provider ID."""
-        pass
 
     @abstractmethod
     def search_by_isbn(self, isbn: str) -> BookMetadata | None:
         """Search for a book by ISBN."""
-        pass
 
     @abstractmethod
     def is_available(self) -> bool:
         """Check if this provider is configured and available."""
-        pass
 
     def search_paginated(self, options: MetadataSearchOptions) -> SearchResult:
         """Search with pagination info. Override for accurate pagination."""
@@ -388,13 +385,14 @@ class MetadataProvider(ABC):
         Returns a dict mapping each book_id to its list of target options.
         Default implementation calls get_book_targets per book.
         """
-        results: dict[str, list[dict[str, Any]]] = {}
-        for book_id in book_ids:
-            try:
-                results[book_id] = self.get_book_targets(book_id)
-            except (NotImplementedError, ValueError):
-                results[book_id] = []
-        return results
+        return {book_id: self._get_book_targets_for_batch(book_id) for book_id in book_ids}
+
+    def _get_book_targets_for_batch(self, book_id: str) -> list[dict[str, Any]]:
+        """Safely fetch targets for one book, falling back to an empty list."""
+        try:
+            return self.get_book_targets(book_id)
+        except (NotImplementedError, ValueError):
+            return []
 
     def set_book_target_state(
         self,
@@ -653,17 +651,11 @@ def sync_metadata_provider_selection() -> None:
 
 # Import provider implementations to trigger registration
 # These must be imported AFTER the base classes and registry are defined
-try:
+with suppress(ImportError):
     from shelfmark.metadata_providers import hardcover  # noqa: F401, E402
-except ImportError:
-    pass  # Hardcover provider is optional
 
-try:
+with suppress(ImportError):
     from shelfmark.metadata_providers import openlibrary  # noqa: F401, E402
-except ImportError:
-    pass  # Open Library provider is optional
 
-try:
+with suppress(ImportError):
     from shelfmark.metadata_providers import googlebooks  # noqa: F401, E402
-except ImportError:
-    pass  # Google Books provider is optional

@@ -5,7 +5,7 @@ Uses the transmission-rpc library to communicate with Transmission's RPC API.
 """
 
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from typing import Any
 
 from shelfmark.core.config import config
@@ -98,8 +98,8 @@ class TransmissionClient(DownloadClient):
             "host": host,
             "port": port,
             "path": path,
-            "username": username if username else None,
-            "password": password if password else None,
+            "username": username or None,
+            "password": password or None,
             "protocol": protocol,
         }
         try:
@@ -114,10 +114,8 @@ class TransmissionClient(DownloadClient):
                 self._client = Client(**client_kwargs)
             # Some versions expose protocol as an attribute rather than kwarg.
             if protocol == "https" and hasattr(self._client, "protocol"):
-                try:
+                with suppress(Exception):
                     self._client.protocol = protocol
-                except Exception:
-                    pass
         _apply_transmission_ssl_verify(self._client, url)
         self._category = config.get("TRANSMISSION_CATEGORY", "books")
         self._download_dir = config.get("TRANSMISSION_DOWNLOAD_DIR", "")

@@ -3,6 +3,7 @@
 import os
 import sqlite3
 import time
+from pathlib import Path
 from threading import Lock
 from typing import Any, Optional
 
@@ -147,7 +148,7 @@ class Config:
         self._user_db_load_attempted = True
         try:
             user_db_cls = _get_user_db_module()
-            db_path = os.path.join(os.environ.get("CONFIG_DIR", "/config"), "users.db")
+            db_path = str(Path(os.environ.get("CONFIG_DIR", "/config")) / "users.db")
             user_db = user_db_cls(db_path)
             user_db.initialize()
             self._user_db = user_db

@@ -19,6 +19,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
+from pathlib import Path
 from typing import Any, TypeVar, cast
 
 import requests
@@ -215,7 +216,7 @@ class DownloadClient(ABC):
             return None
 
         # Join and normalize
-        return os.path.normpath(os.path.join(*valid))
+        return os.path.normpath(str(Path(valid[0]).joinpath(*valid[1:])))
 
     def __init_subclass__(cls, **kwargs):
         """Validate that subclasses define required class attributes."""
@@ -246,7 +247,6 @@ class DownloadClient(ABC):
         Returns:
             True if required settings (URL, etc.) are present.
         """
-        pass
 
     @abstractmethod
     def test_connection(self) -> tuple[bool, str]:
@@ -256,7 +256,6 @@ class DownloadClient(ABC):
         Returns:
             Tuple of (success, message).
         """
-        pass
 
     @abstractmethod
     def add_download(
@@ -282,7 +281,6 @@ class DownloadClient(ABC):
         Raises:
             Exception: If adding fails.
         """
-        pass
 
     @abstractmethod
     def get_status(self, download_id: str) -> DownloadStatus:
@@ -295,7 +293,6 @@ class DownloadClient(ABC):
         Returns:
             Current download status.
         """
-        pass
 
     @abstractmethod
     def remove(self, download_id: str, delete_files: bool = False) -> bool:
@@ -309,7 +306,6 @@ class DownloadClient(ABC):
         Returns:
             True if removal succeeded.
         """
-        pass
 
     @abstractmethod
     def get_download_path(self, download_id: str) -> str | None:
@@ -322,7 +318,6 @@ class DownloadClient(ABC):
         Returns:
             File or directory path, or None if not available.
         """
-        pass
 
     def find_existing(
         self, url: str, category: str | None = None

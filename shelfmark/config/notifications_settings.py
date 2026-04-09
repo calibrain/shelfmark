@@ -124,7 +124,7 @@ def _count_invalid_route_urls(routes: list[dict[str, Any]]) -> int:
 
 
 def _ensure_default_route_row(routes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return routes if routes else [dict(row) for row in _DEFAULT_ROUTE_ROWS]
+    return routes or [dict(row) for row in _DEFAULT_ROUTE_ROWS]
 
 
 def _extract_unique_route_urls(routes: list[dict[str, Any]]) -> list[str]:

@@ -19,8 +19,7 @@ def normalize_hostname(raw: str | None) -> str:
             cleaned = cleaned[len(prefix):]
             break
     # Strip path and trailing slashes
-    cleaned = cleaned.split("/")[0].strip()
-    return cleaned
+    return cleaned.split("/")[0].strip()
 
 
 def parse_size(size_str: str | None) -> int | None:

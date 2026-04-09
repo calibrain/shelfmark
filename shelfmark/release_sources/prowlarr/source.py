@@ -2,6 +2,7 @@
 
 import re
 import time
+from contextlib import suppress
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -401,7 +402,7 @@ def _prowlarr_result_to_release(
             "minimum_ratio": result.get("minimumRatio"),
             "minimum_seed_time": result.get("minimumSeedTime"),
             "info_hash": result.get("infoHash"),
-            "formats": formats if formats else None,
+            "formats": formats or None,
             "formats_display": formats_display,
             # Raw torznab attributes for rich tooltips (enriched indexers)
             "torznab_attrs": result.get("torznabAttrs"),
@@ -556,7 +557,7 @@ class ProwlarrSource(ReleaseSource):
             else:
                 # Comma-separated string from env var
                 ids = [int(x.strip()) for x in selected.split(",") if x.strip()]
-            return ids if ids else None
+            return ids or None
         except (ValueError, TypeError) as e:
             logger.warning(f"Invalid PROWLARR_INDEXERS format: {selected} ({e})")
             return None
@@ -584,12 +585,10 @@ class ProwlarrSource(ReleaseSource):
             for name in names:
                 idx_id = name_to_id.get(name)
                 if idx_id is not None:
-                    try:
+                    with suppress(TypeError, ValueError):
                         ids.append(int(idx_id))
-                    except (TypeError, ValueError):
-                        pass
 
-            return ids if ids else None
+            return ids or None
         except Exception as e:
             logger.warning(f"Failed to resolve indexer names to IDs: {e}")
             return None

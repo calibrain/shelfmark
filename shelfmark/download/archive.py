@@ -14,6 +14,21 @@ from shelfmark.download.postprocess.policy import (
 logger = setup_logger(__name__)
 
 
+def _delete_file_with_logging(file_path: Path, file_type_label: str, *, rejected: bool) -> None:
+    """Delete a file and log the outcome."""
+    try:
+        file_path.unlink()
+        if rejected:
+            logger.debug(f"Deleted rejected {file_type_label} file: {file_path.name}")
+        else:
+            logger.debug(f"Deleted non-{file_type_label} file: {file_path.name}")
+    except OSError as e:
+        if rejected:
+            logger.warning(f"Failed to delete rejected {file_type_label} file {file_path}: {e}")
+        else:
+            logger.warning(f"Failed to delete non-{file_type_label} file {file_path}: {e}")
+
+
 # Check for rarfile availability at module load
 try:
     import rarfile
@@ -27,19 +42,16 @@ except ImportError:
 class ArchiveExtractionError(Exception):
     """Raised when archive extraction fails."""
 
-    pass
 
 
 class PasswordProtectedError(ArchiveExtractionError):
     """Raised when archive requires a password."""
 
-    pass
 
 
 class CorruptedArchiveError(ArchiveExtractionError):
     """Raised when archive is corrupted."""
 
-    pass
 
 
 def is_archive(file_path: Path) -> bool:
@@ -111,11 +123,7 @@ def extract_archive(
 
     # Delete rejected files (valid formats but not enabled by user)
     for rejected_file in rejected_files:
-        try:
-            rejected_file.unlink()
-            logger.debug(f"Deleted rejected {file_type_label} file: {rejected_file.name}")
-        except OSError as e:
-            logger.warning(f"Failed to delete rejected {file_type_label} file {rejected_file}: {e}")
+        _delete_file_with_logging(rejected_file, file_type_label, rejected=True)
 
     if rejected_files:
         rejected_exts = sorted({f.suffix.lower() for f in rejected_files})
@@ -123,11 +131,7 @@ def extract_archive(
 
     # Delete other files (images, html, etc)
     for other_file in other_files:
-        try:
-            other_file.unlink()
-            logger.debug(f"Deleted non-{file_type_label} file: {other_file.name}")
-        except OSError as e:
-            logger.warning(f"Failed to delete non-{file_type_label} file {other_file}: {e}")
+        _delete_file_with_logging(other_file, file_type_label, rejected=False)
 
     if other_files:
         warnings.append(f"Skipped {len(other_files)} non-{file_type_label} file(s)")
@@ -232,4 +236,3 @@ def _extract_rar(archive_path: Path, output_dir: Path) -> tuple[list[Path], list
         raise ArchiveExtractionError("unrar binary not found - install unrar package") from e
     except PermissionError as e:
         raise ArchiveExtractionError(f"Permission denied: {e}") from e
-

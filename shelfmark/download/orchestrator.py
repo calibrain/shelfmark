@@ -262,8 +262,8 @@ def queue_release(
 def queue_status(user_id: int | None = None) -> dict[str, dict[str, Any]]:
     """Get current status of the download queue."""
     status = book_queue.get_status(user_id=user_id)
-    for _, tasks in status.items():
-        for _, task in tasks.items():
+    for tasks in status.values():
+        for task in tasks.values():
             if task.download_path and not run_blocking_io(os.path.exists, task.download_path):
                 task.download_path = None
 
@@ -288,7 +288,7 @@ def get_book_data(task_id: str) -> tuple[bytes | None, DownloadTask | None]:
         if not path:
             return None, task
 
-        with open(path, "rb") as f:
+        with Path(path).open("rb") as f:
             return f.read(), task
     except Exception as e:
         logger.error_trace(f"Error getting book data: {e}")
@@ -453,13 +453,8 @@ def retry_persisted_download(
     if normalized_status in {"active", "cancelled"} and not has_fresh_retry_context:
         return False, "Download cannot be retried"
 
-    if (
-        task.request_id is not None
-        and normalized_status == "error"
-        and not has_staged_retry_source
-    ):
-        if task.request_id is not None:
-            return False, "Request-linked downloads must be retried from requests"
+    if task.request_id is not None and normalized_status == "error" and not has_staged_retry_source:
+        return False, "Request-linked downloads must be retried from requests"
 
     if (
         task.request_id is None
@@ -708,14 +703,12 @@ def update_download_progress(book_id: str, progress: float) -> None:
             time_elapsed = current_time - last_broadcast
             
             # Always broadcast at start (0%) or completion (>=99%)
-            if progress <= 1 or progress >= 99:
-                should_broadcast = True
-            # Broadcast if enough time has passed (convert interval from seconds)
-            elif time_elapsed >= config.DOWNLOAD_PROGRESS_UPDATE_INTERVAL:
-                should_broadcast = True
-            # Broadcast on significant progress jumps (>10%)
-            elif progress - last_progress >= 10:
-                should_broadcast = True
+            should_broadcast = (
+                progress <= 1
+                or progress >= 99
+                or time_elapsed >= config.DOWNLOAD_PROGRESS_UPDATE_INTERVAL
+                or progress - last_progress >= 10
+            )
             
             if should_broadcast:
                 _progress_last_broadcast[book_id] = current_time

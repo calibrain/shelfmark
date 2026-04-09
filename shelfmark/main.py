@@ -6,8 +6,10 @@ import os
 import re
 import sqlite3
 import time
+from contextlib import suppress
 from datetime import datetime, timedelta
 from functools import wraps
+from pathlib import Path
 from typing import Any
 
 from flask import Flask, jsonify, request, send_file, send_from_directory, session
@@ -78,8 +80,8 @@ from shelfmark.release_sources import SourceUnavailableError, get_source_display
 logger = setup_logger(__name__)
 
 # Project root is one level up from this package
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FRONTEND_DIST = os.path.join(PROJECT_ROOT, 'frontend-dist')
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+FRONTEND_DIST = PROJECT_ROOT / 'frontend-dist'
 
 BASE_PATH = normalize_base_path(app_config.get("URL_BASE", ""))
 
@@ -143,7 +145,7 @@ import os as _os
 
 from shelfmark.core.user_db import UserDB
 
-_user_db_path = _os.path.join(_os.environ.get("CONFIG_DIR", "/config"), "users.db")
+_user_db_path = str(Path(_os.environ.get("CONFIG_DIR", "/config")) / "users.db")
 user_db: UserDB | None = None
 download_history_service: DownloadHistoryService | None = None
 activity_view_state_service: ActivityViewStateService | None = None
@@ -480,9 +482,8 @@ class LogNoiseFilter(logging.Filter):
             # Filter WebSocket-related AssertionError tracebacks
             if hasattr(record, 'exc_info') and record.exc_info:
                 exc_type, exc_value = record.exc_info[0], record.exc_info[1]
-                if exc_type and exc_type.__name__ == 'AssertionError':
-                    if exc_value and 'write() before start_response' in str(exc_value):
-                        return False
+                if exc_type and exc_type.__name__ == 'AssertionError' and exc_value and 'write() before start_response' in str(exc_value):
+                    return False
 
         return True
 
@@ -523,7 +524,7 @@ def _load_or_create_secret_key() -> bytes:
     try:
         secret_path.parent.mkdir(parents=True, exist_ok=True)
         secret_path.write_bytes(secret_key)
-        os.chmod(secret_path, 0o600)
+        secret_path.chmod(0o600)
     except OSError as exc:
         logger.warning(
             "Failed to persist Flask secret key at %s. Sessions may reset on restart: %s",
@@ -723,9 +724,9 @@ def _base_href() -> str:
 
 def _serve_index_html() -> Response:
     """Serve index.html with an adjusted base tag for subpath deployments."""
-    index_path = os.path.join(FRONTEND_DIST, 'index.html')
+    index_path = FRONTEND_DIST / 'index.html'
     try:
-        with open(index_path, encoding='utf-8') as handle:
+        with index_path.open(encoding='utf-8') as handle:
             html = handle.read()
     except OSError:
         return send_from_directory(FRONTEND_DIST, 'index.html')
@@ -742,7 +743,7 @@ def serve_frontend_assets(filename: str) -> Response:
     """
     Serve static assets from the built frontend.
     """
-    return send_from_directory(os.path.join(FRONTEND_DIST, 'assets'), filename)
+    return send_from_directory(FRONTEND_DIST / 'assets', filename)
 
 @app.route('/')
 def index() -> Response:
@@ -797,7 +798,7 @@ if DEBUG:
                 raise Exception(f"Debug script failed: {result.stderr}")
             logger.info(f"Debug script executed: {result.stdout}")
             debug_file_path = result.stdout.strip().split('\n')[-1]
-            if not os.path.exists(debug_file_path):
+            if not Path(debug_file_path).exists():
                 logger.error(f"Debug zip file not found at: {debug_file_path}")
                 return jsonify({"error": "Failed to generate debug information"}), 500
 
@@ -805,7 +806,7 @@ if DEBUG:
             return send_file(
                 debug_file_path,
                 mimetype='application/zip',
-                download_name=os.path.basename(debug_file_path),
+                download_name=Path(debug_file_path).name,
                 as_attachment=True
             )
         except subprocess.CalledProcessError as e:
@@ -1418,13 +1419,13 @@ def api_local_download() -> Response | tuple[Response, int]:
                             if download_path:
                                 return send_file(
                                     download_path,
-                                    download_name=os.path.basename(download_path),
+                                    download_name=Path(download_path).name,
                                     as_attachment=True,
                                 )
 
             # Book data not found or not available
             return jsonify({"error": "File not found"}), 404
-        file_name = book_info.get_filename() if book_info is not None else os.path.basename(book_id)
+        file_name = book_info.get_filename() if book_info is not None else Path(book_id).name
         # Prepare the file for sending to the client
         data = io.BytesIO(file_data)
         return send_file(
@@ -2231,10 +2232,8 @@ def api_metadata_search() -> Response | tuple[Response, int]:
                     if isinstance(search_field, CheckboxSearchField):
                         fields[search_field.key] = value.lower() in ('true', '1', 'yes', 'on')
                     elif isinstance(search_field, NumberSearchField):
-                        try:
+                        with suppress(ValueError):
                             fields[search_field.key] = int(value)
-                        except ValueError:
-                            pass  # Skip invalid numbers
                     else:
                         fields[search_field.key] = value
 
@@ -2482,6 +2481,46 @@ def api_releases() -> Response | tuple[Response, int]:
             serialize_column_config,
             source_results_are_releases,
         )
+
+        def _search_source_releases(source_name: str) -> tuple[Any | None, list[Any], str | None]:
+            """Search one source and return any error message instead of raising."""
+            try:
+                source = get_source(source_name)
+
+                plan = build_release_search_plan(
+                    book,
+                    languages=browse_filters.lang if source_query_filters is not None else languages,
+                    manual_query=query_text if source_query_filters is not None else manual_query,
+                    indexers=indexers,
+                    source_filters=source_query_filters,
+                )
+
+                if plan.source_filters is not None:
+                    planned_query = plan.manual_query or plan.primary_query
+                    planned_query_type = "query"
+                elif plan.manual_query:
+                    planned_query = plan.manual_query
+                    planned_query_type = "manual"
+                elif not expand_search and plan.isbn_candidates:
+                    planned_query = plan.isbn_candidates[0]
+                    planned_query_type = "isbn"
+                else:
+                    planned_query = plan.primary_query
+                    planned_query_type = "title_author"
+
+                logger.debug(
+                    f"Searching {source_name}: {planned_query_type}='{planned_query}' "
+                    f"(title='{book.title}', authors={book.authors}, expand={expand_search}, content_type={content_type})"
+                )
+
+                releases = source.search(book, plan, expand_search=expand_search, content_type=content_type)
+                return source, releases, None
+            except ValueError:
+                return None, [], f"Unknown source: {source_name}"
+            except Exception as e:
+                logger.warning(f"Release search failed for source {source_name}: {e}")
+                return None, [], f"{source_name}: {str(e)}"
+
         provider = request.args.get('provider', '').strip()
         book_id = request.args.get('book_id', '').strip()
         source_filter = request.args.get('source', '').strip()
@@ -2563,9 +2602,7 @@ def api_releases() -> Response | tuple[Response, int]:
                 book.title = title_param
 
         # Determine which release sources to search
-        if source_query_filters is not None:
-            sources_to_search = [source_filter]
-        elif source_filter:
+        if source_query_filters is not None or source_filter:
             sources_to_search = [source_filter]
         elif is_source_provider:
             # Source-backed browse flows stay within the source that produced the record.
@@ -2580,43 +2617,12 @@ def api_releases() -> Response | tuple[Response, int]:
         source_instances = {}  # Keep source instances for column config
 
         for source_name in sources_to_search:
-            try:
-                source = get_source(source_name)
+            source, releases, error = _search_source_releases(source_name)
+            if source is not None:
                 source_instances[source_name] = source
-
-                plan = build_release_search_plan(
-                    book,
-                    languages=browse_filters.lang if source_query_filters is not None else languages,
-                    manual_query=query_text if source_query_filters is not None else manual_query,
-                    indexers=indexers,
-                    source_filters=source_query_filters,
-                )
-
-                if plan.source_filters is not None:
-                    planned_query = plan.manual_query or plan.primary_query
-                    planned_query_type = "query"
-                elif plan.manual_query:
-                    planned_query = plan.manual_query
-                    planned_query_type = "manual"
-                elif not expand_search and plan.isbn_candidates:
-                    planned_query = plan.isbn_candidates[0]
-                    planned_query_type = "isbn"
-                else:
-                    planned_query = plan.primary_query
-                    planned_query_type = "title_author"
-
-                logger.debug(
-                    f"Searching {source_name}: {planned_query_type}='{planned_query}' "
-                    f"(title='{book.title}', authors={book.authors}, expand={expand_search}, content_type={content_type})"
-                )
-
-                releases = source.search(book, plan, expand_search=expand_search, content_type=content_type)
                 all_releases.extend(releases)
-            except ValueError:
-                errors.append(f"Unknown source: {source_name}")
-            except Exception as e:
-                logger.warning(f"Release search failed for source {source_name}: {e}")
-                errors.append(f"{source_name}: {str(e)}")
+            if error is not None:
+                errors.append(error)
 
         # Convert Release objects to dicts
         releases_data = [_serialize_release(release) for release in all_releases]
@@ -2819,8 +2825,7 @@ def api_settings_update_tab(tab_name: str) -> Response | tuple[Response, int]:
 
         if result["success"]:
             return jsonify(result)
-        else:
-            return jsonify(result), 400
+        return jsonify(result), 400
     except Exception as e:
         logger.error_trace(f"Settings update error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -2858,8 +2863,7 @@ def api_settings_execute_action(tab_name: str, action_key: str) -> Response | tu
 
         if result["success"]:
             return jsonify(result)
-        else:
-            return jsonify(result), 400
+        return jsonify(result), 400
     except Exception as e:
         logger.error_trace(f"Settings action error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -2916,8 +2920,7 @@ def api_onboarding_save() -> Response | tuple[Response, int]:
 
         if result["success"]:
             return jsonify(result)
-        else:
-            return jsonify(result), 400
+        return jsonify(result), 400
     except Exception as e:
         logger.error_trace(f"Onboarding save error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -2952,7 +2955,7 @@ def catch_all(path: str) -> Response:
     Authentication is handled by the React app itself.
     """
     # If the request is for an API endpoint or static file, let it 404
-    if path.startswith('api/') or path.startswith('assets/'):
+    if path.startswith(("api/", "assets/")):
         return jsonify({"error": "Resource not found"}), 404
     # Otherwise serve the React app
     return _serve_index_html()

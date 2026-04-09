@@ -397,9 +397,8 @@ def ensure_request_access(
     if request_row is None:
         raise RequestServiceError("Request not found", status_code=404)
 
-    if not is_admin:
-        if actor_user_id is None or request_row["user_id"] != actor_user_id:
-            raise RequestServiceError("Forbidden", status_code=403)
+    if not is_admin and (actor_user_id is None or request_row["user_id"] != actor_user_id):
+        raise RequestServiceError("Forbidden", status_code=403)
 
     return request_row
 

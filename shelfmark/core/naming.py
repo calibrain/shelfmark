@@ -1,6 +1,5 @@
 """Template-based naming for library organization."""
 
-import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -157,11 +156,10 @@ def parse_naming_template(
                         include_literal = bool(token_value(next_token))
                 if include_literal:
                     parts.append(content)
-                elif not conditional_literal:
+                elif not conditional_literal and re.search(r"\s", content):
                     # Preserve blocks that look like literal text, but treat bare unknown
                     # placeholders as missing variables.
-                    if re.search(r"\s", content):
-                        parts.append(match.group(0))
+                    parts.append(match.group(0))
 
             cursor = match.end()
 
@@ -184,9 +182,7 @@ def parse_naming_template(
     result = re.sub(r'\[\s*\]', '', result)
 
     # Final trim of any trailing separators left after cleanup
-    result = re.sub(r'[\s\-_.]+$', '', result)
-
-    return result
+    return re.sub(r'[\s\-_.]+$', '', result)
 
 
 def build_library_path(
@@ -236,7 +232,7 @@ def same_filesystem(path1: str | Path, path2: str | Path) -> bool:
                 p = p.parent
                 if p == p.parent:
                     break
-            return os.stat(p).st_dev
+            return p.stat().st_dev
         except (OSError, PermissionError) as e:
             logger.debug(f"Cannot stat {p}: {e}")
             return None

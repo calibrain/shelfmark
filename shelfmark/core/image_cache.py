@@ -100,7 +100,7 @@ class ImageCacheService:
             return
 
         try:
-            with open(self.index_path) as f:
+            with self.index_path.open() as f:
                 self._index = json.load(f)
         except (OSError, json.JSONDecodeError):
             self._index = {}
@@ -135,7 +135,7 @@ class ImageCacheService:
 
             # Detect content type
             try:
-                with open(file_path, 'rb') as f:
+                with file_path.open('rb') as f:
                     header = f.read(16)
                 detected = _detect_image_type(header)
                 content_type = detected[0] if detected else f'image/{ext}'
@@ -171,7 +171,7 @@ class ImageCacheService:
         try:
             # Write to temp file first, then rename for atomicity
             temp_path = self.index_path.with_suffix('.tmp')
-            with open(temp_path, 'w') as f:
+            with temp_path.open('w') as f:
                 json.dump(self._index, f)
             temp_path.rename(self.index_path)
         except OSError:
@@ -302,7 +302,7 @@ class ImageCacheService:
                     self._misses += 1
                     return None
 
-                with open(image_path, 'rb') as f:
+                with image_path.open('rb') as f:
                     data = f.read()
 
                 # Update accessed time
@@ -353,7 +353,7 @@ class ImageCacheService:
             # Write image to disk
             image_path = self._get_image_path(cache_id, ext)
             try:
-                with open(image_path, 'wb') as f:
+                with image_path.open('wb') as f:
                     f.write(data)
             except OSError:
                 return False

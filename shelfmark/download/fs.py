@@ -61,10 +61,7 @@ def _must_avoid_gevent_threadpool(func: Callable[..., Any]) -> bool:
     # gevent.subprocess requires child watchers on the default event loop.
     # Executing patched subprocess functions in a worker thread can raise:
     # "TypeError: child watchers are only available on the default loop".
-    if _gevent_monkey.is_object_patched("subprocess", "run") and func is subprocess.run:
-        return True
-
-    return False
+    return _gevent_monkey.is_object_patched("subprocess", "run") and func is subprocess.run
 
 
 def run_blocking_io(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:

@@ -168,7 +168,7 @@ def _resolve_destination_username(
     try:
         from shelfmark.core.user_db import UserDB
 
-        user_db = UserDB(os.path.join(os.environ.get("CONFIG_DIR", "/config"), "users.db"))
+        user_db = UserDB(str(Path(os.environ.get("CONFIG_DIR", "/config")) / "users.db"))
         user_db.initialize()
         user = user_db.get_user(user_id=user_id)
         if not user:

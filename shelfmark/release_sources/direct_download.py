@@ -71,7 +71,7 @@ def _get_md5_url_template(source_id: str) -> str | None:
 
     if source_id == "zlib":
         return mirrors.get_zlib_url_template()
-    elif source_id == "welib":
+    if source_id == "welib":
         return mirrors.get_welib_url_template()
     return None
 
@@ -178,7 +178,7 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
         for value in filters.content:
             filters_query += f"&content={quote(value)}"
 
-    formats_to_use = filters.format if filters.format else config.SUPPORTED_FORMATS
+    formats_to_use = filters.format or config.SUPPORTED_FORMATS
 
     index = 1
     for filter_type, filter_values in vars(filters).items():
@@ -217,12 +217,9 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
     books = []
     if isinstance(tbody, Tag):
         for line_tr in tbody.find_all("tr"):
-            try:
-                book = _parse_search_result_row(line_tr)
-                if book:
-                    books.append(book)
-            except Exception as e:
-                logger.error_trace(f"Failed to parse search result row: {e}")
+            book = _parse_search_result_row(line_tr)
+            if book:
+                books.append(book)
 
     books.sort(
         key=lambda x: (
@@ -297,10 +294,7 @@ def _parse_book_info_page(soup: BeautifulSoup, book_id: str, fetch_download_coun
     node = data.select_one("div:nth-of-type(1) > img")
     if node:
         preview_value = node.get("src", "")
-        if isinstance(preview_value, list):
-            preview = preview_value[0]
-        else:
-            preview = preview_value
+        preview = preview_value[0] if isinstance(preview_value, list) else preview_value
 
     data = soup.find_all("div", {"class": "main-inner"})[0].find_next("div")
     divs = list(data.children)
@@ -652,7 +646,7 @@ def _try_download_url(
 
         logger.debug(f"Download finished ({file_size} bytes). Writing to {book_path}")
         data.seek(0)
-        with open(book_path, "wb") as f:
+        with book_path.open("wb") as f:
             f.write(data.getbuffer())
 
         return download_url
@@ -996,20 +990,14 @@ def _extract_countdown_seconds(soup: BeautifulSoup, html_str: str) -> int:
     """Extract countdown timer seconds from AA slow download page."""
     countdown_elem = soup.find("span", class_="js-partner-countdown")
     if countdown_elem:
-        try:
-            seconds = int(countdown_elem.get_text(strip=True))
-            if 0 < seconds < 300:
-                return seconds
-        except (ValueError, TypeError):
-            pass
+        seconds = _parse_countdown_seconds_from_element(countdown_elem)
+        if seconds is not None:
+            return seconds
 
     for elem in soup.find_all(["span", "div"], class_=lambda c: c and ("timer" in c.lower() or "countdown" in c.lower())):
-        try:
-            seconds = int(elem.get_text(strip=True))
-            if 0 < seconds < 300:
-                return seconds
-        except (ValueError, TypeError):
-            pass
+        seconds = _parse_countdown_seconds_from_element(elem)
+        if seconds is not None:
+            return seconds
 
     countdown_attr = re.search(r'data-countdown=["\'](\d+)["\']', html_str)
     if countdown_attr:
@@ -1022,7 +1010,6 @@ def _extract_countdown_seconds(soup: BeautifulSoup, html_str: str) -> int:
         seconds = int(js_countdown.group(1))
         if 0 < seconds < 300:
             return seconds
-
     js_var = re.search(r'(?:var|let|const)\s+countdown\s*=\s*(\d+)', html_str)
     if js_var:
         seconds = int(js_var.group(1))
@@ -1048,6 +1035,18 @@ def _extract_countdown_seconds(soup: BeautifulSoup, html_str: str) -> int:
             return seconds
 
     return 0
+
+
+def _parse_countdown_seconds_from_element(element: Tag) -> int | None:
+    """Parse an integer countdown from a tag, returning None when invalid."""
+    try:
+        seconds = int(element.get_text(strip=True))
+    except (ValueError, TypeError):
+        return None
+
+    if 0 < seconds < 300:
+        return seconds
+    return None
 
 
 def _browse_record_to_release(record: BrowseRecord) -> Release:

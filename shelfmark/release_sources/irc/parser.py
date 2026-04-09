@@ -149,10 +149,9 @@ def parse_results_file(content: str, content_type: str | None = None) -> list[Se
 
     for line in content.splitlines():
         result = parse_result_line(line)
-        if result:
+        if result and (result.format in supported or result.format == 'unknown'):
             # Filter to user's configured formats
-            if result.format in supported or result.format == 'unknown':
-                results.append(result)
+            results.append(result)
 
     logger.info(f"Parsed {len(results)} results from search file")
     return results
@@ -181,10 +180,17 @@ def extract_results_from_zip(zip_path: Path) -> str:
 
         # Try different encodings
         for encoding in ['utf-8', 'latin-1', 'cp1252']:
-            try:
-                return content.decode(encoding)
-            except UnicodeDecodeError:
-                continue
+            decoded = _decode_content_with_encoding(content, encoding)
+            if decoded is not None:
+                return decoded
 
         # Last resort
         return content.decode('utf-8', errors='replace')
+
+
+def _decode_content_with_encoding(content: bytes, encoding: str) -> str | None:
+    """Decode bytes using one encoding, returning None when it fails."""
+    try:
+        return content.decode(encoding)
+    except UnicodeDecodeError:
+        return None

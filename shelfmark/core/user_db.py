@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import threading
+from pathlib import Path
 from typing import Any
 
 from shelfmark.core.activity_view_state_service import user_viewer_scope
@@ -118,7 +119,7 @@ WHERE dismissed_at IS NOT NULL;
 def get_users_db_path(config_dir: str | None = None) -> str:
     """Return the configured users database path."""
     root = config_dir or os.environ.get("CONFIG_DIR", "/config")
-    return os.path.join(root, "users.db")
+    return str(Path(root) / "users.db")
 
 
 def sync_builtin_admin_user(
@@ -312,7 +313,7 @@ class UserDB:
         try:
             if user_id is not None:
                 return self._get_user_by_id(conn, user_id)
-            elif username is not None:
+            if username is not None:
                 row = conn.execute(
                     "SELECT * FROM users WHERE username = ?", (username,)
                 ).fetchone()
@@ -605,9 +606,7 @@ class UserDB:
         with self._lock:
             conn = self._connect()
             try:
-                created: list[dict[str, Any]] = []
-                for request in requests:
-                    created.append(self._insert_request(conn, **request))
+                created = [self._insert_request(conn, **request) for request in requests]
                 conn.commit()
                 return created
             finally:

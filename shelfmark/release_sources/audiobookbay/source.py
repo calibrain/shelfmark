@@ -250,10 +250,9 @@ class AudiobookBaySource(ReleaseSource):
                     
                     # Basic relevance check: ensure title contains at least one query word
                     # This filters out homepage "Latest" feed items that may leak through
-                    if query_words:
-                        if not any(word in title_for_filter for word in query_words):
-                            logger.debug(f"Filtering out irrelevant result: {title}")
-                            continue
+                    if query_words and not any(word in title_for_filter for word in query_words):
+                        logger.debug(f"Filtering out irrelevant result: {title}")
+                        continue
                     
                     # Generate unique source ID
                     source_id = _generate_source_id(result['link'])

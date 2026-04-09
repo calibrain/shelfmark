@@ -52,12 +52,7 @@ def should_bypass_proxy(url: str) -> bool:
     if not hostname:
         return False
 
-    for pattern in patterns:
-        # Use fnmatch for wildcard matching (supports * and ?)
-        if fnmatch.fnmatch(hostname, pattern):
-            return True
-
-    return False
+    return any(fnmatch.fnmatch(hostname, pattern) for pattern in patterns)
 
 
 def get_proxies(url: str = "") -> dict:
@@ -161,6 +156,15 @@ except ImportError:
 
 logger = setup_logger(__name__)
 
+
+def _call_dns_rotation_callback(callback: Callable[[str, list[str], str], None], provider_name: str, servers: list[str], doh_url: str) -> None:
+    """Call one DNS rotation callback and log failures."""
+    try:
+        logger.debug(f"Calling DNS rotation callback: {callback.__name__}")
+        callback(provider_name, servers, doh_url)
+    except Exception as e:
+        logger.warning(f"DNS rotation callback {callback.__name__} failed: {e}")
+
 # In-memory state (no disk persistence)
 STATE_TTL_DAYS = 30
 _initialized = False
@@ -205,11 +209,7 @@ def _notify_dns_rotation(provider_name: str, servers: list[str], doh_url: str) -
         callbacks = _dns_rotation_callbacks.copy()
 
     for callback in callbacks:
-        try:
-            logger.debug(f"Calling DNS rotation callback: {callback.__name__}")
-            callback(provider_name, servers, doh_url)
-        except Exception as e:
-            logger.warning(f"DNS rotation callback {callback.__name__} failed: {e}")
+        _call_dns_rotation_callback(callback, provider_name, servers, doh_url)
 
 
 def _load_state():
@@ -423,9 +423,8 @@ class DoHResolver:
             if datetime.now() - timestamp < timedelta(seconds=self.CACHE_TTL):
                 logger.debug(f"DoH cache hit for {hostname}: {ips}")
                 return ips
-            else:
-                # Cache expired, remove it
-                del self._cache[key]
+            # Cache expired, remove it
+            del self._cache[key]
         return None
     
     def _set_cached(self, hostname: str, record_type: str, ips: list[str]) -> None:
@@ -574,8 +573,9 @@ def create_custom_getaddrinfo(
             # Try IPv4 (IPv6 disabled to avoid noisy AAAA failures)
             if family == 0 or family == socket.AF_INET:
                 ipv4_answers = resolve_ipv4(host_str)
-                for answer in ipv4_answers:
-                    results.append((socket.AF_INET, cast(SocketKind, type), proto, '', (answer, port_int)))
+                results.extend(
+                    [(socket.AF_INET, cast(SocketKind, type), proto, '', (answer, port_int)) for answer in ipv4_answers]
+                )
             
             if results:
                 _log_results("custom resolver", _current_dns_label(), results)
@@ -584,11 +584,9 @@ def create_custom_getaddrinfo(
         except Exception as e:
             logger.warning(f"Custom DNS resolution failed for {host_str}: {e}, falling back to system DNS")
             # Trigger DNS switch on failure (if auto mode)
-            if _is_auto_dns_mode() and not _is_local_address(host_str) and not _is_ip_address(host_str):
-                # Only switch if we haven't exhausted all providers
-                if _current_dns_index < len(DNS_PROVIDERS):
-                    logger.info(f"Requesting DNS provider switch after custom resolver failure for {host_str}")
-                    switch_dns_provider()
+            if _is_auto_dns_mode() and not _is_local_address(host_str) and not _is_ip_address(host_str) and _current_dns_index < len(DNS_PROVIDERS):
+                logger.info(f"Requesting DNS provider switch after custom resolver failure for {host_str}")
+                switch_dns_provider()
         
         # Fall back to system DNS if custom resolution fails
         logger.info(f"Custom DNS returned no addresses for {host_str}; falling back to system resolver")
@@ -602,8 +600,7 @@ def create_custom_getaddrinfo(
             if family == 0 or family == socket.AF_INET:
                 logger.warning(f"Using direct hostname as last resort for {host_str}")
                 return [(socket.AF_INET, cast(SocketKind, type), proto, '', (host_str, port_int))]
-            else:
-                raise  # Re-raise the exception if we can't provide a last resort
+            raise  # Re-raise the exception if we can't provide a last resort
     
     return custom_getaddrinfo
 
@@ -627,13 +624,12 @@ def create_system_failover_getaddrinfo():
                 logger.warning(f"System DNS resolution failed for {host_str}: {e}")
             
             # Trigger DNS switch only in auto mode for non-local targets
-            if _is_auto_dns_mode() and not _is_ip_address(host_str) and not _is_local_address(host_str):
-                if _current_dns_index + 1 < len(DNS_PROVIDERS):
-                    if host_str not in _switch_logged:
-                        logger.info(f"Switching DNS provider after system DNS failure for {host_str}")
-                        _switch_logged.add(host_str)
-                    if switch_dns_provider():
-                        return socket.getaddrinfo(host, port, family, type, proto, flags)
+            if _is_auto_dns_mode() and not _is_ip_address(host_str) and not _is_local_address(host_str) and _current_dns_index + 1 < len(DNS_PROVIDERS):
+                if host_str not in _switch_logged:
+                    logger.info(f"Switching DNS provider after system DNS failure for {host_str}")
+                    _switch_logged.add(host_str)
+                if switch_dns_provider():
+                    return socket.getaddrinfo(host, port, family, type, proto, flags)
             raise
     
     return system_failover_getaddrinfo
@@ -649,7 +645,7 @@ def _init_doh_resolver_internal(doh_server: str) -> DoHResolver:
     """
     # Pre-resolve the DoH server hostname to prevent recursion
     url = urllib.parse.urlparse(doh_server)
-    server_hostname = url.hostname if url.hostname else ''
+    server_hostname = url.hostname or ''
     
     # Use system DNS for DoH server to prevent circular dependencies
     try:
@@ -680,10 +676,7 @@ def _init_doh_resolver_internal(doh_server: str) -> DoHResolver:
     
     # Skip DoH resolution for the DoH server itself, IP addresses, and private addresses
     def skip_doh(hostname: str) -> bool:
-        return (hostname == server_hostname or 
-                hostname == server_ip or 
-                _is_ip_address(hostname) or 
-                _is_local_address(hostname))
+        return hostname in (server_hostname, server_ip) or _is_ip_address(hostname) or _is_local_address(hostname)
     
     # Replace socket.getaddrinfo with our DoH-enabled version
     socket.getaddrinfo = cast(Any, create_custom_getaddrinfo(
@@ -803,10 +796,7 @@ def rotate_dns_and_reset_aa() -> bool:
     else:
         # Keep the user's configured primary mirror (if it exists in the list),
         # otherwise keep the configured URL as-is (custom/env).
-        if configured_url in _aa_urls:
-            _current_aa_url_index = _aa_urls.index(configured_url)
-        else:
-            _current_aa_url_index = 0
+        _current_aa_url_index = _aa_urls.index(configured_url) if configured_url in _aa_urls else 0
         _aa_base_url = configured_url
         logger.info(f"After DNS switch, keeping configured AA URL: {_aa_base_url}")
         _save_state(aa_url=_aa_base_url)

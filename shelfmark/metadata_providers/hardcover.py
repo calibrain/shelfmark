@@ -1,6 +1,7 @@
 """Hardcover.app metadata provider. Requires API key."""
 
 import re
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -632,10 +633,7 @@ def _is_probably_series_position(subtitle: str) -> bool:
         "novel-in-stories",
     )
     genre_pattern = "|".join(re.escape(w) for w in genre_words)
-    if re.match(rf"^an?\s+.+\s+({genre_pattern})$", normalized):
-        return True
-
-    return False
+    return bool(re.match(rf"^an?\s+.+\s+({genre_pattern})$", normalized))
 
 
 def _strip_parenthetical_suffix(title: str) -> str:
@@ -1851,9 +1849,8 @@ class HardcoverProvider(MetadataProvider):
             if (
                 option.get("group") in HARDCOVER_WRITABLE_TARGET_GROUPS
                 and value
-                and (
-                    value.startswith(HARDCOVER_STATUS_PREFIX)
-                    or value.startswith(HARDCOVER_LIST_ID_PREFIX)
+                and value.startswith(
+                    (HARDCOVER_STATUS_PREFIX, HARDCOVER_LIST_ID_PREFIX)
                 )
             ):
                 writable_targets.add(value)
@@ -2551,10 +2548,8 @@ class HardcoverProvider(MetadataProvider):
                 rating_str = str(rating)
 
             if ratings_count:
-                try:
+                with suppress(TypeError, ValueError):
                     rating_str += f" ({int(ratings_count):,})"
-                except (TypeError, ValueError):
-                    pass
 
             display_fields.append(DisplayField(label="Rating", value=rating_str, icon="star"))
 
@@ -2633,9 +2628,8 @@ def _test_hardcover_connection(current_values: dict[str, Any] | None = None) -> 
             _save_connected_user(user_id, username)
 
             return {"success": True, "message": f"Connected as: {username}"}
-        else:
-            _save_connected_user(None, None)
-            return {"success": False, "message": "API request failed - check your API key"}
+        _save_connected_user(None, None)
+        return {"success": False, "message": "API request failed - check your API key"}
     except Exception as e:
         logger.exception("Hardcover connection test failed")
         _save_connected_user(None, None)

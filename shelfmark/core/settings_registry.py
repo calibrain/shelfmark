@@ -369,7 +369,7 @@ def load_config_file(tab_name: str) -> dict[str, Any]:
         return {}
 
     try:
-        with open(config_path) as f:
+        with config_path.open() as f:
             return json.load(f)
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in config file {config_path}: {e}")
@@ -385,7 +385,7 @@ def save_config_file(tab_name: str, values: dict[str, Any]) -> bool:
         existing = load_config_file(tab_name)
         existing.update(values)
 
-        with open(config_path, 'w') as f:
+        with config_path.open('w') as f:
             json.dump(existing, f, indent=2)
 
         logger.info(f"Saved settings to {config_path}")
@@ -443,7 +443,7 @@ def initialize_default_configs() -> bool:
             if defaults:
                 _ensure_config_dir(tab.name)
                 try:
-                    with open(config_path, 'w') as f:
+                    with config_path.open('w') as f:
                         json.dump(defaults, f, indent=2)
                     initialized_tabs.append(tab.name)
                 except Exception as e:
@@ -740,7 +740,7 @@ def migrate_download_to_browser_settings() -> None:
 
     try:
         _ensure_config_dir("downloads")
-        with open(config_path, "w") as f:
+        with config_path.open("w") as f:
             json.dump(updated_downloads, f, indent=2)
         logger.info("Migrated download-to-browser setting to content-type selection")
     except Exception as exc:
@@ -771,16 +771,14 @@ def _parse_env_value(value: str, field: SettingsField) -> Any:
     """Parse an environment variable value to the appropriate type."""
     if isinstance(field, CheckboxField):
         return value.lower() in ('true', '1', 'yes', 'on')
-    elif isinstance(field, NumberField):
+    if isinstance(field, NumberField):
         try:
             if '.' in value:
                 return float(value)
             return int(value)
         except ValueError:
             return field.default
-    elif isinstance(field, MultiSelectField):
-        return [v.strip() for v in value.split(',') if v.strip()]
-    elif isinstance(field, TagListField):
+    elif isinstance(field, (MultiSelectField, TagListField)):
         return [v.strip() for v in value.split(',') if v.strip()]
     elif isinstance(field, OrderableListField):
         # Parse JSON array: [{"id": "...", "enabled": true}, ...]
@@ -961,11 +959,8 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
                 value = [v.strip() for v in value.split(",") if v.strip()]
             else:
                 value = []
-        elif isinstance(field, TableField):
-            if value is None:
-                value = []
-            elif not isinstance(value, list):
-                value = []
+        elif isinstance(field, TableField) and (value is None or not isinstance(value, list)):
+            value = []
 
         result["value"] = value if value is not None else ""
         result["fromEnv"] = is_value_from_env(field)
@@ -1037,8 +1032,7 @@ def execute_action(tab_name: str, action_key: str, current_values: dict[str, Any
                     sig = inspect.signature(settings_field.callback)
                     if "current_values" in sig.parameters:
                         return settings_field.callback(current_values=current_values or {})
-                    else:
-                        return settings_field.callback()
+                    return settings_field.callback()
                 except Exception as e:
                     logger.error(f"Action {action_key} failed: {e}")
                     return {"success": False, "message": str(e)}
@@ -1230,5 +1224,4 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
             "requiresRestart": requires_restart,
             "restartRequiredFor": restart_required_keys,
         }
-    else:
-        return {"success": False, "message": "Failed to save settings", "updated": [], "requiresRestart": False}
+    return {"success": False, "message": "Failed to save settings", "updated": [], "requiresRestart": False}

@@ -82,7 +82,7 @@ for key in ['CONFIG_DIR', 'LOG_DIR', 'TMP_DIR', 'INGEST_DIR', 'DEBUG', 'DOCKERMO
 # Load supported book languages from data file
 # Path is relative to the package root, not this file
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-with open(_DATA_DIR / "book-languages.json") as file:
+with (_DATA_DIR / "book-languages.json").open() as file:
     _SUPPORTED_BOOK_LANGUAGE = json.load(file)
 
 # Directory settings
@@ -205,11 +205,11 @@ def _get_metadata_provider_options():
     """Build metadata provider options dynamically from enabled providers only."""
     from shelfmark.metadata_providers import is_provider_enabled, list_providers
 
-    options = []
-    for provider in list_providers():
-        # Only show providers that are enabled
-        if is_provider_enabled(provider["name"]):
-            options.append({"value": provider["name"], "label": provider["display_name"]})
+    options = [
+        {"value": provider["name"], "label": provider["display_name"]}
+        for provider in list_providers()
+        if is_provider_enabled(provider["name"])
+    ]
 
     # If no providers enabled, show a placeholder option
     if not options:

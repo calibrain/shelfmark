@@ -4,6 +4,7 @@ import mimetypes
 import smtplib
 import ssl
 from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid, parseaddr
@@ -217,13 +218,10 @@ def test_smtp_connection(smtp_config: EmailSmtpConfig) -> None:
         raise EmailOutputError(f"Could not connect to SMTP server: {exc}") from exc
     finally:
         if smtp is not None:
-            try:
+            with suppress(Exception):
                 smtp.quit()
-            except Exception:
-                try:
-                    smtp.close()
-                except Exception:
-                    pass
+            with suppress(Exception):
+                smtp.close()
 
 
 def send_email_message(smtp_config: EmailSmtpConfig, message: EmailMessage) -> None:
@@ -257,13 +255,10 @@ def send_email_message(smtp_config: EmailSmtpConfig, message: EmailMessage) -> N
         raise EmailOutputError(f"Failed to send email: {exc}") from exc
     finally:
         if smtp is not None:
-            try:
+            with suppress(Exception):
                 smtp.quit()
-            except Exception:
-                try:
-                    smtp.close()
-                except Exception:
-                    pass
+            with suppress(Exception):
+                smtp.close()
 
 
 def _supports_email(task: DownloadTask) -> bool:
