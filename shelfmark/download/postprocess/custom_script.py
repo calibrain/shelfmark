@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -106,7 +107,7 @@ def run_custom_script(
     execution: CustomScriptExecution,
     *,
     task_id: str,
-    status_callback,
+    status_callback: Callable[[str, str | None], None],
     timeout_seconds: int = DEFAULT_CUSTOM_SCRIPT_TIMEOUT_SECONDS,
 ) -> bool:
     cwd: str | None = None
@@ -249,7 +250,7 @@ def _build_custom_script_payload(
 def maybe_run_custom_script(
     context: CustomScriptContext,
     *,
-    status_callback,
+    status_callback: Callable[[str, str | None], None],
     steps: list[PlanStep] | None = None,
 ) -> bool:
     """Run the custom script hook (if configured).

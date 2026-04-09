@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 from shelfmark.core.logger import setup_logger
@@ -18,7 +19,9 @@ from shelfmark.release_sources import get_source
 logger = setup_logger("shelfmark.download.postprocess.pipeline")
 
 
-def validate_destination(destination: Path, status_callback) -> bool:
+def validate_destination(
+    destination: Path, status_callback: Callable[[str, str | None], None]
+) -> bool:
     """Validate destination path is absolute, exists, and writable."""
     if not destination.is_absolute():
         logger.warning("Destination must be absolute: %s", destination)
@@ -73,4 +76,8 @@ def get_final_destination(task: DownloadTask) -> Path:
     if override:
         return override
 
-    return get_destination(is_audiobook, user_id=task.user_id, username=task.username)
+    return get_destination(
+        is_audiobook=is_audiobook,
+        user_id=task.user_id,
+        username=task.username,
+    )

@@ -220,7 +220,7 @@ def bencode_decode(data: bytes) -> tuple:
     raise ValueError(msg)
 
 
-def bencode_encode(data) -> bytes:
+def bencode_encode(data: dict[str | bytes, object] | list[object] | int | bytes | str) -> bytes:
     """Encode data to bencode format."""
     if isinstance(data, dict):
         # Keys must be sorted (bencode spec requirement)

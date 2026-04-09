@@ -15,6 +15,7 @@ from shelfmark.core.utils import is_audiobook
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadState,
+    DownloadStatus,
     get_client,
     list_configured_clients,
 )
@@ -222,7 +223,13 @@ class ExternalClientHandler(DownloadHandler, ABC):
         except Exception as e:
             logger.warning("Failed to delete local download data for %s %s: %s", client.name, download_id, e)
 
-    def _safe_remove_download(self, client, download_id: str, protocol: str, reason: str) -> None:
+    def _safe_remove_download(
+        self,
+        client: DownloadClient,
+        download_id: str,
+        protocol: str,
+        reason: str,
+    ) -> None:
         """Best-effort removal of a failed/cancelled download from the client.
 
         Safety policy:
@@ -429,7 +436,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
 
         return None, last_error
 
-    def _build_progress_message(self, status) -> str:
+    def _build_progress_message(self, status: DownloadStatus) -> str:
         """Build a progress message from download status."""
         msg = f"{status.progress:.0f}%"
 

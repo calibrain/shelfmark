@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from shelfmark.core.logger import setup_logger
@@ -24,7 +25,7 @@ def build_output_plan(
     task: DownloadTask,
     output_mode: str,
     destination: Path | None = None,
-    status_callback=None,
+    status_callback: Callable[[str, str | None], None] | None = None,
 ) -> OutputPlan:
     """Build an output plan that describes staging behavior for file-based outputs."""
     transfer_plan = resolve_hardlink_source(
@@ -45,7 +46,7 @@ def prepare_output_files(
     temp_file: Path,
     task: DownloadTask,
     output_mode: str,
-    status_callback,
+    status_callback: Callable[[str, str | None], None] | None,
     destination: Path | None = None,
     output_plan: OutputPlan | None = None,
     *,

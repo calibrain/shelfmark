@@ -2,6 +2,7 @@
 
 import zipfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import is_audiobook as check_audiobook
@@ -12,6 +13,13 @@ from shelfmark.download.postprocess.policy import (
 )
 
 logger = setup_logger(__name__)
+
+if TYPE_CHECKING:
+    import rarfile
+
+    ArchiveType = zipfile.ZipFile | rarfile.RarFile
+else:
+    ArchiveType = zipfile.ZipFile
 
 
 def _delete_file_with_logging(file_path: Path, file_type_label: str, *, rejected: bool) -> None:
@@ -154,7 +162,7 @@ def extract_archive_raw(
     raise ArchiveExtractionError(f"Unsupported archive format: {suffix}")
 
 
-def _extract_files_from_archive(archive, output_dir: Path) -> list[Path]:
+def _extract_files_from_archive(archive: ArchiveType, output_dir: Path) -> list[Path]:
     """Extract files from ZipFile or RarFile to output_dir with security checks."""
     extracted_files = []
 

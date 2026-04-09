@@ -3,7 +3,7 @@ from __future__ import annotations
 import mimetypes
 import smtplib
 import ssl
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from email.message import EmailMessage
@@ -273,7 +273,7 @@ def _post_process_email(
     temp_file: Path,
     task: DownloadTask,
     cancel_flag: Event,
-    status_callback,
+    status_callback: Callable[[str, str | None], None],
     *,
     preserve_source_on_failure: bool = False,
 ) -> str | None:
@@ -441,7 +441,7 @@ def process_email_output(
     temp_file: Path,
     task: DownloadTask,
     cancel_flag: Event,
-    status_callback,
+    status_callback: Callable[[str, str | None], None],
     *,
     preserve_source_on_failure: bool = False,
 ) -> str | None:

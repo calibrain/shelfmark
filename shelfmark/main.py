@@ -75,7 +75,12 @@ from shelfmark.core.requests_service import (
 )
 from shelfmark.core.utils import normalize_base_path
 from shelfmark.download import orchestrator as backend
-from shelfmark.release_sources import SourceUnavailableError, get_source_display_name
+from shelfmark.release_sources import (
+    BrowseRecord,
+    Release,
+    SourceUnavailableError,
+    get_source_display_name,
+)
 
 if TYPE_CHECKING:
     from shelfmark.metadata_providers import BookMetadata, MetadataProvider
@@ -468,7 +473,7 @@ class LogNoiseFilter(logging.Filter):
     The error occurs because Werkzeug's built-in server doesn't fully support WebSocket upgrades.
     """
 
-    def filter(self, record):
+    def filter(self, record: logging.LogRecord) -> bool:
         message = record.getMessage() if hasattr(record, "getMessage") else str(record.msg)
 
         # Exclude GET /api/status requests (polling noise)
@@ -862,7 +867,7 @@ def _build_source_query_book(query_text: str, filters: SearchFilters) -> BookMet
     )
 
 
-def _serialize_browse_record(record) -> dict:
+def _serialize_browse_record(record: BrowseRecord) -> dict:
     """Serialize a source-native browse record for the frontend."""
     result = {
         key: value for key, value in record.__dict__.items()
@@ -878,7 +883,7 @@ def _serialize_browse_record(record) -> dict:
     return result
 
 
-def _serialize_release(release) -> dict:
+def _serialize_release(release: Release) -> dict:
     """Serialize a release for the frontend, normalizing preview URLs."""
     from dataclasses import asdict
 

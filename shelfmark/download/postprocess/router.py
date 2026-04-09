@@ -10,6 +10,7 @@ Keeping this separate from `pipeline.py` avoids circular imports:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from threading import Event
 
@@ -24,7 +25,7 @@ def post_process_download(
     temp_file: Path,
     task: DownloadTask,
     cancel_flag: Event,
-    status_callback,
+    status_callback: Callable[[str, str | None], None],
     *,
     preserve_source_on_failure: bool = False,
 ) -> str | None:

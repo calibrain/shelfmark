@@ -5,6 +5,7 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
+from flask import Flask
 from flask_socketio import SocketIO, join_room, leave_room
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ class WebSocketManager:
         self._rooms_lock = threading.Lock()
         self._queue_status_fn: Callable | None = None  # Reference to queue_status()
 
-    def init_app(self, app, socketio: SocketIO):
+    def init_app(self, app: Flask, socketio: SocketIO):
         """Initialize the WebSocket manager with Flask-SocketIO instance."""
         self.socketio = socketio
         self._enabled = True

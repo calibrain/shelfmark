@@ -179,7 +179,7 @@ def register_admin_settings_routes(
 
     @app.route("/api/admin/users/<int:user_id>/delivery-preferences", methods=["GET"])
     @require_admin
-    def admin_get_delivery_preferences(user_id) -> Response | tuple[Response, int]:
+    def admin_get_delivery_preferences(user_id: int) -> Response | tuple[Response, int]:
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -193,7 +193,7 @@ def register_admin_settings_routes(
 
     @app.route("/api/admin/users/<int:user_id>/search-preferences", methods=["GET"])
     @require_admin
-    def admin_get_search_preferences(user_id) -> Response | tuple[Response, int]:
+    def admin_get_search_preferences(user_id: int) -> Response | tuple[Response, int]:
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -209,7 +209,7 @@ def register_admin_settings_routes(
         "/api/admin/users/<int:user_id>/notification-preferences", methods=["GET"]
     )
     @require_admin
-    def admin_get_notification_preferences(user_id) -> Response | tuple[Response, int]:
+    def admin_get_notification_preferences(user_id: int) -> Response | tuple[Response, int]:
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -225,7 +225,7 @@ def register_admin_settings_routes(
         "/api/admin/users/<int:user_id>/notification-preferences/test", methods=["POST"]
     )
     @require_admin
-    def admin_test_notification_preferences(user_id) -> Response | tuple[Response, int]:
+    def admin_test_notification_preferences(user_id: int) -> Response | tuple[Response, int]:
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -275,7 +275,7 @@ def register_admin_settings_routes(
 
     @app.route("/api/admin/users/<int:user_id>/effective-settings", methods=["GET"])
     @require_admin
-    def admin_get_effective_settings(user_id) -> Response | tuple[Response, int]:
+    def admin_get_effective_settings(user_id: int) -> Response | tuple[Response, int]:
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404

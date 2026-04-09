@@ -490,7 +490,7 @@ def _extract_book_description(soup: BeautifulSoup) -> str | None:
     return None
 
 
-def _extract_book_metadata(metadata_divs) -> dict[str, list[str]]:
+def _extract_book_metadata(metadata_divs: Tag) -> dict[str, list[str]]:
     """Extract metadata from book info divs."""
     info: dict[str, set[str]] = {}
 
@@ -915,8 +915,8 @@ def _extract_slow_download_url(
     link: str,
     title: str,
     cancel_flag: Event | None,
-    status_callback,
-    selector,
+    status_callback: Callable[[str, str | None], None] | None,
+    selector: network.AAMirrorSelector,
     source_context: str | None = None
 ) -> str:
     """Extract download URL from AA slow download pages."""

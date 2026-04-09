@@ -232,7 +232,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
     @app.route("/api/admin/users/<int:user_id>", methods=["GET"])
     @_require_admin
-    def admin_get_user(user_id) -> Response | tuple[Response, int]:
+    def admin_get_user(user_id: int) -> Response | tuple[Response, int]:
         """Get a user by ID with their settings."""
         user = user_db.get_user(user_id=user_id)
         if not user:
@@ -247,7 +247,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
     @app.route("/api/admin/users/<int:user_id>", methods=["PUT"])
     @_require_admin
-    def admin_update_user(user_id) -> Response | tuple[Response, int]:
+    def admin_update_user(user_id: int) -> Response | tuple[Response, int]:
         """Update user fields and/or settings."""
         user = user_db.get_user(user_id=user_id)
         if not user:
@@ -397,7 +397,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
     @app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
     @_require_admin
-    def admin_delete_user(user_id) -> Response | tuple[Response, int]:
+    def admin_delete_user(user_id: int) -> Response | tuple[Response, int]:
         """Delete a user."""
         # Prevent self-deletion
         if session.get("db_user_id") == user_id:

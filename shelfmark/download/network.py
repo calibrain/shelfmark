@@ -500,13 +500,17 @@ class DoHResolver:
         else:
             return answers
 
-def create_custom_resolver(servers: list[str] | None = None):
+def create_custom_resolver(
+    servers: list[str] | None = None,
+) -> dns.resolver.Resolver:
     """Create a custom DNS resolver using the specified or configured DNS servers."""
     custom_resolver = dns.resolver.Resolver()
     custom_resolver.nameservers = servers if servers is not None else CUSTOM_DNS
     return custom_resolver
 
-def resolve_with_custom_dns(resolver, hostname: str, record_type: str) -> list[str]:
+def resolve_with_custom_dns(
+    resolver: dns.resolver.Resolver, hostname: str, record_type: str
+) -> list[str]:
     """Resolve hostname using custom DNS resolver."""
     try:
         answers = resolver.resolve(hostname, record_type)
@@ -520,7 +524,9 @@ def create_custom_getaddrinfo(
     resolve_ipv4: Callable[[str], list[str]],
     resolve_ipv6: Callable[[str], list[str]],
     skip_check: Callable[[str], bool] | None = None
-):
+) -> Callable[
+    [str | bytes | None, str | bytes | int | None, int, int, int, int], Sequence[tuple[AddressFamily, SocketKind, int, str, tuple[Any, ...]]]
+]:
     """Create a custom getaddrinfo function that uses the provided resolvers.
     
     Args:
@@ -617,7 +623,9 @@ def create_custom_getaddrinfo(
 
     return custom_getaddrinfo
 
-def create_system_failover_getaddrinfo():
+def create_system_failover_getaddrinfo() -> Callable[
+    [str | bytes | None, str | bytes | int | None, int, int, int, int], Sequence[tuple[AddressFamily, SocketKind, int, str, tuple[Any, ...]]]
+]:
     """Wrap system getaddrinfo to trigger DNS provider switch on failure."""
     _switch_logged: set[str] = set()
 
@@ -724,7 +732,7 @@ def _init_custom_resolver_internal(servers: list[str]) -> dns.resolver.Resolver:
     return custom_resolver
 
 
-def init_doh_resolver(doh_server: str = ""):
+def init_doh_resolver(doh_server: str = "") -> DoHResolver | None:
     """Initialize DNS over HTTPS resolver."""
     server = doh_server or DOH_SERVER
     if not server:
@@ -732,7 +740,7 @@ def init_doh_resolver(doh_server: str = ""):
     return _init_doh_resolver_internal(server)
 
 
-def init_custom_resolver():
+def init_custom_resolver() -> dns.resolver.Resolver | None:
     """Initialize custom DNS resolver using configured DNS servers."""
     if not CUSTOM_DNS:
         return None
@@ -900,7 +908,7 @@ def set_dns_provider(provider: str, manual_servers: list[str] | None = None, *, 
         return False
 
 
-def init_dns_resolvers():
+def init_dns_resolvers() -> None:
     """Initialize DNS resolvers based on configuration."""
     global CUSTOM_DNS, DOH_SERVER
 
@@ -1090,7 +1098,7 @@ def init(*, force: bool = False) -> None:
         # Only set flag AFTER work completes successfully.
         _initialized = True
 
-def get_aa_base_url():
+def get_aa_base_url() -> str:
     """Get current AA base URL."""
     _ensure_initialized()
     return _aa_base_url
@@ -1106,7 +1114,7 @@ def is_aa_auto_mode() -> bool:
         configured_url = "auto"
     return configured_url == "auto"
 
-def get_available_aa_urls():
+def get_available_aa_urls() -> list[str]:
     """Get list of configured AA URLs (copy)."""
     _ensure_initialized()
     return _aa_urls.copy()

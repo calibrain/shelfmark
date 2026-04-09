@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 
 class PrefixMiddleware:
     """Strip a configured URL prefix from PATH_INFO before routing."""
 
     def __init__(
-        self, app, prefix: str, bypass_paths: Iterable[str] | None = None
+        self,
+        app: Callable[[dict[str, object], Callable[..., object]], object],
+        prefix: str,
+        bypass_paths: Iterable[str] | None = None,
     ) -> None:
         self.app = app
         self.prefix = prefix.rstrip("/")
         self.bypass_paths = set(bypass_paths or [])
 
-    def __call__(self, environ, start_response):
+    def __call__(
+        self, environ: dict[str, object], start_response: Callable[..., object]
+    ) -> object:
         path = environ.get("PATH_INFO", "") or ""
 
         if path in self.bypass_paths:

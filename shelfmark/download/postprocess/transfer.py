@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 import shelfmark.core.config as core_config
@@ -73,7 +74,7 @@ def resolve_hardlink_source(
     temp_file: Path,
     task: DownloadTask,
     destination: Path | None,
-    status_callback=None,
+    status_callback: Callable[[str, str | None], None] | None = None,
 ) -> TransferPlan:
     """Resolve hardlink eligibility and source path for transfers."""
     use_hardlink = False
@@ -342,7 +343,7 @@ def transfer_file_to_library(
     metadata: dict,
     task: DownloadTask,
     temp_file: Path | None,
-    status_callback,
+    status_callback: Callable[[str, str | None], None],
     *,
     use_hardlink: bool,
 ) -> str | None:
@@ -384,7 +385,7 @@ def transfer_directory_to_library(
     metadata: dict,
     task: DownloadTask,
     temp_file: Path | None,
-    status_callback,
+    status_callback: Callable[[str, str | None], None],
     *,
     use_hardlink: bool,
 ) -> str | None:

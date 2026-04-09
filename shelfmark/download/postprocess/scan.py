@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 from shelfmark.core.logger import setup_logger
@@ -188,7 +189,7 @@ def collect_directory_files(
     task: DownloadTask,
     *,
     allow_archive_extraction: bool,
-    status_callback=None,
+    status_callback: Callable[[str, str | None], None] | None = None,
     cleanup_archives: bool = False,
 ) -> tuple[list[Path], list[Path], list[Path], str | None]:
     content_type = task.content_type
@@ -281,7 +282,7 @@ def collect_staged_files(
     task: DownloadTask,
     *,
     allow_archive_extraction: bool,
-    status_callback,
+    status_callback: Callable[[str, str | None], None] | None,
     cleanup_archives: bool,
 ) -> tuple[list[Path], list[Path], list[Path], str | None]:
     if run_blocking_io(working_path.is_dir):

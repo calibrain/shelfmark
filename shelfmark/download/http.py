@@ -83,14 +83,18 @@ def _is_cf_bypass_enabled() -> bool:
     return app_config.get("USE_CF_BYPASS", True)
 
 
-def get_bypassed_page(url, selector=None, cancel_flag=None):
+def get_bypassed_page(
+    url: str,
+    selector: network.AAMirrorSelector | None = None,
+    cancel_flag: Event | None = None,
+) -> str | None:
     """Wrapper that delegates to the appropriate bypasser based on config."""
     if _is_using_external_bypasser():
         return _get_external_bypasser().get_bypassed_page(url, selector, cancel_flag)
     return _get_internal_bypasser().get_bypassed_page(url, selector, cancel_flag)
 
 
-def get_cf_cookies_for_domain(domain):
+def get_cf_cookies_for_domain(domain: str) -> dict[str, str]:
     """Get CF cookies - only available with internal bypasser."""
     if _is_using_external_bypasser():
         logger.debug(
@@ -100,7 +104,7 @@ def get_cf_cookies_for_domain(domain):
     return _get_internal_bypasser().get_cf_cookies_for_domain(domain)
 
 
-def get_cf_user_agent_for_domain(domain):
+def get_cf_user_agent_for_domain(domain: str) -> str | None:
     """Get CF user agent - only available with internal bypasser."""
     if _is_using_external_bypasser():
         logger.debug(

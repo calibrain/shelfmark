@@ -13,7 +13,7 @@ import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook as check_audiobook
-from shelfmark.download.outputs import register_output
+from shelfmark.download.outputs import StatusCallback, register_output
 from shelfmark.download.staging import (
     STAGE_COPY,
     STAGE_MOVE,
@@ -293,7 +293,7 @@ def _post_process_booklore(
     temp_file: Path,
     task: DownloadTask,
     cancel_flag: Event,
-    status_callback,
+    status_callback: StatusCallback,
     *,
     preserve_source_on_failure: bool = False,
 ) -> str | None:
@@ -475,7 +475,7 @@ def process_booklore_output(
     temp_file: Path,
     task: DownloadTask,
     cancel_flag: Event,
-    status_callback,
+    status_callback: StatusCallback,
     *,
     preserve_source_on_failure: bool = False,
 ) -> str | None:

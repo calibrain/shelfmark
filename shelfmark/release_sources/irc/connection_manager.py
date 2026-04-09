@@ -239,7 +239,7 @@ class IRCConnectionManager:
         logger.info("Closed all IRC connections")
 
     @staticmethod
-    def _close_connection(client, key: str) -> None:
+    def _close_connection(client: IRCClient, key: str) -> None:
         """Disconnect one IRC client and log failures."""
         try:
             client.disconnect()

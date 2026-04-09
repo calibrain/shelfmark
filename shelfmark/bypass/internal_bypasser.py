@@ -197,7 +197,7 @@ def _store_extracted_cookies(
     logger.debug("Extracted %s %s cookies for %s", len(cookies_found), cookie_type, base_domain)
 
 
-async def _extract_cookies_from_cdp(driver, page, url: str) -> None:
+async def _extract_cookies_from_cdp(driver: Any, page: Any, url: str) -> None:
     """Extract cookies from a CDP browser after successful bypass."""
     try:
         try:
@@ -254,7 +254,7 @@ def get_cf_user_agent_for_domain(domain: str) -> str | None:
         return _cf_user_agents.get(_get_base_domain(domain))
 
 
-def clear_cf_cookies(domain: str = None) -> None:
+def clear_cf_cookies(domain: str | None = None) -> None:
     """Clear stored Cloudflare cookies and User-Agent. If domain is None, clear all."""
     with _cf_cookies_lock:
         if domain:
@@ -318,7 +318,7 @@ def _cleanup_orphan_processes() -> int:
 
     return total_killed
 
-async def _get_page_info(page) -> tuple[str, str, str]:
+async def _get_page_info(page: Any) -> tuple[str, str, str]:
     """Extract page title, body text, and current URL safely."""
     try:
         title = (await page.get_title() or "").lower()
@@ -347,7 +347,7 @@ def _has_cloudflare_patterns(body: str, url: str) -> bool:
     """Check for Cloudflare-specific patterns in body or URL."""
     return "cf-" in body or "cloudflare" in url.lower() or "/cdn-cgi/" in url
 
-async def _detect_challenge_type(page) -> str:
+async def _detect_challenge_type(page: Any) -> str:
     """Detect challenge type: 'cloudflare', 'ddos_guard', or 'none'."""
     try:
         title, body, current_url = await _get_page_info(page)
@@ -371,7 +371,7 @@ async def _detect_challenge_type(page) -> str:
 
         return "none"
 
-async def _is_bypassed(page, *, escape_emojis: bool = True) -> bool:
+async def _is_bypassed(page: Any, *, escape_emojis: bool = True) -> bool:
     """Check if the protection has been bypassed."""
     try:
         title, body, current_url = await _get_page_info(page)
@@ -411,7 +411,7 @@ async def _is_bypassed(page, *, escape_emojis: bool = True) -> bool:
         logger.debug("Bypass check passed - Title: '%s', Body length: %s", title[:100], body_len)
         return True
 
-async def _bypass_method_humanlike(page) -> bool:
+async def _bypass_method_humanlike(page: Any) -> bool:
     """Human-like behavior with scroll, wait, and reload."""
     try:
         logger.debug("Attempting bypass: human-like interaction")
@@ -449,7 +449,7 @@ async def _bypass_method_humanlike(page) -> bool:
         return False
 
 
-async def _bypass_method_cdp_solve(page) -> bool:
+async def _bypass_method_cdp_solve(page: Any) -> bool:
     """CDP Mode with solve_captcha() - auto-detects challenge type."""
     try:
         logger.debug("Attempting bypass: CDP solve_captcha")
@@ -471,7 +471,7 @@ CDP_CLICK_SELECTORS = [
 ]
 
 
-async def _bypass_method_cdp_click(page) -> bool:
+async def _bypass_method_cdp_click(page: Any) -> bool:
     """CDP Mode with native clicking - no PyAutoGUI dependency."""
     try:
         logger.debug("Attempting bypass: CDP native click")
@@ -505,7 +505,7 @@ CDP_GUI_CLICK_SELECTORS = [
 ]
 
 
-async def _bypass_method_cdp_gui_click(page) -> bool:
+async def _bypass_method_cdp_gui_click(page: Any) -> bool:
     """CDP Mode with gui_click-style behavior."""
     try:
         logger.debug("Attempting bypass: CDP gui_click (mouse-based)")
@@ -557,7 +557,9 @@ def _check_cancellation(cancel_flag: Event | None, message: str) -> None:
         raise BypassCancelledException("Bypass cancelled")
 
 
-async def _bypass(page, max_retries: int | None = None, cancel_flag: Event | None = None) -> bool:
+async def _bypass(
+    page: Any, max_retries: int | None = None, cancel_flag: Event | None = None
+) -> bool:
     """Attempt to bypass Cloudflare/DDOS-Guard protection using multiple methods."""
     max_retries = max_retries if max_retries is not None else app_config.MAX_RETRY
 
@@ -691,7 +693,7 @@ def _build_host_resolver_rules() -> list[str]:
 DRIVER_RESET_ERRORS = {"ProtocolException", "RuntimeError", "TimeoutError"}
 
 
-async def _get(url: str, driver, cancel_flag: Event | None = None) -> str:
+async def _get(url: str, driver: Any, cancel_flag: Event | None = None) -> str:
     """Fetch URL with Cloudflare bypass using a CDP browser."""
     _check_cancellation(cancel_flag, "Bypass cancelled before starting")
 
@@ -823,7 +825,7 @@ async def _create_cdp_browser(url: str) -> Any:
     return driver
 
 
-async def _close_cdp_driver(driver) -> None:
+async def _close_cdp_driver(driver: Any) -> None:
     """Close CDP connections and stop the browser."""
     if not driver:
         return
@@ -878,7 +880,7 @@ async def _close_cdp_driver(driver) -> None:
     logger.log_resource_usage()
 
 
-async def _close_websocket_connection(conn) -> None:
+async def _close_websocket_connection(conn: Any) -> None:
     """Close one websocket-like connection, ignoring best-effort failures."""
     try:
         await conn.aclose()

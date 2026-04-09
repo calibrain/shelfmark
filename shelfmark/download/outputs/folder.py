@@ -9,7 +9,7 @@ import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook as check_audiobook
-from shelfmark.download.outputs import register_output
+from shelfmark.download.outputs import StatusCallback, register_output
 from shelfmark.download.staging import STAGE_NONE, StageAction
 
 logger = setup_logger(__name__)
@@ -41,7 +41,7 @@ def _supports_folder_output(task: DownloadTask) -> bool:
 def _build_processing_plan(
     temp_file: Path,
     task: DownloadTask,
-    status_callback,
+    status_callback: StatusCallback,
 ) -> _ProcessingPlan | None:
     from shelfmark.download.postprocess.pipeline import (  # noqa: PLC0415
         build_output_plan,
@@ -86,7 +86,7 @@ def process_folder_output(
     temp_file: Path,
     task: DownloadTask,
     cancel_flag: Event,
-    status_callback,
+    status_callback: StatusCallback,
     *,
     preserve_source_on_failure: bool = False,
 ) -> str | None:
