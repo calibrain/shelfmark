@@ -1,12 +1,13 @@
 """Shared helpers for user-overridable settings metadata and payloads."""
 
+from types import ModuleType
 from typing import Any
 
 from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_db import UserDB
 
 
-def get_settings_registry():
+def get_settings_registry() -> ModuleType:
     # Ensure settings modules are loaded before reading registry metadata.
     import shelfmark.config.notifications_settings  # noqa: PLC0415
     import shelfmark.config.security  # noqa: PLC0415

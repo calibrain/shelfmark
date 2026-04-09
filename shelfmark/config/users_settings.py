@@ -19,6 +19,7 @@ from shelfmark.core.settings_registry import (
     MultiSelectField,
     NumberField,
     SelectField,
+    SettingsField,
     TableField,
     register_on_save,
     register_settings,
@@ -298,7 +299,7 @@ register_on_save("users", _on_save_users)
 
 
 @register_settings("users", "Users & Requests", icon="users", order=6)
-def users_settings():
+def users_settings() -> list[SettingsField]:
     """User management tab - rendered as a custom component on the frontend."""
     return [
         HeadingField(

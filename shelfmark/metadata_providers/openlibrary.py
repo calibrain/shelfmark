@@ -15,6 +15,7 @@ from shelfmark.core.settings_registry import (
     CheckboxField,
     HeadingField,
     SelectField,
+    SettingsField,
     register_settings,
 )
 from shelfmark.download.network import get_ssl_verify
@@ -544,7 +545,7 @@ _OPENLIBRARY_SORT_OPTIONS = [
 
 
 @register_settings("openlibrary", "Open Library", icon="library", order=52, group="metadata_providers")
-def openlibrary_settings():
+def openlibrary_settings() -> list[SettingsField]:
     """Open Library metadata provider settings."""
     return [
         HeadingField(

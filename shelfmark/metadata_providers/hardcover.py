@@ -19,6 +19,7 @@ from shelfmark.core.settings_registry import (
     HeadingField,
     PasswordField,
     SelectField,
+    SettingsField,
     register_settings,
 )
 from shelfmark.download.network import get_ssl_verify
@@ -2703,7 +2704,7 @@ _HARDCOVER_SORT_OPTIONS = [
 
 
 @register_settings("hardcover", "Hardcover", icon="book", order=51, group="metadata_providers")
-def hardcover_settings():
+def hardcover_settings() -> list[SettingsField]:
     """Hardcover metadata provider settings."""
     # Check for connected username to show status
     connected_user = _get_connected_username()

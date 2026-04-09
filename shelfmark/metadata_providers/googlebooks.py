@@ -21,6 +21,7 @@ from shelfmark.core.settings_registry import (
     HeadingField,
     PasswordField,
     SelectField,
+    SettingsField,
     register_settings,
 )
 from shelfmark.download.network import get_ssl_verify
@@ -418,7 +419,7 @@ _GOOGLEBOOKS_SORT_OPTIONS = [
 @register_settings(
     "googlebooks", "Google Books", icon="book", order=53, group="metadata_providers"
 )
-def googlebooks_settings():
+def googlebooks_settings() -> list[SettingsField]:
     """Google Books metadata provider settings."""
     return [
         HeadingField(

@@ -24,7 +24,7 @@ class CustomLogger(logging.Logger):
         has_exception = sys.exc_info()[0] is not None
         self.debug(msg, *args, exc_info=has_exception, **kwargs)
 
-    def log_resource_usage(self):
+    def log_resource_usage(self) -> None:
         # Best-effort only; this should never raise during exception logging.
         try:
             import psutil  # noqa: PLC0415

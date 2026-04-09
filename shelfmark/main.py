@@ -557,7 +557,7 @@ logger.info("Session cookie secure setting: %s (from env: %s)", SESSION_COOKIE_S
 logger.info("Session cookie name: %s", SESSION_COOKIE_NAME)
 
 @app.before_request
-def proxy_auth_middleware():
+def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
     """Middleware to handle proxy authentication.
     
     When AUTH_METHOD is set to "proxy", this middleware automatically
@@ -2966,7 +2966,7 @@ def catch_all(path: str) -> Response:
 
 # WebSocket event handlers
 @socketio.on("connect")
-def handle_connect():
+def handle_connect() -> None:
     """Handle client connection."""
     logger.info("WebSocket client connected")
 
@@ -2990,7 +2990,7 @@ def handle_connect():
         logger.exception("Error sending initial status")
 
 @socketio.on("disconnect")
-def handle_disconnect():
+def handle_disconnect() -> None:
     """Handle client disconnection."""
     logger.info("WebSocket client disconnected")
 
@@ -3001,7 +3001,7 @@ def handle_disconnect():
     ws_manager.client_disconnected()
 
 @socketio.on("request_status")
-def handle_status_request():
+def handle_status_request() -> None:
     """Handle manual status request from client."""
     try:
         is_admin, db_user_id, can_access_status = _resolve_status_scope()

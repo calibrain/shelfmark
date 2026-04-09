@@ -9,6 +9,7 @@ from shelfmark.core.settings_registry import (
     HeadingField,
     NumberField,
     SelectField,
+    SettingsField,
     TextField,
     register_settings,
 )
@@ -32,7 +33,7 @@ def _clear_irc_cache() -> dict[str, str | int | bool]:
     icon="download",
     order=56,
 )
-def irc_settings():
+def irc_settings() -> list[SettingsField]:
     """Define IRC source settings."""
     return [
         HeadingField(

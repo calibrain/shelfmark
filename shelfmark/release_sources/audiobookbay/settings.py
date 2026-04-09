@@ -3,6 +3,7 @@
 from shelfmark.core.settings_registry import (
     CheckboxField,
     NumberField,
+    SettingsField,
     TextField,
     register_settings,
 )
@@ -11,7 +12,7 @@ from shelfmark.core.settings_registry import (
 
 
 @register_settings("audiobookbay_config", "AudiobookBay", icon="download", order=45)
-def audiobookbay_config_settings():
+def audiobookbay_config_settings() -> list[SettingsField]:
     """AudiobookBay configuration settings."""
     return [
         CheckboxField(

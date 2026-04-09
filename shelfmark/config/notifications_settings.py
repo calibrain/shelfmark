@@ -11,6 +11,7 @@ from shelfmark.core.notifications import NotificationEvent, send_test_notificati
 from shelfmark.core.settings_registry import (
     ActionButton,
     HeadingField,
+    SettingsField,
     TableField,
     load_config_file,
     register_on_save,
@@ -260,7 +261,7 @@ register_on_save("notifications", _on_save_notifications)
 
 
 @register_settings("notifications", "Notifications", icon="bell", order=7)
-def notifications_settings():
+def notifications_settings() -> list[SettingsField]:
     """Global notifications settings."""
     return [
         HeadingField(

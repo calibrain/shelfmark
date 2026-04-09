@@ -5,13 +5,14 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
-from typing import TypeVar
+from typing import ParamSpec, TypeVar, cast
 
 from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
 
-T = TypeVar("T")
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 @dataclass
@@ -124,12 +125,12 @@ def cacheable(
     ttl_key: str | None = None,
     ttl_default: int = 300,
     key_prefix: str = "",
-):
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorator for caching function results. Use ttl (static) or ttl_key (from config)."""
 
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         @wraps(func)
-        def wrapper(*args, **kwargs) -> T:
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             # Check if metadata caching is enabled
             from shelfmark.core.config import config  # noqa: PLC0415
 
@@ -154,7 +155,7 @@ def cacheable(
             # Check cache
             cached = _metadata_cache.get(key)
             if cached is not None:
-                return cached
+                return cast(R, cached)
 
             # Execute function and cache result
             result = func(*args, **kwargs)

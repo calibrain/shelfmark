@@ -365,7 +365,9 @@ class DownloadClient(ABC):
 _CLIENTS: dict[str, list[type[DownloadClient]]] = {}
 
 
-def register_client(protocol: str):
+def register_client(
+    protocol: str,
+) -> Callable[[type[DownloadClient]], type[DownloadClient]]:
     """Decorator to register a download client for a protocol.
 
     Multiple clients can be registered for the same protocol.

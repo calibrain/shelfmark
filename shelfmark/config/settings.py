@@ -123,6 +123,7 @@ from shelfmark.core.settings_registry import (
     OrderableListField,
     PasswordField,
     SelectField,
+    SettingsField,
     TableField,
     TagListField,
     TextField,
@@ -378,7 +379,7 @@ def _clear_metadata_cache(current_values: dict) -> dict:
 
 
 @register_settings("general", "General", icon="settings", order=0)
-def general_settings():
+def general_settings() -> list[SettingsField]:
     """Core application settings."""
     return [
         TextField(
@@ -423,7 +424,7 @@ def general_settings():
 
 
 @register_settings("search_mode", "Search Mode", icon="search", order=1)
-def search_mode_settings():
+def search_mode_settings() -> list[SettingsField]:
     """Configure how you search for and download books."""
     return [
         HeadingField(
@@ -530,7 +531,7 @@ def search_mode_settings():
 
 
 @register_settings("network", "Network", icon="globe", order=10)
-def network_settings():
+def network_settings() -> list[SettingsField]:
     """Network and connectivity settings."""
     # Check if Tor is currently enabled.
     tor_enabled = env.USING_TOR
@@ -844,7 +845,7 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
 
 
 @register_settings("downloads", "Downloads", icon="folder", order=5)
-def download_settings():
+def download_settings() -> list[SettingsField]:
     """Configure download behavior and file locations."""
     return [
         # === BOOKS SECTION ===
@@ -1322,7 +1323,7 @@ def _get_slow_source_defaults() -> list[dict[str, str | bool]]:
 
 
 @register_settings("download_sources", "Download Sources", icon="download", order=21, group="direct_download")
-def download_source_settings():
+def download_source_settings() -> list[SettingsField]:
     """Settings for download source behavior."""
     return [
         PasswordField(
@@ -1428,7 +1429,7 @@ def download_source_settings():
 
 
 @register_settings("cloudflare_bypass", "Cloudflare Bypass", icon="shield", order=22, group="direct_download")
-def cloudflare_bypass_settings():
+def cloudflare_bypass_settings() -> list[SettingsField]:
     """Settings for Cloudflare bypass behavior."""
     return [
         CheckboxField(
@@ -1515,7 +1516,7 @@ register_on_save("mirrors", _on_save_mirrors)
 
 
 @register_settings("mirrors", "Mirrors", icon="globe", order=23, group="direct_download")
-def mirror_settings():
+def mirror_settings() -> list[SettingsField]:
     """Configure download source mirrors."""
     from shelfmark.core.mirrors import (
         DEFAULT_AA_MIRRORS,
@@ -1604,7 +1605,7 @@ def mirror_settings():
 
 
 @register_settings("advanced", "Advanced", icon="cog", order=15)
-def advanced_settings():
+def advanced_settings() -> list[SettingsField]:
     """Advanced settings for power users."""
     return [
         TextField(

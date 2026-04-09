@@ -9,6 +9,7 @@ from shelfmark.core.settings_registry import (
     HeadingField,
     PasswordField,
     SelectField,
+    SettingsField,
     TagListField,
     TextField,
     register_settings,
@@ -405,7 +406,7 @@ def _test_sabnzbd_connection(current_values: dict[str, Any] | None = None) -> di
     icon="cog",
     order=110,
 )
-def prowlarr_clients_settings():
+def prowlarr_clients_settings() -> list[SettingsField]:
     """Download client settings shared by external release sources."""
     return [
         # --- Torrent Client Selection ---

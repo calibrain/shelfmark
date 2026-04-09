@@ -448,17 +448,21 @@ _PROVIDERS: dict[str, type[MetadataProvider]] = {}
 _PROVIDER_KWARGS_FACTORIES: dict[str, Any] = {}  # Callable[[], Dict]
 
 
-def register_provider(name: str):
+def register_provider(
+    name: str,
+) -> Callable[[type[MetadataProvider]], type[MetadataProvider]]:
     """Decorator to register a metadata provider."""
 
-    def decorator(cls: type[object]) -> type[object]:
+    def decorator(cls: type[MetadataProvider]) -> type[MetadataProvider]:
         _PROVIDERS[name] = cls
         return cls
 
     return decorator
 
 
-def register_provider_kwargs(name: str):
+def register_provider_kwargs(
+    name: str,
+) -> Callable[[Callable[[], dict[str, Any]]], Callable[[], dict[str, Any]]]:
     """Decorator to register a provider's kwargs factory.
 
     The decorated function should return a Dict of kwargs to pass to the

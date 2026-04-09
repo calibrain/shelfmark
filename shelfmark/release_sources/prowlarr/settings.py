@@ -8,6 +8,7 @@ from shelfmark.core.settings_registry import (
     HeadingField,
     MultiSelectField,
     PasswordField,
+    SettingsField,
     TextField,
     register_settings,
 )
@@ -107,7 +108,7 @@ def _test_prowlarr_connection(current_values: dict[str, Any] | None = None) -> d
     icon="download",
     order=41,
 )
-def prowlarr_config_settings():
+def prowlarr_config_settings() -> list[SettingsField]:
     """Prowlarr connection and indexer settings."""
     return [
         HeadingField(

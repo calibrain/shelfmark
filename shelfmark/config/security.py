@@ -16,6 +16,7 @@ from shelfmark.core.settings_registry import (
     CustomComponentField,
     PasswordField,
     SelectField,
+    SettingsField,
     TagListField,
     TextField,
     load_config_file,
@@ -69,7 +70,7 @@ def _test_oidc_connection(current_values: dict[str, Any] = None) -> dict[str, An
 
 
 @register_settings("security", "Security", icon="shield", order=5)
-def security_settings():
+def security_settings() -> list[SettingsField]:
     """Security and authentication settings."""
     from shelfmark.config.env import CWA_DB_PATH
 
