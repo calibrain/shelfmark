@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Optional
 from shelfmark.core.auth_modes import AUTH_SOURCE_BUILTIN, AUTH_SOURCE_SET
 from shelfmark.core.activity_view_state_service import user_viewer_scope
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.request_helpers import normalize_optional_positive_int
 from shelfmark.core.models import QueueStatus
 from shelfmark.core.request_validation import (
     DELIVERY_STATE_NONE,

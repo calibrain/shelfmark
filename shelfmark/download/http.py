@@ -460,7 +460,7 @@ def download_url(
             # Rate limited - skip to next source immediately
             # (waiting doesn't help with concurrent downloads hitting the same server)
             if status == 429:
-                logger.info(f"Rate limited (429) - trying next source")
+                logger.info("Rate limited (429) - trying next source")
                 if status_callback:
                     status_callback("resolving", "Server busy, trying next")
                 return None

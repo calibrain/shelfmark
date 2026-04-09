@@ -24,3 +24,30 @@ python_version = "3.10"
 warn_return_any = true
 warn_unused_ignores = true
 ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
+extend-exclude = [".local"]
+
+[tool.ruff.lint]
+select = ["F401", "F541"]
+
+[tool.vulture]
+paths = ["shelfmark"]
+exclude = [".local", "tests"]
+ignore_decorators = [
+    "@app.route",
+    "@app.before_request",
+    "@app.after_request",
+    "@app.errorhandler",
+    "@socketio.on",
+    "@register_provider",
+    "@register_provider_kwargs",
+    "@register_settings",
+    "@register_source",
+    "@register_handler",
+    "@register_client",
+    "@register_output",
+]
+min_confidence = 90
+sort_by_size = true

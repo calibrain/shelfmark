@@ -19,7 +19,6 @@ logger = setup_logger(__name__)
 
 
 # Timing
-POST_CONNECT_DELAY = 2.0  # Seconds to wait after connect before joining
 SOCKET_TIMEOUT = 300.0    # 5 minutes - long because we wait for DCC offers
 RECV_BUFFER = 4096
 
@@ -252,10 +251,6 @@ class IRCClient:
     def send_notice(self, target: str, message: str) -> None:
         """Send a NOTICE to a user."""
         self._send(f"NOTICE {target} :{message}")
-
-    def request_names(self, channel: str) -> None:
-        """Request user list for a channel (without # prefix)."""
-        self._send(f"NAMES #{channel}")
 
     def _parse_names_list(self, names_data: str) -> None:
         """Parse 353 NAMES reply and extract elevated users (download servers)."""

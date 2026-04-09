@@ -2,7 +2,7 @@
 
 import logging
 import threading
-from typing import Optional, Dict, Any, Callable, List
+from typing import Optional, Dict, Any, Callable
 
 from flask_socketio import SocketIO, join_room, leave_room
 
@@ -17,9 +17,6 @@ class WebSocketManager:
         self._enabled = False
         self._connection_count = 0
         self._connection_lock = threading.Lock()
-        self._on_first_connect_callbacks: List[Callable[[], None]] = []
-        self._on_all_disconnect_callbacks: List[Callable[[], None]] = []
-        self._needs_rewarm = False  # Flag to trigger warmup callbacks on next connect
         self._user_rooms: Dict[str, int] = {}  # room_name -> ref count
         self._sid_rooms: Dict[str, str] = {}  # sid -> room_name
         self._rooms_lock = threading.Lock()
@@ -31,74 +28,21 @@ class WebSocketManager:
         self._enabled = True
         logger.info("WebSocket manager initialized")
 
-    def register_on_first_connect(self, callback: Callable[[], None]):
-        """Register a callback for when the first client connects."""
-        self._on_first_connect_callbacks.append(callback)
-        logger.debug(f"Registered on_first_connect callback: {callback.__name__}")
-
-    def register_on_all_disconnect(self, callback: Callable[[], None]):
-        """Register a callback for when all clients disconnect."""
-        self._on_all_disconnect_callbacks.append(callback)
-        logger.debug(f"Registered on_all_disconnect callback: {callback.__name__}")
-
-    def request_warmup_on_next_connect(self):
-        """Request warmup callbacks on the next client connect (e.g., after idle shutdown)."""
-        with self._connection_lock:
-            self._needs_rewarm = True
-            logger.debug("Warmup requested for next client connect")
-
     def client_connected(self):
         """Track a new client connection. Call this from the connect event handler."""
         with self._connection_lock:
-            was_zero = self._connection_count == 0
-            needs_rewarm = self._needs_rewarm
             self._connection_count += 1
             current_count = self._connection_count
-            # Clear rewarm flag if we're going to trigger warmup
-            if was_zero or needs_rewarm:
-                self._needs_rewarm = False
 
         logger.debug(f"Client connected. Active connections: {current_count}")
-
-        # Trigger warmup callbacks if this is the first connection OR if rewarm was requested
-        # (rewarm is requested when bypasser shuts down due to idle while clients are connected)
-        if was_zero or needs_rewarm:
-            reason = "First client connected" if was_zero else "Rewarm requested after idle shutdown"
-            logger.info(f"{reason}, triggering warmup callbacks...")
-            for callback in self._on_first_connect_callbacks:
-                try:
-                    # Run callbacks in a separate thread to not block the connection
-                    thread = threading.Thread(target=callback, daemon=True)
-                    thread.start()
-                except Exception as e:
-                    logger.error(f"Error in on_first_connect callback {callback.__name__}: {e}")
 
     def client_disconnected(self):
         """Track a client disconnection. Call this from the disconnect event handler."""
         with self._connection_lock:
             self._connection_count = max(0, self._connection_count - 1)
             current_count = self._connection_count
-            is_now_zero = current_count == 0
 
         logger.debug(f"Client disconnected. Active connections: {current_count}")
-
-        # If all clients have disconnected, trigger cleanup callbacks
-        if is_now_zero:
-            logger.info("All clients disconnected, triggering disconnect callbacks...")
-            for callback in self._on_all_disconnect_callbacks:
-                try:
-                    callback()
-                except Exception as e:
-                    logger.error(f"Error in on_all_disconnect callback {callback.__name__}: {e}")
-
-    def get_connection_count(self) -> int:
-        """Get the current number of active WebSocket connections."""
-        with self._connection_lock:
-            return self._connection_count
-
-    def has_active_connections(self) -> bool:
-        """Check if there are any active WebSocket connections."""
-        return self.get_connection_count() > 0
 
     def is_enabled(self) -> bool:
         """Check if WebSocket is enabled and ready."""
@@ -205,22 +149,6 @@ class WebSocketManager:
             logger.debug(f"Broadcasted progress for book {book_id}: {progress}%")
         except Exception as e:
             logger.error(f"Error broadcasting download progress: {e}")
-
-    def broadcast_notification(self, message: str, notification_type: str = 'info'):
-        """Broadcast a notification message to all clients."""
-        if not self.is_enabled():
-            return
-
-        try:
-            data = {
-                'message': message,
-                'type': notification_type
-            }
-            # When calling socketio.emit() outside event handlers, it broadcasts by default
-            self.socketio.emit('notification', data)
-            logger.debug(f"Broadcasted notification: {message}")
-        except Exception as e:
-            logger.error(f"Error broadcasting notification: {e}")
 
     def broadcast_search_status(
         self,

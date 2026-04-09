@@ -12,10 +12,6 @@ from typing import Any
 from flask import Flask, g, jsonify, request, session
 from werkzeug.security import generate_password_hash
 
-from shelfmark.config.booklore_settings import (
-    get_booklore_library_options,
-    get_booklore_path_options,
-)
 from shelfmark.config.env import CWA_DB_PATH
 from shelfmark.core.config import config as app_config
 from shelfmark.core.admin_settings_routes import (

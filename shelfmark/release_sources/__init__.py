@@ -1,7 +1,7 @@
 """Release source plugin system - base classes and registry."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from threading import Event

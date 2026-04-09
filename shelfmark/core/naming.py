@@ -3,7 +3,7 @@
 import os
 import re
 from pathlib import Path
-from typing import Dict, Optional, Union, Mapping
+from typing import Optional, Union, Mapping
 
 from shelfmark.core.logger import setup_logger
 
@@ -212,7 +212,7 @@ def build_library_path(
     try:
         full_path.relative_to(base)
     except ValueError:
-        raise ValueError(f"Path traversal detected: template would escape library directory")
+        raise ValueError("Path traversal detected: template would escape library directory")
 
     if extension:
         ext = extension.lstrip('.')
@@ -243,7 +243,7 @@ def same_filesystem(path1: Union[str, Path], path2: Union[str, Path]) -> bool:
     dev2 = get_device(path2)
 
     if dev1 is None or dev2 is None:
-        logger.warning(f"Cannot determine filesystem for hardlink check, falling back to copy")
+        logger.warning("Cannot determine filesystem for hardlink check, falling back to copy")
         return False
 
     return dev1 == dev2

@@ -1,6 +1,5 @@
 """Core settings registration and derived configuration values."""
 
-import os
 from pathlib import Path
 import json
 from typing import Any, Dict

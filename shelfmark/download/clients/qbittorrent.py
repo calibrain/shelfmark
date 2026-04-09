@@ -506,7 +506,6 @@ class QBittorrentClient(DownloadClient):
         - `/api/v2/torrents/files?hash=<hash>` for the first file name
         - join `save_path` with the torrent's top-level directory
         """
-        import os
 
         try:
             torrents, error = self._get_torrents_info(download_id)

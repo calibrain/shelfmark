@@ -1233,7 +1233,7 @@ class HardcoverProvider(MetadataProvider):
     @cacheable(ttl=120, key_prefix="hardcover:series:options")
     def _search_series_options(self, query: str) -> List[Dict[str, str]]:
         """Return typeahead options for Hardcover series search."""
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ThreadPoolExecutor
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             author_future = executor.submit(self._search_series_by_matching_author, query)

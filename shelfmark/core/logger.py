@@ -18,19 +18,6 @@ class CustomLogger(logging.Logger):
         kwargs.pop('exc_info', None)
         self.error(msg, *args, exc_info=True, **kwargs)
 
-    def warning_trace(self, msg: Any, *args: Any, **kwargs: Any) -> None:
-        """Log a warning message with full stack trace."""
-        self.log_resource_usage()
-        kwargs.pop('exc_info', None)
-        self.warning(msg, *args, exc_info=True, **kwargs)
-
-    def info_trace(self, msg: Any, *args: Any, **kwargs: Any) -> None:
-        """Log an info message (stack trace only if exception active)."""
-        kwargs.pop('exc_info', None)
-        # Only include exc_info if there's actually an exception
-        has_exception = sys.exc_info()[0] is not None
-        self.info(msg, *args, exc_info=has_exception, **kwargs)
-
     def debug_trace(self, msg: Any, *args: Any, **kwargs: Any) -> None:
         """Log a debug message (stack trace only if exception active)."""
         kwargs.pop('exc_info', None)

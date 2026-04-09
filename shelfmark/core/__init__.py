@@ -3,3 +3,12 @@
 from shelfmark.core.models import QueueItem, SearchFilters, QueueStatus
 from shelfmark.core.queue import BookQueue, book_queue
 from shelfmark.core.logger import setup_logger
+
+__all__ = [
+    "BookQueue",
+    "QueueItem",
+    "QueueStatus",
+    "SearchFilters",
+    "book_queue",
+    "setup_logger",
+]

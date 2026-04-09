@@ -21,7 +21,7 @@ from shelfmark.core.config import config
 from shelfmark.core.utils import CONTENT_TYPES, get_aa_content_type_dir, is_audiobook as check_audiobook
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import SearchFilters, DownloadTask, build_filename
-from shelfmark.metadata_providers import BookMetadata, group_languages_by_localized_title
+from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources import (
     BrowseRecord,
     Release,
@@ -724,7 +724,7 @@ def _extract_libgen_download_url(link: str, cancel_flag: Optional[Event] = None)
             return ""
 
         if "get.php" not in html:
-            logger.debug(f"Libgen fast: page doesn't contain get.php")
+            logger.debug("Libgen fast: page doesn't contain get.php")
             return ""
 
         download_url = None
@@ -735,7 +735,7 @@ def _extract_libgen_download_url(link: str, cancel_flag: Optional[Event] = None)
                 break
 
         if not download_url:
-            logger.debug(f"Libgen fast: couldn't extract GET link")
+            logger.debug("Libgen fast: couldn't extract GET link")
             return ""
         if not download_url.startswith("http"):
             download_url = f"{base_url}/{download_url.lstrip('/')}"

@@ -1,4 +1,4 @@
-.PHONY: help install dev build preview typecheck frontend-test clean up down docker-build refresh restart build-serve
+.PHONY: help install install-python-dev dev build preview typecheck frontend-test clean up up down docker-build refresh restart build-serve python-lint python-lint-fix
 
 # Frontend directory
 FRONTEND_DIR := src/frontend
@@ -18,6 +18,9 @@ help:
 	@echo "  preview    - Preview production build"
 	@echo "  typecheck  - Run TypeScript type checking"
 	@echo "  frontend-test - Run frontend unit tests"
+	@echo "  install-python-dev - Install Python dev tooling"
+	@echo "  python-lint - Run Ruff against Python backend code"
+	@echo "  python-lint-fix - Run Ruff with safe auto-fixes"
 	@echo "  clean      - Remove node_modules and build artifacts"
 	@echo ""
 	@echo "Backend (Docker):"
@@ -31,6 +34,11 @@ help:
 install:
 	@echo "Installing frontend dependencies..."
 	cd $(FRONTEND_DIR) && npm install
+
+# Install Python development dependencies
+install-python-dev:
+	@echo "Installing Python dev dependencies..."
+	python3 -m pip install -r requirements-dev.txt
 
 # Start development server
 dev:
@@ -58,6 +66,15 @@ preview:
 typecheck:
 	@echo "Running TypeScript type checking..."
 	cd $(FRONTEND_DIR) && npm run typecheck
+
+# Python linting
+python-lint:
+	@echo "Running Ruff..."
+	python3 -m ruff check shelfmark
+
+python-lint-fix:
+	@echo "Running Ruff with safe auto-fixes..."
+	python3 -m ruff check shelfmark --fix
 
 # Run frontend unit tests
 frontend-test:

@@ -12,10 +12,7 @@ from shelfmark.core.request_validation import (
     DELIVERY_STATE_NONE,
     RequestStatus,
     normalize_policy_mode,
-    normalize_request_level,
-    normalize_request_status,
     validate_request_level_payload,
-    validate_status_transition,
 )
 from shelfmark.core.request_helpers import extract_release_source_id, normalize_positive_int
 

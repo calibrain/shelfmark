@@ -2,9 +2,9 @@
 
 import json
 import os
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 from threading import Lock
 
 from shelfmark.core.logger import setup_logger

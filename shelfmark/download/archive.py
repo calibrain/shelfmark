@@ -1,7 +1,5 @@
 """Archive extraction utilities for downloaded book archives."""
 
-import os
-import shutil
 import zipfile
 from pathlib import Path
 from typing import List, Optional, Tuple

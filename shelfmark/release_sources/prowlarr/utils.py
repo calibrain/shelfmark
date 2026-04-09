@@ -5,7 +5,6 @@ Provides common helper functions used across the Prowlarr plugin.
 """
 
 from pathlib import Path
-from typing import Optional
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 
