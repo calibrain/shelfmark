@@ -187,6 +187,7 @@ class ActionButton:
     disabled_when: dict[str, Any] | None = (
         None  # Conditional disable: {"field": "key", "value": "expected", "reason": "..."}
     )
+    universal_only: bool = False  # Only show in Universal search mode (hide in Direct mode)
 
     def get_field_type(self) -> str:
         """Return the serialized field type for this action button."""

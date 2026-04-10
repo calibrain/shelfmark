@@ -6,6 +6,7 @@ This focuses on integration of mapping logic into the Prowlarr handler.
 import tempfile
 from pathlib import Path
 from threading import Event
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from shelfmark.core.models import DownloadTask
@@ -376,3 +377,50 @@ def test_windows_path_case_insensitive_matching():
 
             assert result == str(local_file)
             assert task.original_download_path == str(local_file)
+
+
+def test_remapped_permission_denied_reports_access_error():
+    handler = ProwlarrHandler()
+
+    mock_client = MagicMock()
+    mock_client.name = "qbittorrent"
+    mock_client.get_download_path.return_value = "/data/torrent/audiobooks/book"
+
+    def config_get(key: str, default=""):
+        if key == "PROWLARR_REMOTE_PATH_MAPPINGS":
+            return [
+                {
+                    "host": "qbittorrent",
+                    "remotePath": "/data/torrent",
+                    "localPath": "/downloads",
+                }
+            ]
+        return default
+
+    with patch(
+        "shelfmark.download.clients.base_handler.config.get",
+        side_effect=config_get,
+    ), patch(
+        "shelfmark.download.clients.base_handler._probe_path_access",
+        return_value=SimpleNamespace(
+            exists=False,
+            permission_denied=True,
+            error="[Errno 13] Permission denied",
+        ),
+    ), patch(
+        "shelfmark.download.clients.base_handler.log_path_permission_context",
+    ) as mock_log_context:
+        resolved_path, error = handler._resolve_download_path_once(
+            mock_client,
+            "download-id",
+            log_details=True,
+        )
+
+    assert resolved_path is None
+    assert error is not None
+    assert "not accessible to Shelfmark" in error
+    assert "PUID/PGID" in error
+    mock_log_context.assert_called_once_with(
+        "client_completed_path_remapped",
+        Path("/downloads/audiobooks/book"),
+    )

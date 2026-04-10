@@ -312,26 +312,8 @@ if [ "${USING_EXTERNAL_BYPASSER}" != "true" ]; then
     fi
 fi
 
-# Config can contain existing state we must keep accessing, so it keeps the
-# thorough repair path. Output destination roots only need top-level writability.
+# Config is Shelfmark-owned state, so it keeps the thorough repair path.
 make_writable "${CONFIG_DIR:-/config}" tree
-# Entrypoint only has env vars available at this stage, so use the legacy
-# INGEST_DIR env var as the fallback source for the default destination root.
-make_writable "${INGEST_DIR:-/books}" root
-
-# Check any additional configured destination roots from saved settings
-echo "Checking for additional configured destination roots..."
-if [ -f /app/scripts/fix_permissions.py ]; then
-    configured_dirs=$("$PYTHON_BIN" /app/scripts/fix_permissions.py 2>/dev/null || echo "")
-    if [ -n "$configured_dirs" ]; then
-        echo "$configured_dirs" | while read -r dir; do
-            if [ -n "$dir" ] && [ -d "$dir" ]; then
-                echo "Checking configured destination root: $dir"
-                make_writable "$dir" root
-            fi
-        done
-    fi
-fi
 
 # Fallback to root if config dir is still not writable (common on NAS/Unraid after upgrade from v0.4.0)
 CONFIG_PATH=${CONFIG_DIR:-/config}

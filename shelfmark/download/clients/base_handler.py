@@ -1,7 +1,6 @@
 """Shared download handler for external torrent/usenet clients."""
 
 from __future__ import annotations
-
 import errno
 import shutil
 import time
@@ -69,6 +68,28 @@ class DownloadRequest:
     ratio_limit: float | None = None
 
 
+@dataclass(frozen=True)
+class PathAccessResult:
+    """Result of probing a path without conflating missing and inaccessible."""
+
+    exists: bool
+    permission_denied: bool
+    error: OSError | None = None
+
+
+def _probe_path_access(path: Path) -> PathAccessResult:
+    """Check whether a path exists, distinguishing permission errors."""
+    exists, error = _probe_completed_path(path)
+    if exists:
+        return PathAccessResult(exists=True, permission_denied=False)
+
+    permission_denied = (
+        isinstance(error, PermissionError)
+        or (error is not None and error.errno in (errno.EACCES, errno.EPERM))
+    )
+    return PathAccessResult(exists=False, permission_denied=permission_denied, error=error)
+
+
 def _diagnose_path_issue(path: str) -> str:
     """Analyze a path and return diagnostic hints for common issues.
 
@@ -103,10 +124,12 @@ def _diagnose_path_issue(path: str) -> str:
     )
 
 
-def _format_probe_error(error: OSError | None) -> str:
+def _format_probe_error(error: OSError | str | None) -> str:
     """Render an OSError for inclusion in log/status messages."""
     if error is None:
         return "none"
+    if isinstance(error, str):
+        return error
     code = errno.errorcode.get(error.errno, str(error.errno)) if error.errno else "?"
     return f"{code}: {error.strerror or error}"
 
@@ -124,6 +147,16 @@ def _probe_completed_path(path: Path) -> tuple[bool, OSError | None]:
     except OSError as error:
         return False, error
     return True, None
+
+
+def _diagnose_permission_issue(path: str | Path, *, remapped: bool) -> str:
+    """Build a user-facing hint for permission-denied paths."""
+    path_label = "Remapped path" if remapped else "Path"
+    return (
+        f"{path_label} '{path}' is not accessible to Shelfmark. "
+        "Check that the directory is mounted in the Shelfmark container and that the "
+        "container user (PUID/PGID) can read and traverse it."
+    )
 
 
 class ExternalClientHandler(DownloadHandler, ABC):
@@ -434,21 +467,22 @@ class ExternalClientHandler(DownloadHandler, ABC):
             remote_path=source_path_obj,
         )
 
+        remapped_access = _probe_path_access(remapped)
+
+        if log_details:
+            logger.debug(
+                "Remap result: %s -> %s (exists=%s, permission_denied=%s, probe_error=%s, changed=%s, matched=%s)",
+                source_path_obj,
+                remapped,
+                remapped_access.exists,
+                remapped_access.permission_denied,
+                _format_probe_error(remapped_access.error),
+                remapped != source_path_obj,
+                matched_mapping,
+            )
+
         if matched_mapping:
-            remapped_exists, remapped_error = _probe_completed_path(remapped)
-
-            if log_details:
-                logger.debug(
-                    "Remap result: %s -> %s (exists=%s, probe_error=%s, changed=%s, matched=%s)",
-                    source_path_obj,
-                    remapped,
-                    remapped_exists,
-                    _format_probe_error(remapped_error),
-                    remapped != source_path_obj,
-                    matched_mapping,
-                )
-
-            if remapped_exists:
+            if remapped_access.exists:
                 logger.info(
                     "Remapped download path for %s (%s): %s -> %s",
                     client.name,
@@ -458,6 +492,29 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 )
                 return remapped, None
 
+            if remapped_access.permission_denied:
+                message = _diagnose_permission_issue(remapped, remapped=True)
+                if log_details:
+                    log_path_permission_context("client_completed_path_remapped", remapped)
+                    logger.error(
+                        "Download path is not accessible after remapping: %s -> %s. Client: %s, ID: %s. Error: %s",
+                        raw_path,
+                        remapped,
+                        client.name,
+                        download_id,
+                        _format_probe_error(remapped_access.error),
+                    )
+                else:
+                    logger.debug(
+                        "Download path is not accessible after remapping: %s -> %s. Client: %s, ID: %s. Error: %s",
+                        raw_path,
+                        remapped,
+                        client.name,
+                        download_id,
+                        _format_probe_error(remapped_access.error),
+                    )
+                return None, message
+
             message = (
                 f"Remapped path '{remapped}' does not exist. "
                 f"Check your Docker volume mounts match the Local Path in Settings > Advanced > Remote Path Mappings."
@@ -466,7 +523,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
             failure_args = (
                 raw_path,
                 remapped,
-                _format_probe_error(remapped_error),
+                _format_probe_error(remapped_access.error),
                 client.name,
                 download_id,
             )
@@ -477,20 +534,21 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 logger.debug(failure_log, *failure_args)
             return None, message
 
-        source_exists, source_error = _probe_completed_path(source_path_obj)
+        source_access = _probe_path_access(source_path_obj)
 
         if log_details:
             logger.debug(
-                "Remap result: %s -> %s (exists=%s, probe_error=%s, changed=%s, matched=%s)",
+                "Remap result: %s -> %s (exists=%s, permission_denied=%s, probe_error=%s, changed=%s, matched=%s)",
                 source_path_obj,
                 remapped,
-                source_exists,
-                _format_probe_error(source_error),
+                source_access.exists,
+                source_access.permission_denied,
+                _format_probe_error(source_access.error),
                 remapped != source_path_obj,
                 matched_mapping,
             )
 
-        if source_exists:
+        if source_access.exists:
             if mappings:
                 logger.info(
                     "No remote path mapping matched for %s (%s); using client path: %s",
@@ -500,8 +558,29 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 )
             return source_path_obj, None
 
-        hint = _diagnose_path_issue(raw_path)
         if mappings:
+            if source_access.permission_denied:
+                message = _diagnose_permission_issue(raw_path, remapped=False)
+                if log_details:
+                    log_path_permission_context("client_completed_path_source", source_path_obj)
+                    logger.error(
+                        "Download path is not accessible and no remote path mapping matched for %s (%s): %s. %s",
+                        client.name,
+                        download_id,
+                        raw_path,
+                        _format_probe_error(source_access.error),
+                    )
+                else:
+                    logger.debug(
+                        "Download path is not accessible and no remote path mapping matched for %s (%s): %s. %s",
+                        client.name,
+                        download_id,
+                        raw_path,
+                        _format_probe_error(source_access.error),
+                    )
+                return None, message
+
+            hint = _diagnose_path_issue(raw_path)
             message = f"{hint} No remote path mapping matched for client '{client.name}'."
             failure_label = "completed_download_original"
             failure_log = "Download path does not exist and no remote path mapping matched for %s (%s): %s (probe_error=%s). %s"
@@ -509,10 +588,32 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 client.name,
                 download_id,
                 raw_path,
-                _format_probe_error(source_error),
+                _format_probe_error(source_access.error),
                 hint,
             )
         else:
+            if source_access.permission_denied:
+                message = _diagnose_permission_issue(raw_path, remapped=False)
+                if log_details:
+                    log_path_permission_context("client_completed_path_source", source_path_obj)
+                    logger.error(
+                        "Download path is not accessible: %s. Client: %s, ID: %s. %s",
+                        raw_path,
+                        client.name,
+                        download_id,
+                        _format_probe_error(source_access.error),
+                    )
+                else:
+                    logger.debug(
+                        "Download path is not accessible: %s. Client: %s, ID: %s. %s",
+                        raw_path,
+                        client.name,
+                        download_id,
+                        _format_probe_error(source_access.error),
+                    )
+                return None, message
+
+            hint = _diagnose_path_issue(raw_path)
             message = hint
             failure_label = "completed_download_direct"
             failure_log = (
@@ -520,7 +621,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
             )
             failure_args = (
                 raw_path,
-                _format_probe_error(source_error),
+                _format_probe_error(source_access.error),
                 client.name,
                 download_id,
                 hint,
