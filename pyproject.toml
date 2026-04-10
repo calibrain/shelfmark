@@ -35,10 +35,11 @@ browser = [
 
 [dependency-groups]
 dev = [
-    "pyright>=1.1.408",
+    "basedpyright>=1.39.0",
     "pytest",
     "pytest-xdist>=3.8.0",
     "ruff==0.15.10",
+    "vulture>=2.14",
 ]
 
 [tool.pytest.ini_options]
@@ -77,7 +78,7 @@ select = [
 ]
 ignore = ["UP035", "TRY003", "E501"]
 
-[tool.pyright]
+[tool.basedpyright]
 include = ["shelfmark"]
 exclude = [".local", "tests", "**/__pycache__", "**/node_modules"]
 pythonVersion = "3.14"

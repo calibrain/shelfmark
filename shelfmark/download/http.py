@@ -251,7 +251,7 @@ def html_get_page(
                 heartbeat_thread: Thread | None = None
                 if status_callback:
 
-                    def _heartbeat(stop_event: Event = heartbeat_stop) -> None:
+                    def _heartbeat() -> None:
                         # Keep the download "alive" during long bypass operations so the orchestrator
                         # doesn't flag it as stalled.
                         if cancel_flag and cancel_flag.is_set():

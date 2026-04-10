@@ -30,6 +30,12 @@ jobs:
       - name: Check backend formatting
         run: uv run ruff format --check shelfmark
 
+      - name: Typecheck backend
+        run: uv run basedpyright
+
+      - name: Check backend dead code
+        run: uv run vulture shelfmark
+
       - name: Run tests
         run: uv run pytest tests/ -x --tb=short
 
