@@ -789,20 +789,18 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 status_callback=status_callback,
             )
 
-            # Clean up on success
-            if result:
-                self._on_download_complete(task)
-                self._cleanup_refs[task.task_id] = (client, download_id, protocol)
-
-            return result
-
         except Exception as e:
             logger.exception("Error during download polling")
             status_callback("error", str(e))
             self._safe_remove_download(client, download_id, protocol, "polling exception")
             return None
-        else:
-            return result
+
+        # Clean up on success
+        if result:
+            self._on_download_complete(task)
+            self._cleanup_refs[task.task_id] = (client, download_id, protocol)
+
+        return result
 
     def _handle_completed_file(
         self,

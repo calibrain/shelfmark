@@ -1,4 +1,4 @@
-.PHONY: help install install-python-dev dev build preview typecheck frontend-test clean up up down docker-build refresh restart build-serve python-lint python-lint-fix python-format python-format-check
+.PHONY: help install install-python-dev dev build preview typecheck frontend-test clean up up down docker-build refresh restart build-serve python-lint python-lint-fix python-format python-format-check python-typecheck python-dead-code python-checks
 
 # Frontend directory
 FRONTEND_DIR := src/frontend
@@ -23,6 +23,9 @@ help:
 	@echo "  python-lint-fix - Run Ruff with safe auto-fixes"
 	@echo "  python-format - Format Python backend code with Ruff"
 	@echo "  python-format-check - Check Python backend formatting with Ruff"
+	@echo "  python-typecheck - Run BasedPyright against Python backend code"
+	@echo "  python-dead-code - Run Vulture against Python backend code"
+	@echo "  python-checks - Run all Python static analysis checks"
 	@echo "  clean      - Remove node_modules and build artifacts"
 	@echo ""
 	@echo "Backend (Docker):"
@@ -85,6 +88,16 @@ python-format:
 python-format-check:
 	@echo "Checking Python backend formatting with Ruff..."
 	uv run ruff format --check shelfmark
+
+python-typecheck:
+	@echo "Running BasedPyright..."
+	uv run basedpyright
+
+python-dead-code:
+	@echo "Running Vulture..."
+	uv run vulture shelfmark
+
+python-checks: python-lint python-format-check python-typecheck python-dead-code
 
 # Run frontend unit tests
 frontend-test:

@@ -6,10 +6,13 @@ This directory contains the test suite for Shelfmark. Tests are organized by sco
 
 ```bash
 # Sync the local Python environment once
-uv sync --locked --extra browser
+make install-python-dev
 
 # Run all unit tests locally (fast, no external dependencies)
 uv run pytest tests/ -v -m "not integration and not e2e"
+
+# Run Python static analysis
+make python-checks
 
 # Run E2E API tests against a running app stack
 uv run pytest tests/e2e/ -v -m e2e
