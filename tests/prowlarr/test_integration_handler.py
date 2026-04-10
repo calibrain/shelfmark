@@ -3,7 +3,7 @@ Integration tests for the Prowlarr download handler.
 
 These tests verify the end-to-end download flow through the Prowlarr handler.
 
-Run with: docker exec test-cwabd python3 -m pytest /app/tests/prowlarr/test_integration_handler.py -v -m integration
+Run with: docker compose -f docker-compose.test-clients.yml exec shelfmark uv run pytest /app/tests/prowlarr/test_integration_handler.py -v -m integration
 """
 
 import time

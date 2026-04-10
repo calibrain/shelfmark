@@ -21,6 +21,13 @@ def _get_oidc_error(resp) -> str | None:
     return errors[0] if errors else None
 
 
+def _config_getter(values: dict[str, object]):
+    def _get(key: str, default: object = None, user_id: object = None):
+        return values.get(key, default)
+
+    return _get
+
+
 @pytest.fixture
 def db_path():
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -64,7 +71,7 @@ def client(app):
 
 
 class TestOIDCClientRegistration:
-    @patch("shelfmark.core.oidc_routes.load_config_file", return_value=MOCK_OIDC_CONFIG)
+    @patch("shelfmark.core.oidc_routes.app_config.get", side_effect=_config_getter(MOCK_OIDC_CONFIG))
     @patch("shelfmark.core.oidc_routes.oauth.create_client")
     @patch("shelfmark.core.oidc_routes.oauth.register")
     def test_registers_client_with_pkce_and_expected_scopes(
@@ -78,7 +85,7 @@ class TestOIDCClientRegistration:
         client_obj, config = _get_oidc_client()
 
         assert client_obj is fake_client
-        assert config["OIDC_CLIENT_ID"] == "shelfmark"
+        assert config["OIDC_DISCOVERY_URL"] == MOCK_OIDC_CONFIG["OIDC_DISCOVERY_URL"]
         kwargs = mock_register.call_args.kwargs
         assert kwargs["name"] == "shelfmark_idp"
         assert kwargs["server_metadata_url"] == MOCK_OIDC_CONFIG["OIDC_DISCOVERY_URL"]
@@ -90,7 +97,7 @@ class TestOIDCClientRegistration:
         assert "profile" in scope_str
         assert "groups" in scope_str
 
-    @patch("shelfmark.core.oidc_routes.load_config_file")
+    @patch("shelfmark.core.oidc_routes.app_config.get")
     @patch("shelfmark.core.oidc_routes.oauth.create_client")
     @patch("shelfmark.core.oidc_routes.oauth.register")
     def test_does_not_append_group_claim_when_admin_group_auth_disabled(
@@ -104,7 +111,7 @@ class TestOIDCClientRegistration:
             "OIDC_USE_ADMIN_GROUP": False,
             "OIDC_GROUP_CLAIM": "groups",
         }
-        mock_config.return_value = config
+        mock_config.side_effect = _config_getter(config)
         mock_create_client.return_value = Mock()
 
         _get_oidc_client()
@@ -134,6 +141,30 @@ class TestOIDCLoginEndpoint:
         assert resp.status_code == 500
         assert resp.get_json()["error"] == "OIDC not configured"
 
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_login_stores_valid_return_to_in_session(self, mock_get_client, client):
+        fake_client = Mock()
+        fake_client.authorize_redirect.return_value = redirect("https://auth.example.com/authorize")
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/login?return_to=%2F%3Fq%3DSanderson")
+
+        assert resp.status_code == 302
+        with client.session_transaction() as sess:
+            assert sess["oidc_return_to"] == "/?q=Sanderson"
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_login_ignores_unsafe_return_to(self, mock_get_client, client):
+        fake_client = Mock()
+        fake_client.authorize_redirect.return_value = redirect("https://auth.example.com/authorize")
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/login?return_to=https://evil.example.com/phish")
+
+        assert resp.status_code == 302
+        with client.session_transaction() as sess:
+            assert "oidc_return_to" not in sess
+
 
 class TestOIDCCallbackEndpoint:
     @patch("shelfmark.core.oidc_routes._get_oidc_client")
@@ -157,6 +188,62 @@ class TestOIDCCallbackEndpoint:
         with client.session_transaction() as sess:
             assert sess["user_id"] == "john"
             assert sess["db_user_id"] is not None
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_redirects_to_original_url_with_query(self, mock_get_client, client):
+        fake_client = Mock()
+        fake_client.authorize_redirect.return_value = redirect("https://auth.example.com/authorize")
+        fake_client.authorize_access_token.return_value = {
+            "userinfo": {
+                "sub": "user-123",
+                "email": "john@example.com",
+                "name": "John Doe",
+                "preferred_username": "john",
+                "groups": ["users"],
+            }
+        }
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        login_resp = client.get("/api/auth/oidc/login?return_to=%2F%3Fq%3DSanderson")
+        assert login_resp.status_code == 302
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        assert resp.status_code == 302
+
+        parsed = urlparse(resp.headers["Location"])
+        assert parsed.path == "/"
+        assert parse_qs(parsed.query) == {"q": ["Sanderson"]}
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_redirects_to_original_url_with_script_root(self, mock_get_client, client):
+        fake_client = Mock()
+        fake_client.authorize_redirect.return_value = redirect("https://auth.example.com/authorize")
+        fake_client.authorize_access_token.return_value = {
+            "userinfo": {
+                "sub": "user-123",
+                "email": "john@example.com",
+                "name": "John Doe",
+                "preferred_username": "john",
+                "groups": ["users"],
+            }
+        }
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        login_resp = client.get(
+            "/api/auth/oidc/login?return_to=%2Frequests%3Fq%3DSanderson",
+            environ_overrides={"SCRIPT_NAME": "/shelfmark"},
+        )
+        assert login_resp.status_code == 302
+
+        resp = client.get(
+            "/api/auth/oidc/callback?code=abc123&state=test-state",
+            environ_overrides={"SCRIPT_NAME": "/shelfmark"},
+        )
+        assert resp.status_code == 302
+
+        parsed = urlparse(resp.headers["Location"])
+        assert parsed.path == "/shelfmark/requests"
+        assert parse_qs(parsed.query) == {"q": ["Sanderson"]}
 
     @patch("shelfmark.core.oidc_routes._get_oidc_client")
     def test_callback_sets_admin_from_groups(self, mock_get_client, client):

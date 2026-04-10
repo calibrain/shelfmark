@@ -1,5 +1,4 @@
-"""
-Prowlarr release source plugin.
+"""Prowlarr release source plugin.
 
 This plugin integrates with Prowlarr to search for book releases
 across multiple indexers (torrent and usenet).
@@ -9,17 +8,25 @@ Includes:
 - ProwlarrHandler: Download handling via external clients
 """
 
+from importlib import import_module
+
 # Import submodules to trigger decorator registration
-from shelfmark.release_sources.prowlarr import source  # noqa: F401
-from shelfmark.release_sources.prowlarr import handler  # noqa: F401
-from shelfmark.release_sources.prowlarr import settings  # noqa: F401
+from shelfmark.release_sources.prowlarr import (
+    handler as handler,
+)
+from shelfmark.release_sources.prowlarr import (
+    settings as settings,
+)
+from shelfmark.release_sources.prowlarr import (
+    source as source,
+)
 
 # Import shared download clients/settings to trigger registration.
 # This is in a try/except to handle optional dependencies gracefully.
 try:
-    from shelfmark.download import clients  # noqa: F401
-    from shelfmark.download.clients import settings as client_settings  # noqa: F401
+    import_module("shelfmark.download.clients")
+    import_module("shelfmark.download.clients.settings")
 except ImportError as e:
     import logging
 
-    logging.getLogger(__name__).debug(f"Download clients not loaded: {e}")
+    logging.getLogger(__name__).debug("Download clients not loaded: %s", e)

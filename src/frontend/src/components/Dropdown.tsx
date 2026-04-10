@@ -184,9 +184,8 @@ export const Dropdown = ({
             type="button"
             onClick={toggleOpen}
             disabled={disabled}
-            className={`w-full px-3 py-2 text-sm border flex items-center justify-between gap-2 text-left focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-[border-radius] duration-150 ${buttonClassName}`}
+            className={`w-full px-3 py-2 text-sm border flex items-center justify-between gap-2 text-left focus:outline-hidden focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 ${triggerChrome !== 'minimal' ? 'dropdown-trigger' : ''} ${buttonClassName}`}
             style={{
-              background: triggerChrome === 'minimal' ? 'transparent' : 'var(--bg-soft)',
               color: 'var(--text)',
               borderColor: triggerChrome === 'minimal' ? 'transparent' : 'var(--border-muted)',
               borderWidth: triggerChrome === 'minimal' ? 0 : undefined,
@@ -205,7 +204,7 @@ export const Dropdown = ({
               {summary ?? <span className="opacity-60">Select an option</span>}
             </span>
             <svg
-              className={`h-4 w-4 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+              className={`h-4 w-4 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"

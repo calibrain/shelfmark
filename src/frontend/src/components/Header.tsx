@@ -22,6 +22,7 @@ interface HeaderProps {
   onSearchChange?: (value: string | number | boolean, label?: string) => void;
   onSearch?: () => void;
   onAdvancedToggle?: () => void;
+  isAdvancedActive?: boolean;
   isLoading?: boolean;
   onDownloadsClick?: () => void;
   onSettingsClick?: () => void;
@@ -41,6 +42,8 @@ interface HeaderProps {
   contentType?: ContentType;
   onContentTypeChange?: (type: ContentType) => void;
   allowedContentTypes?: ContentType[];
+  combinedMode?: boolean;
+  onCombinedModeChange?: (enabled: boolean) => void;
   queryTargets?: QueryTargetOption[];
   activeQueryTarget?: string;
   onQueryTargetChange?: (target: string) => void;
@@ -58,6 +61,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   onSearchChange,
   onSearch,
   onAdvancedToggle,
+  isAdvancedActive = false,
   isLoading = false,
   onDownloadsClick,
   onSettingsClick,
@@ -77,6 +81,8 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   contentType = 'ebook',
   onContentTypeChange,
   allowedContentTypes,
+  combinedMode,
+  onCombinedModeChange,
   queryTargets = [],
   activeQueryTarget = 'general',
   onQueryTargetChange,
@@ -153,9 +159,11 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
     const saved = localStorage.getItem('preferred-theme') || 'auto';
     applyTheme(saved);
 
-    // Remove preload class after initial theme is applied to enable transitions
+    // Remove preload class and inline theme-init styles now that the
+    // external CSS is loaded and React has mounted.
     requestAnimationFrame(() => {
       document.documentElement.classList.remove('preload');
+      document.getElementById('theme-init')?.remove();
     });
   }, []);
 
@@ -163,7 +171,9 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const handler = (e: MediaQueryListEvent) => {
       if (localStorage.getItem('preferred-theme') === 'auto') {
-        document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+        const effective = e.matches ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', effective);
+        document.documentElement.style.colorScheme = effective;
       }
     };
     mq.addEventListener('change', handler);
@@ -238,12 +248,11 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
   }, [isDropdownOpen, isClosing]);
 
   const applyTheme = (pref: string) => {
-    if (pref === 'auto') {
-      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    } else {
-      document.documentElement.setAttribute('data-theme', pref);
-    }
+    const effective = pref === 'auto'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : pref;
+    document.documentElement.setAttribute('data-theme', effective);
+    document.documentElement.style.colorScheme = effective;
   };
 
   const handleLogout = () => {
@@ -372,7 +381,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
         <button
           onClick={toggleDropdown}
           className={`relative p-2 rounded-full hover-action transition-colors ${
-            isDropdownOpen ? 'bg-[var(--hover-action)]' : ''
+            isDropdownOpen ? 'bg-(--hover-action)' : ''
           }`}
           aria-label="User menu"
           aria-expanded={isDropdownOpen}
@@ -394,7 +403,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
           </svg>
           {actingAsUser && (
             <span
-              className="absolute top-1 right-1 h-2 w-2 rounded-full bg-sky-500 border border-[var(--bg)]"
+              className="absolute top-1 right-1 h-2 w-2 rounded-full bg-sky-500 border border-(--bg)"
               title={`Downloading as ${formatActingAsUserName(actingAsUser)}`}
             />
           )}
@@ -620,7 +629,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
 
   return (
     <header
-      className="w-full sticky top-0 z-40 backdrop-blur-sm"
+      className="w-full sticky top-0 z-40 backdrop-blur-xs"
       style={{ background: 'var(--bg)', paddingTop: 'env(safe-area-inset-top)' }}
     >
       <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -635,7 +644,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
                   src={logoUrl}
                   onClick={onLogoClick}
                   alt="Logo"
-                  className="h-10 w-10 flex-shrink-0 cursor-pointer lg:hidden"
+                  className="h-10 w-10 shrink-0 cursor-pointer lg:hidden"
                 />
               )}
 
@@ -650,7 +659,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
                   src={logoUrl}
                   onClick={onLogoClick}
                   alt="Logo"
-                  className="hidden lg:block h-12 w-12 flex-shrink-0 cursor-pointer"
+                  className="hidden lg:block h-12 w-12 shrink-0 cursor-pointer"
                 />
               )}
               <SearchBar
@@ -661,10 +670,13 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
                 onChange={handleSearchChange}
                 onSubmit={handleHeaderSearch}
                 onAdvancedToggle={onAdvancedToggle}
+                isAdvancedActive={isAdvancedActive}
                 isLoading={isLoading}
                 contentType={contentType}
                 onContentTypeChange={onContentTypeChange}
                 allowedContentTypes={allowedContentTypes}
+                combinedMode={combinedMode}
+                onCombinedModeChange={onCombinedModeChange}
                 queryTargets={queryTargets}
                 activeQueryTarget={activeQueryTarget}
                 onQueryTargetChange={onQueryTargetChange}

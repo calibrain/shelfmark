@@ -1,4 +1,4 @@
-.PHONY: help install dev build preview typecheck frontend-test clean up down docker-build refresh restart
+.PHONY: help install install-python-dev dev build preview typecheck frontend-test clean up up down docker-build refresh restart build-serve python-lint python-lint-fix python-format python-format-check python-typecheck python-dead-code python-checks
 
 # Frontend directory
 FRONTEND_DIR := src/frontend
@@ -14,9 +14,18 @@ help:
 	@echo "  install    - Install frontend dependencies"
 	@echo "  dev        - Start development server"
 	@echo "  build      - Build frontend for production"
+	@echo "  build-serve - Build and serve via Flask (test prod build without Docker)"
 	@echo "  preview    - Preview production build"
 	@echo "  typecheck  - Run TypeScript type checking"
 	@echo "  frontend-test - Run frontend unit tests"
+	@echo "  install-python-dev - Sync Python runtime + dev tooling with uv"
+	@echo "  python-lint - Run Ruff against Python backend code"
+	@echo "  python-lint-fix - Run Ruff with safe auto-fixes"
+	@echo "  python-format - Format Python backend code with Ruff"
+	@echo "  python-format-check - Check Python backend formatting with Ruff"
+	@echo "  python-typecheck - Run BasedPyright against Python backend code"
+	@echo "  python-dead-code - Run Vulture against Python backend code"
+	@echo "  python-checks - Run all Python static analysis checks"
 	@echo "  clean      - Remove node_modules and build artifacts"
 	@echo ""
 	@echo "Backend (Docker):"
@@ -31,6 +40,11 @@ install:
 	@echo "Installing frontend dependencies..."
 	cd $(FRONTEND_DIR) && npm install
 
+# Install Python development dependencies
+install-python-dev:
+	@echo "Syncing Python runtime and dev tooling with uv..."
+	uv sync --locked --extra browser
+
 # Start development server
 dev:
 	@echo "Starting development server..."
@@ -41,6 +55,13 @@ build:
 	@echo "Building frontend for production..."
 	cd $(FRONTEND_DIR) && npm run build
 
+# Build frontend and sync to frontend-dist for the running container to serve
+build-serve: build
+	@echo "Syncing build to frontend-dist..."
+	@mkdir -p frontend-dist
+	rsync -a --delete $(FRONTEND_DIR)/dist/ frontend-dist/
+	@echo "Done. Hit the Flask backend (port 8084) to test the production build."
+
 # Preview production build
 preview:
 	@echo "Previewing production build..."
@@ -50,6 +71,33 @@ preview:
 typecheck:
 	@echo "Running TypeScript type checking..."
 	cd $(FRONTEND_DIR) && npm run typecheck
+
+# Python linting
+python-lint:
+	@echo "Running Ruff..."
+	uv run ruff check shelfmark
+
+python-lint-fix:
+	@echo "Running Ruff with safe auto-fixes..."
+	uv run ruff check shelfmark --fix
+
+python-format:
+	@echo "Formatting Python backend code with Ruff..."
+	uv run ruff format shelfmark
+
+python-format-check:
+	@echo "Checking Python backend formatting with Ruff..."
+	uv run ruff format --check shelfmark
+
+python-typecheck:
+	@echo "Running BasedPyright..."
+	uv run basedpyright
+
+python-dead-code:
+	@echo "Running Vulture..."
+	uv run vulture shelfmark
+
+python-checks: python-lint python-format-check python-typecheck python-dead-code
 
 # Run frontend unit tests
 frontend-test:

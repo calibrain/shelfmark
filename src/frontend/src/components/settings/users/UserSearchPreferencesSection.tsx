@@ -16,7 +16,8 @@ type SearchSettingKey =
   | 'SEARCH_MODE'
   | 'METADATA_PROVIDER'
   | 'METADATA_PROVIDER_AUDIOBOOK'
-  | 'DEFAULT_RELEASE_SOURCE';
+  | 'DEFAULT_RELEASE_SOURCE'
+  | 'DEFAULT_RELEASE_SOURCE_AUDIOBOOK';
 
 const fallbackSearchModeField: SelectFieldConfig = {
   type: 'SelectField',
@@ -51,10 +52,20 @@ const fallbackAudiobookMetadataProviderField: SelectFieldConfig = {
 const fallbackDefaultReleaseSourceField: SelectFieldConfig = {
   type: 'SelectField',
   key: 'DEFAULT_RELEASE_SOURCE',
-  label: 'Default Release Source',
-  description: 'The release source tab to open by default in the release modal.',
+  label: 'Default Book Release Source',
+  description: 'The release source tab to open by default in the release modal for books.',
   value: 'direct_download',
   options: [],
+};
+
+const fallbackDefaultAudiobookReleaseSourceField: SelectFieldConfig = {
+  type: 'SelectField',
+  key: 'DEFAULT_RELEASE_SOURCE_AUDIOBOOK',
+  label: 'Default Audiobook Release Source',
+  description:
+    'The release source tab to open by default in the release modal for audiobooks. Uses the book release source if not set.',
+  value: '',
+  options: [{ value: '', label: 'Use book release source' }],
 };
 
 const searchHeading: HeadingFieldConfig = {
@@ -110,6 +121,11 @@ export const UserSearchPreferencesSection = ({
     'DEFAULT_RELEASE_SOURCE',
     fallbackDefaultReleaseSourceField
   );
+  const defaultAudiobookReleaseSourceField = getFieldByKey<SelectFieldConfig>(
+    fields,
+    'DEFAULT_RELEASE_SOURCE_AUDIOBOOK',
+    fallbackDefaultAudiobookReleaseSourceField
+  );
 
   const isOverridden = (key: SearchSettingKey): boolean => {
     if (
@@ -148,6 +164,7 @@ export const UserSearchPreferencesSection = ({
   const metadataProviderValue = readValue('METADATA_PROVIDER');
   const metadataProviderAudiobookValue = readValue('METADATA_PROVIDER_AUDIOBOOK');
   const defaultReleaseSourceValue = readValue('DEFAULT_RELEASE_SOURCE', 'direct_download');
+  const defaultAudiobookReleaseSourceValue = readValue('DEFAULT_RELEASE_SOURCE_AUDIOBOOK');
 
   const canOverrideSearchMode = isUserOverridable('SEARCH_MODE') && preferenceKeySet.has('SEARCH_MODE');
   const canOverrideMetadataProvider = isUserOverridable('METADATA_PROVIDER')
@@ -156,12 +173,15 @@ export const UserSearchPreferencesSection = ({
     && preferenceKeySet.has('METADATA_PROVIDER_AUDIOBOOK');
   const canOverrideDefaultReleaseSource = isUserOverridable('DEFAULT_RELEASE_SOURCE')
     && preferenceKeySet.has('DEFAULT_RELEASE_SOURCE');
+  const canOverrideDefaultAudiobookReleaseSource = isUserOverridable('DEFAULT_RELEASE_SOURCE_AUDIOBOOK')
+    && preferenceKeySet.has('DEFAULT_RELEASE_SOURCE_AUDIOBOOK');
 
   if (
     !canOverrideSearchMode
     && !canOverrideMetadataProvider
     && !canOverrideAudiobookMetadataProvider
     && !canOverrideDefaultReleaseSource
+    && !canOverrideDefaultAudiobookReleaseSource
   ) {
     return null;
   }
@@ -250,6 +270,30 @@ export const UserSearchPreferencesSection = ({
             value={defaultReleaseSourceValue}
             onChange={(value) => setUserSettings((prev) => ({ ...prev, DEFAULT_RELEASE_SOURCE: value }))}
             disabled={Boolean(defaultReleaseSourceField.fromEnv)}
+          />
+        </FieldWrapper>
+      )}
+
+      {effectiveSearchMode === 'universal' && canOverrideDefaultAudiobookReleaseSource && (
+        <FieldWrapper
+          field={defaultAudiobookReleaseSourceField}
+          resetAction={
+            isOverridden('DEFAULT_RELEASE_SOURCE_AUDIOBOOK')
+              ? {
+                  disabled: Boolean(defaultAudiobookReleaseSourceField.fromEnv),
+                  onClick: () => resetKeys(['DEFAULT_RELEASE_SOURCE_AUDIOBOOK']),
+                }
+              : undefined
+          }
+        >
+          <SelectField
+            field={defaultAudiobookReleaseSourceField}
+            value={defaultAudiobookReleaseSourceValue}
+            onChange={(value) => setUserSettings((prev) => ({
+              ...prev,
+              DEFAULT_RELEASE_SOURCE_AUDIOBOOK: value,
+            }))}
+            disabled={Boolean(defaultAudiobookReleaseSourceField.fromEnv)}
           />
         </FieldWrapper>
       )}

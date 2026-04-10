@@ -108,6 +108,32 @@ class TestProwlarrHandlerDownloadErrors:
             assert recorder.last_message is not None
             assert "cache" in recorder.last_message.lower()
 
+    def test_resolve_download_uses_task_retry_fields_when_cache_is_missing(self):
+        """Generic retry fields should let restarts recover without the in-memory cache."""
+        with patch(
+            "shelfmark.release_sources.prowlarr.handler.get_release",
+            return_value=None,
+        ):
+            handler = ProwlarrHandler()
+            task = DownloadTask(
+                task_id="retry-context-release",
+                source="prowlarr",
+                title="Recovered Release",
+                retry_download_url="magnet:?xt=urn:btih:abc123",
+                retry_download_protocol="torrent",
+                retry_release_name="Recovered Release",
+                retry_seeding_time_limit_minutes=60,
+                retry_ratio_limit=1.5,
+            )
+
+            request = handler._resolve_download(task, lambda *_: None)
+
+            assert request is not None
+            assert request.url == "magnet:?xt=urn:btih:abc123"
+            assert request.protocol == "torrent"
+            assert request.seeding_time_limit == 60
+            assert request.ratio_limit == 1.5
+
     def test_download_fails_without_download_url(self):
         """Test that download fails when release has no download URL."""
         with patch(
@@ -204,6 +230,101 @@ class TestProwlarrHandlerDownloadErrors:
             assert recorder.last_status == "error"
             assert recorder.last_message is not None
             assert "client" in recorder.last_message.lower()
+
+
+class TestProwlarrHandlerSeedCriteria:
+    """Tests for seed criteria passed through from Prowlarr."""
+
+    def test_resolve_download_converts_seed_time_seconds_to_minutes(self):
+        with patch(
+            "shelfmark.release_sources.prowlarr.handler.get_release",
+            return_value={
+                "protocol": "torrent",
+                "title": "Test Release",
+                "magnetUrl": "magnet:?xt=urn:btih:abc123",
+                "minimumSeedTime": 259200,
+                "minimumRatio": 1,
+            },
+        ):
+            handler = ProwlarrHandler()
+            task = DownloadTask(
+                task_id="seed-time-conversion",
+                source="prowlarr",
+                title="Test Book",
+            )
+
+            request = handler._resolve_download(task, lambda *_: None)
+
+            assert request is not None
+            assert request.seeding_time_limit == 4320
+            assert request.ratio_limit == 1.0
+
+    def test_resolve_download_rounds_seed_time_up_to_next_minute(self):
+        with patch(
+            "shelfmark.release_sources.prowlarr.handler.get_release",
+            return_value={
+                "protocol": "torrent",
+                "title": "Test Release",
+                "magnetUrl": "magnet:?xt=urn:btih:abc123",
+                "minimumSeedTime": 61,
+            },
+        ):
+            handler = ProwlarrHandler()
+            task = DownloadTask(
+                task_id="seed-time-round-up",
+                source="prowlarr",
+                title="Test Book",
+            )
+
+            request = handler._resolve_download(task, lambda *_: None)
+
+            assert request is not None
+            assert request.seeding_time_limit == 2
+
+    def test_download_passes_seed_limits_to_client(self):
+        mock_client = MagicMock()
+        mock_client.name = "qbittorrent"
+        mock_client.find_existing.return_value = None
+        mock_client.add_download.return_value = "download_id"
+
+        with patch(
+            "shelfmark.release_sources.prowlarr.handler.get_release",
+            return_value={
+                "protocol": "torrent",
+                "title": "Test Release",
+                "magnetUrl": "magnet:?xt=urn:btih:abc123",
+                "minimumSeedTime": 259200,
+                "minimumRatio": 1.25,
+            },
+        ), patch(
+            "shelfmark.release_sources.prowlarr.handler.get_client",
+            return_value=mock_client,
+        ), patch(
+            "shelfmark.release_sources.prowlarr.handler.remove_release",
+        ), patch.object(
+            ProwlarrHandler,
+            "_poll_and_complete",
+            return_value=None,
+        ):
+            handler = ProwlarrHandler()
+            task = DownloadTask(
+                task_id="seed-limit-pass-through",
+                source="prowlarr",
+                title="Test Book",
+            )
+            cancel_flag = Event()
+            recorder = ProgressRecorder()
+
+            handler.download(
+                task=task,
+                cancel_flag=cancel_flag,
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
+
+            call_kwargs = mock_client.add_download.call_args.kwargs
+            assert call_kwargs["seeding_time_limit"] == 4320
+            assert call_kwargs["ratio_limit"] == 1.25
 
 
 class TestProwlarrHandlerExistingDownload:

@@ -30,6 +30,8 @@ interface SearchSectionProps {
   contentType?: ContentType;
   onContentTypeChange?: (type: ContentType) => void;
   allowedContentTypes?: ContentType[];
+  combinedMode?: boolean;
+  onCombinedModeChange?: (enabled: boolean) => void;
   activeQueryField?: MetadataSearchField | null;
   searchMode: SearchMode;
   onSearchModeChange: (mode: SearchMode) => void;
@@ -59,6 +61,8 @@ export const SearchSection = ({
   contentType = 'ebook',
   onContentTypeChange,
   allowedContentTypes,
+  combinedMode,
+  onCombinedModeChange,
   activeQueryField,
   searchMode,
   onSearchModeChange,
@@ -92,14 +96,22 @@ export const SearchSection = ({
           onSubmit={onSearch}
           isLoading={isLoading}
           onAdvancedToggle={onAdvancedToggle}
+          isAdvancedActive={showAdvanced}
           contentType={contentType}
           onContentTypeChange={onContentTypeChange}
           allowedContentTypes={allowedContentTypes}
+          combinedMode={combinedMode}
+          onCombinedModeChange={onCombinedModeChange}
           queryTargets={queryTargets}
           activeQueryTarget={activeQueryTarget}
           onQueryTargetChange={onQueryTargetChange}
           activeQueryField={activeQueryField}
         />
+        {activeQueryTarget === 'manual' && (
+          <p className="text-xs opacity-50 px-2">
+            Manual search queries release sources directly. Some sources may return limited metadata, which can affect file naming templates.
+          </p>
+        )}
         <AdvancedFilters
           visible={showAdvanced}
           bookLanguages={bookLanguages}
@@ -114,7 +126,9 @@ export const SearchSection = ({
           activeMetadataProvider={activeMetadataProvider}
           onMetadataProviderChange={onMetadataProviderChange}
           contentType={contentType}
+          combinedMode={combinedMode}
           isAdmin={isAdmin}
+          onClose={onAdvancedToggle}
         />
       </div>
     </section>

@@ -6,11 +6,12 @@ routes/services and tested independently.
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Any, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from enum import StrEnum
+from typing import Any
 
 
-class PolicyMode(str, Enum):
+class PolicyMode(StrEnum):
     """Allowed request-policy modes.
 
     Ordered from most to least permissive. The content-type default acts as a
@@ -33,7 +34,9 @@ _MODE_PERMISSIVENESS: dict[PolicyMode, int] = {
 }
 
 # Modes allowed in REQUEST_POLICY_RULES matrix rows.
-MATRIX_ALLOWED_MODES = frozenset({PolicyMode.DOWNLOAD, PolicyMode.REQUEST_RELEASE, PolicyMode.BLOCKED})
+MATRIX_ALLOWED_MODES = frozenset(
+    {PolicyMode.DOWNLOAD, PolicyMode.REQUEST_RELEASE, PolicyMode.BLOCKED}
+)
 
 
 def cap_mode(mode: PolicyMode, ceiling: PolicyMode) -> PolicyMode:
@@ -48,6 +51,7 @@ def _source_results_are_releases(source: Any) -> bool:
     if normalized_source in {"", "*"}:
         return False
     from shelfmark.release_sources import source_results_are_releases
+
     return source_results_are_releases(normalized_source)
 
 
@@ -105,7 +109,9 @@ def merge_request_policy_settings(
             (source, content_type): (source, content_type, mode)
             for source, content_type, mode in global_rules
         }
-        for source, content_type, mode in _iter_rules(user_filtered.get("REQUEST_POLICY_RULES", [])):
+        for source, content_type, mode in _iter_rules(
+            user_filtered.get("REQUEST_POLICY_RULES", [])
+        ):
             merged_rules[(source, content_type)] = (source, content_type, mode)
         merged["REQUEST_POLICY_RULES"] = [
             {"source": source, "content_type": content_type, "mode": mode.value}
@@ -181,7 +187,7 @@ def get_source_content_type_capabilities() -> dict[str, set[str]]:
     """Return source -> supported content type map from registered sources."""
     try:
         from shelfmark.release_sources import list_available_sources
-    except Exception:
+    except ImportError:
         return {}
 
     capabilities: dict[str, set[str]] = {}
@@ -219,9 +225,15 @@ def validate_policy_rules(
     - known source names
     - source/content-type compatibility from source declarations
     """
-    capabilities = source_capabilities if source_capabilities is not None else get_source_content_type_capabilities()
+    capabilities = (
+        source_capabilities
+        if source_capabilities is not None
+        else get_source_content_type_capabilities()
+    )
     normalized_capabilities = {
-        normalize_source(source): {normalize_content_type(content_type) for content_type in content_types}
+        normalize_source(source): {
+            normalize_content_type(content_type) for content_type in content_types
+        }
         for source, content_types in capabilities.items()
     }
 
@@ -248,26 +260,24 @@ def validate_policy_rules(
         if source is None:
             errors.append(f"{row_label}: source is required")
             continue
-        if (
-            raw_content_type is None
-            or (isinstance(raw_content_type, str) and not raw_content_type.strip())
+        if raw_content_type is None or (
+            isinstance(raw_content_type, str) and not raw_content_type.strip()
         ):
             errors.append(f"{row_label}: content_type is required")
             continue
         if content_type is None:
             errors.append(f"{row_label}: invalid content_type '{rule.get('content_type')}'")
             continue
-        if (
-            raw_mode is None
-            or (isinstance(raw_mode, str) and not raw_mode.strip())
-        ):
+        if raw_mode is None or (isinstance(raw_mode, str) and not raw_mode.strip()):
             errors.append(f"{row_label}: mode is required")
             continue
         if mode is None:
             errors.append(f"{row_label}: invalid mode '{rule.get('mode')}'")
             continue
         if mode not in MATRIX_ALLOWED_MODES:
-            errors.append(f"{row_label}: mode '{mode.value}' is not allowed in matrix rules (use content-type defaults instead)")
+            errors.append(
+                f"{row_label}: mode '{mode.value}' is not allowed in matrix rules (use content-type defaults instead)"
+            )
             continue
 
         if source != "*" and source not in normalized_capabilities:
@@ -340,7 +350,6 @@ def resolve_policy_mode(
     - sources whose browse results are already concrete releases normalize
       request_book to request_release.
     """
-
     effective = merge_request_policy_settings(global_settings, user_settings)
     normalized_source = normalize_source(source)
     normalized_content_type = normalize_content_type(content_type)

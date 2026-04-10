@@ -1,7 +1,40 @@
 /* Base styles and CSS reset */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@source "../index.html";
+@source "./**/*.{ts,tsx}";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+
+  html {
+    scrollbar-gutter: stable;
+  }
+}
+
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
 
 /* Fonts */
 @font-face {
@@ -12,174 +45,170 @@
   font-style: normal;
 }
 
-/* Custom utilities */
-@layer utilities {
-    .scrollbar-hide {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
+/* =============================================
+   @layer base — resets, theme tokens, elements
+   ============================================= */
+@layer base {
+    /* Disable transitions on initial load to prevent flash */
+    html.preload,
+    html.preload *,
+    html.preload *::before,
+    html.preload *::after {
+        transition: none !important;
+        animation-duration: 0s !important;
     }
-    .scrollbar-hide::-webkit-scrollbar {
-        display: none;
+
+    /* Smooth theme transitions for all elements using CSS variables */
+    header, footer, section,
+    input, select, textarea, button,
+    .details-container, .modal-overlay {
+        transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+
+    :root {
+        color-scheme: light;
+
+        /* Light theme variables */
+        --primary-color: oklch(44.3% 0.11 240.79);
+        --primary-dark: oklch(39.1% 0.09 240.876);
+        --text-color: #333;
+        --background-color: #f8f8f8;
+        --border-color: #e5e5e5;
+        --loading-overlay: rgba(0, 0, 0, 0.5);
+        --card-background: #fff;
+        --input-background: #fff;
+        --heading-color: #333;
+
+        /* Modern UI alias tokens */
+        --bg: var(--background-color);
+        --text: var(--text-color);
+        --border-muted: var(--border-color);
+        --bg-soft: var(--card-background);
+        --hover-surface: rgba(15, 23, 42, 0.05);
+        --hover-action: rgba(15, 23, 42, 0.08);
+        --hover-row: rgba(15, 23, 42, 0.07);
+        --scrollbar-thumb: rgba(15, 23, 42, 0.15);
+        --scrollbar-thumb-hover: rgba(15, 23, 42, 0.25);
+
+    }
+
+    [data-theme="dark"] {
+        color-scheme: dark;
+
+        /* Dark theme variables with improved contrast */
+        --background-color: #121212;
+        --text-color: #ffffff;
+        --heading-color: #ffffff;
+        --card-background: #1e1e1e;
+        --border-color: #404040;
+        --input-background: #2d2d2d;
+        --hover-surface: rgba(255, 255, 255, 0.05);
+        --hover-action: rgba(255, 255, 255, 0.12);
+        --hover-row: rgba(255, 255, 255, 0.08);
+        --scrollbar-thumb: rgba(255, 255, 255, 0.15);
+        --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
+
+    }
+
+    /* Global scrollbar styling - thin, subtle, theme-aware */
+    * {
+        /* Firefox */
+        scrollbar-width: thin;
+        scrollbar-color: var(--scrollbar-thumb) transparent;
+    }
+
+    /* WebKit browsers (Chrome, Safari, Edge) */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: var(--scrollbar-thumb);
+        border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: var(--scrollbar-thumb-hover);
+    }
+
+    /* Hide scrollbar corner (where horizontal and vertical meet) */
+    ::-webkit-scrollbar-corner {
+        background: transparent;
+    }
+
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    /* Typography */
+    html, body {
+        min-height: 100vh;
+        margin: 0;
+        padding: 0;
+    }
+
+    html {
+        /* Transition on root element ensures smooth theme changes */
+        transition: background-color 0.2s ease, color 0.2s ease;
+        /* Extend background color to safe areas (status bar area) */
+        background-color: var(--background-color);
+    }
+
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        line-height: 1.6;
+        color: var(--text-color);
+        background: var(--background-color);
+        transition: background-color 0.2s ease, color 0.2s ease;
+        display: flex;
+        flex-direction: column;
+        /* Safe areas handled by individual components (Header, Footer, Sidebar) */
+        /* Left/right safe areas still needed for notched devices in landscape */
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+    }
+
+    #root {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 100vh;
+        transition: background-color 0.2s ease;
+        background-color: var(--background-color);
+    }
+
+    main {
+        flex: 1;
+        background: var(--background-color);
+        display: flex;
+        flex-direction: column;
+        transition: background-color 0.2s ease;
+    }
+
+    /* Layout */
+    footer {
+        text-align: center;
+        padding: 1rem;
+        margin-top: auto;
+    }
+
+    /* Disabled button styles for queued/downloading states */
+    button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
     }
 }
 
-/* Disable transitions on initial load to prevent flash */
-html.preload *,
-html.preload *::before,
-html.preload *::after {
-    transition: none !important;
-    animation-duration: 0s !important;
-}
-
-/* Smooth theme transitions for all elements using CSS variables */
-header, footer, section,
-input, select, textarea, button,
-.details-container, .modal-overlay {
-    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
-}
-
-:root {
-    /* Light theme variables */
-    --primary-color: oklch(44.3% 0.11 240.79);
-    --primary-dark: oklch(39.1% 0.09 240.876);
-    --text-color: #333;
-    --background-color: #f8f8f8;
-    --border-color: #e5e5e5;
-    --loading-overlay: rgba(0, 0, 0, 0.5);
-    --card-background: #fff;
-    --input-background: #fff;
-    --heading-color: #333;
-
-    /* Modern UI alias tokens */
-    --bg: var(--background-color);
-    --text: var(--text-color);
-    --border-muted: var(--border-color);
-    --bg-soft: var(--card-background);
-    --hover-surface: rgba(15, 23, 42, 0.05);
-    --hover-action: rgba(15, 23, 42, 0.08);
-    --hover-row: rgba(15, 23, 42, 0.07);
-    --scrollbar-thumb: rgba(15, 23, 42, 0.15);
-    --scrollbar-thumb-hover: rgba(15, 23, 42, 0.25);
-}
-
-[data-theme="dark"] {
-    /* Dark theme variables with improved contrast */
-    --background-color: #121212;
-    --text-color: #ffffff;
-    --heading-color: #ffffff;
-    --card-background: #1e1e1e;
-    --border-color: #404040;
-    --input-background: #2d2d2d;
-    --hover-surface: rgba(255, 255, 255, 0.05);
-    --hover-action: rgba(255, 255, 255, 0.12);
-    --hover-row: rgba(255, 255, 255, 0.08);
-    --scrollbar-thumb: rgba(255, 255, 255, 0.15);
-    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
-}
-
-/* Global scrollbar styling - thin, subtle, theme-aware */
-* {
-    /* Firefox */
-    scrollbar-width: thin;
-    scrollbar-color: var(--scrollbar-thumb) transparent;
-}
-
-/* WebKit browsers (Chrome, Safari, Edge) */
-::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-
-::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-    background: var(--scrollbar-thumb);
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: var(--scrollbar-thumb-hover);
-}
-
-/* Hide scrollbar corner (where horizontal and vertical meet) */
-::-webkit-scrollbar-corner {
-    background: transparent;
-}
-
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-/* Typography */
-html, body {
-    min-height: 100vh;
-    /* Support for iOS notch/dynamic island - extend to full viewport */
-    min-height: 100dvh;
-    margin: 0;
-    padding: 0;
-}
-
-html {
-    /* Transition on root element ensures smooth theme changes */
-    transition: background-color 0.2s ease, color 0.2s ease;
-    /* Extend background color to safe areas (status bar area) */
-    background-color: var(--background-color);
-}
-
-body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    line-height: 1.6;
-    color: var(--text-color);
-    background: var(--background-color);
-    transition: background-color 0.2s ease, color 0.2s ease;
-    display: flex;
-    flex-direction: column;
-    /* Safe areas handled by individual components (Header, Footer, Sidebar) */
-    /* Left/right safe areas still needed for notched devices in landscape */
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
-}
-
-#root {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 100vh;
-    min-height: 100dvh;
-    transition: background-color 0.2s ease;
-    background-color: var(--background-color);
-}
-
-main {
-    flex: 1;
-    min-height: 100%;
-    background: var(--background-color);
-    display: flex;
-    flex-direction: column;
-    transition: background-color 0.2s ease;
-}
-
-/* Layout */
-footer {
-    text-align: center;
-    padding: 1rem;
-    margin-top: auto;
-}
-
-.spinner {
-    display: inline-block;
-    width: 1.25rem;
-    height: 1.25rem;
-    border: 3px solid rgba(255, 255, 255, 0.3);
-    border-radius: 50%;
-    border-top-color: white;
-    animation: spin 1s linear infinite;
-}
-
+/* =============================================
+   Keyframes (don't participate in cascade layers)
+   ============================================= */
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
@@ -187,10 +216,6 @@ footer {
 @keyframes wave {
     0% { background-position: 200% 0; }
     100% { background-position: -200% 0; }
-}
-
-.activity-wave {
-    animation: wave 2s linear infinite;
 }
 
 /* Use translate3d() for GPU acceleration on iOS Safari */
@@ -238,393 +263,6 @@ footer {
     }
 }
 
-.animate-slide-up {
-    animation: slide-up 0.5s ease-out;
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
-    will-change: transform, opacity;
-}
-
-.animate-pop-up {
-    animation: pop-up 0.35s ease-out;
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
-    will-change: transform, opacity;
-}
-
-.animate-fade-in-down {
-    animation: fade-in-down 0.2s ease-out;
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
-    will-change: transform, opacity;
-}
-
-.animate-fade-out-up {
-    animation: fade-out-up 0.15s ease-in;
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
-    will-change: transform, opacity;
-}
-
-/* Button spinner styles */
-.search-bar-spinner {
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    transition: opacity 0.2s ease;
-}
-
-.search-bar-icon {
-    transition: opacity 0.2s ease;
-}
-
-.search-bar-button:disabled {
-    cursor: not-allowed;
-}
-
-/* Download button spinner styles */
-.download-spinner {
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    transition: opacity 0.2s ease;
-    flex-shrink: 0;
-}
-
-.details-spinner {
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    transition: opacity 0.2s ease;
-    flex-shrink: 0;
-}
-
-/* Modal Styles */
-.modal-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    background: var(--loading-overlay);
-    z-index: 1000;
-    padding: 1.5rem;
-    justify-content: center;
-    align-items: center;
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-}
-
-.modal-overlay.active {
-    display: flex;
-}
-
-.details-container {
-    width: 100%;
-    max-width: 64rem;
-    max-height: 90vh;
-    pointer-events: auto;
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
-}
-
-/* Responsive Design */
-@media (max-width: 639px) {
-    .modal-overlay {
-        padding: 0;
-        align-items: stretch;
-        /* Extend background into iOS safe areas */
-        background: var(--bg-soft);
-    }
-
-    .details-container {
-        max-width: none;
-        max-height: none;
-        height: 100%;
-        /* Add safe area padding for iOS notch/home indicator */
-        padding-top: env(safe-area-inset-top);
-        padding-bottom: env(safe-area-inset-bottom);
-        padding-left: env(safe-area-inset-left);
-        padding-right: env(safe-area-inset-right);
-    }
-}
-
-@media (min-width: 640px) and (max-width: 768px) {
-    .modal-overlay {
-        padding: 1rem;
-    }
-
-    .details-container {
-        max-width: none;
-    }
-}
-
-/* Accessibility */
-.visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-}
-
-/* Toast Notification Styles */
-#toast-container {
-    max-width: 400px;
-    pointer-events: none;
-}
-
-.toast-notification {
-    opacity: 0;
-    transform: translateX(100%);
-    max-width: 100%;
-    word-wrap: break-word;
-    pointer-events: auto;
-}
-
-.toast-notification.toast-visible {
-    opacity: 1;
-    transform: translateX(0);
-}
-
-/* Disabled button styles for queued/downloading states */
-button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.hover-surface,
-.hover-action,
-.hover-row {
-    transition: background-color 0.2s ease, color 0.2s ease;
-}
-
-.hover-surface:hover {
-    background-color: var(--hover-surface);
-}
-
-.hover-action:hover {
-    background-color: var(--hover-action);
-}
-
-.hover-row:hover {
-    background-color: var(--hover-row);
-}
-
-/* Search wrapper and input - base styles */
-.search-wrapper {
-    width: 100%;
-}
-
-.search-input {
-    min-width: 0; /* Allow input to shrink on mobile flex containers */
-    -webkit-appearance: none;
-    appearance: none;
-}
-
-.search-input::placeholder {
-    color: var(--text);
-    opacity: 0.5;
-}
-
-.search-input::-webkit-search-cancel-button,
-.search-input::-webkit-search-decoration,
-.search-input::-webkit-search-results-button,
-.search-input::-webkit-search-results-decoration {
-    display: none;
-}
-
-.search-input::-ms-clear {
-    display: none;
-    width: 0;
-    height: 0;
-}
-
-/* ============================================
-   MOBILE: Full viewport width, no fixed widths
-   ============================================ */
-@media (max-width: 639px) {
-    /* Break search section out to full viewport width, escaping the centered main container */
-    #search-section {
-        position: relative;
-        left: 50%;
-        right: 50%;
-        margin-left: -50vw;
-        margin-right: -50vw;
-        width: 100vw;
-        padding-left: 1rem;
-        padding-right: 1rem;
-        box-sizing: border-box;
-    }
-    
-    /* Remove any width constraints on search wrapper */
-    .search-wrapper {
-        width: 100% !important;
-        min-width: 0 !important;
-        max-width: none !important;
-    }
-    
-    /* Ensure flex containers are full width */
-    .search-wrapper > .flex,
-    #search-filters {
-        width: 100%;
-        max-width: 100%;
-        min-width: 0;
-    }
-}
-
-/* ============================================
-   DESKTOP: Fixed px widths for consistency
-   ============================================ */
-/* Medium screens (small tablets/large phones): 640px - 1023px */
-@media (min-width: 640px) and (max-width: 1023px) {
-    .search-wrapper {
-        width: 600px; /* Fixed width for medium screens */
-        max-width: 600px; /* Prevent expansion */
-    }
-}
-
-/* Large screens (desktop): 1024px+ */
-@media (min-width: 1024px) {
-    .search-wrapper {
-        width: 800px; /* Fixed width for large screens */
-        max-width: 800px; /* Prevent expansion */
-    }
-}
-
-/* Search section base styles - always center horizontally on desktop */
-#search-section {
-    display: flex;
-    flex-direction: column;
-    align-items: center; /* Keep search box centered horizontally */
-}
-
-/* Center search section vertically when in initial state (no results, no queue) */
-/* Responsive to different window sizes */
-.search-initial-state {
-    flex: 1;
-    justify-content: flex-start;
-    padding-top: 20vh; /* Position in upper portion of screen */
-}
-
-/* Mobile-friendly book card layout */
-/* On mobile (below 640px), use horizontal layout: image left, text right, buttons below */
-/* Desktop remains unchanged - full width, full height artwork via Tailwind classes */
-@media (max-width: 639px) {
-    .search-initial-state {
-        justify-content: flex-start;
-        padding-top: 18vh; /* push the search UI toward the upper third */
-    }
-
-    /* When advanced filters are visible, pull the search bar to the very top */
-    .search-initial-state.search-advanced-visible {
-        padding-top: calc(env(safe-area-inset-top) + 1rem);
-    }
-
-    .book-card-content {
-        flex-direction: row !important;
-        gap: 0.75rem !important;
-        align-items: flex-start;
-    }
-    
-    .book-card-cover {
-        width: 50% !important;
-        height: auto !important;
-        flex-shrink: 0;
-        aspect-ratio: 2/3; /* Maintain book cover proportions */
-    }
-    
-    .book-card-text {
-        width: 50% !important;
-        flex-shrink: 0;
-        padding-left: 0.5rem;
-    }
-    
-    .book-card-buttons {
-        width: 100%;
-        margin-top: 0.5rem;
-    }
-}
-
-/* Desktop: align details and buttons to bottom, artwork stays at top */
-@media (min-width: 640px) {
-    .book-card {
-        /* Ensure card can grow to accommodate content */
-        display: flex;
-        flex-direction: column;
-        height: 100%; /* Ensure card fills grid cell height */
-    }
-    
-    .book-card-content {
-        /* Grow to fill available space, pushing buttons to bottom */
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        min-height: 0; /* Allow flex shrinking */
-    }
-    
-    .book-card-cover {
-        /* Artwork stays at top, doesn't grow */
-        flex-shrink: 0;
-    }
-    
-    .book-card-text {
-        /* Push text to bottom of content area, right above buttons */
-        margin-top: auto;
-        flex: 0 0 auto !important; /* Override flex-1 from HTML, don't grow or shrink */
-    }
-}
-
-/* Fix download button text clipping on mobile */
-.download-button-text {
-    white-space: nowrap;
-    overflow: visible;
-    flex-shrink: 0;
-    display: inline-block;
-}
-
-/* Ensure download buttons can accommodate their text content */
-[data-action="download"],
-#download-button {
-    min-width: 0;
-    overflow: visible;
-    width: 100%;
-}
-
-/* On mobile, ensure button text is fully visible */
-@media (max-width: 639px) {
-    /* Ensure button container allows overflow */
-    .book-card-buttons {
-        overflow: visible;
-    }
-    
-    /* Make text span flexible to use available space */
-    .download-button-text {
-        white-space: nowrap;
-        overflow: visible;
-    }
-    
-    /* Ensure spinner doesn't interfere with text layout */
-    .download-spinner {
-        flex-shrink: 0;
-        flex-grow: 0;
-        width: 1rem;
-        height: 1rem;
-    }
-}
-
-/* Skeleton Loader Animation */
 @keyframes shimmer {
     0% {
         background-position: -200% 0;
@@ -634,12 +272,6 @@ button:disabled {
     }
 }
 
-.animate-pulse {
-    background-size: 200% 100%;
-    animation: shimmer 2s ease-in-out infinite;
-}
-
-/* Settings Modal Animations */
 @keyframes settings-modal-enter {
     from {
         opacity: 0;
@@ -672,30 +304,443 @@ button:disabled {
     to { opacity: 0; }
 }
 
-.settings-modal-enter {
-    animation: settings-modal-enter 0.2s ease-out;
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
-    will-change: transform, opacity;
-}
+/* =============================================
+   @layer components — reusable component classes
+   ============================================= */
+@layer components {
+    .spinner {
+        display: inline-block;
+        width: 1.25rem;
+        height: 1.25rem;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        border-top-color: white;
+        animation: spin 1s linear infinite;
+    }
 
-.settings-modal-exit {
-    animation: settings-modal-exit 0.15s ease-in;
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
-    will-change: transform, opacity;
-}
+    .activity-wave {
+        animation: wave 2s linear infinite;
+    }
 
-.animate-fade-in {
-    animation: fade-in 0.2s ease-out;
-    will-change: opacity;
-}
+    .animate-slide-up {
+        animation: slide-up 0.5s ease-out;
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+        will-change: transform, opacity;
+    }
 
-.animate-fade-out {
-    animation: fade-out 0.15s ease-in;
-    will-change: opacity;
+    .animate-pop-up {
+        animation: pop-up 0.35s ease-out;
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+        will-change: transform, opacity;
+    }
+
+    .animate-fade-in-down {
+        animation: fade-in-down 0.2s ease-out;
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+        will-change: transform, opacity;
+    }
+
+    .animate-fade-out-up {
+        animation: fade-out-up 0.15s ease-in;
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+        will-change: transform, opacity;
+    }
+
+    /* Button spinner styles */
+    .search-bar-spinner {
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        transition: opacity 0.2s ease;
+    }
+
+    .search-bar-icon {
+        transition: opacity 0.2s ease;
+    }
+
+    .search-bar-button:disabled {
+        cursor: not-allowed;
+    }
+
+    /* Download button spinner styles */
+    .download-spinner {
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        transition: opacity 0.2s ease;
+        flex-shrink: 0;
+    }
+
+    .details-spinner {
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        transition: opacity 0.2s ease;
+        flex-shrink: 0;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--loading-overlay);
+        z-index: 1000;
+        padding: 1.5rem;
+        justify-content: center;
+        align-items: center;
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+    }
+
+    .modal-overlay.active {
+        display: flex;
+    }
+
+    .details-container {
+        width: 100%;
+        max-width: 64rem;
+        max-height: 90vh;
+        pointer-events: auto;
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+    }
+
+    /* Responsive Design */
+    @media (max-width: 639px) {
+        .modal-overlay {
+            padding: 0;
+            align-items: stretch;
+            /* Match page background so iOS PWA safe areas stay consistent */
+            background: var(--background-color);
+        }
+
+        .details-container {
+            max-width: none;
+            max-height: none;
+            height: 100%;
+            /* Add safe area padding for iOS notch/home indicator */
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
+        }
+    }
+
+    @media (min-width: 640px) and (max-width: 768px) {
+        .modal-overlay {
+            padding: 1rem;
+        }
+
+        .details-container {
+            max-width: none;
+        }
+    }
+
+    /* Accessibility */
+    .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    /* Toast Notification Styles */
+    #toast-container {
+        max-width: 400px;
+        pointer-events: none;
+    }
+
+    .toast-notification {
+        opacity: 0;
+        transform: translateX(100%);
+        max-width: 100%;
+        word-wrap: break-word;
+        pointer-events: auto;
+    }
+
+    .toast-notification.toast-visible {
+        opacity: 1;
+        transform: translateX(0);
+    }
+
+    .hover-surface,
+    .hover-action,
+    .hover-row {
+        transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    .hover-surface:hover {
+        background-color: var(--hover-surface);
+    }
+
+    .hover-action:hover {
+        background-color: var(--hover-action);
+    }
+
+    .hover-row:hover {
+        background-color: var(--hover-row);
+    }
+
+    .dropdown-trigger {
+        background-color: var(--bg-soft);
+        transition: background-color 0.2s ease, color 0.2s ease, border-radius 0.15s ease;
+    }
+
+    .dropdown-trigger:hover {
+        background-color: color-mix(in srgb, var(--bg-soft) 95%, var(--text) 5%);
+    }
+
+    /* Search wrapper and input - base styles */
+    .search-wrapper {
+        width: 100%;
+    }
+
+    .search-input {
+        min-width: 0; /* Allow input to shrink on mobile flex containers */
+        -webkit-appearance: none;
+        appearance: none;
+    }
+
+    .search-input::placeholder {
+        color: var(--text);
+        opacity: 0.5;
+    }
+
+    .search-input::-webkit-search-cancel-button,
+    .search-input::-webkit-search-decoration,
+    .search-input::-webkit-search-results-button,
+    .search-input::-webkit-search-results-decoration {
+        display: none;
+    }
+
+    .search-input::-ms-clear {
+        display: none;
+        width: 0;
+        height: 0;
+    }
+
+    .animate-pulse {
+        background-size: 200% 100%;
+        animation: shimmer 2s ease-in-out infinite;
+    }
+
+    .settings-modal-enter {
+        animation: settings-modal-enter 0.2s ease-out;
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+        will-change: transform, opacity;
+    }
+
+    .settings-modal-exit {
+        animation: settings-modal-exit 0.15s ease-in;
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+        will-change: transform, opacity;
+    }
+
+    .animate-fade-in {
+        animation: fade-in 0.2s ease-out;
+        will-change: opacity;
+    }
+
+    .animate-fade-out {
+        animation: fade-out 0.15s ease-in;
+        will-change: opacity;
+    }
+
+    /* ============================================
+       MOBILE: Full viewport width, no fixed widths
+       ============================================ */
+    @media (max-width: 639px) {
+        /* Break search section out to full viewport width, escaping the centered main container */
+        #search-section {
+            position: relative;
+            left: 50%;
+            right: 50%;
+            margin-left: -50vw;
+            margin-right: -50vw;
+            width: 100vw;
+            padding-left: 1rem;
+            padding-right: 1rem;
+            box-sizing: border-box;
+        }
+
+        /* Remove any width constraints on search wrapper */
+        .search-wrapper {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: none !important;
+        }
+
+        /* Ensure flex containers are full width */
+        .search-wrapper > .flex,
+        #search-filters {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+        }
+    }
+
+    /* ============================================
+       DESKTOP: Fixed px widths for consistency
+       ============================================ */
+    /* Medium screens (small tablets/large phones): 640px - 1023px */
+    @media (min-width: 640px) and (max-width: 1023px) {
+        .search-wrapper {
+            width: 600px; /* Fixed width for medium screens */
+            max-width: 600px; /* Prevent expansion */
+        }
+    }
+
+    /* Large screens (desktop): 1024px+ */
+    @media (min-width: 1024px) {
+        .search-wrapper {
+            width: 800px; /* Fixed width for large screens */
+            max-width: 800px; /* Prevent expansion */
+        }
+    }
+
+    /* Search section base styles - always center horizontally on desktop */
+    #search-section {
+        display: flex;
+        flex-direction: column;
+        align-items: center; /* Keep search box centered horizontally */
+    }
+
+    /* Center search section vertically when in initial state (no results, no queue) */
+    /* Responsive to different window sizes */
+    .search-initial-state {
+        flex: 1;
+        justify-content: flex-start;
+        padding-top: 20vh; /* Position in upper portion of screen */
+    }
+
+    /* Mobile-friendly book card layout */
+    /* On mobile (below 640px), use horizontal layout: image left, text right, buttons below */
+    /* Desktop remains unchanged - full width, full height artwork via Tailwind classes */
+    @media (max-width: 639px) {
+        .search-initial-state {
+            justify-content: flex-start;
+            padding-top: 18vh; /* push the search UI toward the upper third */
+        }
+
+        /* When advanced filters are visible, pull the search bar to the very top */
+        .search-initial-state.search-advanced-visible {
+            padding-top: calc(env(safe-area-inset-top) + 1rem);
+        }
+
+        .book-card-content {
+            flex-direction: row !important;
+            gap: 0.75rem !important;
+            align-items: flex-start;
+        }
+
+        .book-card-cover {
+            width: 50% !important;
+            height: auto !important;
+            flex-shrink: 0;
+            aspect-ratio: 2/3; /* Maintain book cover proportions */
+        }
+
+        .book-card-text {
+            width: 50% !important;
+            flex-shrink: 0;
+            padding-left: 0.5rem;
+        }
+
+        .book-card-buttons {
+            width: 100%;
+            margin-top: 0.5rem;
+        }
+    }
+
+    /* Desktop: align details and buttons to bottom, artwork stays at top */
+    @media (min-width: 640px) {
+        .book-card {
+            /* Ensure card can grow to accommodate content */
+            display: flex;
+            flex-direction: column;
+            height: 100%; /* Ensure card fills grid cell height */
+        }
+
+        .book-card-content {
+            /* Grow to fill available space, pushing buttons to bottom */
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0; /* Allow flex shrinking */
+        }
+
+        .book-card-cover {
+            /* Artwork stays at top, doesn't grow */
+            flex-shrink: 0;
+        }
+
+        .book-card-text {
+            /* Push text to bottom of content area, right above buttons */
+            margin-top: auto;
+            flex: 0 0 auto !important; /* Override flex-1 from HTML, don't grow or shrink */
+        }
+    }
+
+    /* Fix download button text clipping on mobile */
+    .download-button-text {
+        white-space: nowrap;
+        overflow: visible;
+        flex-shrink: 0;
+        display: inline-block;
+    }
+
+    /* Ensure download buttons can accommodate their text content */
+    [data-action="download"],
+    #download-button {
+        min-width: 0;
+        overflow: visible;
+        width: 100%;
+    }
+
+    /* On mobile, ensure button text is fully visible */
+    @media (max-width: 639px) {
+        /* Ensure button container allows overflow */
+        .book-card-buttons {
+            overflow: visible;
+        }
+
+        /* Make text span flexible to use available space */
+        .download-button-text {
+            white-space: nowrap;
+            overflow: visible;
+        }
+
+        /* Ensure spinner doesn't interfere with text layout */
+        .download-spinner {
+            flex-shrink: 0;
+            flex-grow: 0;
+            width: 1rem;
+            height: 1rem;
+        }
+    }
 }

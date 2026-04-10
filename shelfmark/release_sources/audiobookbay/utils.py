@@ -1,10 +1,9 @@
 """Utility functions for AudiobookBay integration."""
 
 import re
-from typing import Optional
 
 
-def normalize_hostname(raw: Optional[str]) -> str:
+def normalize_hostname(raw: str | None) -> str:
     """Normalize a user-supplied hostname for URL construction.
 
     Strips whitespace, scheme prefixes, trailing slashes, and paths so that
@@ -17,14 +16,13 @@ def normalize_hostname(raw: Optional[str]) -> str:
     # Strip scheme
     for prefix in ("https://", "http://"):
         if cleaned.lower().startswith(prefix):
-            cleaned = cleaned[len(prefix):]
+            cleaned = cleaned[len(prefix) :]
             break
     # Strip path and trailing slashes
-    cleaned = cleaned.split("/")[0].strip()
-    return cleaned
+    return cleaned.split("/")[0].strip()
 
 
-def parse_size(size_str: Optional[str]) -> Optional[int]:
+def parse_size(size_str: str | None) -> int | None:
     """Parse size string to bytes.
 
     Args:
@@ -32,6 +30,7 @@ def parse_size(size_str: Optional[str]) -> Optional[int]:
 
     Returns:
         Size in bytes, or None if parsing fails
+
     """
     if not size_str:
         return None
@@ -47,9 +46,9 @@ def parse_size(size_str: Optional[str]) -> Optional[int]:
     multipliers = {
         "B": 1,
         "KB": 1024,
-        "MB": 1024 ** 2,
-        "GB": 1024 ** 3,
-        "TB": 1024 ** 4,
+        "MB": 1024**2,
+        "GB": 1024**3,
+        "TB": 1024**4,
     }
 
     return int(value * multipliers.get(unit, 1))

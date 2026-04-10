@@ -5,21 +5,26 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from threading import Event
-from typing import Callable, Optional
+from typing import TYPE_CHECKING
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadState,
+    DownloadStatus,
     get_client,
     list_configured_clients,
 )
 from shelfmark.download.fs import run_blocking_io
 from shelfmark.release_sources import DownloadHandler
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from threading import Event
+
+    from shelfmark.core.models import DownloadTask
 
 logger = setup_logger(__name__)
 
@@ -37,21 +42,23 @@ class DownloadRequest:
     url: str
     protocol: str
     release_name: str
-    expected_hash: Optional[str]
+    expected_hash: str | None
+    seeding_time_limit: int | None = None  # minutes
+    ratio_limit: float | None = None
 
 
 def _diagnose_path_issue(path: str) -> str:
-    """
-    Analyze a path and return diagnostic hints for common issues.
+    """Analyze a path and return diagnostic hints for common issues.
 
     Args:
         path: The path that failed to be accessed
 
     Returns:
         A hint string to help users diagnose the issue.
+
     """
     # Detect Windows-style paths (won't work in Linux containers)
-    if len(path) >= 2 and path[1] == ':':
+    if len(path) >= 2 and path[1] == ":":
         return (
             f"Path '{path}' appears to be a Windows path. "
             f"Shelfmark runs in Linux and cannot access Windows paths directly. "
@@ -77,7 +84,7 @@ def _diagnose_path_issue(path: str) -> str:
 class ExternalClientHandler(DownloadHandler, ABC):
     """Shared lifecycle handler for sources that hand off to torrent/usenet clients."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Track downloads that may need client-side cleanup after Shelfmark completes import.
         # task_id -> (client, download_id, protocol)
         self._cleanup_refs: dict[str, tuple[DownloadClient, str, str]] = {}
@@ -86,15 +93,15 @@ class ExternalClientHandler(DownloadHandler, ABC):
     def _resolve_download(
         self,
         task: DownloadTask,
-        status_callback: Callable[[str, Optional[str]], None],
-    ) -> Optional[DownloadRequest]:
+        status_callback: Callable[[str, str | None], None],
+    ) -> DownloadRequest | None:
         """Resolve source-specific task metadata into a client download request."""
 
     def _on_download_complete(self, task: DownloadTask) -> None:
         """Hook called after successful completion; override for source cleanup."""
         return
 
-    def _get_client(self, protocol: str) -> Optional[DownloadClient]:
+    def _get_client(self, protocol: str) -> DownloadClient | None:
         """Resolve the active client for a protocol."""
         return get_client(protocol)
 
@@ -114,7 +121,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         """Maximum attempts when waiting for completed files."""
         return COMPLETED_PATH_MAX_ATTEMPTS
 
-    def _get_category_for_task(self, client: DownloadClient, task: DownloadTask) -> Optional[str]:
+    def _get_category_for_task(self, client: DownloadClient, task: DownloadTask) -> str | None:
         """Get audiobook category if configured and applicable, else None for default."""
         if not is_audiobook(task.content_type):
             return None
@@ -130,7 +137,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         audiobook_key = audiobook_keys.get(client.name)
         return config.get(audiobook_key, "") or None if audiobook_key else None
 
-    def post_process_cleanup(self, task: DownloadTask, success: bool) -> None:
+    def post_process_cleanup(self, task: DownloadTask, *, success: bool) -> None:
         if not success:
             self._cleanup_refs.pop(task.task_id, None)
             return
@@ -140,20 +147,34 @@ class ExternalClientHandler(DownloadHandler, ABC):
             return
 
         client, download_id, protocol = client_ref
-        if protocol != "usenet":
-            return
 
-        # "Move" means copy into ingest then let the usenet client delete its own files.
-        if config.get("PROWLARR_USENET_ACTION", "move") != "move":
-            return
+        if protocol == "usenet":
+            # "Move" means copy into ingest then let the usenet client delete its own files.
+            if config.get("PROWLARR_USENET_ACTION", "move") != "move":
+                return
+            try:
+                self._delete_local_download_data(client, download_id)
+                self._remove_usenet_download(client, download_id, delete_files=True, archive=True)
+            except Exception as e:
+                logger.warning(
+                    "Failed to cleanup usenet download %s in %s: %s",
+                    download_id,
+                    getattr(client, "name", "client"),
+                    e,
+                )
 
-        try:
-            self._delete_local_download_data(client, download_id)
-            self._remove_usenet_download(client, download_id, delete_files=True, archive=True)
-        except Exception as e:
-            logger.warning(
-                f"Failed to cleanup usenet download {download_id} in {getattr(client, 'name', 'client')}: {e}"
-            )
+        elif protocol == "torrent":
+            if config.get("PROWLARR_TORRENT_ACTION", "keep") != "remove":
+                return
+            try:
+                client.remove(download_id, delete_files=False)
+            except Exception as e:
+                logger.warning(
+                    "Failed to remove torrent %s from %s: %s",
+                    download_id,
+                    getattr(client, "name", "client"),
+                    e,
+                )
 
     def _remove_usenet_download(
         self,
@@ -174,11 +195,13 @@ class ExternalClientHandler(DownloadHandler, ABC):
         try:
             raw_path = client.get_download_path(download_id)
         except Exception as e:
-            logger.debug(f"Failed to resolve download path for {client.name} {download_id}: {e}")
+            logger.debug(
+                "Failed to resolve download path for %s %s: %s", client.name, download_id, e
+            )
             return
 
         if not raw_path:
-            logger.debug(f"No download path available for {client.name} {download_id}")
+            logger.debug("No download path available for %s %s", client.name, download_id)
             return
 
         from shelfmark.core.path_mappings import (
@@ -200,11 +223,16 @@ class ExternalClientHandler(DownloadHandler, ABC):
         delete_path = remapped if matched_mapping else source_path_obj
 
         if str(delete_path) in ("", "/"):
-            logger.warning(f"Refusing to delete unsafe path for {client.name} {download_id}: {delete_path}")
+            logger.warning(
+                "Refusing to delete unsafe path for %s %s: %s",
+                client.name,
+                download_id,
+                delete_path,
+            )
             return
 
         if not run_blocking_io(delete_path.exists):
-            logger.debug(f"Local download path does not exist for cleanup: {delete_path}")
+            logger.debug("Local download path does not exist for cleanup: %s", delete_path)
             return
 
         try:
@@ -212,18 +240,27 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 run_blocking_io(shutil.rmtree, delete_path)
             else:
                 run_blocking_io(delete_path.unlink)
-            logger.info(f"Deleted local download data for {client.name} {download_id}: {delete_path}")
+            logger.info(
+                "Deleted local download data for %s %s: %s", client.name, download_id, delete_path
+            )
         except Exception as e:
-            logger.warning(f"Failed to delete local download data for {client.name} {download_id}: {e}")
+            logger.warning(
+                "Failed to delete local download data for %s %s: %s", client.name, download_id, e
+            )
 
-    def _safe_remove_download(self, client, download_id: str, protocol: str, reason: str) -> None:
+    def _safe_remove_download(
+        self,
+        client: DownloadClient,
+        download_id: str,
+        protocol: str,
+        reason: str,
+    ) -> None:
         """Best-effort removal of a failed/cancelled download from the client.
 
         Safety policy:
         - torrents: never remove or delete client data (avoid breaking seeding)
         - usenet: keep legacy behavior (delete client files on removal)
         """
-
         if protocol != "usenet":
             logger.info(
                 "Skipping download client cleanup for protocol=%s after %s (client=%s id=%s)",
@@ -240,7 +277,11 @@ class ExternalClientHandler(DownloadHandler, ABC):
             self._remove_usenet_download(client, download_id, delete_files=True, archive=False)
         except Exception as e:
             logger.warning(
-                f"Failed to remove download {download_id} from {client.name} after {reason}: {e}"
+                "Failed to remove download %s from %s after %s: %s",
+                download_id,
+                client.name,
+                reason,
+                e,
             )
 
     def _handle_cancelled_download(
@@ -248,20 +289,26 @@ class ExternalClientHandler(DownloadHandler, ABC):
         client: DownloadClient,
         download_id: str,
         protocol: str,
-        status_callback: Callable[[str, Optional[str]], None],
+        status_callback: Callable[[str, str | None], None],
     ) -> None:
         if protocol == "usenet":
-            logger.info(f"Download cancelled, removing from {client.name}: {download_id}")
+            logger.info("Download cancelled, removing from %s: %s", client.name, download_id)
             try:
                 self._delete_local_download_data(client, download_id)
                 self._remove_usenet_download(client, download_id, delete_files=True, archive=True)
             except Exception as e:
                 logger.warning(
-                    f"Failed to remove download {download_id} from {client.name} after cancellation: {e}"
+                    "Failed to remove download %s from %s after cancellation: %s",
+                    download_id,
+                    client.name,
+                    e,
                 )
         else:
             logger.info(
-                f"Download cancelled for protocol={protocol}; leaving in {client.name}: {download_id}"
+                "Download cancelled for protocol=%s; leaving in %s: %s",
+                protocol,
+                client.name,
+                download_id,
             )
         status_callback("cancelled", "Cancelled")
 
@@ -271,7 +318,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         download_id: str,
         *,
         log_details: bool,
-    ) -> tuple[Optional[Path], Optional[str]]:
+    ) -> tuple[Path | None, str | None]:
         """Resolve and validate the completed download path once."""
         try:
             raw_path = client.get_download_path(download_id)
@@ -281,12 +328,12 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 f"Check volume mappings and category settings."
             )
             if log_details:
-                logger.error(
-                    f"Failed to resolve download path for {client.name} {download_id}: {e}"
+                logger.exception(
+                    "Failed to resolve download path for %s %s", client.name, download_id
                 )
             else:
                 logger.debug(
-                    f"Failed to resolve download path for {client.name} {download_id}: {e}"
+                    "Failed to resolve download path for %s %s: %s", client.name, download_id, e
                 )
             return None, message
 
@@ -296,9 +343,13 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 f"Check volume mappings and category settings."
             )
             if log_details:
-                logger.error(f"Download client returned empty path for {client.name} {download_id}")
+                logger.error(
+                    "Download client returned empty path for %s %s", client.name, download_id
+                )
             else:
-                logger.debug(f"Download client returned empty path for {client.name} {download_id}")
+                logger.debug(
+                    "Download client returned empty path for %s %s", client.name, download_id
+                )
             return None, message
 
         from shelfmark.core.path_mappings import (
@@ -355,13 +406,19 @@ class ExternalClientHandler(DownloadHandler, ABC):
             )
             if log_details:
                 logger.error(
-                    f"Download path does not exist after remapping: {raw_path} -> {remapped}. "
-                    f"Client: {client.name}, ID: {download_id}."
+                    "Download path does not exist after remapping: %s -> %s. Client: %s, ID: %s.",
+                    raw_path,
+                    remapped,
+                    client.name,
+                    download_id,
                 )
             else:
                 logger.debug(
-                    f"Download path does not exist after remapping: {raw_path} -> {remapped}. "
-                    f"Client: {client.name}, ID: {download_id}."
+                    "Download path does not exist after remapping: %s -> %s. Client: %s, ID: %s.",
+                    raw_path,
+                    remapped,
+                    client.name,
+                    download_id,
                 )
             return None, message
 
@@ -379,13 +436,19 @@ class ExternalClientHandler(DownloadHandler, ABC):
             message = f"{hint} No remote path mapping matched for client '{client.name}'."
             if log_details:
                 logger.error(
-                    f"Download path does not exist and no remote path mapping matched for {client.name} "
-                    f"({download_id}): {raw_path}. {hint}"
+                    "Download path does not exist and no remote path mapping matched for %s (%s): %s. %s",
+                    client.name,
+                    download_id,
+                    raw_path,
+                    hint,
                 )
             else:
                 logger.debug(
-                    f"Download path does not exist and no remote path mapping matched for {client.name} "
-                    f"({download_id}): {raw_path}. {hint}"
+                    "Download path does not exist and no remote path mapping matched for %s (%s): %s. %s",
+                    client.name,
+                    download_id,
+                    raw_path,
+                    hint,
                 )
             return None, message
 
@@ -394,13 +457,19 @@ class ExternalClientHandler(DownloadHandler, ABC):
             message = hint
             if log_details:
                 logger.error(
-                    f"Download path does not exist: {raw_path}. "
-                    f"Client: {client.name}, ID: {download_id}. {hint}"
+                    "Download path does not exist: %s. Client: %s, ID: %s. %s",
+                    raw_path,
+                    client.name,
+                    download_id,
+                    hint,
                 )
             else:
                 logger.debug(
-                    f"Download path does not exist: {raw_path}. "
-                    f"Client: {client.name}, ID: {download_id}. {hint}"
+                    "Download path does not exist: %s. Client: %s, ID: %s. %s",
+                    raw_path,
+                    client.name,
+                    download_id,
+                    hint,
                 )
             return None, message
 
@@ -411,11 +480,11 @@ class ExternalClientHandler(DownloadHandler, ABC):
         client: DownloadClient,
         download_id: str,
         *,
-        cancel_flag: Optional[Event],
-        status_callback: Callable[[str, Optional[str]], None],
-    ) -> tuple[Optional[Path], Optional[str]]:
+        cancel_flag: Event | None,
+        status_callback: Callable[[str, str | None], None],
+    ) -> tuple[Path | None, str | None]:
         """Wait briefly for completed files to appear on disk."""
-        last_error: Optional[str] = None
+        last_error: str | None = None
         max_attempts = self._completed_path_max_attempts()
         retry_interval = self._completed_path_retry_interval()
 
@@ -452,7 +521,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
 
         return None, last_error
 
-    def _build_progress_message(self, status) -> str:
+    def _build_progress_message(self, status: DownloadStatus) -> str:
         """Build a progress message from download status."""
         msg = f"{status.progress:.0f}%"
 
@@ -475,8 +544,8 @@ class ExternalClientHandler(DownloadHandler, ABC):
         task: DownloadTask,
         cancel_flag: Event,
         progress_callback: Callable[[float], None],
-        status_callback: Callable[[str, Optional[str]], None],
-    ) -> Optional[str]:
+        status_callback: Callable[[str, str | None], None],
+    ) -> str | None:
         """Execute download via configured torrent/usenet client. Returns file path or None."""
         try:
             if cancel_flag.is_set():
@@ -506,7 +575,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
 
             if existing:
                 download_id, existing_status = existing
-                logger.info(f"Found existing download in {client.name}: {download_id}")
+                logger.info("Found existing download in %s: %s", client.name, download_id)
 
                 # If already complete, skip straight to file handling
                 if existing_status.complete:
@@ -553,13 +622,17 @@ class ExternalClientHandler(DownloadHandler, ABC):
                         name=request.release_name,
                         category=category,
                         expected_hash=request.expected_hash,
+                        seeding_time_limit=request.seeding_time_limit,
+                        ratio_limit=request.ratio_limit,
                     )
                 except Exception as e:
-                    logger.error(f"Failed to add to {client.name}: {e}")
+                    logger.exception("Failed to add to %s", client.name)
                     status_callback("error", f"Failed to add to {client.name}: {e}")
                     return None
 
-                logger.info(f"Added to {client.name}: {download_id} for '{request.release_name}'")
+                logger.info(
+                    "Added to %s: %s for '%s'", client.name, download_id, request.release_name
+                )
 
             # Poll for progress
             return self._poll_and_complete(
@@ -573,7 +646,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
             )
 
         except Exception as e:
-            logger.error(f"External client download error: {e}")
+            logger.exception("External client download error")
             status_callback("error", str(e))
             return None
 
@@ -585,8 +658,8 @@ class ExternalClientHandler(DownloadHandler, ABC):
         task: DownloadTask,
         cancel_flag: Event,
         progress_callback: Callable[[float], None],
-        status_callback: Callable[[str, Optional[str]], None],
-    ) -> Optional[str]:
+        status_callback: Callable[[str, str | None], None],
+    ) -> str | None:
         """Poll the download client for progress and handle completion."""
         poll_interval = self._poll_interval()
         # Track consecutive "not found" errors - torrents may take time to appear in client
@@ -594,7 +667,8 @@ class ExternalClientHandler(DownloadHandler, ABC):
         max_not_found_retries = 15  # 15 retries * poll interval ~= 30s grace period
 
         try:
-            logger.debug(f"Starting poll for {download_id} (content_type={task.content_type})")
+            result: str | None = None
+            logger.debug("Starting poll for %s (content_type=%s)", download_id, task.content_type)
             while not cancel_flag.is_set():
                 status = client.get_status(download_id)
                 progress_callback(status.progress)
@@ -602,12 +676,18 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 # Check for completion
                 if status.complete:
                     if status.state == DownloadState.ERROR:
-                        logger.error(f"Download {download_id} completed with error: {status.message}")
+                        logger.error(
+                            "Download %s completed with error: %s", download_id, status.message
+                        )
                         status_callback("error", status.message or "Download failed")
-                        self._safe_remove_download(client, download_id, protocol, "completion error")
+                        self._safe_remove_download(
+                            client, download_id, protocol, "completion error"
+                        )
                         return None
                     # Download complete - break to handle file
-                    logger.debug(f"Download {download_id} complete, file_path={status.file_path}")
+                    logger.debug(
+                        "Download %s complete, file_path=%s", download_id, status.file_path
+                    )
                     break
 
                 # Check for error state
@@ -641,8 +721,10 @@ class ExternalClientHandler(DownloadHandler, ABC):
                         not_found_count += 1
                         if not_found_count < max_not_found_retries:
                             logger.debug(
-                                f"Download {download_id} not yet visible in client "
-                                f"(attempt {not_found_count}/{max_not_found_retries})"
+                                "Download %s not yet visible in client (attempt %s/%s)",
+                                download_id,
+                                not_found_count,
+                                max_not_found_retries,
                             )
                             status_callback("resolving", "Waiting for download client...")
                             if cancel_flag.wait(timeout=poll_interval):
@@ -650,11 +732,13 @@ class ExternalClientHandler(DownloadHandler, ABC):
                             continue
 
                         logger.error(
-                            f"Download {download_id} not found after {max_not_found_retries} attempts"
+                            "Download %s not found after %s attempts",
+                            download_id,
+                            max_not_found_retries,
                         )
                     else:
                         # Fail fast on actionable errors (auth, connectivity, API issues)
-                        logger.error(f"Download {download_id} error state: {status.message}")
+                        logger.error("Download %s error state: %s", download_id, status.message)
 
                     status_callback("error", status.message or "Download failed")
                     self._safe_remove_download(client, download_id, protocol, "download error")
@@ -705,26 +789,26 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 status_callback=status_callback,
             )
 
-            # Clean up on success
-            if result:
-                self._on_download_complete(task)
-                self._cleanup_refs[task.task_id] = (client, download_id, protocol)
-
-            return result
-
         except Exception as e:
-            logger.error(f"Error during download polling: {e}")
+            logger.exception("Error during download polling")
             status_callback("error", str(e))
             self._safe_remove_download(client, download_id, protocol, "polling exception")
             return None
+
+        # Clean up on success
+        if result:
+            self._on_download_complete(task)
+            self._cleanup_refs[task.task_id] = (client, download_id, protocol)
+
+        return result
 
     def _handle_completed_file(
         self,
         source_path: Path,
         protocol: str,
         task: DownloadTask,
-        status_callback: Callable[[str, Optional[str]], None],
-    ) -> Optional[str]:
+        status_callback: Callable[[str, str | None], None],
+    ) -> str | None:
         """Handle a completed download and return its path.
 
         For external download clients (torrents/usenet), staging large payloads into TMP_DIR
@@ -739,15 +823,15 @@ class ExternalClientHandler(DownloadHandler, ABC):
             if protocol == "torrent":
                 task.original_download_path = str(source_path)
 
-            logger.debug(f"Download complete, returning original path: {source_path}")
+            logger.debug("Download complete, returning original path: %s", source_path)
             return str(source_path)
 
         except Exception as e:
-            logger.error(f"Failed to finalize completed download at {source_path}: {e}")
+            logger.exception("Failed to finalize completed download at %s", source_path)
             status_callback("error", f"Failed to finalize completed download: {e}")
             return None
 
     def cancel(self, task_id: str) -> bool:
         """Default cancellation (primary cancellation happens via cancel_flag)."""
-        logger.debug(f"Cancel requested for external client task: {task_id}")
+        logger.debug("Cancel requested for external client task: %s", task_id)
         return True

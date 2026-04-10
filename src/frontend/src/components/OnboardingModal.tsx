@@ -331,7 +331,7 @@ export const OnboardingModal = ({
   if (isLoading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center">
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-xs" />
         <div
           className="relative rounded-xl p-8 shadow-2xl"
           style={{ background: 'var(--bg)' }}
@@ -364,7 +364,7 @@ export const OnboardingModal = ({
   if (error) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center">
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={handleClose} />
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-xs" onClick={handleClose} />
         <div
           className="relative rounded-xl p-8 shadow-2xl max-w-md"
           style={{ background: 'var(--bg)' }}
@@ -390,8 +390,8 @@ export const OnboardingModal = ({
             <button
               onClick={handleClose}
               className="px-4 py-2 rounded-lg text-sm font-medium
-                       bg-[var(--bg-soft)] border border-[var(--border-muted)]
-                       hover:bg-[var(--hover-surface)] transition-colors"
+                       bg-(--bg-soft) border border-(--border-muted)
+                       hover:bg-(--hover-surface) transition-colors"
             >
               Close
             </button>
@@ -409,14 +409,14 @@ export const OnboardingModal = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className={`absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-150
+        className={`absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity duration-150
                     ${isClosing ? 'opacity-0' : 'opacity-100'}`}
       />
 
       {/* Modal */}
       <div
         className={`relative w-full max-w-xl rounded-xl
-                    border border-[var(--border-muted)] shadow-2xl
+                    border border-(--border-muted) shadow-2xl
                     ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         style={{ background: 'var(--bg)' }}
         role="dialog"
@@ -424,7 +424,7 @@ export const OnboardingModal = ({
         aria-label="Setup Wizard"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-muted)]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-(--border-muted)">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-8 h-8 rounded-full bg-sky-500/20 text-sky-500 text-sm font-medium">
               {currentStepIndex + 1}
@@ -438,7 +438,7 @@ export const OnboardingModal = ({
           </div>
           <button
             onClick={handleClose}
-            className="p-1.5 rounded-lg hover:bg-[var(--hover-surface)] transition-colors"
+            className="p-1.5 rounded-lg hover:bg-(--hover-surface) transition-colors"
             aria-label="Close"
           >
             <svg
@@ -455,7 +455,7 @@ export const OnboardingModal = ({
         </div>
 
         {/* Progress bar */}
-        <div className="h-1 bg-[var(--bg-soft)]">
+        <div className="h-1 bg-(--bg-soft)">
           <div
             className="h-full bg-sky-500 transition-all duration-300"
             style={{ width: `${progress}%` }}
@@ -481,7 +481,7 @@ export const OnboardingModal = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-[var(--border-muted)] flex items-center justify-between h-[68px]">
+        <div className="px-6 py-4 border-t border-(--border-muted) flex items-center justify-between h-[68px]">
           <div>
             <button
               onClick={handleSkip}
@@ -499,8 +499,8 @@ export const OnboardingModal = ({
                 onClick={handleBack}
                 disabled={isSaving}
                 className="px-4 py-2 rounded-lg text-sm font-medium
-                         bg-[var(--bg-soft)] border border-[var(--border-muted)]
-                         hover:bg-[var(--hover-surface)] transition-colors
+                         bg-(--bg-soft) border border-(--border-muted)
+                         hover:bg-(--hover-surface) transition-colors
                          disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Back

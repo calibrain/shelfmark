@@ -706,6 +706,43 @@ def test_sync_delivery_states_from_queue_status_uses_request_id_for_duplicate_so
     assert user_db.get_request(newer_request["id"])["delivery_state"] == "downloading"
 
 
+def test_sync_delivery_states_reopens_fulfilled_request_when_error_is_not_retryable(user_db):
+    user = user_db.create_user(username="alice")
+    fulfilled_request = user_db.create_request(
+        user_id=user["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={"source": "prowlarr", "source_id": "retry-gone-rel", "title": "Retry Gone"},
+        status="fulfilled",
+        delivery_state="queued",
+    )
+
+    updated = sync_delivery_states_from_queue_status(
+        user_db,
+        queue_status={
+            "error": {
+                "retry-gone-rel": {
+                    "id": "retry-gone-rel",
+                    "request_id": fulfilled_request["id"],
+                    "retry_available": False,
+                    "status_message": "Staged retry source no longer exists",
+                },
+            },
+        },
+        user_id=user["id"],
+    )
+
+    assert [row["id"] for row in updated] == [fulfilled_request["id"]]
+    refreshed = user_db.get_request(fulfilled_request["id"])
+    assert refreshed["status"] == "pending"
+    assert refreshed["delivery_state"] == "none"
+    assert refreshed["release_data"] is None
+    assert refreshed["last_failure_reason"] == "Staged retry source no longer exists"
+
+
 # ---------------------------------------------------------------------------
 # book_data validation
 # ---------------------------------------------------------------------------

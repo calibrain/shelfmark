@@ -39,7 +39,7 @@ export const Footer = ({ buildVersion, releaseVersion, debug }: FooterProps) => 
           {truncatedBuild && ` (${truncatedBuild})`}
         </span>
         {debug && (
-          <span className="text-xs px-1.5 py-0.5 rounded opacity-60" style={{ background: 'var(--border-muted)' }}>
+          <span className="text-xs px-1.5 py-0.5 rounded-sm opacity-60" style={{ background: 'var(--border-muted)' }}>
             Debug
           </span>
         )}

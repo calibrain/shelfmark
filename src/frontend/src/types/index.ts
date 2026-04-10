@@ -31,6 +31,7 @@ export interface Book {
   progress?: number;
   status_message?: string;  // Detailed status message (e.g., "Trying Libgen (2/5)")
   added_time?: number;  // Timestamp when added to queue
+  content_type?: string;  // "ebook", "audiobook", or related book subtype
   source?: string;  // Release source handler (e.g., "direct_download", "prowlarr")
   source_display_name?: string;  // Human-readable source name (e.g., "Direct Download")
   // Metadata provider fields (used in universal search mode)
@@ -42,6 +43,7 @@ export interface Book {
   genres?: string[];
   source_url?: string;         // Link to book on provider's site
   display_fields?: DisplayField[];  // Provider-specific display data
+  cover_aspect?: 'portrait' | 'square';  // Cover art aspect ratio hint
   // Series info (if book is part of a series)
   series_id?: string;          // Provider-specific series ID
   series_name?: string;        // Name of the series
@@ -53,6 +55,7 @@ export interface Book {
   authors?: string[];
   titles_by_language?: Record<string, string>;
   username?: string;
+  retry_available?: boolean;
 }
 
 // Status response types
@@ -114,6 +117,7 @@ export interface Toast {
 export interface SortOption {
   value: string;
   label: string;
+  group?: string;
 }
 
 // Search field types (mirror backend search field types)
@@ -218,6 +222,7 @@ export interface CreateRequestPayload {
   book_data: Record<string, unknown>;
   release_data?: Record<string, unknown> | null;
   note?: string;
+  on_behalf_of_user_id?: number;
   context: RequestContextPayload;
 }
 
@@ -243,6 +248,18 @@ export interface RequestRecord {
   username?: string;
 }
 
+export interface QueuedDownloadResult {
+  kind: 'download';
+  status: 'queued';
+  priority: number;
+  title: string;
+  source: string;
+  source_id: string | null;
+  content_type?: ContentType;
+}
+
+export type RequestSubmissionResult = RequestRecord | QueuedDownloadResult;
+
 export type BooksOutputMode = 'folder' | 'booklore' | 'email';
 
 export interface AppConfig {
@@ -259,9 +276,13 @@ export interface AppConfig {
   metadata_sort_options: SortOption[];
   metadata_search_fields: MetadataSearchField[];
   default_release_source?: string;  // Default tab in ReleaseModal (e.g., 'direct_download')
+  default_release_source_audiobook?: string;  // Default tab in ReleaseModal for audiobooks
+  show_release_source_links: boolean;
+  show_combined_selector: boolean;
   books_output_mode: BooksOutputMode;
   auto_open_downloads_sidebar: boolean;  // Auto-open sidebar when download is queued
-  download_to_browser: boolean;  // Auto-download completed files to browser
+  hardcover_auto_remove_on_download: boolean;  // Auto-remove from active Hardcover list on download
+  download_to_browser_content_types: string[];  // Auto-download completed files to browser for selected content types
   settings_enabled: boolean;  // Whether config directory is mounted and writable
   onboarding_complete: boolean;  // Whether the user has completed initial setup
   default_sort: string;  // Default sort for direct mode
@@ -280,6 +301,7 @@ export interface MetadataProvidersResponse {
   providers: MetadataProviderSummary[];
   configured_provider: string | null;
   configured_provider_audiobook: string | null;
+  configured_provider_combined: string | null;
 }
 
 export interface MetadataCapability {

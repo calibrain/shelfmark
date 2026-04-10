@@ -7,7 +7,7 @@ import { bookSupportsTargets } from '../../utils/bookTargetLoader';
 import { DisplayFieldBadges } from '../shared';
 
 const SkeletonLoader = () => (
-  <div className="w-full h-full bg-gradient-to-r from-gray-300 via-gray-200 to-gray-300 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
+  <div className="w-full h-full bg-linear-to-r from-gray-300 via-gray-200 to-gray-300 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
 );
 
 interface CardViewProps {
@@ -62,7 +62,7 @@ export const CardView = ({ book, onDetails, onDownload, onGetReleases, buttonSta
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="relative w-full sm:w-full max-sm:w-[120px] max-sm:h-full max-sm:flex-shrink-0" style={{ aspectRatio: '2/3' }}>
+      <div className="relative w-full sm:w-full max-sm:w-[120px] max-sm:h-full max-sm:shrink-0" style={{ aspectRatio: book.cover_aspect === 'square' ? '1/1' : '2/3' }}>
         <div className="absolute inset-0 overflow-hidden sm:rounded-t-[.75rem] max-sm:rounded-l-[.75rem]">
           {/* Series position badge */}
           {showSeriesPosition && book.series_position != null && (
@@ -122,12 +122,12 @@ export const CardView = ({ book, onDetails, onDownload, onGetReleases, buttonSta
               bookId={book.provider_id!}
               onShowToast={onShowToast}
               variant="icon"
-              className="w-8 h-8 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm shadow-lg hover:scale-110"
+              className="w-8 h-8 bg-white/90 dark:bg-neutral-800/90 backdrop-blur-xs shadow-lg hover:scale-110"
               onOpenChange={setDropdownOpen}
             />
           )}
           <button
-            className="w-8 h-8 rounded-full bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm flex items-center justify-center transition-all duration-300 shadow-lg hover:scale-110"
+            className="w-8 h-8 rounded-full bg-white/90 dark:bg-neutral-800/90 backdrop-blur-xs flex items-center justify-center transition-all duration-300 shadow-lg hover:scale-110"
             onClick={(e) => {
               e.stopPropagation();
               handleDetails(book.id);
@@ -156,7 +156,7 @@ export const CardView = ({ book, onDetails, onDownload, onGetReleases, buttonSta
             <div className="text-xs max-sm:text-[10px] opacity-70 flex flex-wrap gap-2 max-sm:gap-1">
               <span>{book.year || '-'}</span>
               <span>•</span>
-              <DisplayFieldBadges fields={book.display_fields} />
+              <DisplayFieldBadges fields={book.display_fields.filter(f => f.icon !== 'editions')} />
             </div>
           ) : (
             <div className="text-xs max-sm:text-[10px] opacity-70 flex flex-wrap gap-2 max-sm:gap-1">
@@ -177,7 +177,7 @@ export const CardView = ({ book, onDetails, onDownload, onGetReleases, buttonSta
 
         <div className="flex gap-1.5 sm:hidden">
           <button
-            className="px-2 py-1.5 rounded border text-xs flex-1 flex items-center justify-center gap-1"
+            className="px-2 py-1.5 rounded-sm border text-xs flex-1 flex items-center justify-center gap-1"
             onClick={() => handleDetails(book.id)}
             style={{ borderColor: 'var(--border-muted)' }}
             disabled={isLoadingDetails}

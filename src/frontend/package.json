@@ -8,24 +8,25 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test:unit": "npm run test:unit:build && node --experimental-specifier-resolution=node --test ../../.local/frontend-test-dist/tests/**/*.node.test.js",
+    "test:unit": "npm run test:unit:build && node --experimental-specifier-resolution=node --test ../../.local/frontend-test-dist/tests/*.node.test.js",
     "test:unit:build": "rm -rf ../../.local/frontend-test-dist && tsc -p tsconfig.tests.json"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.30.3",
+    "@tailwindcss/vite": "^4.2.2",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-router-dom": "^7.14.0",
     "socket.io-client": "^4.7.5"
   },
   "devDependencies": {
-    "@types/node": "^24.10.0",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^5.1.4",
-    "autoprefixer": "^10.4.16",
-    "postcss": "^8.4.32",
-    "tailwindcss": "^3.4.0",
-    "typescript": "^5.5.3",
-    "vite": "^7.3.1"
+    "@tailwindcss/postcss": "^4.2.2",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "postcss": "^8.5.9",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.8"
   }
 }

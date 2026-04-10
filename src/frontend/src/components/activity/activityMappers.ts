@@ -94,6 +94,7 @@ export const downloadToActivityItem = (book: Book, statusKey: DownloadStatusKey)
   ]);
   const progress = getDownloadProgress(visualStatus, book.progress);
   const statusDetail = toOptionalText(book.status_message);
+  const downloadRetryAvailable = book.retry_available === true;
 
   return {
     id: book.id,
@@ -110,6 +111,7 @@ export const downloadToActivityItem = (book: Book, statusKey: DownloadStatusKey)
     timestamp: toEpochMillis(book.added_time),
     username: toOptionalText(book.username),
     downloadBookId: book.id,
+    downloadRetryAvailable,
     downloadPath: toOptionalText(book.download_path),
     sizeRaw: toOptionalText(book.size),
     requestId,

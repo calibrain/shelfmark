@@ -18,14 +18,16 @@ interface ListViewProps {
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
-const ListViewThumbnail = ({ preview, title }: { preview?: string; title?: string }) => {
+const ListViewThumbnail = ({ preview, title, coverAspect }: { preview?: string; title?: string; coverAspect?: string }) => {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const isSquare = coverAspect === 'square';
+  const sizeClass = isSquare ? 'w-10 h-10 sm:w-14 sm:h-14' : 'w-7 h-10 sm:w-10 sm:h-14';
 
   if (!preview || imageError) {
     return (
       <div
-        className="w-7 h-10 sm:w-10 sm:h-14 rounded bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[8px] sm:text-[9px] font-medium text-gray-500 dark:text-gray-300"
+        className={`${sizeClass} rounded-sm bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[8px] sm:text-[9px] font-medium text-gray-500 dark:text-gray-300`}
         aria-label="No cover available"
       >
         No Cover
@@ -34,14 +36,14 @@ const ListViewThumbnail = ({ preview, title }: { preview?: string; title?: strin
   }
 
   return (
-    <div className="relative w-7 h-10 sm:w-10 sm:h-14 rounded overflow-hidden bg-gray-100 dark:bg-gray-800 border border-white/40 dark:border-gray-700/70">
+    <div className={`relative ${sizeClass} rounded-sm overflow-hidden bg-gray-100 dark:bg-gray-800 border border-white/40 dark:border-gray-700/70`}>
       {!imageLoaded && (
-        <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
+        <div className="absolute inset-0 bg-linear-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
       )}
       <img
         src={preview}
         alt={title || 'Book cover'}
-        className="w-full h-full object-cover object-top"
+        className={`w-full h-full object-cover ${isSquare ? 'object-center' : 'object-top'}`}
         loading="lazy"
         onLoad={() => setImageLoaded(true)}
         onError={() => setImageError(true)}
@@ -116,12 +118,12 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
               {/* Universal mode uses separate columns for each display field, direct mode uses language/format/size */}
               <div className={`grid items-center gap-2 sm:gap-y-1 sm:gap-x-0.5 w-full ${
                 searchMode === 'universal'
-                  ? 'grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:grid-cols-[auto_minmax(0,2fr)_minmax(50px,0.25fr)_minmax(80px,0.4fr)_minmax(80px,0.4fr)_auto]'
+                  ? 'grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:grid-cols-[auto_minmax(0,2fr)_minmax(50px,0.25fr)_minmax(90px,0.5fr)_minmax(90px,0.5fr)_minmax(120px,0.7fr)_auto]'
                   : 'grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:grid-cols-[auto_minmax(0,2fr)_minmax(50px,0.25fr)_minmax(60px,0.3fr)_minmax(60px,0.3fr)_minmax(60px,0.3fr)_auto]'
               }`}>
                 {/* Thumbnail */}
                 <div className="flex items-center pl-1 sm:pl-3">
-                  <ListViewThumbnail preview={book.preview} title={book.title} />
+                  <ListViewThumbnail preview={book.preview} title={book.title} coverAspect={book.cover_aspect} />
                 </div>
 
                 {/* Title and Author */}
@@ -129,7 +131,7 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
                   <h3 className="font-semibold text-xs min-[400px]:text-sm sm:text-base leading-tight line-clamp-1 sm:line-clamp-2 flex items-center gap-2" title={book.title || 'Untitled'}>
                     {showSeriesPosition && book.series_position != null && (
                       <span
-                        className="inline-flex mr-1.5 px-1.5 py-0.5 text-[10px] sm:text-xs font-bold text-white bg-emerald-600 rounded border border-emerald-700 flex-shrink-0"
+                        className="inline-flex mr-1.5 px-1.5 py-0.5 text-[10px] sm:text-xs font-bold text-white bg-emerald-600 rounded-sm border border-emerald-700 shrink-0"
                         style={{
                           boxShadow: '0 1px 4px rgba(0, 0, 0, 0.3)',
                           textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
@@ -149,7 +151,7 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
                 {/* Mobile universal mode info */}
                 <div className="flex sm:hidden flex-col items-end text-[10px] opacity-70 leading-tight">
                   {searchMode === 'universal' && book.display_fields && book.display_fields.length > 0 ? (
-                    book.display_fields.slice(0, 2).map((field, idx) => (
+                    book.display_fields.filter(f => f.icon !== 'editions').slice(0, 2).map((field, idx) => (
                       <span key={idx} className="flex items-center gap-0.5" title={field.label}>
                         <DisplayFieldIcon icon={field.icon} />
                         <span>{field.value}</span>
@@ -171,18 +173,26 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
                 {/* Universal mode: Display fields as separate columns - Desktop only */}
                 {searchMode === 'universal' && (
                   <>
-                    {/* First display field column */}
-                    <div className="hidden sm:flex justify-center">
-                      {book.display_fields && book.display_fields[0] ? (
-                        <DisplayFieldBadge field={book.display_fields[0]} />
+                    {/* Rating column */}
+                    <div className="hidden sm:flex justify-start">
+                      {book.display_fields?.find(f => f.icon === 'star') ? (
+                        <DisplayFieldBadge field={book.display_fields.find(f => f.icon === 'star')!} />
                       ) : (
                         <span className="text-xs text-gray-500">-</span>
                       )}
                     </div>
-                    {/* Second display field column */}
-                    <div className="hidden sm:flex justify-center">
-                      {book.display_fields && book.display_fields[1] ? (
-                        <DisplayFieldBadge field={book.display_fields[1]} />
+                    {/* Length column */}
+                    <div className="hidden sm:flex justify-start">
+                      {book.display_fields?.find(f => f.icon === 'clock' || f.icon === 'book') ? (
+                        <DisplayFieldBadge field={book.display_fields.find(f => f.icon === 'clock' || f.icon === 'book')!} />
+                      ) : (
+                        <span className="text-xs text-gray-500">-</span>
+                      )}
+                    </div>
+                    {/* Narrator column */}
+                    <div className="hidden sm:flex justify-start">
+                      {book.display_fields?.find(f => f.icon === 'microphone') ? (
+                        <DisplayFieldBadge field={book.display_fields.find(f => f.icon === 'microphone')!} />
                       ) : (
                         <span className="text-xs text-gray-500">-</span>
                       )}

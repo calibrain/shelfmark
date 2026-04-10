@@ -11,9 +11,9 @@ interface SearchFieldRendererProps {
 }
 
 const baseInputClass =
-  'w-full px-3 py-2 rounded-md border border-[var(--border-muted)] ' +
-  'bg-[var(--bg-soft)] text-sm ' +
-  'focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 ' +
+  'w-full px-3 py-2 rounded-md border border-(--border-muted) ' +
+  'bg-(--bg-soft) text-sm ' +
+  'focus:outline-hidden focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 ' +
   'transition-colors';
 
 export const SearchFieldRenderer = ({ field, value, onChange, onSubmit }: SearchFieldRendererProps) => {
@@ -93,7 +93,7 @@ export const SearchFieldRenderer = ({ field, value, onChange, onSubmit }: Search
             type="checkbox"
             checked={!!value}
             onChange={(e) => onChange(e.target.checked)}
-            className="w-4 h-4 rounded border-[var(--border-muted)] text-emerald-500 focus:ring-emerald-500/50"
+            className="w-4 h-4 rounded-sm border-(--border-muted) text-emerald-500 focus:ring-emerald-500/50"
           />
           <span className="text-sm">{field.label}</span>
         </label>

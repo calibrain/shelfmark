@@ -169,7 +169,7 @@ export const BookGetButton = ({
   if (isIconVariant) {
     return (
       <button
-        className={`flex items-center justify-center rounded-full transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-emerald-500 ${sizeClass} ${getButtonClasses()} ${className}`.trim()}
+        className={`flex items-center justify-center rounded-full transition-all duration-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-emerald-500 ${sizeClass} ${getButtonClasses()} ${className}`.trim()}
         onClick={handleClick}
         disabled={isDisabled}
         style={style}
@@ -182,7 +182,7 @@ export const BookGetButton = ({
 
   return (
     <button
-      className={`inline-flex items-center justify-center gap-1.5 rounded text-white transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-emerald-500 ${sizeClass} ${widthClasses} ${getButtonClasses()} ${className}`.trim()}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-sm text-white transition-all duration-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-emerald-500 ${sizeClass} ${widthClasses} ${getButtonClasses()} ${className}`.trim()}
       onClick={handleClick}
       disabled={isDisabled}
       style={style}

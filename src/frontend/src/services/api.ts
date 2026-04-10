@@ -9,6 +9,7 @@ import {
   RequestPolicyResponse,
   CreateRequestPayload,
   RequestRecord,
+  RequestSubmissionResult,
   MetadataProvidersResponse,
   MetadataSearchConfig,
 } from '../types';
@@ -49,6 +50,7 @@ const API = {
   settings: `${API_BASE}/settings`,
   requestPolicy: `${API_BASE}/request-policy`,
   requests: `${API_BASE}/requests`,
+  requestsBatch: `${API_BASE}/requests/batch`,
   adminRequests: `${API_BASE}/admin/requests`,
   adminRequestCounts: `${API_BASE}/admin/requests/count`,
   activitySnapshot: `${API_BASE}/activity/snapshot`,
@@ -257,6 +259,7 @@ export interface BookTargetOption {
 export interface BookTargetStateResult {
   changed: boolean;
   selected: boolean;
+  deselectedTarget?: string;
 }
 
 // Search metadata providers and normalize to Book format
@@ -423,7 +426,7 @@ export const setBookTargetState = async (
   target: string,
   selected: boolean,
 ): Promise<BookTargetStateResult> => {
-  const response = await fetchJSON<{ changed?: unknown; selected?: unknown }>(
+  const response = await fetchJSON<{ changed?: unknown; selected?: unknown; deselected_target?: unknown }>(
     `${API_BASE}/metadata/book/${encodeURIComponent(provider)}/${encodeURIComponent(bookId)}/targets`,
     {
       method: 'PUT',
@@ -434,6 +437,7 @@ export const setBookTargetState = async (
   return {
     changed: response.changed === true,
     selected: response.selected === true,
+    deselectedTarget: typeof response.deselected_target === 'string' ? response.deselected_target : undefined,
   };
 };
 
@@ -582,10 +586,17 @@ export const fetchRequestPolicy = async (): Promise<RequestPolicyResponse> => {
   return fetchJSON<RequestPolicyResponse>(API.requestPolicy);
 };
 
-export const createRequest = async (payload: CreateRequestPayload): Promise<RequestRecord> => {
-  return fetchJSON<RequestRecord>(API.requests, {
+export const createRequest = async (payload: CreateRequestPayload): Promise<RequestSubmissionResult> => {
+  return fetchJSON<RequestSubmissionResult>(API.requests, {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+};
+
+export const createRequests = async (payloads: CreateRequestPayload[]): Promise<RequestSubmissionResult[]> => {
+  return fetchJSON<RequestSubmissionResult[]>(API.requestsBatch, {
+    method: 'POST',
+    body: JSON.stringify({ requests: payloads }),
   });
 };
 

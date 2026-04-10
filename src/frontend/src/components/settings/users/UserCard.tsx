@@ -9,7 +9,7 @@ import { FieldWrapper } from '../shared';
 import { CreateUserFormState } from './types';
 
 const UserCardShell = ({ title, children }: { title: string; children: ReactNode }) => (
-  <div className="space-y-5 p-4 rounded-lg border border-[var(--border-muted)] bg-[var(--bg)]">
+  <div className="space-y-5 p-4 rounded-lg border border-(--border-muted) bg-(--bg)">
     <h3 className="text-sm font-medium">{title}</h3>
     {children}
   </div>
@@ -147,10 +147,10 @@ export const UserRoleControl = ({
           onUserChange({ ...user, role: nextRole });
         }}
         widthClassName="w-28"
-        buttonClassName={`!py-1 !px-2.5 !text-xs !font-medium ${
+        buttonClassName={`py-1! px-2.5! text-xs! font-medium! ${
           user.role === 'admin'
-            ? '!bg-sky-500/15 !text-sky-600 dark:!text-sky-400 !border-sky-500/30'
-            : '!bg-zinc-500/10 !opacity-70'
+            ? 'bg-sky-500/15! text-sky-600! dark:text-sky-400! border-sky-500/30!'
+            : 'bg-zinc-500/10! opacity-70!'
         }`}
       />
     );
@@ -251,7 +251,7 @@ export const UserEditActions = ({
           type="button"
           onClick={onCancel}
           disabled={cancelDisabled}
-          className="px-4 py-2 rounded-lg text-sm font-medium bg-[var(--bg-soft)] border border-[var(--border-muted)] hover-action transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-lg text-sm font-medium bg-(--bg-soft) border border-(--border-muted) shadow-sm hover-action transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Cancel
         </button>
@@ -278,7 +278,7 @@ export const UserEditActions = ({
   }
 
   return (
-    <div className="flex flex-col gap-2 pt-3 border-t border-[var(--border-muted)] sm:flex-row sm:items-center">
+    <div className="flex flex-col gap-2 pt-3 border-t border-(--border-muted) sm:flex-row sm:items-center">
       <div className="flex flex-wrap gap-2">
         <button
           onClick={onSave}
@@ -290,8 +290,7 @@ export const UserEditActions = ({
         <button
           onClick={onCancel}
           disabled={cancelDisabled}
-          className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
-                     bg-[var(--bg)] hover:bg-[var(--hover-surface)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-lg text-sm font-medium border border-(--border-muted)                     bg-(--bg) hover:bg-(--hover-surface) transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
           Cancel
         </button>
@@ -310,8 +309,8 @@ export const UserEditActions = ({
               <button
                 onClick={onCancelDelete}
                 disabled={deleting}
-                className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
-                           bg-[var(--bg)] hover:bg-[var(--hover-surface)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-(--border-muted)
+                           bg-(--bg) hover:bg-(--hover-surface) transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
@@ -401,8 +400,7 @@ export const UserCreateCard = ({
         </button>
         <button
           onClick={onCancel}
-          className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-muted)]
-                     bg-[var(--bg)] hover:bg-[var(--hover-surface)] transition-colors"
+          className="px-4 py-2 rounded-lg text-sm font-medium border border-(--border-muted)                     bg-(--bg) hover:bg-(--hover-surface) transition-colors"
         >
           Cancel
         </button>
@@ -574,7 +572,7 @@ export const UserAccountCardContent = ({
       {preferencesContent && preferencesPlacement === 'before' && (
         <>
           {preferencesContent}
-          <div className="border-t border-[var(--border-muted)]" />
+          <div className="border-t border-(--border-muted)" />
         </>
       )}
 
@@ -598,7 +596,7 @@ export const UserAccountCardContent = ({
 
       {preferencesContent && preferencesPlacement === 'after' && (
         <>
-          <div className="border-t border-[var(--border-muted)]" />
+          <div className="border-t border-(--border-muted)" />
           {preferencesContent}
         </>
       )}

@@ -130,12 +130,13 @@ def get_booklore_library_options() -> list[dict[str, Any]]:
 
     try:
         library_options, _ = _get_booklore_cached_options(base_url, username, password)
-        return library_options
-    except Exception as exc:
-        logger.error(f"Failed to fetch Booklore libraries: {exc}")
+    except Exception:
+        logger.exception("Failed to fetch Booklore libraries")
         if _BOOKLORE_OPTIONS_CACHE.get("key") == cache_key:
             return _BOOKLORE_OPTIONS_CACHE.get("library_options", [])
         return []
+    else:
+        return library_options
 
 
 def get_booklore_path_options() -> list[dict[str, Any]]:
@@ -154,19 +155,22 @@ def get_booklore_path_options() -> list[dict[str, Any]]:
 
     try:
         _, path_options = _get_booklore_cached_options(base_url, username, password)
-        return path_options
-    except Exception as exc:
-        logger.error(f"Failed to fetch Booklore paths: {exc}")
+    except Exception:
+        logger.exception("Failed to fetch Booklore paths")
         if _BOOKLORE_OPTIONS_CACHE.get("key") == cache_key:
             return _BOOKLORE_OPTIONS_CACHE.get("path_options", [])
         return []
+    else:
+        return path_options
 
 
-def test_booklore_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
+def test_booklore_connection(
+    current_values: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Test the Booklore connection using current form values."""
     current_values = current_values or {}
 
-    def _get_value(key: str, default: Any = None) -> Any:
+    def _get_value(key: str, default: object = None) -> object:
         value = current_values.get(key)
         if value not in (None, ""):
             return value
@@ -179,19 +183,19 @@ def test_booklore_connection(current_values: dict[str, Any] | None = None) -> di
     password = _get_value("BOOKLORE_PASSWORD", "") or ""
 
     if not base_url:
-        return {"success": False, "message": "Booklore URL is required"}
+        return {"success": False, "message": "Grimmory URL is required"}
     if not username:
-        return {"success": False, "message": "Booklore username is required"}
+        return {"success": False, "message": "Grimmory username is required"}
     if not password:
-        return {"success": False, "message": "Booklore password is required"}
+        return {"success": False, "message": "Grimmory password is required"}
 
     try:
         library_options, _ = _get_booklore_select_options(base_url, username, password)
-
-        message = "Connected to Booklore"
-        if library_options:
-            message = f"Connected to Booklore ({len(library_options)} libraries)"
-
-        return {"success": True, "message": message}
     except BookloreError as exc:
         return {"success": False, "message": str(exc)}
+    else:
+        message = "Connected to Grimmory"
+        if library_options:
+            message = f"Connected to Grimmory ({len(library_options)} libraries)"
+
+        return {"success": True, "message": message}

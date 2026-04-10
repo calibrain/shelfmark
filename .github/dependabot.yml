@@ -1,0 +1,49 @@
+version: 2
+updates:
+  # Python dependencies
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      python-deps:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Frontend npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/src/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      npm-deps:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Dockerfile base images
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      docker-images:
+        patterns: ["*"]
+    ignore:
+      # Node.js: block major-version bumps so dependabot never proposes
+      # moving from one LTS line to a non-LTS "Current" release (e.g. 24 -> 25).
+      # Node LTS is even-numbered only; major bumps should be deliberate.
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      gh-actions:
+        patterns: ["*"]

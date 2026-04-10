@@ -319,7 +319,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
           onClick={handleClose}
         />
         <div
-          className="relative bg-[var(--bg)] rounded-xl p-8 shadow-2xl"
+          className="relative bg-(--bg) rounded-xl p-8 shadow-2xl"
           style={{ background: 'var(--bg)' }}
         >
           <div className="flex items-center gap-3">
@@ -356,7 +356,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
           onClick={handleClose}
         />
         <div
-          className="relative bg-[var(--bg)] rounded-xl p-8 shadow-2xl max-w-md"
+          className="relative bg-(--bg) rounded-xl p-8 shadow-2xl max-w-md"
           style={{ background: 'var(--bg)' }}
         >
           <div className="text-center space-y-4">
@@ -380,8 +380,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
             <button
               onClick={handleClose}
               className="px-4 py-2 rounded-lg text-sm font-medium
-                         bg-[var(--bg-soft)] border border-[var(--border-muted)]
-                         hover:bg-[var(--hover-surface)] transition-colors"
+                         bg-(--bg-soft) border border-(--border-muted)                         hover:bg-(--hover-surface) transition-colors"
             >
               Close
             </button>
@@ -441,7 +440,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
       {/* Modal */}
       <div
         className={`relative w-full max-w-4xl h-[85vh] max-h-[750px] rounded-xl
-                    border border-[var(--border-muted)] shadow-2xl
+                    border border-(--border-muted) shadow-2xl
                     flex flex-col overflow-hidden
                     ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         style={{ background: 'var(--bg)' }}

@@ -23,11 +23,11 @@ def _read_debug_from_config() -> bool:
 
     if config_file.exists():
         try:
-            with open(config_file, "r") as f:
+            with config_file.open() as f:
                 config = json.load(f)
                 if "DEBUG" in config:
                     return bool(config["DEBUG"])
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             pass
 
     return False
@@ -36,10 +36,10 @@ def _read_debug_from_config() -> bool:
 def _is_sqlite_file(path: Path) -> bool:
     """Check if a file is a valid SQLite database by reading magic bytes."""
     try:
-        with open(path, "rb") as f:
+        with path.open("rb") as f:
             header = f.read(16)
             return header[:16] == b"SQLite format 3\x00"
-    except (OSError, PermissionError):
+    except OSError, PermissionError:
         return False
 
 
@@ -67,14 +67,16 @@ def _is_config_dir_writable() -> bool:
         test_file = CONFIG_DIR / ".write_test"
         test_file.touch()
         test_file.unlink()
-        return True
-    except (OSError, PermissionError):
+    except OSError, PermissionError:
         return False
+    else:
+        return True
 
 
 def is_covers_cache_enabled() -> bool:
     """Check if cover caching is enabled (requires setting + writable config dir)."""
     from shelfmark.core.config import config
+
     setting_enabled = config.get("COVERS_CACHE_ENABLED", True)
     return setting_enabled and _is_config_dir_writable()
 
@@ -151,7 +153,7 @@ ONBOARDING = string_to_bool(os.getenv("ONBOARDING", "true"))
 # Debug: skip specific download sources for testing fallback chains
 # Comma-separated values: aa-fast, aa-slow-nowait, aa-slow-wait, libgen, zlib, welib
 _DEBUG_SKIP_SOURCES_RAW = os.getenv("DEBUG_SKIP_SOURCES", "").strip().lower()
-DEBUG_SKIP_SOURCES = set(s.strip() for s in _DEBUG_SKIP_SOURCES_RAW.split(",") if s.strip())
+DEBUG_SKIP_SOURCES = {s.strip() for s in _DEBUG_SKIP_SOURCES_RAW.split(",") if s.strip()}
 
 
 # =============================================================================

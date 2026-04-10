@@ -17,6 +17,7 @@ import {
   requestToActivityItem,
 } from '../components/activity';
 import { dedupeHistoryItems } from '../components/activity/activityHistory.js';
+import { getActivityErrorMessage } from './useActivity.helpers.js';
 
 const HISTORY_PAGE_SIZE = 50;
 
@@ -320,7 +321,7 @@ export const useActivity = ({
         console.error('Activity dismiss failed:', error);
         void refreshActivitySnapshot();
         refreshHistoryIfLoaded();
-        showToast(errorMessage, 'error');
+        showToast(getActivityErrorMessage(error, errorMessage), 'error');
       });
   }, [refreshActivitySnapshot, refreshHistoryIfLoaded, showToast]);
 
@@ -340,7 +341,7 @@ export const useActivity = ({
       console.error('Request dismiss failed:', error);
       void refreshActivitySnapshot();
       refreshHistoryIfLoaded();
-      showToast('Failed to clear request', 'error');
+      showToast(getActivityErrorMessage(error, 'Failed to clear request'), 'error');
     });
   }, [refreshActivitySnapshot, refreshHistoryIfLoaded, showToast]);
 
@@ -385,7 +386,7 @@ export const useActivity = ({
       .catch((error) => {
         console.error('Clear history failed:', error);
         void refreshActivityHistory();
-        showToast('Failed to clear history', 'error');
+        showToast(getActivityErrorMessage(error, 'Failed to clear history'), 'error');
       });
   }, [refreshActivityHistory, refreshActivitySnapshot, resetActivityHistory, showToast]);
 

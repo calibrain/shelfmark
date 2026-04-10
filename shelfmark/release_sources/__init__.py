@@ -1,25 +1,28 @@
 """Release source plugin system - base classes and registry."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field, asdict
-from enum import Enum
-from pathlib import Path
-from threading import Event
-from typing import List, Optional, Dict, Type, Callable, Literal, Any, TYPE_CHECKING
+from dataclasses import dataclass, field
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+    from threading import Event
+
+    from shelfmark.core.models import DownloadTask
     from shelfmark.core.search_plan import ReleaseSearchPlan
 
-from shelfmark.core.models import DownloadTask
 from shelfmark.metadata_providers import BookMetadata
 
 
-class ReleaseProtocol(str, Enum):
+class ReleaseProtocol(StrEnum):
     """Protocol for downloading a release."""
-    HTTP = "http"       # Direct HTTP download
-    TORRENT = "torrent" # BitTorrent
-    NZB = "nzb"         # Usenet NZB
-    DCC = "dcc"         # IRC DCC
+
+    HTTP = "http"  # Direct HTTP download
+    TORRENT = "torrent"  # BitTorrent
+    NZB = "nzb"  # Usenet NZB
+    DCC = "dcc"  # IRC DCC
 
 
 class SourceUnavailableError(Exception):
@@ -29,76 +32,82 @@ class SourceUnavailableError(Exception):
 @dataclass
 class BrowseRecord:
     """Source-native browse/search record used before normalization to Release."""
+
     id: str
     title: str
     source: str
-    preview: Optional[str] = None
-    author: Optional[str] = None
-    publisher: Optional[str] = None
-    year: Optional[str] = None
-    language: Optional[str] = None
-    content: Optional[str] = None
-    format: Optional[str] = None
-    size: Optional[str] = None
-    info: Optional[Dict[str, List[str]]] = None
-    description: Optional[str] = None
-    download_urls: List[str] = field(default_factory=list)
-    download_path: Optional[str] = None
+    preview: str | None = None
+    author: str | None = None
+    publisher: str | None = None
+    year: str | None = None
+    language: str | None = None
+    content: str | None = None
+    format: str | None = None
+    size: str | None = None
+    info: dict[str, list[str]] | None = None
+    description: str | None = None
+    download_urls: list[str] = field(default_factory=list)
+    download_path: str | None = None
     priority: int = 0
-    progress: Optional[float] = None
-    status_message: Optional[str] = None
-    added_time: Optional[float] = None
-    source_url: Optional[str] = None
+    progress: float | None = None
+    status_message: str | None = None
+    added_time: float | None = None
+    source_url: str | None = None
 
 
 @dataclass
 class Release:
     """A downloadable release - all sources return this same structure."""
-    source: str                      # "direct", "prowlarr", "irc", etc.
-    source_id: str                   # ID within that source
+
+    source: str  # "direct", "prowlarr", "irc", etc.
+    source_id: str  # ID within that source
     title: str
-    format: Optional[str] = None
-    language: Optional[str] = None   # ISO 639-1 code (e.g., "en", "de", "fr")
-    size: Optional[str] = None
-    size_bytes: Optional[int] = None
-    download_url: Optional[str] = None
-    info_url: Optional[str] = None   # Link to release info page (e.g., tracker) - makes title clickable
-    protocol: Optional[ReleaseProtocol] = None
-    indexer: Optional[str] = None    # Source name for display
-    seeders: Optional[int] = None    # For torrents
-    peers: Optional[str] = None      # For torrents: "seeders/leechers" display string
-    content_type: Optional[str] = None  # "ebook" or "audiobook" - preserved from search
-    extra: Dict = field(default_factory=dict)  # Source-specific metadata
+    format: str | None = None
+    language: str | None = None  # ISO 639-1 code (e.g., "en", "de", "fr")
+    size: str | None = None
+    size_bytes: int | None = None
+    download_url: str | None = None
+    info_url: str | None = None  # Link to release info page (e.g., tracker) - makes title clickable
+    protocol: ReleaseProtocol | None = None
+    indexer: str | None = None  # Source name for display
+    seeders: int | None = None  # For torrents
+    peers: str | None = None  # For torrents: "seeders/leechers" display string
+    content_type: str | None = None  # "ebook" or "audiobook" - preserved from search
+    extra: dict = field(default_factory=dict)  # Source-specific metadata
 
 
 @dataclass
 class DownloadProgress:
     """DEPRECATED: Use progress_callback and status_callback instead."""
-    status: str                      # "queued", "resolving", "downloading", "complete", "failed"
-    progress: float                  # 0-100
-    status_message: Optional[str] = None
-    download_speed: Optional[int] = None
-    eta: Optional[int] = None
-    save_path: Optional[str] = None
+
+    status: str  # "queued", "resolving", "downloading", "complete", "failed"
+    progress: float  # 0-100
+    status_message: str | None = None
+    download_speed: int | None = None
+    eta: int | None = None
+    save_path: str | None = None
 
 
 # --- Column Schema for Plugin-Driven UI ---
 
-class ColumnRenderType(str, Enum):
+
+class ColumnRenderType(StrEnum):
     """How the frontend should render the column value."""
-    TEXT = "text"           # Plain text
-    BADGE = "badge"         # Colored badge (format, language)
-    TAGS = "tags"           # List of colored badges
-    SIZE = "size"           # File size formatting
-    NUMBER = "number"       # Numeric value
-    PEERS = "peers"         # Peers display: "S/L" with color based on seeder count
+
+    TEXT = "text"  # Plain text
+    BADGE = "badge"  # Colored badge (format, language)
+    TAGS = "tags"  # List of colored badges
+    SIZE = "size"  # File size formatting
+    NUMBER = "number"  # Numeric value
+    PEERS = "peers"  # Peers display: "S/L" with color based on seeder count
     INDEXER_PROTOCOL = "indexer_protocol"  # Text + colored dot for torrent/usenet
-    FLAG_ICON = "flag_icon"                # Icon with tooltip (VIP, freeleech, etc.)
+    FLAG_ICON = "flag_icon"  # Icon with tooltip (VIP, freeleech, etc.)
     FORMAT_CONTENT_TYPE = "format_content_type"  # Content type icon + format badge
 
 
-class ColumnAlign(str, Enum):
+class ColumnAlign(StrEnum):
     """Column alignment options."""
+
     LEFT = "left"
     CENTER = "center"
     RIGHT = "right"
@@ -107,74 +116,89 @@ class ColumnAlign(str, Enum):
 @dataclass
 class ColumnColorHint:
     """Color hint for badge-type columns."""
-    type: Literal["map", "static"]   # "map" uses frontend colorMaps, "static" is fixed class
-    value: str                        # Map name ("format", "language") or Tailwind class
+
+    type: Literal["map", "static"]  # "map" uses frontend colorMaps, "static" is fixed class
+    value: str  # Map name ("format", "language") or Tailwind class
 
 
 @dataclass
 class ColumnSchema:
     """Definition for a single column in the release list."""
-    key: str                                      # Data path (e.g., "format", "extra.language")
-    label: str                                    # Accessibility label
+
+    key: str  # Data path (e.g., "format", "extra.language")
+    label: str  # Accessibility label
     render_type: ColumnRenderType = ColumnRenderType.TEXT
     align: ColumnAlign = ColumnAlign.LEFT
-    width: str = "auto"                           # CSS width (e.g., "80px", "minmax(0,2fr)")
-    hide_mobile: bool = False                     # Hide on small screens
-    color_hint: Optional[ColumnColorHint] = None  # For BADGE render type
-    fallback: str = "-"                           # Value to show when data is missing
-    uppercase: bool = False                       # Force uppercase display
-    sortable: bool = False                        # Show in sort dropdown (opt-in)
-    sort_key: Optional[str] = None                # Field to sort by (defaults to `key` if None)
+    width: str = "auto"  # CSS width (e.g., "80px", "minmax(0,2fr)")
+    hide_mobile: bool = False  # Hide on small screens
+    color_hint: ColumnColorHint | None = None  # For BADGE render type
+    fallback: str = "-"  # Value to show when data is missing
+    uppercase: bool = False  # Force uppercase display
+    sortable: bool = False  # Show in sort dropdown (opt-in)
+    sort_key: str | None = None  # Field to sort by (defaults to `key` if None)
 
 
-class LeadingCellType(str, Enum):
+class LeadingCellType(StrEnum):
     """Type of leading cell to display in release rows."""
+
     THUMBNAIL = "thumbnail"  # Show book cover image
-    BADGE = "badge"          # Show colored badge (e.g., "Torrent", "Usenet")
-    NONE = "none"            # No leading cell
+    BADGE = "badge"  # Show colored badge (e.g., "Torrent", "Usenet")
+    NONE = "none"  # No leading cell
 
 
 @dataclass
 class LeadingCellConfig:
     """Configuration for the leading cell in release rows."""
+
     type: LeadingCellType = LeadingCellType.THUMBNAIL
-    key: Optional[str] = None                     # Field path for data (e.g., "extra.preview" or "extra.download_type")
-    color_hint: Optional[ColumnColorHint] = None  # For badge type - maps values to colors
-    uppercase: bool = False                       # Force uppercase for badge text
+    key: str | None = None  # Field path for data (e.g., "extra.preview" or "extra.download_type")
+    color_hint: ColumnColorHint | None = None  # For badge type - maps values to colors
+    uppercase: bool = False  # Force uppercase for badge text
 
 
 @dataclass
 class SortOption:
     """A sort option that appears in the sort dropdown without being tied to a column."""
-    label: str                                    # Display label in the sort dropdown
-    sort_key: str                                 # Field to sort by on the Release object
+
+    label: str  # Display label in the sort dropdown
+    sort_key: str  # Field to sort by on the Release object
 
 
 @dataclass
 class SourceActionButton:
     """Action button configuration for a release source."""
-    label: str                    # Button text (e.g., "Refresh search")
-    action: str = "expand"        # Action type: "expand" triggers expand_search
+
+    label: str  # Button text (e.g., "Refresh search")
+    action: str = "expand"  # Action type: "expand" triggers expand_search
 
 
 @dataclass
 class ReleaseColumnConfig:
     """Complete column configuration for a release source."""
-    columns: List[ColumnSchema]
+
+    columns: list[ColumnSchema]
     grid_template: str = "minmax(0,2fr) 60px 80px 80px"  # CSS grid-template-columns
-    leading_cell: Optional[LeadingCellConfig] = None     # Defaults to thumbnail mode if None
-    online_servers: Optional[List[str]] = None           # For IRC: list of currently online server nicks
-    available_indexers: Optional[List[str]] = None       # For Prowlarr: list of all enabled indexer names
-    default_indexers: Optional[List[str]] = None         # For Prowlarr: indexers selected in settings (pre-selected in filter)
-    cache_ttl_seconds: Optional[int] = None              # How long to cache results (default: 5 min)
-    supported_filters: Optional[List[str]] = None        # Which filters this source supports: ["format", "language", "indexer"]
-    extra_sort_options: Optional[List[SortOption]] = None # Additional sort options not tied to a column
-    action_button: Optional[SourceActionButton] = None   # Custom action button (replaces default expand search)
+    leading_cell: LeadingCellConfig | None = None  # Defaults to thumbnail mode if None
+    online_servers: list[str] | None = None  # For IRC: list of currently online server nicks
+    available_indexers: list[str] | None = None  # For Prowlarr: list of all enabled indexer names
+    default_indexers: list[str] | None = (
+        None  # For Prowlarr: indexers selected in settings (pre-selected in filter)
+    )
+    cache_ttl_seconds: int | None = None  # How long to cache results (default: 5 min)
+    supported_filters: list[str] | None = (
+        None  # Which filters this source supports: ["format", "language", "indexer"]
+    )
+    extra_sort_options: list[SortOption] | None = (
+        None  # Additional sort options not tied to a column
+    )
+    action_button: SourceActionButton | None = (
+        None  # Custom action button (replaces default expand search)
+    )
 
 
-def serialize_column_config(config: ReleaseColumnConfig) -> Dict[str, Any]:
+def serialize_column_config(config: ReleaseColumnConfig) -> dict[str, Any]:
     """Serialize column configuration for API response."""
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "columns": [
             {
                 "key": col.key,
@@ -185,8 +209,10 @@ def serialize_column_config(config: ReleaseColumnConfig) -> Dict[str, Any]:
                 "hide_mobile": col.hide_mobile,
                 "color_hint": {
                     "type": col.color_hint.type,
-                    "value": col.color_hint.value
-                } if col.color_hint else None,
+                    "value": col.color_hint.value,
+                }
+                if col.color_hint
+                else None,
                 "fallback": col.fallback,
                 "uppercase": col.uppercase,
                 "sortable": col.sortable,
@@ -204,8 +230,10 @@ def serialize_column_config(config: ReleaseColumnConfig) -> Dict[str, Any]:
             "key": config.leading_cell.key,
             "color_hint": {
                 "type": config.leading_cell.color_hint.type,
-                "value": config.leading_cell.color_hint.value
-            } if config.leading_cell.color_hint else None,
+                "value": config.leading_cell.color_hint.value,
+            }
+            if config.leading_cell.color_hint
+            else None,
             "uppercase": config.leading_cell.uppercase,
         }
 
@@ -232,8 +260,7 @@ def serialize_column_config(config: ReleaseColumnConfig) -> Dict[str, Any]:
     # Include extra sort options (sort entries not tied to a column)
     if config.extra_sort_options:
         result["extra_sort_options"] = [
-            {"label": opt.label, "sort_key": opt.sort_key}
-            for opt in config.extra_sort_options
+            {"label": opt.label, "sort_key": opt.sort_key} for opt in config.extra_sort_options
         ]
 
     # Include action button if specified (replaces default expand search)
@@ -286,26 +313,29 @@ def _default_column_config() -> ReleaseColumnConfig:
 
 class ReleaseSource(ABC):
     """Interface for searching a release source."""
-    name: str                        # "direct", "prowlarr"
-    display_name: str                # "Direct Download", "Prowlarr"
-    supported_content_types: List[str] = ["ebook", "audiobook"]  # Content types this source supports
-    can_be_default: bool = True      # Whether this source can be selected as default in settings
+
+    name: str  # "direct", "prowlarr"
+    display_name: str  # "Direct Download", "Prowlarr"
+    supported_content_types: ClassVar[list[str]] = [
+        "ebook",
+        "audiobook",
+    ]  # Content types this source supports
+    can_be_default: bool = True  # Whether this source can be selected as default in settings
 
     @abstractmethod
     def search(
         self,
         book: BookMetadata,
-        plan: "ReleaseSearchPlan",
+        plan: ReleaseSearchPlan,
+        *,
         expand_search: bool = False,
-        content_type: str = "ebook"
-    ) -> List[Release]:
+        content_type: str = "ebook",
+    ) -> list[Release]:
         """Search for releases of a book."""
-        pass
 
     @abstractmethod
     def is_available(self) -> bool:
         """Check if this source is configured and reachable."""
-        pass
 
     def get_column_config(self) -> ReleaseColumnConfig:
         """Get column configuration for release list UI. Override for custom columns."""
@@ -316,15 +346,16 @@ class ReleaseSource(ABC):
         record_id: str,
         *,
         fetch_download_count: bool = True,
-    ) -> Optional[BrowseRecord]:
+    ) -> BrowseRecord | None:
         """Resolve a source-native record for browse flows."""
-        raise NotImplementedError(f"{self.display_name} does not support record lookup")
+        msg = f"{self.display_name} does not support record lookup"
+        raise NotImplementedError(msg)
 
     def search_results_are_releases(self) -> bool:
         """Whether source-native browse results already represent concrete releases."""
         return False
 
-    def get_destination_override(self, task: DownloadTask) -> Optional[Path]:
+    def get_destination_override(self, task: DownloadTask) -> Path | None:
         """Return a source-specific destination override for a queued download."""
         return None
 
@@ -346,12 +377,11 @@ class DownloadHandler(ABC):
         task: DownloadTask,
         cancel_flag: Event,
         progress_callback: Callable[[float], None],
-        status_callback: Callable[[str, Optional[str]], None]
-    ) -> Optional[str]:
+        status_callback: Callable[[str, str | None], None],
+    ) -> str | None:
         """Execute download and return a path to the downloaded payload."""
-        pass
 
-    def post_process_cleanup(self, task: DownloadTask, success: bool) -> None:
+    def post_process_cleanup(self, task: DownloadTask, *, success: bool) -> None:
         """Optional hook called after orchestrator post-processing.
 
         This is primarily used for external download clients, where the handler may need
@@ -362,58 +392,71 @@ class DownloadHandler(ABC):
     @abstractmethod
     def cancel(self, task_id: str) -> bool:
         """Cancel an in-progress download."""
-        pass
 
 
 # --- Registry ---
 
-_SOURCES: Dict[str, Type[ReleaseSource]] = {}
-_HANDLERS: Dict[str, Type[DownloadHandler]] = {}
+_SOURCES: dict[str, type[ReleaseSource]] = {}
+_HANDLERS: dict[str, type[DownloadHandler]] = {}
 
 
-def register_source(name: str):
+def register_source(
+    name: str,
+) -> Callable[[type[ReleaseSource]], type[ReleaseSource]]:
     """Decorator to register a release source."""
-    def decorator(cls):
+
+    def decorator(cls: type[ReleaseSource]) -> type[ReleaseSource]:
         _SOURCES[name] = cls
         return cls
+
     return decorator
 
 
-def register_handler(name: str):
+def register_handler(
+    name: str,
+) -> Callable[[type[DownloadHandler]], type[DownloadHandler]]:
     """Decorator to register a download handler."""
-    def decorator(cls):
+
+    def decorator(cls: type[DownloadHandler]) -> type[DownloadHandler]:
         _HANDLERS[name] = cls
         return cls
+
     return decorator
 
 
 def get_source(name: str) -> ReleaseSource:
     """Get a release source instance by name."""
     if name not in _SOURCES:
-        raise ValueError(f"Unknown release source: {name}")
+        msg = f"Unknown release source: {name}"
+        raise ValueError(msg)
     return _SOURCES[name]()
 
 
 def get_handler(name: str) -> DownloadHandler:
     """Get a download handler instance by name."""
     if name not in _HANDLERS:
-        raise ValueError(f"Unknown download handler: {name}")
+        msg = f"Unknown download handler: {name}"
+        raise ValueError(msg)
     return _HANDLERS[name]()
 
 
-def list_available_sources() -> List[dict]:
+def list_available_sources() -> list[dict]:
     """List all registered sources with their availability status."""
     result = []
     for name, src_class in _SOURCES.items():
         instance = src_class()
-        result.append({
-            "name": name,
-            "display_name": instance.display_name,
-            "enabled": instance.is_available(),
-            "supported_content_types": getattr(instance, 'supported_content_types', ["ebook", "audiobook"]),
-            "browse_results_are_releases": instance.search_results_are_releases(),
-            "can_be_default": getattr(instance, 'can_be_default', True),
-        })
+        result.append(
+            {
+                "name": name,
+                "display_name": instance.display_name,
+                "enabled": instance.is_available(),
+                "supported_content_types": getattr(
+                    instance, "supported_content_types", ["ebook", "audiobook"]
+                ),
+                "browse_results_are_releases": instance.search_results_are_releases(),
+                "can_be_default": getattr(instance, "can_be_default", True),
+            }
+        )
     return result
 
 
@@ -421,14 +464,14 @@ def get_source_display_name(name: str) -> str:
     """Get display name for a source by its identifier."""
     if name in _SOURCES:
         return _SOURCES[name]().display_name
-    return name.replace('_', ' ').title()
+    return name.replace("_", " ").title()
 
 
 def browse_record_to_book_metadata(
     record: BrowseRecord,
     *,
-    title_override: Optional[str] = None,
-    author_override: Optional[str] = None,
+    title_override: str | None = None,
+    author_override: str | None = None,
 ) -> BookMetadata:
     """Convert a source-native browse record into generic book metadata."""
     resolved_title = title_override or str(record.title or "").strip() or "Unknown title"
@@ -469,8 +512,8 @@ def source_results_are_releases(name: str) -> bool:
 
 # Import source implementations to trigger registration
 # These must be imported AFTER the base classes and registry are defined
-from shelfmark.release_sources import direct_download  # noqa: F401, E402
-from shelfmark.release_sources import prowlarr  # noqa: F401, E402
-from shelfmark.release_sources import newznab  # noqa: F401, E402
-from shelfmark.release_sources import irc  # noqa: F401, E402
-from shelfmark.release_sources import audiobookbay  # noqa: F401, E402
+from shelfmark.release_sources import audiobookbay as audiobookbay
+from shelfmark.release_sources import direct_download as direct_download
+from shelfmark.release_sources import irc as irc
+from shelfmark.release_sources import prowlarr as prowlarr
+from shelfmark.release_sources import newznab

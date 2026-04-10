@@ -11,33 +11,36 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Callable, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.download.permissions_debug import log_transfer_permission_context
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from gevent.threadpool import ThreadPool
 
 logger = setup_logger(__name__)
 
 try:
     from gevent import monkey as _gevent_monkey
     from gevent.threadpool import ThreadPool as _GeventThreadPool
-except Exception:
+except ImportError:
     _gevent_monkey = None
     _GeventThreadPool = None
 
 T = TypeVar("T")
-_IO_THREADPOOL: Optional["_GeventThreadPool"] = None
+_IO_THREADPOOL: ThreadPool | None = None
 
 
 def _use_gevent_threadpool() -> bool:
     return bool(
-        _gevent_monkey
-        and _GeventThreadPool
-        and _gevent_monkey.is_module_patched("threading")
+        _gevent_monkey and _GeventThreadPool and _gevent_monkey.is_module_patched("threading")
     )
 
 
-def _get_io_threadpool() -> "_GeventThreadPool":
+def _get_io_threadpool() -> ThreadPool:
     global _IO_THREADPOOL
     if _IO_THREADPOOL is None:
         pool_size = max(2, min(8, os.cpu_count() or 2))
@@ -45,7 +48,9 @@ def _get_io_threadpool() -> "_GeventThreadPool":
     return _IO_THREADPOOL
 
 
-def _call_and_capture(func: Callable[..., T], args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[bool, T | Exception]:
+def _call_and_capture[T](
+    func: Callable[..., T], args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> tuple[bool, T | Exception]:
     try:
         return True, func(*args, **kwargs)
     except Exception as exc:
@@ -60,13 +65,10 @@ def _must_avoid_gevent_threadpool(func: Callable[..., Any]) -> bool:
     # gevent.subprocess requires child watchers on the default event loop.
     # Executing patched subprocess functions in a worker thread can raise:
     # "TypeError: child watchers are only available on the default loop".
-    if _gevent_monkey.is_object_patched("subprocess", "run") and func is subprocess.run:
-        return True
-
-    return False
+    return _gevent_monkey.is_object_patched("subprocess", "run") and func is subprocess.run
 
 
-def run_blocking_io(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+def run_blocking_io[T](func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     """Run blocking I/O in a native thread when under gevent.
 
     gevent's threadpool will eagerly log exceptions raised inside worker threads,
@@ -80,14 +82,14 @@ def run_blocking_io(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     if _use_gevent_threadpool():
         ok, result = _get_io_threadpool().apply(_call_and_capture, (func, args, kwargs))
         if ok:
-            return cast(T, result)
-        exc = cast(Exception, result)
+            return cast("T", result)
+        exc = cast("Exception", result)
         raise exc
     return func(*args, **kwargs)
 
 
-
 _VERIFY_IO_WAIT_SECONDS = 3.0
+_PUBLISH_VERIFY_RETRY_SECONDS = 0.25
 
 
 def _verify_transfer_size(
@@ -106,16 +108,58 @@ def _verify_transfer_size(
         return
 
     logger.debug(
-        f"File {action} size mismatch, waiting for filesystem sync: {dest} "
-        f"({actual_size} != {expected_size})"
+        "File %s size mismatch, waiting for filesystem sync: %s (%s != %s)",
+        action,
+        dest,
+        actual_size,
+        expected_size,
     )
     time.sleep(_VERIFY_IO_WAIT_SECONDS)
 
     actual_size = run_blocking_io(dest.stat).st_size
     if actual_size != expected_size:
-        raise IOError(
+        raise OSError(
             f"File {action} incomplete, data loss may have occurred. "
             f"'{dest}' was {actual_size} bytes instead of expected {expected_size}."
+        )
+
+
+def _is_stale_handle_error(error: Exception) -> bool:
+    return isinstance(error, OSError) and error.errno == getattr(errno, "ESTALE", 116)
+
+
+def _verify_published_file(
+    dest: Path,
+    expected_size: int,
+    action: str,
+) -> None:
+    """Best-effort verify after publishing a temp file into place.
+
+    The temp file was already verified before publish. Some NFS mounts can report
+    a transient stale handle immediately after `os.replace()` makes the final path
+    visible, so retry once and then trust the successful publish instead of
+    turning the handoff into a false failure.
+    """
+    try:
+        _verify_transfer_size(dest, expected_size, action)
+    except OSError as error:
+        if not _is_stale_handle_error(error):
+            raise
+    else:
+        return
+
+    time.sleep(_PUBLISH_VERIFY_RETRY_SECONDS)
+
+    try:
+        _verify_transfer_size(dest, expected_size, action)
+    except OSError as retry_error:
+        if not _is_stale_handle_error(retry_error):
+            raise
+        logger.warning(
+            "Skipping post-publish verification for %s after stale handle on %s: %s",
+            action,
+            dest,
+            retry_error,
         )
 
 
@@ -135,6 +179,7 @@ def atomic_write(dest_path: Path, data: bytes, max_attempts: int = 100) -> Path:
 
     Raises:
         RuntimeError: If no unique path found after max_attempts
+
     """
     base = dest_path.stem
     ext = dest_path.suffix
@@ -155,10 +200,11 @@ def atomic_write(dest_path: Path, data: bytes, max_attempts: int = 100) -> Path:
             finally:
                 run_blocking_io(os.close, fd)
             if attempt > 0:
-                logger.info(f"File collision resolved: {try_path.name}")
-            return try_path
+                logger.info("File collision resolved: %s", try_path.name)
         except FileExistsError:
             continue
+        else:
+            return try_path
 
     raise RuntimeError(f"Could not write file after {max_attempts} attempts: {dest_path}")
 
@@ -180,7 +226,7 @@ def _system_op(op: str, source: Path, dest: Path) -> None:
     )
 
 
-def _perform_nfs_fallback(source: Path, dest: Path, is_move: bool) -> None:
+def _perform_nfs_fallback(source: Path, dest: Path, *, is_move: bool) -> None:
     """Handle NFS/SMB permission errors by falling back to copyfile -> system op."""
     expected_size = run_blocking_io(source.stat).st_size
 
@@ -191,15 +237,16 @@ def _perform_nfs_fallback(source: Path, dest: Path, is_move: bool) -> None:
 
         if is_move:
             run_blocking_io(source.unlink)
-        return
 
     except Exception as copy_error:
         # Clean up failed copy attempt if it exists
         run_blocking_io(dest.unlink, missing_ok=True)
 
         if _is_permission_error(copy_error):
-            log_transfer_permission_context("nfs_fallback_copyfile", source=source, dest=dest, error=copy_error)
-        logger.error("Fallback copyfile failed (%s -> %s): %s", source, dest, copy_error)
+            log_transfer_permission_context(
+                "nfs_fallback_copyfile", source=source, dest=dest, error=copy_error
+            )
+        logger.exception("Fallback copyfile failed (%s -> %s)", source, dest)
 
         # Fallback 2: system command
         op = "mv" if is_move else "cp"
@@ -211,10 +258,14 @@ def _perform_nfs_fallback(source: Path, dest: Path, is_move: bool) -> None:
             if is_move:
                 run_blocking_io(source.unlink, missing_ok=True)
         except subprocess.CalledProcessError as sys_error:
-            log_transfer_permission_context("nfs_fallback_system", source=source, dest=dest, error=sys_error)
-            logger.error("System %s failed (%s -> %s): %s", op, source, dest, sys_error.stderr)
+            log_transfer_permission_context(
+                "nfs_fallback_system", source=source, dest=dest, error=sys_error
+            )
+            logger.exception("System %s failed (%s -> %s): %s", op, source, dest, sys_error.stderr)
             run_blocking_io(dest.unlink, missing_ok=True)
             raise
+    else:
+        return
 
 
 def _is_enoent_error(error: Exception) -> bool:
@@ -224,7 +275,7 @@ def _is_enoent_error(error: Exception) -> bool:
 
 
 def _can_use_partial_copy_after_enoent(
-    temp_path: Optional[Path],
+    temp_path: Path | None,
     expected_size: int,
     action: str,
 ) -> bool:
@@ -234,9 +285,10 @@ def _can_use_partial_copy_after_enoent(
 
     try:
         _verify_transfer_size(temp_path, expected_size, action)
-        return True
-    except Exception:
+    except OSError:
         return False
+    else:
+        return True
 
 
 def _claim_destination(path: Path) -> bool:
@@ -306,7 +358,6 @@ def _publish_temp_file(temp_path: Path, dest_path: Path) -> bool:
             run_blocking_io(os.close, fd)
         except OSError:
             pass
-        return True
     except Exception as e:
         if _is_permission_error(e):
             log_transfer_permission_context(
@@ -317,6 +368,8 @@ def _publish_temp_file(temp_path: Path, dest_path: Path) -> bool:
             )
         run_blocking_io(dest_path.unlink, missing_ok=True)
         raise
+    else:
+        return True
 
 
 def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> Path:
@@ -339,6 +392,7 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
 
     Raises:
         RuntimeError: If no unique path found after max_attempts
+
     """
     base = dest_path.stem
     ext = dest_path.suffix
@@ -363,8 +417,7 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
             else:
                 run_blocking_io(os.rename, str(source_path), str(try_path))
             if attempt > 0:
-                logger.info(f"File collision resolved: {try_path.name}")
-            return try_path
+                logger.info("File collision resolved: %s", try_path.name)
         except FileExistsError:
             # Race condition: file created between exists() check and rename()
             if claimed:
@@ -382,7 +435,7 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                 run_blocking_io(try_path.unlink, missing_ok=True)
                 claimed = False
 
-            temp_path: Optional[Path] = None
+            temp_path: Path | None = None
             try:
                 try:
                     temp_path = _create_temp_path(try_path)
@@ -417,7 +470,7 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                         continue
 
                     try:
-                        _verify_transfer_size(try_path, expected_size, "move")
+                        _verify_published_file(try_path, expected_size, "move")
                     except Exception:
                         run_blocking_io(try_path.unlink, missing_ok=True)
                         raise
@@ -425,9 +478,7 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                     run_blocking_io(source_path.unlink)
 
                     if attempt > 0:
-                        logger.info(f"File collision resolved: {try_path.name}")
-                    return try_path
-
+                        logger.info("File collision resolved: %s", try_path.name)
                 except FileExistsError:
                     if temp_path:
                         run_blocking_io(temp_path.unlink, missing_ok=True)
@@ -436,6 +487,8 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                     if temp_path:
                         run_blocking_io(temp_path.unlink, missing_ok=True)
                     raise
+                else:
+                    return try_path
 
             except (PermissionError, OSError) as e:
                 if _is_permission_error(e):
@@ -454,17 +507,19 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                     try:
                         _perform_nfs_fallback(source_path, try_path, is_move=True)
                         if attempt > 0:
-                            logger.info(f"File collision resolved (fallback): {try_path.name}")
-                        return try_path
+                            logger.info("File collision resolved (fallback): %s", try_path.name)
                     except Exception as fallback_error:
-                        logger.error(
-                            "NFS fallback also failed (%s -> %s): %s",
+                        logger.exception(
+                            "NFS fallback also failed (%s -> %s)",
                             source_path,
                             try_path,
-                            fallback_error,
                         )
                         raise e from fallback_error
+                    else:
+                        return try_path
                 raise
+        else:
+            return try_path
 
     raise RuntimeError(f"Could not move file after {max_attempts} attempts: {dest_path}")
 
@@ -482,6 +537,7 @@ def atomic_hardlink(source_path: Path, dest_path: Path, max_attempts: int = 100)
 
     Raises:
         RuntimeError: If no unique path found after max_attempts
+
     """
     base = dest_path.stem
     ext = dest_path.suffix
@@ -492,8 +548,7 @@ def atomic_hardlink(source_path: Path, dest_path: Path, max_attempts: int = 100)
         try:
             run_blocking_io(os.link, str(source_path), str(try_path))
             if attempt > 0:
-                logger.info(f"File collision resolved: {try_path.name}")
-            return try_path
+                logger.info("File collision resolved: %s", try_path.name)
         except FileExistsError:
             continue
         except OSError as e:
@@ -514,6 +569,8 @@ def atomic_hardlink(source_path: Path, dest_path: Path, max_attempts: int = 100)
                 )
                 return atomic_copy(source_path, dest_path, max_attempts=max_attempts)
             raise
+        else:
+            return try_path
 
     raise RuntimeError(f"Could not create hardlink after {max_attempts} attempts: {dest_path}")
 
@@ -534,6 +591,7 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
 
     Raises:
         RuntimeError: If no unique path found after max_attempts
+
     """
     base = dest_path.stem
     ext = dest_path.suffix
@@ -544,7 +602,7 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
         try_path = dest_path if attempt == 0 else parent / f"{base}_{attempt}{ext}"
         if run_blocking_io(try_path.exists):
             continue
-        temp_path: Optional[Path] = None
+        temp_path: Path | None = None
         try:
             temp_path = _create_temp_path(try_path)
             try:
@@ -567,11 +625,10 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                     try:
                         _perform_nfs_fallback(source_path, temp_path, is_move=False)
                     except Exception as fallback_error:
-                        logger.error(
-                            "NFS fallback also failed (%s -> %s): %s",
+                        logger.exception(
+                            "NFS fallback also failed (%s -> %s)",
                             source_path,
                             temp_path,
-                            fallback_error,
                         )
                         raise e from fallback_error
                 elif _is_enoent_error(e) and _can_use_partial_copy_after_enoent(
@@ -594,17 +651,18 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                 continue
 
             try:
-                _verify_transfer_size(try_path, expected_size, "copy")
+                _verify_published_file(try_path, expected_size, "copy")
             except Exception:
                 run_blocking_io(try_path.unlink, missing_ok=True)
                 raise
 
             if attempt > 0:
-                logger.info(f"File collision resolved: {try_path.name}")
-            return try_path
+                logger.info("File collision resolved: %s", try_path.name)
         except Exception:
             if temp_path:
                 run_blocking_io(temp_path.unlink, missing_ok=True)
             raise
+        else:
+            return try_path
 
     raise RuntimeError(f"Could not copy file after {max_attempts} attempts: {dest_path}")

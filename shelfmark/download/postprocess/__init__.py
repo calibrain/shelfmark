@@ -9,3 +9,5 @@ Output handlers live in `shelfmark.download.outputs` and should depend on
 """
 
 from .router import post_process_download
+
+__all__ = ["post_process_download"]

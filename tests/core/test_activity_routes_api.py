@@ -347,13 +347,22 @@ class TestActivityRoutes:
         _set_session(client, user_id=user["username"], db_user_id=None, is_admin=False)
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            response = client.post(
-                "/api/activity/dismiss",
-                json={"item_type": "download", "item_key": "download:test-task"},
-            )
+            with patch("shelfmark.core.activity_routes.logger.warning") as mock_warning:
+                response = client.post(
+                    "/api/activity/dismiss",
+                    json={"item_type": "download", "item_key": "download:test-task"},
+                )
 
         assert response.status_code == 403
         assert response.json["code"] == "user_identity_unavailable"
+        mock_warning.assert_called_once()
+        log_message = mock_warning.call_args.args[0]
+        assert "Activity dismiss rejected" in log_message
+        assert "status=403" in log_message
+        assert "reason=User identity unavailable for activity workflow" in log_message
+        assert "path=/api/activity/dismiss" in log_message
+        assert f"user={user['username']}" in log_message
+        assert "db_user_id=-" in log_message
 
     def test_dismiss_returns_404_when_download_history_row_is_missing(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -368,7 +377,7 @@ class TestActivityRoutes:
         assert response.status_code == 404
         assert response.json["error"] == "Download not found"
 
-    def test_dismiss_rejects_active_download(self, main_module, client):
+    def test_dismiss_rejects_live_active_download(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
@@ -387,12 +396,23 @@ class TestActivityRoutes:
             content_type="ebook",
             origin="direct",
         )
+        active_status = _sample_status_payload()
+        active_status["downloading"] = {
+            "active-dismiss-task": {
+                "id": "active-dismiss-task",
+                "title": "Active Dismiss Task",
+                "author": "Author",
+                "source": "direct_download",
+                "status_message": "Downloading",
+            }
+        }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            response = client.post(
-                "/api/activity/dismiss",
-                json={"item_type": "download", "item_key": "download:active-dismiss-task"},
-            )
+            with patch.object(main_module.backend, "queue_status", return_value=active_status):
+                response = client.post(
+                    "/api/activity/dismiss",
+                    json={"item_type": "download", "item_key": "download:active-dismiss-task"},
+                )
 
         assert response.status_code == 409
         assert response.json["error"] == "Only terminal downloads can be dismissed"
@@ -520,6 +540,95 @@ class TestActivityRoutes:
         assert rows_by_key[f"download:{second_task_id}"]["snapshot"]["download"]["title"] == "Second Title"
         assert rows_by_key[f"download:{second_task_id}"]["snapshot"]["download"]["author"] == "Second Author"
 
+    def test_dismiss_many_accepts_stale_active_download_as_interrupted_history(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        task_id = "dismiss-many-stale-active"
+        main_module.download_history_service.record_download(
+            task_id=task_id,
+            user_id=user["id"],
+            username=user["username"],
+            request_id=None,
+            source="direct_download",
+            source_display_name="Direct Download",
+            title="Stale Active Download",
+            author="Stale Author",
+            format="epub",
+            size="1 MB",
+            preview=None,
+            content_type="ebook",
+            origin="direct",
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+                dismiss_many_response = client.post(
+                    "/api/activity/dismiss-many",
+                    json={"items": [{"item_type": "download", "item_key": f"download:{task_id}"}]},
+                )
+                history_response = client.get("/api/activity/history?limit=10&offset=0")
+
+        assert dismiss_many_response.status_code == 200
+        assert dismiss_many_response.json["status"] == "dismissed"
+        assert dismiss_many_response.json["count"] == 1
+        assert history_response.status_code == 200
+        assert len(history_response.json) == 1
+        assert history_response.json[0]["item_key"] == f"download:{task_id}"
+        assert history_response.json[0]["final_status"] == "error"
+        assert history_response.json[0]["snapshot"]["download"]["status_message"] == "Interrupted"
+
+    def test_dismiss_many_preserves_retry_for_stale_active_requested_download_history(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        task_id = "dismiss-many-stale-requested-active"
+        retry_payload = {
+            "task_id": task_id,
+            "source": "prowlarr",
+            "title": "Interrupted Requested Download",
+            "user_id": user["id"],
+            "username": user["username"],
+            "request_id": 321,
+            "search_mode": "universal",
+            "retry_download_url": "magnet:?xt=urn:btih:dismissmany123",
+            "retry_download_protocol": "torrent",
+            "retry_release_name": "Interrupted Requested Download",
+            "can_retry_without_staged_source": True,
+        }
+        main_module.download_history_service.record_download(
+            task_id=task_id,
+            user_id=user["id"],
+            username=user["username"],
+            request_id=321,
+            source="prowlarr",
+            source_display_name="Prowlarr",
+            title="Interrupted Requested Download",
+            author="Stale Author",
+            format="epub",
+            size="1 MB",
+            preview=None,
+            content_type="ebook",
+            origin="requested",
+            retry_payload=retry_payload,
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+                dismiss_many_response = client.post(
+                    "/api/activity/dismiss-many",
+                    json={"items": [{"item_type": "download", "item_key": f"download:{task_id}"}]},
+                )
+                history_response = client.get("/api/activity/history?limit=10&offset=0")
+
+        assert dismiss_many_response.status_code == 200
+        assert dismiss_many_response.json["status"] == "dismissed"
+        assert history_response.status_code == 200
+        assert len(history_response.json) == 1
+        assert history_response.json[0]["item_key"] == f"download:{task_id}"
+        assert history_response.json[0]["snapshot"]["download"]["status_message"] == "Interrupted"
+        assert history_response.json[0]["snapshot"]["download"]["retry_available"] is True
+
     def test_dismiss_many_returns_404_without_partial_dismiss_when_any_item_is_missing(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
@@ -535,15 +644,16 @@ class TestActivityRoutes:
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            response = client.post(
-                "/api/activity/dismiss-many",
-                json={
-                    "items": [
-                        {"item_type": "download", "item_key": f"download:{existing_task_id}"},
-                        {"item_type": "download", "item_key": "download:missing-bulk-task"},
-                    ]
-                },
-            )
+            with patch("shelfmark.core.activity_routes.logger.warning") as mock_warning:
+                response = client.post(
+                    "/api/activity/dismiss-many",
+                    json={
+                        "items": [
+                            {"item_type": "download", "item_key": f"download:{existing_task_id}"},
+                            {"item_type": "download", "item_key": "download:missing-bulk-task"},
+                        ]
+                    },
+                )
 
         assert response.status_code == 404
         assert response.json["error"] == "One or more activity items were not found"
@@ -552,6 +662,14 @@ class TestActivityRoutes:
             main_module,
             viewer_scope=f"user:{user['id']}",
         )
+        mock_warning.assert_called_once()
+        log_message = mock_warning.call_args.args[0]
+        assert "Activity dismiss_many rejected" in log_message
+        assert "status=404" in log_message
+        assert "reason=One or more activity items were not found" in log_message
+        assert "path=/api/activity/dismiss-many" in log_message
+        assert "item_count=2" in log_message
+        assert "missing_item_keys=download:missing-bulk-task" in log_message
 
     def test_no_auth_dismiss_many_and_history_use_shared_identity(self, main_module):
         task_id = f"no-auth-{uuid.uuid4().hex[:10]}"
@@ -664,6 +782,59 @@ class TestActivityRoutes:
         assert response.status_code == 403
         assert response.json["code"] == "user_identity_unavailable"
 
+    def test_clear_history_logs_identity_failure(self, main_module, client):
+        admin = _create_user(main_module, prefix="admin", role="admin")
+        _set_session(client, user_id=admin["username"], db_user_id=None, is_admin=True)
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch("shelfmark.core.activity_routes.logger.warning") as mock_warning:
+                response = client.delete("/api/activity/history")
+
+        assert response.status_code == 403
+        assert response.json["code"] == "user_identity_unavailable"
+        mock_warning.assert_called_once()
+        log_message = mock_warning.call_args.args[0]
+        assert "Activity history_clear rejected" in log_message
+        assert "status=403" in log_message
+        assert "reason=User identity unavailable for activity workflow" in log_message
+        assert "path=/api/activity/history" in log_message
+        assert f"user={admin['username']}" in log_message
+        assert "is_admin=True" in log_message
+
+    def test_dismiss_many_logs_actor_and_row_context_for_forbidden_download(self, main_module, client):
+        owner = _create_user(main_module, prefix="owner")
+        intruder = _create_user(main_module, prefix="intruder")
+        _set_session(client, user_id=intruder["username"], db_user_id=intruder["id"], is_admin=False)
+
+        _record_terminal_download(
+            main_module,
+            task_id="forbidden-download-task",
+            user_id=owner["id"],
+            username=owner["username"],
+            request_id=321,
+            final_status="complete",
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch("shelfmark.core.activity_routes.logger.warning") as mock_warning:
+                response = client.post(
+                    "/api/activity/dismiss-many",
+                    json={"items": [{"item_type": "download", "item_key": "download:forbidden-download-task"}]},
+                )
+
+        assert response.status_code == 403
+        assert response.json["error"] == "Forbidden"
+        mock_warning.assert_called_once()
+        log_message = mock_warning.call_args.args[0]
+        assert "Activity dismiss_many rejected" in log_message
+        assert "status=403" in log_message
+        assert "reason=Forbidden" in log_message
+        assert "auth_mode=builtin" in log_message
+        assert f"viewer_scope=user:{intruder['id']}" in log_message
+        assert f"owner_user_id={owner['id']}" in log_message
+        assert "final_status=complete" in log_message
+        assert "request_id=321" in log_message
+
     def test_snapshot_backfills_undismissed_terminal_download_from_download_history(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
@@ -739,6 +910,149 @@ class TestActivityRoutes:
         assert response.status_code == 200
         assert "stale-active-task" in response.json["status"]["error"]
         assert response.json["status"]["error"]["stale-active-task"]["status_message"] == "Interrupted"
+
+    def test_snapshot_preserves_retry_for_stale_active_requested_download(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        task_id = "stale-active-requested-task"
+        retry_payload = {
+            "task_id": task_id,
+            "source": "prowlarr",
+            "title": "Stale Active Requested Task",
+            "user_id": user["id"],
+            "username": user["username"],
+            "request_id": 123,
+            "search_mode": "universal",
+            "retry_download_url": "magnet:?xt=urn:btih:staleactive123",
+            "retry_download_protocol": "torrent",
+            "retry_release_name": "Stale Active Requested Task",
+            "can_retry_without_staged_source": True,
+        }
+        main_module.download_history_service.record_download(
+            task_id=task_id,
+            user_id=user["id"],
+            username=user["username"],
+            request_id=123,
+            source="prowlarr",
+            source_display_name="Prowlarr",
+            title="Stale Active Requested Task",
+            author="Stale Author",
+            format="epub",
+            size="1 MB",
+            preview=None,
+            content_type="ebook",
+            origin="requested",
+            retry_payload=retry_payload,
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+                response = client.get("/api/activity/snapshot")
+
+        assert response.status_code == 200
+        assert response.json["status"]["error"][task_id]["status_message"] == "Interrupted"
+        assert response.json["status"]["error"][task_id]["retry_available"] is True
+
+    def test_snapshot_includes_retry_available_for_live_terminal_downloads(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        _record_terminal_download(
+            main_module,
+            task_id="retryable-terminal-task",
+            user_id=user["id"],
+            username=user["username"],
+            title="Retryable Terminal Task",
+            origin="requested",
+            request_id=123,
+            final_status="error",
+            status_message="Destination not writable",
+        )
+
+        queue_status_payload = _sample_status_payload()
+        queue_status_payload["error"]["retryable-terminal-task"] = {
+            "retry_available": True,
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_status", return_value=queue_status_payload):
+                response = client.get("/api/activity/snapshot")
+
+        assert response.status_code == 200
+        assert response.json["status"]["error"]["retryable-terminal-task"]["retry_available"] is True
+
+    def test_snapshot_reopens_request_when_error_retry_is_no_longer_available(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        request_row = main_module.user_db.create_request(
+            user_id=user["id"],
+            content_type="ebook",
+            request_level="release",
+            policy_mode="request_release",
+            book_data={
+                "title": "Retry Gone Request",
+                "author": "Retry Author",
+                "provider": "openlibrary",
+                "provider_id": "retry-gone-1",
+            },
+            release_data={
+                "source": "prowlarr",
+                "source_id": "retry-gone-task",
+                "title": "Retry Gone.epub",
+            },
+            status="fulfilled",
+            delivery_state="queued",
+        )
+        retry_payload = {
+            "task_id": "retry-gone-task",
+            "source": "prowlarr",
+            "title": "Retry Gone Request",
+            "user_id": user["id"],
+            "username": user["username"],
+            "request_id": request_row["id"],
+            "search_mode": "universal",
+            "retry_download_url": "magnet:?xt=urn:btih:abc123",
+            "retry_download_protocol": "torrent",
+            "retry_release_name": "Retry Gone Request",
+            "can_retry_without_staged_source": True,
+        }
+        main_module.download_history_service.record_download(
+            task_id="retry-gone-task",
+            user_id=user["id"],
+            username=user["username"],
+            request_id=request_row["id"],
+            source="prowlarr",
+            source_display_name="Prowlarr",
+            title="Retry Gone Request",
+            author="Retry Author",
+            format="epub",
+            size="1 MB",
+            preview=None,
+            content_type="ebook",
+            origin="requested",
+            retry_payload=retry_payload,
+        )
+        main_module.download_history_service.finalize_download(
+            task_id="retry-gone-task",
+            final_status="error",
+            status_message="Output routing failed",
+            retry_payload=retry_payload,
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+                response = client.get("/api/activity/snapshot")
+
+        assert response.status_code == 200
+        refreshed_request = main_module.user_db.get_request(request_row["id"])
+        assert refreshed_request["status"] == "pending"
+        assert refreshed_request["last_failure_reason"] == "Output routing failed"
+        assert any(
+            row["id"] == request_row["id"] and row["status"] == "pending"
+            for row in response.json["requests"]
+        )
 
     def test_snapshot_active_download_with_queue_entry_shows_in_correct_bucket(self, main_module, client):
         user = _create_user(main_module, prefix="reader")

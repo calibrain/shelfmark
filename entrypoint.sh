@@ -68,6 +68,11 @@ else
 fi
 set -e
 
+PYTHON_BIN="/app/.venv/bin/python"
+if [ ! -x "$PYTHON_BIN" ]; then
+    PYTHON_BIN="python3"
+fi
+
 # Print build version
 echo "Build version: $BUILD_VERSION"
 echo "Release version: $RELEASE_VERSION"
@@ -126,6 +131,35 @@ fi
 USERNAME=$(getent passwd "$RUN_UID" | cut -d: -f1)
 echo "Username for UID $RUN_UID is $USERNAME"
 
+# Avoid unnecessary gosu hops when we're already running as the target user.
+# Some nested LXC setups spin on root-to-root gosu invocations.
+needs_user_switch() {
+    local current_uid
+    local current_gid
+
+    current_uid=$(id -u)
+    current_gid=$(id -g)
+
+    [ "$current_uid" != "$RUN_UID" ] || [ "$current_gid" != "$RUN_GID" ]
+}
+
+run_as_target_user() {
+    if needs_user_switch; then
+        gosu "$USERNAME" "$@"
+        return $?
+    fi
+
+    "$@"
+}
+
+exec_as_target_user() {
+    if needs_user_switch; then
+        exec gosu "$USERNAME" "$@"
+    fi
+
+    exec "$@"
+}
+
 test_write() {
     local folder=$1
     local test_file="$folder/shelfmark_TEST_WRITE"
@@ -138,9 +172,7 @@ test_write() {
         return 1
     fi
 
-    if ! (
-        echo 0123456789_TEST | gosu "$USERNAME" env HOME=/app tee "$test_file" > /dev/null
-    ); then
+    if ! run_as_target_user sh -c 'echo 0123456789_TEST > "$1"' _ "$test_file"; then
         echo "Failed to write test file in $folder as $USERNAME"
         return 1
     fi
@@ -159,34 +191,43 @@ test_write() {
 }
 
 make_writable() {
-    folder=$1
-    did_full_chown=0
+    local folder="$1"
+    local mode="${2:-tree}"
+    local did_full_chown=0
+    local is_writable
     set +e
-    test_write $folder
+    test_write "$folder"
     is_writable=$?
     set -e
     if [ $is_writable -eq 0 ]; then
         echo "Folder $folder is writable, no need to change ownership"
     else
-        echo "Folder $folder is not writable, changing ownership"
-        change_ownership $folder
-        chmod -R g+r,g+w $folder || echo "Failed to change group permissions for ${folder}, continuing..."
+        if [ "$mode" = "root" ]; then
+            echo "Folder $folder is not writable, fixing top-level ownership and permissions"
+            mkdir -p "$folder"
+            chown "${RUN_UID}:${RUN_GID}" "$folder" || echo "Failed to change ownership for ${folder}, continuing..."
+            chmod u+rwx "$folder" || echo "Failed to change owner permissions for ${folder}, continuing..."
+        else
+            echo "Folder $folder is not writable, changing ownership"
+            change_ownership "$folder"
+            chmod -R g+r,g+w "$folder" || echo "Failed to change group permissions for ${folder}, continuing..."
+        fi
         did_full_chown=1
     fi
     # Fix any misowned subdirectories/files (e.g., from previous runs as root)
-    if [ "$did_full_chown" -eq 0 ] && [ -d "$folder" ]; then
+    if [ "$mode" = "tree" ] && [ "$did_full_chown" -eq 0 ] && [ -d "$folder" ]; then
         echo "Checking for misowned files/directories in $folder"
         # Stay on the same filesystem to avoid traversing mounted subpaths
         # (for example read-only bind mounts under /app in dev setups).
         find "$folder" -xdev -mindepth 1 \( ! -user "$RUN_UID" -o ! -group "$RUN_GID" \) \
             -exec chown "$RUN_UID:$RUN_GID" {} + 2>/dev/null || true
     fi
-    test_write $folder || echo "Failed to test write to ${folder}, continuing..."
+    test_write "$folder" || echo "Failed to test write to ${folder}, continuing..."
 }
 
 fix_misowned() {
-    folder=$1
-    mkdir -p $folder
+    local folder="$1"
+    mkdir -p "$folder"
     echo "Checking for misowned files/directories in $folder"
     # Stay on the same filesystem to avoid traversing mounted subpaths
     # (for example read-only bind mounts under /app in dev setups).
@@ -196,47 +237,97 @@ fix_misowned() {
 
 # Ensure proper ownership of application directories
 change_ownership() {
-  folder=$1
-  mkdir -p $folder
+  local folder="$1"
+  mkdir -p "$folder"
   echo "Changing ownership of $folder to $USERNAME:$RUN_GID"
   chown -R "${RUN_UID}:${RUN_GID}" "${folder}" || echo "Failed to change ownership for ${folder}, continuing..."
 }
 
-fix_misowned /app
+ensure_tree_writable() {
+    local folder="$1"
+
+    make_writable "$folder"
+    if [ -d "$folder" ]; then
+        chmod -R u+rwX,g+rwX "$folder" || echo "Failed to relax permissions for ${folder}, continuing..."
+    fi
+}
+
+ensure_symlinked_dir() {
+    local link_path="$1"
+    local target_path="$2"
+
+    ensure_tree_writable "$target_path"
+
+    if [ -L "$link_path" ]; then
+        local current_target
+        current_target=$(readlink "$link_path" 2>/dev/null || echo "")
+        if [ "$current_target" = "$target_path" ]; then
+            echo "$link_path already points to $target_path"
+            return 0
+        fi
+        echo "Replacing symlink $link_path -> $current_target with $target_path"
+        rm -f "$link_path" || echo "Failed to replace symlink ${link_path}, continuing..."
+    elif [ -d "$link_path" ]; then
+        echo "Moving existing scratch files from $link_path to $target_path"
+        find "$link_path" -xdev -mindepth 1 -maxdepth 1 -exec mv -t "$target_path" {} + 2>/dev/null || true
+        ensure_tree_writable "$target_path"
+
+        if ! rmdir "$link_path" 2>/dev/null; then
+            echo "Could not replace $link_path with symlink, leaving existing directory in place"
+            ensure_tree_writable "$link_path"
+            return 0
+        fi
+    elif [ -e "$link_path" ]; then
+        echo "$link_path exists and is not a directory, leaving it in place"
+        return 0
+    fi
+
+    if [ ! -e "$link_path" ]; then
+        ln -s "$target_path" "$link_path" || echo "Failed to create symlink ${link_path}, continuing..."
+    fi
+}
+
 fix_misowned /var/log/shelfmark
 fix_misowned /tmp/shelfmark
 
-# SeleniumBase (internal bypasser) writes a patched chromedriver binary (uc_driver)
-# into its own drivers directory. Some NAS/docker setups can apply restrictive ACLs
-# to extracted image layers that block non-root writes; ensure the runtime UID owns it.
+# Keep SeleniumBase on its default /app-based paths, but redirect the scratch
+# directories into /tmp so bypasser startup doesn't depend on image-layer writes.
 if [ "${USING_EXTERNAL_BYPASSER}" != "true" ]; then
+    ensure_symlinked_dir /app/downloaded_files /tmp/shelfmark/seleniumbase/downloaded_files
+    ensure_symlinked_dir /app/archived_files /tmp/shelfmark/seleniumbase/archived_files
+
+    # Keep SeleniumBase's bundled drivers directory writable as well for
+    # compatibility with legacy UC code paths that still probe bundled assets.
     set +e
-    SELENIUMBASE_DRIVERS_DIR=$(python3 -c "import pathlib, seleniumbase; print(pathlib.Path(seleniumbase.__file__).resolve().parent / 'drivers')" 2>/dev/null)
+    SELENIUMBASE_DRIVERS_DIR=$("$PYTHON_BIN" -c "import pathlib, seleniumbase; print(pathlib.Path(seleniumbase.__file__).resolve().parent / 'drivers')" 2>/dev/null)
     set -e
 
     if [ -n "$SELENIUMBASE_DRIVERS_DIR" ] && [ -d "$SELENIUMBASE_DRIVERS_DIR" ]; then
         change_ownership "$SELENIUMBASE_DRIVERS_DIR"
 
-        # If the driver already exists, ensure it's executable for the runtime user.
+        # If the legacy driver already exists, ensure it's executable for the runtime user.
         if [ -f "${SELENIUMBASE_DRIVERS_DIR}/uc_driver" ]; then
             chmod +x "${SELENIUMBASE_DRIVERS_DIR}/uc_driver" || echo "Failed to chmod uc_driver, continuing..."
         fi
     fi
 fi
 
-# Test write to all folders
-make_writable ${CONFIG_DIR:-/config}
-make_writable ${INGEST_DIR:-/books}
+# Config can contain existing state we must keep accessing, so it keeps the
+# thorough repair path. Output destination roots only need top-level writability.
+make_writable "${CONFIG_DIR:-/config}" tree
+# Entrypoint only has env vars available at this stage, so use the legacy
+# INGEST_DIR env var as the fallback source for the default destination root.
+make_writable "${INGEST_DIR:-/books}" root
 
-# Fix permissions on directories configured in settings
-echo "Checking for additional configured directories..."
+# Check any additional configured destination roots from saved settings
+echo "Checking for additional configured destination roots..."
 if [ -f /app/scripts/fix_permissions.py ]; then
-    configured_dirs=$(python3 /app/scripts/fix_permissions.py 2>/dev/null || echo "")
+    configured_dirs=$("$PYTHON_BIN" /app/scripts/fix_permissions.py 2>/dev/null || echo "")
     if [ -n "$configured_dirs" ]; then
         echo "$configured_dirs" | while read -r dir; do
             if [ -n "$dir" ] && [ -d "$dir" ]; then
-                echo "Checking configured directory: $dir"
-                make_writable "$dir"
+                echo "Checking configured destination root: $dir"
+                make_writable "$dir" root
             fi
         done
     fi
@@ -286,7 +377,7 @@ if [ "$DEBUG" = "true" ] && [ "$USING_EXTERNAL_BYPASSER" != "true" ]; then
     set -x
     echo "vvvvvvvvvvvv DEBUG MODE vvvvvvvvvvvv"
     echo "Starting Xvfb for debugging"
-    python3 -c "from pyvirtualdisplay import Display; Display(visible=False, size=(1440,1880)).start()"
+    "$PYTHON_BIN" -c "from pyvirtualdisplay import Display; Display(visible=False, size=(1440,1880)).start()"
     id
     free -h
     uname -a
@@ -354,4 +445,4 @@ echo "Setting umask to $UMASK_VALUE"
 umask $UMASK_VALUE
 
 stop_file_logging
-exec gosu "$USERNAME" env HOME=/app $command
+exec_as_target_user env HOME=/app $command

@@ -3,7 +3,7 @@ E2E API Tests.
 
 Tests the full application flow through the HTTP API.
 
-Run with: docker exec test-cwabd python3 -m pytest tests/e2e/ -v -m e2e
+Run with: uv run pytest tests/e2e/ -v -m e2e
 """
 
 import pytest
@@ -36,9 +36,9 @@ class TestHealthEndpoint:
 class TestConfigEndpoint:
     """Tests for the configuration endpoint."""
 
-    def test_config_returns_expected_fields(self, api_client: APIClient):
+    def test_config_returns_expected_fields(self, protected_api_client: APIClient):
         """Test that config includes expected configuration fields."""
-        resp = api_client.get("/api/config")
+        resp = protected_api_client.get("/api/config")
 
         assert resp.status_code == 200
         data = resp.json()
@@ -47,9 +47,9 @@ class TestConfigEndpoint:
         # Should have some standard config fields
         assert "supported_formats" in data or "book_languages" in data
 
-    def test_config_returns_supported_formats(self, api_client: APIClient):
+    def test_config_returns_supported_formats(self, protected_api_client: APIClient):
         """Test that config includes supported formats."""
-        resp = api_client.get("/api/config")
+        resp = protected_api_client.get("/api/config")
 
         data = resp.json()
         assert "supported_formats" in data
@@ -63,17 +63,17 @@ class TestConfigEndpoint:
 class TestReleaseSourcesEndpoint:
     """Tests for the release sources endpoint."""
 
-    def test_release_sources_returns_list(self, api_client: APIClient):
+    def test_release_sources_returns_list(self, protected_api_client: APIClient):
         """Test that release sources endpoint returns available sources."""
-        resp = api_client.get("/api/release-sources")
+        resp = protected_api_client.get("/api/release-sources")
 
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
 
-    def test_release_sources_have_required_fields(self, api_client: APIClient):
+    def test_release_sources_have_required_fields(self, protected_api_client: APIClient):
         """Test that each release source has required fields."""
-        resp = api_client.get("/api/release-sources")
+        resp = protected_api_client.get("/api/release-sources")
 
         data = resp.json()
         for source in data:
@@ -85,18 +85,18 @@ class TestReleaseSourcesEndpoint:
 class TestMetadataProvidersEndpoint:
     """Tests for the metadata providers endpoint."""
 
-    def test_providers_returns_data(self, api_client: APIClient):
+    def test_providers_returns_data(self, protected_api_client: APIClient):
         """Test that providers endpoint returns provider data."""
-        resp = api_client.get("/api/metadata/providers")
+        resp = protected_api_client.get("/api/metadata/providers")
 
         assert resp.status_code == 200
         data = resp.json()
         # May be list or dict depending on implementation
         assert isinstance(data, (list, dict))
 
-    def test_providers_have_required_fields(self, api_client: APIClient):
+    def test_providers_have_required_fields(self, protected_api_client: APIClient):
         """Test that each provider has required fields."""
-        resp = api_client.get("/api/metadata/providers")
+        resp = protected_api_client.get("/api/metadata/providers")
 
         data = resp.json()
         # Handle both list and dict formats
@@ -115,16 +115,16 @@ class TestMetadataProvidersEndpoint:
 class TestMetadataSearch:
     """Tests for metadata search functionality."""
 
-    def test_search_requires_query(self, api_client: APIClient):
+    def test_search_requires_query(self, protected_api_client: APIClient):
         """Test that search requires a query parameter."""
-        resp = api_client.get("/api/metadata/search")
+        resp = protected_api_client.get("/api/metadata/search")
 
         # Should return error for missing query
         assert resp.status_code in [400, 422]
 
-    def test_search_returns_results(self, api_client: APIClient):
+    def test_search_returns_results(self, protected_api_client: APIClient):
         """Test that search returns results for a known book."""
-        resp = api_client.get("/api/metadata/search", params={"query": "1984 Orwell"})
+        resp = protected_api_client.get("/api/metadata/search", params={"query": "1984 Orwell"})
 
         # May return 200 with results or 503 if provider unavailable
         if resp.status_code == 200:
@@ -132,10 +132,10 @@ class TestMetadataSearch:
             # Response may be list directly, or dict with results key
             assert "results" in data or isinstance(data, list) or "query" in data
 
-    def test_search_with_provider_filter(self, api_client: APIClient):
+    def test_search_with_provider_filter(self, protected_api_client: APIClient):
         """Test searching with a specific provider."""
         # Get available providers first
-        providers_resp = api_client.get("/api/metadata/providers")
+        providers_resp = protected_api_client.get("/api/metadata/providers")
         if providers_resp.status_code != 200:
             pytest.skip("Could not get providers")
 
@@ -149,7 +149,11 @@ class TestMetadataSearch:
             if providers_data:
                 first_key = list(providers_data.keys())[0]
                 provider_info = providers_data[first_key]
-                provider_name = provider_info.get("name", first_key) if isinstance(provider_info, dict) else first_key
+                provider_name = (
+                    provider_info.get("name", first_key)
+                    if isinstance(provider_info, dict)
+                    else first_key
+                )
             else:
                 pytest.skip("No providers available")
         else:
@@ -159,7 +163,7 @@ class TestMetadataSearch:
         if not provider_name:
             pytest.skip("Could not determine provider name")
 
-        resp = api_client.get(
+        resp = protected_api_client.get(
             "/api/metadata/search",
             params={"query": "Moby Dick", "provider": provider_name},
         )
@@ -172,18 +176,18 @@ class TestMetadataSearch:
 class TestStatusEndpoint:
     """Tests for the status endpoint."""
 
-    def test_status_returns_categories(self, api_client: APIClient):
+    def test_status_returns_categories(self, protected_api_client: APIClient):
         """Test that status endpoint returns expected categories."""
-        resp = api_client.get("/api/status")
+        resp = protected_api_client.get("/api/status")
 
         assert resp.status_code == 200
         data = resp.json()
         # Should have standard status categories
         assert isinstance(data, dict)
 
-    def test_active_downloads_endpoint(self, api_client: APIClient):
+    def test_active_downloads_endpoint(self, protected_api_client: APIClient):
         """Test the active downloads endpoint."""
-        resp = api_client.get("/api/downloads/active")
+        resp = protected_api_client.get("/api/downloads/active")
 
         assert resp.status_code == 200
         data = resp.json()
@@ -194,9 +198,9 @@ class TestStatusEndpoint:
 class TestQueueEndpoint:
     """Tests for queue management endpoints."""
 
-    def test_queue_order_returns_data(self, api_client: APIClient):
+    def test_queue_order_returns_data(self, protected_api_client: APIClient):
         """Test that queue order endpoint returns queue data."""
-        resp = api_client.get("/api/queue/order")
+        resp = protected_api_client.get("/api/queue/order")
 
         assert resp.status_code == 200
         data = resp.json()
@@ -207,13 +211,14 @@ class TestQueueEndpoint:
         else:
             assert isinstance(data, list)
 
+
 @pytest.mark.e2e
 class TestSettingsEndpoint:
     """Tests for settings endpoints."""
 
-    def test_settings_returns_tabs(self, api_client: APIClient):
+    def test_settings_returns_tabs(self, protected_api_client: APIClient):
         """Test that settings endpoint returns tab structure."""
-        resp = api_client.get("/api/settings")
+        resp = protected_api_client.get("/api/settings")
 
         # Settings may be disabled if config dir not writable
         if resp.status_code == 403:
@@ -223,10 +228,10 @@ class TestSettingsEndpoint:
         data = resp.json()
         assert isinstance(data, (list, dict))
 
-    def test_get_specific_settings_tab(self, api_client: APIClient):
+    def test_get_specific_settings_tab(self, protected_api_client: APIClient):
         """Test getting a specific settings tab."""
         # First get available tabs
-        resp = api_client.get("/api/settings")
+        resp = protected_api_client.get("/api/settings")
         if resp.status_code == 403:
             pytest.skip("Settings disabled")
 
@@ -243,7 +248,7 @@ class TestSettingsEndpoint:
         if not tab_name:
             pytest.skip("Could not determine tab name")
 
-        resp = api_client.get(f"/api/settings/{tab_name}")
+        resp = protected_api_client.get(f"/api/settings/{tab_name}")
         assert resp.status_code in [200, 404]
 
 
@@ -251,9 +256,9 @@ class TestSettingsEndpoint:
 class TestDownloadFlow:
     """Tests for the complete download flow."""
 
-    def test_cancel_nonexistent_download(self, api_client: APIClient):
+    def test_cancel_nonexistent_download(self, protected_api_client: APIClient):
         """Test cancelling a download that doesn't exist."""
-        resp = api_client.delete("/api/download/nonexistent-id-xyz/cancel")
+        resp = protected_api_client.delete("/api/download/nonexistent-id-xyz/cancel")
 
         # Should handle gracefully (may return 200, 204, or 404)
         assert resp.status_code in [200, 204, 404]
@@ -263,21 +268,21 @@ class TestDownloadFlow:
 class TestReleaseDownloadFlow:
     """Tests for the release-based download flow (new API)."""
 
-    def test_release_download_requires_source_id(self, api_client: APIClient):
+    def test_release_download_requires_source_id(self, protected_api_client: APIClient):
         """Test that release download requires source_id."""
-        resp = api_client.post("/api/releases/download", json={})
+        resp = protected_api_client.post("/api/releases/download", json={})
 
         assert resp.status_code == 400
         data = resp.json()
         assert "error" in data
 
     def test_release_download_with_minimal_data(
-        self, api_client: APIClient, download_tracker: DownloadTracker
+        self, protected_api_client: APIClient, download_tracker: DownloadTracker
     ):
         """Test queueing a release with minimal valid data."""
         # This will queue but likely fail during download (no real source)
         test_id = "e2e-test-release-minimal"
-        resp = api_client.post(
+        resp = protected_api_client.post(
             "/api/releases/download",
             json={
                 "source": "test_source",
@@ -292,12 +297,12 @@ class TestReleaseDownloadFlow:
             assert data.get("status") == "queued"
 
     def test_cancel_release_with_slash_id(
-        self, api_client: APIClient, download_tracker: DownloadTracker
+        self, protected_api_client: APIClient, download_tracker: DownloadTracker
     ):
         """Cancelling/clearing should work for IDs containing slashes."""
         test_id = "e2e-test-release/with-slash"
 
-        resp = api_client.post(
+        resp = protected_api_client.post(
             "/api/releases/download",
             json={
                 "source": "test_source",
@@ -311,7 +316,7 @@ class TestReleaseDownloadFlow:
 
         download_tracker.track(test_id)
 
-        cancel_resp = api_client.delete(f"/api/download/{test_id}/cancel")
+        cancel_resp = protected_api_client.delete(f"/api/download/{test_id}/cancel")
         assert cancel_resp.status_code in [200, 204]
 
 
@@ -319,17 +324,17 @@ class TestReleaseDownloadFlow:
 class TestReleasesSearch:
     """Tests for searching releases."""
 
-    def test_releases_requires_params(self, api_client: APIClient):
+    def test_releases_requires_params(self, protected_api_client: APIClient):
         """Test that releases endpoint requires provider and book_id."""
-        resp = api_client.get("/api/releases")
+        resp = protected_api_client.get("/api/releases")
 
         assert resp.status_code == 400
         data = resp.json()
         assert "error" in data
 
-    def test_releases_with_invalid_provider(self, api_client: APIClient):
+    def test_releases_with_invalid_provider(self, protected_api_client: APIClient):
         """Test releases with invalid provider."""
-        resp = api_client.get(
+        resp = protected_api_client.get(
             "/api/releases",
             params={"provider": "nonexistent_provider", "book_id": "123"},
         )
@@ -343,9 +348,9 @@ class TestReleasesSearch:
 class TestCoverProxy:
     """Tests for the cover image proxy."""
 
-    def test_cover_without_url_returns_error(self, api_client: APIClient):
+    def test_cover_without_url_returns_error(self, protected_api_client: APIClient):
         """Test that cover endpoint without URL returns error."""
-        resp = api_client.get("/api/covers/test-id")
+        resp = protected_api_client.get("/api/covers/test-id")
 
         # Should return error for missing URL
         assert resp.status_code in [400, 404]
@@ -355,15 +360,15 @@ class TestCoverProxy:
 class TestDirectSourceQueryEndpoint:
     """Tests for direct-mode source query search on the shared releases API."""
 
-    def test_direct_source_query_requires_browse_context(self, api_client: APIClient):
+    def test_direct_source_query_requires_browse_context(self, protected_api_client: APIClient):
         """Source query mode requires a query or browse filters."""
-        resp = api_client.get("/api/releases", params={"source": "direct_download"})
+        resp = protected_api_client.get("/api/releases", params={"source": "direct_download"})
 
         assert resp.status_code in [400, 422]
 
-    def test_direct_source_query_returns_results(self, api_client: APIClient):
+    def test_direct_source_query_returns_results(self, protected_api_client: APIClient):
         """Direct mode uses /api/releases source query mode."""
-        resp = api_client.get(
+        resp = protected_api_client.get(
             "/api/releases",
             params={"source": "direct_download", "query": "Pride Prejudice"},
         )
@@ -379,9 +384,11 @@ class TestDirectSourceQueryEndpoint:
 class TestSourceRecordEndpoint:
     """Tests for source-native record lookup on the shared source-record API."""
 
-    def test_source_record_invalid_id(self, api_client: APIClient):
+    def test_source_record_invalid_id(self, protected_api_client: APIClient):
         """Unknown source records should return a not-found style response."""
-        resp = api_client.get("/api/release-sources/direct_download/records/invalid-id-xyz")
+        resp = protected_api_client.get(
+            "/api/release-sources/direct_download/records/invalid-id-xyz"
+        )
 
         # Should return 404 or error
         assert resp.status_code in [404, 500, 503]

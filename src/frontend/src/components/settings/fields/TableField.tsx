@@ -88,7 +88,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
 
   // Use minmax(0, ...) so the grid can shrink inside the settings modal.
   // Use fixed width for delete button column to ensure header/data alignment.
-  const gridTemplate = 'sm:[grid-template-columns:var(--table-cols)]';
+  const gridTemplate = 'sm:grid-cols-(--table-cols)';
 
   const tableCols = useMemo(() => {
     if (columns.length === 0) {
@@ -175,8 +175,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
           onClick={addRow}
           disabled={isDisabled}
           className="px-3 py-2 rounded-lg text-sm font-medium
-                     bg-[var(--bg-soft)] border border-[var(--border-muted)]
-                     hover-action transition-colors
+                     bg-(--bg-soft) border border-(--border-muted)                     hover-action transition-colors
                      disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {field.addLabel || 'Add'}
@@ -237,7 +236,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
                   <div key={col.key} className="flex flex-col gap-1 min-w-0">
                     {mobileLabel}
                     {isDisabled ? (
-                      <div className="w-full px-3 py-2 rounded-lg border border-[var(--border-muted)] bg-[var(--bg-soft)] text-sm opacity-60 cursor-not-allowed">
+                      <div className="w-full px-3 py-2 rounded-lg border border-(--border-muted) shadow-sm bg-(--bg-soft) text-sm opacity-60 cursor-not-allowed">
                         {options.find((o) => o.value === String(cellValue ?? ''))?.label || 'Select...'}
                       </div>
                     ) : (
@@ -301,9 +300,8 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
                     onChange={(e) => updateCell(rowIndex, col.key, e.target.value)}
                     placeholder={col.placeholder}
                     disabled={isDisabled}
-                    className="w-full px-3 py-2 rounded-lg border border-[var(--border-muted)]
-                               bg-[var(--bg-soft)] text-sm
-                               focus:outline-none focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500
+                    className="w-full px-3 py-2 rounded-lg border border-(--border-muted)                               bg-(--bg-soft) text-sm
+                               focus:outline-hidden focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500
                                disabled:opacity-60 disabled:cursor-not-allowed
                                transition-colors"
                   />
@@ -333,7 +331,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
               </button>
             </div>
 
-            <div className="col-span-full border-t border-[var(--border-muted)] opacity-60" />
+            <div className="col-span-full border-t border-(--border-muted) opacity-60" />
           </div>
         ))}
       </div>
@@ -343,8 +341,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
         onClick={addRow}
         disabled={isDisabled}
         className="px-3 py-2 rounded-lg text-sm font-medium
-                   bg-[var(--bg-soft)] border border-[var(--border-muted)]
-                   hover-action transition-colors
+                   bg-(--bg-soft) border border-(--border-muted)                   hover-action transition-colors
                    disabled:opacity-60 disabled:cursor-not-allowed"
       >
         {field.addLabel || 'Add'}

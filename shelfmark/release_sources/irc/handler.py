@@ -1,19 +1,23 @@
 """IRC DCC download handler.
 
-Handles downloading books via IRC DCC protocol.
+Handles downloading IRC releases via DCC protocol.
 """
 
 from pathlib import Path
-from threading import Event
-from typing import Callable, Optional
+from typing import TYPE_CHECKING
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask
 from shelfmark.release_sources import DownloadHandler, register_handler
 
 from .connection_manager import connection_manager
 from .dcc import DCCError, download_dcc
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from threading import Event
+
+    from shelfmark.core.models import DownloadTask
 
 logger = setup_logger(__name__)
 
@@ -27,11 +31,11 @@ class IRCDownloadHandler(DownloadHandler):
         task: DownloadTask,
         cancel_flag: Event,
         progress_callback: Callable[[float], None],
-        status_callback: Callable[[str, Optional[str]], None],
-    ) -> Optional[str]:
-        """Download a book via IRC DCC. task.task_id contains the IRC request string."""
+        status_callback: Callable[[str, str | None], None],
+    ) -> str | None:
+        """Download a release via IRC DCC. task.task_id contains the IRC request string."""
         download_request = task.task_id
-        logger.info(f"IRC download: {download_request[:60]}...")
+        logger.info("IRC download: %s...", download_request[:60])
 
         # Get IRC settings
         server = config.get("IRC_SERVER", "")
@@ -97,10 +101,11 @@ class IRCDownloadHandler(DownloadHandler):
             status_callback("downloading", "")
 
             # Get file extension from offer filename
-            ext = Path(offer.filename).suffix.lstrip('.') or task.format or "epub"
+            ext = Path(offer.filename).suffix.lstrip(".") or task.format or "epub"
 
             # Stage to temp directory (lazy import to avoid circular import)
             from shelfmark.download.staging import get_staging_path
+
             staging_path = get_staging_path(task.task_id, ext)
 
             download_dcc(
@@ -120,18 +125,18 @@ class IRCDownloadHandler(DownloadHandler):
                 status_callback("cancelled", "Cancelled")
                 return None
 
-            logger.info(f"Download complete: {staging_path}")
+            logger.info("Download complete: %s", staging_path)
             return str(staging_path)
 
         except DCCError as e:
-            logger.error(f"DCC error: {e}")
+            logger.exception("DCC error")
             status_callback("error", str(e))
             if client:
                 connection_manager.close_connection(client)
             return None
 
         except Exception as e:
-            logger.error(f"Download failed: {e}")
+            logger.exception("Download failed")
             status_callback("error", f"Download failed: {e}")
             if client:
                 connection_manager.close_connection(client)
@@ -139,5 +144,5 @@ class IRCDownloadHandler(DownloadHandler):
 
     def cancel(self, task_id: str) -> bool:
         """Cancel an in-progress download (cleanup if cancel_flag fails)."""
-        logger.debug(f"Cancel requested for IRC task: {task_id}")
+        logger.debug("Cancel requested for IRC task: %s", task_id)
         return True

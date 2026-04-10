@@ -1,23 +1,24 @@
 """Open Library metadata provider. No API key required, rate limited."""
 
 import re
-import time
 import threading
+import time
 from collections import deque
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any, ClassVar
 
 import requests
 
 from shelfmark.core.cache import cacheable
 from shelfmark.core.logger import setup_logger
-from shelfmark.download.network import get_ssl_verify
 from shelfmark.core.settings_registry import (
-    register_settings,
-    CheckboxField,
-    SelectField,
     ActionButton,
+    CheckboxField,
     HeadingField,
+    SelectField,
+    SettingsField,
+    register_settings,
 )
+from shelfmark.download.network import get_ssl_verify
 from shelfmark.metadata_providers import (
     BookMetadata,
     DisplayField,
@@ -25,8 +26,8 @@ from shelfmark.metadata_providers import (
     MetadataSearchOptions,
     SearchType,
     SortOrder,
-    register_provider,
     TextSearchField,
+    register_provider,
 )
 
 logger = setup_logger(__name__)
@@ -43,11 +44,11 @@ RATE_LIMIT_WINDOW_SECONDS = 60
 class RateLimiter:
     """Simple sliding window rate limiter."""
 
-    def __init__(self, max_requests: int, window_seconds: int):
+    def __init__(self, max_requests: int, window_seconds: int) -> None:
         """Initialize rate limiter with max requests per time window."""
         self.max_requests = max_requests
         self.window_seconds = window_seconds
-        self.timestamps: Deque[float] = deque()
+        self.timestamps: deque[float] = deque()
         self.lock = threading.Lock()
 
     def wait_if_needed(self) -> None:
@@ -69,7 +70,7 @@ class RateLimiter:
 
         # Sleep outside the lock to avoid blocking other threads
         if wait_time > 0:
-            logger.debug(f"Rate limited, waiting {wait_time:.2f}s")
+            logger.debug("Rate limited, waiting %0.2fs", wait_time)
             time.sleep(wait_time)
 
         # Re-acquire lock and record request
@@ -90,7 +91,7 @@ _rate_limiter = RateLimiter(RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW_SECONDS)
 
 # Mapping from abstract sort order to Open Library sort parameter
 # Note: Open Library only supports relevance (default), new, old, random
-SORT_MAPPING: Dict[str, Optional[str]] = {
+SORT_MAPPING: dict[str, str | None] = {
     SortOrder.RELEVANCE: None,  # Default (no sort param)
     SortOrder.NEWEST: "new",
     SortOrder.OLDEST: "old",
@@ -105,12 +106,12 @@ class OpenLibraryProvider(MetadataProvider):
     name = "openlibrary"
     display_name = "Open Library"
     requires_auth = False
-    supported_sorts = [
+    supported_sorts: ClassVar[tuple[SortOrder, ...]] = (
         SortOrder.RELEVANCE,
         SortOrder.NEWEST,
         SortOrder.OLDEST,
-    ]
-    search_fields = [
+    )
+    search_fields: ClassVar[tuple[TextSearchField, ...]] = (
         TextSearchField(
             key="author",
             label="Author",
@@ -121,9 +122,9 @@ class OpenLibraryProvider(MetadataProvider):
             label="Title",
             description="Search by book title",
         ),
-    ]
+    )
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize provider."""
         self.session = requests.Session()
 
@@ -131,7 +132,7 @@ class OpenLibraryProvider(MetadataProvider):
         """Open Library is always available (no auth required)."""
         return True
 
-    def search(self, options: MetadataSearchOptions) -> List[BookMetadata]:
+    def search(self, options: MetadataSearchOptions) -> list[BookMetadata]:
         """Search for books using Open Library's search API."""
         # Handle ISBN search separately
         if options.search_type == SearchType.ISBN:
@@ -143,13 +144,15 @@ class OpenLibraryProvider(MetadataProvider):
         cache_key = f"{options.query}:{options.search_type.value}:{options.sort.value}:{options.language}:{options.limit}:{options.page}:{fields_key}"
         return self._search_cached(cache_key, options)
 
-    @cacheable(ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="openlibrary:search")
-    def _search_cached(self, cache_key: str, options: MetadataSearchOptions) -> List[BookMetadata]:
+    @cacheable(
+        ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="openlibrary:search"
+    )
+    def _search_cached(self, cache_key: str, options: MetadataSearchOptions) -> list[BookMetadata]:
         """Cached search implementation."""
         _rate_limiter.wait_if_needed()
 
         # Build query params
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "limit": options.limit,
             "page": options.page,
             "fields": "key,title,author_name,first_publish_year,cover_i,isbn,publisher,language,subject,ratings_average,ratings_count",
@@ -185,6 +188,7 @@ class OpenLibraryProvider(MetadataProvider):
         if options.language:
             params["lang"] = options.language
 
+        books: list[BookMetadata] = []
         try:
             response = self.session.get(
                 f"{OPENLIBRARY_BASE_URL}/search.json",
@@ -195,14 +199,12 @@ class OpenLibraryProvider(MetadataProvider):
             response.raise_for_status()
             data = response.json()
 
-            books = []
             for doc in data.get("docs", []):
                 book = self._parse_search_doc(doc)
                 if book:
                     books.append(book)
 
-            logger.info(f"Open Library search '{options.query}' returned {len(books)} results")
-            return books
+            logger.info("Open Library search '%s' returned %s results", options.query, len(books))
 
         except requests.Timeout:
             logger.warning("Open Library search timed out")
@@ -211,14 +213,18 @@ class OpenLibraryProvider(MetadataProvider):
             if e.response.status_code == 503:
                 logger.warning("Open Library service unavailable (503)")
             else:
-                logger.error(f"Open Library HTTP error: {e}")
+                logger.exception("Open Library HTTP error")
             return []
-        except Exception as e:
-            logger.error(f"Open Library search error: {e}")
+        except requests.RequestException:
+            logger.exception("Open Library search request failed")
             return []
+        except TypeError, ValueError:
+            logger.exception("Open Library search parsing error")
+            return []
+        return books
 
     @cacheable(ttl_key="METADATA_CACHE_BOOK_TTL", ttl_default=600, key_prefix="openlibrary:book")
-    def get_book(self, book_id: str) -> Optional[BookMetadata]:
+    def get_book(self, book_id: str) -> BookMetadata | None:
         """Get book details by Open Library work ID (e.g., 'OL12345W')."""
         _rate_limiter.wait_if_needed()
 
@@ -244,16 +250,19 @@ class OpenLibraryProvider(MetadataProvider):
             return None
         except requests.HTTPError as e:
             if e.response.status_code == 404:
-                logger.debug(f"Open Library work not found: {book_id}")
+                logger.debug("Open Library work not found: %s", book_id)
             else:
-                logger.error(f"Open Library HTTP error: {e}")
+                logger.exception("Open Library HTTP error")
             return None
-        except Exception as e:
-            logger.error(f"Open Library get_book error: {e}")
+        except requests.RequestException:
+            logger.exception("Open Library get_book request failed")
+            return None
+        except TypeError, ValueError:
+            logger.exception("Open Library get_book parsing error")
             return None
 
     @cacheable(ttl_key="METADATA_CACHE_BOOK_TTL", ttl_default=600, key_prefix="openlibrary:isbn")
-    def search_by_isbn(self, isbn: str) -> Optional[BookMetadata]:
+    def search_by_isbn(self, isbn: str) -> BookMetadata | None:
         """Search for a book by ISBN-10 or ISBN-13."""
         # Clean ISBN
         clean_isbn = isbn.replace("-", "").strip()
@@ -283,6 +292,7 @@ class OpenLibraryProvider(MetadataProvider):
                         # Update with ISBN from edition if not present
                         # Use dataclasses.replace() to avoid mutating cached object
                         from dataclasses import replace
+
                         updates = {}
                         if not book.isbn_10:
                             isbn_10_list = edition.get("isbn_10", [])
@@ -301,15 +311,18 @@ class OpenLibraryProvider(MetadataProvider):
 
         except requests.HTTPError as e:
             if e.response.status_code == 404:
-                logger.debug(f"Open Library ISBN not found: {isbn}")
+                logger.debug("Open Library ISBN not found: %s", isbn)
             else:
-                logger.error(f"Open Library ISBN search HTTP error: {e}")
+                logger.exception("Open Library ISBN search HTTP error")
             return None
-        except Exception as e:
-            logger.error(f"Open Library ISBN search error: {e}")
+        except requests.RequestException:
+            logger.exception("Open Library ISBN search request failed")
+            return None
+        except TypeError, ValueError:
+            logger.exception("Open Library ISBN search parsing error")
             return None
 
-    def _parse_search_doc(self, doc: dict) -> Optional[BookMetadata]:
+    def _parse_search_doc(self, doc: dict) -> BookMetadata | None:
         """Parse a search document into BookMetadata."""
         try:
             # Extract work ID from key
@@ -374,11 +387,11 @@ class OpenLibraryProvider(MetadataProvider):
                 display_fields=display_fields,
             )
 
-        except Exception as e:
-            logger.debug(f"Failed to parse Open Library search doc: {e}")
+        except (TypeError, ValueError, AttributeError, KeyError) as e:
+            logger.debug("Failed to parse Open Library search doc: %s", e)
             return None
 
-    def _parse_work(self, work: dict, work_id: str) -> Optional[BookMetadata]:
+    def _parse_work(self, work: dict, work_id: str) -> BookMetadata | None:
         """Parse a work object into BookMetadata."""
         try:
             title = work.get("title")
@@ -424,11 +437,11 @@ class OpenLibraryProvider(MetadataProvider):
                 source_url=f"{OPENLIBRARY_BASE_URL}/works/{work_id}",
             )
 
-        except Exception as e:
-            logger.debug(f"Failed to parse Open Library work: {e}")
+        except (TypeError, ValueError, AttributeError, KeyError) as e:
+            logger.debug("Failed to parse Open Library work: %s", e)
             return None
 
-    def _parse_edition(self, edition: dict, isbn: str) -> Optional[BookMetadata]:
+    def _parse_edition(self, edition: dict, isbn: str) -> BookMetadata | None:
         """Parse an edition object into BookMetadata (fallback for ISBN lookup)."""
         try:
             title = edition.get("title")
@@ -461,7 +474,7 @@ class OpenLibraryProvider(MetadataProvider):
             publish_date = edition.get("publish_date", "")
             if publish_date:
                 # Try to extract year from various formats
-                year_match = re.search(r'\b(19|20)\d{2}\b', publish_date)
+                year_match = re.search(r"\b(19|20)\d{2}\b", publish_date)
                 if year_match:
                     publish_year = int(year_match.group())
 
@@ -478,11 +491,11 @@ class OpenLibraryProvider(MetadataProvider):
                 source_url=f"{OPENLIBRARY_BASE_URL}{key}" if key else None,
             )
 
-        except Exception as e:
-            logger.debug(f"Failed to parse Open Library edition: {e}")
+        except (TypeError, ValueError, AttributeError, KeyError) as e:
+            logger.debug("Failed to parse Open Library edition: %s", e)
             return None
 
-    def _get_author_name(self, author_key: str) -> Optional[str]:
+    def _get_author_name(self, author_key: str) -> str | None:
         """Get author name from author key (e.g., '/authors/OL123A')."""
         _rate_limiter.wait_if_needed()
 
@@ -496,13 +509,14 @@ class OpenLibraryProvider(MetadataProvider):
             author = response.json()
             return author.get("name")
 
-        except Exception:
+        except requests.RequestException, ValueError:
             # Don't log errors for author lookups - they're supplementary
             return None
 
 
-def _test_openlibrary_connection() -> Dict[str, Any]:
+def _test_openlibrary_connection() -> dict[str, Any]:
     """Test the Open Library API connection."""
+    connection_result = {"success": False, "message": "Unexpected response from API"}
     try:
         provider = OpenLibraryProvider()
         # Simple API call to test connectivity
@@ -515,15 +529,17 @@ def _test_openlibrary_connection() -> Dict[str, Any]:
         response.raise_for_status()
         data = response.json()
         if "docs" in data:
-            return {"success": True, "message": "Successfully connected to Open Library API"}
-        else:
-            return {"success": False, "message": "Unexpected response from API"}
+            connection_result = {
+                "success": True,
+                "message": "Successfully connected to Open Library API",
+            }
     except requests.Timeout:
         return {"success": False, "message": "Connection timed out"}
     except requests.RequestException as e:
-        return {"success": False, "message": f"Connection failed: {str(e)}"}
-    except Exception as e:
-        return {"success": False, "message": f"Error: {str(e)}"}
+        return {"success": False, "message": f"Connection failed: {e!s}"}
+    except (TypeError, ValueError, AttributeError) as e:
+        return {"success": False, "message": f"Error: {e!s}"}
+    return connection_result
 
 
 # Open Library sort options for settings UI
@@ -534,8 +550,10 @@ _OPENLIBRARY_SORT_OPTIONS = [
 ]
 
 
-@register_settings("openlibrary", "Open Library", icon="library", order=52, group="metadata_providers")
-def openlibrary_settings():
+@register_settings(
+    "openlibrary", "Open Library", icon="library", order=52, group="metadata_providers"
+)
+def openlibrary_settings() -> list[SettingsField]:
     """Open Library metadata provider settings."""
     return [
         HeadingField(

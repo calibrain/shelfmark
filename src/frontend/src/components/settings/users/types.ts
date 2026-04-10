@@ -8,10 +8,12 @@ export interface PerUserSettings {
   BOOKLORE_LIBRARY_ID?: string;
   BOOKLORE_PATH_ID?: string;
   EMAIL_RECIPIENT?: string;
+  DOWNLOAD_TO_BROWSER_CONTENT_TYPES?: string[];
   SEARCH_MODE?: string;
   METADATA_PROVIDER?: string;
   METADATA_PROVIDER_AUDIOBOOK?: string;
   DEFAULT_RELEASE_SOURCE?: string;
+  DEFAULT_RELEASE_SOURCE_AUDIOBOOK?: string;
   USER_NOTIFICATION_ROUTES?: Array<Record<string, unknown>>;
   REQUESTS_ENABLED?: boolean;
   REQUEST_POLICY_DEFAULT_EBOOK?: string;

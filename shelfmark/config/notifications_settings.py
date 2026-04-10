@@ -6,10 +6,12 @@ import re
 from typing import Any
 from urllib.parse import urlsplit
 
+from shelfmark.core.config import config as app_config
 from shelfmark.core.notifications import NotificationEvent, send_test_notification
 from shelfmark.core.settings_registry import (
     ActionButton,
     HeadingField,
+    SettingsField,
     TableField,
     load_config_file,
     register_on_save,
@@ -123,7 +125,7 @@ def _count_invalid_route_urls(routes: list[dict[str, Any]]) -> int:
 
 
 def _ensure_default_route_row(routes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return routes if routes else [dict(row) for row in _DEFAULT_ROUTE_ROWS]
+    return routes or [dict(row) for row in _DEFAULT_ROUTE_ROWS]
 
 
 def _extract_unique_route_urls(routes: list[dict[str, Any]]) -> list[str]:
@@ -245,8 +247,9 @@ def _on_save_notifications(values: dict[str, Any]) -> dict[str, Any]:
 
 
 def _test_admin_notification_action(current_values: dict[str, Any]) -> dict[str, Any]:
-    persisted = load_config_file("notifications")
-    effective: dict[str, Any] = dict(persisted)
+    effective: dict[str, Any] = {
+        "ADMIN_NOTIFICATION_ROUTES": app_config.get("ADMIN_NOTIFICATION_ROUTES", []),
+    }
     if isinstance(current_values, dict):
         effective.update(current_values)
 
@@ -258,7 +261,7 @@ register_on_save("notifications", _on_save_notifications)
 
 
 @register_settings("notifications", "Notifications", icon="bell", order=7)
-def notifications_settings():
+def notifications_settings() -> list[SettingsField]:
     """Global notifications settings."""
     return [
         HeadingField(

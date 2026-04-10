@@ -233,13 +233,12 @@ export const OrderableListField = ({
                 flex items-center gap-3 p-3 rounded-lg
                 transition-all duration-150
                 ${isDragging ? 'opacity-50 cursor-grabbing' : isPinned ? 'cursor-default' : 'cursor-grab'}
-                border border-[var(--border-muted)]
-                ${isDisabled ? 'opacity-60' : !isPinned ? 'hover:bg-[var(--hover-surface)]' : ''}
+                border border-(--border-muted)                ${isDisabled ? 'opacity-60' : !isPinned ? 'hover:bg-(--hover-surface)' : ''}
               `}
             >
               {/* Reorder Controls - hidden for pinned items */}
               {!isPinned ? (
-                <div className="flex flex-col flex-shrink-0 -my-1">
+                <div className="flex flex-col shrink-0 -my-1">
                   <button
                     type="button"
                     onClick={(e) => {
@@ -282,14 +281,14 @@ export const OrderableListField = ({
                   </button>
                 </div>
               ) : (
-                <div className="w-5 sm:w-4 flex-shrink-0" />
+                <div className="w-5 sm:w-4 shrink-0" />
               )}
 
               {/* Label and Description */}
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm">{item.label}</div>
                 {item.description && (
-                  <div className="text-xs text-[var(--text-muted)] mt-0.5">
+                  <div className="text-xs text-(--text-muted) mt-0.5">
                     {item.description}
                   </div>
                 )}
@@ -308,7 +307,7 @@ export const OrderableListField = ({
               </div>
 
               {/* Toggle Switch */}
-              <div onClick={(e) => e.stopPropagation()} className="flex-shrink-0">
+              <div onClick={(e) => e.stopPropagation()} className="shrink-0">
                 <ToggleSwitch
                   checked={item.enabled && !item.isLocked}
                   onChange={() => toggleItem(index)}

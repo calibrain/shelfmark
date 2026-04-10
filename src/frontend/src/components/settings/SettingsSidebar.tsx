@@ -213,13 +213,13 @@ export const SettingsSidebar = ({
                 <button
                   onClick={() => onSelectTab(item.tab.name)}
                   className="w-full flex items-center gap-4 px-5 py-4
-                             active:bg-[var(--hover-surface)] transition-colors text-left"
+                             active:bg-(--hover-surface) transition-colors text-left"
                 >
                   <span className="opacity-50">{getIcon(item.tab.icon)}</span>
                   <span className="flex-1">{item.tab.displayName}</span>
                 </button>
                 {itemIndex < sidebarItems.length - 1 && (
-                  <div className="ml-14 mr-5 border-b border-[var(--border-muted)]" />
+                  <div className="ml-14 mr-5 border-b border-(--border-muted)" />
                 )}
               </div>
             );
@@ -232,7 +232,7 @@ export const SettingsSidebar = ({
               <button
                 onClick={() => toggleGroup(item.group.name)}
                 className="w-full flex items-center gap-4 px-5 py-4
-                           active:bg-[var(--hover-surface)] transition-colors text-left"
+                           active:bg-(--hover-surface) transition-colors text-left"
               >
                 <span className="opacity-50">{getIcon(item.group.icon)}</span>
                 <span className="flex-1">{item.group.displayName}</span>
@@ -240,18 +240,18 @@ export const SettingsSidebar = ({
               </button>
 
               {isExpanded && (
-                <div className="bg-[var(--bg-soft)]/50">
+                <div className="bg-(--bg-soft)/50">
                   {item.tabs.map((tab, index) => (
                     <div key={tab.name}>
                       <button
                         onClick={() => onSelectTab(tab.name)}
                         className="w-full flex items-center gap-4 pl-14 pr-5 py-3.5
-                                   active:bg-[var(--hover-surface)] transition-colors text-left"
+                                   active:bg-(--hover-surface) transition-colors text-left"
                       >
                         <span className="flex-1 text-[15px]">{tab.displayName}</span>
                       </button>
                       {index < item.tabs.length - 1 && (
-                        <div className="ml-14 mr-5 border-b border-[var(--border-muted)]" />
+                        <div className="ml-14 mr-5 border-b border-(--border-muted)" />
                       )}
                     </div>
                   ))}
@@ -259,7 +259,7 @@ export const SettingsSidebar = ({
               )}
 
               {itemIndex < sidebarItems.length - 1 && (
-                <div className="ml-14 mr-5 border-b border-[var(--border-muted)]" />
+                <div className="ml-14 mr-5 border-b border-(--border-muted)" />
               )}
             </div>
           );
@@ -270,7 +270,7 @@ export const SettingsSidebar = ({
 
   // Desktop: Sidebar navigation
   return (
-    <nav className="w-60 border-r border-[var(--border-muted)] py-2 flex-shrink-0 overflow-y-auto">
+    <nav className="w-60 border-r border-(--border-muted) py-2 shrink-0 overflow-y-auto">
       {sidebarItems.map((item) => {
         if (item.type === 'section') {
           return (
@@ -290,8 +290,8 @@ export const SettingsSidebar = ({
               className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left
                           transition-colors ${
                             selectedTab === item.tab.name
-                              ? 'bg-[var(--hover-action)] font-medium'
-                              : 'hover:bg-[var(--hover-surface)]'
+                              ? 'bg-(--hover-action) font-medium'
+                              : 'hover:bg-(--hover-surface)'
                           }`}
             >
               <span className="opacity-60">{getIcon(item.tab.icon)}</span>
@@ -309,8 +309,8 @@ export const SettingsSidebar = ({
             <button
               onClick={() => toggleGroup(item.group.name)}
               className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left
-                          transition-colors hover:bg-[var(--hover-surface)]
-                          ${hasSelectedTab && !isExpanded ? 'bg-[var(--hover-action)]/50' : ''}`}
+                          transition-colors hover:bg-(--hover-surface)
+                          ${hasSelectedTab && !isExpanded ? 'bg-(--hover-action)/50' : ''}`}
             >
               <span className="opacity-60">{getIcon(item.group.icon)}</span>
               <span className="flex-1">{item.group.displayName}</span>
@@ -318,16 +318,16 @@ export const SettingsSidebar = ({
             </button>
 
             {isExpanded && (
-              <div className="ml-8 border-l border-[var(--border-muted)]">
+              <div className="ml-[22px] border-l border-(--border-muted) flex flex-col gap-0.5 pl-3">
                 {item.tabs.map((tab) => (
                   <button
                     key={tab.name}
                     onClick={() => onSelectTab(tab.name)}
-                    className={`w-full flex items-center pl-4 pr-4 py-2 text-sm text-left
+                    className={`w-full flex items-center pl-3 pr-4 py-2 text-sm text-left
                                 transition-colors ${
                                   selectedTab === tab.name
-                                    ? 'bg-[var(--hover-action)] font-medium'
-                                    : 'hover:bg-[var(--hover-surface)]'
+                                    ? 'bg-(--hover-action) font-medium'
+                                    : 'hover:bg-(--hover-surface)'
                                 }`}
                   >
                     <span>{tab.displayName}</span>

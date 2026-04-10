@@ -30,7 +30,7 @@ const BookmarkIcon = ({ className = 'h-4 w-4' }: { className?: string }) => (
     strokeWidth="1.5"
     stroke="currentColor"
     aria-hidden="true"
-    className={`${className} flex-shrink-0`}
+    className={`${className} shrink-0`}
   >
     <path
       strokeLinecap="round"
@@ -51,14 +51,23 @@ const renderSummary = (selectedOptions: DropdownListOption[]) => {
   );
 };
 
+const STATUS_PREFIX = 'status:';
+
+const isStatusTarget = (value: string): boolean => value.startsWith(STATUS_PREFIX);
+
 const updateOptionChecked = (
   prev: BookTargetOption[],
   target: string,
   checked: boolean,
 ): BookTargetOption[] =>
-  prev.map((option) =>
-    option.value === target ? { ...option, checked } : option,
-  );
+  prev.map((option) => {
+    if (option.value === target) return { ...option, checked };
+    // Statuses are mutually exclusive — uncheck other statuses when one is selected
+    if (checked && isStatusTarget(target) && isStatusTarget(option.value)) {
+      return { ...option, checked: false };
+    }
+    return option;
+  });
 
 export const BookTargetDropdown = ({
   provider,
@@ -136,6 +145,7 @@ export const BookTargetDropdown = ({
       value: option.value,
       label: option.label,
       description: option.description,
+      group: option.group,
       disabled: !option.writable || pendingTargets.has(option.value),
     }));
   }, [isLoading, loadError, options, pendingTargets]);
@@ -176,6 +186,16 @@ export const BookTargetDropdown = ({
             target: toggledTarget,
             selected: result.selected,
           });
+          // When a status was implicitly deselected, sync other instances
+          if (result.deselectedTarget) {
+            setOptions((prev) => updateOptionChecked(prev, result.deselectedTarget!, false));
+            emitBookTargetChange({
+              provider,
+              bookId,
+              target: result.deselectedTarget,
+              selected: false,
+            });
+          }
           const label = stripCountSuffix(toggledOption.label);
           onShowToast?.(
             `${result.selected ? 'Added to' : 'Removed from'} ${label}`,
@@ -203,7 +223,7 @@ export const BookTargetDropdown = ({
           <button
             type="button"
             onClick={toggle}
-            className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 focus:outline-none`}
+            className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 focus:outline-hidden`}
           >
             <BookmarkIcon className="w-3 h-3" />
             Hardcover Lists{count > 0 ? ` (${count})` : ''}
@@ -217,7 +237,7 @@ export const BookTargetDropdown = ({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); toggle(); }}
-            className={`flex items-center justify-center rounded-full transition-colors duration-200 focus:outline-none ${className ?? 'p-1.5 sm:p-2 text-gray-600 dark:text-gray-200 hover-action'}`}
+            className={`flex items-center justify-center rounded-full transition-colors duration-200 focus:outline-hidden ${className ?? 'p-1.5 sm:p-2 text-gray-600 dark:text-gray-200 hover-action'}`}
             aria-label="Hardcover Lists"
             title={count > 0 ? `On ${count} Hardcover list${count > 1 ? 's' : ''}` : 'Hardcover Lists'}
           >
@@ -232,7 +252,7 @@ export const BookTargetDropdown = ({
       options={dropdownOptions}
       value={selectedValues}
       onChange={handleChange}
-      placeholder={isLoading ? 'Loading…' : 'Lists & Want to Read'}
+      placeholder={isLoading ? 'Loading…' : 'Hardcover'}
       widthClassName={variant !== 'default' ? 'w-auto' : widthClassName}
       buttonClassName={variant !== 'default' ? '' : 'py-1.5 leading-none'}
       panelClassName={variant !== 'default' ? 'w-56' : undefined}

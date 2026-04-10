@@ -152,6 +152,7 @@ const buildRequestNoteLine = (item: ActivityItem): string | undefined => {
 
 const buildActions = (item: ActivityItem, isAdmin: boolean): ActivityCardAction[] => {
   if (item.kind === 'download' && item.downloadBookId) {
+    const canRetry = item.downloadRetryAvailable === true;
     if (item.visualStatus === 'queued') {
       return [{ kind: 'download-remove', bookId: item.downloadBookId }];
     }
@@ -162,7 +163,7 @@ const buildActions = (item: ActivityItem, isAdmin: boolean): ActivityCardAction[
     ) {
       return [{ kind: 'download-stop', bookId: item.downloadBookId }];
     }
-    if (item.visualStatus === 'error' && !item.requestId) {
+    if (item.visualStatus === 'error' && canRetry) {
       return [
         {
           kind: 'download-retry',
@@ -175,7 +176,7 @@ const buildActions = (item: ActivityItem, isAdmin: boolean): ActivityCardAction[
         },
       ];
     }
-    if (item.visualStatus === 'cancelled') {
+    if (item.visualStatus === 'cancelled' && canRetry) {
       return [
         {
           kind: 'download-retry',

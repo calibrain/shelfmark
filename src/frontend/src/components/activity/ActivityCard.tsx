@@ -43,7 +43,7 @@ interface ActivityCardProps {
 }
 
 const BookFallback = () => (
-  <div className="w-12 h-[4.5rem] rounded bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[8px] font-medium text-gray-500 dark:text-gray-400">
+  <div className="w-12 h-18 rounded-sm bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[8px] font-medium text-gray-500 dark:text-gray-400">
     No Cover
   </div>
 );
@@ -233,7 +233,7 @@ const hasAttachedReleaseData = (record: RequestRecord): boolean => {
 const DetailField = ({ label, value }: { label: string; value: string }) => (
   <div className="py-1">
     <p className="text-[10px] uppercase tracking-wide opacity-60">{label}</p>
-    <p className="text-xs font-medium break-words mt-0.5">{value}</p>
+    <p className="text-xs font-medium wrap-break-word mt-0.5">{value}</p>
   </div>
 );
 
@@ -507,7 +507,7 @@ export const ActivityCard = ({
   const requestType = reviewRecord?.content_type === 'audiobook' ? 'Audiobook' : 'Book';
   const titleAuthorLine = item.author ? `${item.title} — ${item.author}` : item.title;
   const titleLineClassName = isDetailsExpanded
-    ? 'text-sm leading-tight min-w-0 whitespace-normal break-words'
+    ? 'text-sm leading-tight min-w-0 whitespace-normal wrap-break-word'
     : 'text-sm truncate leading-tight min-w-0';
 
   const canShowDownloadLink =
@@ -558,7 +558,7 @@ export const ActivityCard = ({
       )}
       <div className="flex gap-3 items-start">
         {/* Artwork */}
-        <div className="w-12 h-[4.5rem] rounded flex-shrink-0 overflow-hidden bg-gray-200 dark:bg-gray-700">
+        <div className="w-12 h-18 rounded-sm shrink-0 overflow-hidden bg-gray-200 dark:bg-gray-700">
           {item.preview ? (
             <img
               src={item.preview}
@@ -587,7 +587,7 @@ export const ActivityCard = ({
                 </p>
               </Tooltip>
             </div>
-            <div className="flex-shrink-0 inline-flex items-center gap-1 -my-1">
+            <div className="shrink-0 inline-flex items-center gap-1 -my-1">
               {actions.map((action) => {
                 const config = actionUiConfig(action);
                 const icon =
@@ -746,7 +746,7 @@ export const ActivityCard = ({
                     type="button"
                     onClick={handleReviewManualApproval}
                     disabled={isReviewSubmitting}
-                    className="px-2.5 py-1.5 rounded-md text-xs border border-[var(--border-muted)] hover:bg-[var(--hover-surface)] transition-colors disabled:opacity-50"
+                    className="px-2.5 py-1.5 rounded-md text-xs border border-(--border-muted) hover:bg-(--hover-surface) transition-colors disabled:opacity-50"
                   >
                     {isReviewSubmitting ? 'Working...' : 'Manually Mark as Approved'}
                   </button>
@@ -756,7 +756,7 @@ export const ActivityCard = ({
                     type="button"
                     onClick={handleReviewBrowseAlternatives}
                     disabled={isReviewSubmitting}
-                    className="px-2.5 py-1.5 rounded-md text-xs border border-[var(--border-muted)] hover:bg-[var(--hover-surface)] transition-colors disabled:opacity-50"
+                    className="px-2.5 py-1.5 rounded-md text-xs border border-(--border-muted) hover:bg-(--hover-surface) transition-colors disabled:opacity-50"
                   >
                     Browse Alternatives
                   </button>
@@ -776,7 +776,7 @@ export const ActivityCard = ({
                 rows={3}
                 maxLength={MAX_ADMIN_NOTE_LENGTH}
                 placeholder="Optional note shown to the user"
-                className="w-full px-2.5 py-2 rounded-md border border-[var(--border-muted)] bg-[var(--bg)] text-xs resize-y min-h-[72px] focus:outline-none focus:ring-2 focus:ring-red-500/30 focus:border-red-500"
+                className="w-full px-2.5 py-2 rounded-md border border-(--border-muted) bg-(--bg) text-xs resize-y min-h-[72px] focus:outline-hidden focus:ring-2 focus:ring-red-500/30 focus:border-red-500"
                 disabled={isRejectSubmitting}
               />
               <div className="flex items-center justify-between">
@@ -786,7 +786,7 @@ export const ActivityCard = ({
                     type="button"
                     onClick={onRequestRejectClose}
                     disabled={isRejectSubmitting}
-                    className="px-2.5 py-1.5 rounded-md text-xs hover:bg-[var(--hover-surface)] transition-colors disabled:opacity-50"
+                    className="px-2.5 py-1.5 rounded-md text-xs hover:bg-(--hover-surface) transition-colors disabled:opacity-50"
                   >
                     Cancel
                   </button>

@@ -23,6 +23,5 @@ export const CONTENT_OPTIONS = [
   { value: 'standards_document', label: 'Standards document' },
   { value: 'other', label: 'Other' },
   { value: 'musical_score', label: 'Musical score' },
-  { value: 'audiobook', label: 'Audiobook' },
 ];
 

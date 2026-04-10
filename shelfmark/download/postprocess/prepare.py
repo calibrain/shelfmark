@@ -1,16 +1,25 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask
-from shelfmark.download.staging import STAGE_COPY, STAGE_NONE, get_staging_dir, stage_path
+from shelfmark.download.staging import (
+    STAGE_COPY,
+    STAGE_NONE,
+    get_staging_dir,
+    stage_path,
+)
 
 from .scan import collect_staged_files
 from .transfer import resolve_hardlink_source
 from .types import OutputPlan, PreparedFiles
 from .workspace import cleanup_output_staging, is_managed_workspace_path
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+
+    from shelfmark.core.models import DownloadTask
 
 logger = setup_logger("shelfmark.download.postprocess.pipeline")
 
@@ -19,11 +28,10 @@ def build_output_plan(
     temp_file: Path,
     task: DownloadTask,
     output_mode: str,
-    destination: Optional[Path] = None,
-    status_callback=None,
+    destination: Path | None = None,
+    status_callback: Callable[[str, str | None], None] | None = None,
 ) -> OutputPlan:
     """Build an output plan that describes staging behavior for file-based outputs."""
-
     transfer_plan = resolve_hardlink_source(temp_file, task, destination, status_callback)
     staging_dir = get_staging_dir()
 
@@ -40,11 +48,12 @@ def prepare_output_files(
     temp_file: Path,
     task: DownloadTask,
     output_mode: str,
-    status_callback,
-    destination: Optional[Path] = None,
-    output_plan: Optional[OutputPlan] = None,
+    status_callback: Callable[[str, str | None], None] | None,
+    destination: Path | None = None,
+    output_plan: OutputPlan | None = None,
+    *,
     preserve_source_on_failure: bool = False,
-) -> Optional[PreparedFiles]:
+) -> PreparedFiles | None:
     if output_plan is None:
         output_plan = build_output_plan(
             temp_file,
@@ -56,12 +65,14 @@ def prepare_output_files(
 
     working_path = temp_file
     if output_plan.stage_action != STAGE_NONE:
-        step_label = "Staging torrent files" if output_plan.stage_action == STAGE_COPY else "Staging files"
+        step_label = (
+            "Staging torrent files" if output_plan.stage_action == STAGE_COPY else "Staging files"
+        )
         status_callback("resolving", step_label)
         working_path = stage_path(working_path, output_plan.staging_dir, output_plan.stage_action)
 
-    can_delete_source_archives = output_plan.stage_action != STAGE_NONE or is_managed_workspace_path(
-        working_path
+    can_delete_source_archives = (
+        output_plan.stage_action != STAGE_NONE or is_managed_workspace_path(working_path)
     )
     cleanup_archives = can_delete_source_archives and not preserve_source_on_failure
 

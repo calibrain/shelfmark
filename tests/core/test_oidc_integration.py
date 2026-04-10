@@ -1,10 +1,13 @@
 """Tests for auth mode and admin policy helpers used by OIDC integration."""
 
+import sqlite3
+
 from shelfmark.core.auth_modes import (
     determine_auth_mode,
     get_settings_tab_from_path,
     get_auth_check_admin_status,
     is_settings_or_onboarding_path,
+    load_active_auth_mode,
     requires_admin_for_settings_access,
     should_restrict_settings_to_admin,
 )
@@ -59,6 +62,40 @@ class TestDetermineAuthMode:
             "OIDC_CLIENT_ID": "shelfmark",
         }
         assert determine_auth_mode(config, cwa_db_path=None, has_local_admin=False) == "none"
+
+    def test_load_active_auth_mode_reads_env_backed_cwa_setting(self, monkeypatch, tmp_path):
+        from shelfmark.core.config import config as app_config
+
+        monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+        monkeypatch.setenv("AUTH_METHOD", "cwa")
+        app_config.refresh(force=True)
+
+        cwa_db_path = tmp_path / "app.db"
+        conn = sqlite3.connect(cwa_db_path)
+        conn.execute("create table user (name text)")
+        conn.commit()
+        conn.close()
+
+        try:
+            assert load_active_auth_mode(cwa_db_path) == "cwa"
+        finally:
+            monkeypatch.delenv("AUTH_METHOD", raising=False)
+            app_config.refresh(force=True)
+
+    def test_load_active_auth_mode_reads_env_backed_proxy_setting(self, monkeypatch, tmp_path):
+        from shelfmark.core.config import config as app_config
+
+        monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+        monkeypatch.setenv("AUTH_METHOD", "proxy")
+        monkeypatch.setenv("PROXY_AUTH_USER_HEADER", "X-Forwarded-User")
+        app_config.refresh(force=True)
+
+        try:
+            assert load_active_auth_mode(cwa_db_path=None) == "proxy"
+        finally:
+            monkeypatch.delenv("AUTH_METHOD", raising=False)
+            monkeypatch.delenv("PROXY_AUTH_USER_HEADER", raising=False)
+            app_config.refresh(force=True)
 
 
 class TestSettingsRestrictionPolicy:

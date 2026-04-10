@@ -9,12 +9,13 @@ from shelfmark.core.settings_registry import (
     HeadingField,
     NumberField,
     SelectField,
+    SettingsField,
     TextField,
     register_settings,
 )
 
 
-def _clear_irc_cache():
+def _clear_irc_cache() -> dict[str, str | int | bool]:
     """Clear all cached IRC search results."""
     from shelfmark.release_sources.irc.cache import clear_cache, get_cache_stats
 
@@ -32,21 +33,20 @@ def _clear_irc_cache():
     icon="download",
     order=56,
 )
-def irc_settings():
+def irc_settings() -> list[SettingsField]:
     """Define IRC source settings."""
     return [
         HeadingField(
             key="heading",
             title="IRC",
             description=(
-                "Search and download books from IRC ebook channels. "
+                "Search and download ebook and audiobook releases from IRC channels. "
                 "This source connects via IRC and uses DCC for file transfers. "
                 "Configure the connection details below to enable IRC search. "
                 "Note: DCC requires direct TCP connections to arbitrary ports, "
                 "which may not work behind strict firewalls or NAT."
             ),
         ),
-
         TextField(
             key="IRC_SERVER",
             label="Server",
@@ -55,7 +55,6 @@ def irc_settings():
             required=True,
             env_supported=True,
         ),
-
         NumberField(
             key="IRC_PORT",
             label="Port",
@@ -63,15 +62,12 @@ def irc_settings():
             description="IRC server port (usually 6697 for TLS, 6667 for plain)",
             env_supported=True,
         ),
-
         CheckboxField(
             key="IRC_USE_TLS",
             label="Use TLS",
             default=True,
             description="Enable TLS/SSL encryption for the IRC connection. Disable for servers that don't support TLS.",
-            env_supported=True,
         ),
-
         TextField(
             key="IRC_CHANNEL",
             label="Channel",
@@ -80,7 +76,6 @@ def irc_settings():
             required=True,
             env_supported=True,
         ),
-
         TextField(
             key="IRC_NICK",
             label="Nickname",
@@ -89,7 +84,6 @@ def irc_settings():
             required=True,
             env_supported=True,
         ),
-
         TextField(
             key="IRC_SEARCH_BOT",
             label="Search bot",
@@ -97,7 +91,6 @@ def irc_settings():
             description="The search bot to query for results",
             env_supported=True,
         ),
-
         HeadingField(
             key="cache_heading",
             title="Search Cache",
@@ -106,7 +99,6 @@ def irc_settings():
                 "Use the Refresh button in the release modal to force a new search."
             ),
         ),
-
         SelectField(
             key="IRC_CACHE_TTL",
             label="Cache Duration",
@@ -117,7 +109,6 @@ def irc_settings():
             ],
             default="2592000",  # 30 days
         ),
-
         ActionButton(
             key="clear_irc_cache",
             label="Clear Cache",

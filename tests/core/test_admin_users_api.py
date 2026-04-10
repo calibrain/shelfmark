@@ -152,8 +152,10 @@ class TestAdminUsersListEndpoint:
         )
 
         with patch(
-            "shelfmark.core.admin_routes.load_config_file",
-            return_value={"OIDC_USE_ADMIN_GROUP": False},
+            "shelfmark.core.admin_routes.app_config.get",
+            side_effect=lambda key, default=None, user_id=None: {
+                "OIDC_USE_ADMIN_GROUP": False,
+            }.get(key, default),
         ):
             resp = admin_client.get("/api/admin/users")
 
@@ -981,9 +983,11 @@ class TestAdminDownloadDefaults:
         """Create a temporary downloads config file."""
         import json
         from pathlib import Path
+        from shelfmark.core.config import config as app_config
 
         config_dir = str(tmp_path)
         monkeypatch.setenv("CONFIG_DIR", config_dir)
+        monkeypatch.delenv("INGEST_DIR", raising=False)
         monkeypatch.setattr("shelfmark.config.env.CONFIG_DIR", Path(config_dir))
         plugins_dir = tmp_path / "plugins"
         plugins_dir.mkdir()
@@ -996,6 +1000,9 @@ class TestAdminDownloadDefaults:
             "EMAIL_RECIPIENT": "reader@example.com",
         }
         (plugins_dir / "downloads.json").write_text(json.dumps(config))
+        app_config.refresh(force=True)
+        yield
+        app_config.refresh(force=True)
 
     def test_returns_download_defaults(self, admin_client):
         resp = admin_client.get("/api/admin/download-defaults")
@@ -1097,7 +1104,7 @@ class TestAdminDeliveryPreferences:
         (plugins_dir / "downloads.json").write_text(json.dumps(downloads_config))
 
         from shelfmark.core.config import config as app_config
-        app_config.refresh()
+        app_config.refresh(force=True)
 
     def test_returns_curated_fields_and_effective_values(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
@@ -1122,6 +1129,7 @@ class TestAdminDeliveryPreferences:
             "BOOKLORE_PATH_ID",
             "EMAIL_RECIPIENT",
             "DESTINATION_AUDIOBOOK",
+            "DOWNLOAD_TO_BROWSER_CONTENT_TYPES",
         ]
 
         field_keys = [field["key"] for field in data["fields"]]
@@ -1175,11 +1183,12 @@ class TestAdminSearchPreferences:
             "METADATA_PROVIDER": "openlibrary",
             "METADATA_PROVIDER_AUDIOBOOK": "",
             "DEFAULT_RELEASE_SOURCE": "direct_download",
+            "DEFAULT_RELEASE_SOURCE_AUDIOBOOK": "",
         }
         (plugins_dir / "search_mode.json").write_text(json.dumps(search_mode_config))
 
         from shelfmark.core.config import config as app_config
-        app_config.refresh()
+        app_config.refresh(force=True)
 
     def test_returns_curated_fields_and_effective_values(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
@@ -1189,6 +1198,7 @@ class TestAdminSearchPreferences:
                 "SEARCH_MODE": "universal",
                 "METADATA_PROVIDER": "openlibrary",
                 "DEFAULT_RELEASE_SOURCE": "prowlarr",
+                "DEFAULT_RELEASE_SOURCE_AUDIOBOOK": "audiobookbay",
             },
         )
 
@@ -1199,9 +1209,12 @@ class TestAdminSearchPreferences:
         assert data["tab"] == "search_mode"
         assert data["keys"] == [
             "SEARCH_MODE",
+            "SHOW_COMBINED_SELECTOR",
             "METADATA_PROVIDER",
             "METADATA_PROVIDER_AUDIOBOOK",
+            "METADATA_PROVIDER_COMBINED",
             "DEFAULT_RELEASE_SOURCE",
+            "DEFAULT_RELEASE_SOURCE_AUDIOBOOK",
         ]
 
         field_keys = [field["key"] for field in data["fields"]]
@@ -1210,6 +1223,7 @@ class TestAdminSearchPreferences:
         assert data["userOverrides"]["SEARCH_MODE"] == "universal"
         assert data["userOverrides"]["METADATA_PROVIDER"] == "openlibrary"
         assert data["userOverrides"]["DEFAULT_RELEASE_SOURCE"] == "prowlarr"
+        assert data["userOverrides"]["DEFAULT_RELEASE_SOURCE_AUDIOBOOK"] == "audiobookbay"
 
         assert data["effective"]["SEARCH_MODE"]["source"] == "user_override"
         assert data["effective"]["SEARCH_MODE"]["value"] == "universal"
@@ -1217,6 +1231,8 @@ class TestAdminSearchPreferences:
         assert data["effective"]["METADATA_PROVIDER_AUDIOBOOK"]["source"] in {"global_config", "default"}
         assert data["effective"]["DEFAULT_RELEASE_SOURCE"]["source"] == "user_override"
         assert data["effective"]["DEFAULT_RELEASE_SOURCE"]["value"] == "prowlarr"
+        assert data["effective"]["DEFAULT_RELEASE_SOURCE_AUDIOBOOK"]["source"] == "user_override"
+        assert data["effective"]["DEFAULT_RELEASE_SOURCE_AUDIOBOOK"]["value"] == "audiobookbay"
 
     def test_returns_404_for_unknown_user(self, admin_client):
         resp = admin_client.get("/api/admin/users/9999/search-preferences")
@@ -1259,7 +1275,7 @@ class TestAdminNotificationPreferences:
         (plugins_dir / "notifications.json").write_text(json.dumps(notifications_config))
 
         from shelfmark.core.config import config as app_config
-        app_config.refresh()
+        app_config.refresh(force=True)
 
     def test_returns_curated_fields_and_effective_values(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
@@ -1332,7 +1348,7 @@ class TestAdminNotificationPreferencesTestAction:
         (plugins_dir / "notifications.json").write_text(json.dumps(notifications_config))
 
         from shelfmark.core.config import config as app_config
-        app_config.refresh()
+        app_config.refresh(force=True)
 
     def test_requires_admin(self, regular_client, user_db):
         user = user_db.create_user(username="alice")
@@ -1491,7 +1507,7 @@ class TestAdminEffectiveSettings:
 
         # Ensure config singleton sees the current test env/config dir.
         from shelfmark.core.config import config as app_config
-        app_config.refresh()
+        app_config.refresh(force=True)
 
     def test_returns_effective_values_with_sources(self, admin_client, user_db):
         user = user_db.create_user(username="alice")

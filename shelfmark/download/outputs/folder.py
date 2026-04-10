@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
-from pathlib import Path
-from threading import Event
-from typing import Any, Optional, List
+from typing import TYPE_CHECKING, Any
 
 import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook as check_audiobook
-from shelfmark.download.outputs import register_output
-from shelfmark.download.staging import StageAction, STAGE_NONE
+from shelfmark.download.outputs import StatusCallback, register_output
+from shelfmark.download.staging import STAGE_NONE, StageAction
+
+if TYPE_CHECKING:
+    from pathlib import Path
+    from threading import Event
+
+    from shelfmark.core.models import DownloadTask
 
 logger = setup_logger(__name__)
 
@@ -31,7 +33,7 @@ class _ProcessingPlan:
     allow_archive_extraction: bool
     stage_action: StageAction
     staging_dir: Path
-    hardlink_source: Optional[Path]
+    hardlink_source: Path | None
     output_mode: str = FOLDER_OUTPUT_MODE
 
 
@@ -42,8 +44,8 @@ def _supports_folder_output(task: DownloadTask) -> bool:
 def _build_processing_plan(
     temp_file: Path,
     task: DownloadTask,
-    status_callback,
-) -> Optional[_ProcessingPlan]:
+    status_callback: StatusCallback,
+) -> _ProcessingPlan | None:
     from shelfmark.download.postprocess.pipeline import (
         build_output_plan,
         get_final_destination,
@@ -52,7 +54,7 @@ def _build_processing_plan(
     from shelfmark.download.postprocess.policy import get_file_organization
 
     is_audiobook = check_audiobook(task.content_type)
-    organization_mode = get_file_organization(is_audiobook)
+    organization_mode = get_file_organization(is_audiobook=is_audiobook)
     destination = get_final_destination(task)
 
     if not validate_destination(destination, status_callback):
@@ -87,9 +89,10 @@ def process_folder_output(
     temp_file: Path,
     task: DownloadTask,
     cancel_flag: Event,
-    status_callback,
+    status_callback: StatusCallback,
+    *,
     preserve_source_on_failure: bool = False,
-) -> Optional[str]:
+) -> str | None:
     """Post-process download to the configured folder destination."""
     from shelfmark.download.postprocess.pipeline import (
         CustomScriptContext,
@@ -97,8 +100,8 @@ def process_folder_output(
         cleanup_output_staging,
         is_torrent_source,
         log_plan_steps,
-        prepare_output_files,
         maybe_run_custom_script,
+        prepare_output_files,
         record_step,
         transfer_book_files,
     )
@@ -128,16 +131,23 @@ def process_folder_output(
     if not prepared:
         return None
 
-    steps: List[Any] = []
+    steps: list[Any] = []
     if prepared.output_plan.stage_action != STAGE_NONE:
         step_name = f"stage_{prepared.output_plan.stage_action}"
-        record_step(steps, step_name, source=str(temp_file), dest=str(prepared.output_plan.staging_dir))
+        record_step(
+            steps,
+            step_name,
+            source=str(temp_file),
+            dest=str(prepared.output_plan.staging_dir),
+        )
 
     # Custom script is run post-transfer (see below).
 
     # If we staged into TMP_DIR, transfer from the staged path and disable hardlinking.
     use_hardlink = plan.use_hardlink and prepared.output_plan.stage_action == STAGE_NONE
-    source_path = plan.hardlink_source if use_hardlink and plan.hardlink_source else prepared.working_path
+    source_path = (
+        plan.hardlink_source if use_hardlink and plan.hardlink_source else prepared.working_path
+    )
     is_torrent = is_torrent_source(source_path, task)
 
     usenet_action = core_config.config.get("PROWLARR_USENET_ACTION", "move")
@@ -147,7 +157,9 @@ def process_folder_output(
     # "Move" is implemented as a client-side cleanup after import.
     preserve_source = is_usenet or preserve_source_on_failure
 
-    copy_for_label = is_torrent or preserve_source or prepared.output_plan.stage_action != STAGE_NONE
+    copy_for_label = (
+        is_torrent or preserve_source or prepared.output_plan.stage_action != STAGE_NONE
+    )
 
     if cancel_flag.is_set():
         logger.info("Task %s: cancelled before final transfer", task.task_id)

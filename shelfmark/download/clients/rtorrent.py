@@ -1,17 +1,15 @@
-"""
-rTorrent download client for Prowlarr integration.
+"""rTorrent download client for Prowlarr integration.
 
 Uses xmlrpc to communicate with rTorrent's RPC interface.
 """
 
 import ssl
-from typing import Any, Optional, Tuple
+from typing import NoReturn
 from urllib.parse import urlparse
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.utils import normalize_http_url, get_hardened_xmlrpc_client
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.core.utils import get_hardened_xmlrpc_client, normalize_http_url
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
@@ -20,11 +18,15 @@ from shelfmark.download.clients import (
 from shelfmark.download.clients.torrent_utils import (
     extract_torrent_info,
 )
+from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
 
 
-def _create_rtorrent_server_proxy(url: str) -> Any:
+_ETA_MAX_SECONDS = 604800
+
+
+def _create_rtorrent_server_proxy(url: str) -> object:
     """Create an XML-RPC ServerProxy honoring certificate validation mode."""
     xmlrpc_client = get_hardened_xmlrpc_client()
 
@@ -39,6 +41,10 @@ def _create_rtorrent_server_proxy(url: str) -> Any:
     return xmlrpc_client.ServerProxy(url)
 
 
+def _raise_runtime_error(message: str) -> NoReturn:
+    raise RuntimeError(message)
+
+
 @register_client("torrent")
 class RTorrentClient(DownloadClient):
     """rTorrent download client using xmlrpc."""
@@ -46,24 +52,24 @@ class RTorrentClient(DownloadClient):
     protocol = "torrent"
     name = "rtorrent"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize rTorrent client with settings from config."""
         raw_url = config.get("RTORRENT_URL", "")
         if not raw_url:
-            raise ValueError("RTORRENT_URL is required")
+            msg = "RTORRENT_URL is required"
+            raise ValueError(msg)
 
         self._base_url = normalize_http_url(raw_url)
         if not self._base_url:
-            raise ValueError("RTORRENT_URL is invalid")
+            msg = "RTORRENT_URL is invalid"
+            raise ValueError(msg)
 
         username = config.get("RTORRENT_USERNAME", "")
         password = config.get("RTORRENT_PASSWORD", "")
 
         if username and password:
             parsed = urlparse(self._base_url)
-            self._base_url = (
-                f"{parsed.scheme}://{username}:{password}@{parsed.netloc}{parsed.path}"
-            )
+            self._base_url = f"{parsed.scheme}://{username}:{password}@{parsed.netloc}{parsed.path}"
 
         self._rpc = _create_rtorrent_server_proxy(self._base_url)
         self._download_dir = config.get("RTORRENT_DOWNLOAD_DIR", "")
@@ -76,24 +82,24 @@ class RTorrentClient(DownloadClient):
         url = normalize_http_url(config.get("RTORRENT_URL", ""))
         return client == "rtorrent" and bool(url)
 
-    def test_connection(self) -> Tuple[bool, str]:
+    def test_connection(self) -> tuple[bool, str]:
         """Test connection to rTorrent."""
         try:
             version = self._rpc.system.client_version()
-            return True, f"Connected to rTorrent {version}"
         except Exception as e:
-            return False, f"Connection failed: {str(e)}"
+            return False, f"Connection failed: {e!s}"
+        else:
+            return True, f"Connected to rTorrent {version}"
 
     def add_download(
         self,
         url: str,
         name: str,
-        category: Optional[str] = None,
-        expected_hash: Optional[str] = None,
+        category: str | None = None,
+        expected_hash: str | None = None,
         **kwargs,
     ) -> str:
-        """
-        Add torrent by URL (magnet or .torrent).
+        """Add torrent by URL (magnet or .torrent).
 
         Args:
             url: Magnet link or .torrent URL
@@ -106,6 +112,7 @@ class RTorrentClient(DownloadClient):
 
         Raises:
             Exception: If adding fails.
+
         """
         try:
             torrent_info = extract_torrent_info(url, expected_hash=expected_hash)
@@ -114,44 +121,53 @@ class RTorrentClient(DownloadClient):
 
             label = category or self._label
             if label:
-                logger.debug(f"Setting rTorrent label: {label}")
+                logger.debug("Setting rTorrent label: %s", label)
                 commands.append(f"d.custom1.set={label}")
 
             download_dir = self._download_dir or self._get_download_dir()
             if download_dir:
-                logger.debug(f"Setting rTorrent download directory: {download_dir}")
+                logger.debug("Setting rTorrent download directory: %s", download_dir)
                 commands.append(f"d.directory.set={download_dir}")
 
             if torrent_info.torrent_data:
-                logger.debug(f"Adding torrent data directly to rTorrent for: {name} with commands: {commands} with data size: {len(torrent_info.torrent_data)}")
-                self._rpc.load.raw_start(
-                    "", torrent_info.torrent_data, ";".join(commands)
+                logger.debug(
+                    "Adding torrent data directly to rTorrent for: %s with commands: %s with data size: %s",
+                    name,
+                    commands,
+                    len(torrent_info.torrent_data),
                 )
+                self._rpc.load.raw_start("", torrent_info.torrent_data, ";".join(commands))
             else:
-                logger.debug(f"Adding torrent URL to rTorrent for: {name} with commands: {commands} with URL: {url}")
+                logger.debug(
+                    "Adding torrent URL to rTorrent for: %s with commands: %s with URL: %s",
+                    name,
+                    commands,
+                    url,
+                )
                 add_url = torrent_info.magnet_url or url
                 self._rpc.load.start("", add_url, ";".join(commands))
 
             torrent_hash = torrent_info.info_hash or expected_hash
             if not torrent_hash:
-                raise Exception("Could not determine torrent hash from URL")
+                _raise_runtime_error("Could not determine torrent hash from URL")
 
-            logger.debug(f"Added torrent to rTorrent: {torrent_hash}")
+            logger.debug("Added torrent to rTorrent: %s", torrent_hash)
+
+        except Exception:
+            logger.exception("rTorrent add failed")
+            raise
+        else:
             return torrent_hash
 
-        except Exception as e:
-            logger.error(f"rTorrent add failed: {e}")
-            raise
-
     def get_status(self, download_id: str) -> DownloadStatus:
-        """
-        Get torrent status by hash.
+        """Get torrent status by hash.
 
         Args:
             download_id: Torrent info_hash
 
         Returns:
             Current download status.
+
         """
         try:
             # rtorrent is somehow case sensitive and requires uppercase hashes for look
@@ -169,25 +185,29 @@ class RTorrentClient(DownloadClient):
                 "d.complete=",
             )
             torrent_list = [t for t in all_torrents if t and t[0] == download_id]
-            logger.debug(f"Fetched torrent status from rTorrent for: {download_id} - {torrent_list}")
+            logger.debug(
+                "Fetched torrent status from rTorrent for: %s - %s",
+                download_id,
+                torrent_list,
+            )
             if not torrent_list:
-                logger.warning(f"Torrent not found in rTorrent: {download_id}")
+                logger.warning("Torrent not found in rTorrent: %s", download_id)
                 return DownloadStatus.error("Torrent not found")
 
             torrent = torrent_list[0]
             if not torrent:
-                logger.warning(f"Torrent data is empty for: {download_id}")
+                logger.warning("Torrent data is empty for: %s", download_id)
                 return DownloadStatus.error("Torrent not found")
 
-            logger.debug(f"Torrent data for {download_id}: {torrent}")
+            logger.debug("Torrent data for %s: %s", download_id, torrent)
             (
-                torrent_hash,
+                _torrent_hash,
                 state,
                 bytes_downloaded,
                 bytes_total,
                 down_rate,
-                up_rate,
-                custom_category,
+                _up_rate,
+                _custom_category,
                 complete,
             ) = torrent
 
@@ -198,10 +218,7 @@ class RTorrentClient(DownloadClient):
 
             complete = bool(complete)
 
-            if bytes_total > 0:
-                progress = (bytes_downloaded / bytes_total) * 100
-            else:
-                progress = 0
+            progress = (bytes_downloaded / bytes_total) * 100 if bytes_total > 0 else 0
 
             bytes_left = max(0, bytes_total - bytes_downloaded)
 
@@ -221,7 +238,7 @@ class RTorrentClient(DownloadClient):
             eta = None
             if down_rate > 0 and bytes_left > 0:
                 eta_seconds = bytes_left / down_rate
-                if eta_seconds < 604800:
+                if eta_seconds < _ETA_MAX_SECONDS:
                     eta = int(eta_seconds)
 
             file_path = None
@@ -240,12 +257,11 @@ class RTorrentClient(DownloadClient):
 
         except Exception as e:
             error_type = type(e).__name__
-            logger.error(f"rTorrent get_status failed ({error_type}): {e}")
+            logger.exception("rTorrent get_status failed (%s)", error_type)
             return DownloadStatus.error(f"{error_type}: {e}")
 
-    def remove(self, download_id: str, delete_files: bool = False) -> bool:
-        """
-        Remove a torrent from rTorrent.
+    def remove(self, download_id: str, *, delete_files: bool = False) -> bool:
+        """Remove a torrent from rTorrent.
 
         Args:
             download_id: Torrent info_hash
@@ -253,6 +269,7 @@ class RTorrentClient(DownloadClient):
 
         Returns:
             True if successful.
+
         """
         try:
             if delete_files:
@@ -263,35 +280,37 @@ class RTorrentClient(DownloadClient):
                 self._rpc.d.erase(download_id)
 
             logger.info(
-                f"Removed torrent from rTorrent: {download_id}"
-                + (" (with files)" if delete_files else "")
+                "Removed torrent from rTorrent: %s%s",
+                download_id,
+                " (with files)" if delete_files else "",
             )
-            return True
         except Exception as e:
             error_type = type(e).__name__
-            logger.error(f"rTorrent remove failed ({error_type}): {e}")
+            logger.exception("rTorrent remove failed (%s)", error_type)
             return False
+        else:
+            return True
 
-    def get_download_path(self, download_id: str) -> Optional[str]:
-        """
-        Get the path where torrent files are located.
+    def get_download_path(self, download_id: str) -> str | None:
+        """Get the path where torrent files are located.
 
         Args:
             download_id: Torrent info_hash
 
         Returns:
             Content path (file or directory), or None.
+
         """
         try:
             return self._get_torrent_path(download_id)
         except Exception as e:
             error_type = type(e).__name__
-            logger.debug(f"rTorrent get_download_path failed ({error_type}): {e}")
+            logger.debug("rTorrent get_download_path failed (%s): %s", error_type, e)
             return None
 
     def find_existing(
-        self, url: str, category: Optional[str] = None
-    ) -> Optional[Tuple[str, DownloadStatus]]:
+        self, url: str, category: str | None = None
+    ) -> tuple[str, DownloadStatus] | None:
         """Check if a torrent for this URL already exists in rTorrent."""
         try:
             torrent_info = extract_torrent_info(url)
@@ -304,21 +323,20 @@ class RTorrentClient(DownloadClient):
                     return (torrent_info.info_hash, status)
             except Exception:
                 pass
-
-            return None
         except Exception as e:
-            logger.debug(f"Error checking for existing torrent: {e}")
+            logger.debug("Error checking for existing torrent: %s", e)
+            return None
+        else:
             return None
 
     def _get_download_dir(self) -> str:
         """Get the download directory from rTorrent config."""
         try:
-            download_dir = self._rpc.directory.default()
-            return download_dir
+            return self._rpc.directory.default()
         except Exception:
             return "/downloads"
 
-    def _get_torrent_path(self, download_id: str) -> Optional[str]:
+    def _get_torrent_path(self, download_id: str) -> str | None:
         """Get the file path of a torrent by hash.
 
         Uses `d.base_path` for the item output path. In the xmlrpc interface
@@ -337,6 +355,7 @@ class RTorrentClient(DownloadClient):
             if not details:
                 return None
             path = details[0][0]
-            return path if path else None
         except Exception:
             return None
+        else:
+            return path or None

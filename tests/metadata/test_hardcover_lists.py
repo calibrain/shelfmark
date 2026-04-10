@@ -1,7 +1,9 @@
+import pytest
+
 from shelfmark.core.cache import cache_key
 from shelfmark.metadata_providers import MetadataSearchOptions, SearchResult
 from shelfmark.metadata_providers.hardcover import (
-    HARDCOVER_WANT_TO_READ_STATUS_ID,
+    HARDCOVER_STATUS_GROUP,
     HardcoverProvider,
 )
 
@@ -23,7 +25,7 @@ class CacheStub:
 
 
 class TestHardcoverLists:
-    def test_fetch_user_lists_includes_want_to_read_shelf(self, monkeypatch):
+    def test_fetch_user_lists_includes_all_status_shelves(self, monkeypatch):
         provider = HardcoverProvider(api_key="test-token")
 
         monkeypatch.setattr(
@@ -32,11 +34,10 @@ class TestHardcoverLists:
             lambda query, variables: {
                 "me": {
                     "username": "alex",
-                    "want_to_read_books": {
-                        "aggregate": {
-                            "count": 7,
-                        }
-                    },
+                    "want_to_read_count": {"aggregate": {"count": 7}},
+                    "currently_reading_count": {"aggregate": {"count": 3}},
+                    "read_count": {"aggregate": {"count": 20}},
+                    "did_not_finish_count": {"aggregate": {"count": 1}},
                     "lists": [
                         {
                             "id": 42,
@@ -53,11 +54,26 @@ class TestHardcoverLists:
         options = provider._fetch_user_lists()
 
         assert options[0] == {
-            "value": f"status:{HARDCOVER_WANT_TO_READ_STATUS_ID}",
+            "value": "status:1",
             "label": "Want to Read (7)",
-            "group": "My Books",
+            "group": HARDCOVER_STATUS_GROUP,
         }
         assert options[1] == {
+            "value": "status:2",
+            "label": "Currently Reading (3)",
+            "group": HARDCOVER_STATUS_GROUP,
+        }
+        assert options[2] == {
+            "value": "status:3",
+            "label": "Read (20)",
+            "group": HARDCOVER_STATUS_GROUP,
+        }
+        assert options[3] == {
+            "value": "status:5",
+            "label": "Did Not Finish (1)",
+            "group": HARDCOVER_STATUS_GROUP,
+        }
+        assert options[4] == {
             "value": "id:42",
             "label": "Sci-Fi Favourites (12)",
             "group": "My Lists",
@@ -81,13 +97,13 @@ class TestHardcoverLists:
                 query="",
                 page=2,
                 limit=20,
-                fields={"hardcover_list": f"status:{HARDCOVER_WANT_TO_READ_STATUS_ID}"},
+                fields={"hardcover_list": "status:1"},
             )
         )
 
         assert result == expected
         assert captured == {
-            "status_id": HARDCOVER_WANT_TO_READ_STATUS_ID,
+            "status_id": 1,
             "page": 2,
             "limit": 20,
         }
@@ -134,13 +150,13 @@ class TestHardcoverLists:
         monkeypatch.setattr(provider, "_execute_query", fake_execute)
 
         result = provider._fetch_current_user_books_by_status(
-            HARDCOVER_WANT_TO_READ_STATUS_ID,
+            1,
             page=1,
             limit=10,
         )
 
         assert captured["variables"] == {
-            "statusId": HARDCOVER_WANT_TO_READ_STATUS_ID,
+            "statusId": 1,
             "limit": 10,
             "offset": 0,
         }
@@ -159,9 +175,9 @@ class TestHardcoverLists:
             "get_user_lists",
             lambda: [
                 {
-                    "value": f"status:{HARDCOVER_WANT_TO_READ_STATUS_ID}",
+                    "value": "status:1",
                     "label": "Want to Read (7)",
-                    "group": "My Books",
+                    "group": HARDCOVER_STATUS_GROUP,
                 },
                 {
                     "value": "id:42",
@@ -181,7 +197,7 @@ class TestHardcoverLists:
             "_execute_query",
             lambda query, variables, raise_on_error=False: {
                 "me": {
-                    "user_books": [{"id": 55, "status_id": HARDCOVER_WANT_TO_READ_STATUS_ID}],
+                    "user_books": [{"id": 55, "status_id": 1}],
                     "lists": [
                         {"id": 42, "list_books": [{"id": 500}]},
                         {"id": 99, "list_books": [{"id": 900}]},
@@ -194,9 +210,9 @@ class TestHardcoverLists:
 
         assert options == [
             {
-                "value": f"status:{HARDCOVER_WANT_TO_READ_STATUS_ID}",
+                "value": "status:1",
                 "label": "Want to Read (7)",
-                "group": "My Books",
+                "group": HARDCOVER_STATUS_GROUP,
                 "checked": True,
                 "writable": True,
             },
@@ -209,6 +225,21 @@ class TestHardcoverLists:
             },
         ]
 
+    def test_get_book_targets_raises_runtime_error_for_invalid_membership_payload(
+        self, monkeypatch
+    ):
+        provider = HardcoverProvider(api_key="test-token")
+
+        monkeypatch.setattr(provider, "get_user_lists", lambda: [])
+        monkeypatch.setattr(
+            provider,
+            "_execute_query",
+            lambda query, variables, raise_on_error=False: None,
+        )
+
+        with pytest.raises(RuntimeError, match="Hardcover could not load book targets"):
+            provider.get_book_targets("123")
+
     def test_set_book_target_state_updates_existing_status(self, monkeypatch):
         provider = HardcoverProvider(api_key="test-token")
         captured: dict[str, object] = {}
@@ -219,9 +250,9 @@ class TestHardcoverLists:
             "get_user_lists",
             lambda: [
                 {
-                    "value": f"status:{HARDCOVER_WANT_TO_READ_STATUS_ID}",
+                    "value": "status:1",
                     "label": "Want to Read (7)",
-                    "group": "My Books",
+                    "group": HARDCOVER_STATUS_GROUP,
                 }
             ],
         )
@@ -242,7 +273,7 @@ class TestHardcoverLists:
                     "update_user_book": {
                         "id": 77,
                         "error": None,
-                        "user_book": {"id": 77, "book_id": 123, "status_id": HARDCOVER_WANT_TO_READ_STATUS_ID},
+                        "user_book": {"id": 77, "book_id": 123, "status_id": 1},
                     }
                 }
             raise AssertionError(f"Unexpected query: {query}")
@@ -251,21 +282,21 @@ class TestHardcoverLists:
 
         result = provider.set_book_target_state(
             "123",
-            f"status:{HARDCOVER_WANT_TO_READ_STATUS_ID}",
+            "status:1",
             True,
         )
 
-        assert result == {"changed": True}
+        assert result == {"changed": True, "deselected_target": "status:2"}
         assert captured["variables"] == {
             "userBookId": 77,
-            "statusId": HARDCOVER_WANT_TO_READ_STATUS_ID,
+            "statusId": 1,
         }
         assert cache_stub.invalidated == [
             cache_key("hardcover:user_lists", "user-123"),
         ]
         assert set(cache_stub.invalidated_prefixes) == {
             cache_key("hardcover:user_books:status", "user-123", 2),
-            cache_key("hardcover:user_books:status", "user-123", HARDCOVER_WANT_TO_READ_STATUS_ID),
+            cache_key("hardcover:user_books:status", "user-123", 1),
         }
 
     def test_set_book_target_state_removes_list_membership(self, monkeypatch):

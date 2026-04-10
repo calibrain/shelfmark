@@ -2,29 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
 
-from flask import Flask, jsonify, request, session
+from flask import Flask, Response, jsonify, request, session
 
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.request_policy import (
-    PolicyMode,
-    REQUEST_POLICY_DEFAULT_FALLBACK_MODE,
-    get_source_content_type_capabilities,
-    merge_request_policy_settings,
-    normalize_content_type,
-    normalize_source,
-    parse_policy_mode,
-    resolve_policy_mode,
-)
-from shelfmark.core.request_validation import RequestStatus
-from shelfmark.core.requests_service import (
-    RequestServiceError,
-    cancel_request,
-    create_request,
-    fulfil_request,
-    reject_request,
-)
 from shelfmark.core.notifications import (
     NotificationContext,
     NotificationEvent,
@@ -40,7 +22,30 @@ from shelfmark.core.request_helpers import (
     normalize_positive_int,
     populate_request_usernames,
 )
-from shelfmark.core.user_db import UserDB
+from shelfmark.core.request_policy import (
+    REQUEST_POLICY_DEFAULT_FALLBACK_MODE,
+    PolicyMode,
+    get_source_content_type_capabilities,
+    merge_request_policy_settings,
+    normalize_content_type,
+    normalize_source,
+    parse_policy_mode,
+    resolve_policy_mode,
+)
+from shelfmark.core.request_validation import RequestStatus
+from shelfmark.core.requests_service import (
+    RequestServiceError,
+    cancel_request,
+    create_request,
+    create_requests,
+    fulfil_request,
+    reject_request,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
 
@@ -51,7 +56,7 @@ def _error_response(
     *,
     code: str | None = None,
     required_mode: str | None = None,
-):
+) -> tuple[Response, int]:
     payload: dict[str, Any] = {"error": message}
     if code is not None:
         payload["code"] = code
@@ -60,7 +65,9 @@ def _error_response(
     return jsonify(payload), status_code
 
 
-def _require_request_endpoints_available(resolve_auth_mode: Callable[[], str]):
+def _require_request_endpoints_available(
+    resolve_auth_mode: Callable[[], str],
+) -> tuple[Response, int] | None:
     auth_mode = resolve_auth_mode()
     if auth_mode == "none":
         return _error_response(
@@ -73,7 +80,7 @@ def _require_request_endpoints_available(resolve_auth_mode: Callable[[], str]):
     return None
 
 
-def _require_db_user_id() -> tuple[int | None, Any | None]:
+def _require_db_user_id() -> tuple[int | None, object | None]:
     raw_user_id = session.get("db_user_id")
     if raw_user_id is None:
         return None, _error_response(
@@ -83,7 +90,7 @@ def _require_db_user_id() -> tuple[int | None, Any | None]:
         )
     try:
         return int(raw_user_id), None
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None, _error_response(
             "User identity is unavailable for request workflow",
             403,
@@ -91,7 +98,7 @@ def _require_db_user_id() -> tuple[int | None, Any | None]:
         )
 
 
-def _require_admin_user_id() -> tuple[int | None, Any | None]:
+def _require_admin_user_id() -> tuple[int | None, object | None]:
     if not session.get("is_admin", False):
         return None, (jsonify({"error": "Admin access required"}), 403)
     raw_admin_id = session.get("db_user_id")
@@ -99,7 +106,7 @@ def _require_admin_user_id() -> tuple[int | None, Any | None]:
         return None, (jsonify({"error": "Admin user identity unavailable"}), 403)
     try:
         return int(raw_admin_id), None
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None, (jsonify({"error": "Admin user identity unavailable"}), 403)
 
 
@@ -111,11 +118,11 @@ def _resolve_effective_policy(
     global_settings = load_users_request_policy_settings()
     user_settings = user_db.get_user_settings(db_user_id) if db_user_id is not None else {}
     effective = merge_request_policy_settings(global_settings, user_settings)
-    requests_enabled = coerce_bool(effective.get("REQUESTS_ENABLED"), False)
+    requests_enabled = coerce_bool(effective.get("REQUESTS_ENABLED"), default=False)
     return global_settings, user_settings, effective, requests_enabled
 
 
-def _resolve_title_from_book_data(book_data: Any) -> str:
+def _resolve_title_from_book_data(book_data: object) -> str:
     if isinstance(book_data, dict):
         title = normalize_optional_text(book_data.get("title"))
         if title is not None:
@@ -123,7 +130,7 @@ def _resolve_title_from_book_data(book_data: Any) -> str:
     return "Unknown title"
 
 
-def _normalize_optional_source_id(value: Any) -> str | None:
+def _normalize_optional_source_id(value: object) -> str | None:
     """Normalize source identifiers while allowing integer provider ids."""
     if isinstance(value, bool) or value is None:
         return None
@@ -139,9 +146,9 @@ def _build_release_result_data_from_book_data(
     content_type: str,
 ) -> dict[str, Any]:
     """Build release-level payload fields for sources whose browse results are releases."""
-    source_id = _normalize_optional_source_id(book_data.get("provider_id")) or _normalize_optional_source_id(
-        book_data.get("id")
-    )
+    source_id = _normalize_optional_source_id(
+        book_data.get("provider_id")
+    ) or _normalize_optional_source_id(book_data.get("id"))
     payload: dict[str, Any] = {
         "source": source,
         "source_id": source_id,
@@ -163,15 +170,16 @@ def _source_results_are_releases(source: str) -> bool:
     if normalized_source in {"", "*"}:
         return False
     from shelfmark.release_sources import source_results_are_releases
+
     return source_results_are_releases(normalized_source)
 
 
 def _normalize_release_result_request_payload(
     *,
     source: str,
-    request_level: Any,
-    book_data: Any,
-    release_data: Any,
+    request_level: object,
+    book_data: object,
+    release_data: object,
     content_type: str,
 ) -> tuple[Any, Any]:
     """Concrete-release browse results are always handled as release-level requests."""
@@ -193,13 +201,15 @@ def _normalize_release_result_request_payload(
         if normalized_release_data.get("content_type") is None:
             normalized_release_data["content_type"] = content_type
 
-        normalized_source_id = _normalize_optional_source_id(normalized_release_data.get("source_id"))
+        normalized_source_id = _normalize_optional_source_id(
+            normalized_release_data.get("source_id")
+        )
         if normalized_source_id is not None:
             normalized_release_data["source_id"] = normalized_source_id
         elif isinstance(book_data, dict):
-            fallback_source_id = _normalize_optional_source_id(book_data.get("provider_id")) or _normalize_optional_source_id(
-                book_data.get("id")
-            )
+            fallback_source_id = _normalize_optional_source_id(
+                book_data.get("provider_id")
+            ) or _normalize_optional_source_id(book_data.get("id"))
             if fallback_source_id is not None:
                 normalized_release_data["source_id"] = fallback_source_id
 
@@ -231,7 +241,168 @@ def _format_requester_label(user_db: UserDB, request_row: dict[str, Any]) -> str
     return _format_user_label(None, user_id)
 
 
-def _resolve_request_source_and_format(request_row: dict[str, Any]) -> tuple[str, str | None]:
+def _resolve_request_user_context(
+    user_db: UserDB,
+    *,
+    actor_user_id: int,
+    actor_username: str | None,
+    on_behalf_of_user_id: object,
+) -> tuple[int, str | None, str]:
+    if on_behalf_of_user_id in (None, ""):
+        actor_label = _format_user_label(actor_username, actor_user_id)
+        return actor_user_id, actor_username, actor_label
+
+    if not session.get("is_admin", False):
+        msg = "Admin required"
+        raise RequestServiceError(msg, status_code=403)
+
+    try:
+        target_user_id = int(on_behalf_of_user_id)
+    except (TypeError, ValueError) as exc:
+        msg = "Invalid on_behalf_of_user_id"
+        raise RequestServiceError(msg, status_code=400) from exc
+
+    if target_user_id <= 0:
+        msg = "Invalid on_behalf_of_user_id"
+        raise RequestServiceError(msg, status_code=400)
+
+    target_user = user_db.get_user(user_id=target_user_id)
+    if not target_user:
+        msg = "User not found"
+        raise RequestServiceError(msg, status_code=404)
+
+    target_username = normalize_optional_text(target_user.get("username"))
+    actor_label = _format_user_label(actor_username, actor_user_id)
+    target_label = _format_user_label(target_username, target_user_id)
+    return target_user_id, target_username, f"{actor_label} on behalf of {target_label}"
+
+
+def _prepare_request_create_arguments(
+    user_db: UserDB,
+    data: dict[str, Any],
+) -> dict[str, Any]:
+    db_user_id, db_gate = _require_db_user_id()
+    if db_gate is not None or db_user_id is None:
+        msg = "User identity is unavailable for request workflow"
+        raise RequestServiceError(
+            msg,
+            status_code=403,
+            code="user_identity_unavailable",
+        )
+
+    actor_username = normalize_optional_text(session.get("user_id"))
+    target_user_id, _, actor_label = _resolve_request_user_context(
+        user_db,
+        actor_user_id=db_user_id,
+        actor_username=actor_username,
+        on_behalf_of_user_id=data.get("on_behalf_of_user_id"),
+    )
+
+    context = data.get("context") or {}
+    if not isinstance(context, dict):
+        msg = "context must be an object"
+        raise RequestServiceError(msg, status_code=400)
+
+    source = normalize_source(context.get("source"))
+    release_data = data.get("release_data")
+    request_level = context.get("request_level")
+    if request_level is None:
+        request_level = "book" if release_data is None else "release"
+
+    book_data = data.get("book_data")
+    if not isinstance(book_data, dict):
+        msg = "book_data must be an object"
+        raise RequestServiceError(msg, status_code=400)
+    request_title = _resolve_title_from_book_data(book_data)
+
+    content_type = normalize_content_type(
+        context.get("content_type") or data.get("content_type") or book_data.get("content_type")
+    )
+    request_level, release_data = _normalize_release_result_request_payload(
+        source=source,
+        request_level=request_level,
+        book_data=book_data,
+        release_data=release_data,
+        content_type=content_type,
+    )
+
+    global_settings, user_settings, effective, requests_enabled = _resolve_effective_policy(
+        user_db,
+        db_user_id=target_user_id,
+    )
+    if not requests_enabled:
+        msg = "Request workflow is disabled by policy"
+        raise RequestServiceError(
+            msg,
+            status_code=403,
+            code="requests_unavailable",
+        )
+
+    max_pending = coerce_int(
+        effective.get("MAX_PENDING_REQUESTS_PER_USER"),
+        default=20,
+    )
+    max_pending = max(max_pending, 1)
+    max_pending = min(max_pending, 1000)
+    allow_notes = coerce_bool(effective.get("REQUESTS_ALLOW_NOTES"), default=True)
+    note_value = data.get("note") if allow_notes else None
+
+    resolved_mode = resolve_policy_mode(
+        source=source,
+        content_type=content_type,
+        global_settings=global_settings,
+        user_settings=user_settings,
+    )
+    logger.debug(
+        "request create policy actor=%s target_user_id=%s source=%s content_type=%s request_level=%s resolved_mode=%s",
+        actor_label,
+        target_user_id,
+        source,
+        content_type,
+        request_level,
+        resolved_mode.value,
+    )
+
+    if resolved_mode == PolicyMode.BLOCKED:
+        msg = "Requesting is blocked by policy"
+        raise RequestServiceError(
+            msg,
+            status_code=403,
+            code="policy_blocked",
+            required_mode=PolicyMode.BLOCKED.value,
+        )
+
+    requested_level = str(request_level).strip().lower() if isinstance(request_level, str) else ""
+    if resolved_mode == PolicyMode.REQUEST_BOOK and requested_level != "book":
+        msg = "Policy requires book-level requests"
+        raise RequestServiceError(
+            msg,
+            status_code=403,
+            code="policy_requires_request",
+            required_mode=PolicyMode.REQUEST_BOOK.value,
+        )
+
+    return {
+        "create_args": {
+            "user_id": target_user_id,
+            "source_hint": source,
+            "content_type": content_type,
+            "request_level": request_level,
+            "policy_mode": resolved_mode.value,
+            "book_data": book_data,
+            "release_data": release_data,
+            "note": note_value,
+            "max_pending_per_user": max_pending,
+        },
+        "actor_label": actor_label,
+        "request_title": request_title,
+        "resolved_mode": resolved_mode,
+    }
+
+
+def _resolve_request_source_and_format(
+    request_row: dict[str, Any],
+) -> tuple[str, str | None]:
     release_data = request_row.get("release_data")
     if isinstance(release_data, dict):
         source = normalize_source(release_data.get("source") or request_row.get("source_hint"))
@@ -244,6 +415,69 @@ def _resolve_request_source_and_format(request_row: dict[str, Any]) -> tuple[str
     return normalize_source(request_row.get("source_hint")), None
 
 
+def _build_queued_download_result(
+    *,
+    create_args: dict[str, Any],
+    request_title: str,
+) -> dict[str, Any]:
+    release_data = create_args.get("release_data")
+    source = create_args.get("source_hint")
+    source_id: str | None = None
+
+    if isinstance(release_data, dict):
+        source = release_data.get("source") or source
+        source_id = _normalize_optional_source_id(release_data.get("source_id"))
+
+    return {
+        "kind": "download",
+        "status": "queued",
+        "priority": 0,
+        "title": request_title,
+        "source": normalize_source(source),
+        "source_id": source_id,
+        "content_type": create_args.get("content_type"),
+    }
+
+
+def _queue_prepared_download_submission(
+    user_db: UserDB,
+    *,
+    queue_release: Callable[..., tuple[bool, str | None]],
+    create_args: dict[str, Any],
+    request_title: str,
+) -> dict[str, Any]:
+    release_data = create_args.get("release_data")
+    if not isinstance(release_data, dict):
+        msg = "Download policy requires a concrete release"
+        raise RequestServiceError(
+            msg,
+            status_code=400,
+            code="policy_requires_download",
+            required_mode=PolicyMode.DOWNLOAD.value,
+        )
+
+    requester = user_db.get_user(user_id=create_args["user_id"])
+    if requester is None:
+        msg = "Requesting user not found"
+        raise RequestServiceError(msg, status_code=404)
+
+    success, error = queue_release(
+        dict(release_data),
+        0,
+        user_id=create_args["user_id"],
+        username=requester.get("username"),
+    )
+    if not success:
+        raise RequestServiceError(
+            error or "Failed to queue release",
+            status_code=409,
+            code="queue_failed",
+        )
+
+    return _build_queued_download_result(
+        create_args=create_args,
+        request_title=request_title,
+    )
 
 
 def _notify_admin_for_request_event(
@@ -299,12 +533,12 @@ def register_request_routes(
     *,
     resolve_auth_mode: Callable[[], str],
     queue_release: Callable[..., tuple[bool, str | None]],
-    ws_manager: Any | None = None,
+    ws_manager: object | None = None,
 ) -> None:
     """Register request policy and request lifecycle routes."""
 
     @app.route("/api/request-policy", methods=["GET"])
-    def api_request_policy():
+    def api_request_policy() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -320,7 +554,7 @@ def register_request_routes(
             if raw_id is not None:
                 try:
                     db_user_id = int(raw_id)
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     db_user_id = None
 
         global_settings, user_settings, effective, requests_enabled = _resolve_effective_policy(
@@ -333,6 +567,7 @@ def register_request_routes(
 
         source_capabilities = get_source_content_type_capabilities()
         from shelfmark.release_sources import source_results_are_releases
+
         source_modes = []
         for source_name in sorted(source_capabilities):
             supported_types = sorted(
@@ -380,135 +615,38 @@ def register_request_routes(
         )
 
     @app.route("/api/requests", methods=["POST"])
-    def api_create_request():
+    def api_create_request() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
-
-        db_user_id, db_gate = _require_db_user_id()
-        if db_gate is not None or db_user_id is None:
-            return db_gate
-        actor_username = normalize_optional_text(session.get("user_id"))
-        actor_label = _format_user_label(actor_username, db_user_id)
 
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
             return jsonify({"error": "No data provided"}), 400
 
-        context = data.get("context") or {}
-        if not isinstance(context, dict):
-            return jsonify({"error": "context must be an object"}), 400
-
-        source = normalize_source(context.get("source"))
-        release_data = data.get("release_data")
-        request_level = context.get("request_level")
-        if request_level is None:
-            request_level = "book" if release_data is None else "release"
-
-        book_data = data.get("book_data")
-        if not isinstance(book_data, dict):
-            return jsonify({"error": "book_data must be an object"}), 400
-        request_title = _resolve_title_from_book_data(book_data)
-
-        content_type = normalize_content_type(
-            context.get("content_type")
-            or data.get("content_type")
-            or book_data.get("content_type")
-        )
-        request_level, release_data = _normalize_release_result_request_payload(
-            source=source,
-            request_level=request_level,
-            book_data=book_data,
-            release_data=release_data,
-            content_type=content_type,
-        )
-
-        global_settings, user_settings, effective, requests_enabled = _resolve_effective_policy(
-            user_db,
-            db_user_id=db_user_id,
-        )
-        if not requests_enabled:
-            logger.debug(
-                "Request not created for '%s' by %s: requests are disabled",
-                request_title,
-                actor_label,
-            )
-            return _error_response(
-                "Request workflow is disabled by policy",
-                403,
-                code="requests_unavailable",
-            )
-
-        max_pending = coerce_int(
-            effective.get("MAX_PENDING_REQUESTS_PER_USER"),
-            default=20,
-        )
-        if max_pending < 1:
-            max_pending = 1
-        if max_pending > 1000:
-            max_pending = 1000
-        allow_notes = coerce_bool(effective.get("REQUESTS_ALLOW_NOTES"), default=True)
-        note_value = data.get("note") if allow_notes else None
-
-        resolved_mode = resolve_policy_mode(
-            source=source,
-            content_type=content_type,
-            global_settings=global_settings,
-            user_settings=user_settings,
-        )
-        logger.debug(
-            "request create policy user=%s db_user_id=%s source=%s content_type=%s request_level=%s resolved_mode=%s",
-            session.get("user_id"),
-            db_user_id,
-            source,
-            content_type,
-            request_level,
-            resolved_mode.value,
-        )
-
-        if resolved_mode == PolicyMode.BLOCKED:
-            logger.debug(
-                "Request blocked by policy for '%s' by %s",
-                request_title,
-                actor_label,
-            )
-            return _error_response(
-                "Requesting is blocked by policy",
-                403,
-                code="policy_blocked",
-                required_mode=PolicyMode.BLOCKED.value,
-            )
-
-        if resolved_mode == PolicyMode.REQUEST_BOOK:
-            requested_level = str(request_level).strip().lower() if isinstance(request_level, str) else ""
-            if requested_level != "book":
-                logger.debug(
-                    "Request not created for '%s' by %s: policy requires book-level requests",
-                    request_title,
-                    actor_label,
-                )
-                return _error_response(
-                    "Policy requires book-level requests",
-                    403,
-                    code="policy_requires_request",
-                    required_mode=PolicyMode.REQUEST_BOOK.value,
-                )
-
         try:
-            created = create_request(
-                user_db,
-                user_id=db_user_id,
-                source_hint=source,
-                content_type=content_type,
-                request_level=request_level,
-                policy_mode=resolved_mode.value,
-                book_data=book_data,
-                release_data=release_data,
-                note=note_value,
-                max_pending_per_user=max_pending,
-            )
+            prepared = _prepare_request_create_arguments(user_db, data)
+            if prepared["resolved_mode"] == PolicyMode.DOWNLOAD:
+                queued = _queue_prepared_download_submission(
+                    user_db,
+                    queue_release=queue_release,
+                    create_args=prepared["create_args"],
+                    request_title=prepared["request_title"],
+                )
+                logger.info(
+                    "Policy download queued for '%s' by %s",
+                    prepared["request_title"],
+                    prepared["actor_label"],
+                )
+                return jsonify(queued), 200
+            created = create_request(user_db, **prepared["create_args"])
         except RequestServiceError as exc:
-            return _error_response(str(exc), exc.status_code, code=exc.code)
+            return _error_response(
+                str(exc),
+                exc.status_code,
+                code=exc.code,
+                required_mode=exc.required_mode,
+            )
 
         event_payload = {
             "request_id": created["id"],
@@ -519,7 +657,7 @@ def register_request_routes(
             "Request created #%s for '%s' by %s",
             created["id"],
             event_payload["title"],
-            actor_label,
+            prepared["actor_label"],
         )
         emit_ws_event(
             ws_manager,
@@ -531,7 +669,7 @@ def register_request_routes(
             ws_manager,
             event_name="request_update",
             payload=event_payload,
-            room=f"user_{db_user_id}",
+            room=f"user_{created['user_id']}",
         )
 
         _notify_admin_for_request_event(
@@ -542,8 +680,122 @@ def register_request_routes(
 
         return jsonify(created), 201
 
+    @app.route("/api/requests/batch", methods=["POST"])
+    def api_create_requests_batch() -> Response | tuple[Response, int]:
+        auth_gate = _require_request_endpoints_available(resolve_auth_mode)
+        if auth_gate is not None:
+            return auth_gate
+
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"error": "No data provided"}), 400
+
+        raw_requests = data.get("requests")
+        if not isinstance(raw_requests, list) or len(raw_requests) == 0:
+            return jsonify({"error": "requests must contain at least one request"}), 400
+
+        try:
+            prepared_requests = [
+                _prepare_request_create_arguments(user_db, raw_request)
+                for raw_request in raw_requests
+            ]
+        except RequestServiceError as exc:
+            return _error_response(
+                str(exc),
+                exc.status_code,
+                code=exc.code,
+                required_mode=exc.required_mode,
+            )
+
+        request_prepared_items: list[tuple[int, dict[str, Any]]] = []
+        download_prepared_items: list[tuple[int, dict[str, Any]]] = []
+
+        for index, prepared in enumerate(prepared_requests):
+            if prepared["resolved_mode"] == PolicyMode.DOWNLOAD:
+                download_prepared_items.append((index, prepared))
+                continue
+
+            request_prepared_items.append((index, prepared))
+
+        created_rows: list[dict[str, Any]] = []
+        if request_prepared_items:
+            try:
+                created_rows = create_requests(
+                    user_db,
+                    requests=[prepared["create_args"] for _, prepared in request_prepared_items],
+                )
+            except RequestServiceError as exc:
+                return _error_response(
+                    str(exc),
+                    exc.status_code,
+                    code=exc.code,
+                    required_mode=exc.required_mode,
+                )
+
+        results_by_index: dict[int, dict[str, Any]] = {}
+
+        for (index, prepared), created in zip(
+            request_prepared_items,
+            created_rows,
+            strict=True,
+        ):
+            event_payload = {
+                "request_id": created["id"],
+                "status": created["status"],
+                "title": _resolve_request_title(created),
+            }
+            logger.info(
+                "Request created #%s for '%s' by %s",
+                created["id"],
+                event_payload["title"],
+                prepared["actor_label"],
+            )
+            emit_ws_event(
+                ws_manager,
+                event_name="new_request",
+                payload=event_payload,
+                room="admins",
+            )
+            emit_ws_event(
+                ws_manager,
+                event_name="request_update",
+                payload=event_payload,
+                room=f"user_{created['user_id']}",
+            )
+            _notify_admin_for_request_event(
+                user_db,
+                event=NotificationEvent.REQUEST_CREATED,
+                request_row=created,
+            )
+            results_by_index[index] = created
+
+        for index, prepared in download_prepared_items:
+            try:
+                results_by_index[index] = _queue_prepared_download_submission(
+                    user_db,
+                    queue_release=queue_release,
+                    create_args=prepared["create_args"],
+                    request_title=prepared["request_title"],
+                )
+            except RequestServiceError as exc:
+                return _error_response(
+                    str(exc),
+                    exc.status_code,
+                    code=exc.code,
+                    required_mode=exc.required_mode,
+                )
+            logger.info(
+                "Policy download queued for '%s' by %s",
+                prepared["request_title"],
+                prepared["actor_label"],
+            )
+
+        ordered_results = [results_by_index[index] for index in range(len(prepared_requests))]
+        status_code = 201 if request_prepared_items else 200
+        return jsonify(ordered_results), status_code
+
     @app.route("/api/requests", methods=["GET"])
-    def api_list_requests():
+    def api_list_requests() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -568,7 +820,7 @@ def register_request_routes(
         return jsonify(rows)
 
     @app.route("/api/requests/<int:request_id>", methods=["DELETE"])
-    def api_cancel_request(request_id: int):
+    def api_cancel_request(request_id: int) -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -591,7 +843,9 @@ def register_request_routes(
             "status": updated["status"],
             "title": _resolve_request_title(updated),
         }
-        actor_label = _format_user_label(normalize_optional_text(session.get("user_id")), db_user_id)
+        actor_label = _format_user_label(
+            normalize_optional_text(session.get("user_id")), db_user_id
+        )
         logger.info(
             "Request cancelled #%s for '%s' by %s",
             updated["id"],
@@ -614,7 +868,7 @@ def register_request_routes(
         return jsonify(updated)
 
     @app.route("/api/admin/requests", methods=["GET"])
-    def api_admin_list_requests():
+    def api_admin_list_requests() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -635,17 +889,14 @@ def register_request_routes(
         return jsonify(rows)
 
     @app.route("/api/admin/requests/count", methods=["GET"])
-    def api_admin_request_counts():
+    def api_admin_request_counts() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
         if not session.get("is_admin", False):
             return jsonify({"error": "Admin access required"}), 403
 
-        by_status = {
-            status: len(user_db.list_requests(status=status))
-            for status in RequestStatus
-        }
+        by_status = {status: len(user_db.list_requests(status=status)) for status in RequestStatus}
         return jsonify(
             {
                 "pending": by_status[RequestStatus.PENDING],
@@ -655,7 +906,7 @@ def register_request_routes(
         )
 
     @app.route("/api/admin/requests/<int:request_id>/fulfil", methods=["POST"])
-    def api_admin_fulfil_request(request_id: int):
+    def api_admin_fulfil_request(request_id: int) -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -686,7 +937,9 @@ def register_request_routes(
             "status": updated["status"],
             "title": _resolve_request_title(updated),
         }
-        admin_label = _format_user_label(normalize_optional_text(session.get("user_id")), admin_user_id)
+        admin_label = _format_user_label(
+            normalize_optional_text(session.get("user_id")), admin_user_id
+        )
         requester_label = _format_requester_label(user_db, updated)
         logger.info(
             "Request fulfilled #%s for '%s' by %s (requested by %s)",
@@ -717,7 +970,7 @@ def register_request_routes(
         return jsonify(updated)
 
     @app.route("/api/admin/requests/<int:request_id>/reject", methods=["POST"])
-    def api_admin_reject_request(request_id: int):
+    def api_admin_reject_request(request_id: int) -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -745,7 +998,9 @@ def register_request_routes(
             "status": updated["status"],
             "title": _resolve_request_title(updated),
         }
-        admin_label = _format_user_label(normalize_optional_text(session.get("user_id")), admin_user_id)
+        admin_label = _format_user_label(
+            normalize_optional_text(session.get("user_id")), admin_user_id
+        )
         requester_label = _format_requester_label(user_db, updated)
         logger.info(
             "Request rejected #%s for '%s' by %s (requested by %s)",

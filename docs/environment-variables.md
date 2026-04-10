@@ -21,6 +21,7 @@ This document lists all configuration options that can be set via environment va
   - [Hardcover](#metadata-providers-hardcover)
   - [Open Library](#metadata-providers-open-library)
   - [Google Books](#metadata-providers-google-books)
+
 - [Direct Download](#direct-download)
   - [Download Sources](#direct-download-download-sources)
   - [Cloudflare Bypass](#direct-download-cloudflare-bypass)
@@ -186,9 +187,11 @@ Default language filter for searches.
 |----------|-------------|------|---------|
 | `SEARCH_MODE` | How you want to search for and download books. | string (choice) | `direct` |
 | `AA_DEFAULT_SORT` | Default sort order for search results. | string (choice) | `relevance` |
+| `SHOW_RELEASE_SOURCE_LINKS` | Show clickable release-source links in release and details modals. Metadata provider links stay enabled. | boolean | `true` |
 | `METADATA_PROVIDER` | Choose which metadata provider to use for book searches. | string (choice) | `openlibrary` |
 | `METADATA_PROVIDER_AUDIOBOOK` | Metadata provider for audiobook searches. Uses the book provider if not set. | string (choice) | _empty string_ |
-| `DEFAULT_RELEASE_SOURCE` | The release source tab to open by default in the release modal. | string (choice) | `direct_download` |
+| `DEFAULT_RELEASE_SOURCE` | The release source tab to open by default in the release modal for books. | string (choice) | `direct_download` |
+| `DEFAULT_RELEASE_SOURCE_AUDIOBOOK` | The release source tab to open by default in the release modal for audiobooks. Uses the book release source if not set. | string (choice) | _empty string_ |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -213,6 +216,15 @@ Default sort order for search results.
 - **Default:** `relevance`
 - **Options:** `relevance` (Most relevant), `newest` (Newest (publication year)), `oldest` (Oldest (publication year)), `largest` (Largest (filesize)), `smallest` (Smallest (filesize)), `newest_added` (Newest (open sourced)), `oldest_added` (Oldest (open sourced))
 
+#### `SHOW_RELEASE_SOURCE_LINKS`
+
+**Show Release Source Links**
+
+Show clickable release-source links in release and details modals. Metadata provider links stay enabled.
+
+- **Type:** boolean
+- **Default:** `true`
+
 #### `METADATA_PROVIDER`
 
 **Book Metadata Provider**
@@ -221,7 +233,7 @@ Choose which metadata provider to use for book searches.
 
 - **Type:** string (choice)
 - **Default:** `openlibrary`
-- **Options:** `""` (No providers enabled)
+- **Options:** `hardcover` (Hardcover), `openlibrary` (Open Library), `googlebooks` (Google Books)
 
 #### `METADATA_PROVIDER_AUDIOBOOK`
 
@@ -231,17 +243,27 @@ Metadata provider for audiobook searches. Uses the book provider if not set.
 
 - **Type:** string (choice)
 - **Default:** _empty string_
-- **Options:** `""` (Use book provider), `""` (No providers enabled)
+- **Options:** `""` (Use book provider), `hardcover` (Hardcover), `openlibrary` (Open Library), `googlebooks` (Google Books)
 
 #### `DEFAULT_RELEASE_SOURCE`
 
-**Default Release Source**
+**Default Book Release Source**
 
-The release source tab to open by default in the release modal.
+The release source tab to open by default in the release modal for books.
 
 - **Type:** string (choice)
 - **Default:** `direct_download`
-- **Options:** `direct_download` (Direct Download), `prowlarr` (Prowlarr), `audiobookbay` (AudiobookBay)
+- **Options:** `direct_download` (Direct Download), `prowlarr` (Prowlarr)
+
+#### `DEFAULT_RELEASE_SOURCE_AUDIOBOOK`
+
+**Default Audiobook Release Source**
+
+The release source tab to open by default in the release modal for audiobooks. Uses the book release source if not set.
+
+- **Type:** string (choice)
+- **Default:** _empty string_
+- **Options:** `""` (Use book release source), `prowlarr` (Prowlarr), `audiobookbay` (AudiobookBay)
 
 </details>
 
@@ -278,7 +300,7 @@ The release source tab to open by default in the release modal.
 | `TEMPLATE_AUDIOBOOK_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title}` |
 | `HARDLINK_TORRENTS_AUDIOBOOK` | Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder. | boolean | `true` |
 | `AUTO_OPEN_DOWNLOADS_SIDEBAR` | Automatically open the downloads sidebar when a new download is queued. | boolean | `false` |
-| `DOWNLOAD_TO_BROWSER` | Automatically download completed files to your browser. | boolean | `false` |
+| `DOWNLOAD_TO_BROWSER_CONTENT_TYPES` | Automatically download completed files to your browser for the selected content types. | string (comma-separated) | _empty list_ |
 | `MAX_CONCURRENT_DOWNLOADS` | Maximum number of simultaneous downloads. | number | `3` |
 | `STATUS_TIMEOUT` | How long to keep completed/failed downloads in the queue display. | number | `3600` |
 
@@ -561,14 +583,14 @@ Automatically open the downloads sidebar when a new download is queued.
 - **Type:** boolean
 - **Default:** `false`
 
-#### `DOWNLOAD_TO_BROWSER`
+#### `DOWNLOAD_TO_BROWSER_CONTENT_TYPES`
 
 **Download to Browser**
 
-Automatically download completed files to your browser.
+Automatically download completed files to your browser for the selected content types.
 
-- **Type:** boolean
-- **Default:** `false`
+- **Type:** string (comma-separated)
+- **Default:** _empty list_
 
 #### `MAX_CONCURRENT_DOWNLOADS`
 
@@ -1249,6 +1271,7 @@ How long to keep cached search results before they expire.
 | `RTORRENT_PASSWORD` | HTTP Basic auth password | string (secret) | _none_ |
 | `RTORRENT_LABEL` | Label to assign to book downloads in rTorrent | string | `cwabd` |
 | `RTORRENT_DOWNLOAD_DIR` | Server-side directory where torrents are downloaded (optional, uses rTorrent default if not specified) | string | _none_ |
+| `PROWLARR_TORRENT_ACTION` | Remove deletes the torrent from your client immediately after import (stops seeding, files are kept); Keep leaves it in the client to continue seeding | string (choice) | `keep` |
 | `PROWLARR_USENET_CLIENT` | Choose which usenet client to use | string (choice) | _empty string_ |
 | `NZBGET_URL` | URL of your NZBGet instance | string | _none_ |
 | `NZBGET_USERNAME` | NZBGet control username | string | `nzbget` |
@@ -1489,6 +1512,16 @@ Server-side directory where torrents are downloaded (optional, uses rTorrent def
 
 - **Type:** string
 - **Default:** _none_
+
+#### `PROWLARR_TORRENT_ACTION`
+
+**Torrent Completion Action**
+
+Remove deletes the torrent from your client immediately after import (stops seeding, files are kept); Keep leaves it in the client to continue seeding
+
+- **Type:** string (choice)
+- **Default:** `keep`
+- **Options:** `keep` (Keep), `remove` (Remove)
 
 #### `PROWLARR_USENET_CLIENT`
 

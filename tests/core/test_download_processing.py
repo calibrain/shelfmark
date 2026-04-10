@@ -224,6 +224,33 @@ class TestAtomicCopy:
         assert result.exists()
         assert result.read_text() == "content"
 
+    def test_copy_tolerates_post_publish_estale(self, tmp_path, monkeypatch):
+        """Treat ESTALE on the final destination as a successful NFS publish."""
+        import errno
+
+        from shelfmark.download import fs
+
+        source = tmp_path / "source.txt"
+        source.write_text("content")
+        dest = tmp_path / "dest.txt"
+
+        original_verify = fs._verify_transfer_size
+
+        def _verify(path, expected_size, action):
+            if path == dest:
+                raise OSError(getattr(errno, "ESTALE", 116), "Stale file handle", str(path))
+            return original_verify(path, expected_size, action)
+
+        monkeypatch.setattr(fs, "_verify_transfer_size", _verify)
+        monkeypatch.setattr(fs.time, "sleep", lambda *_args, **_kwargs: None)
+
+        result = fs.atomic_copy(source, dest)
+
+        assert result == dest
+        assert dest.exists()
+        assert dest.read_text() == "content"
+        assert source.exists()
+
     def test_publish_does_not_depend_on_hardlinks(self, tmp_path, monkeypatch):
         """Temp-file publish succeeds even when hardlinks are unavailable."""
 
@@ -759,6 +786,8 @@ class TestCustomScriptExecution:
         call_args = mock_run.call_args
         result_path = Path(result)
         assert call_args[0][0] == ["/path/to/script.sh", str(result_path)]
+        assert call_args.kwargs["stdin"] is subprocess.DEVNULL
+        assert "input" not in call_args.kwargs
 
     def test_runs_custom_script_with_json_payload_on_stdin(self, temp_dirs, sample_direct_task):
         """Sends a JSON payload to the custom script via stdin when enabled."""
@@ -797,6 +826,7 @@ class TestCustomScriptExecution:
 
         payload_json = mock_run.call_args.kwargs.get("input")
         assert payload_json
+        assert "stdin" not in mock_run.call_args.kwargs
         payload = json.loads(payload_json)
         assert payload["version"] == 1
         assert payload["phase"] == "post_transfer"
@@ -852,6 +882,7 @@ class TestCustomScriptExecution:
 
         payload_json = mock_run.call_args.kwargs.get("input")
         assert payload_json
+        assert "stdin" not in mock_run.call_args.kwargs
         payload = json.loads(payload_json)
         assert payload["version"] == 1
         assert payload["phase"] == "post_upload"

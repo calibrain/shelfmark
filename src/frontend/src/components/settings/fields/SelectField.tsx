@@ -69,7 +69,7 @@ export const SelectField = ({ field, value, onChange, disabled, filterValue }: S
     // When disabled, show a static display instead of the dropdown
     const selectedOption = filteredOptions.find((opt) => opt.value === effectiveValue);
     return (
-      <div className="w-full px-3 py-2 rounded-lg border border-[var(--border-muted)] bg-[var(--bg-soft)] text-sm opacity-60 cursor-not-allowed">
+      <div className="w-full px-3 py-2 rounded-lg border border-(--border-muted) bg-(--bg-soft) text-sm opacity-60 cursor-not-allowed">
         {selectedOption?.label || 'Select...'}
       </div>
     );

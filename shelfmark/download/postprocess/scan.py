@@ -2,33 +2,39 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download.archive import ArchiveExtractionError, extract_archive, is_archive
 from shelfmark.download.fs import run_blocking_io
 from shelfmark.download.permissions_debug import log_path_permission_context
 from shelfmark.download.postprocess.policy import (
     get_supported_audiobook_formats,
+)
+from shelfmark.download.postprocess.policy import (
     get_supported_formats as get_book_formats,
 )
 from shelfmark.download.staging import build_staging_dir
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from shelfmark.core.models import DownloadTask
+
 logger = setup_logger("shelfmark.download.postprocess.pipeline")
 
 
-def get_supported_formats(content_type: Optional[str] = None) -> List[str]:
+def get_supported_formats(content_type: str | None = None) -> list[str]:
     if check_audiobook(content_type):
         return get_supported_audiobook_formats()
     return get_book_formats()
 
 
-def _format_not_supported_error(rejected_files: List[Path], task: DownloadTask) -> str:
+def _format_not_supported_error(rejected_files: list[Path], task: DownloadTask) -> str:
     content_type = task.content_type
     file_type_label = "audiobook" if check_audiobook(content_type) else "book"
-    rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
+    rejected_exts = sorted({f.suffix.lower() for f in rejected_files})
     rejected_list = ", ".join(rejected_exts)
     supported_formats = get_supported_formats(content_type)
 
@@ -51,8 +57,9 @@ def extract_archive_files(
     archive_path: Path,
     output_dir: Path,
     task: DownloadTask,
+    *,
     cleanup_archive: bool,
-) -> Tuple[List[Path], List[Path], List[Path], Optional[str]]:
+) -> tuple[list[Path], list[Path], list[Path], str | None]:
     content_type = task.content_type
 
     try:
@@ -86,7 +93,12 @@ def extract_archive_files(
 
     if not extracted_files:
         if rejected_files:
-            return [], rejected_files, cleanup_paths, _format_not_supported_error(rejected_files, task)
+            return (
+                [],
+                rejected_files,
+                cleanup_paths,
+                _format_not_supported_error(rejected_files, task),
+            )
         file_type_label = "audiobook" if check_audiobook(content_type) else "book"
         return [], rejected_files, cleanup_paths, f"No {file_type_label} files found in archive"
 
@@ -102,11 +114,11 @@ def extract_archive_files(
 
 def scan_directory_tree(
     directory: Path,
-    content_type: Optional[str],
-) -> Tuple[List[Path], List[Path], List[Path], Optional[str]]:
+    content_type: str | None,
+) -> tuple[list[Path], list[Path], list[Path], str | None]:
     """Scan a directory tree for book files, trackable-but-unsupported files, and archives."""
-
     try:
+
         def _probe_dir() -> None:
             # Force a fast error if the dir is missing/inaccessible.
             with os.scandir(directory) as it:
@@ -115,10 +127,10 @@ def scan_directory_tree(
         run_blocking_io(_probe_dir)
     except PermissionError as exc:
         log_path_permission_context("scan_directory", directory)
-        logger.warning(f"Permission denied scanning directory: {directory} ({exc})")
+        logger.warning("Permission denied scanning directory: %s (%s)", directory, exc)
         return [], [], [], f"Permission denied accessing download folder: {directory}"
     except (FileNotFoundError, NotADirectoryError, OSError) as exc:
-        logger.warning(f"Cannot access download folder: {directory} ({exc})")
+        logger.warning("Cannot access download folder: %s (%s)", directory, exc)
         return [], [], [], f"Cannot access download folder: {directory} ({exc})"
 
     supported_formats = get_supported_formats(content_type)
@@ -126,11 +138,22 @@ def scan_directory_tree(
 
     is_audiobook = check_audiobook(content_type)
     if is_audiobook:
-        trackable_exts = {'.m4b', '.mp3', '.m4a', '.flac', '.ogg', '.wma', '.aac', '.wav'}
+        trackable_exts = {".m4b", ".mp3", ".m4a", ".flac", ".ogg", ".wma", ".aac", ".wav"}
     else:
         trackable_exts = {
-            '.pdf', '.epub', '.mobi', '.azw', '.azw3', '.fb2', '.djvu', '.cbz', '.cbr',
-            '.doc', '.docx', '.rtf', '.txt',
+            ".pdf",
+            ".epub",
+            ".mobi",
+            ".azw",
+            ".azw3",
+            ".fb2",
+            ".djvu",
+            ".cbz",
+            ".cbr",
+            ".doc",
+            ".docx",
+            ".rtf",
+            ".txt",
         }
 
     logged_walk_permission_context = False
@@ -140,22 +163,19 @@ def scan_directory_tree(
 
         if isinstance(error, PermissionError):
             if not logged_walk_permission_context:
-                try:
-                    error_path = Path(getattr(error, "filename", "") or str(directory))
-                except Exception:
-                    error_path = directory
+                error_path = Path(getattr(error, "filename", "") or str(directory))
 
                 log_path_permission_context("scan_directory_walk", error_path)
                 logged_walk_permission_context = True
 
-            logger.debug(f"Skipping inaccessible path during scan: {error}")
+            logger.debug("Skipping inaccessible path during scan: %s", error)
         else:
-            logger.debug(f"Error scanning directory tree: {error}")
+            logger.debug("Error scanning directory tree: %s", error)
 
-    def _walk_tree() -> Tuple[List[Path], List[Path], List[Path]]:
-        book_files: List[Path] = []
-        rejected_files: List[Path] = []
-        archive_files: List[Path] = []
+    def _walk_tree() -> tuple[list[Path], list[Path], list[Path]]:
+        book_files: list[Path] = []
+        rejected_files: list[Path] = []
+        archive_files: list[Path] = []
 
         for root, _, files in os.walk(directory, onerror=onerror):
             for filename in files:
@@ -176,10 +196,10 @@ def scan_directory_tree(
         book_files, rejected_files, archive_files = run_blocking_io(_walk_tree)
     except PermissionError as exc:
         log_path_permission_context("scan_directory_walk", directory)
-        logger.warning(f"Permission denied scanning directory: {directory} ({exc})")
+        logger.warning("Permission denied scanning directory: %s (%s)", directory, exc)
         return [], [], [], f"Permission denied accessing download folder: {directory}"
     except (FileNotFoundError, NotADirectoryError, OSError) as exc:
-        logger.warning(f"Cannot access download folder: {directory} ({exc})")
+        logger.warning("Cannot access download folder: %s (%s)", directory, exc)
         return [], [], [], f"Cannot access download folder: {directory} ({exc})"
 
     return book_files, rejected_files, archive_files, None
@@ -188,12 +208,15 @@ def scan_directory_tree(
 def collect_directory_files(
     directory: Path,
     task: DownloadTask,
+    *,
     allow_archive_extraction: bool,
-    status_callback=None,
+    status_callback: Callable[[str, str | None], None] | None = None,
     cleanup_archives: bool = False,
-) -> Tuple[List[Path], List[Path], List[Path], Optional[str]]:
+) -> tuple[list[Path], list[Path], list[Path], str | None]:
     content_type = task.content_type
-    book_files, rejected_files, archive_files, scan_error = scan_directory_tree(directory, content_type)
+    book_files, rejected_files, archive_files, scan_error = scan_directory_tree(
+        directory, content_type
+    )
     if scan_error:
         return [], [], [], scan_error
 
@@ -206,7 +229,7 @@ def collect_directory_files(
                 len(book_files),
             )
         if rejected_files:
-            rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
+            rejected_exts = sorted({f.suffix.lower() for f in rejected_files})
             logger.debug(
                 "Task %s: also found %d file(s) with unsupported formats: %s",
                 task.task_id,
@@ -232,9 +255,9 @@ def collect_directory_files(
 
         logger.info("Task %s: extracting %d archive(s)", task.task_id, len(archive_files))
 
-        all_files: List[Path] = []
-        all_errors: List[str] = []
-        cleanup_paths: List[Path] = []
+        all_files: list[Path] = []
+        all_errors: list[str] = []
+        cleanup_paths: list[Path] = []
 
         for archive in archive_files:
             extract_dir = build_staging_dir("extract", task.task_id)
@@ -267,7 +290,12 @@ def collect_directory_files(
             return [], rejected_files, cleanup_paths, "; ".join(all_errors)
 
         if rejected_files:
-            return [], rejected_files, cleanup_paths, _format_not_supported_error(rejected_files, task)
+            return (
+                [],
+                rejected_files,
+                cleanup_paths,
+                _format_not_supported_error(rejected_files, task),
+            )
 
         return [], rejected_files, cleanup_paths, "No book files found in archives"
 
@@ -280,10 +308,11 @@ def collect_directory_files(
 def collect_staged_files(
     working_path: Path,
     task: DownloadTask,
+    *,
     allow_archive_extraction: bool,
-    status_callback,
+    status_callback: Callable[[str, str | None], None] | None,
     cleanup_archives: bool,
-) -> Tuple[List[Path], List[Path], List[Path], Optional[str]]:
+) -> tuple[list[Path], list[Path], list[Path], str | None]:
     if run_blocking_io(working_path.is_dir):
         if status_callback:
             status_callback("resolving", "Processing download folder")
@@ -332,11 +361,22 @@ def collect_staged_files(
 
     is_audiobook = check_audiobook(task.content_type)
     if is_audiobook:
-        trackable_exts = {'.m4b', '.mp3', '.m4a', '.flac', '.ogg', '.wma', '.aac', '.wav'}
+        trackable_exts = {".m4b", ".mp3", ".m4a", ".flac", ".ogg", ".wma", ".aac", ".wav"}
     else:
         trackable_exts = {
-            '.pdf', '.epub', '.mobi', '.azw', '.azw3', '.fb2', '.djvu', '.cbz', '.cbr',
-            '.doc', '.docx', '.rtf', '.txt',
+            ".pdf",
+            ".epub",
+            ".mobi",
+            ".azw",
+            ".azw3",
+            ".fb2",
+            ".djvu",
+            ".cbz",
+            ".cbr",
+            ".doc",
+            ".docx",
+            ".rtf",
+            ".txt",
         }
 
     if suffix in supported_exts:

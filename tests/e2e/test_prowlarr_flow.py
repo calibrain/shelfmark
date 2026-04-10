@@ -4,7 +4,7 @@ E2E Tests for Prowlarr Integration.
 These tests verify the Prowlarr release source and download client flow.
 Requires Prowlarr and a download client (qBittorrent, Transmission, etc.) to be configured.
 
-Run with: docker exec test-cwabd python3 -m pytest tests/e2e/test_prowlarr_flow.py -v -m e2e
+Run with: uv run pytest tests/e2e/test_prowlarr_flow.py -v -m e2e
 """
 
 import time
@@ -56,18 +56,18 @@ def _get_first_provider_name(api_client: APIClient) -> str | None:
 class TestProwlarrConfiguration:
     """Tests for Prowlarr configuration."""
 
-    def test_prowlarr_in_release_sources(self, api_client: APIClient):
+    def test_prowlarr_in_release_sources(self, protected_api_client: APIClient):
         """Test that Prowlarr appears in release sources."""
-        resp = api_client.get("/api/release-sources")
+        resp = protected_api_client.get("/api/release-sources")
 
         assert resp.status_code == 200
         sources = resp.json()
         source_names = [s.get("name") for s in sources]
         assert "prowlarr" in source_names
 
-    def test_prowlarr_settings_tab_exists(self, api_client: APIClient):
+    def test_prowlarr_settings_tab_exists(self, protected_api_client: APIClient):
         """Test that Prowlarr settings tab exists."""
-        resp = api_client.get("/api/settings")
+        resp = protected_api_client.get("/api/settings")
 
         if resp.status_code == 403:
             pytest.skip("Settings disabled")
@@ -95,10 +95,12 @@ class TestProwlarrConfiguration:
         # Prowlarr settings should exist (may be under different name)
         prowlarr_tabs = [n for n in tab_names if n and "prowlarr" in n.lower()]
         # Also check if we can directly access the prowlarr_clients settings
-        prowlarr_resp = api_client.get("/api/settings/prowlarr_clients")
+        prowlarr_resp = protected_api_client.get("/api/settings/prowlarr_clients")
         has_prowlarr_settings = prowlarr_resp.status_code == 200
 
-        assert prowlarr_tabs or has_prowlarr_settings, f"No prowlarr settings found. Tab names: {tab_names}"
+        assert prowlarr_tabs or has_prowlarr_settings, (
+            f"No prowlarr settings found. Tab names: {tab_names}"
+        )
 
 
 @pytest.mark.e2e
@@ -106,17 +108,17 @@ class TestProwlarrConfiguration:
 class TestProwlarrSearch:
     """Tests for searching via Prowlarr."""
 
-    def test_prowlarr_search_with_metadata(self, api_client: APIClient):
+    def test_prowlarr_search_with_metadata(self, protected_api_client: APIClient):
         """Test searching Prowlarr with metadata from a provider."""
-        if not _is_prowlarr_configured(api_client):
+        if not _is_prowlarr_configured(protected_api_client):
             pytest.skip("Prowlarr not configured")
 
-        provider = _get_first_provider_name(api_client)
+        provider = _get_first_provider_name(protected_api_client)
         if not provider:
             pytest.skip("No metadata providers")
 
         # Search for a book
-        search_resp = api_client.get(
+        search_resp = protected_api_client.get(
             "/api/metadata/search",
             params={"query": "The Great Gatsby", "provider": provider},
             timeout=30,
@@ -148,7 +150,7 @@ class TestProwlarrSearch:
         book_id = book.get("id") or book.get("provider_id")
 
         # Now search releases specifically from Prowlarr
-        releases_resp = api_client.get(
+        releases_resp = protected_api_client.get(
             "/api/releases",
             params={
                 "provider": provider,
@@ -174,9 +176,9 @@ class TestProwlarrSearch:
 class TestProwlarrClientSettings:
     """Tests for Prowlarr download client settings."""
 
-    def test_client_settings_structure(self, api_client: APIClient):
+    def test_client_settings_structure(self, protected_api_client: APIClient):
         """Test that client settings have expected structure."""
-        resp = api_client.get("/api/settings/prowlarr_clients")
+        resp = protected_api_client.get("/api/settings/prowlarr_clients")
 
         if resp.status_code == 403:
             pytest.skip("Settings disabled")
@@ -189,10 +191,10 @@ class TestProwlarrClientSettings:
         # Should have fields for client configuration
         assert isinstance(data, (dict, list))
 
-    def test_can_save_client_settings(self, api_client: APIClient):
+    def test_can_save_client_settings(self, protected_api_client: APIClient):
         """Test that client settings can be saved."""
         # Get current settings
-        get_resp = api_client.get("/api/settings/prowlarr_clients")
+        get_resp = protected_api_client.get("/api/settings/prowlarr_clients")
 
         if get_resp.status_code in [403, 404]:
             pytest.skip("Settings not available")
@@ -208,7 +210,7 @@ class TestProwlarrClientSettings:
                 if key:
                     values[key] = field.get("value", "")
 
-            put_resp = api_client.put(
+            put_resp = protected_api_client.put(
                 "/api/settings/prowlarr_clients",
                 json=values,
             )
@@ -222,18 +224,18 @@ class TestProwlarrDownload:
     """Tests for downloading via Prowlarr."""
 
     def test_queue_prowlarr_release(
-        self, api_client: APIClient, download_tracker: DownloadTracker
+        self, protected_api_client: APIClient, download_tracker: DownloadTracker
     ):
         """Test queueing a Prowlarr release for download."""
-        if not _is_prowlarr_configured(api_client):
+        if not _is_prowlarr_configured(protected_api_client):
             pytest.skip("Prowlarr not configured")
 
-        provider = _get_first_provider_name(api_client)
+        provider = _get_first_provider_name(protected_api_client)
         if not provider:
             pytest.skip("No providers")
 
         # Search metadata
-        search_resp = api_client.get(
+        search_resp = protected_api_client.get(
             "/api/metadata/search",
             params={"query": "Dracula Bram Stoker", "provider": provider},
             timeout=30,
@@ -259,7 +261,7 @@ class TestProwlarrDownload:
         book_id = book.get("id") or book.get("provider_id")
 
         # Search Prowlarr releases
-        releases_resp = api_client.get(
+        releases_resp = protected_api_client.get(
             "/api/releases",
             params={
                 "provider": provider,
@@ -283,7 +285,7 @@ class TestProwlarrDownload:
         download_tracker.track(source_id)
 
         # Queue it
-        queue_resp = api_client.post(
+        queue_resp = protected_api_client.post(
             "/api/releases/download",
             json={
                 "source": "prowlarr",
@@ -303,7 +305,7 @@ class TestProwlarrDownload:
             # Wait briefly and check status
             time.sleep(3)
 
-            status_resp = api_client.get("/api/status")
+            status_resp = protected_api_client.get("/api/status")
             if status_resp.status_code == 200:
                 status_data = status_resp.json()
                 # Should be in one of the status categories
@@ -319,10 +321,10 @@ class TestProwlarrDownload:
 class TestProwlarrClientConnection:
     """Tests for testing download client connections."""
 
-    def test_connection_test_action(self, api_client: APIClient):
+    def test_connection_test_action(self, protected_api_client: APIClient):
         """Test the connection test action for download clients."""
         # This tests the action button functionality in settings
-        resp = api_client.post(
+        resp = protected_api_client.post(
             "/api/settings/prowlarr_clients/action/test_torrent_connection"
         )
 

@@ -1,21 +1,26 @@
 """Operational handlers for security settings (save/actions)."""
 
 import os
-from typing import Any, Callable
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
-from shelfmark.core.utils import normalize_http_url
 from shelfmark.core.user_db import UserDB
+from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.network import get_ssl_verify
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _OIDC_LOCKOUT_MESSAGE = "A local admin account with a password is required before enabling OIDC. Use the 'Go to Users' button above to create one. This ensures you can still sign in if your identity provider is unavailable."
 
 
 def _has_local_password_admin() -> bool:
     root = os.environ.get("CONFIG_DIR", "/config")
-    user_db = UserDB(os.path.join(root, "users.db"))
+    user_db = UserDB(str(Path(root) / "users.db"))
     user_db.initialize()
-    return any(user.get("password_hash") and user.get("role") == "admin" for user in user_db.list_users())
+    return any(
+        user.get("password_hash") and user.get("role") == "admin" for user in user_db.list_users()
+    )
 
 
 def on_save_security(
@@ -56,7 +61,9 @@ def test_oidc_connection(
 
     try:
         # Prefer the current (unsaved) form value over the saved config
-        discovery_url = (current_values or {}).get("OIDC_DISCOVERY_URL") or load_security_config().get("OIDC_DISCOVERY_URL", "")
+        discovery_url = (current_values or {}).get(
+            "OIDC_DISCOVERY_URL"
+        ) or load_security_config().get("OIDC_DISCOVERY_URL", "")
         if not discovery_url:
             return {"success": False, "message": "Discovery URL is not configured."}
 
@@ -67,9 +74,12 @@ def test_oidc_connection(
         required_fields = ["issuer", "authorization_endpoint", "token_endpoint"]
         missing_fields = [field for field in required_fields if field not in document]
         if missing_fields:
-            return {"success": False, "message": f"Discovery document missing fields: {', '.join(missing_fields)}"}
+            return {
+                "success": False,
+                "message": f"Discovery document missing fields: {', '.join(missing_fields)}",
+            }
 
         return {"success": True, "message": f"Connected to {document['issuer']}"}
     except Exception as exc:
-        logger.error(f"OIDC connection test failed: {exc}")
-        return {"success": False, "message": f"Connection failed: {str(exc)}"}
+        logger.exception("OIDC connection test failed")
+        return {"success": False, "message": f"Connection failed: {exc!s}"}

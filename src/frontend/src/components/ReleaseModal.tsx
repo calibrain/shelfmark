@@ -14,6 +14,7 @@ import {
   SearchStatusData,
   ContentType,
   RequestPolicyMode,
+  isMetadataBook,
 } from '../types';
 import { getReleases, getReleaseSources } from '../services/api';
 import { useSocket } from '../contexts/SocketContext';
@@ -38,6 +39,31 @@ import { getBookTitleCandidates, getBookAuthorCandidates, sortReleasesByBookMatc
 import { getCachedReleases, setCachedReleases, invalidateCachedReleases } from '../utils/releaseCache';
 import { SortState, getSavedSort, saveSort, clearSort, inferDefaultDirection, sortReleases, FORMAT_SORT_KEY, sortReleasesByFormat } from '../utils/releaseSort';
 
+
+// Combined mode configuration for the ReleaseModal
+export interface CombinedModeConfig {
+  phase: 'ebook' | 'audiobook';
+  stepLabel: string;
+  ebookMode: RequestPolicyMode;
+  audiobookMode: RequestPolicyMode;
+  stagedEbookRelease: Release | null;
+  stagedAudiobookRelease: Release | null;
+  onNext?: (release: Release) => void;
+  onBack?: (audiobookRelease: Release | null) => void;
+  onDownload?: (release: Release) => void;
+}
+
+// Determine the combined download button label based on action modes
+function getCombinedDownloadLabel(
+  ebookMode: RequestPolicyMode | null | undefined,
+  audiobookMode: RequestPolicyMode | null | undefined,
+): string {
+  const ebookIsRequest = ebookMode === 'request_release' || ebookMode === 'request_book';
+  const audiobookIsRequest = audiobookMode === 'request_release' || audiobookMode === 'request_book';
+  if (ebookIsRequest && audiobookIsRequest) return 'Request Both';
+  if (ebookIsRequest || audiobookIsRequest) return 'Download & Request';
+  return 'Download Both';
+}
 
 // Default column configuration (fallback when backend doesn't provide one)
 const DEFAULT_COLUMN_CONFIG: ReleaseColumnConfig = {
@@ -93,11 +119,15 @@ interface ReleaseModalProps {
   defaultLanguages: string[];
   bookLanguages: Language[];
   currentStatus: StatusData;
-  defaultReleaseSource?: string;  // Default tab to show (e.g., 'direct_download')
+  defaultReleaseSource?: string;  // Default book tab to show (e.g., 'direct_download')
+  defaultAudiobookReleaseSource?: string;  // Default audiobook tab to show
   onSearchSeries?: (seriesName: string, seriesId?: string) => void;  // Callback to search for series
   defaultShowManualQuery?: boolean;
   isRequestMode?: boolean;
+  showReleaseSourceLinks?: boolean;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+  // Combined mode (ebook + audiobook in one transaction)
+  combinedMode?: CombinedModeConfig | null;
 }
 
 
@@ -115,7 +145,7 @@ function StarRating({ rating, maxRating = 5 }: { rating: number; maxRating?: num
           <div key={index} className="relative w-4 h-4">
             {/* Empty star (gray background) */}
             <svg
-              className="absolute inset-0 w-4 h-4 text-gray-300 dark:text-gray-600"
+              className="absolute inset-0 w-4 h-4 text-zinc-300 dark:text-zinc-600"
               fill="currentColor"
               viewBox="0 0 20 20"
             >
@@ -145,7 +175,7 @@ const ReleaseThumbnail = ({ preview, title }: { preview?: string; title?: string
   if (!preview || imageError) {
     return (
       <div
-        className="w-7 h-10 sm:w-8 sm:h-12 rounded bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[7px] sm:text-[8px] font-medium text-gray-500 dark:text-gray-400 flex-shrink-0"
+        className="w-7 h-10 sm:w-8 sm:h-12 rounded-sm bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-[7px] sm:text-[8px] font-medium text-zinc-500 dark:text-zinc-400 shrink-0"
         aria-label="No cover available"
       >
         No Cover
@@ -154,9 +184,9 @@ const ReleaseThumbnail = ({ preview, title }: { preview?: string; title?: string
   }
 
   return (
-    <div className="relative w-7 h-10 sm:w-8 sm:h-12 rounded overflow-hidden bg-gray-100 dark:bg-gray-800 border border-white/40 dark:border-gray-700/70 flex-shrink-0">
+    <div className="relative w-7 h-10 sm:w-8 sm:h-12 rounded-sm overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-white/40 dark:border-zinc-700/70 shrink-0">
       {!imageLoaded && (
-        <div className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
+        <div className="absolute inset-0 bg-linear-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
       )}
       <img
         src={preview}
@@ -201,7 +231,7 @@ const LeadingCell = ({
 
     return (
       <div
-        className={`w-7 h-10 sm:w-8 sm:h-12 rounded-lg ${colorStyle.bg} flex items-center justify-center flex-shrink-0`}
+        className={`w-7 h-10 sm:w-8 sm:h-12 rounded-lg ${colorStyle.bg} flex items-center justify-center shrink-0`}
       >
         <span className={`text-[8px] sm:text-[9px] font-bold ${colorStyle.text} text-center leading-tight px-0.5`}>
           {text}
@@ -214,6 +244,51 @@ const LeadingCell = ({
   return <ReleaseThumbnail preview={undefined} title={release.title} />;
 };
 
+// Radio indicator for selection mode
+const RadioIndicator = ({ selected }: { selected: boolean }) => (
+  <div className="flex items-center justify-center w-8 h-8 shrink-0">
+    <div
+      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+        selected
+          ? 'border-emerald-500 bg-emerald-500'
+          : 'border-zinc-300 dark:border-zinc-600'
+      }`}
+    >
+      {selected && (
+        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+        </svg>
+      )}
+    </div>
+  </div>
+);
+
+// Phase indicator chip for combined mode footer
+const PhaseChip = ({ release, isActive, label }: {
+  release: Release | null;
+  isActive: boolean;
+  label: string;
+}) => (
+  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full ${
+    release
+      ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
+      : isActive
+        ? 'bg-zinc-100 dark:bg-zinc-800 text-(--text)'
+        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500'
+  }`}>
+    {release ? (
+      <>
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+        </svg>
+        {release.format?.toUpperCase() || label} · {release.size || '?'}
+      </>
+    ) : (
+      <>{isActive ? '\u25CF' : '\u25CB'} {label}</>
+    )}
+  </span>
+);
+
 // Release row component with dynamic columns
 const ReleaseRow = ({
   release,
@@ -224,6 +299,10 @@ const ReleaseRow = ({
   gridTemplate,
   leadingCell,
   onlineServers,
+  showReleaseSourceLinks,
+  selectionMode = false,
+  isSelected = false,
+  onSelect,
 }: {
   release: Release;
   index: number;
@@ -233,6 +312,10 @@ const ReleaseRow = ({
   gridTemplate: string;
   leadingCell?: LeadingCellConfig;
   onlineServers?: string[];
+  showReleaseSourceLinks: boolean;
+  selectionMode?: boolean;
+  isSelected?: boolean;
+  onSelect?: () => void;
 }) => {
   const author = release.extra?.author as string | undefined;
 
@@ -252,13 +335,20 @@ const ReleaseRow = ({
     ? 'auto 1fr auto'
     : '1fr auto';
 
+  const handleRowClick = selectionMode && onSelect ? onSelect : undefined;
+
   return (
     <div
-      className="pl-5 pr-4 sm:pr-5 py-2 transition-colors duration-200 hover-row animate-pop-up will-change-transform"
+      className={`pl-5 pr-4 sm:pr-5 py-2 transition-colors duration-200 hover-row animate-pop-up will-change-transform ${
+        selectionMode ? 'cursor-pointer' : ''
+      } ${isSelected ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : ''}`}
       style={{
         animationDelay: `${index * 30}ms`,
         animationFillMode: 'both',
       }}
+      onClick={handleRowClick}
+      role={selectionMode ? 'option' : undefined}
+      aria-selected={selectionMode ? isSelected : undefined}
     >
       {/* Desktop layout with dynamic grid */}
       <div
@@ -271,7 +361,7 @@ const ReleaseRow = ({
         {/* Fixed: Title and author */}
         <div className="min-w-0">
           <p className="text-sm font-medium line-clamp-2" title={release.title}>
-            {release.info_url ? (
+            {showReleaseSourceLinks && release.info_url ? (
               <a
                 href={release.info_url}
                 target="_blank"
@@ -286,7 +376,7 @@ const ReleaseRow = ({
             )}
           </p>
           {author && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
               {author}
             </p>
           )}
@@ -297,14 +387,18 @@ const ReleaseRow = ({
           <ReleaseCell key={col.key} column={col} release={release} onlineServers={onlineServers} />
         ))}
 
-        {/* Fixed: Action button */}
-        <BookDownloadButton
-          buttonState={buttonState}
-          onDownload={onDownload}
-          variant="icon"
-          size="sm"
-          ariaLabel={`${buttonState.text} ${release.title}`}
-        />
+        {/* Fixed: Action button or radio indicator */}
+        {selectionMode ? (
+          <RadioIndicator selected={isSelected} />
+        ) : (
+          <BookDownloadButton
+            buttonState={buttonState}
+            onDownload={onDownload}
+            variant="icon"
+            size="sm"
+            ariaLabel={`${buttonState.text} ${release.title}`}
+          />
+        )}
       </div>
 
       {/* Mobile layout - author inline with title, info line below */}
@@ -318,7 +412,7 @@ const ReleaseRow = ({
         <div className="min-w-0">
           {/* Title and author on same line */}
           <p className="text-sm leading-tight line-clamp-2" title={release.title}>
-            {release.info_url ? (
+            {showReleaseSourceLinks && release.info_url ? (
               <a
                 href={release.info_url}
                 target="_blank"
@@ -332,12 +426,12 @@ const ReleaseRow = ({
               <span className="font-medium">{release.title}</span>
             )}
             {author && (
-              <span className="text-gray-500 dark:text-gray-400 font-normal"> — {author}</span>
+              <span className="text-zinc-500 dark:text-zinc-400 font-normal"> — {author}</span>
             )}
           </p>
           {/* Plugin-provided info line (format, size, indexer, seeders, etc.) */}
           {mobileColumns.length > 0 && (
-            <div className="flex items-center gap-1.5 mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+            <div className="flex items-center gap-1.5 mt-1 text-[10px] text-zinc-500 dark:text-zinc-400">
               {(() => {
                 // Pre-filter columns that will render content to avoid orphan dots
                 const columnsWithContent = mobileColumns.filter((col) => {
@@ -365,7 +459,7 @@ const ReleaseRow = ({
                 });
                 return columnsWithContent.map((col, idx) => (
                   <span key={col.key} className="flex items-center gap-1.5">
-                    {idx > 0 && <span className="text-gray-300 dark:text-gray-600">·</span>}
+                    {idx > 0 && <span className="text-zinc-300 dark:text-zinc-600">·</span>}
                     <ReleaseCell column={col} release={release} compact onlineServers={onlineServers} />
                   </span>
                 ));
@@ -374,13 +468,17 @@ const ReleaseRow = ({
           )}
         </div>
 
-        <BookDownloadButton
-          buttonState={buttonState}
-          onDownload={onDownload}
-          variant="icon"
-          size="sm"
-          ariaLabel={`${buttonState.text} ${release.title}`}
-        />
+        {selectionMode ? (
+          <RadioIndicator selected={isSelected} />
+        ) : (
+          <BookDownloadButton
+            buttonState={buttonState}
+            onDownload={onDownload}
+            variant="icon"
+            size="sm"
+            ariaLabel={`${buttonState.text} ${release.title}`}
+          />
+        )}
       </div>
     </div>
   );
@@ -390,7 +488,7 @@ const ReleaseRow = ({
 function ShimmerBlock({ className }: { className: string }) {
   return (
     <div
-      className={`rounded bg-gray-200 dark:bg-gray-800 relative overflow-hidden ${className}`}
+      className={`rounded-sm bg-zinc-200 dark:bg-zinc-800 relative overflow-hidden ${className}`}
     >
       <div
         className="absolute inset-0 dark:opacity-50"
@@ -411,7 +509,7 @@ function ReleaseSkeleton() {
   const rows = 8;
   return (
     <div
-      className="divide-y divide-gray-200/60 dark:divide-gray-800/60 overflow-hidden"
+      className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60 overflow-hidden"
       style={{
         maskImage: 'linear-gradient(to bottom, black 40%, transparent 100%)',
         WebkitMaskImage: 'linear-gradient(to bottom, black 40%, transparent 100%)',
@@ -453,7 +551,7 @@ function ReleaseSkeleton() {
               </div>
 
               {/* Action button skeleton */}
-              <ShimmerBlock className="w-8 h-8 !rounded-full" />
+              <ShimmerBlock className="w-8 h-8 rounded-full!" />
             </div>
           </div>
         </div>
@@ -466,9 +564,9 @@ function ReleaseSkeleton() {
 function EmptyState({ message }: { message: string }) {
   return (
     <div className="text-center py-12 px-4">
-      <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-800 mb-4">
+      <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-zinc-100 dark:bg-zinc-800 mb-4">
         <svg
-          className="w-7 h-7 text-gray-400"
+          className="w-7 h-7 text-zinc-400"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -481,7 +579,7 @@ function EmptyState({ message }: { message: string }) {
           />
         </svg>
       </div>
-      <p className="text-sm text-gray-500 dark:text-gray-400">{message}</p>
+      <p className="text-sm text-zinc-500 dark:text-zinc-400">{message}</p>
     </div>
   );
 }
@@ -505,10 +603,10 @@ function ErrorState({ message }: { message: string }) {
           />
         </svg>
       </div>
-      <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">
+      <h4 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 mb-2">
         Error Loading Releases
       </h4>
-      <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs mx-auto">{message}</p>
+      <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-xs mx-auto">{message}</p>
     </div>
   );
 }
@@ -529,17 +627,34 @@ export const ReleaseModal = ({
   bookLanguages,
   currentStatus,
   defaultReleaseSource,
+  defaultAudiobookReleaseSource,
   onSearchSeries,
   defaultShowManualQuery = false,
   isRequestMode = false,
+  showReleaseSourceLinks = true,
   onShowToast,
+  combinedMode = null,
 }: ReleaseModalProps) => {
   // Use audiobook formats when in audiobook mode
   const effectiveFormats = contentType === 'audiobook' && supportedAudiobookFormats.length > 0
     ? supportedAudiobookFormats
     : supportedFormats;
+  const preferredDefaultReleaseSource = contentType === 'audiobook'
+    ? (defaultAudiobookReleaseSource || defaultReleaseSource)
+    : defaultReleaseSource;
   const [isClosing, setIsClosing] = useState(false);
   const [isRequestingBook, setIsRequestingBook] = useState(false);
+  const [selectedRelease, setSelectedRelease] = useState<Release | null>(null);
+  const isCombinedMode = combinedMode != null;
+  const combinedPhase = combinedMode?.phase ?? null;
+  const combinedStepLabel = combinedMode?.stepLabel ?? '';
+  const combinedEbookMode = combinedMode?.ebookMode ?? null;
+  const combinedAudiobookMode = combinedMode?.audiobookMode ?? null;
+  const stagedEbookRelease = combinedMode?.stagedEbookRelease ?? null;
+  const stagedAudiobookRelease = combinedMode?.stagedAudiobookRelease ?? null;
+  const onCombinedNext = combinedMode?.onNext;
+  const onCombinedBack = combinedMode?.onBack;
+  const onCombinedDownload = combinedMode?.onDownload;
 
   // Available sources from plugin registry
   const [availableSources, setAvailableSources] = useState<ReleaseSource[]>([]);
@@ -636,6 +751,15 @@ export const ReleaseModal = ({
     }
   }, [book]);
 
+  // Restore staged selection when navigating between phases
+  useEffect(() => {
+    if (combinedPhase === 'ebook' && stagedEbookRelease) {
+      setSelectedRelease(stagedEbookRelease);
+    } else if (combinedPhase === 'audiobook' && stagedAudiobookRelease) {
+      setSelectedRelease(stagedAudiobookRelease);
+    }
+  }, [combinedPhase, stagedEbookRelease, stagedAudiobookRelease]);
+
   // Reset modal state when book changes to prevent stale data
   useEffect(() => {
     setDescriptionExpanded(false);
@@ -649,6 +773,11 @@ export const ReleaseModal = ({
     setLanguageFilter([LANGUAGE_OPTION_DEFAULT]);
     setIndexerFilter([]);
     indexerFilterInitializedRef.current = new Set();
+    // Don't clear selectedRelease here — the combinedPhase effect handles it
+    // (restoring the staged ebook selection when going back)
+    if (!isCombinedMode) {
+      setSelectedRelease(null);
+    }
     const baseTitle = book?.search_title || book?.title || '';
     const baseAuthor = book?.search_author || book?.author || '';
     const defaultQuery = `${baseTitle} ${baseAuthor}`.trim();
@@ -661,7 +790,7 @@ export const ReleaseModal = ({
       clearTimeout(statusTimeoutRef.current);
       statusTimeoutRef.current = null;
     }
-  }, [book?.id, defaultShowManualQuery, book?.search_title, book?.title, book?.search_author, book?.author]);
+  }, [book?.id, contentType, defaultShowManualQuery, book?.search_title, book?.title, book?.search_author, book?.author]);
 
   // Set up WebSocket listener for search status updates
   useEffect(() => {
@@ -764,7 +893,7 @@ export const ReleaseModal = ({
     return () => scrollContainer.removeEventListener('scroll', handleScroll);
   }, [book]);
 
-  // Fetch available sources on mount
+  // Fetch available sources on mount (only when book changes, not content type)
   useEffect(() => {
     if (!book) return;
 
@@ -774,47 +903,9 @@ export const ReleaseModal = ({
         setSourcesError(null);
         const sources = await getReleaseSources();
         setAvailableSources(sources);
-
-        const providerContextSource = sources.find((source) => (
-          source.name === book.provider && source.browse_results_are_releases
-        ));
-
-        // Filter sources by content type support
-        const supportedSources = sources.filter(s => {
-          const types = s.supported_content_types || ['ebook', 'audiobook'];
-          return types.includes(contentType);
-        });
-
-        if (providerContextSource) {
-          setActiveTab(providerContextSource.name);
-          return;
-        }
-
-        // Set active tab: prefer defaultReleaseSource if enabled and supports content type
-        if (supportedSources.length > 0) {
-          const enabledSources = supportedSources.filter(s => s.enabled);
-          const defaultIsEnabled = defaultReleaseSource &&
-            enabledSources.some(s => s.name === defaultReleaseSource);
-
-          let defaultSource: string;
-          if (defaultIsEnabled) {
-            defaultSource = defaultReleaseSource;
-          } else if (enabledSources.length > 0) {
-            defaultSource = enabledSources[0].name;
-          } else {
-            defaultSource = supportedSources[0].name;  // Fallback to first supported source
-          }
-          setActiveTab(defaultSource);
-        } else if (sources.length > 0) {
-          // No sources support this content type - fall back to first source
-          setActiveTab(sources[0].name);
-        } else {
-          setActiveTab('');
-        }
       } catch (err) {
         console.error('Failed to fetch release sources:', err);
         setAvailableSources([]);
-        setActiveTab('');
         setSourcesError(err instanceof Error ? err.message : 'Failed to load release sources');
       } finally {
         setSourcesLoading(false);
@@ -822,7 +913,46 @@ export const ReleaseModal = ({
     };
 
     fetchSources();
-  }, [book, defaultReleaseSource, contentType]);
+  }, [book]);
+
+  // Pick default active tab when sources or content type changes (synchronous, no flash)
+  useEffect(() => {
+    if (availableSources.length === 0) return;
+
+    const providerContextSource = availableSources.find((source) => (
+      source.name === book?.provider && source.browse_results_are_releases
+    ));
+
+    if (providerContextSource) {
+      setActiveTab(providerContextSource.name);
+      return;
+    }
+
+    const supportedSources = availableSources.filter(s => {
+      const types = s.supported_content_types || ['ebook', 'audiobook'];
+      return types.includes(contentType);
+    });
+
+    if (supportedSources.length > 0) {
+      const enabledSources = supportedSources.filter(s => s.enabled);
+      const defaultIsEnabled = preferredDefaultReleaseSource &&
+        enabledSources.some(s => s.name === preferredDefaultReleaseSource);
+
+      let defaultSource: string;
+      if (defaultIsEnabled) {
+        defaultSource = preferredDefaultReleaseSource;
+      } else if (enabledSources.length > 0) {
+        defaultSource = enabledSources[0].name;
+      } else {
+        defaultSource = supportedSources[0].name;
+      }
+      setActiveTab(defaultSource);
+    } else if (availableSources.length > 0) {
+      setActiveTab(availableSources[0].name);
+    } else {
+      setActiveTab('');
+    }
+  }, [availableSources, book?.provider, preferredDefaultReleaseSource, contentType]);
 
   // Fetch releases when active tab changes (with caching)
   // Initial fetch always uses ISBN-first search; expansion is handled by handleExpandSearch
@@ -948,16 +1078,16 @@ export const ReleaseModal = ({
     });
 
     // Sort so default source appears first
-    if (defaultReleaseSource) {
+    if (preferredDefaultReleaseSource) {
       enabledTabs.sort((a, b) => {
-        if (a.name === defaultReleaseSource) return -1;
-        if (b.name === defaultReleaseSource) return 1;
+        if (a.name === preferredDefaultReleaseSource) return -1;
+        if (b.name === preferredDefaultReleaseSource) return 1;
         return 0;
       });
     }
 
     return enabledTabs;
-  }, [availableSources, book?.provider, defaultReleaseSource, contentType]);
+  }, [availableSources, book?.provider, preferredDefaultReleaseSource, contentType]);
 
   // Update tab indicator position when active tab changes
   useEffect(() => {
@@ -1186,8 +1316,10 @@ export const ReleaseModal = ({
     const ratingsField = book.display_fields.find(f => f.icon === 'ratings');
     const usersField = book.display_fields.find(f => f.icon === 'users');
     const pagesField = book.display_fields.find(f => f.icon === 'book');
+    const lengthField = book.display_fields.find(f => f.icon === 'clock');
+    const narratorField = book.display_fields.find(f => f.icon === 'microphone');
 
-    return { starField, ratingsField, usersField, pagesField };
+    return { starField, ratingsField, usersField, pagesField, lengthField, narratorField };
   }, [book?.display_fields]);
 
   const getReleaseActionMode = useCallback(
@@ -1204,9 +1336,18 @@ export const ReleaseModal = ({
   const getButtonState = useCallback(
     (release: Release): ButtonStateInfo => {
       const releaseId = release.source_id;
+      const mode = getReleaseActionMode(release);
       // Check error first
       if (currentStatus.error && currentStatus.error[releaseId]) {
-        return { text: 'Failed', state: 'error' };
+        if (mode === 'request_release') {
+          return { text: 'Request', state: 'download' };
+        }
+        if (mode === 'blocked' || mode === 'request_book') {
+          return { text: 'Unavailable', state: 'blocked' };
+        }
+        return currentStatus.error[releaseId].retry_available === true
+          ? { text: 'Retry', state: 'download' }
+          : { text: 'Failed', state: 'error' };
       }
       // Check completed
       if (currentStatus.complete && currentStatus.complete[releaseId]) {
@@ -1230,8 +1371,6 @@ export const ReleaseModal = ({
       if (currentStatus.queued && currentStatus.queued[releaseId]) {
         return { text: 'Queued', state: 'queued' };
       }
-
-      const mode = getReleaseActionMode(release);
       if (mode === 'request_release') {
         return { text: 'Request', state: 'download' };
       }
@@ -1250,6 +1389,16 @@ export const ReleaseModal = ({
         return;
       }
 
+      // In combined mode, clicking a row selects it (don't download)
+      if (isCombinedMode) {
+        const mode = getReleaseActionMode(release);
+        if (mode === 'blocked' || mode === 'request_book') {
+          return;
+        }
+        setSelectedRelease(release);
+        return;
+      }
+
       const mode = getReleaseActionMode(release);
       if (mode === 'download') {
         await onDownload(book, release, contentType);
@@ -1263,10 +1412,8 @@ export const ReleaseModal = ({
         }
         return;
       }
-      // blocked / request_book — should not be reachable (button is disabled),
-      // but guard defensively.
     },
-    [book, getReleaseActionMode, onDownload, onRequestRelease, contentType, handleClose]
+    [book, isCombinedMode, getReleaseActionMode, onDownload, onRequestRelease, contentType, handleClose]
   );
 
   if (!book && !isClosing) return null;
@@ -1276,6 +1423,7 @@ export const ReleaseModal = ({
   const providerDisplay =
     book.provider_display_name ||
     (book.provider ? book.provider.charAt(0).toUpperCase() + book.provider.slice(1) : 'Unknown');
+  const showBookSourceLink = Boolean(book.source_url) && (isMetadataBook(book) || showReleaseSourceLinks);
 
   const currentTabLoading = loadingBySource[activeTab] ?? false;
   const currentTabError = errorBySource[activeTab] ?? null;
@@ -1292,20 +1440,42 @@ export const ReleaseModal = ({
       }}
     >
       <div
-        className={`details-container w-full max-w-3xl h-full sm:h-auto ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`details-container w-full h-full sm:h-auto ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
       >
-        <div className="flex h-full sm:h-[90vh] sm:max-h-[90vh] flex-col overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border border-[var(--border-muted)] bg-[var(--bg)] sm:bg-[var(--bg-soft)] text-[var(--text)] shadow-none sm:shadow-2xl">
+        <div className="flex h-full sm:h-[90vh] sm:max-h-[90vh] flex-col overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft) text-(--text) shadow-none sm:shadow-2xl">
           {/* Header */}
-          <header className="flex items-start gap-3 border-b border-[var(--border-muted)] px-5 py-4">
-            {/* Animated thumbnail that appears when scrolling */}
+          <header className="flex items-start gap-3 border-b border-(--border-muted) px-5 py-4">
+            {/* Mobile: static thumbnail always visible */}
+            {!isRequestMode && (
+              <div className="sm:hidden shrink-0">
+                {book.preview ? (
+                  <img
+                    src={book.preview}
+                    alt=""
+                    width={book.cover_aspect === 'square' ? 68 : 46}
+                    height={68}
+                    className={`rounded-sm shadow-md object-cover ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'}`}
+                    style={{ width: book.cover_aspect === 'square' ? 68 : 46, height: 68, minWidth: book.cover_aspect === 'square' ? 68 : 46 }}
+                  />
+                ) : (
+                  <div
+                    className="rounded-sm border border-dashed border-(--border-muted) bg-(--bg)/60 flex items-center justify-center text-[7px] text-zinc-500"
+                    style={{ width: book.cover_aspect === 'square' ? 68 : 46, height: 68, minWidth: book.cover_aspect === 'square' ? 68 : 46 }}
+                  >
+                    No cover
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Desktop: animated thumbnail that appears when scrolling */}
             {!isRequestMode && (
               <div
-                className="flex-shrink-0 overflow-hidden transition-[width,margin] duration-300 ease-out"
+                className="hidden sm:block shrink-0 overflow-hidden transition-[width,margin] duration-300 ease-out"
                 style={{
-                  width: showHeaderThumb ? 46 : 0,
+                  width: showHeaderThumb ? (book.cover_aspect === 'square' ? 68 : 46) : 0,
                   marginRight: showHeaderThumb ? 0 : -12,
                 }}
               >
@@ -1317,15 +1487,15 @@ export const ReleaseModal = ({
                     <img
                       src={book.preview}
                       alt=""
-                      width={46}
+                      width={book.cover_aspect === 'square' ? 68 : 46}
                       height={68}
-                      className="rounded shadow-md object-cover object-top"
-                      style={{ width: 46, height: 68, minWidth: 46 }}
+                      className={`rounded-sm shadow-md object-cover ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'}`}
+                      style={{ width: book.cover_aspect === 'square' ? 68 : 46, height: 68, minWidth: book.cover_aspect === 'square' ? 68 : 46 }}
                     />
                   ) : (
                     <div
-                      className="rounded border border-dashed border-[var(--border-muted)] bg-[var(--bg)]/60 flex items-center justify-center text-[7px] text-gray-500"
-                      style={{ width: 46, height: 68, minWidth: 46 }}
+                      className="rounded-sm border border-dashed border-(--border-muted) bg-(--bg)/60 flex items-center justify-center text-[7px] text-zinc-500"
+                      style={{ width: book.cover_aspect === 'square' ? 68 : 46, height: 68, minWidth: book.cover_aspect === 'square' ? 68 : 46 }}
                     >
                       No cover
                     </div>
@@ -1334,23 +1504,23 @@ export const ReleaseModal = ({
               </div>
             )}
             <div className="flex-1 space-y-1 min-w-0">
-              <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                Find Releases
+              <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                {isCombinedMode ? combinedStepLabel : 'Find Releases'}
               </p>
               <h3 id={titleId} className="text-lg font-semibold leading-snug truncate">
                 {book.provider === 'manual' ? 'Manual Query' : (book.title || 'Untitled')}
               </h3>
               {!isRequestMode && (
-                <p className="text-sm text-gray-600 dark:text-gray-300 truncate">
+                <p className="text-sm text-zinc-600 dark:text-zinc-300 truncate">
                   {book.author || 'Unknown author'}
                 </p>
               )}
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={handleClose}
-                className="rounded-full p-2 text-gray-500 transition-colors hover-action hover:text-gray-900 dark:hover:text-gray-100"
+                className="rounded-full p-2 text-zinc-500 transition-colors hover-action hover:text-zinc-900 dark:hover:text-zinc-100"
                 aria-label="Close"
               >
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
@@ -1364,34 +1534,34 @@ export const ReleaseModal = ({
           <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto">
             {/* Book summary - scrolls with content */}
             {!isRequestMode && (
-              <div ref={bookSummaryRef} className="flex gap-4 px-5 py-4 border-b border-[var(--border-muted)]">
+              <div ref={bookSummaryRef} className="flex gap-4 px-5 py-4 border-b border-(--border-muted)">
                 {book.preview ? (
                   <img
                     src={book.preview}
                     alt="Book cover"
-                    className={`rounded-lg shadow-md object-cover object-top flex-shrink-0 ${book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]'}`}
+                    className={`hidden sm:block rounded-lg shadow-md object-cover shrink-0 ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'} ${book.cover_aspect === 'square' ? (book.series_name ? 'w-[144px] h-[144px]' : 'w-[120px] h-[120px]') : (book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]')}`}
                   />
                 ) : (
-                  <div className={`rounded-lg border border-dashed border-[var(--border-muted)] bg-[var(--bg)]/60 flex items-center justify-center text-[10px] text-gray-500 flex-shrink-0 ${book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]'}`}>
+                  <div className={`hidden sm:flex rounded-lg border border-dashed border-(--border-muted) bg-(--bg)/60 items-center justify-center text-[10px] text-zinc-500 shrink-0 ${book.cover_aspect === 'square' ? (book.series_name ? 'w-[144px] h-[144px]' : 'w-[120px] h-[120px]') : (book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]')}`}>
                     No cover
                   </div>
                 )}
-                <div className="flex-1 min-w-0 space-y-2">
+                <div className="flex-1 min-w-0 flex flex-col gap-2">
                   {/* Metadata row */}
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600 dark:text-gray-400">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-zinc-600 dark:text-zinc-400">
                     {book.year && <span>{book.year}</span>}
                     {displayFields?.starField && (
                       <span className="flex items-center gap-1.5">
                         <StarRating rating={parseFloat(displayFields.starField.value || '0')} />
                         <span>{displayFields.starField.value}</span>
                         {displayFields.ratingsField && (
-                          <span className="text-gray-400 dark:text-gray-500">({displayFields.ratingsField.value})</span>
+                          <span className="text-zinc-400 dark:text-zinc-500">({displayFields.ratingsField.value})</span>
                         )}
                       </span>
                     )}
                     {displayFields?.usersField && (
                       <span className="flex items-center gap-1">
-                        <svg className="h-3.5 w-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                        <svg className="h-3.5 w-3.5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
                         </svg>
                         {displayFields.usersField.value} readers
@@ -1400,11 +1570,27 @@ export const ReleaseModal = ({
                     {displayFields?.pagesField && (
                       <span>{displayFields.pagesField.value} pages</span>
                     )}
+                    {displayFields?.lengthField && (
+                      <span className="flex items-center gap-1">
+                        <svg className="h-3.5 w-3.5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                        </svg>
+                        {displayFields.lengthField.value}
+                      </span>
+                    )}
+                    {displayFields?.narratorField && (
+                      <span className="flex items-center gap-1">
+                        <svg className="h-3.5 w-3.5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
+                        </svg>
+                        {displayFields.narratorField.value}
+                      </span>
+                    )}
                   </div>
 
                   {/* Series info */}
                   {book.series_name && (
-                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                    <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
                       <span>
                         {book.series_position != null ? (
                           <>#{Number.isInteger(book.series_position) ? book.series_position : book.series_position}{book.series_count ? ` of ${book.series_count}` : ''} in {book.series_name}</>
@@ -1432,7 +1618,7 @@ export const ReleaseModal = ({
 
                   {/* Description */}
                   {book.description && (
-                    <div className="text-sm text-gray-600 dark:text-gray-400 relative">
+                    <div className="text-sm text-zinc-600 dark:text-zinc-400 relative">
                       <p ref={descriptionRef} className={descriptionExpanded ? '' : 'line-clamp-3'}>
                         {book.description}
                         {descriptionExpanded && descriptionOverflows && (
@@ -1452,7 +1638,7 @@ export const ReleaseModal = ({
                         <button
                           type="button"
                           onClick={() => setDescriptionExpanded(true)}
-                          className="absolute bottom-0 right-0 text-emerald-600 dark:text-emerald-400 hover:underline font-medium pl-8 bg-gradient-to-r from-transparent via-[var(--bg)] to-[var(--bg)] sm:via-[var(--bg-soft)] sm:to-[var(--bg-soft)]"
+                          className="absolute bottom-0 right-0 text-emerald-600 dark:text-emerald-400 hover:underline font-medium pl-8 bg-linear-to-r from-transparent via-(--bg) to-(--bg) sm:via-(--bg-soft) sm:to-(--bg-soft)"
                         >
                           more
                         </button>
@@ -1461,13 +1647,13 @@ export const ReleaseModal = ({
                   )}
 
                   {/* Links row */}
-                  <div className="flex flex-wrap items-center gap-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-3 text-xs mt-auto">
                     {(book.isbn_13 || book.isbn_10) && (
-                      <span className="text-gray-500 dark:text-gray-400">
+                      <span className="text-zinc-500 dark:text-zinc-400">
                         ISBN: {book.isbn_13 || book.isbn_10}
                       </span>
                     )}
-                    {book.source_url && (
+                    {showBookSourceLink && (
                       <a
                         href={book.source_url}
                         target="_blank"
@@ -1480,28 +1666,32 @@ export const ReleaseModal = ({
                         </svg>
                       </a>
                     )}
-                    {onRequestBook && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void handleRequestBook();
-                        }}
-                        disabled={isRequestingBook}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                        </svg>
-                        {isRequestingBook ? 'Adding...' : 'Add to requests'}
-                      </button>
-                    )}
-                    {bookSupportsTargets(book) && (
-                      <BookTargetDropdown
-                        provider={book.provider!}
-                        bookId={book.provider_id!}
-                        onShowToast={onShowToast}
-                        variant="pill"
-                      />
+                    {(onRequestBook || bookSupportsTargets(book)) && (
+                      <span className="inline-flex items-center gap-3">
+                        {onRequestBook && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void handleRequestBook();
+                            }}
+                            disabled={isRequestingBook}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                            </svg>
+                            {isRequestingBook ? 'Adding...' : 'Add to requests'}
+                          </button>
+                        )}
+                        {bookSupportsTargets(book) && (
+                          <BookTargetDropdown
+                            provider={book.provider!}
+                            bookId={book.provider_id!}
+                            onShowToast={onShowToast}
+                            variant="pill"
+                          />
+                        )}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -1509,13 +1699,13 @@ export const ReleaseModal = ({
             )}
 
             {/* Source tabs + filters - sticky within scroll container */}
-            <div className="sticky top-0 z-10 border-b border-[var(--border-muted)] bg-[var(--bg)] sm:bg-[var(--bg-soft)]">
+            <div className="sticky top-0 z-10 border-b border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft)">
               {sourcesLoading ? (
                 <div className="flex gap-1 px-5 py-2">
-                  <div className="h-10 w-32 animate-pulse bg-gray-200 dark:bg-gray-700 rounded" />
+                  <div className="h-10 w-32 animate-pulse bg-zinc-200 dark:bg-zinc-700 rounded-sm" />
                 </div>
               ) : allTabs.length === 0 ? (
-                <div className="px-5 py-3 text-sm text-gray-500 dark:text-gray-400">
+                <div className="px-5 py-3 text-sm text-zinc-500 dark:text-zinc-400">
                   {sourcesError || 'No release sources are available for this book.'}
                 </div>
               ) : (
@@ -1538,7 +1728,7 @@ export const ReleaseModal = ({
                           onClick={() => setActiveTab(tab.name)}
                           className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${activeTab === tab.name
                               ? 'text-emerald-600 dark:text-emerald-400'
-                              : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
                             }`}
                         >
                           {tab.displayName}
@@ -1563,7 +1753,7 @@ export const ReleaseModal = ({
                           return next;
                         });
                       }}
-                      className={`p-2.5 rounded-full transition-colors hover-surface text-gray-500 dark:text-gray-400 ${manualQuery.trim() ? 'text-emerald-600 dark:text-emerald-400' : ''
+                      className={`p-2.5 rounded-full transition-colors hover-surface text-zinc-500 dark:text-zinc-400 ${manualQuery.trim() ? 'text-emerald-600 dark:text-emerald-400' : ''
                         }`}
                       aria-label="Manual search query"
                       title="Manual query"
@@ -1577,13 +1767,13 @@ export const ReleaseModal = ({
                     {(allSortOptions.length > 0 || availableFormats.length > 1) && (
                       <Dropdown
                         align="right"
-                        widthClassName="w-auto flex-shrink-0"
+                        widthClassName="w-auto shrink-0"
                         panelClassName="w-48"
                         renderTrigger={({ isOpen, toggle }) => (
                           <button
                             type="button"
                             onClick={toggle}
-                            className={`relative p-2.5 rounded-full transition-colors hover-surface text-gray-500 dark:text-gray-400 ${isOpen ? 'bg-[var(--hover-surface)]' : ''
+                            className={`relative p-2.5 rounded-full transition-colors hover-surface text-zinc-500 dark:text-zinc-400 ${isOpen ? 'bg-(--hover-surface)' : ''
                               }`}
                             aria-label="Sort releases"
                           >
@@ -1608,7 +1798,7 @@ export const ReleaseModal = ({
                               }}
                               className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between hover-surface rounded ${!currentSort
                                   ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                                  : 'text-gray-700 dark:text-gray-300'
+                                  : 'text-zinc-700 dark:text-zinc-300'
                                 }`}
                             >
                               <span>Best Match (Default)</span>
@@ -1633,7 +1823,7 @@ export const ReleaseModal = ({
                                   }}
                                   className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between hover-surface rounded ${isSelected
                                       ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                                      : 'text-gray-700 dark:text-gray-300'
+                                      : 'text-zinc-700 dark:text-zinc-300'
                                     }`}
                                 >
                                   <span>{opt.label}</span>
@@ -1654,7 +1844,7 @@ export const ReleaseModal = ({
                             {availableFormats.length > 1 && (
                               <>
                                 {allSortOptions.length > 0 && (
-                                  <div className="mx-2 my-1 border-t border-gray-200 dark:border-gray-700" />
+                                  <div className="mx-2 my-1 border-t border-zinc-200 dark:border-zinc-700" />
                                 )}
                                 <button
                                   type="button"
@@ -1662,7 +1852,7 @@ export const ReleaseModal = ({
                                   className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between hover-surface rounded ${
                                     currentSort?.key === FORMAT_SORT_KEY
                                       ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                                      : 'text-gray-700 dark:text-gray-300'
+                                      : 'text-zinc-700 dark:text-zinc-300'
                                   }`}
                                 >
                                   <span>
@@ -1692,7 +1882,7 @@ export const ReleaseModal = ({
                                       className={`w-full pl-6 pr-3 py-1.5 text-left text-sm flex items-center justify-between hover-surface rounded ${
                                         isSelected
                                           ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                                          : 'text-gray-700 dark:text-gray-300'
+                                          : 'text-zinc-700 dark:text-zinc-300'
                                       }`}
                                     >
                                       <span>{fmt.toUpperCase()}</span>
@@ -1722,7 +1912,7 @@ export const ReleaseModal = ({
                       (columnConfig.supported_filters?.includes('indexer') && availableIndexers.length > 1)) && (
                       <Dropdown
                         align="right"
-                        widthClassName="w-auto flex-shrink-0"
+                        widthClassName="w-auto shrink-0"
                         panelClassName="w-56"
                         noScrollLimit
                         renderTrigger={({ isOpen, toggle }) => {
@@ -1744,8 +1934,8 @@ export const ReleaseModal = ({
                             <button
                               type="button"
                               onClick={toggle}
-                              className={`relative p-2.5 rounded-full transition-colors hover-surface text-gray-500 dark:text-gray-400 ${
-                                isOpen ? 'bg-[var(--hover-surface)]' : ''
+                              className={`relative p-2.5 rounded-full transition-colors hover-surface text-zinc-500 dark:text-zinc-400 ${
+                                isOpen ? 'bg-(--hover-surface)' : ''
                               }`}
                               aria-label="Filter releases"
                             >
@@ -1852,7 +2042,7 @@ export const ReleaseModal = ({
 
             {/* Manual query panel (below source tabs) */}
             {showManualQuery && (
-              <div className="px-5 py-3 border-b border-[var(--border-muted)] bg-[var(--bg)] sm:bg-[var(--bg-soft)]">
+              <div className="px-5 py-3 border-b border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft)">
                 <form
                   className="flex items-center gap-2"
                   onSubmit={async (e) => {
@@ -1907,7 +2097,7 @@ export const ReleaseModal = ({
                     value={manualQuery}
                     onChange={(e) => setManualQuery(e.target.value)}
                     placeholder="Type a custom search query (overrides all sources)"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-[var(--border-muted)] bg-[var(--bg)] text-[var(--text)]"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-(--border-muted) bg-(--bg) text-(--text)"
                   />
                   <button
                     type="submit"
@@ -1920,7 +2110,7 @@ export const ReleaseModal = ({
                     {currentTabLoading ? 'Searching…' : 'Search'}
                   </button>
                 </form>
-                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
                   Manual query overrides ISBN/title/author/language expansion.
                 </p>
               </div>
@@ -1959,7 +2149,7 @@ export const ReleaseModal = ({
                         <button
                           type="button"
                           onClick={handleExpandSearch}
-                          className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 rounded-full hover-action transition-all duration-200"
+                          className="px-3 py-1.5 text-sm text-zinc-500 dark:text-zinc-400 rounded-full hover-action transition-all duration-200"
                         >
                           {columnConfig.action_button?.label ?? 'Expand search'}
                         </button>
@@ -1969,7 +2159,7 @@ export const ReleaseModal = ({
               ) : (
                 <>
                   {/* Key includes filter to force remount when filter changes */}
-                  <div key={`releases-${formatFilter}-${languageFilter.join(',')}`} className="divide-y divide-gray-200/60 dark:divide-gray-800/60">
+                  <div key={`releases-${formatFilter}-${languageFilter.join(',')}`} className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60">
                     {filteredReleases.map((release, index) => (
                       <ReleaseRow
                         key={`${release.source}-${release.source_id}`}
@@ -1981,6 +2171,10 @@ export const ReleaseModal = ({
                         gridTemplate={columnConfig.grid_template}
                         leadingCell={columnConfig.leading_cell}
                         onlineServers={columnConfig.online_servers}
+                        showReleaseSourceLinks={showReleaseSourceLinks}
+                        selectionMode={isCombinedMode}
+                        isSelected={isCombinedMode && selectedRelease?.source_id === release.source_id}
+                        onSelect={isCombinedMode ? () => setSelectedRelease(release) : undefined}
                       />
                     ))}
                   </div>
@@ -2002,7 +2196,7 @@ export const ReleaseModal = ({
                         <button
                           type="button"
                           onClick={handleExpandSearch}
-                          className="px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 rounded-full hover-action transition-all duration-200"
+                          className="px-3 py-1.5 text-sm text-zinc-500 dark:text-zinc-400 rounded-full hover-action transition-all duration-200"
                         >
                           {columnConfig.action_button?.label ?? 'Expand search'}
                         </button>
@@ -2019,7 +2213,7 @@ export const ReleaseModal = ({
             {/* Sticky search status indicator - stays at bottom of visible scroll area */}
             {searchStatus && searchStatus.source === activeTab && currentTabLoading && (
               <div className="sticky bottom-0 z-10 flex items-center justify-center pointer-events-none pb-4 pt-2">
-                <div className="flex items-center gap-2.5 px-4 py-2 rounded-xl bg-[var(--bg-soft)] border border-[var(--border-muted)] text-gray-500 dark:text-gray-400 text-sm shadow-lg pointer-events-auto">
+                <div className="flex items-center gap-2.5 px-4 py-2 rounded-xl bg-(--bg-soft) border border-(--border-muted) text-zinc-500 dark:text-zinc-400 text-sm shadow-lg pointer-events-auto">
                   {searchStatus.phase !== 'complete' && searchStatus.phase !== 'error' && (
                     <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                   )}
@@ -2028,6 +2222,69 @@ export const ReleaseModal = ({
               </div>
             )}
           </div>
+
+          {/* Combined mode footer */}
+          {isCombinedMode && (
+            <div className="border-t border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft) px-5 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+                {/* Phase indicators with live selection chips */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-3 text-sm min-w-0">
+                  <PhaseChip
+                    release={combinedPhase === 'ebook' ? selectedRelease : stagedEbookRelease}
+                    isActive={combinedPhase === 'ebook'}
+                    label="Book"
+                  />
+                  <PhaseChip
+                    release={combinedPhase === 'audiobook' ? selectedRelease : stagedAudiobookRelease}
+                    isActive={combinedPhase === 'audiobook'}
+                    label="Audiobook"
+                  />
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex items-center justify-end gap-3 shrink-0">
+                  {onCombinedBack && (
+                    <button
+                      type="button"
+                      onClick={() => { const picked = selectedRelease; setSelectedRelease(stagedEbookRelease); onCombinedBack!(picked); }}
+                      className="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors hover-surface text-(--text)"
+                    >
+                      &larr; Back
+                    </button>
+                  )}
+
+                  {combinedPhase === 'ebook' && onCombinedNext && (
+                    <button
+                      type="button"
+                      onClick={() => { if (selectedRelease) { const picked = selectedRelease; setSelectedRelease(stagedAudiobookRelease); onCombinedNext(picked); } }}
+                      disabled={!selectedRelease}
+                      className="px-4 py-1.5 text-sm font-medium text-white rounded-lg transition-colors bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Select Audiobook &rarr;
+                    </button>
+                  )}
+
+                  {onCombinedDownload && (
+                    <button
+                      type="button"
+                      onClick={() => selectedRelease && onCombinedDownload(selectedRelease)}
+                      disabled={!selectedRelease}
+                      className="px-4 py-1.5 text-sm font-medium text-white rounded-lg transition-colors bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {getCombinedDownloadLabel(
+                        combinedPhase === 'ebook'
+                          ? (selectedRelease ? getReleaseActionMode(selectedRelease) : combinedEbookMode)
+                          : (stagedEbookRelease ? getReleaseActionMode(stagedEbookRelease) : combinedEbookMode),
+                        combinedPhase === 'audiobook'
+                          ? (selectedRelease ? getReleaseActionMode(selectedRelease) : combinedAudiobookMode)
+                          : (stagedAudiobookRelease ? getReleaseActionMode(stagedAudiobookRelease) : combinedAudiobookMode),
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

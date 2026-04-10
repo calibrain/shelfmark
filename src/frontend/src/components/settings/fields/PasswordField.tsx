@@ -21,9 +21,8 @@ export const PasswordField = ({ field, value, onChange, disabled }: PasswordFiel
         onChange={(e) => onChange(e.target.value)}
         placeholder={field.placeholder}
         disabled={isDisabled}
-        className="w-full px-3 py-2 pr-10 rounded-lg border border-[var(--border-muted)]
-                   bg-[var(--bg-soft)] text-sm
-                   focus:outline-none focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500
+        className="w-full px-3 py-2 pr-10 rounded-lg border border-(--border-muted)                   bg-(--bg-soft) text-sm
+                   focus:outline-hidden focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500
                    disabled:opacity-60 disabled:cursor-not-allowed
                    transition-colors"
       />
@@ -32,7 +31,7 @@ export const PasswordField = ({ field, value, onChange, disabled }: PasswordFiel
         onClick={() => setShowPassword(!showPassword)}
         disabled={isDisabled}
         className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded
-                   hover:bg-[var(--hover-action)] transition-colors
+                   hover:bg-(--hover-action) transition-colors
                    disabled:opacity-60 disabled:cursor-not-allowed"
         tabIndex={-1}
         aria-label={showPassword ? 'Hide password' : 'Show password'}

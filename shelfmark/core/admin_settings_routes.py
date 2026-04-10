@@ -1,8 +1,8 @@
 """Admin settings-introspection routes and settings validation helpers."""
 
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
 
-from flask import Flask, jsonify, request
+from flask import Flask, Response, jsonify, request
 
 from shelfmark.config.notifications_settings import (
     build_notification_test_result,
@@ -10,17 +10,28 @@ from shelfmark.config.notifications_settings import (
     normalize_notification_routes,
 )
 from shelfmark.config.users_settings import validate_search_preference_value
+from shelfmark.core.config import config as app_config
+from shelfmark.core.request_policy import parse_policy_mode, validate_policy_rules
 from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_settings_overrides import (
     build_user_preferences_payload as _build_user_preferences_payload,
+)
+from shelfmark.core.user_settings_overrides import (
     get_ordered_user_overridable_fields as _get_ordered_user_overridable_fields,
+)
+from shelfmark.core.user_settings_overrides import (
     get_settings_registry as _get_settings_registry,
 )
-from shelfmark.core.user_db import UserDB
-from shelfmark.core.request_policy import parse_policy_mode, validate_policy_rules
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from shelfmark.core.user_db import UserDB
 
 
-def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+def validate_user_settings(
+    settings: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
     settings_registry = _get_settings_registry()
     field_map = settings_registry.get_settings_field_map()
     overridable_map = settings_registry.get_user_overridable_fields()
@@ -38,10 +49,12 @@ def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], li
                 valid[key] = None
                 continue
 
-            if key in {"REQUEST_POLICY_DEFAULT_EBOOK", "REQUEST_POLICY_DEFAULT_AUDIOBOOK"}:
-                if parse_policy_mode(value) is None:
-                    errors.append(f"Invalid policy mode for {key}: {value}")
-                    continue
+            if (
+                key in {"REQUEST_POLICY_DEFAULT_EBOOK", "REQUEST_POLICY_DEFAULT_AUDIOBOOK"}
+                and parse_policy_mode(value) is None
+            ):
+                errors.append(f"Invalid policy mode for {key}: {value}")
+                continue
 
             if key == "REQUEST_POLICY_RULES":
                 normalized_rules, rule_errors = validate_policy_rules(value)
@@ -60,16 +73,16 @@ def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], li
                 )
                 if invalid_count:
                     errors.append(
-                        (
-                            f"Invalid value for {key}: found {invalid_count} invalid URL(s). "
-                            "Use URL values with a valid scheme, e.g. discord://... or ntfys://..."
-                        )
+                        f"Invalid value for {key}: found {invalid_count} invalid URL(s). "
+                        "Use URL values with a valid scheme, e.g. discord://... or ntfys://..."
                     )
                     continue
                 valid[key] = normalized_routes
                 continue
 
-            normalized_search_value, search_validation_error = validate_search_preference_value(key, value)
+            normalized_search_value, search_validation_error = validate_search_preference_value(
+                key, value
+            )
             if search_validation_error:
                 errors.append(search_validation_error)
                 continue
@@ -78,8 +91,35 @@ def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], li
                 "METADATA_PROVIDER",
                 "METADATA_PROVIDER_AUDIOBOOK",
                 "DEFAULT_RELEASE_SOURCE",
+                "DEFAULT_RELEASE_SOURCE_AUDIOBOOK",
             }:
                 valid[key] = normalized_search_value
+                continue
+
+            if key == "DOWNLOAD_TO_BROWSER_CONTENT_TYPES":
+                if not isinstance(value, list):
+                    errors.append(f"Invalid value for {key}: must be a list")
+                    continue
+
+                candidate_values = [
+                    str(entry).strip().lower() for entry in value if str(entry).strip()
+                ]
+                normalized_values: list[str] = []
+                has_invalid_value = False
+                for entry in candidate_values:
+                    if entry not in {"book", "audiobook"}:
+                        errors.append(
+                            f"Invalid value for {key}: unsupported content type '{entry}'"
+                        )
+                        has_invalid_value = True
+                        continue
+                    if entry not in normalized_values:
+                        normalized_values.append(entry)
+
+                if has_invalid_value:
+                    continue
+
+                valid[key] = normalized_values
                 continue
 
             valid[key] = value
@@ -90,7 +130,7 @@ def validate_user_settings(settings: dict[str, Any]) -> tuple[dict[str, Any], li
 def build_user_notification_test_response(
     *,
     user_id: int,
-    payload: Any,
+    payload: object,
 ) -> tuple[dict[str, Any], int]:
     from shelfmark.core.config import config as app_config
 
@@ -109,36 +149,36 @@ def build_user_notification_test_response(
 def register_admin_settings_routes(
     app: Flask,
     user_db: UserDB,
-    require_admin: Callable[[Callable[..., Any]], Callable[..., Any]],
+    require_admin: Callable[[Callable[..., object]], Callable[..., object]],
 ) -> None:
     @app.route("/api/admin/download-defaults", methods=["GET"])
     @require_admin
-    def admin_download_defaults():
-        config = load_config_file("downloads")
+    def admin_download_defaults() -> Response | tuple[Response, int]:
         defaults = {
-            key: ("" if (value := config.get(key, field.default)) is None else value)
+            key: ("" if (value := app_config.get(key, field.default)) is None else value)
             for key, field in _get_ordered_user_overridable_fields("downloads")
         }
 
-        security_config = load_config_file("security")
-        defaults["OIDC_ADMIN_GROUP"] = security_config.get("OIDC_ADMIN_GROUP", "")
-        defaults["OIDC_USE_ADMIN_GROUP"] = security_config.get("OIDC_USE_ADMIN_GROUP", True)
-        defaults["OIDC_AUTO_PROVISION"] = security_config.get("OIDC_AUTO_PROVISION", True)
+        defaults["OIDC_ADMIN_GROUP"] = app_config.get("OIDC_ADMIN_GROUP", "")
+        defaults["OIDC_USE_ADMIN_GROUP"] = app_config.get("OIDC_USE_ADMIN_GROUP", True)
+        defaults["OIDC_AUTO_PROVISION"] = app_config.get("OIDC_AUTO_PROVISION", True)
         return jsonify(defaults)
 
     @app.route("/api/admin/booklore-options", methods=["GET"])
     @require_admin
-    def admin_booklore_options():
+    def admin_booklore_options() -> Response | tuple[Response, int]:
         from shelfmark.core import admin_routes
 
-        return jsonify({
-            "libraries": admin_routes.get_booklore_library_options(),
-            "paths": admin_routes.get_booklore_path_options(),
-        })
+        return jsonify(
+            {
+                "libraries": admin_routes.get_booklore_library_options(),
+                "paths": admin_routes.get_booklore_path_options(),
+            }
+        )
 
     @app.route("/api/admin/users/<int:user_id>/delivery-preferences", methods=["GET"])
     @require_admin
-    def admin_get_delivery_preferences(user_id):
+    def admin_get_delivery_preferences(user_id: int) -> Response | tuple[Response, int]:
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -152,7 +192,7 @@ def register_admin_settings_routes(
 
     @app.route("/api/admin/users/<int:user_id>/search-preferences", methods=["GET"])
     @require_admin
-    def admin_get_search_preferences(user_id):
+    def admin_get_search_preferences(user_id: int) -> Response | tuple[Response, int]:
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -166,7 +206,7 @@ def register_admin_settings_routes(
 
     @app.route("/api/admin/users/<int:user_id>/notification-preferences", methods=["GET"])
     @require_admin
-    def admin_get_notification_preferences(user_id):
+    def admin_get_notification_preferences(user_id: int) -> Response | tuple[Response, int]:
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -180,7 +220,7 @@ def register_admin_settings_routes(
 
     @app.route("/api/admin/users/<int:user_id>/notification-preferences/test", methods=["POST"])
     @require_admin
-    def admin_test_notification_preferences(user_id):
+    def admin_test_notification_preferences(user_id: int) -> Response | tuple[Response, int]:
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -194,7 +234,7 @@ def register_admin_settings_routes(
 
     @app.route("/api/admin/settings/overrides-summary", methods=["GET"])
     @require_admin
-    def admin_settings_overrides_summary():
+    def admin_settings_overrides_summary() -> Response | tuple[Response, int]:
         settings_registry = _get_settings_registry()
 
         tab_name = (request.args.get("tab") or "downloads").strip()
@@ -213,11 +253,13 @@ def register_admin_settings_routes(
                 if key not in user_settings or user_settings[key] is None:
                     continue
                 entry = keys_payload.setdefault(key, {"count": 0, "users": []})
-                entry["users"].append({
-                    "userId": user_record["id"],
-                    "username": user_record["username"],
-                    "value": user_settings[key],
-                })
+                entry["users"].append(
+                    {
+                        "userId": user_record["id"],
+                        "username": user_record["username"],
+                        "value": user_settings[key],
+                    }
+                )
 
         for summary in keys_payload.values():
             summary["count"] = len(summary["users"])
@@ -226,7 +268,7 @@ def register_admin_settings_routes(
 
     @app.route("/api/admin/users/<int:user_id>/effective-settings", methods=["GET"])
     @require_admin
-    def admin_get_effective_settings(user_id):
+    def admin_get_effective_settings(user_id: int) -> Response | tuple[Response, int]:
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404

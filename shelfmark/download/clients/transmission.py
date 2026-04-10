@@ -1,17 +1,14 @@
-"""
-Transmission download client for Prowlarr integration.
+"""Transmission download client for Prowlarr integration.
 
 Uses the transmission-rpc library to communicate with Transmission's RPC API.
 """
 
-from contextlib import contextmanager
-from typing import Any, Iterator, Optional, Tuple
-
+from contextlib import contextmanager, suppress
+from typing import TYPE_CHECKING
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
-from shelfmark.download.network import get_ssl_verify
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
@@ -21,8 +18,15 @@ from shelfmark.download.clients.torrent_utils import (
     extract_torrent_info,
     parse_transmission_url,
 )
+from shelfmark.download.network import get_ssl_verify
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 logger = setup_logger(__name__)
+
+_SEEDING_PROGRESS_PERCENT = 100
+_ETA_MAX_SECONDS = 604800
 
 
 @contextmanager
@@ -46,7 +50,7 @@ def _transmission_session_verify_override(url: str) -> Iterator[None]:
 
     original_session_factory = transmission_rpc_client.requests.Session
 
-    def _session_factory(*args: Any, **kwargs: Any) -> Any:
+    def _session_factory(*args: object, **kwargs: object) -> object:
         session = original_session_factory(*args, **kwargs)
         session.verify = False
         return session
@@ -58,7 +62,7 @@ def _transmission_session_verify_override(url: str) -> Iterator[None]:
         transmission_rpc_client.requests.Session = original_session_factory
 
 
-def _apply_transmission_ssl_verify(client: Any, url: str) -> None:
+def _apply_transmission_ssl_verify(client: object, url: str) -> None:
     """Apply global certificate validation policy to transmission-rpc client."""
     session = getattr(client, "_http_session", None)
     if session is None:
@@ -76,17 +80,19 @@ class TransmissionClient(DownloadClient):
     protocol = "torrent"
     name = "transmission"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize Transmission client with settings from config."""
         from transmission_rpc import Client
 
         raw_url = config.get("TRANSMISSION_URL", "")
         if not raw_url:
-            raise ValueError("TRANSMISSION_URL is required")
+            msg = "TRANSMISSION_URL is required"
+            raise ValueError(msg)
 
         url = normalize_http_url(raw_url)
         if not url:
-            raise ValueError("TRANSMISSION_URL is invalid")
+            msg = "TRANSMISSION_URL is invalid"
+            raise ValueError(msg)
 
         username = config.get("TRANSMISSION_USERNAME", "")
         password = config.get("TRANSMISSION_PASSWORD", "")
@@ -98,8 +104,8 @@ class TransmissionClient(DownloadClient):
             "host": host,
             "port": port,
             "path": path,
-            "username": username if username else None,
-            "password": password if password else None,
+            "username": username or None,
+            "password": password or None,
             "protocol": protocol,
         }
         try:
@@ -114,10 +120,8 @@ class TransmissionClient(DownloadClient):
                 self._client = Client(**client_kwargs)
             # Some versions expose protocol as an attribute rather than kwarg.
             if protocol == "https" and hasattr(self._client, "protocol"):
-                try:
-                    setattr(self._client, "protocol", protocol)
-                except Exception:
-                    pass
+                with suppress(Exception):
+                    self._client.protocol = protocol
         _apply_transmission_ssl_verify(self._client, url)
         self._category = config.get("TRANSMISSION_CATEGORY", "books")
         self._download_dir = config.get("TRANSMISSION_DOWNLOAD_DIR", "")
@@ -129,25 +133,25 @@ class TransmissionClient(DownloadClient):
         url = normalize_http_url(config.get("TRANSMISSION_URL", ""))
         return client == "transmission" and bool(url)
 
-    def test_connection(self) -> Tuple[bool, str]:
+    def test_connection(self) -> tuple[bool, str]:
         """Test connection to Transmission."""
         try:
             session = self._client.get_session()
             version = session.version
-            return True, f"Connected to Transmission {version}"
         except Exception as e:
-            return False, f"Connection failed: {str(e)}"
+            return False, f"Connection failed: {e!s}"
+        else:
+            return True, f"Connected to Transmission {version}"
 
     def add_download(
         self,
         url: str,
         name: str,
-        category: Optional[str] = None,
-        expected_hash: Optional[str] = None,
+        category: str | None = None,
+        expected_hash: str | None = None,
         **kwargs,
     ) -> str:
-        """
-        Add torrent by URL (magnet or .torrent).
+        """Add torrent by URL (magnet or .torrent).
 
         Args:
             url: Magnet link or .torrent URL
@@ -160,6 +164,7 @@ class TransmissionClient(DownloadClient):
 
         Raises:
             Exception: If adding fails.
+
         """
         try:
             resolved_category = category or self._category or ""
@@ -186,23 +191,39 @@ class TransmissionClient(DownloadClient):
                 )
 
             torrent_hash = torrent.hashString.lower()
-            logger.info(f"Added torrent to Transmission: {torrent_hash}")
+            logger.info("Added torrent to Transmission: %s", torrent_hash)
 
+            # Apply per-torrent seeding limits from indexer
+            seed_kwargs = {}
+            seeding_time_limit = kwargs.get("seeding_time_limit")
+            if seeding_time_limit is not None:
+                seed_kwargs["seed_idle_limit"] = int(seeding_time_limit)
+                seed_kwargs["seed_idle_mode"] = 1  # per-torrent
+            ratio_limit = kwargs.get("ratio_limit")
+            if ratio_limit is not None:
+                seed_kwargs["seed_ratio_limit"] = float(ratio_limit)
+                seed_kwargs["seed_ratio_mode"] = 1  # per-torrent
+            if seed_kwargs:
+                try:
+                    self._client.change_torrent(ids=torrent_hash, **seed_kwargs)
+                except Exception as e:
+                    logger.warning("Failed to set seeding limits for %s: %s", torrent_hash, e)
+
+        except Exception:
+            logger.exception("Transmission add failed")
+            raise
+        else:
             return torrent_hash
 
-        except Exception as e:
-            logger.error(f"Transmission add failed: {e}")
-            raise
-
     def get_status(self, download_id: str) -> DownloadStatus:
-        """
-        Get torrent status by hash.
+        """Get torrent status by hash.
 
         Args:
             download_id: Torrent info_hash
 
         Returns:
             Current download status.
+
         """
         try:
             torrent = self._client.get_torrent(download_id)
@@ -216,7 +237,9 @@ class TransmissionClient(DownloadClient):
             # 5: seed pending
             # 6: seeding
             # torrent.status is an enum with .value as string
-            status_value = torrent.status.value if hasattr(torrent.status, 'value') else str(torrent.status)
+            status_value = (
+                torrent.status.value if hasattr(torrent.status, "value") else str(torrent.status)
+            )
             status_map = {
                 "stopped": ("paused", "Paused"),
                 "check pending": ("checking", "Waiting to check"),
@@ -230,30 +253,30 @@ class TransmissionClient(DownloadClient):
             state, message = status_map.get(status_value, ("downloading", "Downloading"))
             progress = torrent.percent_done * 100
             # Only mark complete when seeding - seed pending means files still being moved
-            complete = progress >= 100 and status_value == "seeding"
+            complete = progress >= _SEEDING_PROGRESS_PERCENT and status_value == "seeding"
 
             if complete:
                 message = "Complete"
 
             # Get ETA if available and reasonable (less than 1 week)
             eta = None
-            if hasattr(torrent, 'eta') and torrent.eta:
+            if hasattr(torrent, "eta") and torrent.eta:
                 eta_seconds = torrent.eta.total_seconds()
-                if 0 < eta_seconds < 604800:
+                if 0 < eta_seconds < _ETA_MAX_SECONDS:
                     eta = int(eta_seconds)
 
             # Get download speed
-            download_speed = torrent.rate_download if hasattr(torrent, 'rate_download') else None
+            download_speed = torrent.rate_download if hasattr(torrent, "rate_download") else None
 
             # Get file path for completed downloads
             file_path = None
             if complete:
                 # Output path is downloadDir + torrent name (with ':' replaced)
-                torrent_name = getattr(torrent, 'name', '')
+                torrent_name = getattr(torrent, "name", "")
                 if isinstance(torrent_name, str):
-                    torrent_name = torrent_name.replace(':', '_')
+                    torrent_name = torrent_name.replace(":", "_")
                 file_path = self._build_path(
-                    getattr(torrent, 'download_dir', ''),
+                    getattr(torrent, "download_dir", ""),
                     torrent_name,
                 )
 
@@ -272,9 +295,8 @@ class TransmissionClient(DownloadClient):
         except Exception as e:
             return DownloadStatus.error(self._log_error("get_status", e))
 
-    def remove(self, download_id: str, delete_files: bool = False) -> bool:
-        """
-        Remove a torrent from Transmission.
+    def remove(self, download_id: str, *, delete_files: bool = False) -> bool:
+        """Remove a torrent from Transmission.
 
         Args:
             download_id: Torrent info_hash
@@ -282,6 +304,7 @@ class TransmissionClient(DownloadClient):
 
         Returns:
             True if successful.
+
         """
         try:
             self._client.remove_torrent(
@@ -289,40 +312,42 @@ class TransmissionClient(DownloadClient):
                 delete_data=delete_files,
             )
             logger.info(
-                f"Removed torrent from Transmission: {download_id}"
-                + (" (with files)" if delete_files else "")
+                "Removed torrent from Transmission: %s%s",
+                download_id,
+                " (with files)" if delete_files else "",
             )
-            return True
         except Exception as e:
             self._log_error("remove", e)
             return False
+        else:
+            return True
 
-    def get_download_path(self, download_id: str) -> Optional[str]:
-        """
-        Get the path where torrent files are located.
+    def get_download_path(self, download_id: str) -> str | None:
+        """Get the path where torrent files are located.
 
         Args:
             download_id: Torrent info_hash
 
         Returns:
             Content path (file or directory), or None.
+
         """
         try:
-             torrent = self._client.get_torrent(download_id)
-             torrent_name = getattr(torrent, 'name', '')
-             if isinstance(torrent_name, str):
-                 torrent_name = torrent_name.replace(':', '_')
-             return self._build_path(
-                 getattr(torrent, 'download_dir', ''),
-                 torrent_name,
-             )
+            torrent = self._client.get_torrent(download_id)
+            torrent_name = getattr(torrent, "name", "")
+            if isinstance(torrent_name, str):
+                torrent_name = torrent_name.replace(":", "_")
+            return self._build_path(
+                getattr(torrent, "download_dir", ""),
+                torrent_name,
+            )
         except Exception as e:
             self._log_error("get_download_path", e, level="debug")
             return None
 
     def find_existing(
-        self, url: str, category: Optional[str] = None
-    ) -> Optional[Tuple[str, DownloadStatus]]:
+        self, url: str, category: str | None = None
+    ) -> tuple[str, DownloadStatus] | None:
         """Check if a torrent for this URL already exists in Transmission."""
         try:
             torrent_info = extract_torrent_info(url)
@@ -332,9 +357,10 @@ class TransmissionClient(DownloadClient):
             try:
                 self._client.get_torrent(torrent_info.info_hash)
                 status = self.get_status(torrent_info.info_hash)
-                return (torrent_info.info_hash, status)
             except KeyError:
                 return None
+            else:
+                return (torrent_info.info_hash, status)
         except Exception as e:
-            logger.debug(f"Error checking for existing torrent: {e}")
+            logger.debug("Error checking for existing torrent: %s", e)
             return None

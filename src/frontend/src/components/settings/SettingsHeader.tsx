@@ -12,7 +12,7 @@ export const SettingsHeader = ({
   onClose,
 }: SettingsHeaderProps) => (
   <header
-    className="flex items-center gap-3 px-5 py-4 border-b border-[var(--border-muted)] flex-shrink-0"
+    className="flex items-center gap-3 px-5 py-4 border-b border-(--border-muted) shrink-0"
     style={{ paddingTop: 'calc(1rem + env(safe-area-inset-top))' }}
   >
     {showBack && (

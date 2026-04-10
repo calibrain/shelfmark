@@ -1,6 +1,7 @@
 .git
 .github
 .vscode
+.local
 .mypy_cache
 README_images
 .gitignore

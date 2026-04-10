@@ -1,4 +1,0 @@
-pyvirtualdisplay
-pyautogui
-seleniumbase==4.45.10
-python-xlib

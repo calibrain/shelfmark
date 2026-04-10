@@ -1,10 +1,11 @@
 import { DeliveryPreferencesResponse } from '../../../services/api';
 import {
   HeadingFieldConfig,
+  MultiSelectFieldConfig,
   SelectFieldConfig,
   TextFieldConfig,
 } from '../../../types/settings';
-import { HeadingField, SelectField, TextField } from '../fields';
+import { HeadingField, MultiSelectField, SelectField, TextField } from '../fields';
 import { FieldWrapper } from '../shared';
 import { getFieldByKey } from './fieldHelpers';
 import { PerUserSettings } from './types';
@@ -19,7 +20,7 @@ interface UserOverridesSectionProps {
 const modeOptions = [
   { value: 'folder', label: 'Folder' },
   { value: 'email', label: 'Email (SMTP)' },
-  { value: 'booklore', label: 'BookLore (API)' },
+  { value: 'booklore', label: 'Grimmory (API)' },
 ];
 
 const fallbackOutputModeField: SelectFieldConfig = {
@@ -52,7 +53,7 @@ const fallbackBookloreLibraryField: SelectFieldConfig = {
   type: 'SelectField',
   key: 'BOOKLORE_LIBRARY_ID',
   label: 'Library',
-  description: 'BookLore library to upload into.',
+  description: 'Grimmory library to upload into.',
   value: '',
   options: [],
 };
@@ -61,7 +62,7 @@ const fallbackBooklorePathField: SelectFieldConfig = {
   type: 'SelectField',
   key: 'BOOKLORE_PATH_ID',
   label: 'Path',
-  description: 'BookLore library path for uploads.',
+  description: 'Grimmory library path for uploads.',
   value: '',
   options: [],
   filterByField: 'BOOKLORE_LIBRARY_ID',
@@ -74,6 +75,19 @@ const fallbackEmailRecipientField: TextFieldConfig = {
   description: 'Email address used for this user in Email output mode.',
   value: '',
   placeholder: 'reader@example.com',
+};
+
+const fallbackBrowserDownloadField: MultiSelectFieldConfig = {
+  type: 'MultiSelectField',
+  key: 'DOWNLOAD_TO_BROWSER_CONTENT_TYPES',
+  label: 'Download to Browser',
+  description: 'Automatically download completed files to this browser for the selected content types.',
+  value: [],
+  variant: 'dropdown',
+  options: [
+    { value: 'book', label: 'Books' },
+    { value: 'audiobook', label: 'Audiobooks' },
+  ],
 };
 
 type DeliverySettingKey = keyof PerUserSettings;
@@ -138,11 +152,26 @@ export const UserOverridesSection = ({
   const bookloreLibraryField = getFieldByKey<SelectFieldConfig>(fields, 'BOOKLORE_LIBRARY_ID', fallbackBookloreLibraryField);
   const booklorePathField = getFieldByKey<SelectFieldConfig>(fields, 'BOOKLORE_PATH_ID', fallbackBooklorePathField);
   const emailRecipientFieldSource = getFieldByKey<TextFieldConfig>(fields, 'EMAIL_RECIPIENT', fallbackEmailRecipientField);
+  const browserDownloadField = getFieldByKey<MultiSelectFieldConfig>(
+    fields,
+    'DOWNLOAD_TO_BROWSER_CONTENT_TYPES',
+    fallbackBrowserDownloadField,
+  );
   const emailRecipientField: TextFieldConfig = {
     ...emailRecipientFieldSource,
     label: 'Email Recipient',
     description: 'Email address used for this user in Email output mode.',
   };
+  const browserDownloadGlobalValue = Array.isArray(globalValues.DOWNLOAD_TO_BROWSER_CONTENT_TYPES)
+    ? globalValues.DOWNLOAD_TO_BROWSER_CONTENT_TYPES
+        .map((entry) => String(entry).trim())
+        .filter((entry) => entry.length > 0)
+    : [];
+  const browserDownloadUserValue = Array.isArray(userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES)
+    ? userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES
+        .map((entry) => String(entry).trim())
+        .filter((entry) => entry.length > 0)
+    : [];
 
   const isOverridden = (key: DeliverySettingKey): boolean => {
     if (
@@ -157,6 +186,12 @@ export const UserOverridesSection = ({
     const globalValue = toStringValue(globalValues[key as string]);
     return userValue !== globalValue;
   };
+
+  const isBrowserDownloadOverridden = (
+    Object.prototype.hasOwnProperty.call(userSettings, 'DOWNLOAD_TO_BROWSER_CONTENT_TYPES')
+    && userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES !== null
+    && JSON.stringify(browserDownloadUserValue) !== JSON.stringify(browserDownloadGlobalValue)
+  );
 
   const resetKeys = (keys: DeliverySettingKey[]) => {
     setUserSettings((prev) => {
@@ -181,6 +216,9 @@ export const UserOverridesSection = ({
   const outputModeValue = readValue('BOOKS_OUTPUT_MODE', 'folder');
   const effectiveOutputMode = normalizeMode(outputModeValue);
 
+  const browserDownloadContentTypes = isBrowserDownloadOverridden
+    ? browserDownloadUserValue
+    : browserDownloadGlobalValue;
   const destinationValue = readValue('DESTINATION');
   const destinationAudiobookValue = readValue('DESTINATION_AUDIOBOOK');
   const libraryValue = readValue('BOOKLORE_LIBRARY_ID');
@@ -194,6 +232,7 @@ export const UserOverridesSection = ({
   const hasAudiobookDeliveryOverride = availableAudiobookPreferenceKeys.some((key) => isOverridden(key));
 
   const canOverrideOutputMode = isUserOverridable('BOOKS_OUTPUT_MODE');
+  const canOverrideBrowserDownload = isUserOverridable('DOWNLOAD_TO_BROWSER_CONTENT_TYPES');
   const canOverrideDestination = isUserOverridable('DESTINATION');
   const canOverrideAudiobookDestination = isUserOverridable('DESTINATION_AUDIOBOOK');
   const canOverrideBookloreLibrary = isUserOverridable('BOOKLORE_LIBRARY_ID');
@@ -207,6 +246,31 @@ export const UserOverridesSection = ({
   return (
     <div className="space-y-4">
       <HeadingField field={deliveryHeading} />
+
+      {canOverrideBrowserDownload && (
+        <FieldWrapper
+          field={browserDownloadField}
+          resetAction={
+            isBrowserDownloadOverridden
+              ? {
+                  disabled: Boolean(browserDownloadField.fromEnv),
+                  onClick: () => resetKeys(['DOWNLOAD_TO_BROWSER_CONTENT_TYPES']),
+                }
+              : undefined
+          }
+        >
+          <MultiSelectField
+            field={browserDownloadField}
+            value={browserDownloadContentTypes}
+            onChange={(value) => setUserSettings((prev) => ({
+              ...prev,
+              DOWNLOAD_TO_BROWSER_CONTENT_TYPES: value,
+            }))}
+            disabled={Boolean(browserDownloadField.fromEnv)}
+          />
+        </FieldWrapper>
+      )}
+
       <HeadingField field={booksHeading} />
 
       {canOverrideOutputMode && (
