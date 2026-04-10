@@ -1275,6 +1275,7 @@ browser = [
 dev = [
     { name = "pyright" },
     { name = "pytest" },
+    { name = "pytest-xdist" },
     { name = "ruff" },
 ]
 
@@ -1310,6 +1311,7 @@ provides-extras = ["browser"]
 dev = [
     { name = "pyright", specifier = ">=1.1.408" },
     { name = "pytest" },
+    { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "ruff", specifier = "==0.15.9" },
 ]
 

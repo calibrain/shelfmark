@@ -1,3 +1,5 @@
+import pytest
+
 from shelfmark.core.cache import cache_key
 from shelfmark.metadata_providers import MetadataSearchOptions, SearchResult
 from shelfmark.metadata_providers.hardcover import (
@@ -222,6 +224,21 @@ class TestHardcoverLists:
                 "writable": True,
             },
         ]
+
+    def test_get_book_targets_raises_runtime_error_for_invalid_membership_payload(
+        self, monkeypatch
+    ):
+        provider = HardcoverProvider(api_key="test-token")
+
+        monkeypatch.setattr(provider, "get_user_lists", lambda: [])
+        monkeypatch.setattr(
+            provider,
+            "_execute_query",
+            lambda query, variables, raise_on_error=False: None,
+        )
+
+        with pytest.raises(RuntimeError, match="Hardcover could not load book targets"):
+            provider.get_book_targets("123")
 
     def test_set_book_target_state_updates_existing_status(self, monkeypatch):
         provider = HardcoverProvider(api_key="test-token")

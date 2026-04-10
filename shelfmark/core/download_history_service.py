@@ -361,6 +361,7 @@ class DownloadHistoryService:
                 if rowcount < 1:
                     logger.warning(
                         "finalize_download: no active row found for task_id=%s (may have been missed at queue time)",
+                        normalized_task_id,
                     )
                 conn.commit()
             finally:

@@ -11,6 +11,7 @@ import os
 import time
 from contextlib import suppress
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -107,7 +108,30 @@ def _login_with_env_credentials(client: APIClient) -> bool:
     return response.status_code == 200
 
 
-def _require_authenticated_client(client: APIClient) -> APIClient:
+def _is_explicit_e2e_run(markexpr: str, args: list[str]) -> bool:
+    """Detect when pytest was invoked specifically to exercise E2E coverage."""
+    normalized_markexpr = (markexpr or "").strip()
+    if "e2e" in normalized_markexpr and "not e2e" not in normalized_markexpr:
+        return True
+
+    target_args = [arg for arg in args if not arg.startswith("-")]
+    if not target_args:
+        return False
+
+    for arg in target_args:
+        base = arg.split("::", maxsplit=1)[0]
+        parts = Path(base).parts
+        if "tests" not in parts:
+            return False
+
+        tests_index = parts.index("tests")
+        if len(parts) <= tests_index + 1 or parts[tests_index + 1] != "e2e":
+            return False
+
+    return True
+
+
+def _require_authenticated_client(client: APIClient, *, strict: bool) -> APIClient:
     """Require an authenticated client for protected-route E2E tests."""
     auth_state = _get_auth_state(client)
     if not auth_state or not auth_state.get("auth_required"):
@@ -119,25 +143,34 @@ def _require_authenticated_client(client: APIClient) -> APIClient:
     username = os.environ.get(E2E_USERNAME_ENV, "").strip()
     password = os.environ.get(E2E_PASSWORD_ENV, "")
     if not username or not password:
-        pytest.fail(
+        message = (
             "Live server requires authentication for this E2E test. "
             f"Set {E2E_USERNAME_ENV}/{E2E_PASSWORD_ENV} or run against a no-auth instance."
         )
+        if strict:
+            pytest.fail(message)
+        pytest.skip(message)
 
     if not _login_with_env_credentials(client):
-        pytest.fail(
+        message = (
             "Failed to authenticate the E2E client with "
             f"{E2E_USERNAME_ENV}/{E2E_PASSWORD_ENV}. "
             "Check the credentials or run against a no-auth instance."
         )
+        if strict:
+            pytest.fail(message)
+        pytest.skip(message)
 
     refreshed_auth_state = _get_auth_state(client)
     if refreshed_auth_state.get("authenticated"):
         return client
 
-    pytest.fail(
+    message = (
         "Login request completed but the live server still reports an unauthenticated session."
     )
+    if strict:
+        pytest.fail(message)
+    pytest.skip(message)
 
 
 @dataclass
@@ -236,9 +269,13 @@ def api_client(healthy_base_url: str) -> Iterator[APIClient]:
 
 
 @pytest.fixture
-def protected_api_client(api_client: APIClient) -> APIClient:
+def protected_api_client(api_client: APIClient, request: pytest.FixtureRequest) -> APIClient:
     """Create an authenticated client for protected-route E2E tests."""
-    return _require_authenticated_client(api_client)
+    strict = _is_explicit_e2e_run(
+        getattr(request.config.option, "markexpr", ""),
+        list(getattr(request.config, "args", [])),
+    )
+    return _require_authenticated_client(api_client, strict=strict)
 
 
 @pytest.fixture

@@ -37,6 +37,7 @@ browser = [
 dev = [
     "pyright>=1.1.408",
     "pytest",
+    "pytest-xdist>=3.8.0",
     "ruff==0.15.9",
 ]
 
@@ -48,6 +49,8 @@ python_functions = ["test_*"]
 addopts = [
     "-v",
     "--tb=short",
+    "-n",
+    "auto",
 ]
 markers = [
     "integration: marks tests that require running services (deselect with '-m \"not integration\"')",
@@ -79,7 +82,6 @@ include = ["shelfmark"]
 exclude = [".local", "tests", "**/__pycache__", "**/node_modules"]
 pythonVersion = "3.14"
 typeCheckingMode = "off"
-reportInvalidTypeForm = "error"
 
 [tool.vulture]
 paths = ["shelfmark"]

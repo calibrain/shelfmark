@@ -88,14 +88,12 @@ def with_retry(
                     # Add jitter to prevent thundering herd
                     delay += random.uniform(0, delay * jitter)
                     _logger.debug(
-                        _logger.debug(
-                            "Retry %s/%s for %s after %.1fs (error: %s)",
-                            attempt,
-                            max_attempts,
-                            func.__name__,
-                            delay,
-                            last_exception,
-                        )
+                        "Retry %s/%s for %s after %.1fs (error: %s)",
+                        attempt,
+                        max_attempts,
+                        func.__name__,
+                        delay,
+                        last_exception,
                     )
                     time.sleep(delay)
 

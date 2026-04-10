@@ -400,6 +400,7 @@ class QBittorrentClient(DownloadClient):
 
             logger.warning(
                 "Torrent add was not confirmed within the visibility grace period (response=%s), returning expected hash",
+                result_text,
             )
         except Exception:
             logger.exception("qBittorrent add failed")

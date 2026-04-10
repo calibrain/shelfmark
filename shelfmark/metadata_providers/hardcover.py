@@ -425,6 +425,10 @@ class HardcoverGraphQLError(ValueError):
     """GraphQL request was rejected by Hardcover."""
 
 
+class HardcoverTargetPayloadError(RuntimeError):
+    """Hardcover returned an invalid payload while loading book targets."""
+
+
 def _extract_graphql_error_message(payload: Any) -> str:
     """Extract a readable message from a GraphQL error payload."""
     if not isinstance(payload, dict):
@@ -1783,13 +1787,13 @@ class HardcoverProvider(MetadataProvider):
     def _unwrap_me_data(result: dict | None) -> dict:
         """Extract and validate the ``me`` payload from a GraphQL result."""
         if not isinstance(result, dict):
-            raise TypeError("Hardcover could not load book targets")
+            raise HardcoverTargetPayloadError("Hardcover could not load book targets")
 
         me_data = result.get("me", {})
         if isinstance(me_data, list) and me_data:
             me_data = me_data[0]
         if not isinstance(me_data, dict):
-            raise TypeError("Hardcover returned an invalid target payload")
+            raise HardcoverTargetPayloadError("Hardcover returned an invalid target payload")
         return me_data
 
     def _fetch_book_target_state(self, book_id: int) -> HardcoverBookTargetState:
@@ -2117,8 +2121,8 @@ class HardcoverProvider(MetadataProvider):
                 int(resolved_series["id"]),
                 options.page,
                 options.limit,
-                exclude_compilations,
-                exclude_unreleased,
+                exclude_compilations=exclude_compilations,
+                exclude_unreleased=exclude_unreleased,
             )
 
         # Handle ISBN search separately
