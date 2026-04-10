@@ -4,10 +4,12 @@ Handles group claim parsing, user info extraction, and user provisioning.
 Flask route handlers are registered separately in main.py.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.external_user_linking import upsert_external_user
-from shelfmark.core.user_db import UserDB
+
+if TYPE_CHECKING:
+    from shelfmark.core.user_db import UserDB
 
 
 def parse_group_claims(id_token: dict[str, Any], group_claim: str) -> list[str]:

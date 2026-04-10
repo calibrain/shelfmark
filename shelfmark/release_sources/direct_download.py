@@ -4,10 +4,7 @@ import itertools
 import json
 import re
 import time
-from collections.abc import Callable
 from dataclasses import replace
-from pathlib import Path
-from threading import Event
 from typing import TYPE_CHECKING, ClassVar, NoReturn
 from urllib.parse import quote
 
@@ -22,7 +19,6 @@ from shelfmark.core.utils import CONTENT_TYPES, get_aa_content_type_dir
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download import http as downloader
 from shelfmark.download import network
-from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources import (
     BrowseRecord,
     ColumnAlign,
@@ -40,7 +36,12 @@ from shelfmark.release_sources import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+    from threading import Event
+
     from shelfmark.core.search_plan import ReleaseSearchPlan
+    from shelfmark.metadata_providers import BookMetadata
 
 logger = setup_logger(__name__)
 
@@ -350,7 +351,7 @@ def _parse_book_info_page(
                     slow_urls_no_waitlist.add(href)
                 else:
                     slow_urls_with_waitlist.add(href)
-        except (AttributeError, TypeError):
+        except AttributeError, TypeError:
             pass
 
     logger.debug(
@@ -1152,7 +1153,7 @@ def _parse_countdown_seconds_from_element(element: Tag) -> int | None:
     """Parse an integer countdown from a tag, returning None when invalid."""
     try:
         seconds = int(element.get_text(strip=True))
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
 
     if 0 < seconds < 300:
@@ -1294,7 +1295,7 @@ class DirectDownloadSource(ReleaseSource):
     def search(
         self,
         book: BookMetadata,
-        plan: "ReleaseSearchPlan",
+        plan: ReleaseSearchPlan,
         *,
         expand_search: bool = False,
         content_type: str = "ebook",

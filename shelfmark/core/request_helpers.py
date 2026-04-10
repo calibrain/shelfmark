@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from shelfmark.core.config import config as app_config
@@ -13,7 +13,7 @@ _logger = setup_logger(__name__)
 
 def now_utc_iso() -> str:
     """Return the current UTC time as a seconds-precision ISO 8601 string."""
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def emit_ws_event(
@@ -68,7 +68,7 @@ def get_session_db_user_id(session_obj: object) -> int | None:
     raw = session_obj.get("db_user_id") if session_obj is not None else None
     try:
         return int(raw) if raw is not None else None
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -76,7 +76,7 @@ def coerce_int(value: object, default: int) -> int:
     """Best-effort integer coercion with fallback to default."""
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return default
 
 
@@ -92,7 +92,7 @@ def normalize_positive_int(value: object) -> int | None:
     """Parse *value* as a positive integer, returning ``None`` on failure."""
     try:
         parsed = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return parsed if parsed > 0 else None
 

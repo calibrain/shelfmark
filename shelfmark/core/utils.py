@@ -6,8 +6,11 @@ import os
 import re
 from pathlib import Path
 from threading import Lock
-from types import ModuleType
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 
 def normalize_http_url(

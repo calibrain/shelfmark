@@ -1,10 +1,9 @@
 """Prowlarr download handler - resolves releases and delegates lifecycle to shared clients."""
 
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from shelfmark.core.config import config as config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask
 from shelfmark.core.request_helpers import normalize_optional_text
 from shelfmark.download.clients import (
     DownloadClient,
@@ -31,6 +30,11 @@ from shelfmark.release_sources.prowlarr.utils import (
     get_protocol,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from shelfmark.core.models import DownloadTask
+
 logger = setup_logger(__name__)
 
 # Backwards-compat constants for tests patching this module.
@@ -46,7 +50,7 @@ def _coerce_seed_time_minutes(raw_seed_time: object) -> int | None:
 
     try:
         seed_time_seconds = int(raw_seed_time)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         logger.warning("Invalid Prowlarr minimumSeedTime value: %r", raw_seed_time)
         return None
 

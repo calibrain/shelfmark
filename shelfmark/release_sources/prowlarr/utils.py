@@ -3,8 +3,11 @@
 Provides common helper functions used across the Prowlarr plugin.
 """
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def get_protocol(result: dict) -> str:

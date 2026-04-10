@@ -242,6 +242,7 @@ def upsert_external_user(
         mapped = user_db.get_user(user_id=matched["id"]) or matched
         logger.info(
             "External user mapped to existing Shelfmark user (source=%s, context=%s, reason=%s, external_username=%s, shelfmark_user_id=%s, shelfmark_username=%s)",
+            auth_source,
             context or "unspecified",
             match_reason,
             normalized_username,
@@ -253,6 +254,7 @@ def upsert_external_user(
     if not allow_create:
         logger.info(
             "External user could not be mapped and creation is disabled (source=%s, context=%s, external_username=%s)",
+            auth_source,
             context or "unspecified",
             normalized_username,
         )
@@ -272,6 +274,7 @@ def upsert_external_user(
         logger.info(
             "External user mapped to existing Shelfmark user (source=%s, context=%s, reason=%s, external_username=%s, shelfmark_user_id=%s, shelfmark_username=%s)",
             auth_source,
+            context or "unspecified",
             create_reason,
             normalized_username,
             mapped["id"],
@@ -296,6 +299,7 @@ def upsert_external_user(
         "External user created Shelfmark user (source=%s, context=%s, reason=%s, external_username=%s, shelfmark_user_id=%s, shelfmark_username=%s)",
         auth_source,
         context or "unspecified",
+        create_reason,
         normalized_username,
         created["id"],
         created["username"],

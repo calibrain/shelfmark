@@ -1,10 +1,13 @@
 """Template-based naming for library organization."""
 
 import re
-from collections.abc import Mapping
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 logger = setup_logger(__name__)
 

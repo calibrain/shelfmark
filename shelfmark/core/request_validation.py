@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from shelfmark.core.models import QueueStatus
 from shelfmark.core.request_policy import parse_policy_mode
 
 
-class RequestStatus(str, Enum):
+class RequestStatus(StrEnum):
     """Enum for request lifecycle statuses."""
 
     PENDING = "pending"

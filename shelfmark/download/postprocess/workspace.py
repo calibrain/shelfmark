@@ -41,7 +41,7 @@ def is_within_tmp_dir(path: Path) -> bool:
 
     try:
         run_blocking_io(path.resolve).relative_to(run_blocking_io(tmp_dir.resolve))
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return False
     else:
         return True
@@ -62,7 +62,7 @@ def _is_original_download(path: Path | None, task: DownloadTask) -> bool:
     try:
         original = Path(task.original_download_path)
         return run_blocking_io(path.resolve) == run_blocking_io(original.resolve)
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return False
 
 

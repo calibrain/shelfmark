@@ -40,9 +40,7 @@ class TestUserDBInitialization:
 
     def test_initialize_creates_users_table(self, user_db, db_path):
         conn = sqlite3.connect(db_path)
-        cursor = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
-        )
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
         assert cursor.fetchone() is not None
         conn.close()
 
@@ -193,9 +191,7 @@ class TestUserDBInitialization:
         columns = conn.execute("PRAGMA table_info(users)").fetchall()
         assert "auth_source" in {str(c["name"]) for c in columns}
 
-        rows = conn.execute(
-            "SELECT username, auth_source FROM users ORDER BY username"
-        ).fetchall()
+        rows = conn.execute("SELECT username, auth_source FROM users ORDER BY username").fetchall()
         by_username = {r["username"]: r["auth_source"] for r in rows}
         assert by_username["local_admin"] == "builtin"
         assert by_username["oidc_user"] == "oidc"
@@ -239,9 +235,7 @@ class TestUserDBInitialization:
         db.initialize()
 
         conn = sqlite3.connect(db_path)
-        user_row = conn.execute(
-            "SELECT username, email FROM users WHERE id = 1"
-        ).fetchone()
+        user_row = conn.execute("SELECT username, email FROM users WHERE id = 1").fetchone()
         settings_row = conn.execute(
             "SELECT settings_json FROM user_settings WHERE user_id = 1"
         ).fetchone()
@@ -384,7 +378,9 @@ class TestUserDBInitialization:
             );
             """
         )
-        conn.execute("INSERT INTO users (id, username, role) VALUES (?, ?, ?)", (1, "legacy-user", "user"))
+        conn.execute(
+            "INSERT INTO users (id, username, role) VALUES (?, ?, ?)", (1, "legacy-user", "user")
+        )
         conn.execute(
             """
             INSERT INTO download_requests (
@@ -399,7 +395,16 @@ class TestUserDBInitialization:
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (11, 1, "fulfilled", "complete", "ebook", "book", "request_book", '{"title":"Legacy Book"}'),
+            (
+                11,
+                1,
+                "fulfilled",
+                "complete",
+                "ebook",
+                "book",
+                "request_book",
+                '{"title":"Legacy Book"}',
+            ),
         )
         conn.execute(
             """
@@ -476,10 +481,14 @@ class TestUserDBInitialization:
         assert view_state_table is not None
 
         # No retroactive copy from legacy activity tables in the no-backfill plan.
-        history_count = conn.execute("SELECT COUNT(*) AS count FROM download_history").fetchone()["count"]
+        history_count = conn.execute("SELECT COUNT(*) AS count FROM download_history").fetchone()[
+            "count"
+        ]
         assert history_count == 0
 
-        legacy_activity_rows = conn.execute("SELECT COUNT(*) AS count FROM activity_log").fetchone()["count"]
+        legacy_activity_rows = conn.execute(
+            "SELECT COUNT(*) AS count FROM activity_log"
+        ).fetchone()["count"]
         legacy_dismissal_rows = conn.execute(
             "SELECT COUNT(*) AS count FROM activity_dismissals"
         ).fetchone()["count"]
@@ -705,7 +714,9 @@ class TestDownloadRequests:
     def test_create_request_rejects_release_level_without_release_data(self, user_db):
         user = user_db.create_user(username="alice")
 
-        with pytest.raises(ValueError, match="request_level=release requires non-null release_data"):
+        with pytest.raises(
+            ValueError, match="request_level=release requires non-null release_data"
+        ):
             user_db.create_request(
                 user_id=user["id"],
                 content_type="ebook",

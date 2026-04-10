@@ -1,11 +1,14 @@
 """Shared helpers for user-overridable settings metadata and payloads."""
 
 from importlib import import_module
-from types import ModuleType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.settings_registry import load_config_file
-from shelfmark.core.user_db import UserDB
+
+if TYPE_CHECKING:
+    from types import ModuleType
+
+    from shelfmark.core.user_db import UserDB
 
 
 def get_settings_registry() -> ModuleType:

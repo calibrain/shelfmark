@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.models import QueueStatus
@@ -132,7 +132,7 @@ def _find_duplicate_pending_request(
 
 
 def _now_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def _normalize_admin_note(admin_note: object) -> str | None:
@@ -165,7 +165,7 @@ def _prepare_request_create(
     try:
         normalized_request_level = validate_request_level_payload(request_level, release_data)
         normalized_policy_mode = normalize_policy_mode(policy_mode)
-    except ValueError as exc:
+    except (ValueError, TypeError) as exc:
         raise RequestServiceError(str(exc), status_code=400) from exc
 
     _validate_json_blob_size("book_data", validated_book_data)
@@ -318,7 +318,7 @@ def create_request(
 
     try:
         return user_db.create_request(**prepared_request)
-    except ValueError as exc:
+    except (ValueError, TypeError) as exc:
         raise RequestServiceError(str(exc), status_code=400) from exc
 
 
@@ -456,6 +456,8 @@ def cancel_request(
             expected_current_status=RequestStatus.PENDING,
             status=RequestStatus.CANCELLED,
         )
+    except TypeError as exc:
+        raise RequestServiceError(str(exc), status_code=400) from exc
     except ValueError as exc:
         raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
 
@@ -487,6 +489,8 @@ def reject_request(
             reviewed_by=admin_user_id,
             reviewed_at=_now_timestamp(),
         )
+    except TypeError as exc:
+        raise RequestServiceError(str(exc), status_code=400) from exc
     except ValueError as exc:
         raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
 
@@ -537,6 +541,8 @@ def fulfil_request(
                 reviewed_by=admin_user_id,
                 reviewed_at=_now_timestamp(),
             )
+        except TypeError as exc:
+            raise RequestServiceError(str(exc), status_code=400) from exc
         except ValueError as exc:
             raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
 
@@ -568,6 +574,8 @@ def fulfil_request(
             reviewed_by=admin_user_id,
             reviewed_at=_now_timestamp(),
         )
+    except TypeError as exc:
+        raise RequestServiceError(str(exc), status_code=400) from exc
     except ValueError as exc:
         raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
 

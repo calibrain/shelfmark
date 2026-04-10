@@ -5,10 +5,9 @@ import ipaddress
 import socket
 import urllib.parse
 import urllib.request
-from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 from socket import AddressFamily, SocketKind
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import dns.resolver
 import requests
@@ -16,6 +15,9 @@ import requests
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
 
 
 def _get_no_proxy_patterns() -> list[str]:

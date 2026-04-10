@@ -4,7 +4,7 @@ Registers /api/auth/oidc/login and /api/auth/oidc/callback endpoints.
 Business logic remains in oidc_auth.py.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from authlib.integrations.flask_client import OAuth
@@ -18,8 +18,10 @@ from shelfmark.core.oidc_auth import (
     parse_group_claims,
     provision_oidc_user,
 )
-from shelfmark.core.user_db import UserDB
 from shelfmark.download.network import get_ssl_verify
+
+if TYPE_CHECKING:
+    from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
 oauth = OAuth()
@@ -220,6 +222,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
 
                 logger.exception(
                     "OIDC callback claim validation failed: claim=%s discovery_url=%s provider_issuer=%s",
+                    claim_name,
                     discovery_url or "<unset>",
                     provider_issuer or "<unknown>",
                 )

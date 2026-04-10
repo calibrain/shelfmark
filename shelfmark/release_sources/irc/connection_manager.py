@@ -6,7 +6,6 @@ Maintains persistent IRC connections to avoid reconnecting between search and do
 import threading
 import time
 from contextlib import suppress
-from typing import Optional
 
 from shelfmark.core.logger import setup_logger
 
@@ -26,10 +25,10 @@ class IRCConnectionManager:
     being idle for IDLE_TIMEOUT seconds.
     """
 
-    _instance: Optional["IRCConnectionManager"] = None
+    _instance: IRCConnectionManager | None = None
     _lock = threading.Lock()
 
-    def __new__(cls) -> "IRCConnectionManager":
+    def __new__(cls) -> IRCConnectionManager:
         """Singleton pattern - only one connection manager."""
         if cls._instance is None:
             with cls._lock:

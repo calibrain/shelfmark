@@ -90,7 +90,7 @@ def _require_db_user_id() -> tuple[int | None, object | None]:
         )
     try:
         return int(raw_user_id), None
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None, _error_response(
             "User identity is unavailable for request workflow",
             403,
@@ -106,7 +106,7 @@ def _require_admin_user_id() -> tuple[int | None, object | None]:
         return None, (jsonify({"error": "Admin user identity unavailable"}), 403)
     try:
         return int(raw_admin_id), None
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None, (jsonify({"error": "Admin user identity unavailable"}), 403)
 
 
@@ -355,6 +355,7 @@ def _prepare_request_create_arguments(
     )
     logger.debug(
         "request create policy actor=%s target_user_id=%s source=%s content_type=%s request_level=%s resolved_mode=%s",
+        actor_label,
         target_user_id,
         source,
         content_type,
@@ -553,7 +554,7 @@ def register_request_routes(
             if raw_id is not None:
                 try:
                     db_user_id = int(raw_id)
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     db_user_id = None
 
         global_settings, user_settings, effective, requests_enabled = _resolve_effective_policy(

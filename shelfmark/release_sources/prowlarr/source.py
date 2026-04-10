@@ -7,12 +7,12 @@ from typing import TYPE_CHECKING, ClassVar, NoReturn
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
+    from shelfmark.metadata_providers import BookMetadata
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.search_plan import ReleaseSearchVariant
 from shelfmark.core.utils import normalize_http_url
-from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources import (
     ColumnAlign,
     ColumnColorHint,
@@ -374,7 +374,7 @@ def _prowlarr_result_to_release(
     try:
         if download_volume_factor is not None and float(download_volume_factor) == 0.0:
             is_freeleech = True
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         pass
 
     if any(flag.lower() in {"freeleech", "fl"} for flag in indexer_flags):
@@ -474,7 +474,7 @@ class ProwlarrSource(ReleaseSource):
                         try:
                             if int(idx_id) in selected_ids:
                                 selected_indexer_names.append(idx_name)
-                        except (TypeError, ValueError):
+                        except TypeError, ValueError:
                             pass
 
                 available_indexers = sorted(all_indexer_names) if all_indexer_names else None
@@ -647,7 +647,7 @@ class ProwlarrSource(ReleaseSource):
             indexer_id = indexer.get("id")
             try:
                 indexer_ids.append(int(indexer_id))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
 
         return indexer_ids
@@ -655,7 +655,7 @@ class ProwlarrSource(ReleaseSource):
     def search(
         self,
         book: BookMetadata,
-        plan: "ReleaseSearchPlan",
+        plan: ReleaseSearchPlan,
         *,
         expand_search: bool = False,
         content_type: str = "ebook",
@@ -788,6 +788,7 @@ class ProwlarrSource(ReleaseSource):
                     _check_timeout()
                     logger.info(
                         "Prowlarr: no results for query '%s' with category filter, auto-expanding search",
+                        query,
                     )
                     raw_results = search_indexers(
                         query=query, cats=None, enriched_query=enriched_query
@@ -814,7 +815,7 @@ class ProwlarrSource(ReleaseSource):
                 idx_id = r.get("indexerId")
                 try:
                     idx_id_int = int(idx_id) if idx_id is not None else None
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     idx_id_int = None
 
                 is_enriched = bool(

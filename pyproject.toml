@@ -2,7 +2,7 @@
 name = "shelfmark"
 version = "0.1.0"
 description = "Shelfmark - Book Downloader"
-requires-python = ">=3.10"
+requires-python = ">=3.14"
 dependencies = [
     "flask",
     "flask-cors",
@@ -35,6 +35,7 @@ browser = [
 
 [dependency-groups]
 dev = [
+    "pyright>=1.1.408",
     "pytest",
     "ruff==0.15.9",
 ]
@@ -59,8 +60,26 @@ line-length = 100
 extend-exclude = [".local"]
 
 [tool.ruff.lint]
-select = ["F", "I", "UP", "B", "C4", "SIM", "PTH", "RET", "PIE", "FURB", "PERF", "TRY"]
+select = [
+    "F", "I", "UP", "B", "C4", "SIM", "PTH", "RET", "PIE", "FURB", "PERF", "TRY",
+    "ANN001", "ANN201", "ANN202", "ANN204",
+    "E731",
+    "FBT002", "FBT003",
+    "G003", "G004",
+    "PLR1714",
+    "PLW0108",
+    "Q000",
+    "RUF005", "RUF012", "RUF013", "RUF059", "RUF100",
+    "TC001", "TC003",
+]
 ignore = ["UP035", "TRY003", "E501"]
+
+[tool.pyright]
+include = ["shelfmark"]
+exclude = [".local", "tests", "**/__pycache__", "**/node_modules"]
+pythonVersion = "3.14"
+typeCheckingMode = "off"
+reportInvalidTypeForm = "error"
 
 [tool.vulture]
 paths = ["shelfmark"]

@@ -2,12 +2,10 @@
 
 import random
 import time
-from collections.abc import Callable
 from http import HTTPStatus
 from io import BytesIO
 from threading import Event, Thread
-from types import ModuleType
-from typing import NoReturn
+from typing import TYPE_CHECKING, NoReturn
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -17,6 +15,10 @@ from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.download import network
 from shelfmark.download.network import get_proxies, get_ssl_verify
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from types import ModuleType
 
 logger = setup_logger(__name__)
 
@@ -160,7 +162,7 @@ def parse_size_string(size: str) -> float | None:
             if normalized.endswith(suffix):
                 return float(normalized[:-2]) * mult
         return float(normalized)
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         return None
 
 

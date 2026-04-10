@@ -2,11 +2,13 @@
 
 import logging
 import threading
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from flask import Flask
 from flask_socketio import SocketIO, join_room, leave_room
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +86,6 @@ class WebSocketManager:
     def sync_user_room(
         self,
         sid: str,
-        *,
         is_admin: bool,
         db_user_id: int | None = None,
     ) -> None:
@@ -101,7 +102,6 @@ class WebSocketManager:
     def join_user_room(
         self,
         sid: str,
-        *,
         is_admin: bool,
         db_user_id: int | None = None,
     ) -> None:

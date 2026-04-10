@@ -98,6 +98,7 @@ def resolve_hardlink_source(
         elif hardlink_source_exists:
             logger.warning(
                 "Cannot hardlink: %s and %s are on different filesystems. Falling back to copy. To fix: ensure torrent client downloads to same filesystem as destination.",
+                hardlink_source,
                 destination,
             )
             if status_callback:
@@ -119,7 +120,7 @@ def is_torrent_source(source_path: Path, task: DownloadTask) -> bool:
     original_path = Path(task.original_download_path)
     try:
         return run_blocking_io(source_path.resolve) == run_blocking_io(original_path.resolve)
-    except (OSError, ValueError):
+    except OSError, ValueError:
         try:
             return os.path.normpath(str(source_path)) == os.path.normpath(str(original_path))
         except Exception:
@@ -177,7 +178,7 @@ def transfer_book_files(
     op_counts: dict[str, int] = {"hardlink": 0, "copy": 0, "move": 0}
 
     if organization_mode == "organize":
-        template = get_template(is_audiobook=is_audiobook, organization_mode="organize")
+        template = get_template(is_audiobook, "organize")
 
         if len(book_files) == 1:
             source_file = book_files[0]
@@ -238,7 +239,7 @@ def transfer_book_files(
             if not task.format:
                 task.format = book_file.suffix.lower().lstrip(".")
 
-            template = get_template(is_audiobook=is_audiobook, organization_mode="rename")
+            template = get_template(is_audiobook, "rename")
             metadata = build_file_metadata(task, book_file)
             extension = book_file.suffix.lstrip(".") or task.format or ""
 

@@ -2,7 +2,6 @@
 
 import json
 import os
-from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
@@ -13,6 +12,8 @@ from shelfmark.core.logger import setup_logger
 logger = setup_logger(__name__)
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
     from shelfmark.core.config import Config
 
 
@@ -1128,7 +1129,7 @@ def _sync_metadata_provider_selection() -> None:
         pass  # Metadata providers module not available
 
 
-def _apply_dns_settings(config: "Config") -> None:
+def _apply_dns_settings(config: Config) -> None:
     """Apply DNS settings changes to the network module.
 
     This ensures DNS changes take effect immediately without requiring
@@ -1154,7 +1155,7 @@ def _apply_dns_settings(config: "Config") -> None:
         logger.warning("Failed to apply DNS settings: %s", e)
 
 
-def _apply_aa_mirror_settings(config: "Config") -> None:
+def _apply_aa_mirror_settings(config: Config) -> None:
     """Apply AA mirror settings changes to the network module.
 
     This ensures AA_BASE_URL / AA_ADDITIONAL_URLS changes take effect immediately

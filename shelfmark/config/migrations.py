@@ -1,9 +1,11 @@
 """Configuration migration helpers."""
 
 import json
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _DEPRECATED_SETTINGS_RESTRICTION_KEYS = (
     "PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN",

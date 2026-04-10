@@ -1,9 +1,11 @@
 """Authentication mode, auth-source normalization, and admin access policy helpers."""
 
 import os
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 AUTH_SOURCE_BUILTIN = "builtin"
 AUTH_SOURCE_OIDC = "oidc"

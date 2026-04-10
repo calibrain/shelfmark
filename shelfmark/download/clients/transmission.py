@@ -3,8 +3,8 @@
 Uses the transmission-rpc library to communicate with Transmission's RPC API.
 """
 
-from collections.abc import Iterator
 from contextlib import contextmanager, suppress
+from typing import TYPE_CHECKING
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -19,6 +19,9 @@ from shelfmark.download.clients.torrent_utils import (
     parse_transmission_url,
 )
 from shelfmark.download.network import get_ssl_verify
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 logger = setup_logger(__name__)
 

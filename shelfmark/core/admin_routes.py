@@ -6,9 +6,8 @@ All endpoints require admin session.
 
 import os
 import sqlite3
-from collections.abc import Callable
 from functools import wraps
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from flask import Flask, Response, g, jsonify, request, session
 from werkzeug.security import generate_password_hash
@@ -34,7 +33,11 @@ from shelfmark.core.auth_modes import (
 from shelfmark.core.config import config as app_config
 from shelfmark.core.cwa_user_sync import sync_cwa_users_from_rows
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.user_db import UserDB
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
 

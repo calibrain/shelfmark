@@ -1,14 +1,16 @@
 """Metadata provider plugin system - base classes and registry."""
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, ClassVar
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any, ClassVar
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
-class SearchType(str, Enum):
+class SearchType(StrEnum):
     """Type of search to perform."""
 
     GENERAL = "general"  # Search all fields (title, author, ISBN, etc.)
@@ -17,7 +19,7 @@ class SearchType(str, Enum):
     ISBN = "isbn"  # Search by ISBN
 
 
-class SortOrder(str, Enum):
+class SortOrder(StrEnum):
     """Sort order for search results."""
 
     RELEVANCE = "relevance"  # Best match first (default)
@@ -409,7 +411,7 @@ class MetadataProvider(ABC):
         """Safely fetch targets for one book, falling back to an empty list."""
         try:
             return self.get_book_targets(book_id)
-        except (NotImplementedError, ValueError):
+        except NotImplementedError, ValueError:
             return []
 
     def set_book_target_state(

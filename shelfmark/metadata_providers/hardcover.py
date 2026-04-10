@@ -501,12 +501,12 @@ def _extract_publish_year(data: dict) -> int | None:
     if data.get("release_year"):
         try:
             return int(data["release_year"])
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             pass
     if data.get("release_date"):
         try:
             return int(str(data["release_date"])[:4])
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             pass
     return None
 
@@ -533,7 +533,7 @@ def _normalize_series_position(value: Any) -> float | None:
 
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -974,7 +974,7 @@ class HardcoverProvider(MetadataProvider):
 
         try:
             books_count = int(books_count_raw)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             books_count = 0
 
         books: list[BookMetadata] = []
@@ -1043,7 +1043,7 @@ class HardcoverProvider(MetadataProvider):
         list_id_raw = selected.get("id")
         try:
             list_id = int(list_id_raw)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return SearchResult(books=[], page=page, total_found=0, has_more=False)
 
         return self._fetch_list_books_by_id(list_id, page, limit)
@@ -1157,7 +1157,7 @@ class HardcoverProvider(MetadataProvider):
 
             try:
                 author_id = int(item.get("id"))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
 
             if author_id not in author_ids:
@@ -1240,7 +1240,7 @@ class HardcoverProvider(MetadataProvider):
                 try:
                     if release_year is not None and int(release_year) > current_year:
                         continue
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     pass
 
             label = str(item.get("title") or "").strip()
@@ -1273,7 +1273,7 @@ class HardcoverProvider(MetadataProvider):
             if books_count is not None:
                 books_count_int = int(books_count)
                 parts.append(f"{books_count_int} book{'s' if books_count_int != 1 else ''}")
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             pass
 
         return " • ".join(parts) if parts else None
@@ -1368,7 +1368,7 @@ class HardcoverProvider(MetadataProvider):
                 continue
             try:
                 series_id = int(item.get("id"))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
             name = str(item.get("name") or "").strip()
             if not name:
@@ -1573,7 +1573,7 @@ class HardcoverProvider(MetadataProvider):
 
         try:
             total_found = int(count_raw)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             total_found = 0
 
         books: list[BookMetadata] = []
@@ -1628,7 +1628,7 @@ class HardcoverProvider(MetadataProvider):
         def _format_label(name: str, books_count: Any) -> str:
             try:
                 return f"{name} ({int(books_count)})"
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 return name
 
         for status in HARDCOVER_STATUSES:
@@ -2222,7 +2222,7 @@ class HardcoverProvider(MetadataProvider):
                 books=books, page=options.page, total_found=found_count, has_more=has_more
             )
 
-        except (AttributeError, KeyError, TypeError, ValueError):
+        except AttributeError, KeyError, TypeError, ValueError:
             logger.exception("Hardcover search error")
             return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
 
@@ -2300,7 +2300,7 @@ class HardcoverProvider(MetadataProvider):
         except ValueError:
             logger.exception("Invalid book ID: %s", book_id)
             return None
-        except (AttributeError, KeyError, TypeError):
+        except AttributeError, KeyError, TypeError:
             logger.exception("Hardcover get_book error")
             return None
 
@@ -2371,7 +2371,7 @@ class HardcoverProvider(MetadataProvider):
 
             return self._parse_book(book_data)
 
-        except (AttributeError, IndexError, KeyError, TypeError, ValueError):
+        except AttributeError, IndexError, KeyError, TypeError, ValueError:
             logger.exception("Hardcover ISBN search error")
             return None
 
@@ -2640,7 +2640,7 @@ class HardcoverProvider(MetadataProvider):
         if rating is not None:
             try:
                 rating_str = f"{float(rating):.1f}"
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 rating_str = str(rating)
 
             if ratings_count:
@@ -2653,7 +2653,7 @@ class HardcoverProvider(MetadataProvider):
         if users_count:
             try:
                 readers_value = f"{int(users_count):,}"
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 readers_value = str(users_count)
             display_fields.append(DisplayField(label="Readers", value=readers_value, icon="users"))
 

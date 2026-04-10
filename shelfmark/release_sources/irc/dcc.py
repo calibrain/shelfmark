@@ -6,12 +6,15 @@ Handles DCC SEND file transfers used by IRC bots to send files.
 import re
 import socket
 import struct
-from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
-from threading import Event
+from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+    from threading import Event
 
 logger = setup_logger(__name__)
 

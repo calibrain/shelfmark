@@ -39,7 +39,7 @@ class TorrentInfo:
     magnet_url: str | None = None
     """The actual magnet URL, if available."""
 
-    def with_info_hash(self, info_hash: str | None) -> "TorrentInfo":
+    def with_info_hash(self, info_hash: str | None) -> TorrentInfo:
         """Return a copy with the info_hash replaced when provided."""
         if info_hash:
             return TorrentInfo(

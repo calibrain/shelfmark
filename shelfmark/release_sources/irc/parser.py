@@ -6,11 +6,14 @@ Parses the text files sent via DCC that contain search results.
 import re
 import zipfile
 from dataclasses import dataclass
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import is_audiobook as check_audiobook
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = setup_logger(__name__)
 

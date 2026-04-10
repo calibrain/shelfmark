@@ -7,14 +7,16 @@ import threading
 import time
 from http import HTTPStatus
 from io import BytesIO
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 import requests
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.download.network import get_ssl_verify
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = setup_logger(__name__)
 
@@ -108,7 +110,7 @@ class ImageCacheService:
         try:
             with self.index_path.open() as f:
                 self._index = json.load(f)
-        except (OSError, json.JSONDecodeError):
+        except OSError, json.JSONDecodeError:
             self._index = {}
 
     def _sync_index_with_files(self) -> None:
@@ -499,7 +501,7 @@ class ImageCacheService:
                 ip = ipaddress.ip_address(sockaddr[0])
                 if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
                     return False
-        except (socket.gaierror, ValueError):
+        except socket.gaierror, ValueError:
             return False
 
         return True

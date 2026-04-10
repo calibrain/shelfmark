@@ -2,8 +2,7 @@
 
 import random
 import time
-from threading import Event
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import requests
 
@@ -14,6 +13,8 @@ from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.network import get_ssl_verify
 
 if TYPE_CHECKING:
+    from threading import Event
+
     from shelfmark.download import network
 
 logger = setup_logger(__name__)
@@ -116,7 +117,7 @@ def _sleep_with_cancellation(seconds: float, cancel_flag: Event | None) -> None:
 
 def get_bypassed_page(
     url: str,
-    selector: Optional["network.AAMirrorSelector"] = None,
+    selector: network.AAMirrorSelector | None = None,
     cancel_flag: Event | None = None,
 ) -> str | None:
     """Fetch HTML via external bypasser with retries and mirror rotation."""

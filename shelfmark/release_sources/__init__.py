@@ -1,21 +1,22 @@
 """Release source plugin system - base classes and registry."""
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from threading import Event
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+    from threading import Event
+
+    from shelfmark.core.models import DownloadTask
     from shelfmark.core.search_plan import ReleaseSearchPlan
 
-from shelfmark.core.models import DownloadTask
 from shelfmark.metadata_providers import BookMetadata
 
 
-class ReleaseProtocol(str, Enum):
+class ReleaseProtocol(StrEnum):
     """Protocol for downloading a release."""
 
     HTTP = "http"  # Direct HTTP download
@@ -90,7 +91,7 @@ class DownloadProgress:
 # --- Column Schema for Plugin-Driven UI ---
 
 
-class ColumnRenderType(str, Enum):
+class ColumnRenderType(StrEnum):
     """How the frontend should render the column value."""
 
     TEXT = "text"  # Plain text
@@ -104,7 +105,7 @@ class ColumnRenderType(str, Enum):
     FORMAT_CONTENT_TYPE = "format_content_type"  # Content type icon + format badge
 
 
-class ColumnAlign(str, Enum):
+class ColumnAlign(StrEnum):
     """Column alignment options."""
 
     LEFT = "left"
@@ -137,7 +138,7 @@ class ColumnSchema:
     sort_key: str | None = None  # Field to sort by (defaults to `key` if None)
 
 
-class LeadingCellType(str, Enum):
+class LeadingCellType(StrEnum):
     """Type of leading cell to display in release rows."""
 
     THUMBNAIL = "thumbnail"  # Show book cover image
@@ -325,7 +326,7 @@ class ReleaseSource(ABC):
     def search(
         self,
         book: BookMetadata,
-        plan: "ReleaseSearchPlan",
+        plan: ReleaseSearchPlan,
         *,
         expand_search: bool = False,
         content_type: str = "ebook",

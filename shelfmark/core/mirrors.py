@@ -1,9 +1,13 @@
 """Centralized mirror configuration for all download sources."""
 
 # Lazy import to avoid circular imports
-from types import ModuleType
+
+from typing import TYPE_CHECKING
 
 from shelfmark.core.utils import normalize_http_url
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 _config_module = None
 

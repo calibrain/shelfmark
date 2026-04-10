@@ -6,10 +6,11 @@ import time
 from importlib import import_module
 from pathlib import Path
 from threading import Lock
-from types import ModuleType
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from types import ModuleType
+
     from shelfmark.core.user_db import UserDB
 
 # Import lazily to avoid circular imports
@@ -40,7 +41,7 @@ def _get_env() -> ModuleType:
     return _env_module
 
 
-def _get_user_db_module() -> type["UserDB"]:
+def _get_user_db_module() -> type[UserDB]:
     """Lazy import of user DB module to avoid optional dependency loops."""
     global _user_db_module
     if _user_db_module is None:
@@ -57,10 +58,10 @@ class Config:
     Values are cached for performance and can be refreshed when settings change.
     """
 
-    _instance: Optional["Config"] = None
+    _instance: Config | None = None
     _lock = Lock()
 
-    def __new__(cls) -> "Config":
+    def __new__(cls) -> Config:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -147,7 +148,7 @@ class Config:
         self._user_db_load_attempted = False
         self._last_refresh_time = time.monotonic()
 
-    def _get_user_db(self) -> "UserDB | None":
+    def _get_user_db(self) -> UserDB | None:
         """Get or initialize a UserDB handle if available."""
         if self._user_db is not None:
             return self._user_db
@@ -179,7 +180,7 @@ class Config:
 
         try:
             settings = user_db.get_user_settings(user_id)
-        except (sqlite3.OperationalError, OSError, ValueError, TypeError):
+        except sqlite3.OperationalError, OSError, ValueError, TypeError:
             return {}
 
         if not isinstance(settings, dict):

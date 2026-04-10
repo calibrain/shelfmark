@@ -3,14 +3,12 @@
 import shutil
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from threading import Event
+from typing import TYPE_CHECKING
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook
 from shelfmark.download.clients import (
     DownloadClient,
@@ -21,6 +19,12 @@ from shelfmark.download.clients import (
 )
 from shelfmark.download.fs import run_blocking_io
 from shelfmark.release_sources import DownloadHandler
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from threading import Event
+
+    from shelfmark.core.models import DownloadTask
 
 logger = setup_logger(__name__)
 

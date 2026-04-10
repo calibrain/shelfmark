@@ -7,14 +7,17 @@ import re
 import socket
 import ssl
 import time
-from collections.abc import Iterator
 from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
 
 from .dcc import DCCOffer, parse_dcc_send
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 logger = setup_logger(__name__)
 
@@ -453,7 +456,7 @@ class IRCClient:
         """Check if currently connected."""
         return self._connected and self._socket is not None
 
-    def __enter__(self) -> "IRCClient":
+    def __enter__(self) -> IRCClient:
         self.connect()
         return self
 

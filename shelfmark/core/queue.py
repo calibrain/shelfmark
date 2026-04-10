@@ -2,11 +2,10 @@
 
 import queue
 import time
-from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Event, Lock
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
@@ -16,6 +15,9 @@ from shelfmark.core.models import (
     QueueItem,
     QueueStatus,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = setup_logger(__name__)
 

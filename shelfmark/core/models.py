@@ -3,7 +3,7 @@
 import re
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +31,7 @@ def build_filename(
     return filename
 
 
-class QueueStatus(str, Enum):
+class QueueStatus(StrEnum):
     """Enum for possible book queue statuses."""
 
     QUEUED = "queued"
@@ -61,7 +61,7 @@ ACTIVE_QUEUE_STATUSES: frozenset[QueueStatus] = frozenset(
 )
 
 
-class SearchMode(str, Enum):
+class SearchMode(StrEnum):
     DIRECT = "direct"
     UNIVERSAL = "universal"
 
@@ -74,7 +74,7 @@ class QueueItem:
     priority: int
     added_time: float
 
-    def __lt__(self, other: "QueueItem") -> bool:
+    def __lt__(self, other: QueueItem) -> bool:
         """Compare items for priority queue (lower priority number = higher precedence)."""
         if self.priority != other.priority:
             return self.priority < other.priority
@@ -143,7 +143,7 @@ class DownloadTask:
     last_error_type: str | None = None
     staged_path: str | None = None
 
-    def __lt__(self, other: "DownloadTask") -> bool:
+    def __lt__(self, other: DownloadTask) -> bool:
         """Compare tasks for priority queue (lower priority number = higher precedence)."""
         if self.priority != other.priority:
             return self.priority < other.priority

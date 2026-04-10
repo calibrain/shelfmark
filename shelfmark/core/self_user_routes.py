@@ -1,8 +1,7 @@
 """Self-service user account routes."""
 
-from collections.abc import Callable, Mapping
 from functools import wraps
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from flask import Flask, Response, g, jsonify, request, session
 from werkzeug.security import generate_password_hash
@@ -23,13 +22,17 @@ from shelfmark.core.auth_modes import (
 )
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import load_config_file
-from shelfmark.core.user_db import UserDB
 from shelfmark.core.user_settings_overrides import (
     build_user_preferences_payload as _build_user_preferences_payload,
 )
 from shelfmark.core.user_settings_overrides import (
     get_ordered_user_overridable_fields as _get_ordered_user_overridable_fields,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
+    from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
 
@@ -52,7 +55,7 @@ def _get_current_user(
     raw_user_id = session.get("db_user_id")
     try:
         user_id = int(raw_user_id)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None, None, (jsonify({"error": "Invalid user context"}), 400)
 
     user = user_db.get_user(user_id=user_id)

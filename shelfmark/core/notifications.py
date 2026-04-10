@@ -7,7 +7,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
@@ -35,7 +35,7 @@ _APPRISE_LOGO_URL = (
 _APPRISE_LOGGER_NAME = "apprise"
 
 
-class NotificationEvent(str, Enum):
+class NotificationEvent(StrEnum):
     """Global notification event identifiers."""
 
     REQUEST_CREATED = "request_created"
@@ -175,7 +175,7 @@ def _log_apprise_exception_debug(*, action: str, scheme: str, exc: Exception) ->
         type(exc).__name__,
         scheme,
         exc,
-        exc_info=True,
+        exc_info=(type(exc), exc, exc.__traceback__),
     )
 
 
@@ -256,7 +256,7 @@ def _resolve_admin_routes() -> list[dict[str, str]]:
 def _normalize_user_id(value: object) -> int | None:
     try:
         user_id = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     if user_id < 1:
         return None

@@ -112,6 +112,7 @@ def process_folder_output(
 
     logger.debug(
         "Processing plan for task %s: mode=%s destination=%s hardlink=%s stage_action=%s extract_archives=%s",
+        task.task_id,
         plan.organization_mode,
         plan.destination,
         plan.use_hardlink,

@@ -1,13 +1,15 @@
 """Operational handlers for security settings (save/actions)."""
 
 import os
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.user_db import UserDB
 from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.network import get_ssl_verify
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _OIDC_LOCKOUT_MESSAGE = "A local admin account with a password is required before enabling OIDC. Use the 'Go to Users' button above to create one. This ensures you can still sign in if your identity provider is unavailable."
 

@@ -1,11 +1,10 @@
 """AudiobookBay download handler - resolves magnet links and uses shared client lifecycle."""
 
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask
 from shelfmark.download.clients import (
     DownloadClient,
     get_client,
@@ -18,6 +17,11 @@ from shelfmark.download.clients.base_handler import (
 from shelfmark.release_sources import register_handler
 from shelfmark.release_sources.audiobookbay import scraper
 from shelfmark.release_sources.audiobookbay.utils import normalize_hostname
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from shelfmark.core.models import DownloadTask
 
 logger = setup_logger(__name__)
 

@@ -3,9 +3,12 @@
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from shelfmark.config.env import ENABLE_LOGGING, LOG_FILE, LOG_LEVEL
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class CustomLogger(logging.Logger):
@@ -51,7 +54,7 @@ class CustomLogger(logging.Logger):
                     proc_rss_mb = _get_process_rss_mb(proc)
                     if proc_rss_mb is not None:
                         app_memory_mb += proc_rss_mb
-            except (PermissionError, psutil.AccessDenied, OSError):
+            except PermissionError, psutil.AccessDenied, OSError:
                 try:
                     app_memory_mb = psutil.Process().memory_info().rss / (1024 * 1024)
                 except Exception:

@@ -10,12 +10,16 @@ import shutil
 import subprocess
 import tempfile
 import time
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.download.permissions_debug import log_transfer_permission_context
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from gevent.threadpool import ThreadPool
 
 logger = setup_logger(__name__)
 
@@ -27,7 +31,7 @@ except ImportError:
     _GeventThreadPool = None
 
 T = TypeVar("T")
-_IO_THREADPOOL: Optional["_GeventThreadPool"] = None
+_IO_THREADPOOL: ThreadPool | None = None
 
 
 def _use_gevent_threadpool() -> bool:
@@ -36,7 +40,7 @@ def _use_gevent_threadpool() -> bool:
     )
 
 
-def _get_io_threadpool() -> "_GeventThreadPool":
+def _get_io_threadpool() -> ThreadPool:
     global _IO_THREADPOOL
     if _IO_THREADPOOL is None:
         pool_size = max(2, min(8, os.cpu_count() or 2))
@@ -44,7 +48,7 @@ def _get_io_threadpool() -> "_GeventThreadPool":
     return _IO_THREADPOOL
 
 
-def _call_and_capture(
+def _call_and_capture[T](
     func: Callable[..., T], args: tuple[Any, ...], kwargs: dict[str, Any]
 ) -> tuple[bool, T | Exception]:
     try:
@@ -64,7 +68,7 @@ def _must_avoid_gevent_threadpool(func: Callable[..., Any]) -> bool:
     return _gevent_monkey.is_object_patched("subprocess", "run") and func is subprocess.run
 
 
-def run_blocking_io(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+def run_blocking_io[T](func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     """Run blocking I/O in a native thread when under gevent.
 
     gevent's threadpool will eagerly log exceptions raised inside worker threads,

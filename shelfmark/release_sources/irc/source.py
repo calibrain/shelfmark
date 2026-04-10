@@ -10,11 +10,11 @@ from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
+    from shelfmark.metadata_providers import BookMetadata
 
 from shelfmark.api.websocket import ws_manager
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources import (
     ColumnColorHint,
     ColumnRenderType,
@@ -125,7 +125,7 @@ class IRCReleaseSource(ReleaseSource):
     def search(
         self,
         book: BookMetadata,
-        plan: "ReleaseSearchPlan",
+        plan: ReleaseSearchPlan,
         *,
         expand_search: bool = False,
         content_type: str = "ebook",

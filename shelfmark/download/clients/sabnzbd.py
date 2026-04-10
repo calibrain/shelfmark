@@ -32,7 +32,7 @@ def _parse_eta(eta_str: str) -> int | None:
         parts = eta_str.split(":")
         if len(parts) == _ETA_PART_COUNT:
             return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         pass
     return None
 
@@ -44,7 +44,7 @@ def _parse_speed(slot: dict) -> int | None:
     if kbpersec_str:
         try:
             return int(float(kbpersec_str) * 1024)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             pass
 
     # Fall back to human-readable speed field
@@ -63,7 +63,7 @@ def _parse_speed(slot: dict) -> int | None:
             if prefix in unit:
                 return int(speed_val * mult)
         return int(speed_val)
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         return None
 
 

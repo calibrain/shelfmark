@@ -19,6 +19,10 @@ DEFAULT_BASE_URL = "http://localhost:8084"
 DEFAULT_TIMEOUT = 10
 POLL_INTERVAL = 2
 DOWNLOAD_TIMEOUT = 300  # 5 minutes max for downloads
+AUTH_EXEMPT_MODULES = {"test_auth_flow"}
+AUTH_EXEMPT_CLASSES = {("test_api", "TestHealthEndpoint")}
+E2E_USERNAME_ENV = "E2E_USERNAME"
+E2E_PASSWORD_ENV = "E2E_PASSWORD"
 
 
 @dataclass
@@ -61,6 +65,42 @@ class APIClient:
                 pass
             time.sleep(1)
         return False
+
+
+def _get_auth_state(client: APIClient) -> dict[str, object]:
+    """Read the live server auth state for auth-sensitive E2E tests."""
+    try:
+        response = client.get("/api/auth/check")
+    except requests.exceptions.RequestException:
+        return {}
+
+    if response.status_code != 200:
+        return {}
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return {}
+
+    return payload if isinstance(payload, dict) else {}
+
+
+def _login_with_env_credentials(client: APIClient) -> bool:
+    """Try authenticating the shared E2E client with optional env credentials."""
+    username = os.environ.get(E2E_USERNAME_ENV, "").strip()
+    password = os.environ.get(E2E_PASSWORD_ENV, "")
+    if not username or not password:
+        return False
+
+    response = client.post(
+        "/api/auth/login",
+        json={
+            "username": username,
+            "password": password,
+            "remember_me": False,
+        },
+    )
+    return response.status_code == 200
 
 
 @dataclass
@@ -153,6 +193,36 @@ def api_client(base_url: str) -> Generator[APIClient, None, None]:
 
     # Cleanup session
     client.session.close()
+
+
+@pytest.fixture(autouse=True)
+def skip_protected_e2e_without_auth(request: pytest.FixtureRequest) -> None:
+    """Skip protected live-server E2E tests when no authenticated session is available."""
+    if request.node.get_closest_marker("e2e") is None:
+        return
+
+    module_name = getattr(request.module, "__name__", "").rsplit(".", maxsplit=1)[-1]
+    class_name = request.cls.__name__ if request.cls is not None else None
+    if module_name in AUTH_EXEMPT_MODULES or (module_name, class_name) in AUTH_EXEMPT_CLASSES:
+        return
+
+    api_client = request.getfixturevalue("api_client")
+    auth_state = _get_auth_state(api_client)
+    if not auth_state or not auth_state.get("auth_required"):
+        return
+
+    if auth_state.get("authenticated"):
+        return
+
+    if _login_with_env_credentials(api_client):
+        refreshed_auth_state = _get_auth_state(api_client)
+        if refreshed_auth_state.get("authenticated"):
+            return
+
+    pytest.skip(
+        "Live server requires authentication for this E2E test. "
+        f"Set {E2E_USERNAME_ENV}/{E2E_PASSWORD_ENV} or run against a no-auth instance."
+    )
 
 
 @pytest.fixture

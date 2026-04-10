@@ -2,12 +2,14 @@
 
 import threading
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
-from typing import ParamSpec, TypeVar, cast
+from typing import TYPE_CHECKING, ParamSpec, TypeVar, cast
 
 from shelfmark.core.logger import setup_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = setup_logger(__name__)
 
@@ -153,7 +155,7 @@ def cacheable(
             # Check cache
             cached = _metadata_cache.get(key)
             if cached is not None:
-                return cast(R, cached)
+                return cast("R", cached)
 
             # Execute function and cache result
             result = func(*args, **kwargs)

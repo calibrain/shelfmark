@@ -1,7 +1,6 @@
 """Authentication settings registration."""
 
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from shelfmark.config.migrations import migrate_security_settings
 from shelfmark.config.security_handlers import (
@@ -24,6 +23,9 @@ from shelfmark.core.settings_registry import (
     register_settings,
 )
 from shelfmark.core.user_db import sync_builtin_admin_user
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = setup_logger(__name__)
 

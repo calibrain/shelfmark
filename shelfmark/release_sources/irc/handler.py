@@ -3,17 +3,21 @@
 Handles downloading IRC releases via DCC protocol.
 """
 
-from collections.abc import Callable
 from pathlib import Path
-from threading import Event
+from typing import TYPE_CHECKING
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask
 from shelfmark.release_sources import DownloadHandler, register_handler
 
 from .connection_manager import connection_manager
 from .dcc import DCCError, download_dcc
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from threading import Event
+
+    from shelfmark.core.models import DownloadTask
 
 logger = setup_logger(__name__)
 

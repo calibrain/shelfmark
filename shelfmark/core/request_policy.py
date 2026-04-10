@@ -7,11 +7,11 @@ routes/services and tested independently.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class PolicyMode(str, Enum):
+class PolicyMode(StrEnum):
     """Allowed request-policy modes.
 
     Ordered from most to least permissive. The content-type default acts as a

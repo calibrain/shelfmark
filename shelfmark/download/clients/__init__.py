@@ -14,14 +14,16 @@ import os
 import random
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
 from pathlib import Path
-from typing import TypeVar, cast
+from typing import TYPE_CHECKING, TypeVar, cast
 
 import requests
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _logger = logging.getLogger(__name__)
 
@@ -135,7 +137,7 @@ class DownloadStatus:
     eta: int | None = None  # Seconds remaining
 
     @classmethod
-    def error(cls, message: str) -> "DownloadStatus":
+    def error(cls, message: str) -> DownloadStatus:
         """Create an error status."""
         return cls(
             progress=0,

@@ -1,7 +1,6 @@
 """Admin settings-introspection routes and settings validation helpers."""
 
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from flask import Flask, Response, jsonify, request
 
@@ -14,7 +13,6 @@ from shelfmark.config.users_settings import validate_search_preference_value
 from shelfmark.core.config import config as app_config
 from shelfmark.core.request_policy import parse_policy_mode, validate_policy_rules
 from shelfmark.core.settings_registry import load_config_file
-from shelfmark.core.user_db import UserDB
 from shelfmark.core.user_settings_overrides import (
     build_user_preferences_payload as _build_user_preferences_payload,
 )
@@ -24,6 +22,11 @@ from shelfmark.core.user_settings_overrides import (
 from shelfmark.core.user_settings_overrides import (
     get_settings_registry as _get_settings_registry,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from shelfmark.core.user_db import UserDB
 
 
 def validate_user_settings(

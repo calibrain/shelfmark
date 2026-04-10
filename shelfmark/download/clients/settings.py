@@ -1,8 +1,7 @@
 """Shared download client settings registration."""
 
-from collections.abc import Iterator
 from contextlib import contextmanager, suppress
-from typing import Any, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from shelfmark.core.settings_registry import (
     ActionButton,
@@ -16,6 +15,9 @@ from shelfmark.core.settings_registry import (
 )
 from shelfmark.core.utils import get_hardened_xmlrpc_client, normalize_http_url
 from shelfmark.download.network import get_ssl_verify
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # ==================== Test Connection Callbacks ====================
 
@@ -66,7 +68,6 @@ def _test_qbittorrent_connection(current_values: dict[str, Any] | None = None) -
         return {"success": False, "message": "qBittorrent URL is required"}
 
     try:
-        import requests
         from qbittorrentapi import Client
 
         url = normalize_http_url(raw_url)
@@ -83,13 +84,7 @@ def _test_qbittorrent_connection(current_values: dict[str, Any] | None = None) -
         api_version = client.app.web_api_version
     except ImportError:
         return {"success": False, "message": "qbittorrent-api package not installed"}
-    except (
-        requests.exceptions.RequestException,
-        RuntimeError,
-        ValueError,
-        OSError,
-        TypeError,
-    ) as e:
+    except Exception as e:
         return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": True, "message": f"Connected to qBittorrent (API v{api_version})"}
@@ -155,7 +150,7 @@ def _test_transmission_connection(current_values: dict[str, Any] | None = None) 
         version = session.version
     except ImportError:
         return {"success": False, "message": "transmission-rpc package not installed"}
-    except (RuntimeError, ValueError, OSError, TypeError) as e:
+    except Exception as e:
         return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": True, "message": f"Connected to Transmission {version}"}
@@ -226,7 +221,7 @@ def _test_deluge_connection(current_values: dict[str, Any] | None = None) -> dic
             methods = rpc_call(session, rpc_id, "system.listMethods")
             if isinstance(methods, list) and "daemon.get_version" in methods:
                 return rpc_call(session, rpc_id + 1, "daemon.get_version")
-        except (requests.exceptions.RequestException, RuntimeError, ValueError, TypeError):
+        except requests.exceptions.RequestException, RuntimeError, ValueError, TypeError:
             # Fall back to daemon.info to preserve existing behavior.
             pass
 
