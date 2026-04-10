@@ -2,54 +2,76 @@
 
 import random
 import time
+from http import HTTPStatus
 from io import BytesIO
 from threading import Event, Thread
-from typing import Callable, Optional
-from urllib.parse import urlparse, urljoin
+from typing import TYPE_CHECKING, NoReturn
+from urllib.parse import urljoin, urlparse
 
 import requests
 from tqdm import tqdm
 
-from shelfmark.download import network
-from shelfmark.download.network import get_proxies, get_ssl_verify
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
+from shelfmark.download import network
+from shelfmark.download.network import get_proxies, get_ssl_verify
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from types import ModuleType
 
 logger = setup_logger(__name__)
+
+_MAX_REDIRECTS = 5
+_HTTP_STATUS_FORBIDDEN = HTTPStatus.FORBIDDEN
+_HTTP_STATUS_NOT_FOUND = HTTPStatus.NOT_FOUND
+_HTTP_STATUS_RATE_LIMITED = HTTPStatus.TOO_MANY_REQUESTS
+_HTTP_STATUS_OK = HTTPStatus.OK
+_HTTP_STATUS_RANGE_NOT_SATISFIABLE = HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE
+_HTTP_STATUS_PARTIAL_CONTENT = HTTPStatus.PARTIAL_CONTENT
+_HTTP_STATUS_NON_RETRYABLE = (_HTTP_STATUS_FORBIDDEN, _HTTP_STATUS_NOT_FOUND)
 
 # Bypasser modules are imported lazily to support dynamic selection based on config
 _internal_bypasser = None
 _external_bypasser = None
 
 
-def _get_internal_bypasser():
+def _raise_too_many_redirects(message: str) -> NoReturn:
+    raise requests.exceptions.TooManyRedirects(message)
+
+
+def _get_internal_bypasser() -> ModuleType:
     """Lazy import of internal bypasser module."""
     global _internal_bypasser
     if _internal_bypasser is None:
         try:
             from shelfmark.bypass import internal_bypasser
+
             _internal_bypasser = internal_bypasser
         except ImportError as e:
-            raise RuntimeError(
+            msg = (
                 f"Failed to import internal bypasser: {e}. "
                 "Check that all dependencies are installed. "
                 "You may need to disable CF bypass or use the external bypasser."
-            ) from e
+            )
+            raise RuntimeError(msg) from e
     return _internal_bypasser
 
 
-def _get_external_bypasser():
+def _get_external_bypasser() -> ModuleType:
     """Lazy import of external bypasser module."""
     global _external_bypasser
     if _external_bypasser is None:
         try:
             from shelfmark.bypass import external_bypasser
+
             _external_bypasser = external_bypasser
         except ImportError as e:
-            raise RuntimeError(
+            msg = (
                 f"Failed to import external bypasser: {e}. "
                 "Check that the external bypasser is properly configured."
-            ) from e
+            )
+            raise RuntimeError(msg) from e
     return _external_bypasser
 
 
@@ -63,25 +85,29 @@ def _is_cf_bypass_enabled() -> bool:
     return app_config.get("USE_CF_BYPASS", True)
 
 
-def get_bypassed_page(url, selector=None, cancel_flag=None):
+def get_bypassed_page(
+    url: str,
+    selector: network.AAMirrorSelector | None = None,
+    cancel_flag: Event | None = None,
+) -> str | None:
     """Wrapper that delegates to the appropriate bypasser based on config."""
     if _is_using_external_bypasser():
         return _get_external_bypasser().get_bypassed_page(url, selector, cancel_flag)
     return _get_internal_bypasser().get_bypassed_page(url, selector, cancel_flag)
 
 
-def get_cf_cookies_for_domain(domain):
+def get_cf_cookies_for_domain(domain: str) -> dict[str, str]:
     """Get CF cookies - only available with internal bypasser."""
     if _is_using_external_bypasser():
-        logger.debug(f"External bypasser in use, CF cookies not available for {domain}")
+        logger.debug("External bypasser in use, CF cookies not available for %s", domain)
         return {}
     return _get_internal_bypasser().get_cf_cookies_for_domain(domain)
 
 
-def get_cf_user_agent_for_domain(domain):
+def get_cf_user_agent_for_domain(domain: str) -> str | None:
     """Get CF user agent - only available with internal bypasser."""
     if _is_using_external_bypasser():
-        logger.debug(f"External bypasser in use, CF user agent not available for {domain}")
+        logger.debug("External bypasser in use, CF user agent not available for %s", domain)
         return None
     return _get_internal_bypasser().get_cf_user_agent_for_domain(domain)
 
@@ -100,7 +126,7 @@ def _apply_cf_bypass(url: str, headers: dict) -> dict:
     cookies = get_cf_cookies_for_domain(hostname)
     stored_ua = get_cf_user_agent_for_domain(hostname)
     if stored_ua:
-        headers['User-Agent'] = stored_ua
+        headers["User-Agent"] = stored_ua
     return cookies
 
 
@@ -110,19 +136,22 @@ MAX_DOWNLOAD_RETRIES = 2
 MAX_RESUME_ATTEMPTS = 3
 
 RETRYABLE_CODES = (429, 500, 502, 503, 504)
-CONNECTION_ERRORS = (requests.exceptions.ConnectionError, requests.exceptions.Timeout,
-                     requests.exceptions.SSLError, requests.exceptions.ChunkedEncodingError)
+CONNECTION_ERRORS = (
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+    requests.exceptions.SSLError,
+    requests.exceptions.ChunkedEncodingError,
+)
 DOWNLOAD_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
 }
 
 
-def parse_size_string(size: str) -> Optional[float]:
+def parse_size_string(size: str) -> float | None:
     """Parse a human-readable size string (e.g., '10.5 MB') into bytes."""
     if not size:
         return None
@@ -133,19 +162,21 @@ def parse_size_string(size: str) -> Optional[float]:
             if normalized.endswith(suffix):
                 return float(normalized[:-2]) * mult
         return float(normalized)
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         return None
+
 
 def _backoff_delay(attempt: int, base: float = 0.25, cap: float = 3.0) -> float:
     """Exponential backoff with jitter."""
     return min(cap, base * (2 ** (attempt - 1))) + random.random() * base
 
 
-def _get_status_code(e: Exception) -> Optional[int]:
+def _get_status_code(e: Exception) -> int | None:
     """Extract HTTP status code from an exception, or None if not applicable."""
     if isinstance(e, requests.exceptions.HTTPError) and e.response is not None:
         return e.response.status_code
     return None
+
 
 def _is_retryable_error(e: Exception) -> bool:
     """Check if error is retryable (connection error or retryable HTTP status)."""
@@ -155,31 +186,34 @@ def _is_retryable_error(e: Exception) -> bool:
     return status is not None and status in RETRYABLE_CODES
 
 
-def _try_rotation(original_url: str, current_url: str, selector: network.AAMirrorSelector) -> Optional[str]:
+def _try_rotation(
+    original_url: str, current_url: str, selector: network.AAMirrorSelector
+) -> str | None:
     """Try mirror/DNS rotation. Returns new URL or None."""
     if current_url.startswith(network.get_aa_base_url()):
         new_base, action = selector.next_mirror_or_rotate_dns()
         if action in ("mirror", "dns") and new_base:
             new_url = selector.rewrite(original_url)
-            logger.info(f"[{action}] switching to: {new_url}")
+            logger.info("[%s] switching to: %s", action, new_url)
             return new_url
     elif network.should_rotate_dns_for_url(current_url) and network.rotate_dns_provider():
-        logger.info(f"[dns-rotate] retrying: {original_url}")
+        logger.info("[dns-rotate] retrying: %s", original_url)
         return original_url
     return None
 
 
 def html_get_page(
     url: str,
-    retry: Optional[int] = None,
+    retry: int | None = None,
+    selector: network.AAMirrorSelector | None = None,
+    cancel_flag: Event | None = None,
+    status_callback: Callable[[str, str | None], None] | None = None,
+    *,
     use_bypasser: bool = False,
-    selector: Optional[network.AAMirrorSelector] = None,
-    cancel_flag: Optional[Event] = None,
-    status_callback: Optional[Callable[[str, Optional[str]], None]] = None,
     allow_bypasser_fallback: bool = True,
     include_response_url: bool = False,
     success_delay: float = 1.0,
-    session: Optional[requests.Session] = None,
+    session: requests.Session | None = None,
 ) -> str | tuple[str, str]:
     """Fetch HTML content from a URL with retry mechanism.
 
@@ -189,7 +223,9 @@ def html_get_page(
         include_response_url: If True, return `(html, final_url)` to expose the
             resolved response URL after redirects.
         success_delay: Optional delay (seconds) after successful fetch.
+
     """
+
     def _result(html: str, response_url: str) -> str | tuple[str, str]:
         if include_response_url:
             return html, response_url
@@ -204,41 +240,43 @@ def html_get_page(
     for attempt in range(1, retry + 1):
         # Check for cancellation before each attempt
         if cancel_flag and cancel_flag.is_set():
-            logger.info(f"html_get_page cancelled before attempt {attempt}")
+            logger.info("html_get_page cancelled before attempt %s", attempt)
             return _result("", current_url)
 
         try:
             if use_bypasser_now and _is_cf_bypass_enabled():
-                logger.debug(f"GET (bypasser): {current_url}")
                 if status_callback:
                     status_callback("resolving", "Bypassing protection...")
                 heartbeat_stop = Event()
-                heartbeat_thread: Optional[Thread] = None
+                heartbeat_thread: Thread | None = None
                 if status_callback:
-                    def _heartbeat() -> None:
+
+                    def _heartbeat(stop_event: Event = heartbeat_stop) -> None:
                         # Keep the download "alive" during long bypass operations so the orchestrator
                         # doesn't flag it as stalled.
-                        while not heartbeat_stop.wait(timeout=30):
-                            if cancel_flag and cancel_flag.is_set():
-                                return
-                            try:
-                                status_callback("resolving", "Bypassing protection...")
-                            except Exception:
-                                return
-                    heartbeat_thread = Thread(target=_heartbeat, daemon=True, name="BypassHeartbeat")
+                        if cancel_flag and cancel_flag.is_set():
+                            return
+                        try:
+                            status_callback("resolving", "Bypassing protection...")
+                        except Exception:
+                            return
+
+                    heartbeat_thread = Thread(
+                        target=_heartbeat, daemon=True, name="BypassHeartbeat"
+                    )
                     heartbeat_thread.start()
                 try:
                     result = get_bypassed_page(current_url, selector, cancel_flag)
                     return _result(result or "", current_url)
                 except Exception as e:
-                    logger.warning(f"Bypasser error: {type(e).__name__}: {e}")
+                    logger.warning("Bypasser error: %s: %s", type(e).__name__, e)
                     return _result("", current_url)
                 finally:
                     heartbeat_stop.set()
                     if heartbeat_thread:
                         heartbeat_thread.join(timeout=1)
 
-            logger.debug(f"GET: {current_url}")
+            logger.debug("GET: %s", current_url)
 
             # Use a browser-like UA by default (AA can behave differently for python-requests UA).
             headers = {"User-Agent": DOWNLOAD_HEADERS["User-Agent"]}
@@ -267,7 +305,9 @@ def html_get_page(
                 if is_aa_url and response.is_redirect:
                     location = response.headers.get("Location", "")
                     if not location:
-                        raise requests.exceptions.TooManyRedirects(f"Redirect with no Location header: {current_url}")
+                        _raise_too_many_redirects(
+                            f"Redirect with no Location header: {current_url}"
+                        )
 
                     redirect_url = urljoin(current_url, location)
                     current_host = urlparse(current_url).hostname or ""
@@ -305,8 +345,8 @@ def html_get_page(
 
                     # Same-host redirect (relative or absolute) - follow manually.
                     redirects_followed += 1
-                    if redirects_followed > 5:
-                        raise requests.exceptions.TooManyRedirects(f"Too many redirects for {current_url}")
+                    if redirects_followed > _MAX_REDIRECTS:
+                        _raise_too_many_redirects(f"Too many redirects for {current_url}")
                     current_url = redirect_url
                     continue
 
@@ -319,14 +359,14 @@ def html_get_page(
             status = _get_status_code(e)
 
             # 403 = Cloudflare/DDoS-Guard protection
-            if status == 403:
+            if status == _HTTP_STATUS_FORBIDDEN:
                 # If bypasser fallback is disabled, try mirrors instead
                 if not allow_bypasser_fallback:
                     new_url = _try_rotation(original_url, current_url, selector)
                     if new_url:
                         current_url = new_url
                         continue
-                    logger.warning(f"403 error, mirrors exhausted: {current_url}")
+                    logger.warning("403 error, mirrors exhausted: %s", current_url)
                     return _result("", current_url)
 
                 if _is_cf_bypass_enabled() and not use_bypasser_now:
@@ -336,19 +376,22 @@ def html_get_page(
                     fresh_cookies = get_cf_cookies_for_domain(parsed.hostname or "")
                     if fresh_cookies and not cookies:
                         # Cookies are now available - retry with cookies before using bypasser
-                        logger.debug(f"403 but cookies now available - retrying with cookies: {current_url}")
+                        logger.debug(
+                            "403 but cookies now available - retrying with cookies: %s",
+                            current_url,
+                        )
                         continue
-                    logger.info(f"403 detected; switching to bypasser: {current_url}")
+                    logger.info("403 detected; switching to bypasser: %s", current_url)
                     if status_callback:
                         status_callback("resolving", "Bypassing protection...")
                     use_bypasser_now = True
                     continue
-                logger.warning(f"403 error, giving up: {current_url}")
+                logger.warning("403 error, giving up: %s", current_url)
                 return _result("", current_url)
 
             # 404 = Not found
-            if status == 404:
-                logger.warning(f"404 error: {current_url}")
+            if status == _HTTP_STATUS_NOT_FOUND:
+                logger.warning("404 error: %s", current_url)
                 return _result("", current_url)
 
             # Try mirror/DNS rotation on retryable errors
@@ -360,10 +403,17 @@ def html_get_page(
 
             # Retry with backoff
             if attempt < retry:
-                logger.warning(f"Retry {attempt}/{retry} for {current_url}: {type(e).__name__}: {e}")
+                logger.warning(
+                    "Retry %s/%s for %s: %s: %s",
+                    attempt,
+                    retry,
+                    current_url,
+                    type(e).__name__,
+                    e,
+                )
                 time.sleep(_backoff_delay(attempt))
             else:
-                logger.error(f"Giving up after {retry} attempts: {current_url}")
+                logger.exception("Giving up after %s attempts: %s", retry, current_url)
 
     return _result("", current_url)
 
@@ -371,12 +421,12 @@ def html_get_page(
 def download_url(
     link: str,
     size: str = "",
-    progress_callback: Optional[Callable[[float], None]] = None,
-    cancel_flag: Optional[Event] = None,
-    _selector: Optional[network.AAMirrorSelector] = None,
-    status_callback: Optional[Callable[[str, Optional[str]], None]] = None,
-    referer: Optional[str] = None,
-) -> Optional[BytesIO]:
+    progress_callback: Callable[[float], None] | None = None,
+    cancel_flag: Event | None = None,
+    _selector: network.AAMirrorSelector | None = None,
+    status_callback: Callable[[str, str | None], None] | None = None,
+    referer: str | None = None,
+) -> BytesIO | None:
     """Download content from URL with automatic retry and resume support."""
     selector = _selector or network.AAMirrorSelector()
     current_url = selector.rewrite(link)
@@ -384,7 +434,7 @@ def download_url(
     # Build headers with optional referer
     headers = DOWNLOAD_HEADERS.copy()
     if referer:
-        headers['Referer'] = referer
+        headers["Referer"] = referer
     total_size = parse_size_string(size) or 0
 
     attempt = 0
@@ -399,19 +449,35 @@ def download_url(
 
         try:
             if attempt > 0 and status_callback:
-                status_callback("resolving", f"Connecting (Attempt {attempt + 1}/{MAX_DOWNLOAD_RETRIES})")
+                status_callback(
+                    "resolving",
+                    f"Connecting (Attempt {attempt + 1}/{MAX_DOWNLOAD_RETRIES})",
+                )
 
-            logger.info(f"Downloading: {current_url} (attempt {attempt + 1}/{MAX_DOWNLOAD_RETRIES})")
+            logger.info(
+                "Downloading: %s (attempt %s/%s)",
+                current_url,
+                attempt + 1,
+                MAX_DOWNLOAD_RETRIES,
+            )
             # Try with CF cookies/UA if available
             cookies = _apply_cf_bypass(current_url, headers)
-            response = requests.get(current_url, stream=True, proxies=get_proxies(current_url), timeout=REQUEST_TIMEOUT, cookies=cookies, headers=headers, verify=get_ssl_verify(current_url))
+            response = requests.get(
+                current_url,
+                stream=True,
+                proxies=get_proxies(current_url),
+                timeout=REQUEST_TIMEOUT,
+                cookies=cookies,
+                headers=headers,
+                verify=get_ssl_verify(current_url),
+            )
             response.raise_for_status()
 
             if status_callback:
                 status_callback("downloading", "")
 
-            total_size = total_size or float(response.headers.get('content-length', 0))
-            pbar = tqdm(total=total_size, unit='B', unit_scale=True, desc='Downloading')
+            total_size = total_size or float(response.headers.get("content-length", 0))
+            pbar = tqdm(total=total_size, unit="B", unit_scale=True, desc="Downloading")
 
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
@@ -426,55 +492,69 @@ def download_url(
             pbar.close()
 
             # Validate - check we didn't get HTML instead of file
-            if total_size > 0 and bytes_downloaded < total_size * 0.9:
-                if response.headers.get('content-type', '').startswith('text/html'):
-                    logger.warning(f"Received HTML instead of file: {current_url}")
-                    return None
+            if (
+                total_size > 0
+                and bytes_downloaded < total_size * 0.9
+                and response.headers.get("content-type", "").startswith("text/html")
+            ):
+                logger.warning("Received HTML instead of file: %s", current_url)
+                return None
 
-            logger.debug(f"Download completed: {bytes_downloaded} bytes")
-            return buffer
+            logger.debug("Download completed: %s bytes", bytes_downloaded)
 
         except requests.exceptions.RequestException as e:
             status = _get_status_code(e)
             retryable = _is_retryable_error(e)
 
             # Z-Library 403 - try refreshing cookies via bypasser once before giving up
-            if status == 403 and _is_cf_bypass_enabled() and not zlib_cookie_refresh_attempted:
+            if (
+                status == _HTTP_STATUS_FORBIDDEN
+                and _is_cf_bypass_enabled()
+                and not zlib_cookie_refresh_attempted
+            ):
                 parsed = urlparse(current_url)
-                if parsed.hostname and 'z-lib' in parsed.hostname and referer:
+                if parsed.hostname and "z-lib" in parsed.hostname and referer:
                     zlib_cookie_refresh_attempted = True
-                    logger.info(f"Z-Library 403 - refreshing cookies via referer: {referer}")
+                    logger.info("Z-Library 403 - refreshing cookies via referer: %s", referer)
                     try:
                         get_bypassed_page(referer, selector, cancel_flag)
                         time.sleep(0.5)
                         # Retry with fresh cookies (don't increment attempt)
                         continue
                     except Exception as cookie_err:
-                        logger.warning(f"Z-Library cookie refresh failed: {cookie_err}")
+                        logger.warning("Z-Library cookie refresh failed: %s", cookie_err)
 
             # Non-retryable errors
-            if status in (403, 404):
-                logger.warning(f"Download failed ({status}): {current_url}")
+            if status in _HTTP_STATUS_NON_RETRYABLE:
+                logger.warning("Download failed (%s): %s", status, current_url)
                 return None
 
             # Rate limited - skip to next source immediately
             # (waiting doesn't help with concurrent downloads hitting the same server)
-            if status == 429:
-                logger.info(f"Rate limited (429) - trying next source")
+            if status == _HTTP_STATUS_RATE_LIMITED:
+                logger.info("Rate limited (429) - trying next source")
                 if status_callback:
                     status_callback("resolving", "Server busy, trying next")
                 return None
 
             # Timeout - don't retry, server likely overloaded
             if isinstance(e, requests.exceptions.Timeout):
-                logger.warning(f"Timeout: {current_url} - skipping to next source")
+                logger.warning("Timeout: %s - skipping to next source", current_url)
                 if status_callback:
                     status_callback("resolving", "Server timed out, trying next")
                 return None
 
             # Try to resume if we got some data
             if bytes_downloaded > 0 and retryable:
-                resumed = _try_resume(current_url, buffer, bytes_downloaded, total_size, progress_callback, cancel_flag, headers)
+                resumed = _try_resume(
+                    current_url,
+                    buffer,
+                    bytes_downloaded,
+                    total_size,
+                    progress_callback,
+                    cancel_flag,
+                    headers,
+                )
                 if resumed:
                     return resumed
 
@@ -486,12 +566,14 @@ def download_url(
                     attempt += 1
                     continue
 
-            logger.warning(f"Download error: {type(e).__name__}: {e}")
+            logger.warning("Download error: %s: %s", type(e).__name__, e)
             if attempt < MAX_DOWNLOAD_RETRIES - 1:
                 time.sleep(_backoff_delay(attempt + 1))
             attempt += 1
+        else:
+            return buffer
 
-    logger.error(f"Download failed after {MAX_DOWNLOAD_RETRIES} attempts: {link}")
+    logger.error("Download failed after %s attempts: %s", MAX_DOWNLOAD_RETRIES, link)
     return None
 
 
@@ -500,35 +582,54 @@ def _try_resume(
     buffer: BytesIO,
     start_byte: int,
     total_size: float,
-    progress_callback: Optional[Callable[[float], None]],
-    cancel_flag: Optional[Event],
-    base_headers: Optional[dict] = None,
-) -> Optional[BytesIO]:
+    progress_callback: Callable[[float], None] | None,
+    cancel_flag: Event | None,
+    base_headers: dict | None = None,
+) -> BytesIO | None:
     """Try to resume an interrupted download."""
     for attempt in range(MAX_RESUME_ATTEMPTS):
-        logger.info(f"Resuming from {start_byte} bytes (attempt {attempt + 1}/{MAX_RESUME_ATTEMPTS})")
+        logger.info(
+            "Resuming from %s bytes (attempt %s/%s)",
+            start_byte,
+            attempt + 1,
+            MAX_RESUME_ATTEMPTS,
+        )
         time.sleep(_backoff_delay(attempt + 1, base=0.5, cap=5.0))
 
         try:
             # Try with CF cookies/UA if available
-            resume_headers = {**(base_headers or DOWNLOAD_HEADERS), 'Range': f'bytes={start_byte}-'}
+            resume_headers = {
+                **(base_headers or DOWNLOAD_HEADERS),
+                "Range": f"bytes={start_byte}-",
+            }
             cookies = _apply_cf_bypass(url, resume_headers)
             response = requests.get(
-                url, stream=True, proxies=get_proxies(url), timeout=REQUEST_TIMEOUT,
-                headers=resume_headers, cookies=cookies, verify=get_ssl_verify(url)
+                url,
+                stream=True,
+                proxies=get_proxies(url),
+                timeout=REQUEST_TIMEOUT,
+                headers=resume_headers,
+                cookies=cookies,
+                verify=get_ssl_verify(url),
             )
-            
+
             # Check resume support
-            if response.status_code == 200:  # Server doesn't support resume
+            if response.status_code == _HTTP_STATUS_OK:  # Server doesn't support resume
                 logger.info("Server doesn't support resume")
                 return None
-            if response.status_code == 416:  # Range not satisfiable
+            if response.status_code == _HTTP_STATUS_RANGE_NOT_SATISFIABLE:  # Range not satisfiable
                 logger.warning("Range not satisfiable")
                 return None
-            if response.status_code != 206:
+            if response.status_code != _HTTP_STATUS_PARTIAL_CONTENT:
                 response.raise_for_status()
-            
-            pbar = tqdm(total=total_size, initial=start_byte, unit='B', unit_scale=True, desc='Resuming')
+
+            pbar = tqdm(
+                total=total_size,
+                initial=start_byte,
+                unit="B",
+                unit_scale=True,
+                desc="Resuming",
+            )
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     buffer.write(chunk)
@@ -540,14 +641,15 @@ def _try_resume(
                         pbar.close()
                         return None
             pbar.close()
-            
-            logger.info(f"Resume completed: {start_byte} bytes")
-            return buffer
-            
+
+            logger.info("Resume completed: %s bytes", start_byte)
+
         except requests.exceptions.RequestException as e:
-            logger.debug(f"Resume attempt {attempt + 1} failed: {e}")
-    
-    logger.warning(f"Resume failed after {MAX_RESUME_ATTEMPTS} attempts")
+            logger.debug("Resume attempt %s failed: %s", attempt + 1, e)
+        else:
+            return buffer
+
+    logger.warning("Resume failed after %s attempts", MAX_RESUME_ATTEMPTS)
     return None
 
 

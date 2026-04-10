@@ -4,7 +4,7 @@ E2E tests for authentication endpoints.
 Tests the full authentication flow including login, logout, and auth check
 with various authentication modes.
 
-Run with: docker exec test-cwabd python3 -m pytest tests/e2e/ -v -m e2e
+Run with: uv run pytest tests/e2e/ -v -m e2e
 """
 
 import pytest
@@ -63,29 +63,26 @@ class TestAuthenticationFlow:
 
     def test_login_endpoint_exists(self, api_client: APIClient):
         """Test that login endpoint is accessible."""
-        resp = api_client.post("/api/auth/login", json={
-            "username": "test",
-            "password": "test",
-            "remember_me": False
-        })
+        resp = api_client.post(
+            "/api/auth/login", json={"username": "test", "password": "test", "remember_me": False}
+        )
 
-        # Should return some response (may be success or error depending on config)
-        assert resp.status_code in [200, 401, 403]
+        # Should return some response (may be success, auth error, or rate limit)
+        assert resp.status_code in [200, 401, 403, 429]
 
     def test_login_with_no_auth_succeeds(self, api_client: APIClient):
         """Test that login succeeds when no authentication is required."""
         # First check if auth is required
         auth_check = api_client.get("/api/auth/check")
         auth_data = auth_check.json()
-        
+
         if not auth_data.get("auth_required"):
             # Try logging in
-            resp = api_client.post("/api/auth/login", json={
-                "username": "anyuser",
-                "password": "anypass",
-                "remember_me": False
-            })
-            
+            resp = api_client.post(
+                "/api/auth/login",
+                json={"username": "anyuser", "password": "anypass", "remember_me": False},
+            )
+
             # Should succeed
             assert resp.status_code == 200
             data = resp.json()
@@ -101,10 +98,10 @@ class TestProxyAuthentication:
         # Check current auth mode
         auth_check = api_client.get("/api/auth/check")
         auth_data = auth_check.json()
-        
+
         if auth_data.get("auth_mode") != "proxy":
             pytest.skip("Proxy authentication not configured")
-        
+
         # Make a request with proxy auth header
         # Note: In real deployment, these headers would be set by the proxy
         resp = api_client.get("/api/config", headers={"X-Auth-User": "proxyuser"})
@@ -120,10 +117,10 @@ class TestProxyAuthentication:
         # Check current auth mode
         auth_check = api_client.get("/api/auth/check")
         auth_data = auth_check.json()
-        
+
         if auth_data.get("auth_mode") != "proxy":
             pytest.skip("Proxy authentication not configured")
-        
+
         # Check for logout URL in auth check response
         if "logout_url" in auth_data:
             assert isinstance(auth_data["logout_url"], str)
@@ -139,14 +136,14 @@ class TestBuiltinAuthentication:
         # Check current auth mode
         auth_check = api_client.get("/api/auth/check")
         auth_data = auth_check.json()
-        
+
         if auth_data.get("auth_mode") != "builtin":
             pytest.skip("Built-in authentication not configured")
-        
+
         if not auth_data.get("authenticated"):
             # Attempt to access protected endpoint without authentication
             resp = api_client.get("/api/config")
-            
+
             # Should be blocked
             assert resp.status_code == 401
 
@@ -155,19 +152,18 @@ class TestBuiltinAuthentication:
         # Check current auth mode
         auth_check = api_client.get("/api/auth/check")
         auth_data = auth_check.json()
-        
+
         if auth_data.get("auth_mode") != "builtin":
             pytest.skip("Built-in authentication not configured")
-        
+
         # Try logging in with invalid credentials
-        resp = api_client.post("/api/auth/login", json={
-            "username": "invalid_user",
-            "password": "wrong_password",
-            "remember_me": False
-        })
-        
-        # Should fail
-        assert resp.status_code in [401, 403]
+        resp = api_client.post(
+            "/api/auth/login",
+            json={"username": "invalid_user", "password": "wrong_password", "remember_me": False},
+        )
+
+        # Should fail, or be rate-limited on a live stack after repeated attempts
+        assert resp.status_code in [401, 403, 429]
         data = resp.json()
         assert data.get("success") is not True
 
@@ -181,7 +177,7 @@ class TestCalibreWebAuthentication:
         # Check current auth mode
         auth_check = api_client.get("/api/auth/check")
         auth_data = auth_check.json()
-        
+
         if auth_data.get("auth_mode") == "cwa":
             # CWA mode is active
             assert auth_data["auth_mode"] == "cwa"
@@ -199,13 +195,13 @@ class TestAdminAccess:
         # Check current auth status
         auth_check = api_client.get("/api/auth/check")
         auth_data = auth_check.json()
-        
+
         # If auth is required and user is not admin
         if auth_data.get("auth_required") and auth_data.get("authenticated"):
             if not auth_data.get("is_admin"):
                 # Try accessing settings
                 resp = api_client.get("/api/settings")
-                
+
                 # May be blocked with 403 if admin-only
                 # Or allowed if settings are not restricted
                 assert resp.status_code in [200, 403]
@@ -215,13 +211,13 @@ class TestAdminAccess:
         # Check current auth status
         auth_check = api_client.get("/api/auth/check")
         auth_data = auth_check.json()
-        
+
         # If auth is required and user is not admin
         if auth_data.get("auth_required") and auth_data.get("authenticated"):
             if not auth_data.get("is_admin"):
                 # Try accessing onboarding
                 resp = api_client.get("/api/onboarding")
-                
+
                 # May be blocked with 403 if admin-only
                 # Or allowed if settings are not restricted
                 assert resp.status_code in [200, 403]
@@ -236,19 +232,19 @@ class TestAuthenticationWorkflow:
         # Check initial auth status
         auth_check = api_client.get("/api/auth/check")
         initial_auth = auth_check.json()
-        
+
         # If no auth required, skip this test
         if not initial_auth.get("auth_required"):
             pytest.skip("No authentication required")
-        
+
         # Try logout first to clear any existing session
         logout_resp = api_client.post("/api/auth/logout")
         assert logout_resp.status_code == 200
-        
+
         # Check we're logged out
         auth_check = api_client.get("/api/auth/check")
         post_logout_auth = auth_check.json()
-        
+
         # For builtin/cwa auth, should not be authenticated
         # For proxy auth, depends on proxy configuration
         if initial_auth.get("auth_mode") in ["builtin", "cwa"]:
@@ -260,18 +256,18 @@ class TestAuthenticationWorkflow:
         resp1 = api_client.get("/api/auth/check")
         resp2 = api_client.get("/api/auth/check")
         resp3 = api_client.get("/api/auth/check")
-        
+
         data1 = resp1.json()
         data2 = resp2.json()
         data3 = resp3.json()
-        
+
         # All should succeed
         assert resp1.status_code == 200
         assert resp2.status_code == 200
         assert resp3.status_code == 200
-        
+
         # Auth mode should be consistent
         assert data1["auth_mode"] == data2["auth_mode"] == data3["auth_mode"]
-        
+
         # Auth required should be consistent
         assert data1["auth_required"] == data2["auth_required"] == data3["auth_required"]

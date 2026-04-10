@@ -143,6 +143,7 @@ class TestHardcoverSeriesSearch:
             series_id: int,
             page: int,
             limit: int,
+            *,
             exclude_compilations: bool,
             exclude_unreleased: bool,
         ) -> SearchResult:
@@ -203,6 +204,7 @@ class TestHardcoverSeriesSearch:
             series_id: int,
             page: int,
             limit: int,
+            *,
             exclude_compilations: bool,
             exclude_unreleased: bool,
         ) -> SearchResult:

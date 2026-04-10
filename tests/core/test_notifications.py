@@ -260,9 +260,7 @@ def test_dispatch_to_apprise_passes_shelfmark_asset_to_instantiate(monkeypatch):
 
 def test_dispatch_to_apprise_logs_captured_apprise_info_messages(monkeypatch):
     fake_apprise = _FakeAppriseModule()
-    fake_apprise.client.notify_info_messages = [
-        "Sent Pushover notification to ALL_DEVICES."
-    ]
+    fake_apprise.client.notify_info_messages = ["Sent Pushover notification to ALL_DEVICES."]
     monkeypatch.setattr(notifications_module, "apprise", fake_apprise)
 
     info_messages: list[str] = []
@@ -359,13 +357,11 @@ def test_dispatch_to_apprise_logs_captured_apprise_warning_messages(monkeypatch)
 
     assert result["success"] is False
     assert any(
-        "pover: apprise.plugins.pushover: Failed to send Pushover notification"
-        in detail
+        "pover: apprise.plugins.pushover: Failed to send Pushover notification" in detail
         for detail in result.get("details", [])
     )
     assert any(
-        "Apprise source [apprise.plugins.pushover]: Failed to send Pushover notification"
-        in msg
+        "Apprise source [apprise.plugins.pushover]: Failed to send Pushover notification" in msg
         for msg in warning_messages
     )
 
@@ -396,7 +392,14 @@ def test_dispatch_to_apprise_logs_add_exception_at_debug_with_trace(monkeypatch)
     assert result["details"] == ["ntfys: route registration failed (RuntimeError: add exploded)"]
     assert any(
         "Apprise route registration raised RuntimeError" in (message % args if args else message)
-        and kwargs.get("exc_info") is True
+        and kwargs.get("exc_info")
+        == (
+            RuntimeError,
+            fake_apprise.client.instantiate_exceptions_by_url["ntfys://ntfy.sh/shelfmark"],
+            fake_apprise.client.instantiate_exceptions_by_url[
+                "ntfys://ntfy.sh/shelfmark"
+            ].__traceback__,
+        )
         for message, args, kwargs in debug_calls
     )
 
@@ -427,7 +430,12 @@ def test_dispatch_to_apprise_logs_notify_exception_at_debug_with_trace(monkeypat
     assert result["details"] == ["ntfys: notify raised RuntimeError: notify exploded"]
     assert any(
         "Apprise notify raised RuntimeError" in (message % args if args else message)
-        and kwargs.get("exc_info") is True
+        and kwargs.get("exc_info")
+        == (
+            RuntimeError,
+            fake_apprise.client.notify_exceptions_by_url["ntfys://ntfy.sh/shelfmark"],
+            fake_apprise.client.notify_exceptions_by_url["ntfys://ntfy.sh/shelfmark"].__traceback__,
+        )
         for message, args, kwargs in debug_calls
     )
 
@@ -573,7 +581,10 @@ def test_resolve_user_routes_expands_multiselect_event_rows(monkeypatch):
         if key != "USER_NOTIFICATION_ROUTES" or user_id != 7:
             return default
         return [
-            {"event": ["download_complete", "request_fulfilled"], "url": "ntfys://ntfy.sh/user-main"},
+            {
+                "event": ["download_complete", "request_fulfilled"],
+                "url": "ntfys://ntfy.sh/user-main",
+            },
             {"event": ["all", "download_failed"], "url": "ntfys://ntfy.sh/user-all"},
         ]
 

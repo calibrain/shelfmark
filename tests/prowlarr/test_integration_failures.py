@@ -4,7 +4,7 @@ Integration failure tests for download clients.
 These tests verify error handling behavior against REAL running clients.
 They require the Docker test stack to be running.
 
-Run with: docker exec test-cwabd python3 -m pytest /app/tests/prowlarr/test_integration_failures.py -v -m integration
+Run with: docker compose -f docker-compose.test-clients.yml exec shelfmark uv run pytest /app/tests/prowlarr/test_integration_failures.py -v -m integration
 
 Key scenarios tested:
 - Invalid magnet links / bad torrents

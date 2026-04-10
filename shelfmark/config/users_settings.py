@@ -7,6 +7,11 @@ that talks to /api/admin/users endpoints.
 
 from typing import Any
 
+from shelfmark.core.request_policy import (
+    get_source_content_type_capabilities,
+    parse_policy_mode,
+    validate_policy_rules,
+)
 from shelfmark.core.settings_registry import (
     CheckboxField,
     CustomComponentField,
@@ -14,16 +19,11 @@ from shelfmark.core.settings_registry import (
     MultiSelectField,
     NumberField,
     SelectField,
+    SettingsField,
     TableField,
     register_on_save,
     register_settings,
 )
-from shelfmark.core.request_policy import (
-    get_source_content_type_capabilities,
-    parse_policy_mode,
-    validate_policy_rules,
-)
-
 
 _REQUEST_DEFAULT_MODE_OPTIONS = [
     {
@@ -72,7 +72,11 @@ _SELF_SETTINGS_SECTION_OPTIONS = [
 _SELF_SETTINGS_SECTION_VALUES = {option["value"] for option in _SELF_SETTINGS_SECTION_OPTIONS}
 _SELF_SETTINGS_SECTION_DEFAULTS = [option["value"] for option in _SELF_SETTINGS_SECTION_OPTIONS]
 _SEARCH_MODE_VALUES = {"direct", "universal"}
-_SEARCH_PREFERENCE_PROVIDER_KEYS = {"METADATA_PROVIDER", "METADATA_PROVIDER_AUDIOBOOK", "METADATA_PROVIDER_COMBINED"}
+_SEARCH_PREFERENCE_PROVIDER_KEYS = {
+    "METADATA_PROVIDER",
+    "METADATA_PROVIDER_AUDIOBOOK",
+    "METADATA_PROVIDER_COMBINED",
+}
 _SEARCH_PREFERENCE_VALIDATABLE_KEYS = {
     "SEARCH_MODE",
     "DEFAULT_RELEASE_SOURCE",
@@ -104,19 +108,17 @@ _USERS_HEADING_DESCRIPTION_BY_AUTH_MODE = {
 }
 
 
-def _get_request_source_options():
+def _get_request_source_options() -> list[dict[str, str]]:
     """Build request-policy source options from registered release sources."""
     from shelfmark.release_sources import list_available_sources
 
-    options = []
-    for source in list_available_sources():
-        options.append(
-            {
-                "value": source["name"],
-                "label": source["display_name"],
-            }
-        )
-    return options
+    return [
+        {
+            "value": source["name"],
+            "label": source["display_name"],
+        }
+        for source in list_available_sources()
+    ]
 
 
 def _get_valid_release_source_names_for_content_type(content_type: str) -> set[str]:
@@ -131,20 +133,20 @@ def _get_valid_release_source_names_for_content_type(content_type: str) -> set[s
     return valid_sources
 
 
-def _get_request_policy_rule_columns():
+def _get_request_policy_rule_columns() -> list[dict[str, object]]:
     source_capabilities = get_source_content_type_capabilities()
     content_type_options = []
 
     for source_name, supported_types in source_capabilities.items():
         normalized_types = [t for t in ("ebook", "audiobook") if t in supported_types]
-        for content_type in normalized_types:
-            content_type_options.append(
-                {
-                    "value": content_type,
-                    "label": "Ebook" if content_type == "ebook" else "Audiobook",
-                    "childOf": source_name,
-                }
-            )
+        content_type_options.extend(
+            {
+                "value": content_type,
+                "label": "Ebook" if content_type == "ebook" else "Audiobook",
+                "childOf": source_name,
+            }
+            for content_type in normalized_types
+        )
 
     return [
         {
@@ -224,7 +226,7 @@ def validate_search_preference_value(key: str, value: Any) -> tuple[Any, str | N
     return value, None
 
 
-def _on_save_users(values):
+def _on_save_users(values: dict[str, object]) -> dict[str, object]:
     """Validate users/request-policy settings before persistence."""
     if "VISIBLE_SELF_SETTINGS_SECTIONS" in values:
         raw_sections = values["VISIBLE_SELF_SETTINGS_SECTIONS"]
@@ -233,7 +235,9 @@ def _on_save_users(values):
         elif isinstance(raw_sections, str):
             candidate_sections = [s.strip() for s in raw_sections.split(",") if s.strip()]
         elif isinstance(raw_sections, (list, tuple, set)):
-            candidate_sections = [str(section).strip() for section in raw_sections if str(section).strip()]
+            candidate_sections = [
+                str(section).strip() for section in raw_sections if str(section).strip()
+            ]
         else:
             return {
                 "error": True,
@@ -258,21 +262,25 @@ def _on_save_users(values):
 
         values["VISIBLE_SELF_SETTINGS_SECTIONS"] = normalized_sections
 
-    if "REQUEST_POLICY_DEFAULT_EBOOK" in values:
-        if parse_policy_mode(values["REQUEST_POLICY_DEFAULT_EBOOK"]) is None:
-            return {
-                "error": True,
-                "message": "REQUEST_POLICY_DEFAULT_EBOOK must be a valid policy mode",
-                "values": values,
-            }
+    if (
+        "REQUEST_POLICY_DEFAULT_EBOOK" in values
+        and parse_policy_mode(values["REQUEST_POLICY_DEFAULT_EBOOK"]) is None
+    ):
+        return {
+            "error": True,
+            "message": "REQUEST_POLICY_DEFAULT_EBOOK must be a valid policy mode",
+            "values": values,
+        }
 
-    if "REQUEST_POLICY_DEFAULT_AUDIOBOOK" in values:
-        if parse_policy_mode(values["REQUEST_POLICY_DEFAULT_AUDIOBOOK"]) is None:
-            return {
-                "error": True,
-                "message": "REQUEST_POLICY_DEFAULT_AUDIOBOOK must be a valid policy mode",
-                "values": values,
-            }
+    if (
+        "REQUEST_POLICY_DEFAULT_AUDIOBOOK" in values
+        and parse_policy_mode(values["REQUEST_POLICY_DEFAULT_AUDIOBOOK"]) is None
+    ):
+        return {
+            "error": True,
+            "message": "REQUEST_POLICY_DEFAULT_AUDIOBOOK must be a valid policy mode",
+            "values": values,
+        }
 
     if "REQUEST_POLICY_RULES" in values:
         normalized_rules, errors = validate_policy_rules(values["REQUEST_POLICY_RULES"])
@@ -303,7 +311,7 @@ register_on_save("users", _on_save_users)
 
 
 @register_settings("users", "Users & Requests", icon="users", order=6)
-def users_settings():
+def users_settings() -> list[SettingsField]:
     """User management tab - rendered as a custom component on the frontend."""
     return [
         HeadingField(
@@ -330,9 +338,7 @@ def users_settings():
         HeadingField(
             key="requests_heading",
             title="Requests",
-            description=(
-                "Choose what users can download directly and what needs approval first."
-            ),
+            description=("Choose what users can download directly and what needs approval first."),
         ),
         CheckboxField(
             key="REQUESTS_ENABLED",
@@ -356,9 +362,7 @@ def users_settings():
                 SelectField(
                     key="REQUEST_POLICY_DEFAULT_EBOOK",
                     label="Default Ebook Mode",
-                    description=(
-                        "Sets the baseline for all ebook sources."
-                    ),
+                    description=("Sets the baseline for all ebook sources."),
                     options=_REQUEST_DEFAULT_MODE_OPTIONS,
                     default="download",
                     user_overridable=True,
@@ -366,9 +370,7 @@ def users_settings():
                 SelectField(
                     key="REQUEST_POLICY_DEFAULT_AUDIOBOOK",
                     label="Default Audiobook Mode",
-                    description=(
-                        "Sets the baseline for all audiobook sources."
-                    ),
+                    description=("Sets the baseline for all audiobook sources."),
                     options=_REQUEST_DEFAULT_MODE_OPTIONS,
                     default="download",
                     user_overridable=True,

@@ -4,7 +4,7 @@ Failure scenario tests for Prowlarr handler and download clients.
 These tests verify error handling behavior - what happens when things go wrong.
 They use real clients where possible, with injected failures for edge cases.
 
-Run with: docker exec test-cwabd python3 -m pytest /app/tests/prowlarr/test_failure_scenarios.py -v
+Run with: uv run pytest tests/prowlarr/test_failure_scenarios.py -v
 """
 
 import time

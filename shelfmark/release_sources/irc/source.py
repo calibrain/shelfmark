@@ -6,15 +6,15 @@ Searches IRC channels for ebook and audiobook releases.
 import tempfile
 import time
 from pathlib import Path
-from typing import List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
+    from shelfmark.metadata_providers import BookMetadata
 
 from shelfmark.api.websocket import ws_manager
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources import (
     ColumnColorHint,
     ColumnRenderType,
@@ -36,15 +36,16 @@ from .parser import SearchResult, extract_results_from_zip, parse_results_file
 logger = setup_logger(__name__)
 
 
-def _emit_status(message: str, phase: str = 'searching') -> None:
+def _emit_status(message: str, phase: str = "searching") -> None:
     """Emit search status to frontend via WebSocket."""
     ws_manager.broadcast_search_status(
-        source='irc',
-        provider='',
-        book_id='',
+        source="irc",
+        provider="",
+        book_id="",
         message=message,
         phase=phase,
     )
+
 
 # Rate limiting to avoid server throttling
 MIN_SEARCH_INTERVAL = 15.0
@@ -58,7 +59,7 @@ def _enforce_rate_limit() -> None:
     elapsed = time.time() - _last_search_time
     if elapsed < MIN_SEARCH_INTERVAL:
         wait_time = MIN_SEARCH_INTERVAL - elapsed
-        logger.info(f"Rate limiting: waiting {wait_time:.1f}s")
+        logger.info("Rate limiting: waiting %.1fs", wait_time)
         time.sleep(wait_time)
 
     _last_search_time = time.time()
@@ -70,12 +71,12 @@ class IRCReleaseSource(ReleaseSource):
 
     name = "irc"
     display_name = "IRC"
-    supported_content_types = ["ebook", "audiobook"]
+    supported_content_types: ClassVar[list[str]] = ["ebook", "audiobook"]
     can_be_default = False  # Exclude from default source options (requires deliberate selection)
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Track online servers from most recent search
-        self._online_servers: Optional[set[str]] = None
+        self._online_servers: set[str] | None = None
 
     def is_available(self) -> bool:
         """Check if IRC is configured (server, channel, and nick are set)."""
@@ -124,16 +125,17 @@ class IRCReleaseSource(ReleaseSource):
     def search(
         self,
         book: BookMetadata,
-        plan: "ReleaseSearchPlan",
+        plan: ReleaseSearchPlan,
+        *,
         expand_search: bool = False,
-        content_type: str = "ebook"
-    ) -> List[Release]:
+        content_type: str = "ebook",
+    ) -> list[Release]:
         """Search IRC for books matching metadata.
 
         The expand_search parameter is repurposed for IRC as a "refresh" flag.
         When True, it bypasses the cache and forces a fresh search.
         """
-        from .cache import get_cached_results, cache_results
+        from .cache import cache_results, get_cached_results
 
         if not self.is_available():
             logger.debug("IRC source is disabled, skipping search")
@@ -143,7 +145,7 @@ class IRCReleaseSource(ReleaseSource):
         if not expand_search:
             cached = get_cached_results(book.provider, book.provider_id, content_type=content_type)
             if cached:
-                _emit_status("Using cached results", phase='complete')
+                _emit_status("Using cached results", phase="complete")
                 self._online_servers = set(cached.get("online_servers", []))
                 return cached["releases"]
 
@@ -153,7 +155,7 @@ class IRCReleaseSource(ReleaseSource):
             logger.warning("No search query could be built")
             return []
 
-        logger.info(f"IRC search: {query}")
+        logger.info("IRC search: %s", query)
 
         # Enforce rate limit
         _enforce_rate_limit()
@@ -169,7 +171,7 @@ class IRCReleaseSource(ReleaseSource):
         client = None
         try:
             # Get or reuse IRC connection
-            _emit_status(f"Connecting to {server}...", phase='connecting')
+            _emit_status(f"Connecting to {server}...", phase="connecting")
             client = connection_manager.get_connection(
                 server=server,
                 port=port,
@@ -186,11 +188,11 @@ class IRCReleaseSource(ReleaseSource):
             client.send_message(f"#{channel}", search_msg)
 
             # Wait for results DCC - this is the long wait
-            _emit_status(f"Connected to #{channel} - Waiting for results...", phase='searching')
+            _emit_status(f"Connected to #{channel} - Waiting for results...", phase="searching")
             offer = client.wait_for_dcc(timeout=60.0, result_type=True)
             if not offer:
                 logger.info("No search results received")
-                _emit_status("No results found", phase='complete')
+                _emit_status("No results found", phase="complete")
                 # Release connection for reuse (don't close it)
                 connection_manager.release_connection(client)
                 # Cache empty result to avoid repeated failed searches
@@ -205,16 +207,16 @@ class IRCReleaseSource(ReleaseSource):
                 return []
 
             # Download results file
-            _emit_status(f"Connected to #{channel} - Downloading results...", phase='downloading')
+            _emit_status(f"Connected to #{channel} - Downloading results...", phase="downloading")
             with tempfile.TemporaryDirectory() as tmpdir:
                 result_path = Path(tmpdir) / offer.filename
                 download_dcc(offer, result_path, timeout=30.0)
 
                 # Parse results
-                if result_path.suffix.lower() == '.zip':
+                if result_path.suffix.lower() == ".zip":
                     content = extract_results_from_zip(result_path)
                 else:
-                    content = result_path.read_text(errors='replace')
+                    content = result_path.read_text(errors="replace")
 
             # Release connection for reuse (don't close it)
             connection_manager.release_connection(client)
@@ -233,20 +235,21 @@ class IRCReleaseSource(ReleaseSource):
                 online_servers=list(self._online_servers) if self._online_servers else None,
             )
 
-            return releases
-
         except DCCError as e:
-            logger.error(f"DCC error during search: {e}")
-            _emit_status(f"DCC error: {e}", phase='error')
+            logger.exception("DCC error during search")
+            _emit_status(f"DCC error: {e}", phase="error")
             if client:
                 connection_manager.close_connection(client)
             return []
         except Exception as e:
-            logger.error(f"IRC search failed: {e}")
-            _emit_status(f"Search failed: {e}", phase='error')
+            logger.exception("IRC search failed")
+            _emit_status(f"Search failed: {e}", phase="error")
             if client:
                 connection_manager.close_connection(client)
             return []
+
+        else:
+            return releases
 
     def _build_query(self, book: BookMetadata) -> str:
         """Build search query from book metadata."""
@@ -262,51 +265,51 @@ class IRCReleaseSource(ReleaseSource):
             author = book.authors[0] if isinstance(book.authors, list) else book.authors
             parts.append(author)
 
-        return ' '.join(parts)
+        return " ".join(parts)
 
     # Format priority for sorting (lower = higher priority)
-    EBOOK_FORMAT_PRIORITY = {
-        'epub': 0,
-        'mobi': 1,
-        'azw3': 2,
-        'azw': 3,
-        'fb2': 4,
-        'djvu': 5,
-        'pdf': 6,
-        'cbr': 7,
-        'cbz': 8,
-        'doc': 9,
-        'docx': 10,
-        'rtf': 11,
-        'txt': 12,
-        'html': 13,
-        'htm': 14,
-        'rar': 15,
-        'zip': 16,
+    EBOOK_FORMAT_PRIORITY: ClassVar[dict[str, int]] = {
+        "epub": 0,
+        "mobi": 1,
+        "azw3": 2,
+        "azw": 3,
+        "fb2": 4,
+        "djvu": 5,
+        "pdf": 6,
+        "cbr": 7,
+        "cbz": 8,
+        "doc": 9,
+        "docx": 10,
+        "rtf": 11,
+        "txt": 12,
+        "html": 13,
+        "htm": 14,
+        "rar": 15,
+        "zip": 16,
     }
 
-    AUDIOBOOK_FORMAT_PRIORITY = {
-        'm4b': 0,
-        'mp3': 1,
-        'm4a': 2,
-        'flac': 3,
-        'opus': 4,
-        'ogg': 5,
-        'aac': 6,
-        'wav': 7,
-        'wma': 8,
-        'rar': 9,
-        'zip': 10,
+    AUDIOBOOK_FORMAT_PRIORITY: ClassVar[dict[str, int]] = {
+        "m4b": 0,
+        "mp3": 1,
+        "m4a": 2,
+        "flac": 3,
+        "opus": 4,
+        "ogg": 5,
+        "aac": 6,
+        "wav": 7,
+        "wma": 8,
+        "rar": 9,
+        "zip": 10,
     }
 
     def _convert_to_releases(
         self,
-        results: List[SearchResult],
+        results: list[SearchResult],
         content_type: str = "ebook",
-    ) -> List[Release]:
+    ) -> list[Release]:
         """Convert parsed results to Release objects, sorted by online/format/server."""
         releases = []
-        online_servers = self._online_servers if self._online_servers else set()
+        online_servers = self._online_servers or set()
         format_priority_map = (
             self.AUDIOBOOK_FORMAT_PRIORITY
             if content_type == "audiobook"
@@ -340,8 +343,8 @@ class IRCReleaseSource(ReleaseSource):
             format_priority = format_priority_map.get(fmt, 99)
             return (
                 0 if is_online else 1,  # Online first
-                format_priority,         # Then by format
-                server.lower(),          # Then alphabetically by server
+                format_priority,  # Then by format
+                server.lower(),  # Then alphabetically by server
             )
 
         releases.sort(key=sort_key)
@@ -349,7 +352,7 @@ class IRCReleaseSource(ReleaseSource):
         return releases
 
     @staticmethod
-    def _parse_size(size_str: str) -> Optional[int]:
+    def _parse_size(size_str: str) -> int | None:
         """Parse human-readable size (e.g., '1.2MB', '500K') to bytes."""
         if not size_str:
             return None
@@ -358,19 +361,19 @@ class IRCReleaseSource(ReleaseSource):
 
         # Map suffixes to multipliers (check longer suffixes first)
         multipliers = [
-            ('GB', 1024 * 1024 * 1024),
-            ('MB', 1024 * 1024),
-            ('KB', 1024),
-            ('G', 1024 * 1024 * 1024),
-            ('M', 1024 * 1024),
-            ('K', 1024),
-            ('B', 1),
+            ("GB", 1024 * 1024 * 1024),
+            ("MB", 1024 * 1024),
+            ("KB", 1024),
+            ("G", 1024 * 1024 * 1024),
+            ("M", 1024 * 1024),
+            ("K", 1024),
+            ("B", 1),
         ]
 
         for suffix, mult in multipliers:
             if size_str.endswith(suffix):
                 try:
-                    num = float(size_str[:-len(suffix)].strip())
+                    num = float(size_str[: -len(suffix)].strip())
                     return int(num * mult)
                 except ValueError:
                     return None

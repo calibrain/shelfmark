@@ -2,14 +2,29 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
 
-from flask import Flask, jsonify, request, session
+from flask import Flask, Response, jsonify, request, session
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.notifications import (
+    NotificationContext,
+    NotificationEvent,
+    notify_admin,
+    notify_user,
+)
+from shelfmark.core.request_helpers import (
+    coerce_bool,
+    coerce_int,
+    emit_ws_event,
+    load_users_request_policy_settings,
+    normalize_optional_text,
+    normalize_positive_int,
+    populate_request_usernames,
+)
 from shelfmark.core.request_policy import (
-    PolicyMode,
     REQUEST_POLICY_DEFAULT_FALLBACK_MODE,
+    PolicyMode,
     get_source_content_type_capabilities,
     merge_request_policy_settings,
     normalize_content_type,
@@ -26,22 +41,11 @@ from shelfmark.core.requests_service import (
     fulfil_request,
     reject_request,
 )
-from shelfmark.core.notifications import (
-    NotificationContext,
-    NotificationEvent,
-    notify_admin,
-    notify_user,
-)
-from shelfmark.core.request_helpers import (
-    coerce_bool,
-    coerce_int,
-    emit_ws_event,
-    load_users_request_policy_settings,
-    normalize_optional_text,
-    normalize_positive_int,
-    populate_request_usernames,
-)
-from shelfmark.core.user_db import UserDB
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
 
@@ -52,7 +56,7 @@ def _error_response(
     *,
     code: str | None = None,
     required_mode: str | None = None,
-):
+) -> tuple[Response, int]:
     payload: dict[str, Any] = {"error": message}
     if code is not None:
         payload["code"] = code
@@ -61,7 +65,9 @@ def _error_response(
     return jsonify(payload), status_code
 
 
-def _require_request_endpoints_available(resolve_auth_mode: Callable[[], str]):
+def _require_request_endpoints_available(
+    resolve_auth_mode: Callable[[], str],
+) -> tuple[Response, int] | None:
     auth_mode = resolve_auth_mode()
     if auth_mode == "none":
         return _error_response(
@@ -74,7 +80,7 @@ def _require_request_endpoints_available(resolve_auth_mode: Callable[[], str]):
     return None
 
 
-def _require_db_user_id() -> tuple[int | None, Any | None]:
+def _require_db_user_id() -> tuple[int | None, object | None]:
     raw_user_id = session.get("db_user_id")
     if raw_user_id is None:
         return None, _error_response(
@@ -84,7 +90,7 @@ def _require_db_user_id() -> tuple[int | None, Any | None]:
         )
     try:
         return int(raw_user_id), None
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None, _error_response(
             "User identity is unavailable for request workflow",
             403,
@@ -92,7 +98,7 @@ def _require_db_user_id() -> tuple[int | None, Any | None]:
         )
 
 
-def _require_admin_user_id() -> tuple[int | None, Any | None]:
+def _require_admin_user_id() -> tuple[int | None, object | None]:
     if not session.get("is_admin", False):
         return None, (jsonify({"error": "Admin access required"}), 403)
     raw_admin_id = session.get("db_user_id")
@@ -100,7 +106,7 @@ def _require_admin_user_id() -> tuple[int | None, Any | None]:
         return None, (jsonify({"error": "Admin user identity unavailable"}), 403)
     try:
         return int(raw_admin_id), None
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None, (jsonify({"error": "Admin user identity unavailable"}), 403)
 
 
@@ -112,11 +118,11 @@ def _resolve_effective_policy(
     global_settings = load_users_request_policy_settings()
     user_settings = user_db.get_user_settings(db_user_id) if db_user_id is not None else {}
     effective = merge_request_policy_settings(global_settings, user_settings)
-    requests_enabled = coerce_bool(effective.get("REQUESTS_ENABLED"), False)
+    requests_enabled = coerce_bool(effective.get("REQUESTS_ENABLED"), default=False)
     return global_settings, user_settings, effective, requests_enabled
 
 
-def _resolve_title_from_book_data(book_data: Any) -> str:
+def _resolve_title_from_book_data(book_data: object) -> str:
     if isinstance(book_data, dict):
         title = normalize_optional_text(book_data.get("title"))
         if title is not None:
@@ -124,7 +130,7 @@ def _resolve_title_from_book_data(book_data: Any) -> str:
     return "Unknown title"
 
 
-def _normalize_optional_source_id(value: Any) -> str | None:
+def _normalize_optional_source_id(value: object) -> str | None:
     """Normalize source identifiers while allowing integer provider ids."""
     if isinstance(value, bool) or value is None:
         return None
@@ -140,9 +146,9 @@ def _build_release_result_data_from_book_data(
     content_type: str,
 ) -> dict[str, Any]:
     """Build release-level payload fields for sources whose browse results are releases."""
-    source_id = _normalize_optional_source_id(book_data.get("provider_id")) or _normalize_optional_source_id(
-        book_data.get("id")
-    )
+    source_id = _normalize_optional_source_id(
+        book_data.get("provider_id")
+    ) or _normalize_optional_source_id(book_data.get("id"))
     payload: dict[str, Any] = {
         "source": source,
         "source_id": source_id,
@@ -164,15 +170,16 @@ def _source_results_are_releases(source: str) -> bool:
     if normalized_source in {"", "*"}:
         return False
     from shelfmark.release_sources import source_results_are_releases
+
     return source_results_are_releases(normalized_source)
 
 
 def _normalize_release_result_request_payload(
     *,
     source: str,
-    request_level: Any,
-    book_data: Any,
-    release_data: Any,
+    request_level: object,
+    book_data: object,
+    release_data: object,
     content_type: str,
 ) -> tuple[Any, Any]:
     """Concrete-release browse results are always handled as release-level requests."""
@@ -194,13 +201,15 @@ def _normalize_release_result_request_payload(
         if normalized_release_data.get("content_type") is None:
             normalized_release_data["content_type"] = content_type
 
-        normalized_source_id = _normalize_optional_source_id(normalized_release_data.get("source_id"))
+        normalized_source_id = _normalize_optional_source_id(
+            normalized_release_data.get("source_id")
+        )
         if normalized_source_id is not None:
             normalized_release_data["source_id"] = normalized_source_id
         elif isinstance(book_data, dict):
-            fallback_source_id = _normalize_optional_source_id(book_data.get("provider_id")) or _normalize_optional_source_id(
-                book_data.get("id")
-            )
+            fallback_source_id = _normalize_optional_source_id(
+                book_data.get("provider_id")
+            ) or _normalize_optional_source_id(book_data.get("id"))
             if fallback_source_id is not None:
                 normalized_release_data["source_id"] = fallback_source_id
 
@@ -237,26 +246,30 @@ def _resolve_request_user_context(
     *,
     actor_user_id: int,
     actor_username: str | None,
-    on_behalf_of_user_id: Any,
+    on_behalf_of_user_id: object,
 ) -> tuple[int, str | None, str]:
     if on_behalf_of_user_id in (None, ""):
         actor_label = _format_user_label(actor_username, actor_user_id)
         return actor_user_id, actor_username, actor_label
 
     if not session.get("is_admin", False):
-        raise RequestServiceError("Admin required", status_code=403)
+        msg = "Admin required"
+        raise RequestServiceError(msg, status_code=403)
 
     try:
         target_user_id = int(on_behalf_of_user_id)
     except (TypeError, ValueError) as exc:
-        raise RequestServiceError("Invalid on_behalf_of_user_id", status_code=400) from exc
+        msg = "Invalid on_behalf_of_user_id"
+        raise RequestServiceError(msg, status_code=400) from exc
 
     if target_user_id <= 0:
-        raise RequestServiceError("Invalid on_behalf_of_user_id", status_code=400)
+        msg = "Invalid on_behalf_of_user_id"
+        raise RequestServiceError(msg, status_code=400)
 
     target_user = user_db.get_user(user_id=target_user_id)
     if not target_user:
-        raise RequestServiceError("User not found", status_code=404)
+        msg = "User not found"
+        raise RequestServiceError(msg, status_code=404)
 
     target_username = normalize_optional_text(target_user.get("username"))
     actor_label = _format_user_label(actor_username, actor_user_id)
@@ -270,8 +283,9 @@ def _prepare_request_create_arguments(
 ) -> dict[str, Any]:
     db_user_id, db_gate = _require_db_user_id()
     if db_gate is not None or db_user_id is None:
+        msg = "User identity is unavailable for request workflow"
         raise RequestServiceError(
-            "User identity is unavailable for request workflow",
+            msg,
             status_code=403,
             code="user_identity_unavailable",
         )
@@ -286,7 +300,8 @@ def _prepare_request_create_arguments(
 
     context = data.get("context") or {}
     if not isinstance(context, dict):
-        raise RequestServiceError("context must be an object", status_code=400)
+        msg = "context must be an object"
+        raise RequestServiceError(msg, status_code=400)
 
     source = normalize_source(context.get("source"))
     release_data = data.get("release_data")
@@ -296,13 +311,12 @@ def _prepare_request_create_arguments(
 
     book_data = data.get("book_data")
     if not isinstance(book_data, dict):
-        raise RequestServiceError("book_data must be an object", status_code=400)
+        msg = "book_data must be an object"
+        raise RequestServiceError(msg, status_code=400)
     request_title = _resolve_title_from_book_data(book_data)
 
     content_type = normalize_content_type(
-        context.get("content_type")
-        or data.get("content_type")
-        or book_data.get("content_type")
+        context.get("content_type") or data.get("content_type") or book_data.get("content_type")
     )
     request_level, release_data = _normalize_release_result_request_payload(
         source=source,
@@ -317,8 +331,9 @@ def _prepare_request_create_arguments(
         db_user_id=target_user_id,
     )
     if not requests_enabled:
+        msg = "Request workflow is disabled by policy"
         raise RequestServiceError(
-            "Request workflow is disabled by policy",
+            msg,
             status_code=403,
             code="requests_unavailable",
         )
@@ -327,10 +342,8 @@ def _prepare_request_create_arguments(
         effective.get("MAX_PENDING_REQUESTS_PER_USER"),
         default=20,
     )
-    if max_pending < 1:
-        max_pending = 1
-    if max_pending > 1000:
-        max_pending = 1000
+    max_pending = max(max_pending, 1)
+    max_pending = min(max_pending, 1000)
     allow_notes = coerce_bool(effective.get("REQUESTS_ALLOW_NOTES"), default=True)
     note_value = data.get("note") if allow_notes else None
 
@@ -342,7 +355,7 @@ def _prepare_request_create_arguments(
     )
     logger.debug(
         "request create policy actor=%s target_user_id=%s source=%s content_type=%s request_level=%s resolved_mode=%s",
-        session.get("user_id"),
+        actor_label,
         target_user_id,
         source,
         content_type,
@@ -351,8 +364,9 @@ def _prepare_request_create_arguments(
     )
 
     if resolved_mode == PolicyMode.BLOCKED:
+        msg = "Requesting is blocked by policy"
         raise RequestServiceError(
-            "Requesting is blocked by policy",
+            msg,
             status_code=403,
             code="policy_blocked",
             required_mode=PolicyMode.BLOCKED.value,
@@ -360,8 +374,9 @@ def _prepare_request_create_arguments(
 
     requested_level = str(request_level).strip().lower() if isinstance(request_level, str) else ""
     if resolved_mode == PolicyMode.REQUEST_BOOK and requested_level != "book":
+        msg = "Policy requires book-level requests"
         raise RequestServiceError(
-            "Policy requires book-level requests",
+            msg,
             status_code=403,
             code="policy_requires_request",
             required_mode=PolicyMode.REQUEST_BOOK.value,
@@ -385,7 +400,9 @@ def _prepare_request_create_arguments(
     }
 
 
-def _resolve_request_source_and_format(request_row: dict[str, Any]) -> tuple[str, str | None]:
+def _resolve_request_source_and_format(
+    request_row: dict[str, Any],
+) -> tuple[str, str | None]:
     release_data = request_row.get("release_data")
     if isinstance(release_data, dict):
         source = normalize_source(release_data.get("source") or request_row.get("source_hint"))
@@ -431,8 +448,9 @@ def _queue_prepared_download_submission(
 ) -> dict[str, Any]:
     release_data = create_args.get("release_data")
     if not isinstance(release_data, dict):
+        msg = "Download policy requires a concrete release"
         raise RequestServiceError(
-            "Download policy requires a concrete release",
+            msg,
             status_code=400,
             code="policy_requires_download",
             required_mode=PolicyMode.DOWNLOAD.value,
@@ -440,7 +458,8 @@ def _queue_prepared_download_submission(
 
     requester = user_db.get_user(user_id=create_args["user_id"])
     if requester is None:
-        raise RequestServiceError("Requesting user not found", status_code=404)
+        msg = "Requesting user not found"
+        raise RequestServiceError(msg, status_code=404)
 
     success, error = queue_release(
         dict(release_data),
@@ -459,8 +478,6 @@ def _queue_prepared_download_submission(
         create_args=create_args,
         request_title=request_title,
     )
-
-
 
 
 def _notify_admin_for_request_event(
@@ -516,12 +533,12 @@ def register_request_routes(
     *,
     resolve_auth_mode: Callable[[], str],
     queue_release: Callable[..., tuple[bool, str | None]],
-    ws_manager: Any | None = None,
+    ws_manager: object | None = None,
 ) -> None:
     """Register request policy and request lifecycle routes."""
 
     @app.route("/api/request-policy", methods=["GET"])
-    def api_request_policy():
+    def api_request_policy() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -537,7 +554,7 @@ def register_request_routes(
             if raw_id is not None:
                 try:
                     db_user_id = int(raw_id)
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     db_user_id = None
 
         global_settings, user_settings, effective, requests_enabled = _resolve_effective_policy(
@@ -550,6 +567,7 @@ def register_request_routes(
 
         source_capabilities = get_source_content_type_capabilities()
         from shelfmark.release_sources import source_results_are_releases
+
         source_modes = []
         for source_name in sorted(source_capabilities):
             supported_types = sorted(
@@ -597,7 +615,7 @@ def register_request_routes(
         )
 
     @app.route("/api/requests", methods=["POST"])
-    def api_create_request():
+    def api_create_request() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -663,7 +681,7 @@ def register_request_routes(
         return jsonify(created), 201
 
     @app.route("/api/requests/batch", methods=["POST"])
-    def api_create_requests_batch():
+    def api_create_requests_batch() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -716,7 +734,11 @@ def register_request_routes(
 
         results_by_index: dict[int, dict[str, Any]] = {}
 
-        for (index, prepared), created in zip(request_prepared_items, created_rows):
+        for (index, prepared), created in zip(
+            request_prepared_items,
+            created_rows,
+            strict=True,
+        ):
             event_payload = {
                 "request_id": created["id"],
                 "status": created["status"],
@@ -773,7 +795,7 @@ def register_request_routes(
         return jsonify(ordered_results), status_code
 
     @app.route("/api/requests", methods=["GET"])
-    def api_list_requests():
+    def api_list_requests() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -798,7 +820,7 @@ def register_request_routes(
         return jsonify(rows)
 
     @app.route("/api/requests/<int:request_id>", methods=["DELETE"])
-    def api_cancel_request(request_id: int):
+    def api_cancel_request(request_id: int) -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -821,7 +843,9 @@ def register_request_routes(
             "status": updated["status"],
             "title": _resolve_request_title(updated),
         }
-        actor_label = _format_user_label(normalize_optional_text(session.get("user_id")), db_user_id)
+        actor_label = _format_user_label(
+            normalize_optional_text(session.get("user_id")), db_user_id
+        )
         logger.info(
             "Request cancelled #%s for '%s' by %s",
             updated["id"],
@@ -844,7 +868,7 @@ def register_request_routes(
         return jsonify(updated)
 
     @app.route("/api/admin/requests", methods=["GET"])
-    def api_admin_list_requests():
+    def api_admin_list_requests() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -865,17 +889,14 @@ def register_request_routes(
         return jsonify(rows)
 
     @app.route("/api/admin/requests/count", methods=["GET"])
-    def api_admin_request_counts():
+    def api_admin_request_counts() -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
         if not session.get("is_admin", False):
             return jsonify({"error": "Admin access required"}), 403
 
-        by_status = {
-            status: len(user_db.list_requests(status=status))
-            for status in RequestStatus
-        }
+        by_status = {status: len(user_db.list_requests(status=status)) for status in RequestStatus}
         return jsonify(
             {
                 "pending": by_status[RequestStatus.PENDING],
@@ -885,7 +906,7 @@ def register_request_routes(
         )
 
     @app.route("/api/admin/requests/<int:request_id>/fulfil", methods=["POST"])
-    def api_admin_fulfil_request(request_id: int):
+    def api_admin_fulfil_request(request_id: int) -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -916,7 +937,9 @@ def register_request_routes(
             "status": updated["status"],
             "title": _resolve_request_title(updated),
         }
-        admin_label = _format_user_label(normalize_optional_text(session.get("user_id")), admin_user_id)
+        admin_label = _format_user_label(
+            normalize_optional_text(session.get("user_id")), admin_user_id
+        )
         requester_label = _format_requester_label(user_db, updated)
         logger.info(
             "Request fulfilled #%s for '%s' by %s (requested by %s)",
@@ -947,7 +970,7 @@ def register_request_routes(
         return jsonify(updated)
 
     @app.route("/api/admin/requests/<int:request_id>/reject", methods=["POST"])
-    def api_admin_reject_request(request_id: int):
+    def api_admin_reject_request(request_id: int) -> Response | tuple[Response, int]:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -975,7 +998,9 @@ def register_request_routes(
             "status": updated["status"],
             "title": _resolve_request_title(updated),
         }
-        admin_label = _format_user_label(normalize_optional_text(session.get("user_id")), admin_user_id)
+        admin_label = _format_user_label(
+            normalize_optional_text(session.get("user_id")), admin_user_id
+        )
         requester_label = _format_requester_label(user_db, updated)
         logger.info(
             "Request rejected #%s for '%s' by %s (requested by %s)",

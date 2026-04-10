@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import TYPE_CHECKING
 
 MANUAL_QUERY_MAX_LEN = 256
 
 from shelfmark.core.config import config
-from shelfmark.core.models import SearchFilters
 from shelfmark.metadata_providers import (
     BookMetadata,
-    group_languages_by_localized_title,
     build_localized_search_titles,
+    group_languages_by_localized_title,
 )
+
+if TYPE_CHECKING:
+    from shelfmark.core.models import SearchFilters
 
 
 @dataclass(frozen=True)
@@ -20,7 +22,7 @@ class ReleaseSearchVariant:
 
     title: str
     author: str
-    languages: Optional[List[str]] = None
+    languages: list[str] | None = None
 
     @property
     def query(self) -> str:
@@ -31,28 +33,28 @@ class ReleaseSearchVariant:
 class ReleaseSearchPlan:
     """Pre-computed search inputs shared across release sources."""
 
-    languages: Optional[List[str]]
-    isbn_candidates: List[str]
+    languages: list[str] | None
+    isbn_candidates: list[str]
     author: str
-    title_variants: List[ReleaseSearchVariant]
-    grouped_title_variants: List[ReleaseSearchVariant]
-    manual_query: Optional[str] = None
-    indexers: Optional[List[str]] = None  # Indexer names for Prowlarr (overrides settings)
-    source_filters: Optional[SearchFilters] = None
+    title_variants: list[ReleaseSearchVariant]
+    grouped_title_variants: list[ReleaseSearchVariant]
+    manual_query: str | None = None
+    indexers: list[str] | None = None  # Indexer names for Prowlarr (overrides settings)
+    source_filters: SearchFilters | None = None
 
     @property
     def primary_query(self) -> str:
         return self.title_variants[0].query if self.title_variants else ""
 
 
-def _normalize_languages(languages: Optional[List[str]]) -> Optional[List[str]]:
+def _normalize_languages(languages: list[str] | None) -> list[str] | None:
     if not languages:
         default = config.BOOK_LANGUAGE
         if not default:
             return None
         return [str(lang).strip() for lang in default if str(lang).strip()]
 
-    normalized: List[str] = []
+    normalized: list[str] = []
     for lang in languages:
         if not lang:
             continue
@@ -87,10 +89,10 @@ def _pick_search_title(book: BookMetadata) -> str:
 
 def build_release_search_plan(
     book: BookMetadata,
-    languages: Optional[List[str]] = None,
-    manual_query: Optional[str] = None,
-    indexers: Optional[List[str]] = None,
-    source_filters: Optional[SearchFilters] = None,
+    languages: list[str] | None = None,
+    manual_query: str | None = None,
+    indexers: list[str] | None = None,
+    source_filters: SearchFilters | None = None,
 ) -> ReleaseSearchPlan:
     resolved_languages = _normalize_languages(languages)
 
@@ -115,7 +117,7 @@ def build_release_search_plan(
             source_filters=source_filters,
         )
 
-    isbn_candidates: List[str] = []
+    isbn_candidates: list[str] = []
     if book.isbn_13:
         isbn_candidates.append(book.isbn_13)
     if book.isbn_10 and book.isbn_10 not in isbn_candidates:
@@ -135,7 +137,7 @@ def build_release_search_plan(
         titles_by_language=titles_by_language,
     )
 
-    grouped_variants: List[ReleaseSearchVariant] = [
+    grouped_variants: list[ReleaseSearchVariant] = [
         ReleaseSearchVariant(title=title, author=author, languages=langs)
         for title, langs in grouped
         if title
@@ -148,7 +150,7 @@ def build_release_search_plan(
         excluded_languages={"en", "eng", "english"},
     )
 
-    title_variants: List[ReleaseSearchVariant] = [
+    title_variants: list[ReleaseSearchVariant] = [
         ReleaseSearchVariant(title=title, author=author, languages=None)
         for title in expanded_titles
         if title
@@ -157,8 +159,7 @@ def build_release_search_plan(
     # If no titles could be built, fall back to ISBN queries.
     if not title_variants and isbn_candidates:
         title_variants = [
-            ReleaseSearchVariant(title=isbn, author="", languages=None)
-            for isbn in isbn_candidates
+            ReleaseSearchVariant(title=isbn, author="", languages=None) for isbn in isbn_candidates
         ]
 
     return ReleaseSearchPlan(

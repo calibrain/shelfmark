@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import TERMINAL_QUEUE_STATUSES
-from shelfmark.core.request_helpers import normalize_optional_positive_int, normalize_optional_text, now_utc_iso
+from shelfmark.core.request_helpers import (
+    normalize_optional_positive_int,
+    normalize_optional_text,
+    now_utc_iso,
+)
 
 logger = setup_logger(__name__)
 
@@ -21,40 +25,45 @@ ACTIVE_DOWNLOAD_STATUS = "active"
 VALID_ORIGINS = frozenset({"direct", "requested"})
 
 
-def _normalize_task_id(task_id: Any) -> str:
+def _normalize_task_id(task_id: object) -> str:
     normalized = normalize_optional_text(task_id)
     if normalized is None:
-        raise ValueError("task_id must be a non-empty string")
+        msg = "task_id must be a non-empty string"
+        raise ValueError(msg)
     return normalized
 
 
-def _normalize_origin(origin: Any) -> str:
+def _normalize_origin(origin: object) -> str:
     normalized = normalize_optional_text(origin)
     if normalized is None:
         return "direct"
     lowered = normalized.lower()
     if lowered not in VALID_ORIGINS:
-        raise ValueError("origin must be one of: direct, requested")
+        msg = "origin must be one of: direct, requested"
+        raise ValueError(msg)
     return lowered
 
 
-def _normalize_final_status(final_status: Any) -> str:
+def _normalize_final_status(final_status: object) -> str:
     normalized = normalize_optional_text(final_status)
     if normalized is None:
-        raise ValueError("final_status must be a non-empty string")
+        msg = "final_status must be a non-empty string"
+        raise ValueError(msg)
     lowered = normalized.lower()
     if lowered not in VALID_TERMINAL_STATUSES:
-        raise ValueError("final_status must be one of: complete, error, cancelled")
+        msg = "final_status must be one of: complete, error, cancelled"
+        raise ValueError(msg)
     return lowered
 
 
-def _normalize_limit(value: Any, *, default: int, minimum: int, maximum: int) -> int:
+def _normalize_limit(value: object, *, default: int, minimum: int, maximum: int) -> int:
     if value is None:
         return default
     try:
         parsed = int(value)
     except (TypeError, ValueError) as exc:
-        raise ValueError("limit must be an integer") from exc
+        msg = "limit must be an integer"
+        raise ValueError(msg) from exc
     if parsed < minimum:
         return minimum
     if parsed > maximum:
@@ -65,7 +74,7 @@ def _normalize_limit(value: Any, *, default: int, minimum: int, maximum: int) ->
 class DownloadHistoryService:
     """Service for persisted canonical download activity rows."""
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str) -> None:
         self._db_path = db_path
         self._lock = threading.Lock()
 
@@ -80,7 +89,9 @@ class DownloadHistoryService:
         if row is None:
             return None
         normalized = dict(row)
-        normalized["retry_payload"] = cls._deserialize_retry_payload(normalized.get("retry_payload"))
+        normalized["retry_payload"] = cls._deserialize_retry_payload(
+            normalized.get("retry_payload")
+        )
         return normalized
 
     @classmethod
@@ -92,23 +103,24 @@ class DownloadHistoryService:
         return f"download:{task_id}"
 
     @staticmethod
-    def _resolve_existing_download_path(value: Any) -> str | None:
+    def _resolve_existing_download_path(value: object) -> str | None:
         normalized = normalize_optional_text(value)
         if normalized is None:
             return None
-        return normalized if os.path.exists(normalized) else None
+        return normalized if Path(normalized).exists() else None
 
     @staticmethod
-    def _serialize_retry_payload(payload: Any) -> str | None:
+    def _serialize_retry_payload(payload: object) -> str | None:
         if payload is None:
             return None
         try:
             return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         except (TypeError, ValueError) as exc:
-            raise ValueError("retry_payload must be JSON-serializable") from exc
+            msg = "retry_payload must be JSON-serializable"
+            raise ValueError(msg) from exc
 
     @staticmethod
-    def _deserialize_retry_payload(value: Any) -> dict[str, Any] | None:
+    def _deserialize_retry_payload(value: object) -> dict[str, Any] | None:
         if isinstance(value, dict):
             return dict(value)
         normalized = normalize_optional_text(value)
@@ -126,7 +138,7 @@ class DownloadHistoryService:
         normalized_staged_path = normalize_optional_text(staged_path)
         if normalized_staged_path is None:
             return False
-        return os.path.exists(normalized_staged_path)
+        return Path(normalized_staged_path).exists()
 
     @staticmethod
     def _can_retry_without_staged_source(retry_payload: dict[str, Any]) -> bool:
@@ -134,16 +146,16 @@ class DownloadHistoryService:
 
     @staticmethod
     def is_retry_available(row: dict[str, Any]) -> bool:
-        final_status = str(
-            row.get("retry_final_status") or row.get("final_status") or ""
-        ).strip().lower()
+        final_status = (
+            str(row.get("retry_final_status") or row.get("final_status") or "").strip().lower()
+        )
         retry_payload = DownloadHistoryService._deserialize_retry_payload(row.get("retry_payload"))
         if retry_payload is None:
             return False
 
         has_staged_retry_source = DownloadHistoryService._has_staged_retry_source(retry_payload)
-        can_retry_without_staged_source = (
-            DownloadHistoryService._can_retry_without_staged_source(retry_payload)
+        can_retry_without_staged_source = DownloadHistoryService._can_retry_without_staged_source(
+            retry_payload
         )
         request_id = normalize_optional_positive_int(row.get("request_id"), "request_id")
         if request_id is None:
@@ -174,7 +186,9 @@ class DownloadHistoryService:
             "source": row.get("source"),
             "source_display_name": row.get("source_display_name"),
             "status_message": row.get("status_message"),
-            "download_path": DownloadHistoryService._resolve_existing_download_path(row.get("download_path")),
+            "download_path": DownloadHistoryService._resolve_existing_download_path(
+                row.get("download_path")
+            ),
             "added_time": DownloadHistoryService._iso_to_epoch(row.get("queued_at")),
             "user_id": row.get("user_id"),
             "username": row.get("username"),
@@ -183,7 +197,7 @@ class DownloadHistoryService:
         }
 
     @staticmethod
-    def _iso_to_epoch(value: Any) -> float | None:
+    def _iso_to_epoch(value: object) -> float | None:
         if not isinstance(value, str) or not value.strip():
             return None
         normalized = value.strip().replace("Z", "+00:00")
@@ -192,7 +206,7 @@ class DownloadHistoryService:
         except ValueError:
             return None
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
         return parsed.timestamp()
 
     @classmethod
@@ -249,10 +263,12 @@ class DownloadHistoryService:
         normalized_request_id = normalize_optional_positive_int(request_id, "request_id")
         normalized_source = normalize_optional_text(source)
         if normalized_source is None:
-            raise ValueError("source must be a non-empty string")
+            msg = "source must be a non-empty string"
+            raise ValueError(msg)
         normalized_title = normalize_optional_text(title)
         if normalized_title is None:
-            raise ValueError("title must be a non-empty string")
+            msg = "title must be a non-empty string"
+            raise ValueError(msg)
         normalized_origin = _normalize_origin(origin)
         normalized_retry_payload = self._serialize_retry_payload(retry_payload)
         recorded_at = now_utc_iso()

@@ -20,6 +20,22 @@ def test_join_user_room_without_db_user_id_does_not_join_admin_room(monkeypatch)
     assert manager._user_rooms == {}
 
 
+def test_room_helpers_accept_positional_scope_args(monkeypatch):
+    joined: list[tuple[str, str | None]] = []
+
+    monkeypatch.setattr(
+        websocket_module,
+        "join_room",
+        lambda room, sid=None: joined.append((room, sid)),
+    )
+
+    manager = WebSocketManager()
+    manager.join_user_room("sid-1", False, 7)
+    manager.sync_user_room("sid-2", True, None)
+
+    assert joined == [("user_7", "sid-1"), ("admins", "sid-2")]
+
+
 def test_sync_user_room_moves_sid_between_rooms(monkeypatch):
     joined: list[tuple[str, str | None]] = []
     left: list[tuple[str, str | None]] = []

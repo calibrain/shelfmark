@@ -12,15 +12,18 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from email.utils import parseaddr
 from pathlib import Path
 from threading import Event, Lock
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask, QueueStatus, SearchMode
 from shelfmark.core.queue import book_queue
-from shelfmark.core.request_helpers import normalize_optional_text, normalize_positive_int
-from shelfmark.core.utils import transform_cover_url, is_audiobook as check_audiobook
-from shelfmark.config import env as env_config
+from shelfmark.core.request_helpers import (
+    normalize_optional_text,
+    normalize_positive_int,
+)
+from shelfmark.core.utils import is_audiobook as check_audiobook
+from shelfmark.core.utils import transform_cover_url
 from shelfmark.download.fs import run_blocking_io
 from shelfmark.download.postprocess.pipeline import is_torrent_source, safe_cleanup_path
 from shelfmark.download.postprocess.router import post_process_download
@@ -46,21 +49,25 @@ WEBSOCKET_AVAILABLE = True
 try:
     from shelfmark.api.websocket import ws_manager
 except ImportError:
-    logger.error("WebSocket unavailable - real-time updates disabled")
+    logger.exception("WebSocket unavailable - real-time updates disabled")
     ws_manager = None
     WEBSOCKET_AVAILABLE = False
 
 # Progress update throttling - track last broadcast time per book
-_progress_last_broadcast: Dict[str, float] = {}
+_progress_last_broadcast: dict[str, float] = {}
 _progress_lock = Lock()
 
 # Stall detection - track last activity time per download
-_last_activity: Dict[str, float] = {}
-_last_progress_value: Dict[str, float] = {}
+_last_activity: dict[str, float] = {}
+_last_progress_value: dict[str, float] = {}
 # De-duplicate status updates (keep-alive updates shouldn't spam clients)
-_last_status_event: Dict[str, Tuple[str, Optional[str]]] = {}
+_last_status_event: dict[str, tuple[str, str | None]] = {}
 STALL_TIMEOUT = 300  # 5 minutes without progress/status update = stalled
 COORDINATOR_LOOP_ERROR_RETRY_DELAY = 1.0
+_PROGRESS_BROADCAST_START_PERCENT = 1
+_PROGRESS_BROADCAST_COMPLETE_PERCENT = 99
+_PROGRESS_BROADCAST_MIN_DELTA = 10
+
 
 def _is_plain_email_address(value: str) -> bool:
     parsed = parseaddr(value or "")[1]
@@ -68,12 +75,13 @@ def _is_plain_email_address(value: str) -> bool:
 
 
 def _resolve_email_destination(
-    user_id: Optional[int] = None,
-) -> Tuple[Optional[str], Optional[str]]:
+    user_id: int | None = None,
+) -> tuple[str | None, str | None]:
     """Resolve the destination email address for email output mode.
 
     Returns:
       (email_to, error_message)
+
     """
     configured_recipient = str(config.get("EMAIL_RECIPIENT", "", user_id=user_id) or "").strip()
     if configured_recipient:
@@ -84,7 +92,7 @@ def _resolve_email_destination(
     return None, None
 
 
-def _parse_release_search_mode(value: Any) -> SearchMode:
+def _parse_release_search_mode(value: object) -> SearchMode:
     if isinstance(value, SearchMode):
         return value
     if value is None:
@@ -93,29 +101,32 @@ def _parse_release_search_mode(value: Any) -> SearchMode:
         try:
             return SearchMode(value.strip().lower())
         except ValueError as exc:
-            raise ValueError(f"Invalid search_mode: {value}") from exc
-    raise ValueError(f"Invalid search_mode: {value}")
+            msg = f"Invalid search_mode: {value}"
+            raise ValueError(msg) from exc
+    msg = f"Invalid search_mode: {value}"
+    raise ValueError(msg)
 
-def _optional_number(value: Any) -> Optional[float]:
+
+def _optional_number(value: object) -> float | None:
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
-def _optional_positive_int(value: Any) -> Optional[int]:
+def _optional_positive_int(value: object) -> int | None:
     if isinstance(value, bool):
         return None
     try:
         parsed = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return parsed if parsed > 0 else None
 
 
-def _seed_time_seconds_to_minutes(value: Any) -> Optional[int]:
+def _seed_time_seconds_to_minutes(value: object) -> int | None:
     seed_time_seconds = _optional_positive_int(value)
     if seed_time_seconds is None:
         return None
@@ -124,7 +135,7 @@ def _seed_time_seconds_to_minutes(value: Any) -> Optional[int]:
 
 def _build_retry_resolution_fields(
     release_data: dict[str, Any],
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Persist generic resolved-download data needed for restart-safe retries."""
     extra = release_data.get("extra")
     if not isinstance(extra, dict):
@@ -139,9 +150,7 @@ def _build_retry_resolution_fields(
         release_data.get("seeding_time_limit_minutes")
     )
     if seeding_time_limit_minutes is None:
-        seeding_time_limit_minutes = _seed_time_seconds_to_minutes(
-            extra.get("minimum_seed_time")
-        )
+        seeding_time_limit_minutes = _seed_time_seconds_to_minutes(extra.get("minimum_seed_time"))
 
     return {
         "retry_download_url": normalize_optional_text(release_data.get("download_url")),
@@ -159,47 +168,49 @@ def _build_retry_resolution_fields(
 def queue_release(
     release_data: dict,
     priority: int = 0,
-    user_id: Optional[int] = None,
-    username: Optional[str] = None,
-) -> Tuple[bool, Optional[str]]:
+    user_id: int | None = None,
+    username: str | None = None,
+) -> tuple[bool, str | None]:
     """Add a release to the download queue. Returns (success, error_message)."""
     try:
-        source = release_data['source']
-        extra = release_data.get('extra', {})
-        raw_request_id = release_data.get('_request_id')
-        request_id: Optional[int] = None
+        source = release_data["source"]
+        extra = release_data.get("extra", {})
+        raw_request_id = release_data.get("_request_id")
+        request_id: int | None = None
         if isinstance(raw_request_id, int) and raw_request_id > 0:
             request_id = raw_request_id
         search_mode = _parse_release_search_mode(release_data.get("search_mode"))
 
         # Get author, year, preview, and content_type from top-level (preferred) or extra (fallback)
-        author = release_data.get('author') or extra.get('author')
-        year = release_data.get('year') or extra.get('year')
-        preview = release_data.get('preview') or extra.get('preview')
-        content_type = release_data.get('content_type') or extra.get('content_type')
+        author = release_data.get("author") or extra.get("author")
+        year = release_data.get("year") or extra.get("year")
+        preview = release_data.get("preview") or extra.get("preview")
+        content_type = release_data.get("content_type") or extra.get("content_type")
         source_url_raw = (
-            release_data.get('download_url')
-            or release_data.get('source_url')
-            or release_data.get('info_url')
-            or extra.get('detail_url')
-            or extra.get('source_url')
+            release_data.get("download_url")
+            or release_data.get("source_url")
+            or release_data.get("info_url")
+            or extra.get("detail_url")
+            or extra.get("source_url")
         )
         source_url = source_url_raw.strip() if isinstance(source_url_raw, str) else None
         if source_url == "":
             source_url = None
 
         # Get series info for library naming templates
-        series_name = release_data.get('series_name') or extra.get('series_name')
-        series_position = release_data.get('series_position') or extra.get('series_position')
-        subtitle = release_data.get('subtitle') or extra.get('subtitle')
+        series_name = release_data.get("series_name") or extra.get("series_name")
+        series_position = release_data.get("series_position") or extra.get("series_position")
+        subtitle = release_data.get("subtitle") or extra.get("subtitle")
 
-        books_output_mode = str(
-            config.get("BOOKS_OUTPUT_MODE", "folder", user_id=user_id) or "folder"
-        ).strip().lower()
+        books_output_mode = (
+            str(config.get("BOOKS_OUTPUT_MODE", "folder", user_id=user_id) or "folder")
+            .strip()
+            .lower()
+        )
         is_audiobook = check_audiobook(content_type)
 
         output_mode = "folder" if is_audiobook else books_output_mode
-        output_args: Dict[str, Any] = {}
+        output_args: dict[str, Any] = {}
         retry_resolution_fields = _build_retry_resolution_fields(release_data)
 
         if output_mode == "email" and not is_audiobook:
@@ -211,13 +222,13 @@ def queue_release(
 
         # Create a source-agnostic download task from release data
         task = DownloadTask(
-            task_id=release_data['source_id'],
+            task_id=release_data["source_id"],
             source=source,
-            title=release_data.get('title', 'Unknown'),
+            title=release_data.get("title", "Unknown"),
             author=author,
             year=year,
-            format=release_data.get('format'),
-            size=release_data.get('size'),
+            format=release_data.get("format"),
+            size=release_data.get("size"),
             preview=preview,
             content_type=content_type,
             source_url=source_url,
@@ -235,16 +246,14 @@ def queue_release(
         )
 
         if not book_queue.add(task):
-            logger.info(f"Release already in queue: {task.title}")
+            logger.info("Release already in queue: %s", task.title)
             return False, "Release is already in the download queue"
 
-        logger.info(f"Release queued with priority {priority}: {task.title}")
+        logger.info("Release queued with priority %s: %s", priority, task.title)
 
         # Broadcast status update via WebSocket
         if ws_manager:
             ws_manager.broadcast_status_update(queue_status())
-
-        return True, None
 
     except ValueError as e:
         error_msg = str(e)
@@ -258,12 +267,15 @@ def queue_release(
         error_msg = f"Error queueing release: {e}"
         logger.error_trace(error_msg)
         return False, error_msg
+    else:
+        return True, None
 
-def queue_status(user_id: Optional[int] = None) -> Dict[str, Dict[str, Any]]:
+
+def queue_status(user_id: int | None = None) -> dict[str, dict[str, Any]]:
     """Get current status of the download queue."""
     status = book_queue.get_status(user_id=user_id)
-    for _, tasks in status.items():
-        for _, task in tasks.items():
+    for tasks in status.values():
+        for task in tasks.values():
             if task.download_path and not run_blocking_io(os.path.exists, task.download_path):
                 task.download_path = None
 
@@ -276,7 +288,8 @@ def queue_status(user_id: Optional[int] = None) -> Dict[str, Dict[str, Any]]:
         for status_type, tasks in status.items()
     }
 
-def get_book_data(task_id: str) -> Tuple[Optional[bytes], Optional[DownloadTask]]:
+
+def get_book_data(task_id: str) -> tuple[bytes | None, DownloadTask | None]:
     """Get downloaded file data for a specific task."""
     task = None
     try:
@@ -288,13 +301,14 @@ def get_book_data(task_id: str) -> Tuple[Optional[bytes], Optional[DownloadTask]
         if not path:
             return None, task
 
-        with open(path, "rb") as f:
+        with Path(path).open("rb") as f:
             return f.read(), task
     except Exception as e:
         logger.error_trace(f"Error getting book data: {e}")
         if task:
             task.download_path = None
         return None, task
+
 
 def _has_staged_retry_source(task: DownloadTask) -> bool:
     """Whether a failed task still has a staged file available for retry."""
@@ -313,8 +327,8 @@ def _has_fresh_retry_context(task: DownloadTask) -> bool:
 
 
 def can_retry_download_task(
-    task: Optional[DownloadTask],
-    status: Optional[QueueStatus],
+    task: DownloadTask | None,
+    status: QueueStatus | None,
 ) -> bool:
     """Whether the task can be manually retried from the Activity UI."""
     if task is None or status not in (QueueStatus.ERROR, QueueStatus.CANCELLED):
@@ -329,10 +343,10 @@ def can_retry_download_task(
     return _has_staged_retry_source(task)
 
 
-def serialize_task_for_retry(task: DownloadTask) -> Dict[str, Any]:
+def serialize_task_for_retry(task: DownloadTask) -> dict[str, Any]:
     """Serialize the task state needed for restart-safe retries."""
     raw_search_mode = getattr(task, "search_mode", None)
-    search_mode: Optional[str] = None
+    search_mode: str | None = None
     if isinstance(raw_search_mode, SearchMode):
         search_mode = raw_search_mode.value
     elif isinstance(raw_search_mode, str):
@@ -374,7 +388,7 @@ def serialize_task_for_retry(task: DownloadTask) -> Dict[str, Any]:
     }
 
 
-def _restore_task_from_retry_payload(payload: Any) -> Optional[DownloadTask]:
+def _restore_task_from_retry_payload(payload: object) -> DownloadTask | None:
     if not isinstance(payload, dict):
         return None
 
@@ -423,18 +437,16 @@ def _restore_task_from_retry_payload(payload: Any) -> Optional[DownloadTask]:
         retry_seeding_time_limit_minutes=_optional_positive_int(
             payload.get("retry_seeding_time_limit_minutes")
         ),
-        can_retry_without_staged_source=bool(
-            payload.get("can_retry_without_staged_source", True)
-        ),
+        can_retry_without_staged_source=bool(payload.get("can_retry_without_staged_source", True)),
     )
 
 
 def retry_persisted_download(
-    payload: Any,
+    payload: object,
     *,
-    final_status: Any,
+    final_status: object,
     priority: int = -10,
-) -> Tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """Retry a persisted download row after the in-memory task has been lost."""
     task = _restore_task_from_retry_payload(payload)
     if task is None:
@@ -453,13 +465,8 @@ def retry_persisted_download(
     if normalized_status in {"active", "cancelled"} and not has_fresh_retry_context:
         return False, "Download cannot be retried"
 
-    if (
-        task.request_id is not None
-        and normalized_status == "error"
-        and not has_staged_retry_source
-    ):
-        if task.request_id is not None:
-            return False, "Request-linked downloads must be retried from requests"
+    if task.request_id is not None and normalized_status == "error" and not has_staged_retry_source:
+        return False, "Request-linked downloads must be retried from requests"
 
     if (
         task.request_id is None
@@ -486,33 +493,33 @@ def retry_persisted_download(
 
 def _task_to_dict(
     task: DownloadTask,
-    current_status: Optional[QueueStatus] = None,
-) -> Dict[str, Any]:
+    current_status: QueueStatus | None = None,
+) -> dict[str, Any]:
     """Convert DownloadTask to dict for frontend, transforming cover URLs."""
     # Transform external preview URLs to local proxy URLs
     preview = transform_cover_url(task.preview, task.task_id)
     retry_status = current_status or book_queue.get_task_status(task.task_id)
 
     return {
-        'id': task.task_id,
-        'title': task.title,
-        'author': task.author,
-        'format': task.format,
-        'size': task.size,
-        'preview': preview,
-        'content_type': task.content_type,
-        'source': task.source,
-        'source_display_name': get_source_display_name(task.source),
-        'priority': task.priority,
-        'added_time': task.added_time,
-        'progress': task.progress,
-        'status': task.status,
-        'status_message': task.status_message,
-        'download_path': task.download_path,
-        'user_id': task.user_id,
-        'username': task.username,
-        'request_id': task.request_id,
-        'retry_available': can_retry_download_task(task, retry_status),
+        "id": task.task_id,
+        "title": task.title,
+        "author": task.author,
+        "format": task.format,
+        "size": task.size,
+        "preview": preview,
+        "content_type": task.content_type,
+        "source": task.source,
+        "source_display_name": get_source_display_name(task.source),
+        "priority": task.priority,
+        "added_time": task.added_time,
+        "progress": task.progress,
+        "status": task.status,
+        "status_message": task.status_message,
+        "download_path": task.download_path,
+        "user_id": task.user_id,
+        "username": task.username,
+        "request_id": task.request_id,
+        "retry_available": can_retry_download_task(task, retry_status),
     }
 
 
@@ -524,8 +531,8 @@ def _clear_task_error_state(task: DownloadTask) -> None:
 def _capture_task_error(
     task: DownloadTask,
     *,
-    message: Optional[str] = None,
-    exc_type: Optional[str] = None,
+    message: str | None = None,
+    exc_type: str | None = None,
 ) -> None:
     if isinstance(message, str):
         normalized = message.strip()
@@ -546,7 +553,7 @@ def _format_download_exception_message(exc: Exception) -> str:
     return f"Download failed: {type(exc).__name__}"
 
 
-def _download_task(task_id: str, cancel_flag: Event) -> Optional[str]:
+def _download_task(task_id: str, cancel_flag: Event) -> str | None:
     """Download a task via appropriate handler, then post-process to ingest."""
     try:
         # Check for cancellation before starting
@@ -570,7 +577,7 @@ def _download_task(task_id: str, cancel_flag: Event) -> Optional[str]:
         def progress_callback(progress: float) -> None:
             update_download_progress(task_id, progress)
 
-        def status_callback(status: str, message: Optional[str] = None) -> None:
+        def status_callback(status: str, message: str | None = None) -> None:
             status_key = status.lower()
             if status_key == "error":
                 _capture_task_error(
@@ -591,7 +598,7 @@ def _download_task(task_id: str, cancel_flag: Event) -> Optional[str]:
 
         # Get the download handler based on the task's source
         handler = get_handler(task.source)
-        temp_file: Optional[Path] = None
+        temp_file: Path | None = None
 
         if task.staged_path:
             staged_file = Path(task.staged_path)
@@ -615,7 +622,7 @@ def _download_task(task_id: str, cancel_flag: Event) -> Optional[str]:
 
             temp_file = Path(temp_path)
             if not run_blocking_io(temp_file.exists):
-                logger.error(f"Handler returned non-existent path: {temp_path}")
+                logger.error("Handler returned non-existent path: %s", temp_path)
                 _capture_task_error(
                     task,
                     message=f"Download file missing: {temp_path}",
@@ -667,8 +674,6 @@ def _download_task(task_id: str, cancel_flag: Event) -> Optional[str]:
             task.staged_path = None
             _clear_task_error_state(task)
 
-        return result
-
     except Exception as e:
         if cancel_flag.is_set():
             logger.info("Task %s: cancelled during error handling", task_id)
@@ -683,6 +688,8 @@ def _download_task(task_id: str, cancel_flag: Event) -> Optional[str]:
                 )
         return None
 
+    else:
+        return result
 
 
 def update_download_progress(book_id: str, progress: float) -> None:
@@ -696,37 +703,38 @@ def update_download_progress(book_id: str, progress: float) -> None:
         if last_progress is None or progress != last_progress:
             _last_activity[book_id] = time.time()
         _last_progress_value[book_id] = progress
-    
+
     # Broadcast progress via WebSocket with throttling
     if ws_manager:
         current_time = time.time()
         should_broadcast = False
-        
+
         with _progress_lock:
             last_broadcast = _progress_last_broadcast.get(book_id, 0)
             last_progress = _progress_last_broadcast.get(f"{book_id}_progress", 0)
             time_elapsed = current_time - last_broadcast
-            
+
             # Always broadcast at start (0%) or completion (>=99%)
-            if progress <= 1 or progress >= 99:
-                should_broadcast = True
-            # Broadcast if enough time has passed (convert interval from seconds)
-            elif time_elapsed >= config.DOWNLOAD_PROGRESS_UPDATE_INTERVAL:
-                should_broadcast = True
-            # Broadcast on significant progress jumps (>10%)
-            elif progress - last_progress >= 10:
-                should_broadcast = True
-            
+            should_broadcast = (
+                progress <= _PROGRESS_BROADCAST_START_PERCENT
+                or progress >= _PROGRESS_BROADCAST_COMPLETE_PERCENT
+                or time_elapsed >= config.DOWNLOAD_PROGRESS_UPDATE_INTERVAL
+                or progress - last_progress >= _PROGRESS_BROADCAST_MIN_DELTA
+            )
+
             if should_broadcast:
                 _progress_last_broadcast[book_id] = current_time
                 _progress_last_broadcast[f"{book_id}_progress"] = progress
-        
+
         if should_broadcast:
             task = book_queue.get_task(book_id)
             task_user_id = task.user_id if task else None
-            ws_manager.broadcast_download_progress(book_id, progress, 'downloading', user_id=task_user_id)
+            ws_manager.broadcast_download_progress(
+                book_id, progress, "downloading", user_id=task_user_id
+            )
 
-def update_download_status(book_id: str, status: str, message: Optional[str] = None) -> None:
+
+def update_download_status(book_id: str, status: str, message: str | None = None) -> None:
     """Update download status with optional message for UI display."""
     status_key = status.lower()
     try:
@@ -752,18 +760,19 @@ def update_download_status(book_id: str, status: str, message: Optional[str] = N
     if ws_manager:
         ws_manager.broadcast_status_update(queue_status())
 
+
 def cancel_download(book_id: str) -> bool:
     """Cancel a download."""
     result = book_queue.cancel_download(book_id)
-    
+
     # Broadcast status update via WebSocket
     if result and ws_manager and ws_manager.is_enabled():
         ws_manager.broadcast_status_update(queue_status())
-    
+
     return result
 
 
-def retry_download(book_id: str) -> Tuple[bool, Optional[str]]:
+def retry_download(book_id: str) -> tuple[bool, str | None]:
     """Retry a failed or cancelled download.
 
     Request-linked downloads can only be manually retried when cancelled or
@@ -794,21 +803,26 @@ def retry_download(book_id: str) -> Tuple[bool, Optional[str]]:
 
     return True, None
 
+
 def set_book_priority(book_id: str, priority: int) -> bool:
     """Set priority for a queued book (lower = higher priority)."""
     return book_queue.set_priority(book_id, priority)
 
-def reorder_queue(book_priorities: Dict[str, int]) -> bool:
+
+def reorder_queue(book_priorities: dict[str, int]) -> bool:
     """Bulk reorder queue by mapping book_id to new priority."""
     return book_queue.reorder_queue(book_priorities)
 
-def get_queue_order() -> List[Dict[str, Any]]:
+
+def get_queue_order() -> list[dict[str, Any]]:
     """Get current queue order for display."""
     return book_queue.get_queue_order()
 
-def get_active_downloads() -> List[str]:
+
+def get_active_downloads() -> list[str]:
     """Get list of currently active downloads."""
     return book_queue.get_active_downloads()
+
 
 def _cleanup_progress_tracking(task_id: str) -> None:
     """Clean up progress tracking data for a completed/cancelled download."""
@@ -875,25 +889,26 @@ def _process_single_download(task_id: str, cancel_flag: Event) -> None:
             if task:
                 _capture_task_error(
                     task,
-                    message=f"Download failed: {type(e).__name__}: {str(e)}",
+                    message=f"Download failed: {type(e).__name__}: {e!s}",
                     exc_type=type(e).__name__,
                 )
             _finalize_download_failure(task_id)
         else:
-            logger.info(f"Download cancelled: {task_id}")
+            logger.info("Download cancelled: %s", task_id)
             book_queue.update_status(task_id, QueueStatus.CANCELLED)
 
         # Broadcast error/cancelled status
         if ws_manager:
             ws_manager.broadcast_status_update(queue_status())
 
+
 def concurrent_download_loop() -> None:
     """Main download coordinator using ThreadPoolExecutor for concurrent downloads."""
     max_workers = config.MAX_CONCURRENT_DOWNLOADS
-    logger.info(f"Starting concurrent download loop with {max_workers} workers")
+    logger.info("Starting concurrent download loop with %s workers", max_workers)
 
     with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="Download") as executor:
-        active_futures: Dict[Future, str] = {}  # Track active download futures
+        active_futures: dict[Future, str] = {}  # Track active download futures
         stalled_tasks: set[str] = set()  # Track tasks already cancelled due to stall
 
         while True:
@@ -911,14 +926,17 @@ def concurrent_download_loop() -> None:
                 # Check for stalled downloads (no activity in STALL_TIMEOUT seconds)
                 current_time = time.time()
                 with _progress_lock:
-                    for future, task_id in list(active_futures.items()):
+                    for _future, task_id in list(active_futures.items()):
                         if task_id in stalled_tasks:
                             continue
                         last_active = _last_activity.get(task_id, current_time)
                         if current_time - last_active > STALL_TIMEOUT:
-                            logger.warning(f"Download stalled for {task_id}, cancelling")
+                            logger.warning("Download stalled for %s, cancelling", task_id)
                             book_queue.cancel_download(task_id)
-                            book_queue.update_status_message(task_id, f"Download stalled (no activity for {STALL_TIMEOUT}s)")
+                            book_queue.update_status_message(
+                                task_id,
+                                f"Download stalled (no activity for {STALL_TIMEOUT}s)",
+                            )
                             stalled_tasks.add(task_id)
 
                 # Start new downloads if we have capacity
@@ -931,7 +949,7 @@ def concurrent_download_loop() -> None:
                     # Only delay if other downloads are already active
                     if active_futures:
                         stagger_delay = random.uniform(2, 5)
-                        logger.debug(f"Staggering download start by {stagger_delay:.1f}s")
+                        logger.debug("Staggering download start by %.1fs", stagger_delay)
                         time.sleep(stagger_delay)
 
                     task_id, cancel_flag = next_download
@@ -946,8 +964,9 @@ def concurrent_download_loop() -> None:
                 logger.error_trace("Download coordinator loop error: %s", e)
                 time.sleep(COORDINATOR_LOOP_ERROR_RETRY_DELAY)
 
+
 # Download coordinator thread (started explicitly via start())
-_coordinator_thread: Optional[threading.Thread] = None
+_coordinator_thread: threading.Thread | None = None
 _coordinator_lock = Lock()
 
 
@@ -964,10 +983,11 @@ def start() -> None:
             logger.warning("Download coordinator thread is not alive; starting a new one")
 
         _coordinator_thread = threading.Thread(
-            target=concurrent_download_loop,
-            daemon=True,
-            name="DownloadCoordinator"
+            target=concurrent_download_loop, daemon=True, name="DownloadCoordinator"
         )
         _coordinator_thread.start()
 
-    logger.info(f"Download coordinator started with {config.MAX_CONCURRENT_DOWNLOADS} concurrent workers")
+    logger.info(
+        "Download coordinator started with %s concurrent workers",
+        config.MAX_CONCURRENT_DOWNLOADS,
+    )

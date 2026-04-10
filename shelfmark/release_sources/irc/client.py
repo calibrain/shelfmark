@@ -7,60 +7,63 @@ import re
 import socket
 import ssl
 import time
+from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Iterator, Optional
+from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
 
 from .dcc import DCCOffer, parse_dcc_send
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 logger = setup_logger(__name__)
 
 
 # Timing
-POST_CONNECT_DELAY = 2.0  # Seconds to wait after connect before joining
-SOCKET_TIMEOUT = 300.0    # 5 minutes - long because we wait for DCC offers
+SOCKET_TIMEOUT = 300.0  # 5 minutes - long because we wait for DCC offers
 RECV_BUFFER = 4096
 
 # IRC channel user prefixes that indicate elevated status (ops, voice, etc.)
 # These are the download bots/servers
-ELEVATED_PREFIXES = frozenset({'~', '&', '@', '%', '+'})
+ELEVATED_PREFIXES = frozenset({"~", "&", "@", "%", "+"})
 
 
 class IRCEvent(Enum):
     """Events detected from IRC messages."""
-    MESSAGE = auto()           # Generic message
-    SEARCH_RESULT = auto()     # DCC SEND with "_results_for"
-    BOOK_RESULT = auto()       # DCC SEND for actual book
-    NO_RESULTS = auto()        # "Sorry" notice
-    BAD_SERVER = auto()        # "try another server" notice
-    SEARCH_ACCEPTED = auto()   # "has been accepted" notice
-    MATCHES_FOUND = auto()     # "X matches" notice
-    SERVER_LIST = auto()       # User list (353/366)
-    PING = auto()              # Server PING
-    VERSION = auto()           # CTCP VERSION request
+
+    MESSAGE = auto()  # Generic message
+    SEARCH_RESULT = auto()  # DCC SEND with "_results_for"
+    BOOK_RESULT = auto()  # DCC SEND for actual book
+    NO_RESULTS = auto()  # "Sorry" notice
+    BAD_SERVER = auto()  # "try another server" notice
+    SEARCH_ACCEPTED = auto()  # "has been accepted" notice
+    MATCHES_FOUND = auto()  # "X matches" notice
+    SERVER_LIST = auto()  # User list (353/366)
+    PING = auto()  # Server PING
+    VERSION = auto()  # CTCP VERSION request
 
 
 @dataclass
 class IRCMessage:
     """Parsed IRC message."""
+
     raw: str
-    prefix: Optional[str] = None
+    prefix: str | None = None
     command: str = ""
     params: list[str] = field(default_factory=list)
-    trailing: Optional[str] = None
+    trailing: str | None = None
     event: IRCEvent = IRCEvent.MESSAGE
 
 
 class IRCError(Exception):
     """Base IRC error."""
-    pass
 
 
 class IRCConnectionError(IRCError):
     """Connection failed."""
-    pass
 
 
 class IRCClient:
@@ -71,22 +74,26 @@ class IRCClient:
         nick: str,
         server: str,
         port: int,
+        *,
         use_tls: bool = True,
         version: str = "Shelfmark 1.0",
-    ):
+    ) -> None:
         if not nick:
-            raise IRCError("IRC nickname is required")
+            msg = "IRC nickname is required"
+            raise IRCError(msg)
         if not server:
-            raise IRCError("IRC server is required")
+            msg = "IRC server is required"
+            raise IRCError(msg)
         if not port:
-            raise IRCError("IRC port is required")
+            msg = "IRC port is required"
+            raise IRCError(msg)
         self.nick = nick
         self.server = server
         self.port = port
         self.use_tls = use_tls
         self.version = version
 
-        self._socket: Optional[socket.socket] = None
+        self._socket: socket.socket | None = None
         self._buffer = ""
         self._connected = False
 
@@ -95,7 +102,7 @@ class IRCClient:
 
     def connect(self) -> None:
         """Connect to IRC server, send USER/NICK, and wait for welcome."""
-        logger.info(f"Connecting to {self.server}:{self.port} (TLS={self.use_tls})")
+        logger.info("Connecting to %s:%s (TLS=%s)", self.server, self.port, self.use_tls)
 
         try:
             # Create socket
@@ -113,8 +120,9 @@ class IRCClient:
             sock.connect((self.server, self.port))
             self._socket = sock
 
-        except socket.error as e:
-            raise IRCConnectionError(f"Failed to connect: {e}")
+        except OSError as e:
+            msg = f"Failed to connect: {e}"
+            raise IRCConnectionError(msg) from e
 
         # Send authentication (USER before NICK per IRC protocol)
         self._send(f"USER {self.nick} 0 * :{self.nick}")
@@ -132,14 +140,15 @@ class IRCClient:
             try:
                 data = self._socket.recv(RECV_BUFFER)
                 if not data:
-                    raise IRCConnectionError("Connection closed during registration")
-                self._buffer += data.decode('utf-8', errors='replace')
-            except socket.timeout:
+                    msg = "Connection closed during registration"
+                    raise IRCConnectionError(msg)
+                self._buffer += data.decode("utf-8", errors="replace")
+            except TimeoutError:
                 continue
 
             # Process lines looking for 001 or errors
-            while '\r\n' in self._buffer:
-                line, self._buffer = self._buffer.split('\r\n', 1)
+            while "\r\n" in self._buffer:
+                line, self._buffer = self._buffer.split("\r\n", 1)
                 if not line:
                     continue
 
@@ -147,45 +156,44 @@ class IRCClient:
                 if line.startswith("PING"):
                     pong = line.replace("PING", "PONG", 1)
                     self._send(pong)
-                    logger.debug(f"PONG {pong.split(':')[-1] if ':' in pong else ''}")
+                    logger.debug("PONG %s", pong.split(":")[-1] if ":" in pong else "")
                     continue
 
                 # 001 = RPL_WELCOME - registration complete
                 if " 001 " in line:
                     self._socket.settimeout(SOCKET_TIMEOUT)  # Restore timeout
                     self._connected = True
-                    logger.info(f"Connected as {self.nick}")
+                    logger.info("Connected as %s", self.nick)
                     return
 
                 # Check for fatal errors
                 if " 433 " in line:  # Nickname in use
-                    raise IRCConnectionError("Nickname already in use")
+                    msg = "Nickname already in use"
+                    raise IRCConnectionError(msg)
                 if " 432 " in line:  # Erroneous nickname
-                    raise IRCConnectionError("Invalid nickname")
+                    msg = "Invalid nickname"
+                    raise IRCConnectionError(msg)
 
-        raise IRCConnectionError("Timeout waiting for server welcome")
+        msg = "Timeout waiting for server welcome"
+        raise IRCConnectionError(msg)
 
     def disconnect(self) -> None:
         """Gracefully disconnect from server."""
         if self._socket:
-            try:
+            with suppress(Exception):
                 self._send("QUIT :Goodbye")
-            except Exception:
-                pass  # Best effort
 
-            try:
+            with suppress(Exception):
                 self._socket.close()
-            except Exception:
-                pass
 
             self._socket = None
             self._connected = False
             logger.info("Disconnected from IRC")
 
-    def join_channel(self, channel: str, wait_for_join: bool = True) -> None:
+    def join_channel(self, channel: str, *, wait_for_join: bool = True) -> None:
         """Join an IRC channel (without # prefix) and capture online servers."""
         self._send(f"JOIN #{channel}")
-        logger.debug(f"Sent JOIN #{channel}")
+        logger.debug("Sent JOIN #%s", channel)
 
         # Clear any existing server list before joining
         self.online_servers.clear()
@@ -205,18 +213,18 @@ class IRCClient:
                         data = self._socket.recv(RECV_BUFFER)
                         if not data:
                             break
-                        self._buffer += data.decode('utf-8', errors='replace')
-                    except socket.timeout:
+                        self._buffer += data.decode("utf-8", errors="replace")
+                    except TimeoutError:
                         continue  # No data yet, check time and retry
 
                     # Process any complete lines in buffer
-                    while '\r\n' in self._buffer:
-                        line, self._buffer = self._buffer.split('\r\n', 1)
+                    while "\r\n" in self._buffer:
+                        line, self._buffer = self._buffer.split("\r\n", 1)
                         if not line:
                             continue
 
                         msg = self._parse_message(line)
-                        logger.debug(f"JOIN wait recv: {msg.command} - {line[:80]}")
+                        logger.debug("JOIN wait recv: %s - %s", msg.command, line[:80])
 
                         # Handle PING during join wait
                         if msg.event == IRCEvent.PING:
@@ -230,15 +238,19 @@ class IRCClient:
 
                         # 366 = RPL_ENDOFNAMES - channel join is complete
                         if msg.command == "366":
-                            logger.info(f"Joined #{channel} - {len(self.online_servers)} servers online")
+                            logger.info(
+                                "Joined #%s - %s servers online",
+                                channel,
+                                len(self.online_servers),
+                            )
                             return
 
                         # Check for errors (e.g., banned, channel doesn't exist)
                         if msg.command in ("473", "474", "475", "403"):
-                            logger.error(f"Cannot join #{channel}: {msg.trailing}")
+                            logger.error("Cannot join #%s: %s", channel, msg.trailing)
                             return
 
-                logger.warning(f"Timeout waiting for JOIN confirmation on #{channel}")
+                logger.warning("Timeout waiting for JOIN confirmation on #%s", channel)
 
             finally:
                 # Restore original socket timeout
@@ -247,23 +259,16 @@ class IRCClient:
     def send_message(self, target: str, message: str) -> None:
         """Send a PRIVMSG to a channel or user."""
         self._send(f"PRIVMSG {target} :{message}")
-        logger.debug(f"Sent to {target}: {message[:50]}...")
+        logger.debug("Sent to %s: %s...", target, message[:50])
 
     def send_notice(self, target: str, message: str) -> None:
         """Send a NOTICE to a user."""
         self._send(f"NOTICE {target} :{message}")
 
-    def request_names(self, channel: str) -> None:
-        """Request user list for a channel (without # prefix)."""
-        self._send(f"NAMES #{channel}")
-
     def _parse_names_list(self, names_data: str) -> None:
         """Parse 353 NAMES reply and extract elevated users (download servers)."""
         # Extract the trailing part after the last colon (the actual names)
-        if ' :' in names_data:
-            names_part = names_data.split(' :')[-1]
-        else:
-            names_part = names_data
+        names_part = names_data.rsplit(" :", maxsplit=1)[-1] if " :" in names_data else names_data
 
         for name in names_part.split():
             # Check if user has an elevated prefix
@@ -275,17 +280,18 @@ class IRCClient:
     def _send(self, message: str) -> None:
         """Send raw IRC message."""
         if not self._socket:
-            raise IRCError("Not connected")
+            msg = "Not connected"
+            raise IRCError(msg)
 
-        data = f"{message}\r\n".encode('utf-8')
+        data = f"{message}\r\n".encode()
         self._socket.sendall(data)
 
     def _recv_lines(self) -> Iterator[str]:
         """Receive and yield complete CRLF-delimited IRC lines."""
         while True:
             # Check if we have a complete line in buffer
-            while '\r\n' in self._buffer:
-                line, self._buffer = self._buffer.split('\r\n', 1)
+            while "\r\n" in self._buffer:
+                line, self._buffer = self._buffer.split("\r\n", 1)
                 if line:
                     yield line
 
@@ -294,11 +300,11 @@ class IRCClient:
                 data = self._socket.recv(RECV_BUFFER)
                 if not data:
                     return  # Connection closed
-                self._buffer += data.decode('utf-8', errors='replace')
-            except socket.timeout:
+                self._buffer += data.decode("utf-8", errors="replace")
+            except TimeoutError:
                 continue  # Keep waiting
-            except socket.error as e:
-                logger.warning(f"Socket error: {e}")
+            except OSError as e:
+                logger.warning("Socket error: %s", e)
                 return  # Connection error
 
     def _parse_message(self, line: str) -> IRCMessage:
@@ -309,16 +315,16 @@ class IRCClient:
         msg = IRCMessage(raw=line)
 
         # Extract prefix if present
-        if line.startswith(':'):
-            space_idx = line.find(' ')
+        if line.startswith(":"):
+            space_idx = line.find(" ")
             if space_idx != -1:
                 msg.prefix = line[1:space_idx]
-                line = line[space_idx + 1:]
+                line = line[space_idx + 1 :]
 
         # Extract trailing if present
-        if ' :' in line:
-            idx = line.find(' :')
-            msg.trailing = line[idx + 2:]
+        if " :" in line:
+            idx = line.find(" :")
+            msg.trailing = line[idx + 2 :]
             line = line[:idx]
 
         # Split remaining into command and params
@@ -373,17 +379,17 @@ class IRCClient:
         # PING message format: PING :server
         server = msg.trailing or self.server
         self._send(f"PONG :{server}")
-        logger.debug(f"PONG {server}")
+        logger.debug("PONG %s", server)
 
     def _handle_version(self, msg: IRCMessage) -> None:
         """Respond to CTCP VERSION request."""
         if msg.prefix:
             # Extract nick from prefix (nick!user@host)
-            sender = msg.prefix.split('!')[0]
+            sender = msg.prefix.split("!")[0]
             self.send_notice(sender, f"\x01VERSION {self.version}\x01")
-            logger.debug(f"Sent VERSION to {sender}")
+            logger.debug("Sent VERSION to %s", sender)
 
-    def read_messages(self, auto_handle: bool = True) -> Iterator[IRCMessage]:
+    def read_messages(self, *, auto_handle: bool = True) -> Iterator[IRCMessage]:
         """Read and yield IRC messages, optionally auto-handling PING/VERSION."""
         for line in self._recv_lines():
             msg = self._parse_message(line)
@@ -403,8 +409,9 @@ class IRCClient:
     def wait_for_dcc(
         self,
         timeout: float = 60.0,
+        *,
         result_type: bool = False,
-    ) -> Optional[DCCOffer]:
+    ) -> DCCOffer | None:
         """Wait for a DCC SEND offer. Returns None on timeout or no results."""
         target_event = IRCEvent.SEARCH_RESULT if result_type else IRCEvent.BOOK_RESULT
         start = time.time()
@@ -417,31 +424,30 @@ class IRCClient:
             if msg.event == target_event:
                 try:
                     offer = parse_dcc_send(msg.raw)
-                    logger.info(f"Received DCC offer: {offer.filename}")
-                    return offer
-                except Exception as e:
-                    logger.error(f"Failed to parse DCC: {e}")
+                    logger.info("Received DCC offer: %s", offer.filename)
+                except Exception:
+                    logger.exception("Failed to parse DCC")
                     return None
+                else:
+                    return offer
 
             # Log other events for debugging
             if msg.event == IRCEvent.NO_RESULTS:
                 logger.info("Server reports no results")
                 return None
-            elif msg.event == IRCEvent.BAD_SERVER:
+            if msg.event == IRCEvent.BAD_SERVER:
                 logger.warning("Server unavailable")
                 return None
-            elif msg.event == IRCEvent.SEARCH_ACCEPTED:
+            if msg.event == IRCEvent.SEARCH_ACCEPTED:
                 logger.info("Search accepted, waiting for results...")
-            elif msg.event == IRCEvent.MATCHES_FOUND:
+            elif (
+                msg.event == IRCEvent.MATCHES_FOUND and msg.trailing and "returned" in msg.trailing
+            ):
                 # Extract count from "returned X matches"
-                if msg.trailing and "returned" in msg.trailing:
-                    try:
-                        match = re.search(r'returned\s+(\d+)\s+matches', msg.trailing)
-                        if match:
-                            count = match.group(1)
-                            logger.info(f"Found {count} matches")
-                    except Exception:
-                        pass
+                match = re.search(r"returned\s+(\d+)\s+matches", msg.trailing)
+                if match:
+                    count = match.group(1)
+                    logger.info("Found %s matches", count)
 
         return None
 
@@ -450,9 +456,9 @@ class IRCClient:
         """Check if currently connected."""
         return self._connected and self._socket is not None
 
-    def __enter__(self):
+    def __enter__(self) -> IRCClient:
         self.connect()
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self, *args) -> None:
         self.disconnect()

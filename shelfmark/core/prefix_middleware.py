@@ -2,18 +2,26 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
 
 
 class PrefixMiddleware:
     """Strip a configured URL prefix from PATH_INFO before routing."""
 
-    def __init__(self, app, prefix: str, bypass_paths: Optional[Iterable[str]] = None) -> None:
+    def __init__(
+        self,
+        app: Callable[[dict[str, object], Callable[..., object]], object],
+        prefix: str,
+        bypass_paths: Iterable[str] | None = None,
+    ) -> None:
         self.app = app
         self.prefix = prefix.rstrip("/")
         self.bypass_paths = set(bypass_paths or [])
 
-    def __call__(self, environ, start_response):
+    def __call__(self, environ: dict[str, object], start_response: Callable[..., object]) -> object:
         path = environ.get("PATH_INFO", "") or ""
 
         if path in self.bypass_paths:
@@ -24,7 +32,7 @@ class PrefixMiddleware:
 
         if path == self.prefix or path.startswith(self.prefix + "/"):
             environ["SCRIPT_NAME"] = self.prefix
-            environ["PATH_INFO"] = path[len(self.prefix):] or "/"
+            environ["PATH_INFO"] = path[len(self.prefix) :] or "/"
             return self.app(environ, start_response)
 
         start_response("404 Not Found", [("Content-Type", "text/plain")])

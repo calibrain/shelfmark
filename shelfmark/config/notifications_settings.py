@@ -11,6 +11,7 @@ from shelfmark.core.notifications import NotificationEvent, send_test_notificati
 from shelfmark.core.settings_registry import (
     ActionButton,
     HeadingField,
+    SettingsField,
     TableField,
     load_config_file,
     register_on_save,
@@ -124,7 +125,7 @@ def _count_invalid_route_urls(routes: list[dict[str, Any]]) -> int:
 
 
 def _ensure_default_route_row(routes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return routes if routes else [dict(row) for row in _DEFAULT_ROUTE_ROWS]
+    return routes or [dict(row) for row in _DEFAULT_ROUTE_ROWS]
 
 
 def _extract_unique_route_urls(routes: list[dict[str, Any]]) -> list[str]:
@@ -260,7 +261,7 @@ register_on_save("notifications", _on_save_notifications)
 
 
 @register_settings("notifications", "Notifications", icon="bell", order=7)
-def notifications_settings():
+def notifications_settings() -> list[SettingsField]:
     """Global notifications settings."""
     return [
         HeadingField(

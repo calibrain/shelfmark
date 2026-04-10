@@ -11,18 +11,16 @@ Examples:
 Implementation note:
 Keep this module free of dependencies on archive extraction mechanics to avoid
 circular imports (`archive` is used by the pipeline).
+
 """
 
 from __future__ import annotations
 
-from typing import List
-
 import shelfmark.core.config as core_config
 
 
-def get_supported_formats() -> List[str]:
+def get_supported_formats() -> list[str]:
     """Get current supported formats from config singleton."""
-
     formats = core_config.config.get(
         "SUPPORTED_FORMATS",
         ["epub", "mobi", "azw3", "fb2", "djvu", "cbz", "cbr"],
@@ -35,9 +33,8 @@ def get_supported_formats() -> List[str]:
     return [fmt.lower() for fmt in formats]
 
 
-def get_supported_audiobook_formats() -> List[str]:
+def get_supported_audiobook_formats() -> list[str]:
     """Get current supported audiobook formats from config singleton."""
-
     formats = core_config.config.get("SUPPORTED_AUDIOBOOK_FORMATS", ["m4b", "mp3"])
 
     # Handle both list (from MultiSelectField) and comma-separated string (legacy/env)
@@ -49,7 +46,6 @@ def get_supported_audiobook_formats() -> List[str]:
 
 def get_file_organization(is_audiobook: bool) -> str:
     """Get the file organization mode for the content type."""
-
     key = "FILE_ORGANIZATION_AUDIOBOOK" if is_audiobook else "FILE_ORGANIZATION"
     mode = core_config.config.get(key, "rename")
 
@@ -68,7 +64,6 @@ def get_file_organization(is_audiobook: bool) -> str:
 
 def get_template(is_audiobook: bool, organization_mode: str) -> str:
     """Get the template for the content type and organization mode."""
-
     # Determine the correct key based on content type and organization mode
     if is_audiobook:
         if organization_mode == "organize":
@@ -76,10 +71,7 @@ def get_template(is_audiobook: bool, organization_mode: str) -> str:
         else:
             key = "TEMPLATE_AUDIOBOOK_RENAME"
     else:
-        if organization_mode == "organize":
-            key = "TEMPLATE_ORGANIZE"
-        else:
-            key = "TEMPLATE_RENAME"
+        key = "TEMPLATE_ORGANIZE" if organization_mode == "organize" else "TEMPLATE_RENAME"
 
     template = core_config.config.get(key, "")
 

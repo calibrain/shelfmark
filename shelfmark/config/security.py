@@ -1,6 +1,6 @@
 """Authentication settings registration."""
 
-from typing import Any, Dict, Callable
+from typing import TYPE_CHECKING, Any
 
 from shelfmark.config.migrations import migrate_security_settings
 from shelfmark.config.security_handlers import (
@@ -10,18 +10,22 @@ from shelfmark.config.security_handlers import (
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import (
-    register_settings,
-    register_on_save,
-    load_config_file,
-    TextField,
-    SelectField,
-    PasswordField,
-    CheckboxField,
     ActionButton,
-    TagListField,
+    CheckboxField,
     CustomComponentField,
+    PasswordField,
+    SelectField,
+    SettingsField,
+    TagListField,
+    TextField,
+    load_config_file,
+    register_on_save,
+    register_settings,
 )
 from shelfmark.core.user_db import sync_builtin_admin_user
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = setup_logger(__name__)
 
@@ -36,8 +40,8 @@ def _auth_field(factory: Callable[..., Any], auth_method: str, **kwargs: Any) ->
 
 def _migrate_security_settings() -> None:
     from shelfmark.core.settings_registry import (
-        _get_config_file_path,
         _ensure_config_dir,
+        _get_config_file_path,
         save_config_file,
     )
 
@@ -52,12 +56,11 @@ def _migrate_security_settings() -> None:
     )
 
 
-
-def _on_save_security(values: Dict[str, Any]) -> Dict[str, Any]:
+def _on_save_security(values: dict[str, Any]) -> dict[str, Any]:
     return on_save_security(values)
 
 
-def _test_oidc_connection(current_values: Dict[str, Any] = None) -> Dict[str, Any]:
+def _test_oidc_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     return test_oidc_connection(
         load_security_config=lambda: {
             "OIDC_DISCOVERY_URL": app_config.get("OIDC_DISCOVERY_URL", ""),
@@ -68,7 +71,7 @@ def _test_oidc_connection(current_values: Dict[str, Any] = None) -> Dict[str, An
 
 
 @register_settings("security", "Security", icon="shield", order=5)
-def security_settings():
+def security_settings() -> list[SettingsField]:
     """Security and authentication settings."""
     from shelfmark.config.env import CWA_DB_PATH
 
@@ -105,18 +108,22 @@ def security_settings():
             label="A local admin account is required before OIDC can be enabled.",
             show_when=_auth_condition("oidc"),
         ),
-        *([] if cwa_db_available else [
-            CustomComponentField(
-                key="cwa_db_missing",
-                component="oidc_admin_hint",
-                label=(
-                    "Calibre-Web database not detected. Mount your app.db to "
-                    "/auth/app.db to enable this method. Authentication will fall "
-                    "back to none until the database is available."
+        *(
+            []
+            if cwa_db_available
+            else [
+                CustomComponentField(
+                    key="cwa_db_missing",
+                    component="oidc_admin_hint",
+                    label=(
+                        "Calibre-Web database not detected. Mount your app.db to "
+                        "/auth/app.db to enable this method. Authentication will fall "
+                        "back to none until the database is available."
+                    ),
+                    show_when=_auth_condition("cwa"),
                 ),
-                show_when=_auth_condition("cwa"),
-            ),
-        ]),
+            ]
+        ),
         ActionButton(
             key="open_users_tab",
             label="Go to Users",

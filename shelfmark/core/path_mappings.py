@@ -11,7 +11,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+_WINDOWS_DRIVE_PREFIX_LENGTH = 2
 
 
 @dataclass(frozen=True)
@@ -36,14 +41,14 @@ def _normalize_prefix(path: str) -> str:
 
 def _is_windows_path(path: str) -> bool:
     """Check if a path looks like a Windows path (has a drive letter like C:/)."""
-    return len(path) >= 2 and path[1] == ":" and path[0].isalpha()
+    return len(path) >= _WINDOWS_DRIVE_PREFIX_LENGTH and path[1] == ":" and path[0].isalpha()
 
 
 def _normalize_host(host: str) -> str:
     return str(host or "").strip().lower()
 
 
-def parse_remote_path_mappings(value: Any) -> list[RemotePathMapping]:
+def parse_remote_path_mappings(value: object) -> list[RemotePathMapping]:
     if not value or not isinstance(value, list):
         return []
 
@@ -60,7 +65,9 @@ def parse_remote_path_mappings(value: Any) -> list[RemotePathMapping]:
         if not host or not remote_path or not local_path:
             continue
 
-        mappings.append(RemotePathMapping(host=host, remote_path=remote_path, local_path=local_path))
+        mappings.append(
+            RemotePathMapping(host=host, remote_path=remote_path, local_path=local_path)
+        )
 
     mappings.sort(key=lambda m: len(m.remote_path), reverse=True)
     return mappings
@@ -96,16 +103,17 @@ def remap_remote_to_local_with_match(
             prefix_lower = remote_prefix.lower()
             matches = remote_lower == prefix_lower or remote_lower.startswith(prefix_lower + "/")
         else:
-            matches = remote_normalized == remote_prefix or remote_normalized.startswith(remote_prefix + "/")
+            matches = remote_normalized == remote_prefix or remote_normalized.startswith(
+                remote_prefix + "/"
+            )
 
         if matches:
             # Use the length of the original prefix to extract remainder
             # This preserves the original case in folder names
-            remainder = remote_normalized[len(remote_prefix):]
+            remainder = remote_normalized[len(remote_prefix) :]
             local_prefix = _normalize_prefix(mapping.local_path)
 
-            if remainder.startswith("/"):
-                remainder = remainder[1:]
+            remainder = remainder.removeprefix("/")
 
             remapped = Path(local_prefix) / remainder if remainder else Path(local_prefix)
             return remapped, True
@@ -113,7 +121,9 @@ def remap_remote_to_local_with_match(
     return Path(remote_normalized), False
 
 
-def remap_remote_to_local(*, mappings: Iterable[RemotePathMapping], host: str, remote_path: str | Path) -> Path:
+def remap_remote_to_local(
+    *, mappings: Iterable[RemotePathMapping], host: str, remote_path: str | Path
+) -> Path:
     remapped, _ = remap_remote_to_local_with_match(
         mappings=mappings,
         host=host,
@@ -122,13 +132,12 @@ def remap_remote_to_local(*, mappings: Iterable[RemotePathMapping], host: str, r
     return remapped
 
 
-def get_client_host_identifier(client: Any) -> Optional[str]:
+def get_client_host_identifier(client: object) -> str | None:
     """Return a stable identifier used by the mapping UI.
 
     Sonarr uses the download client's configured host. Shelfmark currently uses
     the download client 'name' (e.g. qbittorrent, sabnzbd).
     """
-
     name = getattr(client, "name", None)
     if isinstance(name, str) and name.strip():
         return name.strip().lower()

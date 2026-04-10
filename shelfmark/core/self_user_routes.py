@@ -1,9 +1,9 @@
 """Self-service user account routes."""
 
 from functools import wraps
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any
 
-from flask import Flask, g, jsonify, request, session
+from flask import Flask, Response, g, jsonify, request, session
 from werkzeug.security import generate_password_hash
 
 from shelfmark.config.env import CWA_DB_PATH
@@ -24,9 +24,15 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_settings_overrides import (
     build_user_preferences_payload as _build_user_preferences_payload,
+)
+from shelfmark.core.user_settings_overrides import (
     get_ordered_user_overridable_fields as _get_ordered_user_overridable_fields,
 )
-from shelfmark.core.user_db import UserDB
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
+    from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
 
@@ -43,11 +49,13 @@ _VALID_SELF_SETTINGS_SECTIONS = (
 _DEFAULT_VISIBLE_SELF_SETTINGS_SECTIONS = list(_VALID_SELF_SETTINGS_SECTIONS)
 
 
-def _get_current_user(user_db: UserDB) -> tuple[int | None, dict[str, Any] | None, tuple[Any, int] | None]:
+def _get_current_user(
+    user_db: UserDB,
+) -> tuple[int | None, dict[str, Any] | None, tuple[Any, int] | None]:
     raw_user_id = session.get("db_user_id")
     try:
         user_id = int(raw_user_id)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None, None, (jsonify({"error": "Invalid user context"}), 400)
 
     user = user_db.get_user(user_id=user_id)
@@ -83,7 +91,7 @@ def _serialize_self_user(user: Mapping[str, Any], auth_mode: str) -> dict[str, A
     return payload
 
 
-def _normalize_visible_self_settings_sections(raw_sections: Any) -> list[str]:
+def _normalize_visible_self_settings_sections(raw_sections: object) -> list[str]:
     """Normalize users.VISIBLE_SELF_SETTINGS_SECTIONS to a safe ordered list."""
     if raw_sections is None:
         return list(_DEFAULT_VISIBLE_SELF_SETTINGS_SECTIONS)
@@ -91,7 +99,9 @@ def _normalize_visible_self_settings_sections(raw_sections: Any) -> list[str]:
     if isinstance(raw_sections, str):
         candidate_sections = [s.strip() for s in raw_sections.split(",") if s.strip()]
     elif isinstance(raw_sections, (list, tuple, set)):
-        candidate_sections = [str(section).strip() for section in raw_sections if str(section).strip()]
+        candidate_sections = [
+            str(section).strip() for section in raw_sections if str(section).strip()
+        ]
     else:
         return list(_DEFAULT_VISIBLE_SELF_SETTINGS_SECTIONS)
 
@@ -118,14 +128,10 @@ def _get_allowed_self_settings_keys(visible_sections: list[str]) -> set[str]:
     visible_sections_set = set(visible_sections)
 
     if _SELF_SETTINGS_SECTION_DELIVERY in visible_sections_set:
-        allowed_keys |= {
-            key for key, _field in _get_ordered_user_overridable_fields("downloads")
-        }
+        allowed_keys |= {key for key, _field in _get_ordered_user_overridable_fields("downloads")}
 
     if _SELF_SETTINGS_SECTION_SEARCH in visible_sections_set:
-        allowed_keys |= {
-            key for key, _field in _get_ordered_user_overridable_fields("search_mode")
-        }
+        allowed_keys |= {key for key, _field in _get_ordered_user_overridable_fields("search_mode")}
 
     if _SELF_SETTINGS_SECTION_NOTIFICATIONS in visible_sections_set:
         allowed_keys |= {
@@ -138,25 +144,31 @@ def _get_allowed_self_settings_keys(visible_sections: list[str]) -> set[str]:
 def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
     """Register self-service user endpoints."""
 
-    def _require_authenticated_user(f: Callable[..., Any]) -> Callable[..., Any]:
+    def _require_authenticated_user(
+        f: Callable[..., Response | tuple[Response, int]],
+    ) -> Callable[..., Response | tuple[Response, int]]:
         """Decorator requiring an authenticated session linked to a local user row.
 
         Caches the resolved auth_mode in ``g.auth_mode`` for the request.
         """
+
         @wraps(f)
-        def decorated(*args, **kwargs):
+        def decorated(*args, **kwargs) -> Response | tuple[Response, int]:
             auth_mode = load_active_auth_mode(CWA_DB_PATH, user_db=user_db)
             g.auth_mode = auth_mode
             if auth_mode != "none" and "user_id" not in session:
                 return jsonify({"error": "Authentication required"}), 401
             if "db_user_id" not in session:
-                return jsonify({"error": "Authenticated session is missing local user context"}), 403
+                return jsonify(
+                    {"error": "Authenticated session is missing local user context"}
+                ), 403
             return f(*args, **kwargs)
+
         return decorated
 
     @app.route("/api/users/me/edit-context", methods=["GET"])
     @_require_authenticated_user
-    def users_me_edit_context():
+    def users_me_edit_context() -> Response | tuple[Response, int]:
         user_id, user, user_error = _get_current_user(user_db)
         if user_error:
             return user_error
@@ -168,31 +180,49 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
         delivery_preferences = None
         if _SELF_SETTINGS_SECTION_DELIVERY in visible_self_settings_sections:
             try:
-                delivery_preferences = _build_user_preferences_payload(user_db, user_id, "downloads")
+                delivery_preferences = _build_user_preferences_payload(
+                    user_db, user_id, "downloads"
+                )
             except ValueError:
                 return jsonify({"error": "Downloads settings tab not found"}), 500
             except Exception as exc:
-                logger.warning(f"Failed to build user delivery preferences for user_id={user_id}: {exc}")
+                logger.warning(
+                    "Failed to build user delivery preferences for user_id=%s: %s",
+                    user_id,
+                    exc,
+                )
                 delivery_preferences = None
 
         search_preferences = None
         if _SELF_SETTINGS_SECTION_SEARCH in visible_self_settings_sections:
             try:
-                search_preferences = _build_user_preferences_payload(user_db, user_id, "search_mode")
+                search_preferences = _build_user_preferences_payload(
+                    user_db, user_id, "search_mode"
+                )
             except ValueError:
                 return jsonify({"error": "Search mode settings tab not found"}), 500
             except Exception as exc:
-                logger.warning(f"Failed to build user search preferences for user_id={user_id}: {exc}")
+                logger.warning(
+                    "Failed to build user search preferences for user_id=%s: %s",
+                    user_id,
+                    exc,
+                )
                 search_preferences = None
 
         notification_preferences = None
         if _SELF_SETTINGS_SECTION_NOTIFICATIONS in visible_self_settings_sections:
             try:
-                notification_preferences = _build_user_preferences_payload(user_db, user_id, "notifications")
+                notification_preferences = _build_user_preferences_payload(
+                    user_db, user_id, "notifications"
+                )
             except ValueError:
                 return jsonify({"error": "Notifications settings tab not found"}), 500
             except Exception as exc:
-                logger.warning(f"Failed to build user notification preferences for user_id={user_id}: {exc}")
+                logger.warning(
+                    "Failed to build user notification preferences for user_id=%s: %s",
+                    user_id,
+                    exc,
+                )
                 notification_preferences = None
 
         user_overridable_keys = sorted(
@@ -214,7 +244,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
 
     @app.route("/api/users/me/notification-preferences/test", methods=["POST"])
     @_require_authenticated_user
-    def users_me_test_notification_preferences():
+    def users_me_test_notification_preferences() -> Response | tuple[Response, int]:
         user_id, _user, user_error = _get_current_user(user_db)
         if user_error:
             return user_error
@@ -230,7 +260,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
 
     @app.route("/api/users/me", methods=["PUT"])
     @_require_authenticated_user
-    def users_me_update():
+    def users_me_update() -> Response | tuple[Response, int]:
         user_id, user, user_error = _get_current_user(user_db)
         if user_error:
             return user_error
@@ -252,7 +282,9 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
                     }
                 ), 400
             if len(password) < MIN_PASSWORD_LENGTH:
-                return jsonify({"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters"}), 400
+                return jsonify(
+                    {"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters"}
+                ), 400
             user_db.update_user(user_id, password_hash=generate_password_hash(password))
 
         user_fields: dict[str, Any] = {}
@@ -271,10 +303,9 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
             )
 
         email_changed = "email" in user_fields and user_fields["email"] != user.get("email")
-        display_name_changed = (
-            "display_name" in user_fields
-            and user_fields["display_name"] != user.get("display_name")
-        )
+        display_name_changed = "display_name" in user_fields and user_fields[
+            "display_name"
+        ] != user.get("display_name")
 
         if email_changed and not capabilities["canEditEmail"]:
             if auth_source == AUTH_SOURCE_CWA:
@@ -312,7 +343,9 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
                 return jsonify({"error": "Settings must be an object"}), 400
 
             visible_self_settings_sections = _get_visible_self_settings_sections()
-            allowed_user_settings_keys = _get_allowed_self_settings_keys(visible_self_settings_sections)
+            allowed_user_settings_keys = _get_allowed_self_settings_keys(
+                visible_self_settings_sections
+            )
             disallowed_keys = sorted(
                 key for key in settings_payload if key not in allowed_user_settings_keys
             )
@@ -349,5 +382,5 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
 
         result = _serialize_self_user(updated, g.auth_mode)
         result["settings"] = user_db.get_user_settings(user_id)
-        logger.info(f"User {user_id} updated their own account")
+        logger.info("User %s updated their own account", user_id)
         return jsonify(result)

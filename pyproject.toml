@@ -2,7 +2,44 @@
 name = "shelfmark"
 version = "0.1.0"
 description = "Shelfmark - Book Downloader"
-requires-python = ">=3.10"
+requires-python = ">=3.14"
+dependencies = [
+    "flask",
+    "flask-cors",
+    "flask-socketio",
+    "python-socketio",
+    "requests[socks]",
+    "defusedxml",
+    "beautifulsoup4",
+    "tqdm",
+    "dnspython",
+    "gunicorn",
+    "gevent",
+    "gevent-websocket",
+    "psutil",
+    "emoji",
+    "rarfile",
+    "qbittorrent-api",
+    "transmission-rpc",
+    "authlib>=1.6.6,<1.7",
+    "apprise>=1.9.0",
+]
+
+[project.optional-dependencies]
+browser = [
+    "pyvirtualdisplay",
+    "pyautogui",
+    "seleniumbase==4.47.9",
+    "python-xlib",
+]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.408",
+    "pytest",
+    "pytest-xdist>=3.8.0",
+    "ruff==0.15.9",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -12,6 +49,8 @@ python_functions = ["test_*"]
 addopts = [
     "-v",
     "--tb=short",
+    "-n",
+    "auto",
 ]
 markers = [
     "integration: marks tests that require running services (deselect with '-m \"not integration\"')",
@@ -19,8 +58,50 @@ markers = [
     "e2e: marks end-to-end tests that require the full application stack",
 ]
 
-[tool.mypy]
-python_version = "3.10"
-warn_return_any = true
-warn_unused_ignores = true
-ignore_missing_imports = true
+[tool.ruff]
+line-length = 100
+extend-exclude = [".local"]
+
+[tool.ruff.lint]
+select = [
+    "F", "I", "UP", "B", "C4", "SIM", "PTH", "RET", "PIE", "FURB", "PERF", "TRY",
+    "ANN001", "ANN201", "ANN202", "ANN204",
+    "E731",
+    "FBT002", "FBT003",
+    "G003", "G004",
+    "PLR1714",
+    "PLW0108",
+    "Q000",
+    "RUF005", "RUF012", "RUF013", "RUF059", "RUF100",
+    "TC001", "TC003",
+]
+ignore = ["UP035", "TRY003", "E501"]
+
+[tool.pyright]
+include = ["shelfmark"]
+exclude = [".local", "tests", "**/__pycache__", "**/node_modules"]
+pythonVersion = "3.14"
+typeCheckingMode = "off"
+
+[tool.vulture]
+paths = ["shelfmark"]
+exclude = [".local", "tests"]
+ignore_decorators = [
+    "@app.route",
+    "@app.before_request",
+    "@app.after_request",
+    "@app.errorhandler",
+    "@socketio.on",
+    "@register_provider",
+    "@register_provider_kwargs",
+    "@register_settings",
+    "@register_source",
+    "@register_handler",
+    "@register_client",
+    "@register_output",
+]
+min_confidence = 90
+sort_by_size = true
+
+[tool.uv]
+package = false

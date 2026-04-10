@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.auth_modes import AUTH_SOURCE_CWA, normalize_auth_source
 from shelfmark.core.external_user_linking import upsert_external_user
-from shelfmark.core.user_db import UserDB
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from shelfmark.core.user_db import UserDB
 
 _CWA_ALIAS_SUFFIX = "__cwa"
 
 
-def _normalize_email(value: Any) -> str | None:
+def _normalize_email(value: object) -> str | None:
     if value is None:
         return None
     email = str(value).strip()
@@ -40,7 +44,8 @@ def upsert_cwa_user(
         context=context,
     )
     if user is None:
-        raise RuntimeError("Unexpected CWA user sync result: no user returned")
+        msg = "Unexpected CWA user sync result: no user returned"
+        raise RuntimeError(msg)
     return user, action
 
 
@@ -73,10 +78,13 @@ def sync_cwa_users_from_rows(
 
     deleted = 0
     for existing_user in user_db.list_users():
-        if normalize_auth_source(
-            existing_user.get("auth_source"),
-            existing_user.get("oidc_subject"),
-        ) != AUTH_SOURCE_CWA:
+        if (
+            normalize_auth_source(
+                existing_user.get("auth_source"),
+                existing_user.get("oidc_subject"),
+            )
+            != AUTH_SOURCE_CWA
+        ):
             continue
 
         existing_id = int(existing_user.get("id") or 0)

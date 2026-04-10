@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import uuid
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -48,9 +49,21 @@ def test_config_includes_release_source_links_toggle(main_module, client):
     with patch.object(main_module, "get_auth_mode", return_value="builtin"):
         with patch.object(main_module.app_config, "get", side_effect=fake_get):
             with patch("shelfmark.metadata_providers.get_provider_sort_options", return_value=[]):
-                with patch("shelfmark.metadata_providers.get_provider_search_fields", return_value=[]):
-                    with patch("shelfmark.metadata_providers.get_provider_default_sort", return_value="relevance"):
+                with patch(
+                    "shelfmark.metadata_providers.get_provider_search_fields", return_value=[]
+                ):
+                    with patch(
+                        "shelfmark.metadata_providers.get_provider_default_sort",
+                        return_value="relevance",
+                    ):
                         resp = client.get("/api/config")
 
     assert resp.status_code == 200
     assert resp.json["show_release_source_links"] is False
+
+
+def test_frontend_dist_resolves_from_repo_root(main_module):
+    expected_project_root = Path(main_module.__file__).resolve().parent.parent
+
+    assert main_module.PROJECT_ROOT == expected_project_root
+    assert main_module.FRONTEND_DIST == expected_project_root / "frontend-dist"

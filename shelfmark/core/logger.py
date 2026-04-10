@@ -2,59 +2,59 @@
 
 import logging
 import sys
-from pathlib import Path
 from logging.handlers import RotatingFileHandler
-from typing import Any
+from typing import TYPE_CHECKING
 
-from shelfmark.config.env import LOG_FILE, ENABLE_LOGGING, LOG_LEVEL
+from shelfmark.config.env import ENABLE_LOGGING, LOG_FILE, LOG_LEVEL
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class CustomLogger(logging.Logger):
     """Custom logger class with additional error_trace method."""
 
-    def error_trace(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+    def error_trace(self, msg: object, *args: object, **kwargs: object) -> None:
         """Log an error message with full stack trace."""
         self.log_resource_usage()
-        kwargs.pop('exc_info', None)
+        kwargs.pop("exc_info", None)
         self.error(msg, *args, exc_info=True, **kwargs)
 
-    def warning_trace(self, msg: Any, *args: Any, **kwargs: Any) -> None:
-        """Log a warning message with full stack trace."""
-        self.log_resource_usage()
-        kwargs.pop('exc_info', None)
-        self.warning(msg, *args, exc_info=True, **kwargs)
-
-    def info_trace(self, msg: Any, *args: Any, **kwargs: Any) -> None:
-        """Log an info message (stack trace only if exception active)."""
-        kwargs.pop('exc_info', None)
-        # Only include exc_info if there's actually an exception
-        has_exception = sys.exc_info()[0] is not None
-        self.info(msg, *args, exc_info=has_exception, **kwargs)
-
-    def debug_trace(self, msg: Any, *args: Any, **kwargs: Any) -> None:
+    def debug_trace(self, msg: object, *args: object, **kwargs: object) -> None:
         """Log a debug message (stack trace only if exception active)."""
-        kwargs.pop('exc_info', None)
+        kwargs.pop("exc_info", None)
         # Only include exc_info if there's actually an exception
         has_exception = sys.exc_info()[0] is not None
         self.debug(msg, *args, exc_info=has_exception, **kwargs)
 
-    def log_resource_usage(self):
+    def log_resource_usage(self) -> None:
         # Best-effort only; this should never raise during exception logging.
         try:
             import psutil
+
+            def _get_process_rss_mb(proc: object) -> float | None:
+                try:
+                    mem = proc.info.get("memory_info")
+                    if mem:
+                        return mem.rss / (1024 * 1024)
+                except (
+                    psutil.NoSuchProcess,
+                    psutil.AccessDenied,
+                    KeyError,
+                    AttributeError,
+                ):
+                    return None
+                return None
 
             # Sum RSS of all processes for actual app memory (container-friendly),
             # but fall back gracefully on platforms that restrict process enumeration.
             app_memory_mb = 0.0
             try:
-                for proc in psutil.process_iter(['memory_info']):
-                    try:
-                        mem = proc.info.get('memory_info')
-                        if mem:
-                            app_memory_mb += mem.rss / (1024 * 1024)
-                    except (psutil.NoSuchProcess, psutil.AccessDenied, KeyError, AttributeError):
-                        continue
-            except (PermissionError, psutil.AccessDenied, OSError):
+                for proc in psutil.process_iter(["memory_info"]):
+                    proc_rss_mb = _get_process_rss_mb(proc)
+                    if proc_rss_mb is not None:
+                        app_memory_mb += proc_rss_mb
+            except PermissionError, psutil.AccessDenied, OSError:
                 try:
                     app_memory_mb = psutil.Process().memory_info().rss / (1024 * 1024)
                 except Exception:
@@ -82,6 +82,7 @@ def setup_logger(name: str, log_file: Path = LOG_FILE) -> CustomLogger:
 
     Returns:
         CustomLogger: Configured logger instance with error_trace method
+
     """
     # Register our custom logger class
     logging.setLoggerClass(CustomLogger)
@@ -92,19 +93,21 @@ def setup_logger(name: str, log_file: Path = LOG_FILE) -> CustomLogger:
     logger.setLevel(log_level)
 
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
+        "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
     )
 
     # Console handler for Docker output
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
     console_handler.setLevel(log_level)
-    console_handler.addFilter(lambda record: record.levelno < logging.ERROR)  # Only allow logs below ERROR to stdout
+    console_handler.addFilter(
+        lambda record: record.levelno < logging.ERROR
+    )  # Only allow logs below ERROR to stdout
     logger.addHandler(console_handler)
 
     # Error handler for stderr
     error_handler = logging.StreamHandler(sys.stderr)
-    error_handler.setLevel(logging.ERROR) # Error and above go to stderr
+    error_handler.setLevel(logging.ERROR)  # Error and above go to stderr
     error_handler.setFormatter(formatter)
     logger.addHandler(error_handler)
 
@@ -117,7 +120,7 @@ def setup_logger(name: str, log_file: Path = LOG_FILE) -> CustomLogger:
             file_handler = RotatingFileHandler(
                 log_file,
                 maxBytes=10485760,  # 10MB
-                backupCount=5
+                backupCount=5,
             )
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)

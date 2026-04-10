@@ -5,19 +5,22 @@ from __future__ import annotations
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
-from enum import Enum
-from typing import Any, Iterable, Iterator
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 try:
     import apprise
-except Exception:  # pragma: no cover - exercised in tests via monkeypatch
+except ImportError:  # pragma: no cover - exercised in tests via monkeypatch
     apprise = None  # type: ignore[assignment]
 
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
 
 logger = setup_logger(__name__)
 
@@ -32,7 +35,7 @@ _APPRISE_LOGO_URL = (
 _APPRISE_LOGGER_NAME = "apprise"
 
 
-class NotificationEvent(str, Enum):
+class NotificationEvent(StrEnum):
     """Global notification event identifiers."""
 
     REQUEST_CREATED = "request_created"
@@ -57,7 +60,7 @@ class NotificationContext:
     error_message: str | None = None
 
 
-def _normalize_urls(value: Any) -> list[str]:
+def _normalize_urls(value: object) -> list[str]:
     if value is None:
         return []
 
@@ -103,7 +106,7 @@ def _extract_url_schemes(urls: Iterable[str]) -> list[str]:
 
 
 class _AppriseLogCapture(logging.Handler):
-    def __init__(self, *, thread_id: int):
+    def __init__(self, *, thread_id: int) -> None:
         super().__init__(level=logging.INFO)
         self.records: list[tuple[int, str, str, str]] = []
         self._thread_id = thread_id
@@ -126,7 +129,9 @@ class _AppriseLogCapture(logging.Handler):
 
 
 @contextmanager
-def _capture_apprise_logs(*, min_level: int = logging.INFO) -> Iterator[list[tuple[int, str, str, str]]]:
+def _capture_apprise_logs(
+    *, min_level: int = logging.INFO
+) -> Iterator[list[tuple[int, str, str, str]]]:
     apprise_logger = logging.getLogger(_APPRISE_LOGGER_NAME)
     previous_level = apprise_logger.level
     handler = _AppriseLogCapture(thread_id=threading.get_ident())
@@ -170,7 +175,7 @@ def _log_apprise_exception_debug(*, action: str, scheme: str, exc: Exception) ->
         type(exc).__name__,
         scheme,
         exc,
-        exc_info=True,
+        exc_info=(type(exc), exc, exc.__traceback__),
     )
 
 
@@ -197,7 +202,7 @@ def _build_apprise_warning_detail(
     return None
 
 
-def _normalize_routes(value: Any) -> list[dict[str, str]]:
+def _normalize_routes(value: object) -> list[dict[str, str]]:
     if not isinstance(value, list):
         return []
 
@@ -248,10 +253,10 @@ def _resolve_admin_routes() -> list[dict[str, str]]:
     return _normalize_routes(app_config.get("ADMIN_NOTIFICATION_ROUTES", []))
 
 
-def _normalize_user_id(value: Any) -> int | None:
+def _normalize_user_id(value: object) -> int | None:
     try:
         user_id = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     if user_id < 1:
         return None
@@ -291,7 +296,7 @@ def _resolve_route_urls_for_event(
     return selected
 
 
-def _resolve_notify_type(event: NotificationEvent) -> Any:
+def _resolve_notify_type(event: NotificationEvent) -> object:
     if apprise is None:
         fallback = {
             NotificationEvent.REQUEST_CREATED: "info",
@@ -312,7 +317,7 @@ def _resolve_notify_type(event: NotificationEvent) -> Any:
     return mapping[event]
 
 
-def _clean_text(value: Any, fallback: str) -> str:
+def _clean_text(value: object, fallback: str) -> str:
     text = str(value or "").strip()
     return text or fallback
 
@@ -330,7 +335,10 @@ def _render_message(context: NotificationContext) -> tuple[str, str]:
     if event == NotificationEvent.REQUEST_REJECTED:
         note = _clean_text(context.admin_note, "")
         note_line = f"\nNote: {note}" if note else ""
-        return "Request Rejected", f'Request for "{title}" by {author} was rejected.{note_line}'
+        return (
+            "Request Rejected",
+            f'Request for "{title}" by {author} was rejected.{note_line}',
+        )
     if event == NotificationEvent.DOWNLOAD_COMPLETE:
         return "Download Complete", f'"{title}" by {author} downloaded successfully.'
 
@@ -339,7 +347,7 @@ def _render_message(context: NotificationContext) -> tuple[str, str]:
     return "Download Failed", f'Failed to download "{title}" by {author}.{error_line}'
 
 
-def _plugin_label(plugin: Any, fallback_scheme: str) -> str:
+def _plugin_label(plugin: object, fallback_scheme: str) -> str:
     """Build a human-readable label from a validated Apprise plugin.
 
     Combines the URL scheme with the plugin's service name (app_id) and
@@ -351,10 +359,8 @@ def _plugin_label(plugin: Any, fallback_scheme: str) -> str:
     app_id = getattr(plugin, "app_id", None)
     if app_id and str(app_id) != fallback_scheme:
         privacy_url: str | None = None
-        try:
+        with suppress(Exception):
             privacy_url = plugin.url(privacy=True)
-        except Exception:
-            pass
 
         suffix = str(app_id)
         if privacy_url:
@@ -369,7 +375,7 @@ def _dispatch_to_apprise(
     *,
     title: str,
     body: str,
-    notify_type: Any,
+    notify_type: object,
 ) -> dict[str, Any]:
     normalized_urls = _normalize_urls(list(urls))
     url_schemes = _extract_url_schemes(normalized_urls)
@@ -443,9 +449,7 @@ def _dispatch_to_apprise(
                 if warning_detail:
                     failure_details.append(warning_detail)
                 else:
-                    failure_details.append(
-                        f"{scheme}: notify raised {type(exc).__name__}: {exc}"
-                    )
+                    failure_details.append(f"{scheme}: notify raised {type(exc).__name__}: {exc}")
                 continue
 
         _log_apprise_records(apprise_records)
@@ -502,7 +506,7 @@ def _dispatch_to_apprise(
     return result
 
 
-def _create_apprise_client() -> Any:
+def _create_apprise_client() -> object:
     if apprise is None:
         return None
 
@@ -535,7 +539,9 @@ def _create_apprise_client() -> Any:
         return apprise_cls()
 
 
-def _send_admin_event(event: NotificationEvent, context: NotificationContext, urls: list[str]) -> dict[str, Any]:
+def _send_admin_event(
+    event: NotificationEvent, context: NotificationContext, urls: list[str]
+) -> dict[str, Any]:
     title, body = _render_message(context)
     notify_type = _resolve_notify_type(event)
     return _dispatch_to_apprise(urls, title=title, body=body, notify_type=notify_type)
@@ -554,7 +560,9 @@ def notify_admin(event: NotificationEvent, context: NotificationContext) -> None
         logger.warning("Failed to queue admin notification '%s': %s", event.value, exc)
 
 
-def notify_user(user_id: int | None, event: NotificationEvent, context: NotificationContext) -> None:
+def notify_user(
+    user_id: int | None, event: NotificationEvent, context: NotificationContext
+) -> None:
     """Send a per-user notification for an event if subscribed."""
     normalized_user_id = _normalize_user_id(user_id)
     if normalized_user_id is None:
@@ -576,10 +584,16 @@ def notify_user(user_id: int | None, event: NotificationEvent, context: Notifica
         )
 
 
-def _dispatch_admin_async(event: NotificationEvent, context: NotificationContext, urls: list[str]) -> None:
+def _dispatch_admin_async(
+    event: NotificationEvent, context: NotificationContext, urls: list[str]
+) -> None:
     result = _send_admin_event(event, context, urls)
     if not result.get("success", False):
-        logger.warning("Admin notification failed for event '%s': %s", event.value, result.get("message"))
+        logger.warning(
+            "Admin notification failed for event '%s': %s",
+            event.value,
+            result.get("message"),
+        )
 
 
 def _dispatch_user_async(
