@@ -7,6 +7,8 @@ from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING, Any
 
+from werkzeug.utils import secure_filename
+
 from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -381,10 +383,11 @@ def _get_config_file_path(tab_name: str) -> Path:
     # Core settings tabs share the main settings.json file
     if tab_name in ("general", "search_mode"):
         return config_dir / "settings.json"
-    # Keep plugin config files rooted inside config/plugins even if tab_name
-    # comes from a request path or query parameter.
-    safe_name = Path(tab_name).name
-    if not safe_name or safe_name != tab_name or safe_name in {".", ".."}:
+
+    # Plugin config file names should match their tab names exactly after
+    # filename sanitization, so request input cannot escape the plugins folder.
+    safe_name = secure_filename(tab_name)
+    if not safe_name or safe_name != tab_name:
         msg = f"Invalid tab name: {tab_name}"
         raise ValueError(msg)
 
