@@ -263,6 +263,16 @@ class TestPermissions:
 class TestPathEdgeCases:
     """Tests for edge cases in path handling."""
 
+    @pytest.mark.parametrize("tab_name", ["../escape", "nested/plugin", "..", "."])
+    def test_plugin_tab_name_path_traversal_rejected(self, tab_name):
+        """Plugin tab names must stay inside the plugins config directory."""
+        from shelfmark.core.settings_registry import _get_config_file_path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("shelfmark.config.env.CONFIG_DIR", Path(tmpdir)):
+                with pytest.raises(ValueError, match="Invalid tab name"):
+                    _get_config_file_path(tab_name)
+
     def test_config_dir_with_spaces(self):
         """Config directory with spaces in path should work."""
         from shelfmark.core.settings_registry import (
