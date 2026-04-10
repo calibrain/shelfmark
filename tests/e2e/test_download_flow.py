@@ -30,7 +30,9 @@ def _find_available_provider(api_client: APIClient) -> str | None:
         provider_names = list(providers_data.keys())
     else:
         # List format
-        provider_names = [p.get("name") for p in providers_data if isinstance(p, dict) and p.get("name")]
+        provider_names = [
+            p.get("name") for p in providers_data if isinstance(p, dict) and p.get("name")
+        ]
 
     for name in provider_names:
         if name:
@@ -65,15 +67,15 @@ def _find_available_release_source(api_client: APIClient) -> str | None:
 class TestMetadataToReleaseFlow:
     """Test the flow from metadata search to release listing."""
 
-    def test_search_to_releases_flow(self, api_client: APIClient):
+    def test_search_to_releases_flow(self, protected_api_client: APIClient):
         """Test searching metadata then finding releases."""
         # Find a working provider
-        provider = _find_available_provider(api_client)
+        provider = _find_available_provider(protected_api_client)
         if not provider:
             pytest.skip("No metadata providers available")
 
         # Search for a public domain book
-        search_resp = api_client.get(
+        search_resp = protected_api_client.get(
             "/api/metadata/search",
             params={"query": "Moby Dick Herman Melville", "provider": provider},
             timeout=30,
@@ -102,7 +104,7 @@ class TestMetadataToReleaseFlow:
         assert book_id, "Search result missing ID"
 
         # Now search for releases
-        releases_resp = api_client.get(
+        releases_resp = protected_api_client.get(
             "/api/releases",
             params={
                 "provider": provider,
@@ -135,16 +137,16 @@ class TestFullDownloadJourney:
     """
 
     def test_complete_download_flow(
-        self, api_client: APIClient, download_tracker: DownloadTracker
+        self, protected_api_client: APIClient, download_tracker: DownloadTracker
     ):
         """Test the complete search -> download -> verify flow."""
         # Find a working provider
-        provider = _find_available_provider(api_client)
+        provider = _find_available_provider(protected_api_client)
         if not provider:
             pytest.skip("No metadata providers available")
 
         # Search for a public domain book
-        search_resp = api_client.get(
+        search_resp = protected_api_client.get(
             "/api/metadata/search",
             params={"query": "Pride and Prejudice Jane Austen", "provider": provider},
             timeout=30,
@@ -170,7 +172,7 @@ class TestFullDownloadJourney:
         book_id = first_result.get("id") or first_result.get("provider_id")
 
         # Get releases
-        releases_resp = api_client.get(
+        releases_resp = protected_api_client.get(
             "/api/releases",
             params={
                 "provider": provider,
@@ -205,7 +207,7 @@ class TestFullDownloadJourney:
         source_id = target_release.get("source_id") or target_release.get("id")
         download_tracker.track(source_id)
 
-        queue_resp = api_client.post(
+        queue_resp = protected_api_client.post(
             "/api/releases/download",
             json={
                 "source": target_release.get("source", "direct_download"),
@@ -229,7 +231,7 @@ class TestFullDownloadJourney:
 
         if result is None:
             # Check if it errored
-            status_resp = api_client.get("/api/status")
+            status_resp = protected_api_client.get("/api/status")
             if status_resp.status_code == 200:
                 status_data = status_resp.json()
                 if "error" in status_data and source_id in status_data["error"]:
@@ -246,10 +248,10 @@ class TestDirectSourceReleaseFlow:
     """Test direct-mode search, record lookup, and download via shared release APIs."""
 
     def test_direct_source_search_and_download(
-        self, api_client: APIClient, download_tracker: DownloadTracker
+        self, protected_api_client: APIClient, download_tracker: DownloadTracker
     ):
         """Test the shared direct-mode source query -> record -> release download flow."""
-        search_resp = api_client.get(
+        search_resp = protected_api_client.get(
             "/api/releases",
             params={"source": "direct_download", "query": "Frankenstein Mary Shelley"},
             timeout=30,
@@ -272,14 +274,14 @@ class TestDirectSourceReleaseFlow:
         assert source == "direct_download", "Result missing direct source context"
         assert source_id, "Result missing source_id"
 
-        info_resp = api_client.get(f"/api/release-sources/{source}/records/{source_id}")
+        info_resp = protected_api_client.get(f"/api/release-sources/{source}/records/{source_id}")
 
         if info_resp.status_code != 200:
             pytest.skip(f"Source record endpoint failed: {info_resp.status_code}")
 
         # Queue download from the shared release payload
         download_tracker.track(source_id)
-        download_resp = api_client.post(
+        download_resp = protected_api_client.post(
             "/api/releases/download",
             json={**first_result, "content_type": "ebook", "search_mode": "direct"},
         )
@@ -296,14 +298,14 @@ class TestDownloadCancellation:
     """Test download cancellation functionality."""
 
     def test_cancel_queued_download(
-        self, api_client: APIClient, download_tracker: DownloadTracker
+        self, protected_api_client: APIClient, download_tracker: DownloadTracker
     ):
         """Test cancelling a queued download."""
         # Queue a fake download
         test_id = f"cancel-test-{int(time.time())}"
         download_tracker.track(test_id)
 
-        queue_resp = api_client.post(
+        queue_resp = protected_api_client.post(
             "/api/releases/download",
             json={
                 "source": "test_source",
@@ -319,19 +321,19 @@ class TestDownloadCancellation:
         time.sleep(1)
 
         # Cancel it
-        cancel_resp = api_client.delete(f"/api/download/{test_id}/cancel")
+        cancel_resp = protected_api_client.delete(f"/api/download/{test_id}/cancel")
 
         assert cancel_resp.status_code in [200, 204]
 
     def test_cancel_removes_from_queue(
-        self, api_client: APIClient, download_tracker: DownloadTracker
+        self, protected_api_client: APIClient, download_tracker: DownloadTracker
     ):
         """Test that cancellation removes item from queue."""
         test_id = f"cancel-verify-{int(time.time())}"
         download_tracker.track(test_id)
 
         # Queue it
-        api_client.post(
+        protected_api_client.post(
             "/api/releases/download",
             json={
                 "source": "test_source",
@@ -343,12 +345,12 @@ class TestDownloadCancellation:
         time.sleep(0.5)
 
         # Cancel it
-        api_client.delete(f"/api/download/{test_id}/cancel")
+        protected_api_client.delete(f"/api/download/{test_id}/cancel")
 
         time.sleep(0.5)
 
         # Check it's not in the queue
-        queue_resp = api_client.get("/api/queue/order")
+        queue_resp = protected_api_client.get("/api/queue/order")
         if queue_resp.status_code == 200:
             queue_order = queue_resp.json()
             assert test_id not in queue_order
@@ -358,15 +360,13 @@ class TestDownloadCancellation:
 class TestQueuePriority:
     """Test queue priority functionality."""
 
-    def test_set_priority(
-        self, api_client: APIClient, download_tracker: DownloadTracker
-    ):
+    def test_set_priority(self, protected_api_client: APIClient, download_tracker: DownloadTracker):
         """Test setting download priority."""
         test_id = f"priority-test-{int(time.time())}"
         download_tracker.track(test_id)
 
         # Queue it
-        queue_resp = api_client.post(
+        queue_resp = protected_api_client.post(
             "/api/releases/download",
             json={
                 "source": "test_source",
@@ -382,7 +382,7 @@ class TestQueuePriority:
         time.sleep(0.5)
 
         # Update priority
-        priority_resp = api_client.put(
+        priority_resp = protected_api_client.put(
             f"/api/queue/{test_id}/priority",
             json={"priority": 10},
         )

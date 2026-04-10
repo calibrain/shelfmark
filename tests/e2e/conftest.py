@@ -5,13 +5,19 @@ These tests require the full application stack to be running.
 Run with: uv run pytest tests/e2e/ -v -m e2e
 """
 
+from __future__ import annotations
+
 import os
 import time
-from typing import Generator, List, Optional
+from contextlib import suppress
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import pytest
 import requests
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 # Default test configuration
@@ -19,8 +25,6 @@ DEFAULT_BASE_URL = "http://localhost:8084"
 DEFAULT_TIMEOUT = 10
 POLL_INTERVAL = 2
 DOWNLOAD_TIMEOUT = 300  # 5 minutes max for downloads
-AUTH_EXEMPT_MODULES = {"test_auth_flow"}
-AUTH_EXEMPT_CLASSES = {("test_api", "TestHealthEndpoint")}
 E2E_USERNAME_ENV = "E2E_USERNAME"
 E2E_PASSWORD_ENV = "E2E_PASSWORD"
 
@@ -86,7 +90,7 @@ def _get_auth_state(client: APIClient) -> dict[str, object]:
 
 
 def _login_with_env_credentials(client: APIClient) -> bool:
-    """Try authenticating the shared E2E client with optional env credentials."""
+    """Try authenticating an E2E client with env-provided credentials."""
     username = os.environ.get(E2E_USERNAME_ENV, "").strip()
     password = os.environ.get(E2E_PASSWORD_ENV, "")
     if not username or not password:
@@ -103,12 +107,45 @@ def _login_with_env_credentials(client: APIClient) -> bool:
     return response.status_code == 200
 
 
+def _require_authenticated_client(client: APIClient) -> APIClient:
+    """Require an authenticated client for protected-route E2E tests."""
+    auth_state = _get_auth_state(client)
+    if not auth_state or not auth_state.get("auth_required"):
+        return client
+
+    if auth_state.get("authenticated"):
+        return client
+
+    username = os.environ.get(E2E_USERNAME_ENV, "").strip()
+    password = os.environ.get(E2E_PASSWORD_ENV, "")
+    if not username or not password:
+        pytest.fail(
+            "Live server requires authentication for this E2E test. "
+            f"Set {E2E_USERNAME_ENV}/{E2E_PASSWORD_ENV} or run against a no-auth instance."
+        )
+
+    if not _login_with_env_credentials(client):
+        pytest.fail(
+            "Failed to authenticate the E2E client with "
+            f"{E2E_USERNAME_ENV}/{E2E_PASSWORD_ENV}. "
+            "Check the credentials or run against a no-auth instance."
+        )
+
+    refreshed_auth_state = _get_auth_state(client)
+    if refreshed_auth_state.get("authenticated"):
+        return client
+
+    pytest.fail(
+        "Login request completed but the live server still reports an unauthenticated session."
+    )
+
+
 @dataclass
 class DownloadTracker:
     """Tracks downloads for cleanup after tests."""
 
     client: APIClient
-    queued_ids: List[str] = field(default_factory=list)
+    queued_ids: list[str] = field(default_factory=list)
 
     def track(self, book_id: str) -> str:
         """Track a book ID for cleanup."""
@@ -118,18 +155,16 @@ class DownloadTracker:
     def cleanup(self) -> None:
         """Cancel all tracked downloads."""
         for book_id in self.queued_ids:
-            try:
+            with suppress(Exception):
                 self.client.delete(f"/api/download/{book_id}/cancel")
-            except Exception:
-                pass  # Best effort cleanup
         self.queued_ids.clear()
 
     def wait_for_status(
         self,
         book_id: str,
-        target_states: List[str],
+        target_states: list[str],
         timeout: int = DOWNLOAD_TIMEOUT,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         Poll status until book reaches one of the target states.
 
@@ -181,62 +216,51 @@ def base_url() -> str:
 
 
 @pytest.fixture(scope="session")
-def api_client(base_url: str) -> Generator[APIClient, None, None]:
-    """Create an API client for the test session."""
+def healthy_base_url(base_url: str) -> str:
+    """Ensure the live server is reachable before creating per-test clients."""
     client = APIClient(base_url=base_url)
-
-    # Wait for server to be healthy
-    if not client.wait_for_health():
-        pytest.skip("Server not available - ensure the app is running")
-
-    yield client
-
-    # Cleanup session
-    client.session.close()
-
-
-@pytest.fixture(autouse=True)
-def skip_protected_e2e_without_auth(request: pytest.FixtureRequest) -> None:
-    """Skip protected live-server E2E tests when no authenticated session is available."""
-    if request.node.get_closest_marker("e2e") is None:
-        return
-
-    module_name = getattr(request.module, "__name__", "").rsplit(".", maxsplit=1)[-1]
-    class_name = request.cls.__name__ if request.cls is not None else None
-    if module_name in AUTH_EXEMPT_MODULES or (module_name, class_name) in AUTH_EXEMPT_CLASSES:
-        return
-
-    api_client = request.getfixturevalue("api_client")
-    auth_state = _get_auth_state(api_client)
-    if not auth_state or not auth_state.get("auth_required"):
-        return
-
-    if auth_state.get("authenticated"):
-        return
-
-    if _login_with_env_credentials(api_client):
-        refreshed_auth_state = _get_auth_state(api_client)
-        if refreshed_auth_state.get("authenticated"):
-            return
-
-    pytest.skip(
-        "Live server requires authentication for this E2E test. "
-        f"Set {E2E_USERNAME_ENV}/{E2E_PASSWORD_ENV} or run against a no-auth instance."
-    )
+    try:
+        if not client.wait_for_health():
+            pytest.skip("Server not available - ensure the app is running")
+        return base_url
+    finally:
+        client.session.close()
 
 
 @pytest.fixture
-def download_tracker(api_client: APIClient) -> Generator[DownloadTracker, None, None]:
+def api_client(healthy_base_url: str) -> Iterator[APIClient]:
+    """Create a fresh API client for each E2E test."""
+    client = APIClient(base_url=healthy_base_url)
+    yield client
+    client.session.close()
+
+
+@pytest.fixture
+def protected_api_client(api_client: APIClient) -> APIClient:
+    """Create an authenticated client for protected-route E2E tests."""
+    return _require_authenticated_client(api_client)
+
+
+@pytest.fixture
+def download_tracker(request: pytest.FixtureRequest) -> Iterator[DownloadTracker]:
     """Create a download tracker that cleans up after each test."""
-    tracker = DownloadTracker(client=api_client)
+    client_fixture_name = (
+        "protected_api_client" if "protected_api_client" in request.fixturenames else "api_client"
+    )
+    client = request.getfixturevalue(client_fixture_name)
+    tracker = DownloadTracker(client=client)
     yield tracker
     tracker.cleanup()
 
 
 @pytest.fixture(scope="session")
-def server_config(api_client: APIClient) -> dict:
+def server_config(healthy_base_url: str) -> dict:
     """Get server configuration."""
-    resp = api_client.get("/api/config")
-    if resp.status_code != 200:
-        return {}
-    return resp.json()
+    client = APIClient(base_url=healthy_base_url)
+    try:
+        resp = client.get("/api/config")
+        if resp.status_code != 200:
+            return {}
+        return resp.json()
+    finally:
+        client.session.close()

@@ -187,11 +187,15 @@ from .conftest import APIClient, DownloadTracker
 
 @pytest.mark.e2e
 class TestMyEndpoint:
-    def test_endpoint_works(self, api_client: APIClient):
-        resp = api_client.get("/api/my-endpoint")
+    def test_endpoint_works(self, protected_api_client: APIClient):
+        resp = protected_api_client.get("/api/my-endpoint")
         assert resp.status_code == 200
 
-    def test_with_cleanup(self, api_client: APIClient, download_tracker: DownloadTracker):
+    def test_with_cleanup(
+        self,
+        protected_api_client: APIClient,
+        download_tracker: DownloadTracker,
+    ):
         # Track IDs for automatic cleanup after test
         download_tracker.track("some-id")
         # ... test code ...
@@ -203,7 +207,8 @@ class TestMyEndpoint:
 
 | Fixture | Scope | Description |
 |---------|-------|-------------|
-| `api_client` | session | HTTP client for API calls |
+| `api_client` | function | Fresh HTTP client for general E2E calls |
+| `protected_api_client` | function | Authenticated client for protected-route E2Es |
 | `download_tracker` | function | Tracks downloads for cleanup |
 | `server_config` | session | Cached server configuration |
 
