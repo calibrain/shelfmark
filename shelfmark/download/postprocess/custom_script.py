@@ -124,19 +124,26 @@ def run_custom_script(
     )
 
     try:
+        run_kwargs: dict[str, Any] = {
+            "check": True,
+            "timeout": timeout_seconds,
+            "capture_output": True,
+            "text": True,
+            "cwd": cwd,
+        }
         # If we are not sending a JSON payload, close stdin so scripts that try
-        # to read it won't block indefinitely.
-        stdin = None if execution.payload_json is not None else subprocess.DEVNULL
+        # to read it won't block indefinitely. When we do send a payload, let
+        # subprocess.run manage stdin implicitly via `input=` to avoid passing
+        # both arguments at once.
+        if execution.payload_json is None:
+            run_kwargs["stdin"] = subprocess.DEVNULL
+        else:
+            run_kwargs["input"] = execution.payload_json
+
         result = run_blocking_io(
             subprocess.run,
             [execution.script_path, str(execution.target_arg)],
-            check=True,
-            timeout=timeout_seconds,
-            capture_output=True,
-            text=True,
-            cwd=cwd,
-            stdin=stdin,
-            input=execution.payload_json,
+            **run_kwargs,
         )
         if result.stdout:
             logger.debug("Task %s: custom script stdout: %s", task_id, result.stdout.strip())

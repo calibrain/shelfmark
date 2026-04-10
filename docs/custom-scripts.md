@@ -121,15 +121,26 @@ Example payload shape:
 }
 ```
 
-Example (bash + jq) (JSON payload must be enabled):
+Example (bash + python3) (JSON payload must be enabled):
 
 ```bash
 payload="$(cat)"
-mode="$(echo "$payload" | jq -r '.output.mode')"
-title="$(echo "$payload" | jq -r '.task.title')"
-final_paths="$(echo "$payload" | jq -r '.paths.final_paths[]')"
-echo "mode=$mode title=$title" >&2
-echo "$final_paths" >&2
+target="$1"
+PAYLOAD="$payload" TARGET="$target" python3 - <<'PY'
+import json
+import os
+import sys
+
+payload = json.loads(os.environ["PAYLOAD"])
+
+print(f"target={os.environ['TARGET']}", file=sys.stderr)
+print(
+    f"mode={payload['output']['mode']} title={payload['task']['title']}",
+    file=sys.stderr,
+)
+for path in payload["paths"]["final_paths"]:
+    print(path, file=sys.stderr)
+PY
 ```
 
 Example (Python) (works whether JSON payload is enabled or not):
