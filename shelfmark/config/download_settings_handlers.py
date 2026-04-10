@@ -23,24 +23,21 @@ def _get_download_setting_value(
 
 def _resolve_destination_test_path(
     configured_path: str,
-) -> tuple[Path, list[str]]:
+) -> tuple[Path, str | None]:
     """Resolve a safe path to validate for destination test actions."""
     stripped_path = configured_path.strip()
-    details: list[str] = []
 
     if "{User}" not in stripped_path:
-        return Path(stripped_path), details
+        return Path(stripped_path), None
 
     base_prefix = stripped_path.split("{User}", 1)[0].rstrip("/")
     if not base_prefix and not stripped_path.startswith("/"):
-        return Path(stripped_path), details
+        return Path(stripped_path), None
 
     base_path = base_prefix or "/"
-    details.append(f"Configured path: {stripped_path}")
-    details.append(
-        f"Tested base path: {base_path}. The final destination depends on the user name."
+    return Path(base_path), (
+        f" (tested base path {base_path} from configured template {stripped_path})"
     )
-    return Path(base_path), details
 
 
 def _test_folder_destination(
@@ -58,8 +55,8 @@ def _test_folder_destination(
     )
     destination = str(destination_value or "").strip()
 
-    details: list[str] = []
     label = "Books destination"
+    message_suffix = ""
 
     if is_audiobook:
         audiobook_value = _get_download_setting_value(
@@ -73,15 +70,14 @@ def _test_folder_destination(
             label = "Audiobook destination"
         else:
             label = "Audiobook destination"
-            details.append(
-                "Audiobook destination is empty, so Shelfmark will use the Books destination."
-            )
+            message_suffix = " (using the Books destination)"
 
     if not destination:
         return {"success": False, "message": f"{label} is required"}
 
-    test_path, path_details = _resolve_destination_test_path(destination)
-    details.extend(path_details)
+    test_path, path_message = _resolve_destination_test_path(destination)
+    if path_message:
+        message_suffix += path_message
 
     errors: list[str] = []
 
@@ -90,21 +86,15 @@ def _test_folder_destination(
             errors.append(message)
 
     if not validate_destination(test_path, _status_callback):
-        result = {
-            "success": False,
-            "message": errors[-1] if errors else f"Cannot access destination: {test_path}",
-        }
-        if details:
-            result["details"] = details
-        return result
+        message = errors[-1] if errors else f"Cannot access destination: {test_path}"
+        if message_suffix:
+            message = f"{message}{message_suffix}"
+        return {"success": False, "message": message}
 
-    result = {
+    return {
         "success": True,
-        "message": f"{label} is writable: {test_path}",
+        "message": f"{label} is writable: {test_path}{message_suffix}",
     }
-    if details:
-        result["details"] = details
-    return result
 
 
 def test_books_destination(current_values: dict[str, Any] | None = None) -> dict[str, Any]:

@@ -103,8 +103,10 @@ def test_download_settings_destination_test_buttons_exist():
     )
 
     assert books_button.label == "Test Destination"
+    assert books_button.style == "primary"
     assert books_button.show_when == {"field": "BOOKS_OUTPUT_MODE", "value": "folder"}
     assert audiobook_button.label == "Test Destination"
+    assert audiobook_button.style == "primary"
     assert audiobook_button.universal_only is True
 
 
@@ -133,10 +135,9 @@ def test_test_audiobook_destination_falls_back_to_books_destination(tmp_path):
     )
 
     assert result["success"] is True
-    assert result["message"] == f"Audiobook destination is writable: {destination}"
-    assert result["details"] == [
-        "Audiobook destination is empty, so Shelfmark will use the Books destination."
-    ]
+    assert result["message"] == (
+        f"Audiobook destination is writable: {destination} (using the Books destination)"
+    )
 
 
 def test_test_books_destination_uses_base_path_for_user_placeholder(tmp_path):
@@ -147,11 +148,10 @@ def test_test_books_destination_uses_base_path_for_user_placeholder(tmp_path):
     result = test_books_destination({"DESTINATION": f"{destination}/{{User}}"})
 
     assert result["success"] is True
-    assert result["message"] == f"Books destination is writable: {destination}"
-    assert result["details"] == [
-        f"Configured path: {destination}/{{User}}",
-        f"Tested base path: {destination}. The final destination depends on the user name.",
-    ]
+    assert result["message"] == (
+        f"Books destination is writable: {destination} "
+        f"(tested base path {destination} from configured template {destination}/{{User}})"
+    )
     assert not (destination / "{User}").exists()
 
 

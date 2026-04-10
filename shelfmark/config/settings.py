@@ -927,6 +927,7 @@ def download_settings() -> list[SettingsField]:
             key="test_destination",
             label="Test Destination",
             description="Check that Shelfmark can create and write to this destination.",
+            style="primary",
             callback=test_books_destination,
             show_when={
                 "field": "BOOKS_OUTPUT_MODE",
@@ -1202,6 +1203,7 @@ def download_settings() -> list[SettingsField]:
             key="test_destination_audiobook",
             label="Test Destination",
             description="Check that Shelfmark can create and write to this audiobook destination.",
+            style="primary",
             callback=test_audiobook_destination,
             universal_only=True,
         ),
