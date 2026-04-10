@@ -1,6 +1,7 @@
 """Shared download handler for external torrent/usenet clients."""
 
 from __future__ import annotations
+
 import errno
 import shutil
 import time
@@ -75,6 +76,15 @@ class PathAccessResult:
     exists: bool
     permission_denied: bool
     error: OSError | None = None
+
+
+@dataclass(frozen=True)
+class PathResolutionResult:
+    """Resolved completed-download path plus retry guidance."""
+
+    path: Path | None
+    error: str | None = None
+    retryable: bool = True
 
 
 def _probe_path_access(path: Path) -> PathAccessResult:
@@ -407,7 +417,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         download_id: str,
         *,
         log_details: bool,
-    ) -> tuple[Path | None, str | None]:
+    ) -> PathResolutionResult:
         """Resolve and validate the completed download path once."""
         try:
             raw_path = client.get_download_path(download_id)
@@ -424,7 +434,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 logger.debug(
                     "Failed to resolve download path for %s %s: %s", client.name, download_id, e
                 )
-            return None, message
+            return PathResolutionResult(path=None, error=message)
 
         if not raw_path:
             message = (
@@ -439,7 +449,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 logger.debug(
                     "Download client returned empty path for %s %s", client.name, download_id
                 )
-            return None, message
+            return PathResolutionResult(path=None, error=message)
 
         from shelfmark.core.path_mappings import (
             get_client_host_identifier,
@@ -490,7 +500,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                     source_path_obj,
                     remapped,
                 )
-                return remapped, None
+                return PathResolutionResult(path=remapped)
 
             if remapped_access.permission_denied:
                 message = _diagnose_permission_issue(remapped, remapped=True)
@@ -513,7 +523,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                         download_id,
                         _format_probe_error(remapped_access.error),
                     )
-                return None, message
+                return PathResolutionResult(path=None, error=message, retryable=False)
 
             message = (
                 f"Remapped path '{remapped}' does not exist. "
@@ -532,7 +542,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 logger.error(failure_log, *failure_args)
             else:
                 logger.debug(failure_log, *failure_args)
-            return None, message
+            return PathResolutionResult(path=None, error=message)
 
         source_access = _probe_path_access(source_path_obj)
 
@@ -556,7 +566,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                     download_id,
                     source_path_obj,
                 )
-            return source_path_obj, None
+            return PathResolutionResult(path=source_path_obj)
 
         if mappings:
             if source_access.permission_denied:
@@ -578,7 +588,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                         raw_path,
                         _format_probe_error(source_access.error),
                     )
-                return None, message
+                return PathResolutionResult(path=None, error=message, retryable=False)
 
             hint = _diagnose_path_issue(raw_path)
             message = f"{hint} No remote path mapping matched for client '{client.name}'."
@@ -611,7 +621,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                         download_id,
                         _format_probe_error(source_access.error),
                     )
-                return None, message
+                return PathResolutionResult(path=None, error=message, retryable=False)
 
             hint = _diagnose_path_issue(raw_path)
             message = hint
@@ -632,7 +642,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
             logger.error(failure_log, *failure_args)
         else:
             logger.debug(failure_log, *failure_args)
-        return None, message
+        return PathResolutionResult(path=None, error=message)
 
     def _wait_for_completed_path(
         self,
@@ -652,15 +662,17 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 return None, last_error
 
             log_details = attempt == max_attempts
-            resolved_path, error = self._resolve_download_path_once(
+            resolution = self._resolve_download_path_once(
                 client,
                 download_id,
                 log_details=log_details,
             )
-            if resolved_path:
-                return resolved_path, None
+            if resolution.path:
+                return resolution.path, None
 
-            last_error = error
+            last_error = resolution.error
+            if not resolution.retryable:
+                return None, last_error
 
             if attempt < max_attempts:
                 status_callback("locating", "Waiting for completed files...")

@@ -155,6 +155,21 @@ def test_test_books_destination_uses_base_path_for_user_placeholder(tmp_path):
     assert not (destination / "{User}").exists()
 
 
+def test_test_books_destination_uses_base_path_for_lowercase_user_placeholder(tmp_path):
+    from shelfmark.config.download_settings_handlers import test_books_destination
+
+    destination = tmp_path / "books"
+
+    result = test_books_destination({"DESTINATION": f"{destination}/{{user}}"})
+
+    assert result["success"] is True
+    assert result["message"] == (
+        f"Books destination is writable: {destination} "
+        f"(tested base path {destination} from configured template {destination}/{{user}})"
+    )
+    assert not (destination / "{user}").exists()
+
+
 def test_test_books_destination_rejects_relative_user_placeholder_path():
     from shelfmark.config.download_settings_handlers import test_books_destination
 

@@ -44,6 +44,8 @@ Notes:
 - Point `/books` to your library ingest folder (Calibre-Web, Booklore, Audiobookshelf, etc) for automatic import.
 - If you set Books Output Mode to Booklore (API), books are uploaded via API instead of written to `/books`. Audiobooks still use a destination folder.
 - Ensure `PUID`/`PGID` (or legacy `UID`/`GID`) match the owner of the host directories to avoid permission errors.
+- Hardened Docker/Kubernetes deployments can instead start Shelfmark as `1000:1000` from the beginning by setting the container user directly. `PUID`/`PGID` alone do not enable this mode. In that mode ownership must be prepared outside the container because the entrypoint skips `PUID`/`PGID` repair.
+- `USING_TOR=true` still requires starting the container as root.
 
 ## Torrent / Usenet Setup
 
@@ -113,6 +115,7 @@ Configure templates in Settings -> Downloads. Template syntax details are docume
 
 - "Download failed - file not found": Path mismatch between Shelfmark and the download client. Ensure container paths match or use Remote Path Mappings.
 - "Permission denied": `PUID`/`PGID` do not match the host directories. Ensure Shelfmark can read the client path and write to the destination.
+- "Permission denied" in non-root Docker/Kubernetes mode: ensure the mounted path is writable by UID/GID `1000:1000`, or switch back to root startup with `PUID`/`PGID`.
 - "Hardlinks not working" or "Files being copied instead": Source and destination are on different filesystems. Move the destination or accept copy fallback.
 - "Downloads work but library does not see them": Destination does not point to the library ingest folder. Check Settings -> Downloads -> Destination.
 - CIFS/SMB shares: Use the `nobrl` mount option to avoid database lock errors. Example: `//server/share /mnt/share cifs nobrl,... 0 0`

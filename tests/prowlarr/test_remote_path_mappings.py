@@ -410,17 +410,66 @@ def test_remapped_permission_denied_reports_access_error():
     ), patch(
         "shelfmark.download.clients.base_handler.log_path_permission_context",
     ) as mock_log_context:
-        resolved_path, error = handler._resolve_download_path_once(
+        resolution = handler._resolve_download_path_once(
             mock_client,
             "download-id",
             log_details=True,
         )
 
-    assert resolved_path is None
-    assert error is not None
-    assert "not accessible to Shelfmark" in error
-    assert "PUID/PGID" in error
+    assert resolution.path is None
+    assert resolution.retryable is False
+    assert resolution.error is not None
+    assert "not accessible to Shelfmark" in resolution.error
+    assert "PUID/PGID" in resolution.error
     mock_log_context.assert_called_once_with(
         "client_completed_path_remapped",
         Path("/downloads/audiobooks/book"),
     )
+
+
+def test_remapped_permission_denied_fails_fast_while_waiting_for_completed_path():
+    handler = ProwlarrHandler()
+
+    mock_client = MagicMock()
+    mock_client.name = "qbittorrent"
+    mock_client.get_download_path.return_value = "/data/torrent/audiobooks/book"
+
+    def config_get(key: str, default=""):
+        if key == "PROWLARR_REMOTE_PATH_MAPPINGS":
+            return [
+                {
+                    "host": "qbittorrent",
+                    "remotePath": "/data/torrent",
+                    "localPath": "/downloads",
+                }
+            ]
+        return default
+
+    status_callback = MagicMock()
+
+    with patch(
+        "shelfmark.download.clients.base_handler.config.get",
+        side_effect=config_get,
+    ), patch(
+        "shelfmark.download.clients.base_handler._probe_path_access",
+        return_value=SimpleNamespace(
+            exists=False,
+            permission_denied=True,
+            error="[Errno 13] Permission denied",
+        ),
+    ) as mock_probe, patch(
+        "shelfmark.download.clients.base_handler.time.sleep",
+    ) as mock_sleep:
+        resolved_path, error = handler._wait_for_completed_path(
+            mock_client,
+            "download-id",
+            cancel_flag=None,
+            status_callback=status_callback,
+        )
+
+    assert resolved_path is None
+    assert error is not None
+    assert "not accessible to Shelfmark" in error
+    assert mock_probe.call_count == 1
+    mock_sleep.assert_not_called()
+    assert not any(call.args[0] == "locating" for call in status_callback.call_args_list)

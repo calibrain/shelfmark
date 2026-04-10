@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
+
+_USER_PLACEHOLDER_PATTERN = re.compile(r"\{user\}", re.IGNORECASE)
 
 
 def _get_download_setting_value(
@@ -27,10 +30,10 @@ def _resolve_destination_test_path(
     """Resolve a safe path to validate for destination test actions."""
     stripped_path = configured_path.strip()
 
-    if "{User}" not in stripped_path:
+    if not _USER_PLACEHOLDER_PATTERN.search(stripped_path):
         return Path(stripped_path), None
 
-    base_prefix = stripped_path.split("{User}", 1)[0].rstrip("/")
+    base_prefix = _USER_PLACEHOLDER_PATTERN.split(stripped_path, maxsplit=1)[0].rstrip("/")
     if not base_prefix and not stripped_path.startswith("/"):
         return Path(stripped_path), None
 

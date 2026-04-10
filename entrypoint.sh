@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 is_truthy() {
     case "${1,,}" in
         true|yes|1|y) return 0 ;;
@@ -11,6 +13,14 @@ ENABLE_LOGGING_VALUE="${ENABLE_LOGGING:-true}"
 LOG_PIPE_DIR=""
 LOG_PIPE=""
 TEE_PID=""
+FILE_LOGGING_ENABLED="false"
+CURRENT_UID=$(id -u)
+CURRENT_GID=$(id -g)
+RUN_AS_NON_ROOT="false"
+
+if [ "$CURRENT_UID" != "0" ]; then
+    RUN_AS_NON_ROOT="true"
+fi
 
 start_file_logging() {
     local logfile="$1"
@@ -43,30 +53,38 @@ stop_file_logging() {
 
 if is_truthy "$ENABLE_LOGGING_VALUE"; then
     LOG_DIR=${LOG_ROOT:-/var/log/}/shelfmark
-    mkdir -p "$LOG_DIR"
-    LOG_FILE="${LOG_DIR}/shelfmark_entrypoint.log"
-    # Keep the previous entrypoint log instead of deleting all history on boot.
-    [ -f "${LOG_FILE}.prev" ] && rm -f "${LOG_FILE}.prev"
-    [ -f "$LOG_FILE" ] && mv "$LOG_FILE" "${LOG_FILE}.prev"
+    if mkdir -p "$LOG_DIR" 2>/dev/null; then
+        LOG_FILE="${LOG_DIR}/shelfmark_entrypoint.log"
+        # Keep the previous entrypoint log instead of deleting all history on boot.
+        [ -f "${LOG_FILE}.prev" ] && rm -f "${LOG_FILE}.prev"
+        [ -f "$LOG_FILE" ] && mv "$LOG_FILE" "${LOG_FILE}.prev"
+        FILE_LOGGING_ENABLED="true"
+    else
+        echo "Warning: could not create log directory $LOG_DIR, continuing without file logging" >&2
+        ENABLE_LOGGING_VALUE="false"
+        export ENABLE_LOGGING="false"
+    fi
 fi
 
-(
-    if [ "$USING_TOR" = "true" ]; then
-        ./tor.sh
+if [ "$USING_TOR" = "true" ]; then
+    if [ "$RUN_AS_NON_ROOT" = "true" ]; then
+        echo "USING_TOR=true requires the container to start as root." >&2
+        echo "Non-root mode skips the privileged filesystem and network setup Tor depends on." >&2
+        exit 1
     fi
-)
+    ./tor.sh
+fi
 
-if is_truthy "$ENABLE_LOGGING_VALUE"; then
+if [ "$FILE_LOGGING_ENABLED" = "true" ]; then
     start_file_logging "$LOG_FILE"
 fi
 
 echo "Starting entrypoint script"
-if is_truthy "$ENABLE_LOGGING_VALUE"; then
+if [ "$FILE_LOGGING_ENABLED" = "true" ]; then
     echo "Log file: $LOG_FILE"
 else
     echo "File logging disabled (ENABLE_LOGGING=$ENABLE_LOGGING_VALUE)"
 fi
-set -e
 
 PYTHON_BIN="/app/.venv/bin/python"
 if [ ! -x "$PYTHON_BIN" ]; then
@@ -79,57 +97,77 @@ echo "Release version: $RELEASE_VERSION"
 
 # Configure timezone
 if [ "$TZ" ]; then
-    echo "Setting timezone to $TZ"
-    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+    if [ "$RUN_AS_NON_ROOT" = "true" ]; then
+        echo "TZ is set to $TZ (non-root mode leaves /etc/localtime unchanged)"
+    else
+        echo "Setting timezone to $TZ"
+        ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+    fi
 fi
 
-# Determine user ID with proper precedence:
-# 1. PUID (LinuxServer.io standard - recommended)
-# 2. UID (legacy, for backward compatibility with existing installs)
-# 3. Default to 1000
-#
-# Note: $UID is a bash builtin that's always set. We use `printenv` to detect
-# if UID was explicitly set as an environment variable (e.g., via docker-compose).
-if [ -n "$PUID" ]; then
-    RUN_UID="$PUID"
-    echo "Using PUID=$RUN_UID"
-elif printenv UID >/dev/null 2>&1; then
-    RUN_UID="$(printenv UID)"
-    echo "Using UID=$RUN_UID (legacy - consider migrating to PUID)"
+if [ "$RUN_AS_NON_ROOT" = "true" ]; then
+    RUN_UID="$CURRENT_UID"
+    RUN_GID="$CURRENT_GID"
+    USERNAME=$(getent passwd "$RUN_UID" 2>/dev/null | cut -d: -f1 || true)
+    if [ -z "$USERNAME" ]; then
+        USERNAME="$RUN_UID"
+        echo "No passwd entry found for UID $RUN_UID; using numeric identity"
+    fi
+    TARGET_USER_SPEC="${RUN_UID}:${RUN_GID}"
+    echo "Running in non-root mode as $USERNAME (${RUN_UID}:${RUN_GID})"
 else
-    RUN_UID=1000
-    echo "Using default UID=$RUN_UID"
-fi
+    # Determine user ID with proper precedence:
+    # 1. PUID (LinuxServer.io standard - recommended)
+    # 2. UID (legacy, for backward compatibility with existing installs)
+    # 3. Default to 1000
+    #
+    # Note: $UID is a bash builtin that's always set. We use `printenv` to detect
+    # if UID was explicitly set as an environment variable (e.g., via docker-compose).
+    if [ -n "$PUID" ]; then
+        RUN_UID="$PUID"
+        echo "Using PUID=$RUN_UID"
+    elif printenv UID >/dev/null 2>&1; then
+        RUN_UID="$(printenv UID)"
+        echo "Using UID=$RUN_UID (legacy - consider migrating to PUID)"
+    else
+        RUN_UID=1000
+        echo "Using default UID=$RUN_UID"
+    fi
 
-# Determine group ID with proper precedence:
-# 1. PGID (LinuxServer.io standard - recommended)
-# 2. GID (legacy, for backward compatibility with existing installs)
-# 3. Default to 1000
-if [ -n "$PGID" ]; then
-    RUN_GID="$PGID"
-    echo "Using PGID=$RUN_GID"
-elif [ -n "$GID" ]; then
-    RUN_GID="$GID"
-    echo "Using GID=$RUN_GID (legacy - consider migrating to PGID)"
-else
-    RUN_GID=1000
-    echo "Using default GID=$RUN_GID"
-fi
+    # Determine group ID with proper precedence:
+    # 1. PGID (LinuxServer.io standard - recommended)
+    # 2. GID (legacy, for backward compatibility with existing installs)
+    # 3. Default to 1000
+    if [ -n "$PGID" ]; then
+        RUN_GID="$PGID"
+        echo "Using PGID=$RUN_GID"
+    elif [ -n "$GID" ]; then
+        RUN_GID="$GID"
+        echo "Using GID=$RUN_GID (legacy - consider migrating to PGID)"
+    else
+        RUN_GID=1000
+        echo "Using default GID=$RUN_GID"
+    fi
 
-if ! getent group "$RUN_GID" >/dev/null; then
-    echo "Adding group $RUN_GID with name appuser"
-    groupadd -g "$RUN_GID" appuser
-fi
+    if ! getent group "$RUN_GID" >/dev/null; then
+        echo "Adding group $RUN_GID with name appuser"
+        groupadd -g "$RUN_GID" appuser
+    fi
 
-# Create user if it doesn't exist
-if ! id -u "$RUN_UID" >/dev/null 2>&1; then
-    echo "Adding user $RUN_UID with name appuser"
-    useradd -u "$RUN_UID" -g "$RUN_GID" -d /app -s /sbin/nologin appuser
-fi
+    # Create user if it doesn't exist for this UID yet.
+    if ! getent passwd "$RUN_UID" >/dev/null; then
+        echo "Adding user $RUN_UID with name appuser"
+        useradd -u "$RUN_UID" -g "$RUN_GID" -d /app -s /sbin/nologin appuser
+    fi
 
-# Get username for the UID (whether we just created it or it existed)
-USERNAME=$(getent passwd "$RUN_UID" | cut -d: -f1)
-echo "Username for UID $RUN_UID is $USERNAME"
+    # Get username for the UID (whether we just created it or it existed)
+    USERNAME=$(getent passwd "$RUN_UID" | cut -d: -f1)
+    if [ -z "$USERNAME" ]; then
+        USERNAME="$RUN_UID"
+    fi
+    TARGET_USER_SPEC="${RUN_UID}:${RUN_GID}"
+    echo "Username for UID $RUN_UID is $USERNAME"
+fi
 
 # Avoid unnecessary gosu hops when we're already running as the target user.
 # Some nested LXC setups spin on root-to-root gosu invocations.
@@ -145,7 +183,7 @@ needs_user_switch() {
 
 run_as_target_user() {
     if needs_user_switch; then
-        gosu "$USERNAME" "$@"
+        gosu "$TARGET_USER_SPEC" "$@"
         return $?
     fi
 
@@ -154,7 +192,7 @@ run_as_target_user() {
 
 exec_as_target_user() {
     if needs_user_switch; then
-        exec gosu "$USERNAME" "$@"
+        exec gosu "$TARGET_USER_SPEC" "$@"
     fi
 
     exec "$@"
@@ -243,6 +281,22 @@ change_ownership() {
   chown -R "${RUN_UID}:${RUN_GID}" "${folder}" || echo "Failed to change ownership for ${folder}, continuing..."
 }
 
+require_writable_dir() {
+    local folder="$1"
+    local label="${2:-Directory}"
+
+    if ! mkdir -p "$folder"; then
+        echo "Failed to create ${label} directory: $folder"
+        exit 1
+    fi
+
+    if ! test_write "$folder"; then
+        echo "${label} directory is not writable in non-root mode: $folder"
+        echo "Prepare ownership outside the container (for example with a pre-owned volume or Kubernetes fsGroup)."
+        exit 1
+    fi
+}
+
 ensure_tree_writable() {
     local folder="$1"
 
@@ -287,63 +341,75 @@ ensure_symlinked_dir() {
     fi
 }
 
-fix_misowned /var/log/shelfmark
-fix_misowned /tmp/shelfmark
+if [ "$RUN_AS_NON_ROOT" = "true" ]; then
+    require_writable_dir /tmp/shelfmark "Temporary"
 
-# Keep SeleniumBase on its default /app-based paths, but redirect the scratch
-# directories into /tmp so bypasser startup doesn't depend on image-layer writes.
-if [ "${USING_EXTERNAL_BYPASSER}" != "true" ]; then
-    ensure_symlinked_dir /app/downloaded_files /tmp/shelfmark/seleniumbase/downloaded_files
-    ensure_symlinked_dir /app/archived_files /tmp/shelfmark/seleniumbase/archived_files
+    if [ "${USING_EXTERNAL_BYPASSER}" != "true" ]; then
+        require_writable_dir /tmp/shelfmark/seleniumbase/downloaded_files "SeleniumBase downloads"
+        require_writable_dir /tmp/shelfmark/seleniumbase/archived_files "SeleniumBase archive"
+    fi
 
-    # Keep SeleniumBase's bundled drivers directory writable as well for
-    # compatibility with legacy UC code paths that still probe bundled assets.
-    set +e
-    SELENIUMBASE_DRIVERS_DIR=$("$PYTHON_BIN" -c "import pathlib, seleniumbase; print(pathlib.Path(seleniumbase.__file__).resolve().parent / 'drivers')" 2>/dev/null)
-    set -e
+    require_writable_dir "${CONFIG_DIR:-/config}" "Config"
+else
+    fix_misowned /var/log/shelfmark
+    fix_misowned /tmp/shelfmark
 
-    if [ -n "$SELENIUMBASE_DRIVERS_DIR" ] && [ -d "$SELENIUMBASE_DRIVERS_DIR" ]; then
-        change_ownership "$SELENIUMBASE_DRIVERS_DIR"
+    # Keep SeleniumBase on its default /app-based paths, but redirect the scratch
+    # directories into /tmp so bypasser startup doesn't depend on image-layer writes.
+    if [ "${USING_EXTERNAL_BYPASSER}" != "true" ]; then
+        ensure_symlinked_dir /app/downloaded_files /tmp/shelfmark/seleniumbase/downloaded_files
+        ensure_symlinked_dir /app/archived_files /tmp/shelfmark/seleniumbase/archived_files
 
-        # If the legacy driver already exists, ensure it's executable for the runtime user.
-        if [ -f "${SELENIUMBASE_DRIVERS_DIR}/uc_driver" ]; then
-            chmod +x "${SELENIUMBASE_DRIVERS_DIR}/uc_driver" || echo "Failed to chmod uc_driver, continuing..."
+        # Keep SeleniumBase's bundled drivers directory writable as well for
+        # compatibility with legacy UC code paths that still probe bundled assets.
+        set +e
+        SELENIUMBASE_DRIVERS_DIR=$("$PYTHON_BIN" -c "import pathlib, seleniumbase; print(pathlib.Path(seleniumbase.__file__).resolve().parent / 'drivers')" 2>/dev/null)
+        set -e
+
+        if [ -n "$SELENIUMBASE_DRIVERS_DIR" ] && [ -d "$SELENIUMBASE_DRIVERS_DIR" ]; then
+            change_ownership "$SELENIUMBASE_DRIVERS_DIR"
+
+            # If the legacy driver already exists, ensure it's executable for the runtime user.
+            if [ -f "${SELENIUMBASE_DRIVERS_DIR}/uc_driver" ]; then
+                chmod +x "${SELENIUMBASE_DRIVERS_DIR}/uc_driver" || echo "Failed to chmod uc_driver, continuing..."
+            fi
         fi
     fi
-fi
 
-# Config is Shelfmark-owned state, so it keeps the thorough repair path.
-make_writable "${CONFIG_DIR:-/config}" tree
+    # Config is Shelfmark-owned state, so it keeps the thorough repair path.
+    make_writable "${CONFIG_DIR:-/config}" tree
 
-# Fallback to root if config dir is still not writable (common on NAS/Unraid after upgrade from v0.4.0)
-CONFIG_PATH=${CONFIG_DIR:-/config}
-set +e
-test_write "$CONFIG_PATH" >/dev/null 2>&1
-config_ok=$?
-set -e
+    # Fallback to root if config dir is still not writable (common on NAS/Unraid after upgrade from v0.4.0)
+    CONFIG_PATH=${CONFIG_DIR:-/config}
+    set +e
+    test_write "$CONFIG_PATH" >/dev/null 2>&1
+    config_ok=$?
+    set -e
 
-if [ $config_ok -ne 0 ] && [ "$RUN_UID" != "0" ]; then
-    config_owner=$(stat -c '%u' "$CONFIG_PATH" 2>/dev/null || echo "unknown")
-    if [ "$config_owner" = "0" ]; then
-        echo ""
-        echo "========================================================"
-        echo "WARNING: Permission issue detected!"
-        echo ""
-        echo "Config directory is owned by root but PUID=$RUN_UID."
-        echo "This typically happens after upgrading from v0.4.0 where"
-        echo "PUID/PGID settings were not respected."
-        echo ""
-        echo "Falling back to running as root to prevent data loss."
-        echo ""
-        echo "To fix this permanently, run on your HOST machine:"
-        echo "  chown -R $RUN_UID:$RUN_GID /path/to/config"
-        echo ""
-        echo "Then restart the container."
-        echo "========================================================"
-        echo ""
-        RUN_UID=0
-        RUN_GID=0
-        USERNAME=root
+    if [ $config_ok -ne 0 ] && [ "$RUN_UID" != "0" ]; then
+        config_owner=$(stat -c '%u' "$CONFIG_PATH" 2>/dev/null || echo "unknown")
+        if [ "$config_owner" = "0" ]; then
+            echo ""
+            echo "========================================================"
+            echo "WARNING: Permission issue detected!"
+            echo ""
+            echo "Config directory is owned by root but PUID=$RUN_UID."
+            echo "This typically happens after upgrading from v0.4.0 where"
+            echo "PUID/PGID settings were not respected."
+            echo ""
+            echo "Falling back to running as root to prevent data loss."
+            echo ""
+            echo "To fix this permanently, run on your HOST machine:"
+            echo "  chown -R $RUN_UID:$RUN_GID /path/to/config"
+            echo ""
+            echo "Then restart the container."
+            echo "========================================================"
+            echo ""
+            RUN_UID=0
+            RUN_GID=0
+            USERNAME=root
+            TARGET_USER_SPEC="0:0"
+        fi
     fi
 fi
 
@@ -419,7 +485,16 @@ else
     exit 1
 fi
 
-echo "Running command: '$command' as '$USERNAME' (debug=$is_debug)"
+TARGET_HOME="/app"
+if [ "$RUN_AS_NON_ROOT" = "true" ]; then
+    TARGET_HOME=$(getent passwd "$RUN_UID" 2>/dev/null | cut -d: -f6 || true)
+    if [ -z "$TARGET_HOME" ]; then
+        TARGET_HOME="/tmp/shelfmark/home"
+    fi
+    require_writable_dir "$TARGET_HOME" "Home"
+fi
+
+echo "Running command: '$command' as '$USERNAME' (debug=${DEBUG:-false})"
 
 # Set umask for file permissions (default: 0022 = files 644, dirs 755)
 UMASK_VALUE=${UMASK:-0022}
@@ -427,4 +502,4 @@ echo "Setting umask to $UMASK_VALUE"
 umask $UMASK_VALUE
 
 stop_file_logging
-exec_as_target_user env HOME=/app $command
+exec_as_target_user env HOME="$TARGET_HOME" $command

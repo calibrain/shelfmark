@@ -75,6 +75,14 @@ volumes:
 
 > **Note**: CIFS shares require `nobrl` mount option to avoid database lock errors.
 
+### Non-root container mode
+
+Optional hardened mode:
+- Start the container as `1000:1000` from the beginning with Docker `user: "1000:1000"`, `docker run --user 1000:1000`, or Kubernetes `runAsUser: 1000`.
+- `PUID`/`PGID` alone do not enable this mode. The default compose file still starts as root, then drops to `PUID`/`PGID`.
+- In this mode mounted paths must already be writable by that user.
+- `USING_TOR=true` still requires root startup.
+
 ## ⚙️ Configuration
 
 ### Search Modes
