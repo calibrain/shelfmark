@@ -56,9 +56,22 @@ if is_truthy "$ENABLE_LOGGING_VALUE"; then
     if mkdir -p "$LOG_DIR" 2>/dev/null; then
         LOG_FILE="${LOG_DIR}/shelfmark_entrypoint.log"
         # Keep the previous entrypoint log instead of deleting all history on boot.
-        [ -f "${LOG_FILE}.prev" ] && rm -f "${LOG_FILE}.prev"
-        [ -f "$LOG_FILE" ] && mv "$LOG_FILE" "${LOG_FILE}.prev"
-        FILE_LOGGING_ENABLED="true"
+        rotation_ok="true"
+        if [ -f "${LOG_FILE}.prev" ] && ! rm -f "${LOG_FILE}.prev"; then
+            echo "Warning: could not remove previous entrypoint log ${LOG_FILE}.prev, continuing without file logging" >&2
+            rotation_ok="false"
+        fi
+        if [ "$rotation_ok" = "true" ] && [ -f "$LOG_FILE" ] && ! mv "$LOG_FILE" "${LOG_FILE}.prev"; then
+            echo "Warning: could not rotate entrypoint log $LOG_FILE, continuing without file logging" >&2
+            rotation_ok="false"
+        fi
+
+        if [ "$rotation_ok" = "true" ]; then
+            FILE_LOGGING_ENABLED="true"
+        else
+            ENABLE_LOGGING_VALUE="false"
+            export ENABLE_LOGGING="false"
+        fi
     else
         echo "Warning: could not create log directory $LOG_DIR, continuing without file logging" >&2
         ENABLE_LOGGING_VALUE="false"
