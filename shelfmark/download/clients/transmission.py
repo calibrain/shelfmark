@@ -62,8 +62,9 @@ def _transmission_session_verify_override(url: str) -> Iterator[None]:
 
     try:
         import transmission_rpc.client as transmission_rpc_client
+
         original_session_factory = transmission_rpc_client.requests.Session
-    except (AttributeError, ImportError):
+    except AttributeError, ImportError:
         # If internals differ, gracefully fall back to default behavior.
         yield
         return

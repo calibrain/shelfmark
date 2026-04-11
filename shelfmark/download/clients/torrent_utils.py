@@ -295,7 +295,7 @@ def extract_hash_from_magnet(magnet_url: str) -> str | None:
             padded = raw_value.upper() + "=" * (-len(raw_value) % 8)
             try:
                 data = base64.b32decode(padded, casefold=True)
-            except (BinasciiError, ValueError):
+            except BinasciiError, ValueError:
                 return None
 
         if not data:
@@ -333,8 +333,10 @@ def extract_hash_from_magnet(magnet_url: str) -> str | None:
             if re.match(r"^[A-Z2-7]{32}$", hash_value.upper()):
                 try:
                     return base64.b32decode(hash_value.upper()).hex().lower()
-                except (BinasciiError, ValueError):
-                    logger.debug("Could not decode base32 BTIH hash from magnet URI: %s", hash_value)
+                except BinasciiError, ValueError:
+                    logger.debug(
+                        "Could not decode base32 BTIH hash from magnet URI: %s", hash_value
+                    )
 
             # Fallback: return as-is
             return hash_value.lower()

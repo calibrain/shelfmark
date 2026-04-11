@@ -654,7 +654,14 @@ def create_custom_getaddrinfo(
                 _log_results("custom resolver", _current_dns_label(), results)
                 return results
 
-        except (DNSException, OSError, RuntimeError, TypeError, ValueError, requests.RequestException) as e:
+        except (
+            DNSException,
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+            requests.RequestException,
+        ) as e:
             logger.warning(
                 "Custom DNS resolution failed for %s: %s, falling back to system DNS", host_str, e
             )

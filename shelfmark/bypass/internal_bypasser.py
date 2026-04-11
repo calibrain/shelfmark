@@ -1081,7 +1081,7 @@ def get_bypassed_page(
         response_html = get(attempt_url, cancel_flag=cancel_flag)
     except BypassCancelledError:
         raise
-    except (_CDP_OPERATION_ERRORS + _REQUEST_OPERATION_ERRORS):
+    except _CDP_OPERATION_ERRORS + _REQUEST_OPERATION_ERRORS:
         _check_cancellation(cancel_flag, "Bypass cancelled")
         new_base, action = sel.next_mirror_or_rotate_dns()
         if action in ("mirror", "dns") and new_base:

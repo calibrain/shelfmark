@@ -154,6 +154,7 @@ def register_admin_settings_routes(
     require_admin: Callable[[Callable[..., object]], Callable[..., object]],
 ) -> None:
     """Register admin endpoints for user-specific settings and defaults."""
+
     @app.route("/api/admin/download-defaults", methods=["GET"])
     @require_admin
     def admin_download_defaults() -> Response | tuple[Response, int]:

@@ -757,6 +757,7 @@ def login_required(
     f: Callable[..., Response | tuple[Response, int]],
 ) -> Callable[..., Response | tuple[Response, int]]:
     """Require authentication for a Flask route."""
+
     @wraps(f)
     def decorated_function(*args: object, **kwargs: object) -> Response | tuple[Response, int]:
         auth_mode = get_auth_mode()
@@ -782,7 +783,7 @@ def login_required(
                 ):
                     return jsonify({"error": "Admin access required"}), 403
 
-            except (RuntimeError, TypeError, ValueError):
+            except RuntimeError, TypeError, ValueError:
                 logger.exception("Admin access check error")
                 return jsonify({"error": "Internal Server Error"}), 500
 

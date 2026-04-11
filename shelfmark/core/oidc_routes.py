@@ -40,7 +40,7 @@ def _normalize_claims(raw_claims: object) -> dict[str, Any]:
         return raw_claims.to_dict()  # type: ignore[no-any-return]
     try:
         return dict(raw_claims)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return {}
 
 

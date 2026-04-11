@@ -163,7 +163,7 @@ class Config:
             db_path = str(Path(os.environ.get("CONFIG_DIR", "/config")) / "users.db")
             user_db = user_db_cls(db_path)
             user_db.initialize()
-        except (ImportError, OSError, sqlite3.Error):
+        except ImportError, OSError, sqlite3.Error:
             # Multi-user support is optional; fall back to global config when unavailable.
             return None
         else:

@@ -284,6 +284,7 @@ def register_settings(
     group: str | None = None,
 ) -> Callable[[Callable[[], list[SettingsField]]], Callable[[], list[SettingsField]]]:
     """Register a settings tab and its field factory."""
+
     def decorator(func: Callable[[], list[SettingsField]]) -> Callable[[], list[SettingsField]]:
         with _REGISTRY_LOCK:
             fields = func()

@@ -201,7 +201,9 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         if not username:
             return jsonify({"error": "Username is required"}), 400
         if not password or len(password) < MIN_PASSWORD_LENGTH:
-            return jsonify({"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters"}), 400
+            return jsonify(
+                {"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters"}
+            ), 400
         if role not in ("admin", "user"):
             return jsonify({"error": "Role must be 'admin' or 'user'"}), 400
 

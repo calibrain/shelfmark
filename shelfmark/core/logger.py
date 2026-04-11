@@ -36,6 +36,7 @@ class CustomLogger(logging.Logger):
 
         # Best-effort only; this should never raise during exception logging.
         try:
+
             def _get_process_rss_mb(proc: object) -> float | None:
                 try:
                     mem = proc.info.get("memory_info")
@@ -58,10 +59,10 @@ class CustomLogger(logging.Logger):
                     proc_rss_mb = _get_process_rss_mb(proc)
                     if proc_rss_mb is not None:
                         app_memory_mb += proc_rss_mb
-            except (PermissionError, psutil.AccessDenied, OSError):
+            except PermissionError, psutil.AccessDenied, OSError:
                 try:
                     app_memory_mb = psutil.Process().memory_info().rss / (1024 * 1024)
-                except (AttributeError, OSError, psutil.Error):
+                except AttributeError, OSError, psutil.Error:
                     app_memory_mb = 0.0
 
             memory = psutil.virtual_memory()
@@ -72,7 +73,7 @@ class CustomLogger(logging.Logger):
                 f"Container Memory: App={app_memory_mb:.2f} MB, System={system_used_mb:.2f} MB, "
                 f"Available={available_mb:.2f} MB, CPU: {cpu_percent:.2f}%"
             )
-        except (AttributeError, OSError, psutil.Error):
+        except AttributeError, OSError, psutil.Error:
             # Avoid breaking the original log call if psutil is missing or restricted.
             return
 

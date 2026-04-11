@@ -367,7 +367,7 @@ class DelugeClient(DownloadClient):
             if eta is not None:
                 try:
                     eta = int(eta)
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     eta = None
 
             if eta is not None and (eta < 0 or eta > ONE_WEEK_IN_SECONDS):

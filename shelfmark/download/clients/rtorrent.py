@@ -223,7 +223,7 @@ class RTorrentClient(DownloadClient):
 
             try:
                 state = int(state)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 state = 0
 
             complete = bool(complete)

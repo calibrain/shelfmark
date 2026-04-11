@@ -175,7 +175,7 @@ def _resolve_destination_username(
         if not user:
             return ""
         return str(user.get("username") or "").strip()
-    except (ImportError, OSError, sqlite3.Error):
+    except ImportError, OSError, sqlite3.Error:
         return ""
 
 

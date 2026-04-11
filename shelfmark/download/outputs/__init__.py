@@ -33,6 +33,7 @@ def register_output(
     priority: int = 0,
 ) -> Callable[[OutputHandler], OutputHandler]:
     """Register an output handler for a named delivery mode."""
+
     def decorator(handler: OutputHandler) -> OutputHandler:
         _OUTPUT_REGISTRY.append(
             OutputRegistration(

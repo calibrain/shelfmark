@@ -68,7 +68,7 @@ def _format_uid(uid: int) -> str:
         import pwd
 
         return pwd.getpwuid(uid).pw_name
-    except (ImportError, KeyError):
+    except ImportError, KeyError:
         return str(uid)
 
 
@@ -77,7 +77,7 @@ def _format_gid(gid: int) -> str:
         import grp
 
         return grp.getgrgid(gid).gr_name
-    except (ImportError, KeyError):
+    except ImportError, KeyError:
         return str(gid)
 
 
@@ -105,7 +105,7 @@ def log_path_permission_context(label: str, path: Path) -> None:
         for probe in [path, path.parent]:
             try:
                 resolved = _run_io(probe.resolve)
-            except (OSError, RuntimeError):
+            except OSError, RuntimeError:
                 resolved = probe
 
             try:
