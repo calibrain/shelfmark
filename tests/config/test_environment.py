@@ -57,13 +57,9 @@ class TestDirectorySetup:
         from shelfmark.download.staging import get_staging_path
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch(
-                "shelfmark.config.env.TMP_DIR", Path(tmpdir)
-            ):
+            with patch("shelfmark.config.env.TMP_DIR", Path(tmpdir)):
                 # Task ID with URL-like characters
-                path = get_staging_path(
-                    "https://example.com/book?id=123&format=epub", "epub"
-                )
+                path = get_staging_path("https://example.com/book?id=123&format=epub", "epub")
 
                 assert path.suffix == ".epub"
                 assert path.parent == Path(tmpdir)
@@ -77,9 +73,7 @@ class TestDirectorySetup:
         from shelfmark.download.staging import get_staging_path
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch(
-                "shelfmark.config.env.TMP_DIR", Path(tmpdir)
-            ):
+            with patch("shelfmark.config.env.TMP_DIR", Path(tmpdir)):
                 path1 = get_staging_path("task1", "epub")
                 path2 = get_staging_path("task1", ".epub")
 
@@ -98,6 +92,7 @@ class TestSupportedFormats:
     def test_default_supported_formats(self):
         """Default formats should include common ebook formats."""
         from shelfmark.core.config import config
+
         # Ensure settings are refreshed to pick up defaults
         config.refresh()
 
@@ -110,6 +105,7 @@ class TestSupportedFormats:
     def test_format_list_is_lowercase(self):
         """Format list should be normalized to lowercase."""
         from shelfmark.core.config import config
+
         # Ensure settings are refreshed to pick up defaults
         config.refresh()
 
@@ -121,6 +117,7 @@ class TestSupportedFormats:
     def test_config_supported_formats_is_list(self):
         """Config should have SUPPORTED_FORMATS as a list."""
         from shelfmark.core.config import config
+
         # Ensure settings are refreshed to pick up defaults
         config.refresh()
 
@@ -195,9 +192,7 @@ class TestSettingsSystem:
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch(
-                "shelfmark.config.env.CONFIG_DIR", Path(tmpdir)
-            ):
+            with patch("shelfmark.config.env.CONFIG_DIR", Path(tmpdir)):
                 test_data = {"key1": "value1", "key2": 123, "key3": True}
                 save_config_file("test_plugin", test_data)
 
@@ -210,9 +205,7 @@ class TestSettingsSystem:
         from shelfmark.core.settings_registry import load_config_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch(
-                "shelfmark.config.env.CONFIG_DIR", Path(tmpdir)
-            ):
+            with patch("shelfmark.config.env.CONFIG_DIR", Path(tmpdir)):
                 loaded = load_config_file("nonexistent_plugin")
 
                 assert loaded == {}
@@ -226,9 +219,7 @@ class TestSettingsSystem:
         initial = config.get("TEST_REFRESH_KEY", "default")
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch(
-                "shelfmark.config.env.CONFIG_DIR", Path(tmpdir)
-            ):
+            with patch("shelfmark.config.env.CONFIG_DIR", Path(tmpdir)):
                 save_config_file("test", {"TEST_REFRESH_KEY": "new_value"})
                 config.refresh()
 
@@ -333,17 +324,14 @@ class TestConfigValidation:
             # Use a path that doesn't exist yet
             nonexistent = Path(tmpdir) / "deeply" / "nested" / "path"
 
-            with patch(
-                "shelfmark.config.env.TMP_DIR", nonexistent
-            ):
+            with patch("shelfmark.config.env.TMP_DIR", nonexistent):
                 result = get_staging_dir()
 
             # Should have created the directory
             assert nonexistent.exists()
 
     @pytest.mark.skipif(
-        os.geteuid() == 0,
-        reason="Test skipped when running as root (chmod has no effect)"
+        os.geteuid() == 0, reason="Test skipped when running as root (chmod has no effect)"
     )
     def test_config_dir_not_writable(self):
         """Application should handle read-only config directory."""
@@ -355,9 +343,7 @@ class TestConfigValidation:
             os.chmod(readonly_dir, 0o444)  # Read-only
 
             try:
-                with patch(
-                    "shelfmark.config.env.CONFIG_DIR", readonly_dir
-                ):
+                with patch("shelfmark.config.env.CONFIG_DIR", readonly_dir):
                     result = _is_config_dir_writable()
                     assert result is False
             finally:
@@ -461,6 +447,7 @@ class TestNetworkConfiguration:
     def test_proxy_settings_default(self):
         """Proxy settings should have sensible defaults."""
         from shelfmark.core.config import config
+
         config.refresh()
 
         # Default proxy mode should be 'none' (no proxy)
@@ -486,6 +473,7 @@ class TestConcurrencyConfiguration:
     def test_max_concurrent_downloads_default(self):
         """MAX_CONCURRENT_DOWNLOADS should have a sensible default."""
         from shelfmark.core.config import config
+
         config.refresh()
 
         max_downloads = config.get("MAX_CONCURRENT_DOWNLOADS", 3)
@@ -495,6 +483,7 @@ class TestConcurrencyConfiguration:
     def test_download_progress_interval_default(self):
         """DOWNLOAD_PROGRESS_UPDATE_INTERVAL should have a sensible default."""
         from shelfmark.core.config import config
+
         config.refresh()
 
         interval = config.get("DOWNLOAD_PROGRESS_UPDATE_INTERVAL", 1)
@@ -513,6 +502,7 @@ class TestCacheConfiguration:
     def test_metadata_cache_ttl_defaults(self):
         """Metadata cache TTLs should have sensible defaults."""
         from shelfmark.core.config import config
+
         config.refresh()
 
         search_ttl = config.get("METADATA_CACHE_SEARCH_TTL", 300)
@@ -555,9 +545,7 @@ class TestFileCollisionHandling:
             # Create existing file with same name in staging
             (staging / "book.epub").write_text("existing")
 
-            with patch(
-                "shelfmark.config.env.TMP_DIR", staging
-            ):
+            with patch("shelfmark.config.env.TMP_DIR", staging):
                 result = stage_file(source, "task1", copy=True)
 
             # Should have created a new file with suffix
@@ -576,9 +564,7 @@ class TestFileCollisionHandling:
             source1 = Path(tmpdir) / "book1.epub"
             source1.write_text("content1")
 
-            with patch(
-                "shelfmark.config.env.TMP_DIR", staging
-            ):
+            with patch("shelfmark.config.env.TMP_DIR", staging):
                 result1 = stage_file(source1, "task1", copy=True)
 
             assert source1.exists()  # Original still exists
@@ -588,9 +574,7 @@ class TestFileCollisionHandling:
             source2 = Path(tmpdir) / "book2.epub"
             source2.write_text("content2")
 
-            with patch(
-                "shelfmark.config.env.TMP_DIR", staging
-            ):
+            with patch("shelfmark.config.env.TMP_DIR", staging):
                 result2 = stage_file(source2, "task2", copy=False)
 
             assert not source2.exists()  # Original moved

@@ -121,7 +121,9 @@ class TestActivityRoutes:
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
                 response = client.get("/api/activity/snapshot")
 
         assert response.status_code == 200
@@ -160,7 +162,10 @@ class TestActivityRoutes:
         assert dismiss_response.json["status"] == "dismissed"
 
         assert snapshot_response.status_code == 200
-        assert {"item_type": "download", "item_key": "download:test-task"} in snapshot_response.json["dismissed"]
+        assert {
+            "item_type": "download",
+            "item_key": "download:test-task",
+        } in snapshot_response.json["dismissed"]
 
         assert history_response.status_code == 200
         assert len(history_response.json) == 1
@@ -176,7 +181,9 @@ class TestActivityRoutes:
         assert history_after_clear.json == []
         assert main_module.download_history_service.get_by_task_id("test-task") is not None
 
-    def test_dismiss_preserves_terminal_snapshot_without_live_queue_merge(self, main_module, client):
+    def test_dismiss_preserves_terminal_snapshot_without_live_queue_merge(
+        self, main_module, client
+    ):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
@@ -206,7 +213,9 @@ class TestActivityRoutes:
         assert snapshot_download["author"] == "Recorded Author"
         assert snapshot_download["status_message"] is None
 
-    def test_clear_history_hides_dismissed_requests_without_deleting_them(self, main_module, client):
+    def test_clear_history_hides_dismissed_requests_without_deleting_them(
+        self, main_module, client
+    ):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
@@ -233,7 +242,9 @@ class TestActivityRoutes:
             history_before_clear = client.get("/api/activity/history?limit=10&offset=0")
             clear_history_response = client.delete("/api/activity/history")
             history_after_clear = client.get("/api/activity/history?limit=10&offset=0")
-            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
                 snapshot_after_clear = client.get("/api/activity/snapshot")
 
         assert dismiss_response.status_code == 200
@@ -249,7 +260,9 @@ class TestActivityRoutes:
 
         assert snapshot_after_clear.status_code == 200
         assert all(row["id"] != request_row["id"] for row in snapshot_after_clear.json["requests"])
-        assert {"item_type": "request", "item_key": request_key} in snapshot_after_clear.json["dismissed"]
+        assert {"item_type": "request", "item_key": request_key} in snapshot_after_clear.json[
+            "dismissed"
+        ]
         assert main_module.user_db.get_request(request_row["id"]) is not None
 
     def test_admin_snapshot_includes_admin_viewer_dismissals(self, main_module, client):
@@ -269,7 +282,9 @@ class TestActivityRoutes:
                 "/api/activity/dismiss",
                 json={"item_type": "download", "item_key": "download:admin-visible-task"},
             )
-            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
                 snapshot_response = client.get("/api/activity/snapshot")
 
         assert dismiss_response.status_code == 200
@@ -304,7 +319,9 @@ class TestActivityRoutes:
         assert response.data == file_bytes
         assert "attachment" in response.headers.get("Content-Disposition", "").lower()
 
-    def test_dismiss_legacy_fulfilled_request_creates_minimal_history_snapshot(self, main_module, client):
+    def test_dismiss_legacy_fulfilled_request_creates_minimal_history_snapshot(
+        self, main_module, client
+    ):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
@@ -340,7 +357,9 @@ class TestActivityRoutes:
         assert history_entry["final_status"] == "complete"
         assert history_entry["snapshot"]["kind"] == "request"
         assert history_entry["snapshot"]["request"]["id"] == request_row["id"]
-        assert history_entry["snapshot"]["request"]["book_data"]["title"] == "Legacy Fulfilled Request"
+        assert (
+            history_entry["snapshot"]["request"]["book_data"]["title"] == "Legacy Fulfilled Request"
+        )
 
     def test_dismiss_requires_db_identity(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -485,7 +504,10 @@ class TestActivityRoutes:
                 with patch.object(main_module.ws_manager.socketio, "emit") as mock_emit:
                     response = client.post(
                         "/api/activity/dismiss",
-                        json={"item_type": "download", "item_key": "download:admin-dismiss-room-task"},
+                        json={
+                            "item_type": "download",
+                            "item_key": "download:admin-dismiss-room-task",
+                        },
                     )
 
         assert response.status_code == 200
@@ -495,7 +517,9 @@ class TestActivityRoutes:
             to="admins",
         )
 
-    def test_dismiss_many_preserves_terminal_snapshots_without_live_queue_merge(self, main_module, client):
+    def test_dismiss_many_preserves_terminal_snapshots_without_live_queue_merge(
+        self, main_module, client
+    ):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
@@ -535,12 +559,26 @@ class TestActivityRoutes:
         assert history_response.status_code == 200
 
         rows_by_key = {row["item_key"]: row for row in history_response.json}
-        assert rows_by_key[f"download:{first_task_id}"]["snapshot"]["download"]["title"] == "First Title"
-        assert rows_by_key[f"download:{first_task_id}"]["snapshot"]["download"]["author"] == "First Author"
-        assert rows_by_key[f"download:{second_task_id}"]["snapshot"]["download"]["title"] == "Second Title"
-        assert rows_by_key[f"download:{second_task_id}"]["snapshot"]["download"]["author"] == "Second Author"
+        assert (
+            rows_by_key[f"download:{first_task_id}"]["snapshot"]["download"]["title"]
+            == "First Title"
+        )
+        assert (
+            rows_by_key[f"download:{first_task_id}"]["snapshot"]["download"]["author"]
+            == "First Author"
+        )
+        assert (
+            rows_by_key[f"download:{second_task_id}"]["snapshot"]["download"]["title"]
+            == "Second Title"
+        )
+        assert (
+            rows_by_key[f"download:{second_task_id}"]["snapshot"]["download"]["author"]
+            == "Second Author"
+        )
 
-    def test_dismiss_many_accepts_stale_active_download_as_interrupted_history(self, main_module, client):
+    def test_dismiss_many_accepts_stale_active_download_as_interrupted_history(
+        self, main_module, client
+    ):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
@@ -562,7 +600,9 @@ class TestActivityRoutes:
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
                 dismiss_many_response = client.post(
                     "/api/activity/dismiss-many",
                     json={"items": [{"item_type": "download", "item_key": f"download:{task_id}"}]},
@@ -578,7 +618,9 @@ class TestActivityRoutes:
         assert history_response.json[0]["final_status"] == "error"
         assert history_response.json[0]["snapshot"]["download"]["status_message"] == "Interrupted"
 
-    def test_dismiss_many_preserves_retry_for_stale_active_requested_download_history(self, main_module, client):
+    def test_dismiss_many_preserves_retry_for_stale_active_requested_download_history(
+        self, main_module, client
+    ):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
@@ -614,7 +656,9 @@ class TestActivityRoutes:
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
                 dismiss_many_response = client.post(
                     "/api/activity/dismiss-many",
                     json={"items": [{"item_type": "download", "item_key": f"download:{task_id}"}]},
@@ -629,7 +673,9 @@ class TestActivityRoutes:
         assert history_response.json[0]["snapshot"]["download"]["status_message"] == "Interrupted"
         assert history_response.json[0]["snapshot"]["download"]["retry_available"] is True
 
-    def test_dismiss_many_returns_404_without_partial_dismiss_when_any_item_is_missing(self, main_module, client):
+    def test_dismiss_many_returns_404_without_partial_dismiss_when_any_item_is_missing(
+        self, main_module, client
+    ):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
@@ -690,7 +736,9 @@ class TestActivityRoutes:
                 "/api/activity/dismiss-many",
                 json={"items": [{"item_type": "download", "item_key": item_key}]},
             )
-            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
                 snapshot_one = client_one.get("/api/activity/snapshot")
                 snapshot_two = client_two.get("/api/activity/snapshot")
             history_one = client_one.get("/api/activity/history?limit=10&offset=0")
@@ -710,7 +758,9 @@ class TestActivityRoutes:
 
     def test_no_auth_dismiss_many_ignores_stale_session_db_identity(self, main_module, client):
         stale_db_user_id = 999999999
-        _set_session(client, user_id="stale-session-user", db_user_id=stale_db_user_id, is_admin=False)
+        _set_session(
+            client, user_id="stale-session-user", db_user_id=stale_db_user_id, is_admin=False
+        )
 
         task_id = f"no-auth-stale-{uuid.uuid4().hex[:8]}"
         item_key = f"download:{task_id}"
@@ -763,14 +813,20 @@ class TestActivityRoutes:
                 "/api/activity/dismiss-many",
                 json={"items": [{"item_type": "download", "item_key": item_key}]},
             )
-            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
                 snapshot_response = other_client.get("/api/activity/snapshot")
 
         assert dismiss_response.status_code == 200
         assert snapshot_response.status_code == 200
-        assert {"item_type": "download", "item_key": item_key} in snapshot_response.json["dismissed"]
+        assert {"item_type": "download", "item_key": item_key} in snapshot_response.json[
+            "dismissed"
+        ]
 
-    def test_dismiss_many_with_stale_db_identity_returns_identity_unavailable(self, main_module, client):
+    def test_dismiss_many_with_stale_db_identity_returns_identity_unavailable(
+        self, main_module, client
+    ):
         _set_session(client, user_id="stale-session-user", db_user_id=999999999, is_admin=False)
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
@@ -801,10 +857,14 @@ class TestActivityRoutes:
         assert f"user={admin['username']}" in log_message
         assert "is_admin=True" in log_message
 
-    def test_dismiss_many_logs_actor_and_row_context_for_forbidden_download(self, main_module, client):
+    def test_dismiss_many_logs_actor_and_row_context_for_forbidden_download(
+        self, main_module, client
+    ):
         owner = _create_user(main_module, prefix="owner")
         intruder = _create_user(main_module, prefix="intruder")
-        _set_session(client, user_id=intruder["username"], db_user_id=intruder["id"], is_admin=False)
+        _set_session(
+            client, user_id=intruder["username"], db_user_id=intruder["id"], is_admin=False
+        )
 
         _record_terminal_download(
             main_module,
@@ -819,7 +879,14 @@ class TestActivityRoutes:
             with patch("shelfmark.core.activity_routes.logger.warning") as mock_warning:
                 response = client.post(
                     "/api/activity/dismiss-many",
-                    json={"items": [{"item_type": "download", "item_key": "download:forbidden-download-task"}]},
+                    json={
+                        "items": [
+                            {
+                                "item_type": "download",
+                                "item_key": "download:forbidden-download-task",
+                            }
+                        ]
+                    },
                 )
 
         assert response.status_code == 403
@@ -835,7 +902,9 @@ class TestActivityRoutes:
         assert "final_status=complete" in log_message
         assert "request_id=321" in log_message
 
-    def test_snapshot_backfills_undismissed_terminal_download_from_download_history(self, main_module, client):
+    def test_snapshot_backfills_undismissed_terminal_download_from_download_history(
+        self, main_module, client
+    ):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
@@ -850,7 +919,9 @@ class TestActivityRoutes:
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
                 response = client.get("/api/activity/snapshot")
 
         assert response.status_code == 200
@@ -875,12 +946,17 @@ class TestActivityRoutes:
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
                 response = client.get("/api/activity/snapshot")
 
         assert response.status_code == 200
         assert "cross-user-expired-task" in response.json["status"]["complete"]
-        assert response.json["status"]["complete"]["cross-user-expired-task"]["id"] == "cross-user-expired-task"
+        assert (
+            response.json["status"]["complete"]["cross-user-expired-task"]["id"]
+            == "cross-user-expired-task"
+        )
 
     def test_snapshot_shows_stale_active_download_as_interrupted_error(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -904,14 +980,20 @@ class TestActivityRoutes:
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
                 response = client.get("/api/activity/snapshot")
 
         assert response.status_code == 200
         assert "stale-active-task" in response.json["status"]["error"]
-        assert response.json["status"]["error"]["stale-active-task"]["status_message"] == "Interrupted"
+        assert (
+            response.json["status"]["error"]["stale-active-task"]["status_message"] == "Interrupted"
+        )
 
-    def test_snapshot_preserves_retry_for_stale_active_requested_download(self, main_module, client):
+    def test_snapshot_preserves_retry_for_stale_active_requested_download(
+        self, main_module, client
+    ):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
@@ -947,14 +1029,18 @@ class TestActivityRoutes:
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
                 response = client.get("/api/activity/snapshot")
 
         assert response.status_code == 200
         assert response.json["status"]["error"][task_id]["status_message"] == "Interrupted"
         assert response.json["status"]["error"][task_id]["retry_available"] is True
 
-    def test_snapshot_includes_retry_available_for_live_terminal_downloads(self, main_module, client):
+    def test_snapshot_includes_retry_available_for_live_terminal_downloads(
+        self, main_module, client
+    ):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
@@ -976,13 +1062,19 @@ class TestActivityRoutes:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module.backend, "queue_status", return_value=queue_status_payload):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=queue_status_payload
+            ):
                 response = client.get("/api/activity/snapshot")
 
         assert response.status_code == 200
-        assert response.json["status"]["error"]["retryable-terminal-task"]["retry_available"] is True
+        assert (
+            response.json["status"]["error"]["retryable-terminal-task"]["retry_available"] is True
+        )
 
-    def test_snapshot_reopens_request_when_error_retry_is_no_longer_available(self, main_module, client):
+    def test_snapshot_reopens_request_when_error_retry_is_no_longer_available(
+        self, main_module, client
+    ):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
@@ -1042,7 +1134,9 @@ class TestActivityRoutes:
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
                 response = client.get("/api/activity/snapshot")
 
         assert response.status_code == 200
@@ -1054,7 +1148,9 @@ class TestActivityRoutes:
             for row in response.json["requests"]
         )
 
-    def test_snapshot_active_download_with_queue_entry_shows_in_correct_bucket(self, main_module, client):
+    def test_snapshot_active_download_with_queue_entry_shows_in_correct_bucket(
+        self, main_module, client
+    ):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
@@ -1096,7 +1192,9 @@ class TestActivityRoutes:
         assert "active-downloading-task" in response.json["status"]["downloading"]
         assert response.json["status"]["downloading"]["active-downloading-task"]["progress"] == 0.5
 
-    def test_snapshot_ignores_queue_only_active_download_without_history_row(self, main_module, client):
+    def test_snapshot_ignores_queue_only_active_download_without_history_row(
+        self, main_module, client
+    ):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
 
@@ -1178,7 +1276,9 @@ class TestActivityRoutes:
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            _set_session(client, user_id=user_one["username"], db_user_id=user_one["id"], is_admin=False)
+            _set_session(
+                client, user_id=user_one["username"], db_user_id=user_one["id"], is_admin=False
+            )
             dismiss_response = client.post(
                 "/api/activity/dismiss",
                 json={"item_type": "download", "item_key": "download:shared-task"},
@@ -1187,12 +1287,20 @@ class TestActivityRoutes:
 
             snapshot_one = client.get("/api/activity/snapshot")
             assert snapshot_one.status_code == 200
-            assert {"item_type": "download", "item_key": "download:shared-task"} in snapshot_one.json["dismissed"]
+            assert {
+                "item_type": "download",
+                "item_key": "download:shared-task",
+            } in snapshot_one.json["dismissed"]
 
-            _set_session(client, user_id=user_two["username"], db_user_id=user_two["id"], is_admin=False)
+            _set_session(
+                client, user_id=user_two["username"], db_user_id=user_two["id"], is_admin=False
+            )
             snapshot_two = client.get("/api/activity/snapshot")
             assert snapshot_two.status_code == 200
-            assert {"item_type": "download", "item_key": "download:shared-task"} not in snapshot_two.json["dismissed"]
+            assert {
+                "item_type": "download",
+                "item_key": "download:shared-task",
+            } not in snapshot_two.json["dismissed"]
 
     def test_admin_dismiss_and_clear_do_not_affect_owner_view(self, main_module, client):
         admin = _create_user(main_module, prefix="admin", role="admin")
@@ -1220,7 +1328,9 @@ class TestActivityRoutes:
             assert any(row["item_key"] == f"download:{task_id}" for row in admin_history.json)
 
             _set_session(client, user_id=owner["username"], db_user_id=owner["id"], is_admin=False)
-            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
                 owner_snapshot_after_admin_dismiss = client.get("/api/activity/snapshot")
             assert owner_snapshot_after_admin_dismiss.status_code == 200
             assert task_id in owner_snapshot_after_admin_dismiss.json["status"]["complete"]
@@ -1235,7 +1345,9 @@ class TestActivityRoutes:
             assert clear_response.json["cleared_count"] >= 1
 
             _set_session(client, user_id=owner["username"], db_user_id=owner["id"], is_admin=False)
-            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
                 owner_snapshot_after_admin_clear = client.get("/api/activity/snapshot")
             owner_history = client.get("/api/activity/history?limit=10&offset=0")
 
@@ -1267,23 +1379,34 @@ class TestActivityRoutes:
         )
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            _set_session(client, user_id=admin_one["username"], db_user_id=admin_one["id"], is_admin=True)
+            _set_session(
+                client, user_id=admin_one["username"], db_user_id=admin_one["id"], is_admin=True
+            )
             dismiss_response = client.post(
                 "/api/activity/dismiss",
                 json={"item_type": "request", "item_key": f"request:{request_row['id']}"},
             )
             assert dismiss_response.status_code == 200
 
-            _set_session(client, user_id=admin_two["username"], db_user_id=admin_two["id"], is_admin=True)
-            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+            _set_session(
+                client, user_id=admin_two["username"], db_user_id=admin_two["id"], is_admin=True
+            )
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
                 snapshot_response = client.get("/api/activity/snapshot")
             history_response = client.get("/api/activity/history?limit=50&offset=0")
 
         assert snapshot_response.status_code == 200
-        assert {"item_type": "request", "item_key": f"request:{request_row['id']}"} in snapshot_response.json["dismissed"]
+        assert {
+            "item_type": "request",
+            "item_key": f"request:{request_row['id']}",
+        } in snapshot_response.json["dismissed"]
 
         assert history_response.status_code == 200
-        assert any(row["item_key"] == f"request:{request_row['id']}" for row in history_response.json)
+        assert any(
+            row["item_key"] == f"request:{request_row['id']}" for row in history_response.json
+        )
 
     def test_admin_request_history_includes_requester_username(self, main_module, client):
         admin = _create_user(main_module, prefix="admin", role="admin")
@@ -1312,7 +1435,11 @@ class TestActivityRoutes:
 
         assert dismiss_response.status_code == 200
         assert history_response.status_code == 200
-        matching_rows = [row for row in history_response.json if row["item_key"] == f"request:{request_row['id']}"]
+        matching_rows = [
+            row
+            for row in history_response.json
+            if row["item_key"] == f"request:{request_row['id']}"
+        ]
         assert len(matching_rows) == 1
         assert matching_rows[0]["snapshot"]["request"]["username"] == owner["username"]
 
@@ -1386,7 +1513,9 @@ class TestActivityRoutes:
             to=f"user_{user['id']}",
         )
 
-    def test_clear_history_emits_activity_update_only_to_acting_user_room(self, main_module, client):
+    def test_clear_history_emits_activity_update_only_to_acting_user_room(
+        self, main_module, client
+    ):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
         _record_terminal_download(

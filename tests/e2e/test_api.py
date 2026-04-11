@@ -156,7 +156,11 @@ class TestMetadataSearch:
         if isinstance(providers_data, dict):
             # Check if the dict has a "providers" key whose value is a list of provider dicts.
             # This is the actual format returned by the shelfmark /api/metadata/providers endpoint.
-            if "providers" in providers_data and isinstance(providers_data["providers"], list) and providers_data["providers"]:
+            if (
+                "providers" in providers_data
+                and isinstance(providers_data["providers"], list)
+                and providers_data["providers"]
+            ):
                 provider_name = providers_data["providers"][0].get("name")
             else:
                 # Fallback for other dict formats (e.g., {"openlibrary": {...}}).

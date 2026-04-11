@@ -68,7 +68,9 @@ def test_concurrent_download_loop_logs_and_recovers_after_loop_error(monkeypatch
     ]
 
 
-def test_concurrent_download_loop_recovers_and_processes_task_after_transient_loop_error(monkeypatch):
+def test_concurrent_download_loop_recovers_and_processes_task_after_transient_loop_error(
+    monkeypatch,
+):
     import threading
 
     import shelfmark.download.orchestrator as orchestrator
@@ -92,8 +94,12 @@ def test_concurrent_download_loop_recovers_and_processes_task_after_transient_lo
         def cancel_download(self, task_id: str) -> None:  # pragma: no cover - unused
             raise AssertionError(f"cancel_download unexpectedly called for {task_id}")
 
-        def update_status_message(self, task_id: str, message: str) -> None:  # pragma: no cover - unused
-            raise AssertionError(f"update_status_message unexpectedly called for {task_id}: {message}")
+        def update_status_message(
+            self, task_id: str, message: str
+        ) -> None:  # pragma: no cover - unused
+            raise AssertionError(
+                f"update_status_message unexpectedly called for {task_id}: {message}"
+            )
 
     queue = FlakyQueue()
     error_trace = MagicMock()

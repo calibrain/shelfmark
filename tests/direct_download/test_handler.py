@@ -16,7 +16,11 @@ def test_direct_download_handler_builds_staging_filename_from_browse_record(monk
     import shelfmark.release_sources.direct_download as dd
 
     monkeypatch.setattr(dd, "_download_book", fake_download_book)
-    monkeypatch.setattr(dd.config, "get", lambda key, default=None: "rename" if key == "FILE_ORGANIZATION" else default)
+    monkeypatch.setattr(
+        dd.config,
+        "get",
+        lambda key, default=None: "rename" if key == "FILE_ORGANIZATION" else default,
+    )
 
     task = DownloadTask(
         task_id="92c7879138d18678b763118250228955",

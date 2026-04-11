@@ -63,6 +63,7 @@ class TestBuildBookloreConfigWithOverrides:
 
     def test_auth_fields_remain_global(self, monkeypatch):
         """Only Booklore library/path should be resolved with user context."""
+
         def fake_get(key, default=None, user_id=None):
             if user_id == 7 and key == "BOOKLORE_LIBRARY_ID":
                 return 5

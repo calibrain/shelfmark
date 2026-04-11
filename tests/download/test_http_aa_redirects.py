@@ -2,7 +2,9 @@ import requests
 
 
 class _FakeResponse:
-    def __init__(self, status_code: int, *, headers: dict | None = None, text: str = "", url: str = "") -> None:
+    def __init__(
+        self, status_code: int, *, headers: dict | None = None, text: str = "", url: str = ""
+    ) -> None:
         self.status_code = status_code
         self.headers = headers or {}
         self.text = text
@@ -54,7 +56,9 @@ def test_html_get_page_aa_cross_host_redirect_rotates_mirror(monkeypatch):
     def fake_get(url: str, **kwargs):
         calls.append({"url": url, "allow_redirects": kwargs.get("allow_redirects")})
         if url.startswith("https://annas-archive.li/"):
-            return _FakeResponse(302, headers={"Location": "https://annas-archive.pm/search?q=test"}, url=url)
+            return _FakeResponse(
+                302, headers={"Location": "https://annas-archive.pm/search?q=test"}, url=url
+            )
         if url.startswith("https://annas-archive.gl/"):
             return _FakeResponse(200, text="OK", url=url)
         raise AssertionError(f"Unexpected URL: {url}")
@@ -72,7 +76,9 @@ def test_html_get_page_aa_cross_host_redirect_rotates_mirror(monkeypatch):
     assert html == "OK"
     assert calls[0]["allow_redirects"] is False  # AA redirects handled manually
     assert calls[0]["url"].startswith("https://annas-archive.li/")
-    assert calls[1]["url"].startswith("https://annas-archive.gl/")  # rotated away from redirect target
+    assert calls[1]["url"].startswith(
+        "https://annas-archive.gl/"
+    )  # rotated away from redirect target
 
 
 def test_html_get_page_aa_same_host_redirect_is_followed(monkeypatch):
@@ -126,7 +132,9 @@ def test_html_get_page_locked_aa_does_not_fail_over_on_cross_host_redirect(monke
     def fake_get(url: str, **kwargs):
         calls.append(url)
         if url.startswith("https://annas-archive.li/"):
-            return _FakeResponse(302, headers={"Location": "https://annas-archive.pm/search?q=test"}, url=url)
+            return _FakeResponse(
+                302, headers={"Location": "https://annas-archive.pm/search?q=test"}, url=url
+            )
         raise AssertionError(f"Unexpected URL: {url}")
 
     monkeypatch.setattr(http.requests, "get", fake_get)

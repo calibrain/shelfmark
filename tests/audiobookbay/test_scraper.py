@@ -96,8 +96,8 @@ DETAIL_HTML_NO_TRACKERS = """
 class TestSearchAudiobookbay:
     """Tests for the search_audiobookbay function."""
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
+    @patch("shelfmark.release_sources.audiobookbay.scraper.config.get")
     def test_search_audiobookbay_success(self, mock_config_get, mock_html_get):
         """Test successful search with results."""
         mock_config_get.return_value = 1.0  # rate_limit_delay
@@ -105,43 +105,48 @@ class TestSearchAudiobookbay:
             SAMPLE_SEARCH_HTML,
             "https://audiobookbay.lu/page/1/?s=test+query&cat=undefined%2Cundefined",
         )
-        
-        results = scraper.search_audiobookbay("test query", max_pages=1, hostname="audiobookbay.lu")
-        
-        assert len(results) == 2
-        assert results[0]['title'] == "Test Book Title - Test Author"
-        assert results[0]['link'] == "https://audiobookbay.lu/abss/test-book-title-by-author/"
-        assert results[0]['language'] == "English"
-        assert results[0]['format'] == "M4B"
-        assert results[0]['bitrate'] == "128 Kbps"
-        assert results[0]['size'] == "500.00 MB"
-        assert results[0]['posted_date'] == "01 Jan 2024"
-        assert results[0]['cover'] == "https://example.com/cover.jpg"
-        
-        assert results[1]['title'] == "Another Test Book - Another Author"
-        assert results[1]['language'] == "Spanish"
-        assert results[1]['format'] == "MP3"
-        assert results[1]['size'] == "1.01 GB"
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
+        results = scraper.search_audiobookbay("test query", max_pages=1, hostname="audiobookbay.lu")
+
+        assert len(results) == 2
+        assert results[0]["title"] == "Test Book Title - Test Author"
+        assert results[0]["link"] == "https://audiobookbay.lu/abss/test-book-title-by-author/"
+        assert results[0]["language"] == "English"
+        assert results[0]["format"] == "M4B"
+        assert results[0]["bitrate"] == "128 Kbps"
+        assert results[0]["size"] == "500.00 MB"
+        assert results[0]["posted_date"] == "01 Jan 2024"
+        assert results[0]["cover"] == "https://example.com/cover.jpg"
+
+        assert results[1]["title"] == "Another Test Book - Another Author"
+        assert results[1]["language"] == "Spanish"
+        assert results[1]["format"] == "MP3"
+        assert results[1]["size"] == "1.01 GB"
+
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
+    @patch("shelfmark.release_sources.audiobookbay.scraper.config.get")
     def test_search_audiobookbay_pagination(self, mock_config_get, mock_html_get):
         """Test pagination through multiple pages."""
         mock_config_get.return_value = 0.0  # No delay for faster tests
         mock_html_get.side_effect = [
             (EMPTY_SEARCH_HTML, "https://audiobookbay.lu/"),  # Session bootstrap
-            (SAMPLE_SEARCH_HTML, "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined"),
+            (
+                SAMPLE_SEARCH_HTML,
+                "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined",
+            ),
             (EMPTY_SEARCH_HTML, "https://audiobookbay.lu/page/2/?s=test&cat=undefined%2Cundefined"),
         ]
-        
+
         results = scraper.search_audiobookbay("test", max_pages=2, hostname="audiobookbay.lu")
-        
+
         assert len(results) == 2  # Only from first page
         assert mock_html_get.call_count == 3
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
-    def test_search_audiobookbay_page_one_uses_root_search_endpoint(self, mock_config_get, mock_html_get):
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
+    @patch("shelfmark.release_sources.audiobookbay.scraper.config.get")
+    def test_search_audiobookbay_page_one_uses_root_search_endpoint(
+        self, mock_config_get, mock_html_get
+    ):
         """Test page 1 search uses ABB root endpoint instead of /page/1/."""
         mock_config_get.return_value = 0.0
         mock_html_get.return_value = (
@@ -157,9 +162,11 @@ class TestSearchAudiobookbay:
         assert "/page/1/" not in requested_url
         assert "cat=undefined%2Cundefined" in requested_url
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
-    def test_search_audiobookbay_bootstraps_and_reuses_session(self, mock_config_get, mock_html_get):
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
+    @patch("shelfmark.release_sources.audiobookbay.scraper.config.get")
+    def test_search_audiobookbay_bootstraps_and_reuses_session(
+        self, mock_config_get, mock_html_get
+    ):
         """Test ABB search initializes and reuses a request session for cookie continuity."""
         mock_config_get.return_value = 0.0
         mock_html_get.side_effect = [
@@ -178,8 +185,8 @@ class TestSearchAudiobookbay:
         assert bootstrap_call.kwargs["session"] is not None
         assert search_call.kwargs["session"] is bootstrap_call.kwargs["session"]
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
+    @patch("shelfmark.release_sources.audiobookbay.scraper.config.get")
     def test_search_audiobookbay_empty(self, mock_config_get, mock_html_get):
         """Test search with no results."""
         mock_config_get.return_value = 1.0
@@ -187,24 +194,27 @@ class TestSearchAudiobookbay:
             EMPTY_SEARCH_HTML,
             "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined",
         )
-        
+
         results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
-        
+
         assert len(results) == 0
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
+    @patch("shelfmark.release_sources.audiobookbay.scraper.config.get")
     def test_search_audiobookbay_error_non_200(self, mock_config_get, mock_html_get):
         """Test error handling for non-200 status code."""
         mock_config_get.return_value = 1.0
-        mock_html_get.return_value = ("", "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined")
-        
+        mock_html_get.return_value = (
+            "",
+            "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined",
+        )
+
         results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
-        
+
         assert len(results) == 0
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
+    @patch("shelfmark.release_sources.audiobookbay.scraper.config.get")
     def test_search_audiobookbay_redirect_to_homepage(self, mock_config_get, mock_html_get):
         """Test handling redirect to homepage (blocked/invalid search)."""
         mock_config_get.return_value = 1.0
@@ -212,28 +222,31 @@ class TestSearchAudiobookbay:
             EMPTY_SEARCH_HTML,
             "https://audiobookbay.lu",  # Redirected to homepage
         )
-        
+
         results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
-        
+
         assert len(results) == 0
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
+    @patch("shelfmark.release_sources.audiobookbay.scraper.config.get")
     def test_search_audiobookbay_request_exception(self, mock_config_get, mock_html_get):
         """Test handling request exceptions."""
         mock_config_get.return_value = 1.0
-        mock_html_get.return_value = ("", "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined")
-        
+        mock_html_get.return_value = (
+            "",
+            "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined",
+        )
+
         results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
-        
+
         assert len(results) == 0
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
+    @patch("shelfmark.release_sources.audiobookbay.scraper.config.get")
     def test_search_audiobookbay_relative_link(self, mock_config_get, mock_html_get):
         """Test handling relative links in results."""
         mock_config_get.return_value = 1.0
-        
+
         html_with_relative_link = """
         <div class="post">
             <div class="postTitle"><h2><a href="/abss/relative-link/">Test Book</a></h2></div>
@@ -243,19 +256,19 @@ class TestSearchAudiobookbay:
             </div>
         </div>
         """
-        
+
         mock_html_get.return_value = (
             html_with_relative_link,
             "https://audiobookbay.lu/page/1/?s=test&cat=undefined%2Cundefined",
         )
-        
-        results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
-        
-        assert len(results) == 1
-        assert results[0]['link'] == "https://audiobookbay.lu/abss/relative-link/"
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
+        results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
+
+        assert len(results) == 1
+        assert results[0]["link"] == "https://audiobookbay.lu/abss/relative-link/"
+
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
+    @patch("shelfmark.release_sources.audiobookbay.scraper.config.get")
     def test_search_audiobookbay_protocol_relative_links(self, mock_config_get, mock_html_get):
         """Test protocol-relative links are normalized without duplicating hostname."""
         mock_config_get.return_value = 0.0
@@ -284,8 +297,8 @@ class TestSearchAudiobookbay:
         assert results[0]["link"] == "https://audiobookbay.lu/abss/protocol-relative/"
         assert results[0]["cover"] == "https://audiobookbay.lu/wp-content/uploads/cover.jpg"
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
+    @patch("shelfmark.release_sources.audiobookbay.scraper.config.get")
     def test_search_audiobookbay_exact_phrase_query(self, mock_config_get, mock_html_get):
         """Test exact phrase wrapping and encoding in search URL."""
         mock_config_get.return_value = 0.0
@@ -306,42 +319,47 @@ class TestSearchAudiobookbay:
         assert "s=%22test+query%22" in requested_url
         assert "cat=undefined%2Cundefined" in requested_url
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
-    @patch('shelfmark.release_sources.audiobookbay.scraper.config.get')
-    def test_search_audiobookbay_always_uses_legacy_category_query(self, mock_config_get, mock_html_get):
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
+    @patch("shelfmark.release_sources.audiobookbay.scraper.config.get")
+    def test_search_audiobookbay_always_uses_legacy_category_query(
+        self, mock_config_get, mock_html_get
+    ):
         """Test ABB search always includes legacy category query and does not fallback."""
         mock_config_get.return_value = 0.0
-        mock_html_get.return_value = ("", "https://audiobookbay.lu/?s=test&cat=undefined%2Cundefined")
+        mock_html_get.return_value = (
+            "",
+            "https://audiobookbay.lu/?s=test&cat=undefined%2Cundefined",
+        )
 
         results = scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
 
         assert len(results) == 0
         assert mock_html_get.call_count >= 2
         search_urls = [
-            call.args[0]
-            for call in mock_html_get.call_args_list
-            if "?s=test" in call.args[0]
+            call.args[0] for call in mock_html_get.call_args_list if "?s=test" in call.args[0]
         ]
         assert search_urls
-        assert all(url == "https://audiobookbay.lu/?s=test&cat=undefined%2Cundefined" for url in search_urls)
+        assert all(
+            url == "https://audiobookbay.lu/?s=test&cat=undefined%2Cundefined"
+            for url in search_urls
+        )
 
 
 class TestExtractMagnetLink:
     """Tests for the extract_magnet_link function."""
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
     def test_extract_magnet_link_success(self, mock_html_get):
         """Test successful magnet link extraction."""
         mock_html_get.side_effect = [
             ("", "https://audiobookbay.lu/"),  # Bootstrap attempt
             SAMPLE_DETAIL_HTML,
         ]
-        
+
         magnet_link = scraper.extract_magnet_link(
-            "https://audiobookbay.lu/abss/test-book/",
-            hostname="audiobookbay.lu"
+            "https://audiobookbay.lu/abss/test-book/", hostname="audiobookbay.lu"
         )
-        
+
         assert magnet_link is not None
         assert magnet_link.startswith("magnet:?xt=urn:btih:")
         assert "ABC123DEF456GHI789JKL012MNO345PQR678STU" in magnet_link
@@ -349,7 +367,7 @@ class TestExtractMagnetLink:
         assert "http%3A//tracker.example.com%3A8080" in magnet_link
         assert mock_html_get.call_count == 2
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
     def test_extract_magnet_link_reuses_bootstrap_session(self, mock_html_get):
         """Test detail page fetch reuses the bootstrap session for ABB cookies."""
         mock_html_get.side_effect = [
@@ -358,8 +376,7 @@ class TestExtractMagnetLink:
         ]
 
         scraper.extract_magnet_link(
-            "https://audiobookbay.lu/abss/test-book/",
-            hostname="audiobookbay.lu"
+            "https://audiobookbay.lu/abss/test-book/", hostname="audiobookbay.lu"
         )
 
         assert mock_html_get.call_count == 2
@@ -369,59 +386,55 @@ class TestExtractMagnetLink:
         assert detail_call.args[0] == "https://audiobookbay.lu/abss/test-book/"
         assert detail_call.kwargs["session"] is bootstrap_call.kwargs["session"]
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
     def test_extract_magnet_link_fallback(self, mock_html_get):
         """Test fallback to default trackers when none found."""
         mock_html_get.return_value = DETAIL_HTML_NO_TRACKERS
-        
+
         magnet_link = scraper.extract_magnet_link(
-            "https://audiobookbay.lu/abss/test-book/",
-            hostname="audiobookbay.lu"
+            "https://audiobookbay.lu/abss/test-book/", hostname="audiobookbay.lu"
         )
-        
+
         assert magnet_link is not None
         assert magnet_link.startswith("magnet:?xt=urn:btih:")
         assert "ABC123DEF456GHI789JKL012MNO345PQR678STU" in magnet_link
         # Should contain default trackers
         assert "udp%3A//tracker.openbittorrent.com%3A80" in magnet_link
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
     def test_extract_magnet_link_no_info_hash(self, mock_html_get):
         """Test handling missing info hash."""
         mock_html_get.return_value = "<html><body></body></html>"
-        
+
         magnet_link = scraper.extract_magnet_link(
-            "https://audiobookbay.lu/abss/test-book/",
-            hostname="audiobookbay.lu"
+            "https://audiobookbay.lu/abss/test-book/", hostname="audiobookbay.lu"
         )
-        
+
         assert magnet_link is None
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
     def test_extract_magnet_link_non_200(self, mock_html_get):
         """Test handling non-200 status code."""
         mock_html_get.return_value = ""
-        
+
         magnet_link = scraper.extract_magnet_link(
-            "https://audiobookbay.lu/abss/test-book/",
-            hostname="audiobookbay.lu"
+            "https://audiobookbay.lu/abss/test-book/", hostname="audiobookbay.lu"
         )
-        
+
         assert magnet_link is None
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
     def test_extract_magnet_link_request_exception(self, mock_html_get):
         """Test handling request exceptions."""
         mock_html_get.return_value = ""
-        
+
         magnet_link = scraper.extract_magnet_link(
-            "https://audiobookbay.lu/abss/test-book/",
-            hostname="audiobookbay.lu"
+            "https://audiobookbay.lu/abss/test-book/", hostname="audiobookbay.lu"
         )
-        
+
         assert magnet_link is None
 
-    @patch('shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page')
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
     def test_extract_magnet_link_cleans_info_hash(self, mock_html_get):
         """Test that info hash whitespace is cleaned."""
         html_with_whitespace = """
@@ -436,14 +449,13 @@ class TestExtractMagnetLink:
         </body>
         </html>
         """
-        
+
         mock_html_get.return_value = html_with_whitespace
-        
+
         magnet_link = scraper.extract_magnet_link(
-            "https://audiobookbay.lu/abss/test-book/",
-            hostname="audiobookbay.lu"
+            "https://audiobookbay.lu/abss/test-book/", hostname="audiobookbay.lu"
         )
-        
+
         assert magnet_link is not None
         # Info hash should be cleaned (no spaces, uppercase)
         assert "ABC123DEF456" in magnet_link

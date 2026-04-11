@@ -45,7 +45,7 @@ class MockConfig:
         return self._values.get(key, default)
 
     def __getattr__(self, name):
-        if name.startswith('_'):
+        if name.startswith("_"):
             raise AttributeError(name)
         return self._values.get(name)
 
@@ -175,12 +175,7 @@ class TestLibraryPathBuilding:
             "Title": "Mistborn",
         }
 
-        path = build_library_path(
-            str(temp_dirs["books"]),
-            template,
-            metadata,
-            extension="epub"
-        )
+        path = build_library_path(str(temp_dirs["books"]), template, metadata, extension="epub")
 
         expected = (temp_dirs["books"] / "Brandon Sanderson" / "Mistborn.epub").resolve()
         assert path == expected
@@ -194,14 +189,11 @@ class TestLibraryPathBuilding:
             "PartNumber": "01",
         }
 
-        path = build_library_path(
-            str(temp_dirs["audiobooks"]),
-            template,
-            metadata,
-            extension="mp3"
-        )
+        path = build_library_path(str(temp_dirs["audiobooks"]), template, metadata, extension="mp3")
 
-        expected = (temp_dirs["audiobooks"] / "Brandon Sanderson" / "The Way of Kings - Part 01.mp3").resolve()
+        expected = (
+            temp_dirs["audiobooks"] / "Brandon Sanderson" / "The Way of Kings - Part 01.mp3"
+        ).resolve()
         assert path == expected
 
     def test_book_with_series_folder(self, temp_dirs):
@@ -213,14 +205,14 @@ class TestLibraryPathBuilding:
             "Title": "The Way of Kings",
         }
 
-        path = build_library_path(
-            str(temp_dirs["books"]),
-            template,
-            metadata,
-            extension="epub"
-        )
+        path = build_library_path(str(temp_dirs["books"]), template, metadata, extension="epub")
 
-        expected = (temp_dirs["books"] / "Brandon Sanderson" / "Stormlight Archive" / "The Way of Kings.epub").resolve()
+        expected = (
+            temp_dirs["books"]
+            / "Brandon Sanderson"
+            / "Stormlight Archive"
+            / "The Way of Kings.epub"
+        ).resolve()
         assert path == expected
 
     def test_audiobook_with_series_and_parts(self, temp_dirs):
@@ -238,10 +230,7 @@ class TestLibraryPathBuilding:
         for part_num in ["01", "02", "03"]:
             metadata = {**base_metadata, "PartNumber": part_num}
             path = build_library_path(
-                str(temp_dirs["audiobooks"]),
-                template,
-                metadata,
-                extension="mp3"
+                str(temp_dirs["audiobooks"]), template, metadata, extension="mp3"
             )
             paths.append(path)
 
@@ -266,10 +255,7 @@ class TestLibraryPathBuilding:
 
         # Book template (simple)
         book_path = build_library_path(
-            str(temp_dirs["books"]),
-            "{Author}/{Title}",
-            metadata,
-            extension="epub"
+            str(temp_dirs["books"]), "{Author}/{Title}", metadata, extension="epub"
         )
 
         # Audiobook template (more elaborate)
@@ -277,7 +263,7 @@ class TestLibraryPathBuilding:
             str(temp_dirs["audiobooks"]),
             "{Author}/{Series/}{SeriesPosition - }{Title}",
             metadata,
-            extension="m4b"
+            extension="m4b",
         )
 
         # Verify different structures
@@ -409,7 +395,7 @@ class TestMixedModeProcessing:
             config.get("LIBRARY_PATH_AUDIOBOOK"),
             config.get("LIBRARY_TEMPLATE_AUDIOBOOK"),
             {"Author": audiobook_task.author, "Title": audiobook_task.title},
-            extension="m4b"
+            extension="m4b",
         )
 
         assert "Andy Weir" in str(audiobook_path)
@@ -483,7 +469,7 @@ class TestAudiobookPartNumberAssignment:
             "/audiobooks",
             template,
             {"Author": "Author", "Title": "Book", "PartNumber": "01"},
-            extension="mp3"
+            extension="mp3",
         )
 
         # Without part number (single file audiobook)
@@ -491,7 +477,7 @@ class TestAudiobookPartNumberAssignment:
             "/audiobooks",
             template,
             {"Author": "Author", "Title": "Book", "PartNumber": None},
-            extension="m4b"
+            extension="m4b",
         )
 
         # The conditional suffix only appears when PartNumber has a value
@@ -516,8 +502,8 @@ class TestFilesystemOperations:
 
         # Create test mp3 files (multi-part audiobook)
         for i in range(3):
-            mp3_file = Path(staging) / f"Test Audiobook - Part 0{i+1}.mp3"
-            mp3_file.write_text(f"fake mp3 content part {i+1}")
+            mp3_file = Path(staging) / f"Test Audiobook - Part 0{i + 1}.mp3"
+            mp3_file.write_text(f"fake mp3 content part {i + 1}")
 
         yield {
             "staging": Path(staging),
@@ -540,10 +526,7 @@ class TestFilesystemOperations:
         template = "{Author}/{Series/}{Title}"
 
         dest_path = build_library_path(
-            str(temp_setup["books_lib"]),
-            template,
-            metadata,
-            extension="epub"
+            str(temp_setup["books_lib"]), template, metadata, extension="epub"
         )
 
         # Create the directory structure
@@ -579,10 +562,7 @@ class TestFilesystemOperations:
             file_metadata = {**metadata, "PartNumber": part_num}
 
             dest_path = build_library_path(
-                str(temp_setup["audiobooks_lib"]),
-                template,
-                file_metadata,
-                extension="mp3"
+                str(temp_setup["audiobooks_lib"]), template, file_metadata, extension="mp3"
             )
 
             dest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -760,7 +740,9 @@ class TestTemplateFallbacks:
         )
 
         # Simulate fallback logic
-        audiobook_template = config.get("LIBRARY_TEMPLATE_AUDIOBOOK") or config.get("LIBRARY_TEMPLATE", "{Author}/{Title}")
+        audiobook_template = config.get("LIBRARY_TEMPLATE_AUDIOBOOK") or config.get(
+            "LIBRARY_TEMPLATE", "{Author}/{Title}"
+        )
 
         assert audiobook_template == "{Author}/{Title}"
 
@@ -777,7 +759,9 @@ class TestTemplateFallbacks:
 
         # Simulate fallback logic
         audiobook_path = config.get("LIBRARY_PATH_AUDIOBOOK") or config.get("LIBRARY_PATH")
-        audiobook_template = config.get("LIBRARY_TEMPLATE_AUDIOBOOK") or config.get("LIBRARY_TEMPLATE")
+        audiobook_template = config.get("LIBRARY_TEMPLATE_AUDIOBOOK") or config.get(
+            "LIBRARY_TEMPLATE"
+        )
 
         assert audiobook_path == "/media/books"
         assert audiobook_template == "{Author}/{Series/}{Title}"
@@ -794,7 +778,9 @@ class TestTemplateFallbacks:
         )
 
         audiobook_path = config.get("LIBRARY_PATH_AUDIOBOOK") or config.get("LIBRARY_PATH")
-        audiobook_template = config.get("LIBRARY_TEMPLATE_AUDIOBOOK") or config.get("LIBRARY_TEMPLATE")
+        audiobook_template = config.get("LIBRARY_TEMPLATE_AUDIOBOOK") or config.get(
+            "LIBRARY_TEMPLATE"
+        )
 
         # Same path, different template
         assert audiobook_path == "/media/all_content"
@@ -828,12 +814,7 @@ class TestComplexMetadataScenarios:
             "PartNumber": "01",
         }
 
-        path = build_library_path(
-            str(temp_dirs["audiobooks"]),
-            template,
-            metadata,
-            extension="mp3"
-        )
+        path = build_library_path(str(temp_dirs["audiobooks"]), template, metadata, extension="mp3")
 
         # Should produce: Author/Series/2 - Title - Part 01.mp3
         assert "Brandon Sanderson" in str(path)
@@ -850,12 +831,7 @@ class TestComplexMetadataScenarios:
             "Title": "Edgedancer",
         }
 
-        path = build_library_path(
-            str(temp_dirs["books"]),
-            template,
-            metadata,
-            extension="epub"
-        )
+        path = build_library_path(str(temp_dirs["books"]), template, metadata, extension="epub")
 
         assert "2.5 - Edgedancer" in str(path)
 
@@ -869,12 +845,7 @@ class TestComplexMetadataScenarios:
             "Title": "Elantris",
         }
 
-        path = build_library_path(
-            str(temp_dirs["books"]),
-            template,
-            metadata,
-            extension="epub"
-        )
+        path = build_library_path(str(temp_dirs["books"]), template, metadata, extension="epub")
 
         # Should omit position: Author/Series/Title.epub
         assert "Cosmere" in str(path)
@@ -891,12 +862,7 @@ class TestComplexMetadataScenarios:
             "Title": "Project Hail Mary",
         }
 
-        path = build_library_path(
-            str(temp_dirs["books"]),
-            template,
-            metadata,
-            extension="epub"
-        )
+        path = build_library_path(str(temp_dirs["books"]), template, metadata, extension="epub")
 
         # Should be: Author/Title.epub (no series folder)
         assert path.parent.name == "Andy Weir"
@@ -976,7 +942,7 @@ class TestConcurrentContentProcessing:
             config.get("LIBRARY_PATH"),
             config.get("LIBRARY_TEMPLATE"),
             {"Author": book.author, "Title": book.title},
-            extension="epub"
+            extension="epub",
         )
         book_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(str(temp_setup["staging"] / "test.epub"), str(book_path))
@@ -1009,10 +975,7 @@ class TestConcurrentContentProcessing:
 
         # Same book as ebook
         book_path = build_library_path(
-            config.get("LIBRARY_PATH"),
-            config.get("LIBRARY_TEMPLATE"),
-            metadata,
-            extension="epub"
+            config.get("LIBRARY_PATH"), config.get("LIBRARY_TEMPLATE"), metadata, extension="epub"
         )
 
         # Same book as audiobook
@@ -1020,7 +983,7 @@ class TestConcurrentContentProcessing:
             config.get("LIBRARY_PATH_AUDIOBOOK"),
             config.get("LIBRARY_TEMPLATE_AUDIOBOOK"),
             metadata,
-            extension="m4b"
+            extension="m4b",
         )
 
         # Different base paths, same structure
@@ -2118,7 +2081,7 @@ class TestEdgeCasesAndBoundaries:
         try:
             path = build_library_path(str(temp_dir), template, metadata, extension="epub")
             # Should convert to string
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             pass  # Or might fail
 
     def test_list_metadata_values(self, temp_dir):
@@ -2132,7 +2095,7 @@ class TestEdgeCasesAndBoundaries:
         try:
             path = build_library_path(str(temp_dir), template, metadata, extension="epub")
             # Should convert to string somehow
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             pass  # Or might fail
 
 
@@ -2200,7 +2163,11 @@ class TestIntegration:
 
         # Determine processing for book
         is_book_audiobook = "audiobook" in (book_task.content_type or "").lower()
-        book_mode = config.get("PROCESSING_MODE_AUDIOBOOK") if is_book_audiobook else config.get("PROCESSING_MODE")
+        book_mode = (
+            config.get("PROCESSING_MODE_AUDIOBOOK")
+            if is_book_audiobook
+            else config.get("PROCESSING_MODE")
+        )
 
         assert book_mode == "library"
 
@@ -2215,7 +2182,7 @@ class TestIntegration:
             config.get("LIBRARY_PATH"),
             config.get("LIBRARY_TEMPLATE"),
             book_metadata,
-            extension="epub"
+            extension="epub",
         )
 
         # Move book to library
@@ -2224,7 +2191,11 @@ class TestIntegration:
 
         # Determine processing for audiobook
         is_audio_audiobook = "audiobook" in (audiobook_task.content_type or "").lower()
-        audio_mode = config.get("PROCESSING_MODE_AUDIOBOOK") if is_audio_audiobook else config.get("PROCESSING_MODE")
+        audio_mode = (
+            config.get("PROCESSING_MODE_AUDIOBOOK")
+            if is_audio_audiobook
+            else config.get("PROCESSING_MODE")
+        )
 
         assert audio_mode == "ingest"
 
@@ -2289,7 +2260,7 @@ class TestIntegration:
             config.get("LIBRARY_PATH"),
             config.get("LIBRARY_TEMPLATE"),
             book_metadata,
-            extension="epub"
+            extension="epub",
         )
         book_dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(book_file), str(book_dest))
@@ -2304,7 +2275,7 @@ class TestIntegration:
             config.get("LIBRARY_PATH_AUDIOBOOK"),
             config.get("LIBRARY_TEMPLATE_AUDIOBOOK"),
             audiobook_metadata,
-            extension="m4b"
+            extension="m4b",
         )
         audiobook_dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(audiobook_file), str(audiobook_dest))

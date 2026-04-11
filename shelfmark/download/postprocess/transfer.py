@@ -120,7 +120,7 @@ def is_torrent_source(source_path: Path, task: DownloadTask) -> bool:
     original_path = Path(task.original_download_path)
     try:
         return run_blocking_io(source_path.resolve) == run_blocking_io(original_path.resolve)
-    except (OSError, ValueError):
+    except OSError, ValueError:
         try:
             return os.path.normpath(str(source_path)) == os.path.normpath(str(original_path))
         except Exception:

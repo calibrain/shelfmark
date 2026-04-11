@@ -29,23 +29,27 @@ def _run_organize_post_process(
     hardlink_enabled: bool = True,
     same_fs: bool = True,
 ):
-    from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+    from shelfmark.download.postprocess.router import (
+        post_process_download as _post_process_download,
+    )
 
     status_cb = MagicMock()
     cancel_flag = Event()
 
-    with patch('shelfmark.core.config.config') as mock_config, \
-         patch('shelfmark.download.postprocess.transfer.same_filesystem', return_value=same_fs):
-
+    with (
+        patch("shelfmark.core.config.config") as mock_config,
+        patch("shelfmark.download.postprocess.transfer.same_filesystem", return_value=same_fs),
+    ):
         mock_config.CUSTOM_SCRIPT = None
-        mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-            "DESTINATION": str(library),
-            "FILE_ORGANIZATION": "organize",
-            "HARDLINK_TORRENTS": hardlink_enabled,
-            "HARDLINK_TORRENTS_AUDIOBOOK": hardlink_enabled,
-            "SUPPORTED_FORMATS": ["epub", "mp3"],
-        }.get(key, default))
-
+        mock_config.get = MagicMock(
+            side_effect=lambda key, default=None, **_kwargs: {
+                "DESTINATION": str(library),
+                "FILE_ORGANIZATION": "organize",
+                "HARDLINK_TORRENTS": hardlink_enabled,
+                "HARDLINK_TORRENTS_AUDIOBOOK": hardlink_enabled,
+                "SUPPORTED_FORMATS": ["epub", "mp3"],
+            }.get(key, default)
+        )
 
         result = _post_process_download(
             temp_file=temp_file,
@@ -68,7 +72,7 @@ class TestStageFile:
         source.parent.mkdir()
         source.write_bytes(b"content")
 
-        with patch('shelfmark.config.env.TMP_DIR', tmp_path / "staging"):
+        with patch("shelfmark.config.env.TMP_DIR", tmp_path / "staging"):
             staged = stage_file(source, "task123", copy=True)
 
         assert staged.exists()
@@ -83,7 +87,7 @@ class TestStageFile:
         source.parent.mkdir()
         source.write_bytes(b"content")
 
-        with patch('shelfmark.config.env.TMP_DIR', tmp_path / "staging"):
+        with patch("shelfmark.config.env.TMP_DIR", tmp_path / "staging"):
             staged = stage_file(source, "task123", copy=False)
 
         assert staged.exists()
@@ -101,7 +105,7 @@ class TestStageFile:
         source.parent.mkdir()
         source.write_bytes(b"new content")
 
-        with patch('shelfmark.config.env.TMP_DIR', staging):
+        with patch("shelfmark.config.env.TMP_DIR", staging):
             staged = stage_file(source, "task123", copy=True)
 
         assert staged.name == "book_1.epub"
@@ -151,12 +155,12 @@ class TestSameFilesystem:
 
     def test_permission_error_returns_false(self, tmp_path):
         """Returns False when permission denied (safe fallback)."""
-        with patch('os.stat', side_effect=PermissionError("denied")):
+        with patch("os.stat", side_effect=PermissionError("denied")):
             assert same_filesystem(tmp_path, tmp_path) is False
 
     def test_oserror_returns_false(self, tmp_path):
         """Returns False on OS errors (safe fallback)."""
-        with patch('os.stat', side_effect=OSError("error")):
+        with patch("os.stat", side_effect=OSError("error")):
             assert same_filesystem(tmp_path, tmp_path) is False
 
 
@@ -365,8 +369,14 @@ class TestAtomicMove:
 
         monkeypatch.setattr(os, "rename", _raise_exdev)
 
-        with patch("shelfmark.download.fs.shutil.copy2", side_effect=PermissionError("no")) as mock_copy, \
-             patch("shelfmark.download.fs._perform_nfs_fallback", side_effect=_fallback_copy) as mock_fallback:
+        with (
+            patch(
+                "shelfmark.download.fs.shutil.copy2", side_effect=PermissionError("no")
+            ) as mock_copy,
+            patch(
+                "shelfmark.download.fs._perform_nfs_fallback", side_effect=_fallback_copy
+            ) as mock_fallback,
+        ):
             result = _atomic_move(source, dest)
 
         assert result == dest
@@ -375,7 +385,9 @@ class TestAtomicMove:
         assert mock_copy.called
         assert mock_fallback.called
 
-    def test_cross_filesystem_move_recovers_when_metadata_step_hits_enoent(self, tmp_path, monkeypatch):
+    def test_cross_filesystem_move_recovers_when_metadata_step_hits_enoent(
+        self, tmp_path, monkeypatch
+    ):
         """Completes EXDEV fallback move when copy2 metadata fails with ENOENT."""
         from shelfmark.download.fs import atomic_move as _atomic_move
         import errno
@@ -410,16 +422,18 @@ class TestHardlinkWithLibraryMode:
     @pytest.fixture
     def mock_config(self):
         """Mock config for library mode."""
-        with patch('shelfmark.core.config.config') as mock:
-            mock.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-                "LIBRARY_PATH": None,
-                "LIBRARY_PATH_AUDIOBOOK": None,
-                "LIBRARY_TEMPLATE": "{Author}/{Title}",
-                "LIBRARY_TEMPLATE_AUDIOBOOK": "{Author}/{Title}",
-                "TORRENT_HARDLINK": True,
-                "PROCESSING_MODE": "library",
-                "PROCESSING_MODE_AUDIOBOOK": "library",
-            }.get(key, default))
+        with patch("shelfmark.core.config.config") as mock:
+            mock.get = MagicMock(
+                side_effect=lambda key, default=None, **_kwargs: {
+                    "LIBRARY_PATH": None,
+                    "LIBRARY_PATH_AUDIOBOOK": None,
+                    "LIBRARY_TEMPLATE": "{Author}/{Title}",
+                    "LIBRARY_TEMPLATE_AUDIOBOOK": "{Author}/{Title}",
+                    "TORRENT_HARDLINK": True,
+                    "PROCESSING_MODE": "library",
+                    "PROCESSING_MODE_AUDIOBOOK": "library",
+                }.get(key, default)
+            )
             yield mock
 
     @pytest.fixture
@@ -451,7 +465,7 @@ class TestHardlinkWithLibraryMode:
 
         status_cb = MagicMock()
 
-        with patch('shelfmark.config.env.TMP_DIR', temp_file.parent):
+        with patch("shelfmark.config.env.TMP_DIR", temp_file.parent):
             result = transfer_file_to_library(
                 source_path=source,
                 library_base=str(library),
@@ -528,8 +542,12 @@ class TestHardlinkWithLibraryMode:
         sample_task.content_type = "audiobook"
         status_cb = MagicMock()
 
-        with patch('shelfmark.download.postprocess.scan.get_supported_formats', return_value=["mp3"]), \
-             patch('shelfmark.config.env.TMP_DIR', temp_dir.parent):
+        with (
+            patch(
+                "shelfmark.download.postprocess.scan.get_supported_formats", return_value=["mp3"]
+            ),
+            patch("shelfmark.config.env.TMP_DIR", temp_dir.parent),
+        ):
             result = transfer_directory_to_library(
                 source_dir=source_dir,
                 library_base=str(library),
@@ -576,8 +594,12 @@ class TestHardlinkWithLibraryMode:
         sample_task.content_type = "audiobook"
         status_cb = MagicMock()
 
-        with patch('shelfmark.download.postprocess.scan.get_supported_formats', return_value=["mp3"]), \
-             patch('shelfmark.config.env.TMP_DIR', source_dir.parent):
+        with (
+            patch(
+                "shelfmark.download.postprocess.scan.get_supported_formats", return_value=["mp3"]
+            ),
+            patch("shelfmark.config.env.TMP_DIR", source_dir.parent),
+        ):
             result = transfer_directory_to_library(
                 source_dir=source_dir,
                 library_base=str(library),
@@ -613,7 +635,9 @@ class TestHardlinkWithLibraryMode:
 
         status_cb = MagicMock()
 
-        with patch('shelfmark.download.postprocess.scan.get_supported_formats', return_value=["epub"]):
+        with patch(
+            "shelfmark.download.postprocess.scan.get_supported_formats", return_value=["epub"]
+        ):
             result = transfer_directory_to_library(
                 source_dir=source_dir,
                 library_base=str(library),
@@ -898,7 +922,9 @@ class TestTorrentOptimization:
         sample_task.content_type = "audiobook"
         status_cb = MagicMock()
 
-        with patch('shelfmark.download.postprocess.scan.get_supported_formats', return_value=["mp3"]):
+        with patch(
+            "shelfmark.download.postprocess.scan.get_supported_formats", return_value=["mp3"]
+        ):
             result = transfer_directory_to_library(
                 source_dir=torrent_dir,
                 library_base=str(library),
@@ -933,23 +959,25 @@ class TestTorrentSourceCleanupProtection:
 
     def _make_config_mock(self, library_path: str, hardlink: bool = True):
         """Create config mock for library/organize mode with hardlinking."""
-        return MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-            # Destination paths (what _get_final_destination uses)
-            "DESTINATION": library_path,
-            "DESTINATION_AUDIOBOOK": library_path,
-            # Templates (what _get_template uses)
-            "TEMPLATE_ORGANIZE": "{Author}/{Title}",
-            "TEMPLATE_AUDIOBOOK_ORGANIZE": "{Author}/{Title}{ - PartNumber}",
-            # File organization mode
-            "FILE_ORGANIZATION": "organize",
-            "FILE_ORGANIZATION_AUDIOBOOK": "organize",
-            # Hardlink toggle
-            "HARDLINK_TORRENTS": hardlink,
-            "HARDLINK_TORRENTS_AUDIOBOOK": hardlink,
-            # Supported formats
-            "SUPPORTED_FORMATS": ["epub", "mobi", "cbz", "cbr", "azw3", "fb2", "djvu", "pdf"],
-            "SUPPORTED_AUDIOBOOK_FORMATS": ["mp3", "m4a", "m4b", "flac"],
-        }.get(key, default))
+        return MagicMock(
+            side_effect=lambda key, default=None, **_kwargs: {
+                # Destination paths (what _get_final_destination uses)
+                "DESTINATION": library_path,
+                "DESTINATION_AUDIOBOOK": library_path,
+                # Templates (what _get_template uses)
+                "TEMPLATE_ORGANIZE": "{Author}/{Title}",
+                "TEMPLATE_AUDIOBOOK_ORGANIZE": "{Author}/{Title}{ - PartNumber}",
+                # File organization mode
+                "FILE_ORGANIZATION": "organize",
+                "FILE_ORGANIZATION_AUDIOBOOK": "organize",
+                # Hardlink toggle
+                "HARDLINK_TORRENTS": hardlink,
+                "HARDLINK_TORRENTS_AUDIOBOOK": hardlink,
+                # Supported formats
+                "SUPPORTED_FORMATS": ["epub", "mobi", "cbz", "cbr", "azw3", "fb2", "djvu", "pdf"],
+                "SUPPORTED_AUDIOBOOK_FORMATS": ["mp3", "m4a", "m4b", "flac"],
+            }.get(key, default)
+        )
 
     # ==================== EPUB EBOOK TESTS ====================
 
@@ -962,7 +990,9 @@ class TestTorrentSourceCleanupProtection:
         Library mode hardlinks to /library/Brandon Sanderson/The Way of Kings.epub
         Original MUST remain for seeding.
         """
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
         from shelfmark.core.models import DownloadTask, SearchMode
 
         # Simulate qBittorrent's download location
@@ -988,7 +1018,7 @@ class TestTorrentSourceCleanupProtection:
         status_cb = MagicMock()
 
         # Patch config used by postprocess pipeline
-        with patch('shelfmark.core.config.config') as mock_orch:
+        with patch("shelfmark.core.config.config") as mock_orch:
             mock_orch.get = self._make_config_mock(str(library), hardlink=True)
             mock_orch.CUSTOM_SCRIPT = None
             result = _post_process_download(torrent_file, task, Event(), status_cb)
@@ -1010,7 +1040,9 @@ class TestTorrentSourceCleanupProtection:
 
         Same flow as epub but with .mobi format.
         """
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
         from shelfmark.core.models import DownloadTask, SearchMode
 
         downloads = tmp_path / "downloads" / "complete"
@@ -1033,7 +1065,7 @@ class TestTorrentSourceCleanupProtection:
 
         status_cb = MagicMock()
 
-        with patch('shelfmark.core.config.config') as mock_orch:
+        with patch("shelfmark.core.config.config") as mock_orch:
             mock_orch.get = self._make_config_mock(str(library), hardlink=True)
             mock_orch.CUSTOM_SCRIPT = None
             result = _post_process_download(torrent_file, task, Event(), status_cb)
@@ -1054,7 +1086,9 @@ class TestTorrentSourceCleanupProtection:
         Library mode hardlinks all mp3s to /library/Andy Weir/Project Hail Mary - 01.mp3, etc.
         ALL original files must remain for seeding.
         """
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
         from shelfmark.core.models import DownloadTask, SearchMode
 
         # Simulate torrent audiobook structure
@@ -1089,7 +1123,7 @@ class TestTorrentSourceCleanupProtection:
 
         status_cb = MagicMock()
 
-        with patch('shelfmark.core.config.config') as mock_orch:
+        with patch("shelfmark.core.config.config") as mock_orch:
             mock_orch.get = self._make_config_mock(str(library), hardlink=True)
             mock_orch.CUSTOM_SCRIPT = None
             result = _post_process_download(torrent_dir, task, Event(), status_cb)
@@ -1112,7 +1146,9 @@ class TestTorrentSourceCleanupProtection:
 
         Simulates: User downloads comic via torrent.
         """
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
         from shelfmark.core.models import DownloadTask, SearchMode
 
         downloads = tmp_path / "downloads" / "complete"
@@ -1136,7 +1172,7 @@ class TestTorrentSourceCleanupProtection:
 
         status_cb = MagicMock()
 
-        with patch('shelfmark.core.config.config') as mock_orch:
+        with patch("shelfmark.core.config.config") as mock_orch:
             mock_orch.get = self._make_config_mock(str(library), hardlink=True)
             mock_orch.CUSTOM_SCRIPT = None
             result = _post_process_download(torrent_file, task, Event(), status_cb)
@@ -1152,7 +1188,9 @@ class TestTorrentSourceCleanupProtection:
         For external usenet downloads, Shelfmark treats the client path as read-only and
         avoids deleting anything itself. Client-side cleanup is handled separately.
         """
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
         from shelfmark.core.models import DownloadTask, SearchMode
 
         downloads = tmp_path / "downloads" / "complete"
@@ -1175,7 +1213,7 @@ class TestTorrentSourceCleanupProtection:
 
         status_cb = MagicMock()
 
-        with patch('shelfmark.core.config.config') as mock_orch:
+        with patch("shelfmark.core.config.config") as mock_orch:
             mock_orch.get = self._make_config_mock(str(library), hardlink=True)
             mock_orch.CUSTOM_SCRIPT = None
             result = _post_process_download(usenet_file, task, Event(), status_cb)
@@ -1190,7 +1228,9 @@ class TestTorrentSourceCleanupProtection:
         Simulates: User downloads directly from Anna's Archive.
         No torrent client involved, no seeding needed.
         """
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
         from shelfmark.core.models import DownloadTask, SearchMode
 
         staging = tmp_path / "staging"
@@ -1213,7 +1253,7 @@ class TestTorrentSourceCleanupProtection:
 
         status_cb = MagicMock()
 
-        with patch('shelfmark.core.config.config') as mock_orch:
+        with patch("shelfmark.core.config.config") as mock_orch:
             mock_orch.get = self._make_config_mock(str(library), hardlink=True)
             mock_orch.CUSTOM_SCRIPT = None
             result = _post_process_download(staged_file, task, Event(), status_cb)
@@ -1229,7 +1269,9 @@ class TestTorrentSourceCleanupProtection:
         When user disables hardlinking but downloads via torrent,
         the file must still be preserved for seeding (via copy).
         """
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
         from shelfmark.core.models import DownloadTask, SearchMode
 
         downloads = tmp_path / "downloads" / "complete"
@@ -1252,7 +1294,7 @@ class TestTorrentSourceCleanupProtection:
 
         status_cb = MagicMock()
 
-        with patch('shelfmark.core.config.config') as mock_orch:
+        with patch("shelfmark.core.config.config") as mock_orch:
             # Hardlink DISABLED
             mock_orch.get = self._make_config_mock(str(library), hardlink=False)
             mock_orch.CUSTOM_SCRIPT = None
@@ -1370,7 +1412,9 @@ class TestEdgeCases:
 
         status_cb = MagicMock()
 
-        with patch('shelfmark.download.postprocess.scan.get_supported_formats', return_value=["epub"]):
+        with patch(
+            "shelfmark.download.postprocess.scan.get_supported_formats", return_value=["epub"]
+        ):
             result = transfer_directory_to_library(
                 source_dir=source_dir,
                 library_base=str(library),
@@ -1386,7 +1430,9 @@ class TestEdgeCases:
 
     def test_nonexistent_source_for_hardlink(self, tmp_path):
         """Missing source file prevents hardlink creation."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
         from shelfmark.core.models import DownloadTask, SearchMode
 
         task = DownloadTask(
@@ -1407,13 +1453,15 @@ class TestEdgeCases:
 
         status_cb = MagicMock()
 
-        with patch('shelfmark.core.config.config') as mock_config:
-            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-                "DESTINATION": str(library),
-                "TEMPLATE_ORGANIZE": "{Title}",
-                "FILE_ORGANIZATION": "organize",
-                "HARDLINK_TORRENTS": True,
-            }.get(key, default))
+        with patch("shelfmark.core.config.config") as mock_config:
+            mock_config.get = MagicMock(
+                side_effect=lambda key, default=None, **_kwargs: {
+                    "DESTINATION": str(library),
+                    "TEMPLATE_ORGANIZE": "{Title}",
+                    "FILE_ORGANIZATION": "organize",
+                    "HARDLINK_TORRENTS": True,
+                }.get(key, default)
+            )
             mock_config.CUSTOM_SCRIPT = None
 
             result = _post_process_download(staged, task, Event(), status_cb)
@@ -1424,7 +1472,9 @@ class TestEdgeCases:
 
     def test_permission_denied_library_path(self, tmp_path):
         """Handles permission denied on library path."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
         from shelfmark.core.models import DownloadTask, SearchMode
 
         task = DownloadTask(
@@ -1442,12 +1492,14 @@ class TestEdgeCases:
 
         status_cb = MagicMock()
 
-        with patch('shelfmark.core.config.config') as mock_config:
-            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-                "DESTINATION": "/nonexistent/protected/path",
-                "TEMPLATE_ORGANIZE": "{Title}",
-                "FILE_ORGANIZATION": "organize",
-            }.get(key, default))
+        with patch("shelfmark.core.config.config") as mock_config:
+            mock_config.get = MagicMock(
+                side_effect=lambda key, default=None, **_kwargs: {
+                    "DESTINATION": "/nonexistent/protected/path",
+                    "TEMPLATE_ORGANIZE": "{Title}",
+                    "FILE_ORGANIZATION": "organize",
+                }.get(key, default)
+            )
 
             result = _post_process_download(staged, task, Event(), status_cb)
 

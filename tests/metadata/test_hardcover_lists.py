@@ -257,7 +257,9 @@ class TestHardcoverLists:
             ],
         )
         monkeypatch.setattr(provider, "_resolve_current_user_id", lambda: "user-123")
-        monkeypatch.setattr("shelfmark.metadata_providers.hardcover.get_metadata_cache", lambda: cache_stub)
+        monkeypatch.setattr(
+            "shelfmark.metadata_providers.hardcover.get_metadata_cache", lambda: cache_stub
+        )
 
         def fake_execute(query: str, variables, raise_on_error: bool = False):
             if "query GetBookTargetMembership" in query:
@@ -315,7 +317,9 @@ class TestHardcoverLists:
             ],
         )
         monkeypatch.setattr(provider, "_resolve_current_user_id", lambda: "user-123")
-        monkeypatch.setattr("shelfmark.metadata_providers.hardcover.get_metadata_cache", lambda: cache_stub)
+        monkeypatch.setattr(
+            "shelfmark.metadata_providers.hardcover.get_metadata_cache", lambda: cache_stub
+        )
 
         def fake_execute(query: str, variables, raise_on_error: bool = False):
             if "query GetBookTargetMembership" in query:

@@ -774,7 +774,7 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
 
         try:
             port = int(effective.get("EMAIL_SMTP_PORT", 587))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return {"error": True, "message": "SMTP port must be a number", "values": values}
 
         if port < 1 or port > 65535:
@@ -786,7 +786,7 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
 
         try:
             timeout_seconds = int(effective.get("EMAIL_SMTP_TIMEOUT_SECONDS", 60))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return {
                 "error": True,
                 "message": "SMTP timeout (seconds) must be a number",
@@ -811,7 +811,7 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
 
         try:
             attachment_limit_mb = int(effective.get("EMAIL_ATTACHMENT_SIZE_LIMIT_MB", 25))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return {
                 "error": True,
                 "message": "Attachment size limit (MB) must be a number",

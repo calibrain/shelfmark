@@ -27,7 +27,7 @@ def _read_debug_from_config() -> bool:
                 config = json.load(f)
                 if "DEBUG" in config:
                     return bool(config["DEBUG"])
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             pass
 
     return False
@@ -39,7 +39,7 @@ def _is_sqlite_file(path: Path) -> bool:
         with path.open("rb") as f:
             header = f.read(16)
             return header[:16] == b"SQLite format 3\x00"
-    except (OSError, PermissionError):
+    except OSError, PermissionError:
         return False
 
 
@@ -67,7 +67,7 @@ def _is_config_dir_writable() -> bool:
         test_file = CONFIG_DIR / ".write_test"
         test_file.touch()
         test_file.unlink()
-    except (OSError, PermissionError):
+    except OSError, PermissionError:
         return False
     else:
         return True

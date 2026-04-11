@@ -221,7 +221,7 @@ def _test_deluge_connection(current_values: dict[str, Any] | None = None) -> dic
             methods = rpc_call(session, rpc_id, "system.listMethods")
             if isinstance(methods, list) and "daemon.get_version" in methods:
                 return rpc_call(session, rpc_id + 1, "daemon.get_version")
-        except (requests.exceptions.RequestException, RuntimeError, ValueError, TypeError):
+        except requests.exceptions.RequestException, RuntimeError, ValueError, TypeError:
             # Fall back to daemon.info to preserve existing behavior.
             pass
 

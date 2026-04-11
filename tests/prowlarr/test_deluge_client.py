@@ -41,7 +41,9 @@ class TestDelugeClientAddDownload:
         monkeypatch.setattr(client, "_try_set_label", mock_try_set_label)
 
         magnet = "magnet:?xt=urn:btih:ABCDEF1234567890ABCDEF1234567890ABCDEF12&dn=test"
-        with patch("shelfmark.download.clients.deluge.extract_torrent_info", autospec=True) as mock_extract:
+        with patch(
+            "shelfmark.download.clients.deluge.extract_torrent_info", autospec=True
+        ) as mock_extract:
             mock_extract.return_value = TorrentInfo(
                 info_hash="abcdef1234567890abcdef1234567890abcdef12",
                 torrent_data=None,
@@ -83,7 +85,9 @@ class TestDelugeClientAddDownload:
         monkeypatch.setattr(client, "_try_set_label", MagicMock())
 
         magnet = "magnet:?xt=urn:btih:ABCDEF1234567890ABCDEF1234567890ABCDEF12&dn=test"
-        with patch("shelfmark.download.clients.deluge.extract_torrent_info", autospec=True) as mock_extract:
+        with patch(
+            "shelfmark.download.clients.deluge.extract_torrent_info", autospec=True
+        ) as mock_extract:
             mock_extract.return_value = TorrentInfo(
                 info_hash="abcdef1234567890abcdef1234567890abcdef12",
                 torrent_data=None,

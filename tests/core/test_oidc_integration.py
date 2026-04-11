@@ -122,14 +122,20 @@ class TestSettingsRestrictionPolicy:
         assert requires_admin_for_settings_access("/api/settings/users", users_config) is True
 
     def test_other_tabs_also_require_admin(self):
-        assert requires_admin_for_settings_access(
-            "/api/settings/general",
-            {"RESTRICT_SETTINGS_TO_ADMIN": False},
-        ) is True
-        assert requires_admin_for_settings_access(
-            "/api/settings/general",
-            {"RESTRICT_SETTINGS_TO_ADMIN": True},
-        ) is True
+        assert (
+            requires_admin_for_settings_access(
+                "/api/settings/general",
+                {"RESTRICT_SETTINGS_TO_ADMIN": False},
+            )
+            is True
+        )
+        assert (
+            requires_admin_for_settings_access(
+                "/api/settings/general",
+                {"RESTRICT_SETTINGS_TO_ADMIN": True},
+            )
+            is True
+        )
 
 
 class TestAuthCheckAdminStatus:

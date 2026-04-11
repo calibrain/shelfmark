@@ -44,7 +44,9 @@ class TestNotificationsSettingsApi:
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             resp = client.post(
                 "/api/settings/notifications/action/test_admin_notification",
-                json={"ADMIN_NOTIFICATION_ROUTES": [{"event": "all", "url": "ntfys://ntfy.sh/demo"}]},
+                json={
+                    "ADMIN_NOTIFICATION_ROUTES": [{"event": "all", "url": "ntfys://ntfy.sh/demo"}]
+                },
             )
 
         assert resp.status_code == 403

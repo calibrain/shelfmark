@@ -34,35 +34,44 @@ VALID_MAGNET = "magnet:?xt=urn:btih:3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0&dn=
 
 
 def _setup_transmission_config():
-    save_config_file("prowlarr_clients", {
-        "PROWLARR_TORRENT_CLIENT": "transmission",
-        "TRANSMISSION_URL": "http://transmission:9091",
-        "TRANSMISSION_USERNAME": "admin",
-        "TRANSMISSION_PASSWORD": "admin",
-        "TRANSMISSION_CATEGORY": "test",
-    })
+    save_config_file(
+        "prowlarr_clients",
+        {
+            "PROWLARR_TORRENT_CLIENT": "transmission",
+            "TRANSMISSION_URL": "http://transmission:9091",
+            "TRANSMISSION_USERNAME": "admin",
+            "TRANSMISSION_PASSWORD": "admin",
+            "TRANSMISSION_CATEGORY": "test",
+        },
+    )
     config.refresh()
 
 
 def _setup_qbittorrent_config():
-    save_config_file("prowlarr_clients", {
-        "PROWLARR_TORRENT_CLIENT": "qbittorrent",
-        "QBITTORRENT_URL": "http://qbittorrent:8080",
-        "QBITTORRENT_USERNAME": "admin",
-        "QBITTORRENT_PASSWORD": "admin123",
-        "QBITTORRENT_CATEGORY": "test",
-    })
+    save_config_file(
+        "prowlarr_clients",
+        {
+            "PROWLARR_TORRENT_CLIENT": "qbittorrent",
+            "QBITTORRENT_URL": "http://qbittorrent:8080",
+            "QBITTORRENT_USERNAME": "admin",
+            "QBITTORRENT_PASSWORD": "admin123",
+            "QBITTORRENT_CATEGORY": "test",
+        },
+    )
     config.refresh()
 
 
 def _setup_deluge_config():
-    save_config_file("prowlarr_clients", {
-        "PROWLARR_TORRENT_CLIENT": "deluge",
-        "DELUGE_HOST": "deluge",
-        "DELUGE_PORT": "8112",
-        "DELUGE_PASSWORD": "deluge",
-        "DELUGE_CATEGORY": "test",
-    })
+    save_config_file(
+        "prowlarr_clients",
+        {
+            "PROWLARR_TORRENT_CLIENT": "deluge",
+            "DELUGE_HOST": "deluge",
+            "DELUGE_PORT": "8112",
+            "DELUGE_PASSWORD": "deluge",
+            "DELUGE_CATEGORY": "test",
+        },
+    )
     config.refresh()
 
 
@@ -75,6 +84,7 @@ def _try_get_transmission_client():
     _setup_transmission_config()
     try:
         from shelfmark.download.clients.transmission import TransmissionClient
+
         client = TransmissionClient()
         client.test_connection()
         return client
@@ -86,6 +96,7 @@ def _try_get_qbittorrent_client():
     _setup_qbittorrent_config()
     try:
         from shelfmark.download.clients.qbittorrent import QBittorrentClient
+
         client = QBittorrentClient()
         success, _ = client.test_connection()
         if success:
@@ -99,6 +110,7 @@ def _try_get_deluge_client():
     _setup_deluge_config()
     try:
         from shelfmark.download.clients.deluge import DelugeClient
+
         client = DelugeClient()
         success, _ = client.test_connection()
         if success:
@@ -349,7 +361,7 @@ class TestConnectionResilience:
         transmission_client.test_connection()
 
         # Manually invalidate the session ID if accessible
-        if hasattr(transmission_client, '_session_id'):
+        if hasattr(transmission_client, "_session_id"):
             old_session = transmission_client._session_id
             transmission_client._session_id = "invalid-session-id"
 
@@ -365,7 +377,7 @@ class TestConnectionResilience:
         qbittorrent_client.test_connection()
 
         # Clear the session if accessible
-        if hasattr(qbittorrent_client, '_session'):
+        if hasattr(qbittorrent_client, "_session"):
             qbittorrent_client._session.cookies.clear()
 
         # Should re-authenticate automatically

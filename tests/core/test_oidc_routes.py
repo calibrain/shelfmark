@@ -71,7 +71,9 @@ def client(app):
 
 
 class TestOIDCClientRegistration:
-    @patch("shelfmark.core.oidc_routes.app_config.get", side_effect=_config_getter(MOCK_OIDC_CONFIG))
+    @patch(
+        "shelfmark.core.oidc_routes.app_config.get", side_effect=_config_getter(MOCK_OIDC_CONFIG)
+    )
     @patch("shelfmark.core.oidc_routes.oauth.create_client")
     @patch("shelfmark.core.oidc_routes.oauth.register")
     def test_registers_client_with_pkce_and_expected_scopes(
@@ -135,7 +137,9 @@ class TestOIDCLoginEndpoint:
         redirect_uri = fake_client.authorize_redirect.call_args.args[0]
         assert redirect_uri.endswith("/api/auth/oidc/callback")
 
-    @patch("shelfmark.core.oidc_routes._get_oidc_client", side_effect=ValueError("OIDC not configured"))
+    @patch(
+        "shelfmark.core.oidc_routes._get_oidc_client", side_effect=ValueError("OIDC not configured")
+    )
     def test_login_returns_500_when_not_configured(self, _mock_get_client, client):
         resp = client.get("/api/auth/oidc/login")
         assert resp.status_code == 500
@@ -331,7 +335,9 @@ class TestOIDCCallbackEndpoint:
     ):
         fake_client = Mock()
         fake_client.authorize_access_token.side_effect = InvalidClaimError("iss")
-        fake_client.load_server_metadata.return_value = {"issuer": "https://auth.example.com/application/o/shelfmark/"}
+        fake_client.load_server_metadata.return_value = {
+            "issuer": "https://auth.example.com/application/o/shelfmark/"
+        }
         mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
 
         resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
@@ -446,9 +452,7 @@ class TestOIDCCallbackEndpoint:
         assert "Authentication failed" in error
 
     @patch("shelfmark.core.oidc_routes._get_oidc_client")
-    def test_callback_links_to_existing_user_by_email(
-        self, mock_get_client, client, user_db
-    ):
+    def test_callback_links_to_existing_user_by_email(self, mock_get_client, client, user_db):
         """OIDC login with matching email should link to existing local user."""
         user_db.create_user(username="localuser", email="shared@example.com", password_hash="hash")
 
@@ -474,9 +478,7 @@ class TestOIDCCallbackEndpoint:
         assert linked["auth_source"] == "oidc"
 
     @patch("shelfmark.core.oidc_routes._get_oidc_client")
-    def test_callback_creates_new_user_when_no_email_match(
-        self, mock_get_client, client, user_db
-    ):
+    def test_callback_creates_new_user_when_no_email_match(self, mock_get_client, client, user_db):
         """OIDC login without matching email creates a new user."""
         user_db.create_user(username="existing", email="other@example.com", password_hash="hash")
 
@@ -501,9 +503,7 @@ class TestOIDCCallbackEndpoint:
         assert original["oidc_subject"] is None
 
     @patch("shelfmark.core.oidc_routes._get_oidc_client")
-    def test_callback_no_email_link_when_oidc_has_no_email(
-        self, mock_get_client, client, user_db
-    ):
+    def test_callback_no_email_link_when_oidc_has_no_email(self, mock_get_client, client, user_db):
         """OIDC login without email in claims should not attempt email linking."""
         user_db.create_user(username="existing", email="existing@example.com", password_hash="hash")
 

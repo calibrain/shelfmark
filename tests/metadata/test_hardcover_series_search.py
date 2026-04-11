@@ -245,69 +245,76 @@ class TestHardcoverSeriesSearch:
         monkeypatch.setattr(
             provider,
             "_execute_query",
-            lambda query, variables: captured.update({"query": query, "variables": variables}) or {
-                "series": [
-                    {
-                        "id": 42,
-                        "name": "Mistborn",
-                        "primary_books_count": 3,
-                        "book_series": [
-                            {
-                                "position": 1,
-                                "book": {
-                                    "id": 100,
-                                    "title": "The Final Empire",
-                                    "subtitle": None,
-                                    "slug": "the-final-empire",
-                                    "release_date": "2006-07-17",
-                                    "headline": None,
-                                    "description": "A heist.",
-                                    "rating": 4.5,
-                                    "ratings_count": 120,
-                                    "users_count": 250,
-                                    "cached_image": {"url": "https://example.com/final-empire.jpg"},
-                                    "cached_contributors": [{"name": "Brandon Sanderson"}],
-                                    "contributions": [],
-                                    "featured_book_series": {
-                                        "position": 1,
-                                        "series": {
-                                            "id": 42,
-                                            "name": "Mistborn",
-                                            "primary_books_count": 3,
+            lambda query, variables: (
+                captured.update({"query": query, "variables": variables})
+                or {
+                    "series": [
+                        {
+                            "id": 42,
+                            "name": "Mistborn",
+                            "primary_books_count": 3,
+                            "book_series": [
+                                {
+                                    "position": 1,
+                                    "book": {
+                                        "id": 100,
+                                        "title": "The Final Empire",
+                                        "subtitle": None,
+                                        "slug": "the-final-empire",
+                                        "release_date": "2006-07-17",
+                                        "headline": None,
+                                        "description": "A heist.",
+                                        "rating": 4.5,
+                                        "ratings_count": 120,
+                                        "users_count": 250,
+                                        "cached_image": {
+                                            "url": "https://example.com/final-empire.jpg"
+                                        },
+                                        "cached_contributors": [{"name": "Brandon Sanderson"}],
+                                        "contributions": [],
+                                        "featured_book_series": {
+                                            "position": 1,
+                                            "series": {
+                                                "id": 42,
+                                                "name": "Mistborn",
+                                                "primary_books_count": 3,
+                                            },
                                         },
                                     },
                                 },
-                            },
-                            {
-                                "position": 2,
-                                "book": {
-                                    "id": 101,
-                                    "title": "The Well of Ascension",
-                                    "subtitle": None,
-                                    "slug": "the-well-of-ascension",
-                                    "release_date": "2007-08-21",
-                                    "headline": None,
-                                    "description": "The sequel.",
-                                    "rating": 4.4,
-                                    "ratings_count": 110,
-                                    "users_count": 220,
-                                    "cached_image": {"url": "https://example.com/well-of-ascension.jpg"},
-                                    "cached_contributors": [{"name": "Brandon Sanderson"}],
-                                    "contributions": [],
-                                    "featured_book_series": {
-                                        "position": 2,
-                                        "series": {
-                                            "id": 42,
-                                            "name": "Mistborn",
-                                            "primary_books_count": 3,
+                                {
+                                    "position": 2,
+                                    "book": {
+                                        "id": 101,
+                                        "title": "The Well of Ascension",
+                                        "subtitle": None,
+                                        "slug": "the-well-of-ascension",
+                                        "release_date": "2007-08-21",
+                                        "headline": None,
+                                        "description": "The sequel.",
+                                        "rating": 4.4,
+                                        "ratings_count": 110,
+                                        "users_count": 220,
+                                        "cached_image": {
+                                            "url": "https://example.com/well-of-ascension.jpg"
+                                        },
+                                        "cached_contributors": [{"name": "Brandon Sanderson"}],
+                                        "contributions": [],
+                                        "featured_book_series": {
+                                            "position": 2,
+                                            "series": {
+                                                "id": 42,
+                                                "name": "Mistborn",
+                                                "primary_books_count": 3,
+                                            },
                                         },
                                     },
                                 },
-                            },
-                        ],
-                    }
-                ]
-            },
+                            ],
+                        }
+                    ]
+                }
+            ),
         )
 
         result = provider._fetch_series_books_by_id(
@@ -332,7 +339,9 @@ class TestHardcoverSeriesSearch:
         assert result.books[0].series_position == 1
         assert result.books[0].series_count == 2
 
-    def test_fetch_series_books_by_id_skips_split_part_entries_for_standard_series(self, monkeypatch):
+    def test_fetch_series_books_by_id_skips_split_part_entries_for_standard_series(
+        self, monkeypatch
+    ):
         provider = HardcoverProvider(api_key="test-token")
 
         monkeypatch.setattr(
@@ -721,7 +730,9 @@ class TestHardcoverSeriesSearch:
                                     "users_count": 40,
                                     "editions_count": 1,
                                     "compilation": False,
-                                    "cached_image": {"url": "https://example.com/ghostbloods-2.jpg"},
+                                    "cached_image": {
+                                        "url": "https://example.com/ghostbloods-2.jpg"
+                                    },
                                     "cached_contributors": [{"name": "Brandon Sanderson"}],
                                     "contributions": [],
                                     "featured_book_series": {

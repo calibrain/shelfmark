@@ -44,16 +44,22 @@ def main_module():
 
 class TestGetAuthMode:
     def test_get_auth_mode_none(self, main_module):
-        with patch.object(main_module.app_config, "get", side_effect=_config_getter({"AUTH_METHOD": "none"})):
+        with patch.object(
+            main_module.app_config, "get", side_effect=_config_getter({"AUTH_METHOD": "none"})
+        ):
             assert main_module.get_auth_mode() == "none"
 
     def test_get_auth_mode_builtin(self, main_module):
-        with patch.object(main_module.app_config, "get", side_effect=_config_getter({"AUTH_METHOD": "builtin"})):
+        with patch.object(
+            main_module.app_config, "get", side_effect=_config_getter({"AUTH_METHOD": "builtin"})
+        ):
             with patch("shelfmark.core.auth_modes.has_local_password_admin", return_value=True):
                 assert main_module.get_auth_mode() == "builtin"
 
     def test_get_auth_mode_builtin_without_local_admin_falls_back_to_none(self, main_module):
-        with patch.object(main_module.app_config, "get", side_effect=_config_getter({"AUTH_METHOD": "builtin"})):
+        with patch.object(
+            main_module.app_config, "get", side_effect=_config_getter({"AUTH_METHOD": "builtin"})
+        ):
             with patch("shelfmark.core.auth_modes.has_local_password_admin", return_value=False):
                 assert main_module.get_auth_mode() == "none"
 
@@ -61,12 +67,16 @@ class TestGetAuthMode:
         with patch.object(
             main_module.app_config,
             "get",
-            side_effect=_config_getter({"AUTH_METHOD": "proxy", "PROXY_AUTH_USER_HEADER": "X-Auth-User"}),
+            side_effect=_config_getter(
+                {"AUTH_METHOD": "proxy", "PROXY_AUTH_USER_HEADER": "X-Auth-User"}
+            ),
         ):
             assert main_module.get_auth_mode() == "proxy"
 
     def test_get_auth_mode_cwa(self, main_module):
-        with patch.object(main_module.app_config, "get", side_effect=_config_getter({"AUTH_METHOD": "cwa"})):
+        with patch.object(
+            main_module.app_config, "get", side_effect=_config_getter({"AUTH_METHOD": "cwa"})
+        ):
             with patch.object(main_module, "CWA_DB_PATH", object()):
                 assert main_module.get_auth_mode() == "cwa"
 
@@ -123,10 +133,12 @@ class TestAuthCheckEndpoint:
             with patch.object(
                 main_module.app_config,
                 "get",
-                side_effect=_config_getter({
-                    "PROXY_AUTH_USER_HEADER": "X-Auth-User",
-                    "PROXY_AUTH_LOGOUT_URL": "https://auth.example.com/logout",
-                }),
+                side_effect=_config_getter(
+                    {
+                        "PROXY_AUTH_USER_HEADER": "X-Auth-User",
+                        "PROXY_AUTH_LOGOUT_URL": "https://auth.example.com/logout",
+                    }
+                ),
             ):
                 with main_module.app.test_request_context("/api/auth/check"):
                     main_module.session["user_id"] = "proxyuser"
@@ -217,7 +229,11 @@ class TestLoginEndpoint:
                         with main_module.app.test_request_context(
                             "/api/auth/login",
                             method="POST",
-                            json={"username": username, "password": "correct", "remember_me": False},
+                            json={
+                                "username": username,
+                                "password": "correct",
+                                "remember_me": False,
+                            },
                         ):
                             resp = _as_response(main_module.api_login())
                             data = resp.get_json()
@@ -262,7 +278,11 @@ class TestLoginEndpoint:
                         with main_module.app.test_request_context(
                             "/api/auth/login",
                             method="POST",
-                            json={"username": username, "password": "correct", "remember_me": False},
+                            json={
+                                "username": username,
+                                "password": "correct",
+                                "remember_me": False,
+                            },
                         ):
                             resp = _as_response(main_module.api_login())
                             data = resp.get_json()
@@ -278,7 +298,8 @@ class TestLoginEndpoint:
         assert local_after["email"] == "collision.local@example.com"
 
         provisioned_cwa_user = next(
-            user for user in main_module.user_db.list_users()
+            user
+            for user in main_module.user_db.list_users()
             if user.get("auth_source") == "cwa" and user.get("email") == external_email
         )
         assert provisioned_cwa_user["username"].startswith(f"{username}__cwa")
@@ -290,7 +311,9 @@ class TestLogoutEndpoint:
             with patch.object(
                 main_module.app_config,
                 "get",
-                side_effect=_config_getter({"PROXY_AUTH_LOGOUT_URL": "https://auth.example.com/logout"}),
+                side_effect=_config_getter(
+                    {"PROXY_AUTH_LOGOUT_URL": "https://auth.example.com/logout"}
+                ),
             ):
                 with main_module.app.test_request_context("/api/auth/logout", method="POST"):
                     main_module.session["user_id"] = "proxyuser"

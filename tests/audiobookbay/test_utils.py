@@ -25,28 +25,28 @@ class TestParseSize:
 
     def test_parse_size_megabytes(self):
         """Test parsing megabyte sizes."""
-        assert parse_size("1 MB") == 1024 ** 2
-        assert parse_size("500 MB") == 500 * (1024 ** 2)
-        assert parse_size("1.5 MB") == int(1.5 * (1024 ** 2))
-        assert parse_size("500.00 MBs") == int(500.00 * (1024 ** 2))  # Handles "MBs" suffix
+        assert parse_size("1 MB") == 1024**2
+        assert parse_size("500 MB") == 500 * (1024**2)
+        assert parse_size("1.5 MB") == int(1.5 * (1024**2))
+        assert parse_size("500.00 MBs") == int(500.00 * (1024**2))  # Handles "MBs" suffix
 
     def test_parse_size_gigabytes(self):
         """Test parsing gigabyte sizes."""
-        assert parse_size("1 GB") == 1024 ** 3
-        assert parse_size("11.68 GB") == int(11.68 * (1024 ** 3))
-        assert parse_size("1.01 GBs") == int(1.01 * (1024 ** 3))  # Handles "GBs" suffix
+        assert parse_size("1 GB") == 1024**3
+        assert parse_size("11.68 GB") == int(11.68 * (1024**3))
+        assert parse_size("1.01 GBs") == int(1.01 * (1024**3))  # Handles "GBs" suffix
 
     def test_parse_size_terabytes(self):
         """Test parsing terabyte sizes."""
-        assert parse_size("1 TB") == 1024 ** 4
-        assert parse_size("2.5 TB") == int(2.5 * (1024 ** 4))
+        assert parse_size("1 TB") == 1024**4
+        assert parse_size("2.5 TB") == int(2.5 * (1024**4))
 
     def test_parse_size_case_insensitive(self):
         """Test that size parsing is case insensitive."""
-        assert parse_size("1 gb") == 1024 ** 3
-        assert parse_size("1 Gb") == 1024 ** 3
-        assert parse_size("1 GB") == 1024 ** 3
-        assert parse_size("1 gbs") == 1024 ** 3
+        assert parse_size("1 gb") == 1024**3
+        assert parse_size("1 Gb") == 1024**3
+        assert parse_size("1 GB") == 1024**3
+        assert parse_size("1 gbs") == 1024**3
 
     def test_parse_size_none(self):
         """Test that None returns None."""
@@ -64,5 +64,5 @@ class TestParseSize:
 
     def test_parse_size_with_whitespace(self):
         """Test parsing with various whitespace."""
-        assert parse_size("  1 GB  ") == 1024 ** 3
-        assert parse_size("1.5\tMB") == int(1.5 * (1024 ** 2))
+        assert parse_size("  1 GB  ") == 1024**3
+        assert parse_size("1.5\tMB") == int(1.5 * (1024**2))

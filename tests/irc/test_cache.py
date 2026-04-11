@@ -12,10 +12,16 @@ def test_cache_results_isolated_by_content_type(monkeypatch):
     audiobook_release = Release(source="irc", source_id="audio", title="Shared Title", format="zip")
 
     cache.cache_results("hardcover", "123", "Shared Title", [ebook_release], content_type="ebook")
-    cache.cache_results("hardcover", "123", "Shared Title", [audiobook_release], content_type="audiobook")
+    cache.cache_results(
+        "hardcover", "123", "Shared Title", [audiobook_release], content_type="audiobook"
+    )
 
-    ebook_cached = cache.get_cached_results("hardcover", "123", content_type="ebook", ttl_seconds=60)
-    audiobook_cached = cache.get_cached_results("hardcover", "123", content_type="audiobook", ttl_seconds=60)
+    ebook_cached = cache.get_cached_results(
+        "hardcover", "123", content_type="ebook", ttl_seconds=60
+    )
+    audiobook_cached = cache.get_cached_results(
+        "hardcover", "123", content_type="audiobook", ttl_seconds=60
+    )
 
     assert [release.source_id for release in ebook_cached["releases"]] == ["ebook"]
     assert [release.source_id for release in audiobook_cached["releases"]] == ["audio"]

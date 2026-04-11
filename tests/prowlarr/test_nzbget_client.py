@@ -467,12 +467,15 @@ class TestNZBGetClientAddDownload:
         mock_post_response = MagicMock()
         mock_post_response.json.return_value = {"result": 456}
 
-        with patch(
-            "shelfmark.download.clients.nzbget.requests.get",
-            return_value=mock_get_response,
-        ), patch(
-            "shelfmark.download.clients.nzbget.requests.post",
-            return_value=mock_post_response,
+        with (
+            patch(
+                "shelfmark.download.clients.nzbget.requests.get",
+                return_value=mock_get_response,
+            ),
+            patch(
+                "shelfmark.download.clients.nzbget.requests.post",
+                return_value=mock_post_response,
+            ),
         ):
             from shelfmark.download.clients.nzbget import (
                 NZBGetClient,
@@ -629,4 +632,8 @@ class TestNZBGetClientRemove:
             result = client.remove("123", delete_files=True)
 
         assert result is True
-        assert [call[1][0] for call in calls] == ["GroupFinalDelete", "HistoryFinalDelete", "HistoryDelete"]
+        assert [call[1][0] for call in calls] == [
+            "GroupFinalDelete",
+            "HistoryFinalDelete",
+            "HistoryDelete",
+        ]

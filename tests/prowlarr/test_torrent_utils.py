@@ -43,7 +43,9 @@ class TestParseTransmissionUrl:
 
     def test_parse_url_with_path(self):
         """Test parsing URL with existing path."""
-        protocol, host, port, path = parse_transmission_url("http://localhost:9091/transmission/rpc")
+        protocol, host, port, path = parse_transmission_url(
+            "http://localhost:9091/transmission/rpc"
+        )
         assert protocol == "http"
         assert host == "localhost"
         assert port == 9091
@@ -75,7 +77,9 @@ class TestParseTransmissionUrl:
 
     def test_parse_https_url(self):
         """Test parsing HTTPS URL."""
-        protocol, host, port, path = parse_transmission_url("https://secure.transmission.local:9091")
+        protocol, host, port, path = parse_transmission_url(
+            "https://secure.transmission.local:9091"
+        )
         assert protocol == "https"
         assert host == "secure.transmission.local"
         assert port == 9091
@@ -229,8 +233,6 @@ class TestBencodeEncode:
         data = {b"list": [1, 2, 3], b"num": 42}
         result = bencode_encode(data)
         assert result == b"d4:listli1ei2ei3ee3:numi42ee"
-
-
 
     def test_encode_invalid_type_raises(self):
         """Test that invalid types raise ValueError."""

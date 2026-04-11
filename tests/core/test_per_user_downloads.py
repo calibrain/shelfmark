@@ -164,7 +164,9 @@ class TestPerUserDestination:
         )
         monkeypatch.setattr(
             "shelfmark.download.postprocess.destination.get_source",
-            lambda _: type("Source", (), {"get_destination_override": staticmethod(lambda task: None)})(),
+            lambda _: type(
+                "Source", (), {"get_destination_override": staticmethod(lambda task: None)}
+            )(),
         )
 
         from shelfmark.download.postprocess.destination import get_final_destination
@@ -197,7 +199,9 @@ class TestPerUserDestination:
         )
         monkeypatch.setattr(
             "shelfmark.download.postprocess.destination.get_source",
-            lambda _: type("Source", (), {"get_destination_override": staticmethod(lambda task: None)})(),
+            lambda _: type(
+                "Source", (), {"get_destination_override": staticmethod(lambda task: None)}
+            )(),
         )
 
         from shelfmark.download.postprocess.destination import get_final_destination

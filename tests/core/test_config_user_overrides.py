@@ -51,7 +51,12 @@ def test_get_ignores_user_override_for_non_overridable_field(monkeypatch):
     monkeypatch.setattr(
         config,
         "_field_map",
-        {"FILE_ORGANIZATION": (_DummyField(env_supported=True, user_overridable=False), "downloads")},
+        {
+            "FILE_ORGANIZATION": (
+                _DummyField(env_supported=True, user_overridable=False),
+                "downloads",
+            )
+        },
     )
     monkeypatch.setattr(config, "_get_user_override", lambda user_id, key: "organize")
     monkeypatch.setattr(
@@ -68,7 +73,12 @@ def test_get_respects_empty_user_override_for_destination_audiobook(monkeypatch)
     monkeypatch.setattr(
         config,
         "_field_map",
-        {"DESTINATION_AUDIOBOOK": (_DummyField(env_supported=True, user_overridable=True), "downloads")},
+        {
+            "DESTINATION_AUDIOBOOK": (
+                _DummyField(env_supported=True, user_overridable=True),
+                "downloads",
+            )
+        },
     )
     monkeypatch.setattr(config, "_get_user_override", lambda user_id, key: "")
     monkeypatch.setattr(

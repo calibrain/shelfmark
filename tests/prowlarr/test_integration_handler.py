@@ -16,7 +16,12 @@ from shelfmark.core.settings_registry import save_config_file
 from shelfmark.core.models import DownloadTask
 from shelfmark.release_sources.prowlarr.handler import ProwlarrHandler
 from shelfmark.release_sources.prowlarr.utils import get_protocol
-from shelfmark.release_sources.prowlarr.cache import cache_release, get_release, remove_release, _cache
+from shelfmark.release_sources.prowlarr.cache import (
+    cache_release,
+    get_release,
+    remove_release,
+    _cache,
+)
 
 
 # Test magnet link
@@ -25,13 +30,16 @@ TEST_MAGNET = "magnet:?xt=urn:btih:3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0&dn=u
 
 def _setup_transmission_config():
     """Set up Transmission configuration via config files and refresh config."""
-    save_config_file("prowlarr_clients", {
-        "PROWLARR_TORRENT_CLIENT": "transmission",
-        "TRANSMISSION_URL": "http://transmission:9091",
-        "TRANSMISSION_USERNAME": "admin",
-        "TRANSMISSION_PASSWORD": "admin",
-        "TRANSMISSION_CATEGORY": "test",
-    })
+    save_config_file(
+        "prowlarr_clients",
+        {
+            "PROWLARR_TORRENT_CLIENT": "transmission",
+            "TRANSMISSION_URL": "http://transmission:9091",
+            "TRANSMISSION_USERNAME": "admin",
+            "TRANSMISSION_PASSWORD": "admin",
+            "TRANSMISSION_CATEGORY": "test",
+        },
+    )
     config.refresh()
 
 
@@ -40,6 +48,7 @@ def _is_transmission_available():
     _setup_transmission_config()
     try:
         from shelfmark.download.clients.transmission import TransmissionClient
+
         client = TransmissionClient()
         success, _ = client.test_connection()
         return success
@@ -131,11 +140,14 @@ class TestHandlerCacheOperations:
         handler = ProwlarrHandler()
 
         task_id = "no-url-release-test"
-        cache_release(task_id, {
-            "protocol": "torrent",
-            "title": "Test Release",
-            # No downloadUrl or magnetUrl
-        })
+        cache_release(
+            task_id,
+            {
+                "protocol": "torrent",
+                "title": "Test Release",
+                # No downloadUrl or magnetUrl
+            },
+        )
 
         try:
             task = DownloadTask(
@@ -186,7 +198,9 @@ class TestHandlerCacheOperations:
 def transmission_available():
     """Check if Transmission is available, skip if not."""
     if not _is_transmission_available():
-        pytest.skip("Transmission not available - ensure docker-compose.test-clients.yml is running")
+        pytest.skip(
+            "Transmission not available - ensure docker-compose.test-clients.yml is running"
+        )
     return True
 
 
@@ -201,11 +215,14 @@ class TestProwlarrHandlerWithTransmission:
 
         # Cache a valid release
         task_id = f"test-cancel-release-{time.time()}"
-        cache_release(task_id, {
-            "protocol": "torrent",
-            "title": "Ubuntu Test ISO",
-            "magnetUrl": TEST_MAGNET,
-        })
+        cache_release(
+            task_id,
+            {
+                "protocol": "torrent",
+                "title": "Ubuntu Test ISO",
+                "magnetUrl": TEST_MAGNET,
+            },
+        )
 
         task = DownloadTask(
             task_id=task_id,
@@ -239,7 +256,11 @@ class TestProwlarrHandlerWithTransmission:
         # Should have some status updates
         assert len(recorder.status_updates) > 0
         # Should see resolving or downloading status (not just error)
-        assert "resolving" in recorder.statuses or "downloading" in recorder.statuses or "cancelled" in recorder.statuses
+        assert (
+            "resolving" in recorder.statuses
+            or "downloading" in recorder.statuses
+            or "cancelled" in recorder.statuses
+        )
 
     def test_handler_sends_to_transmission(self, transmission_available):
         """Test that handler properly sends downloads to Transmission."""
@@ -247,11 +268,14 @@ class TestProwlarrHandlerWithTransmission:
         handler = ProwlarrHandler()
 
         task_id = f"transmission-test-{time.time()}"
-        cache_release(task_id, {
-            "protocol": "torrent",
-            "title": "Integration Test Torrent",
-            "magnetUrl": TEST_MAGNET,
-        })
+        cache_release(
+            task_id,
+            {
+                "protocol": "torrent",
+                "title": "Integration Test Torrent",
+                "magnetUrl": TEST_MAGNET,
+            },
+        )
 
         task = DownloadTask(
             task_id=task_id,

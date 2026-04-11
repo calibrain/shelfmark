@@ -110,29 +110,33 @@ class TestAudiobookBaySource:
 
     def test_is_available_enabled(self, monkeypatch):
         """Test is_available when enabled."""
+
         def mock_get(key, default=False):
             if key == "ABB_ENABLED":
                 return True
             if key == "ABB_HOSTNAME":
                 return "audiobookbay.lu"
             return default
-        
+
         import shelfmark.release_sources.audiobookbay.source as source_module
+
         monkeypatch.setattr(source_module.config, "get", mock_get)
-        
+
         source = AudiobookBaySource()
         assert source.is_available() is True
 
     def test_is_available_disabled(self, monkeypatch):
         """Test is_available when disabled."""
+
         def mock_get(key, default=False):
             if key == "ABB_ENABLED":
                 return False
             return default
-        
+
         import shelfmark.release_sources.audiobookbay.source as source_module
+
         monkeypatch.setattr(source_module.config, "get", mock_get)
-        
+
         source = AudiobookBaySource()
         assert source.is_available() is False
 
@@ -152,15 +156,15 @@ class TestAudiobookBaySource:
             title_variants=[ReleaseSearchVariant(title="Test Book", author="Test Author")],
             grouped_title_variants=[],
         )
-        
+
         results = source.search(book, plan, content_type="ebook")
         assert results == []
 
-    @patch('shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay')
+    @patch("shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay")
     def test_search_query_generation_manual(self, mock_search):
         """Test search with manual query."""
         mock_search.return_value = []
-        
+
         source = AudiobookBaySource()
         book = BookMetadata(
             provider="test",
@@ -176,18 +180,18 @@ class TestAudiobookBaySource:
             grouped_title_variants=[],
             manual_query="custom search query",
         )
-        
+
         source.search(book, plan, content_type="audiobook")
-        
+
         mock_search.assert_called_once()
         call_args = mock_search.call_args
-        assert call_args.kwargs['query'] == "custom search query"
+        assert call_args.kwargs["query"] == "custom search query"
 
-    @patch('shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay')
+    @patch("shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay")
     def test_search_query_generation_from_variants(self, mock_search):
         """Test search query generation from title variants with title-only retry."""
         mock_search.return_value = []
-        
+
         source = AudiobookBaySource()
         book = BookMetadata(
             provider="test",
@@ -202,20 +206,20 @@ class TestAudiobookBaySource:
             title_variants=[ReleaseSearchVariant(title="Test Book", author="Test Author")],
             grouped_title_variants=[],
         )
-        
+
         source.search(book, plan, content_type="audiobook")
-        
+
         assert mock_search.call_count == 2
         first_call = mock_search.call_args_list[0]
         second_call = mock_search.call_args_list[1]
-        assert first_call.kwargs['query'] == "test book test author"
-        assert second_call.kwargs['query'] == "test book"
+        assert first_call.kwargs["query"] == "test book test author"
+        assert second_call.kwargs["query"] == "test book"
 
-    @patch('shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay')
+    @patch("shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay")
     def test_search_query_generation_from_title_only(self, mock_search):
         """Test search query generation when only title available."""
         mock_search.return_value = []
-        
+
         source = AudiobookBaySource()
         book = BookMetadata(
             provider="test",
@@ -230,14 +234,14 @@ class TestAudiobookBaySource:
             title_variants=[],
             grouped_title_variants=[],
         )
-        
+
         source.search(book, plan, content_type="audiobook")
-        
+
         mock_search.assert_called_once()
         call_args = mock_search.call_args
-        assert call_args.kwargs['query'] == "test book"
+        assert call_args.kwargs["query"] == "test book"
 
-    @patch('shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay')
+    @patch("shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay")
     def test_search_empty_query(self, mock_search):
         """Test search with empty query returns empty."""
         source = AudiobookBaySource()
@@ -254,32 +258,32 @@ class TestAudiobookBaySource:
             title_variants=[],
             grouped_title_variants=[],
         )
-        
+
         results = source.search(book, plan, content_type="audiobook")
-        
+
         assert results == []
         mock_search.assert_not_called()
 
-    @patch('shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay')
+    @patch("shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay")
     def test_search_relevance_filtering(self, mock_search):
         """Test that irrelevant results are filtered out."""
         mock_search.return_value = [
             {
-                'title': 'Test Book by Test Author',
-                'link': 'https://audiobookbay.lu/abss/test-book/',
-                'format': 'M4B',
-                'size': '500 MB',
-                'language': 'English',
+                "title": "Test Book by Test Author",
+                "link": "https://audiobookbay.lu/abss/test-book/",
+                "format": "M4B",
+                "size": "500 MB",
+                "language": "English",
             },
             {
-                'title': 'Something Completely Different',
-                'link': 'https://audiobookbay.lu/abss/unrelated/',
-                'format': 'MP3',
-                'size': '1 GB',
-                'language': 'English',
+                "title": "Something Completely Different",
+                "link": "https://audiobookbay.lu/abss/unrelated/",
+                "format": "MP3",
+                "size": "1 GB",
+                "language": "English",
             },
         ]
-        
+
         source = AudiobookBaySource()
         book = BookMetadata(
             provider="test",
@@ -294,29 +298,29 @@ class TestAudiobookBaySource:
             title_variants=[ReleaseSearchVariant(title="Test Book", author="Test Author")],
             grouped_title_variants=[],
         )
-        
+
         results = source.search(book, plan, content_type="audiobook")
-        
+
         # Should filter out "Unrelated Book Title" as it doesn't contain query words
         assert len(results) == 1
-        assert results[0].title == 'Test Book by Test Author'
+        assert results[0].title == "Test Book by Test Author"
 
-    @patch('shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay')
+    @patch("shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay")
     def test_search_result_mapping(self, mock_search):
         """Test conversion of scraper results to Release objects."""
         mock_search.return_value = [
             {
-                'title': 'Test Book - Test Author',
-                'link': 'https://audiobookbay.lu/abss/test-book/',
-                'format': 'M4B',
-                'size': '500.00 MBs',
-                'language': 'English',
-                'bitrate': '128 Kbps',
-                'posted_date': '01 Jan 2024',
-                'cover': 'https://example.com/cover.jpg',
+                "title": "Test Book - Test Author",
+                "link": "https://audiobookbay.lu/abss/test-book/",
+                "format": "M4B",
+                "size": "500.00 MBs",
+                "language": "English",
+                "bitrate": "128 Kbps",
+                "posted_date": "01 Jan 2024",
+                "cover": "https://example.com/cover.jpg",
             },
         ]
-        
+
         source = AudiobookBaySource()
         book = BookMetadata(
             provider="test",
@@ -331,9 +335,9 @@ class TestAudiobookBaySource:
             title_variants=[ReleaseSearchVariant(title="Test Book", author="Test Author")],
             grouped_title_variants=[],
         )
-        
+
         results = source.search(book, plan, content_type="audiobook")
-        
+
         assert len(results) == 1
         release = results[0]
         assert release.source == "audiobookbay"
@@ -346,33 +350,33 @@ class TestAudiobookBaySource:
         assert release.protocol.value == "torrent"
         assert release.indexer == "AudiobookBay"
         assert release.content_type == "audiobook"
-        assert release.extra['preview'] == "https://example.com/cover.jpg"
-        assert release.extra['detail_url'] == "https://audiobookbay.lu/abss/test-book/"
-        assert release.extra['bitrate'] == "128 Kbps"
-        assert release.extra['bitrate_value'] == 128
-        assert release.extra['posted_date'] == "01 Jan 2024"
-        assert release.extra['title_raw'] == "Test Book - Test Author"
-        assert release.extra['author'] == "Test Author"
-        assert release.extra['language_raw'] == "English"
+        assert release.extra["preview"] == "https://example.com/cover.jpg"
+        assert release.extra["detail_url"] == "https://audiobookbay.lu/abss/test-book/"
+        assert release.extra["bitrate"] == "128 Kbps"
+        assert release.extra["bitrate_value"] == 128
+        assert release.extra["posted_date"] == "01 Jan 2024"
+        assert release.extra["title_raw"] == "Test Book - Test Author"
+        assert release.extra["author"] == "Test Author"
+        assert release.extra["language_raw"] == "English"
 
     def test_split_title_and_author(self):
         """Test title/author parsing from ABB title patterns."""
-        assert _split_title_and_author("Book Title - Author Name") == (
-            "Book Title", "Author Name"
-        )
+        assert _split_title_and_author("Book Title - Author Name") == ("Book Title", "Author Name")
         assert _split_title_and_author("Book Title - Author Name - Narrator") == (
-            "Book Title - Author Name", "Narrator"
+            "Book Title - Author Name",
+            "Narrator",
         )
         assert _split_title_and_author("Book Title") == ("Book Title", None)
         assert _split_title_and_author("  Book Title - Author Name  ") == (
-            "Book Title", "Author Name"
+            "Book Title",
+            "Author Name",
         )
 
-    @patch('shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay')
+    @patch("shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay")
     def test_search_handles_scraper_exception(self, mock_search):
         """Test that scraper exceptions are handled gracefully."""
         mock_search.side_effect = Exception("Scraper error")
-        
+
         source = AudiobookBaySource()
         book = BookMetadata(
             provider="test",
@@ -387,26 +391,26 @@ class TestAudiobookBaySource:
             title_variants=[ReleaseSearchVariant(title="Test Book", author="Test Author")],
             grouped_title_variants=[],
         )
-        
+
         results = source.search(book, plan, content_type="audiobook")
-        
+
         assert results == []
 
-    @patch('shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay')
+    @patch("shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay")
     def test_search_handles_invalid_result(self, mock_search):
         """Test that invalid results are skipped."""
         mock_search.return_value = [
             {
-                'title': 'Relevant Book',
-                'link': 'https://audiobookbay.lu/abss/valid/',
-                'format': 'M4B',
+                "title": "Relevant Book",
+                "link": "https://audiobookbay.lu/abss/valid/",
+                "format": "M4B",
             },
             {
                 # Missing required fields
-                'title': 'Relevant But Invalid',
+                "title": "Relevant But Invalid",
             },
         ]
-        
+
         source = AudiobookBaySource()
         book = BookMetadata(
             provider="test",
@@ -421,28 +425,29 @@ class TestAudiobookBaySource:
             title_variants=[ReleaseSearchVariant(title="Relevant", author="Author")],
             grouped_title_variants=[],
         )
-        
+
         results = source.search(book, plan, content_type="audiobook")
-        
+
         # Should only include valid result
         assert len(results) == 1
         assert results[0].title == "Relevant Book"
 
-    @patch('shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay')
+    @patch("shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay")
     def test_search_config_hostname(self, mock_search, monkeypatch):
         """Test that custom hostname is used from config."""
         mock_search.return_value = []
-        
+
         def mock_get(key, default=None):
             if key == "ABB_HOSTNAME":
                 return "audiobookbay.is"
             if key == "ABB_PAGE_LIMIT":
                 return 3
             return default
-        
+
         import shelfmark.release_sources.audiobookbay.source as source_module
+
         monkeypatch.setattr(source_module.config, "get", mock_get)
-        
+
         source = AudiobookBaySource()
         book = BookMetadata(
             provider="test",
@@ -457,14 +462,14 @@ class TestAudiobookBaySource:
             title_variants=[ReleaseSearchVariant(title="Test Book", author="Test Author")],
             grouped_title_variants=[],
         )
-        
-        source.search(book, plan, content_type="audiobook")
-        
-        call_args = mock_search.call_args
-        assert call_args.kwargs['hostname'] == "audiobookbay.is"
-        assert call_args.kwargs['max_pages'] == 3
 
-    @patch('shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay')
+        source.search(book, plan, content_type="audiobook")
+
+        call_args = mock_search.call_args
+        assert call_args.kwargs["hostname"] == "audiobookbay.is"
+        assert call_args.kwargs["max_pages"] == 3
+
+    @patch("shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay")
     def test_search_exact_phrase_setting_forwarded(self, mock_search, monkeypatch):
         """Test that exact phrase setting is forwarded to scraper search."""
         mock_search.return_value = [
@@ -488,6 +493,7 @@ class TestAudiobookBaySource:
             return default
 
         import shelfmark.release_sources.audiobookbay.source as source_module
+
         monkeypatch.setattr(source_module.config, "get", mock_get)
 
         source = AudiobookBaySource()
@@ -510,7 +516,7 @@ class TestAudiobookBaySource:
         call_args = mock_search.call_args_list[0]
         assert call_args.kwargs["exact_phrase"] is True
 
-    @patch('shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay')
+    @patch("shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay")
     def test_search_falls_back_to_broad_when_exact_finds_no_results(self, mock_search, monkeypatch):
         """Test fallback to broad search when exact phrase search has no results."""
         mock_search.side_effect = [
@@ -537,6 +543,7 @@ class TestAudiobookBaySource:
             return default
 
         import shelfmark.release_sources.audiobookbay.source as source_module
+
         monkeypatch.setattr(source_module.config, "get", mock_get)
 
         source = AudiobookBaySource()
@@ -567,7 +574,7 @@ class TestAudiobookBaySource:
         """Test column configuration."""
         source = AudiobookBaySource()
         config = source.get_column_config()
-        
+
         assert config is not None
         assert len(config.columns) == 4
         column_keys = [col.key for col in config.columns]

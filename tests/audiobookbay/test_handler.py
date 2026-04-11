@@ -44,18 +44,18 @@ class ProgressRecorder:
 class TestAudiobookBayHandlerDownload:
     """Tests for AudiobookBayHandler.download()."""
 
-    @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
-    @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
+    @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
+    @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
     def test_download_success(self, mock_get_client, mock_extract_magnet):
         """Test successful download initiation."""
         mock_extract_magnet.return_value = "magnet:?xt=urn:btih:abc123"
-        
+
         mock_client = MagicMock()
         mock_client.name = "qbittorrent"
         mock_client.find_existing.return_value = None
         mock_client.add_download.return_value = "download_id_123"
         mock_get_client.return_value = mock_client
-        
+
         handler = AudiobookBayHandler()
         task = DownloadTask(
             task_id="https://audiobookbay.lu/abss/test-book/",
@@ -65,7 +65,9 @@ class TestAudiobookBayHandlerDownload:
         )
         cancel_flag = Event()
         recorder = ProgressRecorder()
-        with patch.object(AudiobookBayHandler, "_poll_and_complete", return_value=None) as mock_poll:
+        with patch.object(
+            AudiobookBayHandler, "_poll_and_complete", return_value=None
+        ) as mock_poll:
             result = handler.download(
                 task=task,
                 cancel_flag=cancel_flag,
@@ -75,16 +77,17 @@ class TestAudiobookBayHandlerDownload:
 
         assert result is None
         mock_extract_magnet.assert_called_once_with(
-            "https://audiobookbay.lu/abss/test-book/",
-            "audiobookbay.lu"
+            "https://audiobookbay.lu/abss/test-book/", "audiobookbay.lu"
         )
         mock_client.add_download.assert_called_once()
         mock_poll.assert_called_once()
         assert "resolving" in recorder.statuses
 
-    @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
-    @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
-    def test_download_uses_source_url_for_hashed_task_id(self, mock_get_client, mock_extract_magnet):
+    @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
+    @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
+    def test_download_uses_source_url_for_hashed_task_id(
+        self, mock_get_client, mock_extract_magnet
+    ):
         """Test release queue flow where task_id is source hash and source_url has detail URL."""
         mock_extract_magnet.return_value = "magnet:?xt=urn:btih:abc123"
 
@@ -114,17 +117,16 @@ class TestAudiobookBayHandlerDownload:
 
         assert result is None
         mock_extract_magnet.assert_called_once_with(
-            "https://audiobookbay.lu/abss/test-book/",
-            "audiobookbay.lu"
+            "https://audiobookbay.lu/abss/test-book/", "audiobookbay.lu"
         )
         assert "resolving" in recorder.statuses
 
-    @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
-    @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
+    @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
+    @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
     def test_download_existing_complete(self, mock_get_client, mock_extract_magnet):
         """Test handling existing complete download."""
         mock_extract_magnet.return_value = "magnet:?xt=urn:btih:abc123"
-        
+
         mock_client = MagicMock()
         mock_client.name = "qbittorrent"
         mock_client.find_existing.return_value = (
@@ -139,7 +141,7 @@ class TestAudiobookBayHandlerDownload:
         )
         mock_client.get_download_path.return_value = "/path/to/book.m4b"
         mock_get_client.return_value = mock_client
-        
+
         handler = AudiobookBayHandler()
         task = DownloadTask(
             task_id="https://audiobookbay.lu/abss/test-book/",
@@ -149,7 +151,7 @@ class TestAudiobookBayHandlerDownload:
         )
         cancel_flag = Event()
         recorder = ProgressRecorder()
-        
+
         with patch.object(
             AudiobookBayHandler,
             "_wait_for_completed_path",
@@ -161,16 +163,16 @@ class TestAudiobookBayHandlerDownload:
                 progress_callback=recorder.progress_callback,
                 status_callback=recorder.status_callback,
             )
-        
+
         assert result == "/path/to/book.m4b"
         mock_client.add_download.assert_not_called()
 
-    @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
-    @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
+    @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
+    @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
     def test_download_existing_in_progress(self, mock_get_client, mock_extract_magnet):
         """Test handling existing in-progress download."""
         mock_extract_magnet.return_value = "magnet:?xt=urn:btih:abc123"
-        
+
         mock_client = MagicMock()
         mock_client.name = "qbittorrent"
         mock_client.find_existing.return_value = (
@@ -184,7 +186,7 @@ class TestAudiobookBayHandlerDownload:
             ),
         )
         mock_get_client.return_value = mock_client
-        
+
         handler = AudiobookBayHandler()
         task = DownloadTask(
             task_id="https://audiobookbay.lu/abss/test-book/",
@@ -194,8 +196,10 @@ class TestAudiobookBayHandlerDownload:
         )
         cancel_flag = Event()
         recorder = ProgressRecorder()
-        
-        with patch.object(AudiobookBayHandler, "_poll_and_complete", return_value=None) as mock_poll:
+
+        with patch.object(
+            AudiobookBayHandler, "_poll_and_complete", return_value=None
+        ) as mock_poll:
             result = handler.download(
                 task=task,
                 cancel_flag=cancel_flag,
@@ -208,8 +212,8 @@ class TestAudiobookBayHandlerDownload:
         mock_client.add_download.assert_not_called()
         mock_poll.assert_called_once()
 
-    @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
-    @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
+    @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
+    @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
     def test_download_cancellation(self, mock_get_client, mock_extract_magnet):
         """Test that cancellation is respected."""
         handler = AudiobookBayHandler()
@@ -222,24 +226,24 @@ class TestAudiobookBayHandlerDownload:
         cancel_flag = Event()
         cancel_flag.set()  # Set immediately
         recorder = ProgressRecorder()
-        
+
         result = handler.download(
             task=task,
             cancel_flag=cancel_flag,
             progress_callback=recorder.progress_callback,
             status_callback=recorder.status_callback,
         )
-        
+
         assert result is None
         assert "cancelled" in recorder.statuses
         mock_extract_magnet.assert_not_called()
 
-    @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
-    @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
+    @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
+    @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
     def test_download_no_magnet_link(self, mock_get_client, mock_extract_magnet):
         """Test handling when magnet link extraction fails."""
         mock_extract_magnet.return_value = None
-        
+
         handler = AudiobookBayHandler()
         task = DownloadTask(
             task_id="https://audiobookbay.lu/abss/test-book/",
@@ -261,20 +265,22 @@ class TestAudiobookBayHandlerDownload:
                 progress_callback=recorder.progress_callback,
                 status_callback=recorder.status_callback,
             )
-        
+
         assert result is None
         assert recorder.last_status == "error"
         assert "magnet link" in recorder.last_message.lower()
 
-    @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
-    @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
-    @patch('shelfmark.release_sources.audiobookbay.handler.list_configured_clients')
-    def test_download_no_client_configured(self, mock_list_clients, mock_get_client, mock_extract_magnet):
+    @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
+    @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
+    @patch("shelfmark.release_sources.audiobookbay.handler.list_configured_clients")
+    def test_download_no_client_configured(
+        self, mock_list_clients, mock_get_client, mock_extract_magnet
+    ):
         """Test handling when no torrent client is configured."""
         mock_extract_magnet.return_value = "magnet:?xt=urn:btih:abc123"
         mock_get_client.return_value = None
         mock_list_clients.return_value = []
-        
+
         handler = AudiobookBayHandler()
         task = DownloadTask(
             task_id="https://audiobookbay.lu/abss/test-book/",
@@ -284,30 +290,30 @@ class TestAudiobookBayHandlerDownload:
         )
         cancel_flag = Event()
         recorder = ProgressRecorder()
-        
+
         result = handler.download(
             task=task,
             cancel_flag=cancel_flag,
             progress_callback=recorder.progress_callback,
             status_callback=recorder.status_callback,
         )
-        
+
         assert result is None
         assert recorder.last_status == "error"
         assert "client" in recorder.last_message.lower()
 
-    @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
-    @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
+    @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
+    @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
     def test_download_client_add_failure(self, mock_get_client, mock_extract_magnet):
         """Test handling when client.add_download fails."""
         mock_extract_magnet.return_value = "magnet:?xt=urn:btih:abc123"
-        
+
         mock_client = MagicMock()
         mock_client.name = "qbittorrent"
         mock_client.find_existing.return_value = None
         mock_client.add_download.side_effect = Exception("Client error")
         mock_get_client.return_value = mock_client
-        
+
         handler = AudiobookBayHandler()
         task = DownloadTask(
             task_id="https://audiobookbay.lu/abss/test-book/",
@@ -317,23 +323,23 @@ class TestAudiobookBayHandlerDownload:
         )
         cancel_flag = Event()
         recorder = ProgressRecorder()
-        
+
         result = handler.download(
             task=task,
             cancel_flag=cancel_flag,
             progress_callback=recorder.progress_callback,
             status_callback=recorder.status_callback,
         )
-        
+
         assert result is None
         assert recorder.last_status == "error"
 
-    @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
-    @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
+    @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
+    @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
     def test_download_existing_no_path(self, mock_get_client, mock_extract_magnet):
         """Test handling when existing download has no path."""
         mock_extract_magnet.return_value = "magnet:?xt=urn:btih:abc123"
-        
+
         mock_client = MagicMock()
         mock_client.name = "qbittorrent"
         mock_client.find_existing.return_value = (
@@ -348,7 +354,7 @@ class TestAudiobookBayHandlerDownload:
         )
         mock_client.get_download_path.return_value = None
         mock_get_client.return_value = mock_client
-        
+
         handler = AudiobookBayHandler()
         task = DownloadTask(
             task_id="https://audiobookbay.lu/abss/test-book/",
@@ -358,14 +364,14 @@ class TestAudiobookBayHandlerDownload:
         )
         cancel_flag = Event()
         recorder = ProgressRecorder()
-        
+
         result = handler.download(
             task=task,
             cancel_flag=cancel_flag,
             progress_callback=recorder.progress_callback,
             status_callback=recorder.status_callback,
         )
-        
+
         assert result is None
         assert recorder.last_status == "error"
         assert "path" in recorder.last_message.lower()
@@ -374,26 +380,28 @@ class TestAudiobookBayHandlerDownload:
 class TestAudiobookBayHandlerCategory:
     """Tests for category selection."""
 
-    @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
-    @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
-    @patch('shelfmark.release_sources.audiobookbay.handler.config.get')
-    def test_category_selection_qbittorrent_audiobook(self, mock_config_get, mock_get_client, mock_extract_magnet):
+    @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
+    @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
+    @patch("shelfmark.release_sources.audiobookbay.handler.config.get")
+    def test_category_selection_qbittorrent_audiobook(
+        self, mock_config_get, mock_get_client, mock_extract_magnet
+    ):
         """Test audiobook category selection for qBittorrent."""
         mock_extract_magnet.return_value = "magnet:?xt=urn:btih:abc123"
-        
+
         def config_get(key, default=""):
             if key == "QBITTORRENT_CATEGORY_AUDIOBOOK":
                 return "audiobooks"
             return default
-        
+
         mock_config_get.side_effect = config_get
-        
+
         mock_client = MagicMock()
         mock_client.name = "qbittorrent"
         mock_client.find_existing.return_value = None
         mock_client.add_download.return_value = "download_id"
         mock_get_client.return_value = mock_client
-        
+
         handler = AudiobookBayHandler()
         task = DownloadTask(
             task_id="https://audiobookbay.lu/abss/test-book/",
@@ -403,7 +411,7 @@ class TestAudiobookBayHandlerCategory:
         )
         cancel_flag = Event()
         recorder = ProgressRecorder()
-        
+
         with patch.object(AudiobookBayHandler, "_poll_and_complete", return_value=None):
             handler.download(
                 task=task,
@@ -411,31 +419,33 @@ class TestAudiobookBayHandlerCategory:
                 progress_callback=recorder.progress_callback,
                 status_callback=recorder.status_callback,
             )
-        
+
         # Verify category was passed
         call_kwargs = mock_client.add_download.call_args.kwargs
-        assert call_kwargs['category'] == "audiobooks"
+        assert call_kwargs["category"] == "audiobooks"
 
-    @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
-    @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
-    @patch('shelfmark.release_sources.audiobookbay.handler.config.get')
-    def test_category_selection_transmission_general(self, mock_config_get, mock_get_client, mock_extract_magnet):
+    @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
+    @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
+    @patch("shelfmark.release_sources.audiobookbay.handler.config.get")
+    def test_category_selection_transmission_general(
+        self, mock_config_get, mock_get_client, mock_extract_magnet
+    ):
         """Test Transmission audiobook category does not fall back to general category."""
         mock_extract_magnet.return_value = "magnet:?xt=urn:btih:abc123"
-        
+
         def config_get(key, default=""):
             if key == "TRANSMISSION_CATEGORY":
                 return "books"
             return default
-        
+
         mock_config_get.side_effect = config_get
-        
+
         mock_client = MagicMock()
         mock_client.name = "transmission"
         mock_client.find_existing.return_value = None
         mock_client.add_download.return_value = "download_id"
         mock_get_client.return_value = mock_client
-        
+
         handler = AudiobookBayHandler()
         task = DownloadTask(
             task_id="https://audiobookbay.lu/abss/test-book/",
@@ -445,7 +455,7 @@ class TestAudiobookBayHandlerCategory:
         )
         cancel_flag = Event()
         recorder = ProgressRecorder()
-        
+
         with patch.object(AudiobookBayHandler, "_poll_and_complete", return_value=None):
             handler.download(
                 task=task,
@@ -453,26 +463,28 @@ class TestAudiobookBayHandlerCategory:
                 progress_callback=recorder.progress_callback,
                 status_callback=recorder.status_callback,
             )
-        
+
         # Transmission audiobook downloads use only the audiobook category key.
         call_kwargs = mock_client.add_download.call_args.kwargs
-        assert call_kwargs['category'] is None
+        assert call_kwargs["category"] is None
 
-    @patch('shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link')
-    @patch('shelfmark.release_sources.audiobookbay.handler.get_client')
-    @patch('shelfmark.release_sources.audiobookbay.handler.config.get')
-    def test_category_selection_non_audiobook(self, mock_config_get, mock_get_client, mock_extract_magnet):
+    @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
+    @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
+    @patch("shelfmark.release_sources.audiobookbay.handler.config.get")
+    def test_category_selection_non_audiobook(
+        self, mock_config_get, mock_get_client, mock_extract_magnet
+    ):
         """Test that non-audiobook content types don't get category."""
         mock_extract_magnet.return_value = "magnet:?xt=urn:btih:abc123"
-        
+
         mock_config_get.return_value = ""
-        
+
         mock_client = MagicMock()
         mock_client.name = "qbittorrent"
         mock_client.find_existing.return_value = None
         mock_client.add_download.return_value = "download_id"
         mock_get_client.return_value = mock_client
-        
+
         handler = AudiobookBayHandler()
         task = DownloadTask(
             task_id="https://audiobookbay.lu/abss/test-book/",
@@ -482,7 +494,7 @@ class TestAudiobookBayHandlerCategory:
         )
         cancel_flag = Event()
         recorder = ProgressRecorder()
-        
+
         with patch.object(AudiobookBayHandler, "_poll_and_complete", return_value=None):
             handler.download(
                 task=task,
@@ -490,10 +502,10 @@ class TestAudiobookBayHandlerCategory:
                 progress_callback=recorder.progress_callback,
                 status_callback=recorder.status_callback,
             )
-        
+
         # Verify no category was passed
         call_kwargs = mock_client.add_download.call_args.kwargs
-        assert call_kwargs['category'] is None
+        assert call_kwargs["category"] is None
 
 
 class TestAudiobookBayHandlerCancel:

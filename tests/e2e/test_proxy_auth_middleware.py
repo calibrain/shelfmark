@@ -213,11 +213,13 @@ class TestProxyAuthMiddleware:
             with patch.object(
                 main_module.app_config,
                 "get",
-                side_effect=_config_getter({
-                    "PROXY_AUTH_USER_HEADER": "X-Auth-User",
-                    "PROXY_AUTH_ADMIN_GROUP_HEADER": "X-Auth-Groups",
-                    "PROXY_AUTH_ADMIN_GROUP_NAME": "admins",
-                }),
+                side_effect=_config_getter(
+                    {
+                        "PROXY_AUTH_USER_HEADER": "X-Auth-User",
+                        "PROXY_AUTH_ADMIN_GROUP_HEADER": "X-Auth-Groups",
+                        "PROXY_AUTH_ADMIN_GROUP_NAME": "admins",
+                    }
+                ),
             ):
                 with main_module.app.test_request_context(
                     "/api/releases",

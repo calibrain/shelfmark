@@ -64,7 +64,7 @@ def get_directories_from_config() -> set[str]:
                     value = config[key]
                     if value and isinstance(value, str) and value.startswith("/"):
                         directories.add(value)
-        except (json.JSONDecodeError, OSError):
+        except json.JSONDecodeError, OSError:
             continue
 
     return directories

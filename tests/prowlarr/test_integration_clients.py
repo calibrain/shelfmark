@@ -26,51 +26,64 @@ TEST_MAGNET = "magnet:?xt=urn:btih:3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0&dn=u
 
 # ============ Configuration Setup Functions ============
 
+
 def _setup_transmission_config():
     """Set up Transmission configuration via config files and refresh config."""
-    save_config_file("prowlarr_clients", {
-        "PROWLARR_TORRENT_CLIENT": "transmission",
-        "TRANSMISSION_URL": "http://transmission:9091",
-        "TRANSMISSION_USERNAME": "admin",
-        "TRANSMISSION_PASSWORD": "admin",
-        "TRANSMISSION_CATEGORY": "test",
-    })
+    save_config_file(
+        "prowlarr_clients",
+        {
+            "PROWLARR_TORRENT_CLIENT": "transmission",
+            "TRANSMISSION_URL": "http://transmission:9091",
+            "TRANSMISSION_USERNAME": "admin",
+            "TRANSMISSION_PASSWORD": "admin",
+            "TRANSMISSION_CATEGORY": "test",
+        },
+    )
     config.refresh()
 
 
 def _setup_qbittorrent_config():
     """Set up qBittorrent configuration via config files and refresh config."""
-    save_config_file("prowlarr_clients", {
-        "PROWLARR_TORRENT_CLIENT": "qbittorrent",
-        "QBITTORRENT_URL": "http://qbittorrent:8080",
-        "QBITTORRENT_USERNAME": "admin",
-        "QBITTORRENT_PASSWORD": "admin123",
-        "QBITTORRENT_CATEGORY": "test",
-    })
+    save_config_file(
+        "prowlarr_clients",
+        {
+            "PROWLARR_TORRENT_CLIENT": "qbittorrent",
+            "QBITTORRENT_URL": "http://qbittorrent:8080",
+            "QBITTORRENT_USERNAME": "admin",
+            "QBITTORRENT_PASSWORD": "admin123",
+            "QBITTORRENT_CATEGORY": "test",
+        },
+    )
     config.refresh()
 
 
 def _setup_deluge_config():
     """Set up Deluge configuration via config files and refresh config."""
-    save_config_file("prowlarr_clients", {
-        "PROWLARR_TORRENT_CLIENT": "deluge",
-        "DELUGE_HOST": "deluge",
-        "DELUGE_PORT": "8112",
-        "DELUGE_PASSWORD": "deluge",
-        "DELUGE_CATEGORY": "test",
-    })
+    save_config_file(
+        "prowlarr_clients",
+        {
+            "PROWLARR_TORRENT_CLIENT": "deluge",
+            "DELUGE_HOST": "deluge",
+            "DELUGE_PORT": "8112",
+            "DELUGE_PASSWORD": "deluge",
+            "DELUGE_CATEGORY": "test",
+        },
+    )
     config.refresh()
 
 
 def _setup_nzbget_config():
     """Set up NZBGet configuration via config files and refresh config."""
-    save_config_file("prowlarr_clients", {
-        "PROWLARR_USENET_CLIENT": "nzbget",
-        "NZBGET_URL": "http://nzbget:6789",
-        "NZBGET_USERNAME": "nzbget",
-        "NZBGET_PASSWORD": "tegbzn6789",
-        "NZBGET_CATEGORY": "test",
-    })
+    save_config_file(
+        "prowlarr_clients",
+        {
+            "PROWLARR_USENET_CLIENT": "nzbget",
+            "NZBGET_URL": "http://nzbget:6789",
+            "NZBGET_USERNAME": "nzbget",
+            "NZBGET_PASSWORD": "tegbzn6789",
+            "NZBGET_CATEGORY": "test",
+        },
+    )
     config.refresh()
 
 
@@ -79,12 +92,15 @@ def _setup_sabnzbd_config():
     api_key = _get_sabnzbd_api_key()
     if not api_key:
         return False
-    save_config_file("prowlarr_clients", {
-        "PROWLARR_USENET_CLIENT": "sabnzbd",
-        "SABNZBD_URL": "http://sabnzbd:8080",
-        "SABNZBD_API_KEY": api_key,
-        "SABNZBD_CATEGORY": "test",
-    })
+    save_config_file(
+        "prowlarr_clients",
+        {
+            "PROWLARR_USENET_CLIENT": "sabnzbd",
+            "SABNZBD_URL": "http://sabnzbd:8080",
+            "SABNZBD_API_KEY": api_key,
+            "SABNZBD_CATEGORY": "test",
+        },
+    )
     config.refresh()
     return True
 
@@ -92,6 +108,7 @@ def _setup_sabnzbd_config():
 def _get_sabnzbd_api_key():
     """Extract SABnzbd API key from config file."""
     import re
+
     # Try mounted config paths (from docker-compose volumes)
     config_paths = [
         "/sabnzbd-config/sabnzbd.ini",
@@ -111,11 +128,13 @@ def _get_sabnzbd_api_key():
 
 # ============ Client Factory Functions ============
 
+
 def _try_get_transmission_client():
     """Try to get a working Transmission client, or None if unavailable."""
     _setup_transmission_config()
     try:
         from shelfmark.download.clients.transmission import TransmissionClient
+
         client = TransmissionClient()
         client.test_connection()
         return client
@@ -128,6 +147,7 @@ def _try_get_qbittorrent_client():
     _setup_qbittorrent_config()
     try:
         from shelfmark.download.clients.qbittorrent import QBittorrentClient
+
         client = QBittorrentClient()
         success, _ = client.test_connection()
         if success:
@@ -142,6 +162,7 @@ def _try_get_deluge_client():
     _setup_deluge_config()
     try:
         from shelfmark.download.clients.deluge import DelugeClient
+
         client = DelugeClient()
         success, _ = client.test_connection()
         if success:
@@ -156,6 +177,7 @@ def _try_get_nzbget_client():
     _setup_nzbget_config()
     try:
         from shelfmark.download.clients.nzbget import NZBGetClient
+
         client = NZBGetClient()
         success, _ = client.test_connection()
         if success:
@@ -171,6 +193,7 @@ def _try_get_sabnzbd_client():
         return None
     try:
         from shelfmark.download.clients.sabnzbd import SABnzbdClient
+
         client = SABnzbdClient()
         success, _ = client.test_connection()
         if success:
@@ -182,12 +205,15 @@ def _try_get_sabnzbd_client():
 
 # ============ Fixtures ============
 
+
 @pytest.fixture(scope="module")
 def transmission_client():
     """Get Transmission client if available, skip test otherwise."""
     client = _try_get_transmission_client()
     if client is None:
-        pytest.skip("Transmission not available - ensure docker-compose.test-clients.yml is running")
+        pytest.skip(
+            "Transmission not available - ensure docker-compose.test-clients.yml is running"
+        )
     return client
 
 
@@ -196,7 +222,9 @@ def qbittorrent_client():
     """Get qBittorrent client if available, skip test otherwise."""
     client = _try_get_qbittorrent_client()
     if client is None:
-        pytest.skip("qBittorrent not available - ensure docker-compose.test-clients.yml is running and check temp password")
+        pytest.skip(
+            "qBittorrent not available - ensure docker-compose.test-clients.yml is running and check temp password"
+        )
     return client
 
 
@@ -223,7 +251,9 @@ def sabnzbd_client():
     """Get SABnzbd client if available, skip test otherwise."""
     client = _try_get_sabnzbd_client()
     if client is None:
-        pytest.skip("SABnzbd not available - ensure docker-compose.test-clients.yml is running and setup wizard completed")
+        pytest.skip(
+            "SABnzbd not available - ensure docker-compose.test-clients.yml is running and setup wizard completed"
+        )
     return client
 
 
@@ -312,7 +342,15 @@ class TestTransmissionIntegration:
             assert 0 <= status.progress <= 100
 
             # State should be a known value
-            valid_states = {"downloading", "complete", "error", "seeding", "paused", "queued", "fetching_metadata"}
+            valid_states = {
+                "downloading",
+                "complete",
+                "error",
+                "seeding",
+                "paused",
+                "queued",
+                "fetching_metadata",
+            }
             assert status.state.value in valid_states
 
             # Complete should be boolean
@@ -397,7 +435,17 @@ class TestQBittorrentIntegration:
 
             assert 0 <= status.progress <= 100
 
-            valid_states = {"downloading", "complete", "error", "seeding", "paused", "queued", "fetching_metadata", "stalled", "checking"}
+            valid_states = {
+                "downloading",
+                "complete",
+                "error",
+                "seeding",
+                "paused",
+                "queued",
+                "fetching_metadata",
+                "stalled",
+                "checking",
+            }
             state_value = status.state.value if hasattr(status.state, "value") else status.state
             assert state_value in valid_states
 
@@ -482,7 +530,16 @@ class TestDelugeIntegration:
 
             assert 0 <= status.progress <= 100
 
-            valid_states = {"downloading", "complete", "error", "seeding", "paused", "queued", "fetching_metadata", "checking"}
+            valid_states = {
+                "downloading",
+                "complete",
+                "error",
+                "seeding",
+                "paused",
+                "queued",
+                "fetching_metadata",
+                "checking",
+            }
             assert status.state.value in valid_states
 
             assert isinstance(status.complete, bool)

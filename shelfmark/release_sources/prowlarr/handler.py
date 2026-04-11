@@ -50,7 +50,7 @@ def _coerce_seed_time_minutes(raw_seed_time: object) -> int | None:
 
     try:
         seed_time_seconds = int(raw_seed_time)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         logger.warning("Invalid Prowlarr minimumSeedTime value: %r", raw_seed_time)
         return None
 

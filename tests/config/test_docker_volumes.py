@@ -188,8 +188,7 @@ class TestPermissions:
     """Tests for permission-related scenarios."""
 
     @pytest.mark.skipif(
-        os.geteuid() == 0,
-        reason="Permission tests don't work when running as root"
+        os.geteuid() == 0, reason="Permission tests don't work when running as root"
     )
     def test_read_only_config_dir_save_fails_gracefully(self):
         """Saving to read-only config dir should fail gracefully, not crash."""
@@ -209,8 +208,7 @@ class TestPermissions:
                 os.chmod(config_dir, stat.S_IRWXU)
 
     @pytest.mark.skipif(
-        os.geteuid() == 0,
-        reason="Permission tests don't work when running as root"
+        os.geteuid() == 0, reason="Permission tests don't work when running as root"
     )
     def test_read_only_config_file_save_fails_gracefully(self):
         """Saving when config file is read-only should fail gracefully."""
@@ -249,8 +247,7 @@ class TestPermissions:
         from shelfmark.config.env import _is_config_dir_writable
 
         with patch(
-            "shelfmark.config.env.CONFIG_DIR",
-            Path("/nonexistent/path/that/does/not/exist")
+            "shelfmark.config.env.CONFIG_DIR", Path("/nonexistent/path/that/does/not/exist")
         ):
             assert _is_config_dir_writable() is False
 
@@ -316,11 +313,14 @@ class TestPathEdgeCases:
             config_dir = Path(tmpdir)
 
             with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
-                save_config_file("test", {
-                    "title": "日本語タイトル",
-                    "author": "Автор книги",
-                    "emoji": "📚🎉",
-                })
+                save_config_file(
+                    "test",
+                    {
+                        "title": "日本語タイトル",
+                        "author": "Автор книги",
+                        "emoji": "📚🎉",
+                    },
+                )
                 result = load_config_file("test")
 
             assert result["title"] == "日本語タイトル"
@@ -391,14 +391,13 @@ class TestConfigMerging:
             config_dir = Path(tmpdir)
 
             with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
-                save_config_file("nested", {
-                    "level1": {
-                        "level2": {
-                            "value": "deep"
-                        }
+                save_config_file(
+                    "nested",
+                    {
+                        "level1": {"level2": {"value": "deep"}},
+                        "list": [1, 2, 3],
                     },
-                    "list": [1, 2, 3],
-                })
+                )
                 result = load_config_file("nested")
 
             assert result["level1"]["level2"]["value"] == "deep"
@@ -518,16 +517,23 @@ class TestVolumeTypes:
             plugins_dir.mkdir(parents=True)
 
             # Existing config from previous install
-            (plugins_dir / "prowlarr_clients.json").write_text(json.dumps({
-                "PROWLARR_TORRENT_CLIENT": "qbittorrent",
-                "QBITTORRENT_URL": "http://old-host:8080",
-            }))
+            (plugins_dir / "prowlarr_clients.json").write_text(
+                json.dumps(
+                    {
+                        "PROWLARR_TORRENT_CLIENT": "qbittorrent",
+                        "QBITTORRENT_URL": "http://old-host:8080",
+                    }
+                )
+            )
 
             with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 # New save should merge
-                save_config_file("prowlarr_clients", {
-                    "QBITTORRENT_URL": "http://new-host:8080",
-                })
+                save_config_file(
+                    "prowlarr_clients",
+                    {
+                        "QBITTORRENT_URL": "http://new-host:8080",
+                    },
+                )
 
                 result = load_config_file("prowlarr_clients")
 
@@ -629,11 +635,15 @@ class TestConfigMigration:
             plugins_dir.mkdir(parents=True)
 
             # Config with keys that don't exist in current schema
-            (plugins_dir / "future.json").write_text(json.dumps({
-                "KNOWN_KEY": "value",
-                "FUTURE_KEY_V2": "future_value",
-                "ANOTHER_UNKNOWN": 123,
-            }))
+            (plugins_dir / "future.json").write_text(
+                json.dumps(
+                    {
+                        "KNOWN_KEY": "value",
+                        "FUTURE_KEY_V2": "future_value",
+                        "ANOTHER_UNKNOWN": 123,
+                    }
+                )
+            )
 
             with patch("shelfmark.config.env.CONFIG_DIR", config_dir):
                 # Save should preserve unknown keys

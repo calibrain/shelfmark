@@ -63,7 +63,9 @@ def test_users_me_edit_context_respects_visible_sections(app, user_db):
     with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
         with patch(
             "shelfmark.core.self_user_routes.load_config_file",
-            side_effect=lambda tab_name: {"VISIBLE_SELF_SETTINGS_SECTIONS": ["delivery"]} if tab_name == "users" else {},
+            side_effect=lambda tab_name: (
+                {"VISIBLE_SELF_SETTINGS_SECTIONS": ["delivery"]} if tab_name == "users" else {}
+            ),
         ):
             with patch(
                 "shelfmark.core.self_user_routes._build_user_preferences_payload",
@@ -108,9 +110,11 @@ def test_users_me_edit_context_includes_search_preferences_when_visible(app, use
     with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
         with patch(
             "shelfmark.core.self_user_routes.load_config_file",
-            side_effect=lambda tab_name: {
-                "VISIBLE_SELF_SETTINGS_SECTIONS": ["delivery", "search"]
-            } if tab_name == "users" else {},
+            side_effect=lambda tab_name: (
+                {"VISIBLE_SELF_SETTINGS_SECTIONS": ["delivery", "search"]}
+                if tab_name == "users"
+                else {}
+            ),
         ):
             with patch(
                 "shelfmark.core.self_user_routes._build_user_preferences_payload",
@@ -138,7 +142,9 @@ def test_users_me_update_rejects_hidden_section_settings(app, user_db):
     with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
         with patch(
             "shelfmark.core.self_user_routes.load_config_file",
-            side_effect=lambda tab_name: {"VISIBLE_SELF_SETTINGS_SECTIONS": ["delivery"]} if tab_name == "users" else {},
+            side_effect=lambda tab_name: (
+                {"VISIBLE_SELF_SETTINGS_SECTIONS": ["delivery"]} if tab_name == "users" else {}
+            ),
         ):
             with patch(
                 "shelfmark.core.self_user_routes._get_ordered_user_overridable_fields",
@@ -148,7 +154,9 @@ def test_users_me_update_rejects_hidden_section_settings(app, user_db):
                     "/api/users/me",
                     json={
                         "settings": {
-                            "USER_NOTIFICATION_ROUTES": [{"event": "all", "url": "ntfys://ntfy.sh/alice"}],
+                            "USER_NOTIFICATION_ROUTES": [
+                                {"event": "all", "url": "ntfys://ntfy.sh/alice"}
+                            ],
                         }
                     },
                 )
@@ -170,7 +178,9 @@ def test_users_me_update_accepts_visible_section_settings(app, user_db):
     with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
         with patch(
             "shelfmark.core.self_user_routes.load_config_file",
-            side_effect=lambda tab_name: {"VISIBLE_SELF_SETTINGS_SECTIONS": ["delivery"]} if tab_name == "users" else {},
+            side_effect=lambda tab_name: (
+                {"VISIBLE_SELF_SETTINGS_SECTIONS": ["delivery"]} if tab_name == "users" else {}
+            ),
         ):
             with patch(
                 "shelfmark.core.self_user_routes._get_ordered_user_overridable_fields",

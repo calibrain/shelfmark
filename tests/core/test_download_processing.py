@@ -23,6 +23,7 @@ from shelfmark.core.models import DownloadTask, SearchMode
 # Fixtures
 # =============================================================================
 
+
 @pytest.fixture
 def sample_task():
     """Create a sample DownloadTask for testing."""
@@ -83,6 +84,7 @@ def _sync_core_config(mock_config, mock_core_config, mock_archive_config=None):
 # =============================================================================
 # _atomic_copy Tests
 # =============================================================================
+
 
 class TestAtomicCopy:
     """Tests for _atomic_copy() function."""
@@ -195,7 +197,7 @@ class TestAtomicCopy:
         dest = tmp_path / "dest.txt"
 
         # Simulate shutil.copy2 failure mid-copy
-        with patch('shutil.copy2', side_effect=IOError("Disk full")):
+        with patch("shutil.copy2", side_effect=IOError("Disk full")):
             with pytest.raises(IOError):
                 _atomic_copy(source, dest)
 
@@ -298,6 +300,7 @@ class TestAtomicCopy:
 # process_directory Tests
 # =============================================================================
 
+
 class TestProcessDirectory:
     """Tests for process_directory() function."""
 
@@ -309,13 +312,17 @@ class TestProcessDirectory:
         directory.mkdir()
         (directory / "book.epub").write_bytes(b"epub content")
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+        ):
             mock_config.USE_BOOK_TITLE = False
-            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-                "SUPPORTED_FORMATS": ["epub"],
-                "FILE_ORGANIZATION": "none",
-            }.get(key, default))
+            mock_config.get = MagicMock(
+                side_effect=lambda key, default=None, **_kwargs: {
+                    "SUPPORTED_FORMATS": ["epub"],
+                    "FILE_ORGANIZATION": "none",
+                }.get(key, default)
+            )
             _sync_core_config(mock_config, mock_config)
 
             final_paths, error = process_directory(
@@ -340,13 +347,17 @@ class TestProcessDirectory:
         (directory / "book1.epub").write_bytes(b"epub1")
         (directory / "book2.epub").write_bytes(b"epub2")
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+        ):
             mock_config.USE_BOOK_TITLE = False
-            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-                "SUPPORTED_FORMATS": ["epub"],
-                "FILE_ORGANIZATION": "none",
-            }.get(key, default))
+            mock_config.get = MagicMock(
+                side_effect=lambda key, default=None, **_kwargs: {
+                    "SUPPORTED_FORMATS": ["epub"],
+                    "FILE_ORGANIZATION": "none",
+                }.get(key, default)
+            )
             _sync_core_config(mock_config, mock_config)
 
             final_paths, error = process_directory(
@@ -367,12 +378,16 @@ class TestProcessDirectory:
         # Use a file type that isn't trackable (not epub, pdf, txt, etc.)
         (directory / "readme.log").write_text("not a book")
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
-            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-                "SUPPORTED_FORMATS": ["epub"],
-                "FILE_ORGANIZATION": "none",
-            }.get(key, default))
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+        ):
+            mock_config.get = MagicMock(
+                side_effect=lambda key, default=None, **_kwargs: {
+                    "SUPPORTED_FORMATS": ["epub"],
+                    "FILE_ORGANIZATION": "none",
+                }.get(key, default)
+            )
             _sync_core_config(mock_config, mock_config)
 
             final_paths, error = process_directory(
@@ -393,12 +408,16 @@ class TestProcessDirectory:
         directory.mkdir()
         (directory / "book.pdf").write_bytes(b"pdf content")
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
-            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-                "SUPPORTED_FORMATS": ["epub"],  # PDF not supported
-                "FILE_ORGANIZATION": "none",
-            }.get(key, default))
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+        ):
+            mock_config.get = MagicMock(
+                side_effect=lambda key, default=None, **_kwargs: {
+                    "SUPPORTED_FORMATS": ["epub"],  # PDF not supported
+                    "FILE_ORGANIZATION": "none",
+                }.get(key, default)
+            )
             _sync_core_config(mock_config, mock_config)
 
             final_paths, error = process_directory(
@@ -420,13 +439,17 @@ class TestProcessDirectory:
         directory.mkdir()
         (directory / "random_name.epub").write_bytes(b"content")
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+        ):
             mock_config.USE_BOOK_TITLE = True
-            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-                "SUPPORTED_FORMATS": ["epub"],
-                "FILE_ORGANIZATION": "rename",
-            }.get(key, default))
+            mock_config.get = MagicMock(
+                side_effect=lambda key, default=None, **_kwargs: {
+                    "SUPPORTED_FORMATS": ["epub"],
+                    "FILE_ORGANIZATION": "rename",
+                }.get(key, default)
+            )
             _sync_core_config(mock_config, mock_config)
 
             final_paths, error = process_directory(
@@ -449,13 +472,17 @@ class TestProcessDirectory:
         (directory / "Part 1.epub").write_bytes(b"part1")
         (directory / "Part 2.epub").write_bytes(b"part2")
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+        ):
             mock_config.USE_BOOK_TITLE = True  # Ignored for multi-file
-            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-                "SUPPORTED_FORMATS": ["epub"],
-                "FILE_ORGANIZATION": "none",
-            }.get(key, default))
+            mock_config.get = MagicMock(
+                side_effect=lambda key, default=None, **_kwargs: {
+                    "SUPPORTED_FORMATS": ["epub"],
+                    "FILE_ORGANIZATION": "none",
+                }.get(key, default)
+            )
             _sync_core_config(mock_config, mock_config)
 
             final_paths, error = process_directory(
@@ -478,13 +505,17 @@ class TestProcessDirectory:
         subdir.mkdir(parents=True)
         (subdir / "book.epub").write_bytes(b"content")
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+        ):
             mock_config.USE_BOOK_TITLE = False
-            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-                "SUPPORTED_FORMATS": ["epub"],
-                "FILE_ORGANIZATION": "none",
-            }.get(key, default))
+            mock_config.get = MagicMock(
+                side_effect=lambda key, default=None, **_kwargs: {
+                    "SUPPORTED_FORMATS": ["epub"],
+                    "FILE_ORGANIZATION": "none",
+                }.get(key, default)
+            )
             _sync_core_config(mock_config, mock_config)
 
             final_paths, error = process_directory(
@@ -504,15 +535,21 @@ class TestProcessDirectory:
         directory.mkdir()
         (directory / "book.epub").write_bytes(b"content")
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]), \
-             patch('shelfmark.download.postprocess.transfer.atomic_move', side_effect=Exception("Move failed")):
-
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+            patch(
+                "shelfmark.download.postprocess.transfer.atomic_move",
+                side_effect=Exception("Move failed"),
+            ),
+        ):
             mock_config.USE_BOOK_TITLE = False
-            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-                "SUPPORTED_FORMATS": ["epub"],
-                "FILE_ORGANIZATION": "none",
-            }.get(key, default))
+            mock_config.get = MagicMock(
+                side_effect=lambda key, default=None, **_kwargs: {
+                    "SUPPORTED_FORMATS": ["epub"],
+                    "FILE_ORGANIZATION": "none",
+                }.get(key, default)
+            )
             _sync_core_config(mock_config, mock_config)
 
             final_paths, error = process_directory(
@@ -532,12 +569,15 @@ class TestProcessDirectory:
 # _post_process_download Tests
 # =============================================================================
 
+
 class TestPostProcessDownload:
     """Tests for _post_process_download() function."""
 
     def test_simple_file_move_to_ingest(self, temp_dirs, sample_direct_task):
         """Simple file is moved to ingest directory."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
 
         temp_file = temp_dirs["staging"] / "book.epub"
         temp_file.write_bytes(b"epub content")
@@ -545,9 +585,10 @@ class TestPostProcessDownload:
         status_cb = MagicMock()
         cancel_flag = Event()
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
-
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+        ):
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = None
             _sync_core_config(mock_config, mock_config)
@@ -570,7 +611,9 @@ class TestPostProcessDownload:
 
     def test_uses_formatted_filename(self, temp_dirs, sample_direct_task):
         """Uses task title when USE_BOOK_TITLE enabled."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
 
         temp_file = temp_dirs["staging"] / "random.epub"
         temp_file.write_bytes(b"content")
@@ -578,9 +621,10 @@ class TestPostProcessDownload:
         status_cb = MagicMock()
         cancel_flag = Event()
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
-
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+        ):
             mock_config.USE_BOOK_TITLE = True
             mock_config.CUSTOM_SCRIPT = None
             _sync_core_config(mock_config, mock_config)
@@ -600,7 +644,9 @@ class TestPostProcessDownload:
 
     def test_organize_mode_for_universal(self, temp_dirs, sample_task):
         """Universal mode organizes when configured."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
 
         library = temp_dirs["base"] / "library"
         library.mkdir()
@@ -610,17 +656,20 @@ class TestPostProcessDownload:
         status_cb = MagicMock()
         cancel_flag = Event()
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
-
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+        ):
             mock_config.USE_BOOK_TITLE = True
             mock_config.CUSTOM_SCRIPT = None
             _sync_core_config(mock_config, mock_config)
-            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-                "DESTINATION": str(library),
-                "FILE_ORGANIZATION": "organize",
-                "TEMPLATE_ORGANIZE": "{Author}/{Title}",
-            }.get(key, default))
+            mock_config.get = MagicMock(
+                side_effect=lambda key, default=None, **_kwargs: {
+                    "DESTINATION": str(library),
+                    "FILE_ORGANIZATION": "organize",
+                    "TEMPLATE_ORGANIZE": "{Author}/{Title}",
+                }.get(key, default)
+            )
             _sync_core_config(mock_config, mock_config)
 
             result = _post_process_download(
@@ -637,7 +686,9 @@ class TestPostProcessDownload:
 
     def test_direct_mode_uses_ingest(self, temp_dirs, sample_direct_task):
         """Direct mode keeps ingest destination when not organizing."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
 
         library = temp_dirs["base"] / "library"
         library.mkdir()
@@ -647,16 +698,19 @@ class TestPostProcessDownload:
         status_cb = MagicMock()
         cancel_flag = Event()
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
-
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+        ):
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = None
             _sync_core_config(mock_config, mock_config)
-            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-                "DESTINATION": str(temp_dirs["ingest"]),
-                "FILE_ORGANIZATION": "none",
-            }.get(key, default))
+            mock_config.get = MagicMock(
+                side_effect=lambda key, default=None, **_kwargs: {
+                    "DESTINATION": str(temp_dirs["ingest"]),
+                    "FILE_ORGANIZATION": "none",
+                }.get(key, default)
+            )
             _sync_core_config(mock_config, mock_config)
 
             result = _post_process_download(
@@ -673,7 +727,9 @@ class TestPostProcessDownload:
 
     def test_cancellation_before_ingest(self, temp_dirs, sample_direct_task):
         """Respects cancellation before final move."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
 
         temp_file = temp_dirs["staging"] / "book.epub"
         temp_file.write_bytes(b"content")
@@ -682,9 +738,10 @@ class TestPostProcessDownload:
         cancel_flag = Event()
         cancel_flag.set()  # Already cancelled
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
-
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+        ):
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = None
             _sync_core_config(mock_config, mock_config)
@@ -707,7 +764,9 @@ class TestPostProcessDownload:
 
     def test_audiobook_uses_dedicated_ingest(self, temp_dirs, sample_task):
         """Audiobooks use dedicated ingest directory when configured."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
 
         audiobook_ingest = temp_dirs["base"] / "audiobook_ingest"
         audiobook_ingest.mkdir()
@@ -719,17 +778,20 @@ class TestPostProcessDownload:
         status_cb = MagicMock()
         cancel_flag = Event()
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]):
-
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+        ):
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = None
             _sync_core_config(mock_config, mock_config)
-            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-                "DESTINATION": str(temp_dirs["ingest"]),
-                "INGEST_DIR": str(temp_dirs["ingest"]),
-                "DESTINATION_AUDIOBOOK": str(audiobook_ingest),
-            }.get(key, default))
+            mock_config.get = MagicMock(
+                side_effect=lambda key, default=None, **_kwargs: {
+                    "DESTINATION": str(temp_dirs["ingest"]),
+                    "INGEST_DIR": str(temp_dirs["ingest"]),
+                    "DESTINATION_AUDIOBOOK": str(audiobook_ingest),
+                }.get(key, default)
+            )
             _sync_core_config(mock_config, mock_config)
 
             result = _post_process_download(
@@ -748,12 +810,15 @@ class TestPostProcessDownload:
 # Custom Script Execution Tests
 # =============================================================================
 
+
 class TestCustomScriptExecution:
     """Tests for custom script execution in post-processing."""
 
     def test_runs_custom_script(self, temp_dirs, sample_direct_task):
         """Runs custom script when configured."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
         import subprocess
 
         temp_file = temp_dirs["staging"] / "book.epub"
@@ -762,10 +827,11 @@ class TestCustomScriptExecution:
         status_cb = MagicMock()
         cancel_flag = Event()
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]), \
-             patch('subprocess.run') as mock_run:
-
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+            patch("subprocess.run") as mock_run,
+        ):
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = "/path/to/script.sh"
             _sync_core_config(mock_config, mock_config)
@@ -791,7 +857,9 @@ class TestCustomScriptExecution:
 
     def test_runs_custom_script_with_json_payload_on_stdin(self, temp_dirs, sample_direct_task):
         """Sends a JSON payload to the custom script via stdin when enabled."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
 
         temp_file = temp_dirs["staging"] / "book.epub"
         temp_file.write_bytes(b"content")
@@ -799,10 +867,11 @@ class TestCustomScriptExecution:
         status_cb = MagicMock()
         cancel_flag = Event()
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]), \
-             patch('subprocess.run') as mock_run:
-
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+            patch("subprocess.run") as mock_run,
+        ):
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = "/path/to/script.sh"
             _sync_core_config(mock_config, mock_config)
@@ -835,9 +904,13 @@ class TestCustomScriptExecution:
         assert payload["paths"]["target"] == str(result_path)
         assert payload["paths"]["final_paths"] == [str(result_path)]
 
-    def test_runs_custom_script_for_booklore_output_with_json_payload(self, temp_dirs, sample_direct_task):
+    def test_runs_custom_script_for_booklore_output_with_json_payload(
+        self, temp_dirs, sample_direct_task
+    ):
         """Runs the custom script hook after a successful Booklore upload."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
 
         temp_file = temp_dirs["staging"] / "book.epub"
         temp_file.write_bytes(b"content")
@@ -847,26 +920,29 @@ class TestCustomScriptExecution:
         status_cb = MagicMock()
         cancel_flag = Event()
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]), \
-             patch('shelfmark.download.outputs.booklore.booklore_login', return_value="token"), \
-             patch('shelfmark.download.outputs.booklore.booklore_upload_file'), \
-             patch('shelfmark.download.outputs.booklore.booklore_refresh_library'), \
-             patch('subprocess.run') as mock_run:
-
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+            patch("shelfmark.download.outputs.booklore.booklore_login", return_value="token"),
+            patch("shelfmark.download.outputs.booklore.booklore_upload_file"),
+            patch("shelfmark.download.outputs.booklore.booklore_refresh_library"),
+            patch("subprocess.run") as mock_run,
+        ):
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = "/path/to/script.sh"
             _sync_core_config(mock_config, mock_config)
 
-            mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {
-                "BOOKS_OUTPUT_MODE": "booklore",
-                "BOOKLORE_HOST": "http://booklore:6060",
-                "BOOKLORE_USERNAME": "user",
-                "BOOKLORE_PASSWORD": "pass",
-                "BOOKLORE_LIBRARY_ID": 1,
-                "BOOKLORE_PATH_ID": 2,
-                "CUSTOM_SCRIPT_JSON_PAYLOAD": True,
-            }.get(key, default))
+            mock_config.get = MagicMock(
+                side_effect=lambda key, default=None, **_kwargs: {
+                    "BOOKS_OUTPUT_MODE": "booklore",
+                    "BOOKLORE_HOST": "http://booklore:6060",
+                    "BOOKLORE_USERNAME": "user",
+                    "BOOKLORE_PASSWORD": "pass",
+                    "BOOKLORE_LIBRARY_ID": 1,
+                    "BOOKLORE_PATH_ID": 2,
+                    "CUSTOM_SCRIPT_JSON_PAYLOAD": True,
+                }.get(key, default)
+            )
             _sync_core_config(mock_config, mock_config)
 
             mock_run.return_value = MagicMock(stdout="", returncode=0)
@@ -893,7 +969,9 @@ class TestCustomScriptExecution:
 
     def test_runs_custom_script_with_relative_path_mode(self, temp_dirs, sample_direct_task):
         """Runs custom script with a destination-relative path when configured."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
         import subprocess
 
         temp_file = temp_dirs["staging"] / "book.epub"
@@ -902,10 +980,11 @@ class TestCustomScriptExecution:
         status_cb = MagicMock()
         cancel_flag = Event()
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]), \
-             patch('subprocess.run') as mock_run:
-
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+            patch("subprocess.run") as mock_run,
+        ):
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = "/path/to/script.sh"
             _sync_core_config(mock_config, mock_config)
@@ -934,7 +1013,9 @@ class TestCustomScriptExecution:
 
     def test_runs_custom_script_for_directory_download_once(self, temp_dirs):
         """Runs custom script once after transferring a directory download."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
 
         download_dir = temp_dirs["staging"] / "release"
         download_dir.mkdir()
@@ -954,14 +1035,17 @@ class TestCustomScriptExecution:
         status_cb = MagicMock()
         cancel_flag = Event()
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]), \
-             patch('subprocess.run') as mock_run:
-
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+            patch("subprocess.run") as mock_run,
+        ):
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = "/path/to/script.sh"
             _sync_core_config(mock_config, mock_config)
-            mock_config.get = _mock_destination_config(temp_dirs["ingest"], {"FILE_ORGANIZATION_AUDIOBOOK": "none"})
+            mock_config.get = _mock_destination_config(
+                temp_dirs["ingest"], {"FILE_ORGANIZATION_AUDIOBOOK": "none"}
+            )
             _sync_core_config(mock_config, mock_config)
 
             mock_run.return_value = MagicMock(stdout="", returncode=0)
@@ -981,7 +1065,9 @@ class TestCustomScriptExecution:
 
     def test_script_not_found_error(self, temp_dirs, sample_direct_task):
         """Returns error when script not found."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
 
         temp_file = temp_dirs["staging"] / "book.epub"
         temp_file.write_bytes(b"content")
@@ -989,10 +1075,11 @@ class TestCustomScriptExecution:
         status_cb = MagicMock()
         cancel_flag = Event()
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]), \
-             patch('subprocess.run', side_effect=FileNotFoundError("not found")):
-
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+            patch("subprocess.run", side_effect=FileNotFoundError("not found")),
+        ):
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = "/nonexistent/script.sh"
             _sync_core_config(mock_config, mock_config)
@@ -1011,7 +1098,9 @@ class TestCustomScriptExecution:
 
     def test_script_not_executable_error(self, temp_dirs, sample_direct_task):
         """Returns error when script not executable."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
 
         temp_file = temp_dirs["staging"] / "book.epub"
         temp_file.write_bytes(b"content")
@@ -1019,10 +1108,11 @@ class TestCustomScriptExecution:
         status_cb = MagicMock()
         cancel_flag = Event()
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]), \
-             patch('subprocess.run', side_effect=PermissionError("not executable")):
-
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+            patch("subprocess.run", side_effect=PermissionError("not executable")),
+        ):
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = "/path/to/script.sh"
             _sync_core_config(mock_config, mock_config)
@@ -1041,7 +1131,9 @@ class TestCustomScriptExecution:
 
     def test_script_timeout_error(self, temp_dirs, sample_direct_task):
         """Returns error when script times out."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
         import subprocess
 
         temp_file = temp_dirs["staging"] / "book.epub"
@@ -1050,10 +1142,11 @@ class TestCustomScriptExecution:
         status_cb = MagicMock()
         cancel_flag = Event()
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]), \
-             patch('subprocess.run', side_effect=subprocess.TimeoutExpired("script", 300)):
-
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+            patch("subprocess.run", side_effect=subprocess.TimeoutExpired("script", 300)),
+        ):
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = "/path/to/script.sh"
             _sync_core_config(mock_config, mock_config)
@@ -1072,7 +1165,9 @@ class TestCustomScriptExecution:
 
     def test_script_nonzero_exit_error(self, temp_dirs, sample_direct_task):
         """Returns error when script exits non-zero."""
-        from shelfmark.download.postprocess.router import post_process_download as _post_process_download
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
         import subprocess
 
         temp_file = temp_dirs["staging"] / "book.epub"
@@ -1081,10 +1176,11 @@ class TestCustomScriptExecution:
         status_cb = MagicMock()
         cancel_flag = Event()
 
-        with patch('shelfmark.core.config.config') as mock_config, \
-             patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]), \
-             patch('subprocess.run') as mock_run:
-
+        with (
+            patch("shelfmark.core.config.config") as mock_config,
+            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
+            patch("subprocess.run") as mock_run,
+        ):
             mock_config.USE_BOOK_TITLE = False
             mock_config.CUSTOM_SCRIPT = "/path/to/script.sh"
             _sync_core_config(mock_config, mock_config)

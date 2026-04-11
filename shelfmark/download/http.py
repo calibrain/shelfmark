@@ -161,9 +161,9 @@ def parse_size_string(size: str) -> float | None:
         for suffix, mult in multipliers.items():
             if normalized.endswith(suffix):
                 # Strip the actual suffix length, not a hardcoded 2 characters
-                return float(normalized[:-len(suffix)]) * mult
+                return float(normalized[: -len(suffix)]) * mult
         return float(normalized)
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         return None
 
 

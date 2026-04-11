@@ -196,7 +196,9 @@ def _generate_bootstrap_env_docs() -> List[str]:
     ]
 
     for var in bootstrap_vars:
-        lines.append(f"| `{var['name']}` | {var['description']} | {var['type']} | `{var['default']}` |")
+        lines.append(
+            f"| `{var['name']}` | {var['description']} | {var['type']} | `{var['default']}` |"
+        )
 
     lines.append("")
     lines.append("<details>")
@@ -391,6 +393,7 @@ def _generate_tab_docs(tab, group_prefix: Optional[str] = None) -> List[str]:
 
         # Show constraints for NumberField
         from shelfmark.core.settings_registry import NumberField
+
         if isinstance(field, NumberField):
             constraints = []
             if field.min_value is not None:

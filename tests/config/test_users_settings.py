@@ -225,19 +225,38 @@ def test_request_policy_rules_source_options_are_dynamic(monkeypatch):
     content_type_options = content_type_column["options"]
     assert content_type_column["filterByField"] == "source"
 
-    assert {"value": "ebook", "label": "Ebook", "childOf": "direct_download"} in content_type_options
+    assert {
+        "value": "ebook",
+        "label": "Ebook",
+        "childOf": "direct_download",
+    } in content_type_options
     assert {"value": "ebook", "label": "Ebook", "childOf": "prowlarr"} in content_type_options
-    assert {"value": "audiobook", "label": "Audiobook", "childOf": "prowlarr"} in content_type_options
+    assert {
+        "value": "audiobook",
+        "label": "Audiobook",
+        "childOf": "prowlarr",
+    } in content_type_options
     assert {"value": "ebook", "label": "Ebook", "childOf": "irc"} in content_type_options
     assert {"value": "audiobook", "label": "Audiobook", "childOf": "irc"} in content_type_options
-    assert {"value": "*", "label": "Any Type (*)", "childOf": "prowlarr"} not in content_type_options
-    assert {"value": "*", "label": "Any Type (*)", "childOf": "direct_download"} not in content_type_options
+    assert {
+        "value": "*",
+        "label": "Any Type (*)",
+        "childOf": "prowlarr",
+    } not in content_type_options
+    assert {
+        "value": "*",
+        "label": "Any Type (*)",
+        "childOf": "direct_download",
+    } not in content_type_options
 
     mode_options = columns[2]["options"]
     # This test verifies dynamic source/content-type option wiring; keep mode-copy checks non-brittle.
     assert mode_options[0]["value"] == "download"
     assert mode_options[0]["label"] == "Download"
-    assert isinstance(mode_options[0].get("description"), str) and mode_options[0]["description"].strip()
+    assert (
+        isinstance(mode_options[0].get("description"), str)
+        and mode_options[0]["description"].strip()
+    )
     assert {opt["value"] for opt in mode_options} == {"download", "request_release", "blocked"}
 
 
@@ -393,7 +412,9 @@ def test_on_save_users_rejects_invalid_default_release_source_override(monkeypat
     result = users_settings_module._on_save_users({"DEFAULT_RELEASE_SOURCE": "unknown-source"})
 
     assert result["error"] is True
-    assert "DEFAULT_RELEASE_SOURCE must be a valid release source name or empty" in result["message"]
+    assert (
+        "DEFAULT_RELEASE_SOURCE must be a valid release source name or empty" in result["message"]
+    )
 
 
 def test_on_save_users_rejects_audiobook_only_source_for_book_default(monkeypatch):
@@ -418,7 +439,9 @@ def test_on_save_users_rejects_audiobook_only_source_for_book_default(monkeypatc
     result = users_settings_module._on_save_users({"DEFAULT_RELEASE_SOURCE": "audiobookbay"})
 
     assert result["error"] is True
-    assert "DEFAULT_RELEASE_SOURCE must be a valid release source name or empty" in result["message"]
+    assert (
+        "DEFAULT_RELEASE_SOURCE must be a valid release source name or empty" in result["message"]
+    )
 
 
 def test_on_save_users_rejects_book_only_source_for_audiobook_default(monkeypatch):
@@ -445,4 +468,7 @@ def test_on_save_users_rejects_book_only_source_for_audiobook_default(monkeypatc
     )
 
     assert result["error"] is True
-    assert "DEFAULT_RELEASE_SOURCE_AUDIOBOOK must be a valid release source name or empty" in result["message"]
+    assert (
+        "DEFAULT_RELEASE_SOURCE_AUDIOBOOK must be a valid release source name or empty"
+        in result["message"]
+    )

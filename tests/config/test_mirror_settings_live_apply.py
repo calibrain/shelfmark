@@ -9,7 +9,9 @@ def test_update_settings_mirrors_applies_aa_changes_live(monkeypatch):
     monkeypatch.delenv("AA_ADDITIONAL_URLS", raising=False)
 
     # Avoid writing to disk and avoid forcing a full config refresh in this unit test.
-    monkeypatch.setattr("shelfmark.core.settings_registry.save_config_file", lambda _tab, _values: True)
+    monkeypatch.setattr(
+        "shelfmark.core.settings_registry.save_config_file", lambda _tab, _values: True
+    )
     monkeypatch.setattr(config_obj, "refresh", lambda: None)
 
     called: dict[str, object] = {}
@@ -25,4 +27,3 @@ def test_update_settings_mirrors_applies_aa_changes_live(monkeypatch):
 
     assert result["success"] is True
     assert called["force"] is True
-

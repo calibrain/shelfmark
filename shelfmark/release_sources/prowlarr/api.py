@@ -129,7 +129,7 @@ class ProwlarrClient:
                 continue
             try:
                 idx_id_int = int(idx_id)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
 
             if restrict_to is not None and idx_id_int not in restrict_to:
