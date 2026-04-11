@@ -579,15 +579,45 @@ The global `DISPLAY` dict (containing FFmpeg process handle and output path) is 
 
 ---
 
-## <a name="c22"></a>22. LOW: `download/archive.py` — Python 2 `except` Syntax
+## <a name="c23"></a>23. TEST FIX: `tests/e2e/test_api.py` — `test_search_with_provider_filter` Parses API Response Incorrectly
 
-**File**: `shelfmark/release_sources/direct_download.py`, line 354
+**File**: `tests/e2e/test_api.py`, lines 145–160
 
-```python
-except AttributeError, TypeError:   # ← Python 2 syntax
+**Root Cause**:
+
+The `/api/metadata/providers` endpoint returns:
+```json
+{"providers": [{"name": "openlibrary", ...}, ...], "configured_provider": "openlibrary", ...}
 ```
 
-Same Python 2 compatibility issue as Bug #1A. Would cause `SyntaxWarning` in Python 3.
+The test's dict-handling code at lines 148–156 takes the **first key** (`"providers"`) as the provider name rather than navigating into `providers_data["providers"][0]["name"]`:
+
+```python
+first_key = list(providers_data.keys())[0]  # "providers"
+provider_info = providers_data[first_key]    # → [{"name": "openlibrary", ...}, ...]
+# isinstance(provider_info, dict) → False (it's a list!)
+# So the fallback fires: provider_name = first_key → "providers"
+provider_name = (
+    provider_info.get("name", first_key)  # ← not reached (provider_info is a list)
+    if isinstance(provider_info, dict)
+    else first_key  # ← this branch taken: provider_name = "providers"
+)
+```
+
+`provider_name = "providers"` is then passed to `/api/metadata/search?provider=providers`. The search endpoint calls `is_provider_registered("providers")` → returns `False` → **400 Bad Request**.
+
+**Fix** (in `tests/e2e/test_api.py`):
+
+Detect the `"providers"` key explicitly and extract the first provider's `name` from the list value:
+
+```python
+if "providers" in providers_data and isinstance(providers_data["providers"], list) and providers_data["providers"]:
+    provider_name = providers_data["providers"][0].get("name")  # → "openlibrary"
+```
+
+An inline comment documents the root cause and why the original code failed.
+
+**Test-only change — the API contract was always correct.** The bug was introduced alongside the Python 2 `except` syntax cleanup in commit `3a3a3ce` when the test code was rewritten.
 
 ---
 
@@ -601,6 +631,7 @@ Same Python 2 compatibility issue as Bug #1A. Would cause `SyntaxWarning` in Pyt
 | **HIGH** | 5 | Cookie cache domain mismatch (bypasser), hardcoded table cell indices (archive.py), nth-of-type selectors (archive.py), div[-6] no bounds check (archive.py), response leaks in _try_resume (http.py), URL rotation only at zero bytes (http.py) |
 | **MEDIUM** | 6 | Cancel flag/status not atomic (queue.py), TOCTOU race in get_status (queue.py), silent parse failures (archive.py), XSS in toasts (frontend), no WebSocket reconnection (frontend), infinite API timeout (frontend), metaDL state stuck (qbittorrent) |
 | **LOW** | 3 | Abort logic never triggers (bypasser), FFmpeg race (bypasser), Python 2 except syntax (archive.py) |
+| **TEST FIX** | 1 | test_search_with_provider_filter response parsing (test_api.py) |
 
 ### Why qBittorrent Gets Stuck on "Fetching Metadata" (Current Version Root Causes)
 
