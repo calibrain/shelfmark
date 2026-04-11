@@ -13,6 +13,7 @@ from email.utils import parseaddr
 from pathlib import Path
 from threading import Event, Lock
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -122,6 +123,64 @@ def _seed_time_seconds_to_minutes(value: Any) -> Optional[int]:
     return (seed_time_seconds + 59) // 60
 
 
+def _optional_identifier(value: Any) -> Optional[str]:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        value = str(value)
+    return normalize_optional_text(value)
+
+
+def _extract_hardcover_slug_from_url(value: Any) -> Optional[str]:
+    raw_url = normalize_optional_text(value)
+    if raw_url is None:
+        return None
+    try:
+        parsed = urlparse(raw_url)
+    except ValueError:
+        return None
+
+    hostname = (parsed.hostname or "").lower()
+    if hostname not in {"hardcover.app", "www.hardcover.app"}:
+        return None
+
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) >= 2 and parts[0] == "books":
+        return normalize_optional_text(parts[1])
+    return None
+
+
+def _extract_metadata_provenance_fields(
+    release_data: dict[str, Any],
+) -> dict[str, Optional[str]]:
+    provenance = release_data.get("_metadata_provenance")
+    if not isinstance(provenance, dict):
+        return {
+            "metadata_provider": None,
+            "metadata_provider_id": None,
+            "metadata_source_url": None,
+            "hardcover_edition": None,
+            "hardcover_slug": None,
+        }
+
+    metadata_provider = normalize_optional_text(provenance.get("provider"))
+    metadata_provider_id = _optional_identifier(provenance.get("provider_id"))
+    metadata_source_url = normalize_optional_text(provenance.get("source_url"))
+    hardcover_edition = _optional_identifier(provenance.get("hardcover_edition"))
+    hardcover_slug = normalize_optional_text(provenance.get("hardcover_slug"))
+
+    if metadata_provider == "hardcover" and hardcover_slug is None:
+        hardcover_slug = _extract_hardcover_slug_from_url(metadata_source_url)
+
+    return {
+        "metadata_provider": metadata_provider,
+        "metadata_provider_id": metadata_provider_id,
+        "metadata_source_url": metadata_source_url,
+        "hardcover_edition": hardcover_edition,
+        "hardcover_slug": hardcover_slug,
+    }
+
+
 def _build_retry_resolution_fields(
     release_data: dict[str, Any],
 ) -> Dict[str, Any]:
@@ -201,6 +260,7 @@ def queue_release(
         output_mode = "folder" if is_audiobook else books_output_mode
         output_args: Dict[str, Any] = {}
         retry_resolution_fields = _build_retry_resolution_fields(release_data)
+        metadata_provenance_fields = _extract_metadata_provenance_fields(release_data)
 
         if output_mode == "email" and not is_audiobook:
             email_to, email_error = _resolve_email_destination(user_id=user_id)
@@ -221,6 +281,11 @@ def queue_release(
             preview=preview,
             content_type=content_type,
             source_url=source_url,
+            metadata_provider=metadata_provenance_fields["metadata_provider"],
+            metadata_provider_id=metadata_provenance_fields["metadata_provider_id"],
+            metadata_source_url=metadata_provenance_fields["metadata_source_url"],
+            hardcover_edition=metadata_provenance_fields["hardcover_edition"],
+            hardcover_slug=metadata_provenance_fields["hardcover_slug"],
             series_name=series_name,
             series_position=series_position,
             subtitle=subtitle,
@@ -352,6 +417,11 @@ def serialize_task_for_retry(task: DownloadTask) -> Dict[str, Any]:
         "preview": getattr(task, "preview", None),
         "content_type": getattr(task, "content_type", None),
         "source_url": getattr(task, "source_url", None),
+        "metadata_provider": getattr(task, "metadata_provider", None),
+        "metadata_provider_id": getattr(task, "metadata_provider_id", None),
+        "metadata_source_url": getattr(task, "metadata_source_url", None),
+        "hardcover_edition": getattr(task, "hardcover_edition", None),
+        "hardcover_slug": getattr(task, "hardcover_slug", None),
         "series_name": getattr(task, "series_name", None),
         "series_position": getattr(task, "series_position", None),
         "subtitle": getattr(task, "subtitle", None),
@@ -405,6 +475,11 @@ def _restore_task_from_retry_payload(payload: Any) -> Optional[DownloadTask]:
         preview=normalize_optional_text(payload.get("preview")),
         content_type=normalize_optional_text(payload.get("content_type")),
         source_url=normalize_optional_text(payload.get("source_url")),
+        metadata_provider=normalize_optional_text(payload.get("metadata_provider")),
+        metadata_provider_id=_optional_identifier(payload.get("metadata_provider_id")),
+        metadata_source_url=normalize_optional_text(payload.get("metadata_source_url")),
+        hardcover_edition=_optional_identifier(payload.get("hardcover_edition")),
+        hardcover_slug=normalize_optional_text(payload.get("hardcover_slug")),
         series_name=normalize_optional_text(payload.get("series_name")),
         series_position=_optional_number(payload.get("series_position")),
         subtitle=normalize_optional_text(payload.get("subtitle")),

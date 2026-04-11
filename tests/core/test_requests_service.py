@@ -428,6 +428,10 @@ def test_fulfil_request_queues_as_requesting_user(user_db):
     assert captured["username"] == "alice"
     assert isinstance(captured["release_data"], dict)
     assert captured["release_data"]["_request_id"] == created["id"]
+    assert captured["release_data"]["_metadata_provenance"] == {
+        "provider": "openlibrary",
+        "provider_id": "ol-123",
+    }
     assert "_request_id" not in (fulfilled["release_data"] or {})
 
 
@@ -505,6 +509,48 @@ def test_fulfil_book_level_request_stores_selected_release_data(user_db):
     assert captured["release_data"]["source_id"] == "admin-picked-book-release"
     assert captured["user_id"] == alice["id"]
     assert captured["username"] == "alice"
+
+
+def test_fulfil_request_attaches_exact_hardcover_provenance(user_db):
+    alice = user_db.create_user(username="alice")
+    admin = user_db.create_user(username="admin", role="admin")
+    book_data = {
+        "title": "Mort",
+        "author": "Terry Pratchett",
+        "content_type": "ebook",
+        "provider": "hardcover",
+        "provider_id": "379631",
+        "source_url": "https://hardcover.app/books/mort",
+    }
+    created = create_request(
+        user_db,
+        user_id=alice["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=book_data,
+        release_data=_release_data(),
+    )
+
+    captured: dict[str, object] = {}
+
+    def fake_queue_release(release_data, priority, user_id=None, username=None):
+        captured["release_data"] = release_data
+        return True, None
+
+    fulfil_request(
+        user_db,
+        request_id=created["id"],
+        admin_user_id=admin["id"],
+        queue_release=fake_queue_release,
+    )
+
+    assert captured["release_data"]["_metadata_provenance"] == {
+        "provider": "hardcover",
+        "provider_id": "379631",
+        "source_url": "https://hardcover.app/books/mort",
+    }
 
 
 def test_reopen_failed_request_reverts_to_pending_from_queued_and_clears_on_refulfil(user_db):

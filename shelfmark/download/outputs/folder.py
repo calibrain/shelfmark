@@ -11,6 +11,7 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download.outputs import register_output
+from shelfmark.download.outputs.cwa_sidecar import write_cwa_sidecar
 from shelfmark.download.staging import StageAction, STAGE_NONE
 
 logger = setup_logger(__name__)
@@ -238,12 +239,39 @@ def process_folder_output(
             )
         return None
 
+    emitted_sidecars = 0
+    for final_path in final_paths:
+        try:
+            sidecar_path = write_cwa_sidecar(final_path, task)
+        except Exception as exc:
+            logger.warning(
+                "Task %s: failed to write CWA sidecar for %s: %s",
+                task.task_id,
+                final_path,
+                exc,
+            )
+            continue
+        if sidecar_path is not None:
+            emitted_sidecars += 1
+            logger.info(
+                "Task %s: wrote CWA sidecar %s",
+                task.task_id,
+                sidecar_path,
+            )
+
     cleanup_output_staging(
         prepared.output_plan,
         prepared.working_path,
         task,
         prepared.cleanup_paths,
     )
+
+    if emitted_sidecars:
+        logger.info(
+            "Task %s: emitted %d CWA sidecar(s)",
+            task.task_id,
+            emitted_sidecars,
+        )
 
     message = "Complete" if len(final_paths) == 1 else f"Complete ({len(final_paths)} files)"
     status_callback("complete", message)

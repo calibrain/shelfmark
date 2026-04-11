@@ -132,3 +132,80 @@ def extract_release_source_id(release_data: Any) -> str | None:
         return None
     normalized = source_id.strip()
     return normalized or None
+
+
+def normalize_optional_identifier(value: Any) -> str | None:
+    """Normalize string/integer identifiers while rejecting booleans and empties."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        value = str(value)
+    return normalize_optional_text(value)
+
+
+def build_release_metadata_provenance(book_data: Any) -> dict[str, Any] | None:
+    """Extract exact upstream metadata provenance from request book_data.
+
+    The resulting payload is safe to carry inside internal release queue payloads.
+    Only exact provider identifiers already present in request book_data are kept.
+    """
+    if not isinstance(book_data, dict):
+        return None
+
+    provider = normalize_optional_text(book_data.get("provider"))
+    provider_id = normalize_optional_identifier(book_data.get("provider_id"))
+    if provider is None or provider_id is None:
+        return None
+
+    provenance: dict[str, Any] = {
+        "provider": provider,
+        "provider_id": provider_id,
+    }
+
+    source_url = normalize_optional_text(book_data.get("source_url"))
+    if source_url is not None:
+        provenance["source_url"] = source_url
+
+    hardcover_edition = normalize_optional_identifier(
+        book_data.get("hardcover_edition")
+        or book_data.get("hardcover_edition_id")
+    )
+    if provider == "hardcover" and hardcover_edition is not None:
+        provenance["hardcover_edition"] = hardcover_edition
+
+    hardcover_slug = normalize_optional_text(book_data.get("hardcover_slug"))
+    if provider == "hardcover" and hardcover_slug is not None:
+        provenance["hardcover_slug"] = hardcover_slug
+
+    return provenance
+
+
+def attach_release_metadata_provenance(
+    release_data: Any,
+    *,
+    book_data: Any,
+) -> dict[str, Any] | Any:
+    """Attach exact metadata provenance to transient queue payloads.
+
+    This is intentionally additive and internal-only. It should not mutate the
+    caller's original release_data mapping, and it should not invent missing IDs.
+    """
+    if not isinstance(release_data, dict):
+        return release_data
+
+    enriched = dict(release_data)
+    exact_provenance = build_release_metadata_provenance(book_data)
+    if exact_provenance is None:
+        return enriched
+
+    existing = enriched.get("_metadata_provenance")
+    merged = dict(exact_provenance)
+    if isinstance(existing, dict):
+        for key, value in existing.items():
+            if key in {"provider", "provider_id", "source_url", "hardcover_edition", "hardcover_slug"}:
+                normalized = normalize_optional_identifier(value) if key in {"provider_id", "hardcover_edition"} else normalize_optional_text(value)
+                if normalized is not None:
+                    merged[key] = normalized
+
+    enriched["_metadata_provenance"] = merged
+    return enriched

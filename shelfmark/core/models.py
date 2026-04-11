@@ -84,6 +84,11 @@ class DownloadTask:
     preview: Optional[str] = None
     content_type: Optional[str] = None  # "book (fiction)", "audiobook", "magazine", etc.
     source_url: Optional[str] = None  # Original release URL used by source-specific handlers
+    metadata_provider: Optional[str] = None  # Exact upstream metadata provider (e.g. "hardcover")
+    metadata_provider_id: Optional[str] = None  # Exact upstream metadata-provider book ID
+    metadata_source_url: Optional[str] = None  # Canonical metadata-provider URL for the book
+    hardcover_edition: Optional[str] = None  # Exact Hardcover edition ID when known
+    hardcover_slug: Optional[str] = None  # Exact Hardcover book slug when known
     retry_download_url: Optional[str] = None  # Resolved download URL for restart-safe retries
     retry_download_protocol: Optional[str] = None  # Protocol for retry_download_url (e.g. torrent, usenet)
     retry_release_name: Optional[str] = None  # Display name to send back to external download clients

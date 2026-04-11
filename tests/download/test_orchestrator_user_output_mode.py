@@ -152,3 +152,67 @@ def test_queue_release_persists_generic_retry_resolution_fields(monkeypatch):
     assert task.retry_ratio_limit == 1.25
     assert task.retry_seeding_time_limit_minutes == 90
     assert task.can_retry_without_staged_source is True
+
+
+def test_queue_release_persists_hardcover_metadata_provenance(monkeypatch):
+    import shelfmark.download.orchestrator as orchestrator
+
+    captured: dict[str, object] = {}
+
+    def fake_add(task):
+        captured["task"] = task
+        return True
+
+    monkeypatch.setattr(orchestrator.book_queue, "add", fake_add)
+    monkeypatch.setattr(orchestrator, "ws_manager", None)
+
+    success, error = orchestrator.queue_release(
+        {
+            "source": "prowlarr",
+            "source_id": "release-hardcover-1",
+            "title": "Mort",
+            "_metadata_provenance": {
+                "provider": "hardcover",
+                "provider_id": "379631",
+                "source_url": "https://hardcover.app/books/mort",
+                "hardcover_edition": "91234",
+            },
+        },
+        user_id=42,
+        username="alice",
+    )
+
+    assert success is True
+    assert error is None
+    task = captured["task"]
+    assert task.metadata_provider == "hardcover"
+    assert task.metadata_provider_id == "379631"
+    assert task.metadata_source_url == "https://hardcover.app/books/mort"
+    assert task.hardcover_edition == "91234"
+    assert task.hardcover_slug == "mort"
+
+
+def test_retry_payload_round_trips_metadata_provenance():
+    import shelfmark.download.orchestrator as orchestrator
+    from shelfmark.core.models import DownloadTask
+
+    task = DownloadTask(
+        task_id="release-hardcover-2",
+        source="prowlarr",
+        title="Wyrd Sisters",
+        metadata_provider="hardcover",
+        metadata_provider_id="10101",
+        metadata_source_url="https://hardcover.app/books/wyrd-sisters",
+        hardcover_edition="20202",
+        hardcover_slug="wyrd-sisters",
+    )
+
+    payload = orchestrator.serialize_task_for_retry(task)
+    restored = orchestrator._restore_task_from_retry_payload(payload)
+
+    assert restored is not None
+    assert restored.metadata_provider == "hardcover"
+    assert restored.metadata_provider_id == "10101"
+    assert restored.metadata_source_url == "https://hardcover.app/books/wyrd-sisters"
+    assert restored.hardcover_edition == "20202"
+    assert restored.hardcover_slug == "wyrd-sisters"
