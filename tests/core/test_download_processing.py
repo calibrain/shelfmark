@@ -506,7 +506,7 @@ class TestProcessDirectory:
 
         with patch('shelfmark.core.config.config') as mock_config, \
              patch('shelfmark.config.env.TMP_DIR', temp_dirs["staging"]), \
-             patch('shelfmark.download.postprocess.transfer.atomic_move', side_effect=Exception("Move failed")):
+             patch('shelfmark.download.postprocess.transfer.atomic_move', side_effect=RuntimeError("Move failed")):
 
             mock_config.USE_BOOK_TITLE = False
             mock_config.get = MagicMock(side_effect=lambda key, default=None, **_kwargs: {

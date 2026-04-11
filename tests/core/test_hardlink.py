@@ -1345,6 +1345,34 @@ class TestTorrentSourceCleanupProtection:
         assert is_torrent_source(torrent_path, task) is True
         assert is_torrent_source(staging_path, task) is False
 
+    def testis_torrent_source_falls_back_to_normalized_paths(self, tmp_path, monkeypatch):
+        """If resolve() fails, path comparison should still fall back safely."""
+        import shelfmark.download.postprocess.transfer as transfer_module
+
+        from shelfmark.download.postprocess.pipeline import is_torrent_source
+        from shelfmark.core.models import DownloadTask, SearchMode
+
+        torrent_path = tmp_path / "downloads" / "book.epub"
+        fallback_path = tmp_path / "downloads" / ".." / "downloads" / "book.epub"
+
+        task = DownloadTask(
+            task_id="test",
+            source="prowlarr",
+            title="Test",
+            author="Author",
+            format="epub",
+            search_mode=SearchMode.UNIVERSAL,
+            original_download_path=str(torrent_path),
+        )
+
+        monkeypatch.setattr(
+            transfer_module,
+            "run_blocking_io",
+            lambda _func, *_args, **_kwargs: (_ for _ in ()).throw(OSError("resolve failed")),
+        )
+
+        assert is_torrent_source(fallback_path, task) is True
+
 
 class TestEdgeCases:
     """Edge cases and error handling."""

@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from shelfmark.core.models import DownloadTask
 
 logger = setup_logger(__name__)
+_CLIENT_CLEANUP_ERRORS = (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError)
 
 # How often to poll the download client for status (seconds)
 POLL_INTERVAL = 2
@@ -185,7 +186,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
             try:
                 self._delete_local_download_data(client, download_id)
                 self._remove_usenet_download(client, download_id, delete_files=True, archive=True)
-            except Exception as e:
+            except _CLIENT_CLEANUP_ERRORS as e:
                 logger.warning(
                     "Failed to cleanup usenet download %s in %s: %s",
                     download_id,
@@ -198,7 +199,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 return
             try:
                 client.remove(download_id, delete_files=False)
-            except Exception as e:
+            except _CLIENT_CLEANUP_ERRORS as e:
                 logger.warning(
                     "Failed to remove torrent %s from %s: %s",
                     download_id,
@@ -224,7 +225,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         """Best-effort local deletion of client download data."""
         try:
             raw_path = client.get_download_path(download_id)
-        except Exception as e:
+        except _CLIENT_CLEANUP_ERRORS as e:
             logger.debug(
                 "Failed to resolve download path for %s %s: %s", client.name, download_id, e
             )
@@ -273,7 +274,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
             logger.info(
                 "Deleted local download data for %s %s: %s", client.name, download_id, delete_path
             )
-        except Exception as e:
+        except _CLIENT_CLEANUP_ERRORS as e:
             logger.warning(
                 "Failed to delete local download data for %s %s: %s", client.name, download_id, e
             )
@@ -305,7 +306,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
             # Permanent delete for failed usenet downloads (SABnzbd archive=0).
             self._delete_local_download_data(client, download_id)
             self._remove_usenet_download(client, download_id, delete_files=True, archive=False)
-        except Exception as e:
+        except _CLIENT_CLEANUP_ERRORS as e:
             logger.warning(
                 "Failed to remove download %s from %s after %s: %s",
                 download_id,
@@ -326,7 +327,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
             try:
                 self._delete_local_download_data(client, download_id)
                 self._remove_usenet_download(client, download_id, delete_files=True, archive=True)
-            except Exception as e:
+            except _CLIENT_CLEANUP_ERRORS as e:
                 logger.warning(
                     "Failed to remove download %s from %s after cancellation: %s",
                     download_id,

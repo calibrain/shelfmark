@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from shelfmark.core.models import DownloadTask
 
 logger = setup_logger("shelfmark.download.postprocess.pipeline")
+_TRANSFER_PROCESS_ERRORS = (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError)
 
 
 def should_hardlink(task: DownloadTask) -> bool:
@@ -125,10 +126,7 @@ def is_torrent_source(source_path: Path, task: DownloadTask) -> bool:
     try:
         return run_blocking_io(source_path.resolve) == run_blocking_io(original_path.resolve)
     except OSError, ValueError:
-        try:
-            return os.path.normpath(str(source_path)) == os.path.normpath(str(original_path))
-        except Exception:
-            return False
+        return os.path.normpath(str(source_path)) == os.path.normpath(str(original_path))
 
 
 def _max_attempts_for_batch(file_count: int, default: int = 100) -> int:
@@ -320,7 +318,7 @@ def process_directory(
 
         processed_paths = final_paths
 
-    except Exception as exc:
+    except _TRANSFER_PROCESS_ERRORS as exc:
         logger.error_trace(
             "Task %s: error processing directory %s: %s", task.task_id, directory, exc
         )

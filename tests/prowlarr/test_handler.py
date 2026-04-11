@@ -1007,7 +1007,7 @@ class TestProwlarrHandlerPostProcessCleanup:
         mock_client.name = "nzbget"
         handler._cleanup_refs[task.task_id] = (mock_client, "123", "usenet")
 
-        with patch("shelfmark.release_sources.prowlarr.handler.config.get", return_value="move"):
+        with patch("shelfmark.download.clients.base_handler.config.get", return_value="move"):
             handler.post_process_cleanup(task, success=True)
 
         mock_client.remove.assert_called_once_with("123", delete_files=True)
@@ -1020,7 +1020,110 @@ class TestProwlarrHandlerPostProcessCleanup:
         mock_client.name = "nzbget"
         handler._cleanup_refs[task.task_id] = (mock_client, "123", "usenet")
 
-        with patch("shelfmark.release_sources.prowlarr.handler.config.get", return_value="copy"):
+        with patch("shelfmark.download.clients.base_handler.config.get", return_value="copy"):
             handler.post_process_cleanup(task, success=True)
 
         mock_client.remove.assert_not_called()
+
+    def test_usenet_move_logs_cleanup_failure(self):
+        handler = ProwlarrHandler()
+        task = DownloadTask(task_id="cleanup-failure", source="prowlarr", title="Test")
+
+        mock_client = MagicMock()
+        mock_client.name = "nzbget"
+        handler._cleanup_refs[task.task_id] = (mock_client, "123", "usenet")
+        handler._delete_local_download_data = MagicMock(side_effect=ConnectionError("offline"))
+
+        with (
+            patch("shelfmark.download.clients.base_handler.config.get", return_value="move"),
+            patch("shelfmark.download.clients.base_handler.logger.warning") as mock_warning,
+        ):
+            handler.post_process_cleanup(task, success=True)
+
+        mock_warning.assert_called_once()
+        args = mock_warning.call_args.args
+        assert args[0] == "Failed to cleanup usenet download %s in %s: %s"
+        assert args[1] == "123"
+        assert args[2] == "nzbget"
+        assert str(args[3]) == "offline"
+
+    def test_torrent_remove_logs_cleanup_failure(self):
+        handler = ProwlarrHandler()
+        task = DownloadTask(task_id="torrent-cleanup-failure", source="prowlarr", title="Test")
+
+        mock_client = MagicMock()
+        mock_client.name = "qbittorrent"
+        mock_client.remove.side_effect = ConnectionError("offline")
+        handler._cleanup_refs[task.task_id] = (mock_client, "123", "torrent")
+
+        with (
+            patch("shelfmark.download.clients.base_handler.config.get", return_value="remove"),
+            patch("shelfmark.download.clients.base_handler.logger.warning") as mock_warning,
+        ):
+            handler.post_process_cleanup(task, success=True)
+
+        mock_warning.assert_called_once()
+        args = mock_warning.call_args.args
+        assert args[0] == "Failed to remove torrent %s from %s: %s"
+        assert args[1] == "123"
+        assert args[2] == "qbittorrent"
+        assert str(args[3]) == "offline"
+
+    def test_delete_local_download_data_ignores_path_lookup_failure(self):
+        handler = ProwlarrHandler()
+        mock_client = MagicMock()
+        mock_client.name = "nzbget"
+        mock_client.get_download_path.side_effect = ConnectionError("path lookup failed")
+
+        with patch("shelfmark.download.clients.base_handler.logger.debug") as mock_debug:
+            handler._delete_local_download_data(mock_client, "123")
+
+        mock_debug.assert_called_once()
+        args = mock_debug.call_args.args
+        assert args[0] == "Failed to resolve download path for %s %s: %s"
+        assert args[1] == "nzbget"
+        assert args[2] == "123"
+        assert str(args[3]) == "path lookup failed"
+
+    def test_delete_local_download_data_logs_delete_failure(self, tmp_path, monkeypatch):
+        import shelfmark.download.clients.base_handler as base_handler
+        import shelfmark.core.path_mappings as path_mappings
+
+        handler = ProwlarrHandler()
+        download_file = tmp_path / "downloads" / "book.epub"
+        download_file.parent.mkdir(parents=True)
+        download_file.write_text("content")
+
+        mock_client = MagicMock()
+        mock_client.name = "nzbget"
+        mock_client.get_download_path.return_value = str(download_file)
+
+        monkeypatch.setattr(path_mappings, "get_client_host_identifier", lambda _client: "")
+        monkeypatch.setattr(path_mappings, "parse_remote_path_mappings", lambda _value: [])
+        monkeypatch.setattr(
+            path_mappings,
+            "remap_remote_to_local_with_match",
+            lambda *, mappings, host, remote_path: (remote_path, None),
+        )
+
+        def fake_run_blocking_io(func, *args, **kwargs):
+            name = getattr(func, "__name__", "")
+            if name == "exists":
+                return True
+            if name == "is_dir":
+                return False
+            if name == "unlink":
+                raise ConnectionError("delete failed")
+            return func(*args, **kwargs)
+
+        monkeypatch.setattr(base_handler, "run_blocking_io", fake_run_blocking_io)
+
+        with patch("shelfmark.download.clients.base_handler.logger.warning") as mock_warning:
+            handler._delete_local_download_data(mock_client, "123")
+
+        mock_warning.assert_called_once()
+        args = mock_warning.call_args.args
+        assert args[0] == "Failed to delete local download data for %s %s: %s"
+        assert args[1] == "nzbget"
+        assert args[2] == "123"
+        assert str(args[3]) == "delete failed"
