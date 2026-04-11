@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 _USER_DB_IDENTITY_ERRORS = (sqlite3.Error, OSError)
+type ActivityRouteResponse = tuple[Response, int]
 
 
 def _normalize_log_field(value: object) -> str:
@@ -219,12 +220,23 @@ class _ActorContext(NamedTuple):
     viewer_scope: str
 
 
+type ActivityActorResolution = tuple[_ActorContext, None] | tuple[None, ActivityRouteResponse]
+
+
+def _require_activity_actor(actor: _ActorContext | None, *, action: str) -> _ActorContext:
+    """Convert a resolved actor into the non-optional form route handlers expect."""
+    if actor is None:
+        msg = f"Activity actor missing after successful resolution for {action}"
+        raise RuntimeError(msg)
+    return actor
+
+
 def _resolve_activity_actor(
     *,
     user_db: UserDB,
     resolve_auth_mode: Callable[[], str],
     action: str,
-) -> tuple[_ActorContext | None, object | None]:
+) -> ActivityActorResolution:
     """Resolve acting user identity for activity mutations.
 
     Returns (actor, error_response). On success actor is non-None.
@@ -245,6 +257,9 @@ def _resolve_activity_actor(
         auth_mode=auth_mode,
     )
     if db_user_id is None:
+        if db_gate is None:
+            msg = f"Activity actor resolution failed without an error response for {action}"
+            raise RuntimeError(msg)
         return None, db_gate
 
     is_admin = bool(session.get("is_admin"))
@@ -267,7 +282,7 @@ def _activity_ws_room(actor: _ActorContext) -> str:
     return "admins"
 
 
-def _check_item_ownership(actor: _ActorContext, row: dict[str, Any]) -> object | None:
+def _check_item_ownership(actor: _ActorContext, row: dict[str, Any]) -> str | None:
     """Return an error string if the actor doesn't own the item, else None."""
     if actor.is_admin:
         return None
@@ -277,14 +292,14 @@ def _check_item_ownership(actor: _ActorContext, row: dict[str, Any]) -> object |
     return None
 
 
-def _check_terminal_download(row: dict[str, Any]) -> object | None:
+def _check_terminal_download(row: dict[str, Any]) -> str | None:
     final_status = str(row.get("final_status") or "").strip().lower()
     if final_status not in VALID_TERMINAL_STATUSES:
         return "Only terminal downloads can be dismissed"
     return None
 
 
-def _check_terminal_request(row: dict[str, Any]) -> object | None:
+def _check_terminal_request(row: dict[str, Any]) -> str | None:
     if _request_terminal_status(row) is None:
         return "Only terminal requests can be dismissed"
     return None
@@ -513,6 +528,7 @@ def register_activity_routes(
         )
         if actor_error is not None:
             return actor_error
+        actor = _require_activity_actor(actor, action="snapshot")
 
         hidden_rows = activity_view_state_service.list_hidden(viewer_scope=actor.viewer_scope)
         hidden_item_keys = {str(row.get("item_key") or "").strip() for row in hidden_rows}
@@ -582,6 +598,7 @@ def register_activity_routes(
         )
         if actor_error is not None:
             return actor_error
+        actor = _require_activity_actor(actor, action="dismiss")
 
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
@@ -755,6 +772,7 @@ def register_activity_routes(
         )
         if actor_error is not None:
             return actor_error
+        actor = _require_activity_actor(actor, action="dismiss_many")
 
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
@@ -946,6 +964,7 @@ def register_activity_routes(
         )
         if actor_error is not None:
             return actor_error
+        actor = _require_activity_actor(actor, action="history")
 
         limit = request.args.get("limit", type=int, default=50)
         offset = request.args.get("offset", type=int, default=0)
@@ -1056,6 +1075,7 @@ def register_activity_routes(
         )
         if actor_error is not None:
             return actor_error
+        actor = _require_activity_actor(actor, action="history_clear")
 
         cleared_count = activity_view_state_service.clear_history(
             viewer_scope=actor.viewer_scope,
