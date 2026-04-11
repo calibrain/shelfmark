@@ -1686,7 +1686,9 @@ def api_retry_download(book_id: str) -> Response | tuple[Response, int]:
                 ), 403
             success, error = backend.retry_download(book_id)
         else:
-            assert history_row is not None
+            if history_row is None:
+                logger.error("Download history row disappeared while retrying task %s", book_id)
+                return jsonify({"error": "Download history not found"}), 404
             request_id = normalize_positive_int(history_row.get("request_id"))
             retry_payload = history_row.get("retry_payload")
             final_status = history_row.get("final_status")

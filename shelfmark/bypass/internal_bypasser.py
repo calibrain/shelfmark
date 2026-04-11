@@ -3,6 +3,7 @@
 import asyncio
 import os
 import random
+import shutil
 import signal
 import socket
 import stat
@@ -61,6 +62,8 @@ DISPLAY = {
     "ffmpeg_output": None,
 }
 LOCKED = threading.Lock()
+_PGREP_PATH = shutil.which("pgrep")
+_PKILL_PATH = shutil.which("pkill")
 
 
 def _describe_runtime_path(path: str | Path) -> str:
@@ -296,10 +299,18 @@ def _cleanup_orphan_processes() -> int:
     logger.debug("Checking for orphan processes...")
     logger.log_resource_usage()
 
+    if _PGREP_PATH is None or _PKILL_PATH is None:
+        logger.warning("Skipping orphan-process cleanup because pgrep/pkill are unavailable")
+        return 0
+
     for proc_name in processes_to_kill:
         try:
             result = subprocess.run(
-                ["pgrep", "-f", proc_name], capture_output=True, text=True, timeout=5
+                [_PGREP_PATH, "-f", proc_name],
+                capture_output=True,
+                check=False,
+                text=True,
+                timeout=5,
             )
             if result.returncode != 0 or not result.stdout.strip():
                 continue
@@ -309,7 +320,10 @@ def _cleanup_orphan_processes() -> int:
             logger.info("Found %s orphan %s process(es), killing...", count, proc_name)
 
             kill_result = subprocess.run(
-                ["pkill", "-9", "-f", proc_name], capture_output=True, timeout=5
+                [_PKILL_PATH, "-9", "-f", proc_name],
+                capture_output=True,
+                check=False,
+                timeout=5,
             )
             if kill_result.returncode == 0:
                 total_killed += count

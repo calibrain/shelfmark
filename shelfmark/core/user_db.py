@@ -340,6 +340,14 @@ class UserDB:
             "role",
         }
     )
+    _USER_UPDATE_STATEMENTS: ClassVar[dict[str, str]] = {
+        "email": "UPDATE users SET email = ? WHERE id = ?",
+        "display_name": "UPDATE users SET display_name = ? WHERE id = ?",
+        "password_hash": "UPDATE users SET password_hash = ? WHERE id = ?",
+        "oidc_subject": "UPDATE users SET oidc_subject = ? WHERE id = ?",
+        "auth_source": "UPDATE users SET auth_source = ? WHERE id = ?",
+        "role": "UPDATE users SET role = ? WHERE id = ?",
+    }
 
     def update_user(self, user_id: int, **kwargs: object) -> None:
         """Update user fields. Raises ValueError if user not found or invalid column."""
@@ -359,9 +367,8 @@ class UserDB:
                 if not self._get_user_by_id(conn, user_id):
                     msg = f"User {user_id} not found"
                     raise ValueError(msg)
-                sets = ", ".join(f"{k} = ?" for k in kwargs)
-                values = [*list(kwargs.values()), user_id]
-                conn.execute(f"UPDATE users SET {sets} WHERE id = ?", values)
+                for column, value in kwargs.items():
+                    conn.execute(self._USER_UPDATE_STATEMENTS[column], (value, user_id))
                 conn.commit()
             finally:
                 conn.close()
@@ -377,14 +384,9 @@ class UserDB:
                 ).fetchall()
                 request_item_keys = [f"request:{row['id']}" for row in request_rows]
                 if request_item_keys:
-                    placeholders = ",".join("?" for _ in request_item_keys)
-                    conn.execute(
-                        f"""
-                        DELETE FROM activity_view_state
-                        WHERE item_type = 'request'
-                          AND item_key IN ({placeholders})
-                        """,
-                        request_item_keys,
+                    conn.executemany(
+                        "DELETE FROM activity_view_state WHERE item_type = 'request' AND item_key = ?",
+                        [(item_key,) for item_key in request_item_keys],
                     )
                 conn.execute(
                     "DELETE FROM activity_view_state WHERE viewer_scope = ?",
@@ -701,6 +703,22 @@ class UserDB:
             "last_failure_reason",
         }
     )
+    _REQUEST_UPDATE_STATEMENTS: ClassVar[dict[str, str]] = {
+        "status": "UPDATE download_requests SET status = ? WHERE id = ?",
+        "source_hint": "UPDATE download_requests SET source_hint = ? WHERE id = ?",
+        "content_type": "UPDATE download_requests SET content_type = ? WHERE id = ?",
+        "request_level": "UPDATE download_requests SET request_level = ? WHERE id = ?",
+        "policy_mode": "UPDATE download_requests SET policy_mode = ? WHERE id = ?",
+        "book_data": "UPDATE download_requests SET book_data = ? WHERE id = ?",
+        "release_data": "UPDATE download_requests SET release_data = ? WHERE id = ?",
+        "note": "UPDATE download_requests SET note = ? WHERE id = ?",
+        "admin_note": "UPDATE download_requests SET admin_note = ? WHERE id = ?",
+        "reviewed_by": "UPDATE download_requests SET reviewed_by = ? WHERE id = ?",
+        "reviewed_at": "UPDATE download_requests SET reviewed_at = ? WHERE id = ?",
+        "delivery_state": "UPDATE download_requests SET delivery_state = ? WHERE id = ?",
+        "delivery_updated_at": "UPDATE download_requests SET delivery_updated_at = ? WHERE id = ?",
+        "last_failure_reason": "UPDATE download_requests SET last_failure_reason = ? WHERE id = ?",
+    }
 
     def update_request(
         self,
@@ -789,12 +807,8 @@ class UserDB:
                         "release_data",
                     )
 
-                set_clause = ", ".join(f"{column} = ?" for column in updates)
-                values = [*list(updates.values()), request_id]
-                conn.execute(
-                    f"UPDATE download_requests SET {set_clause} WHERE id = ?",
-                    values,
-                )
+                for column, value in updates.items():
+                    conn.execute(self._REQUEST_UPDATE_STATEMENTS[column], (value, request_id))
                 conn.commit()
 
                 updated_row = conn.execute(

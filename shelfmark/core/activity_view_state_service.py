@@ -313,16 +313,12 @@ class ActivityViewStateService:
         if not normalized_keys:
             return 0
 
-        placeholders = ",".join("?" for _ in normalized_keys)
         with self._lock:
             conn = self._connect()
             try:
-                cursor = conn.execute(
-                    f"""
-                    DELETE FROM activity_view_state
-                    WHERE item_type = ? AND item_key IN ({placeholders})
-                    """,
-                    (normalized_type, *normalized_keys),
+                cursor = conn.executemany(
+                    "DELETE FROM activity_view_state WHERE item_type = ? AND item_key = ?",
+                    [(normalized_type, normalized_key) for normalized_key in normalized_keys],
                 )
                 conn.commit()
                 rowcount = int(cursor.rowcount) if cursor.rowcount is not None else 0
