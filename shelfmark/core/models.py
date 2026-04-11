@@ -95,6 +95,11 @@ class DownloadTask:
     preview: str | None = None
     content_type: str | None = None  # "book (fiction)", "audiobook", "magazine", etc.
     source_url: str | None = None  # Original release URL used by source-specific handlers
+    metadata_provider: str | None = None  # Exact upstream metadata provider (e.g. "hardcover")
+    metadata_provider_id: str | None = None  # Exact upstream metadata-provider book ID
+    metadata_source_url: str | None = None  # Canonical metadata-provider URL for the book
+    hardcover_edition: str | None = None  # Exact Hardcover edition ID when known
+    hardcover_slug: str | None = None  # Exact Hardcover book slug when known
     retry_download_url: str | None = None  # Resolved download URL for restart-safe retries
     retry_download_protocol: str | None = (
         None  # Protocol for retry_download_url (e.g. torrent, usenet)

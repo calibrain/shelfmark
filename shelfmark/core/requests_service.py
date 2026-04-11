@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.models import QueueStatus
 from shelfmark.core.request_helpers import (
+    attach_release_metadata_provenance,
     extract_release_source_id,
     normalize_positive_int,
 )
@@ -579,7 +580,10 @@ def fulfil_request(
     except ValueError as exc:
         raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
 
-    queued_release_data = dict(selected_release_data)
+    queued_release_data = attach_release_metadata_provenance(
+        dict(selected_release_data),
+        book_data=request_row.get("book_data"),
+    )
     queued_release_data["_request_id"] = request_id
 
     try:

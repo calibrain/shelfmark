@@ -279,6 +279,10 @@ class TestRequestRoutes:
         assert captured["user_id"] == user["id"]
         assert captured["username"] == user["username"]
         assert captured["release_data"]["source_id"] == "policy-download-release-1"
+        assert captured["release_data"]["_metadata_provenance"] == {
+            "provider": "openlibrary",
+            "provider_id": "policy-download-1",
+        }
         assert main_module.user_db.list_requests(user_id=user["id"]) == []
         mock_notify_admin.assert_not_called()
         mock_notify_user.assert_not_called()
@@ -354,6 +358,51 @@ class TestRequestRoutes:
         ]
         assert main_module.user_db.list_requests(user_id=user["id"]) == []
         mock_notify_admin.assert_not_called()
+
+    def test_download_policy_queues_hardcover_provenance_when_available(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(default_ebook="download")
+
+        payload = {
+            "book_data": {
+                "title": "Mort",
+                "author": "Terry Pratchett",
+                "content_type": "ebook",
+                "provider": "hardcover",
+                "provider_id": "379631",
+                "source_url": "https://hardcover.app/books/mort",
+            },
+            "context": {
+                "source": "prowlarr",
+                "content_type": "ebook",
+                "request_level": "release",
+            },
+            "release_data": {
+                "source": "prowlarr",
+                "source_id": "hardcover-download-release-1",
+                "title": "Mort.epub",
+            },
+        }
+
+        captured: dict[str, object] = {}
+
+        def fake_queue_release(release_data, priority, user_id=None, username=None):
+            captured["release_data"] = release_data
+            return True, None
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
+                    with patch.object(main_module.backend, "queue_release", side_effect=fake_queue_release):
+                        resp = client.post("/api/requests", json=payload)
+
+        assert resp.status_code == 200
+        assert captured["release_data"]["_metadata_provenance"] == {
+            "provider": "hardcover",
+            "provider_id": "379631",
+            "source_url": "https://hardcover.app/books/mort",
+        }
 
     def test_admin_can_create_request_on_behalf_of_another_user(self, main_module, client):
         admin = _create_user(main_module, prefix="admin", role="admin")
