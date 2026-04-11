@@ -9,7 +9,7 @@ Usage:
     2. Wait for containers to initialize (first run takes ~30s)
 
     3. Run this script to verify clients are accessible:
-       python scripts/test_clients.py
+       uv run python scripts/test_clients.py
 
     4. Access cwabd at http://localhost:8084
        - Go to Settings > Prowlarr > Download Clients
@@ -26,7 +26,7 @@ Web UIs:
     - rTorrent:     http://localhost:8000 (web ui http://localhost:8089 via ruTorrent)
 
 Prerequisites (for running this script locally):
-    pip install requests transmission-rpc qbittorrent-api
+    uv sync --locked
 
 First-Time Setup:
     qBittorrent:
@@ -260,7 +260,7 @@ def test_qbittorrent():
 
     except ImportError:
         print("  ERROR: qbittorrent-api not installed")
-        print("  Run: pip install qbittorrent-api")
+        print("  Run: uv sync --locked")
         return False
     except Exception as e:
         print(f"  ERROR: {e}")
@@ -317,7 +317,7 @@ def test_transmission():
 
     except ImportError:
         print("  ERROR: transmission-rpc not installed")
-        print("  Run: pip install transmission-rpc")
+        print("  Run: uv sync --locked")
         return False
     except Exception as e:
         print(f"  ERROR: {e}")

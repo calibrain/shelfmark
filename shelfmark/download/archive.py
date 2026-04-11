@@ -1,20 +1,42 @@
 """Archive extraction utilities for downloaded book archives."""
 
-import os
-import shutil
 import zipfile
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import is_audiobook as check_audiobook
+from shelfmark.download.fs import atomic_write
 from shelfmark.download.postprocess.policy import (
     get_supported_audiobook_formats,
     get_supported_formats,
 )
-from shelfmark.core.utils import is_audiobook as check_audiobook
-from shelfmark.download.fs import atomic_write
 
 logger = setup_logger(__name__)
+
+if TYPE_CHECKING:
+    import rarfile
+
+    ArchiveType = zipfile.ZipFile | rarfile.RarFile
+else:
+    ArchiveType = zipfile.ZipFile
+
+
+def _delete_file_with_logging(file_path: Path, file_type_label: str, *, rejected: bool) -> None:
+    """Delete a file and log the outcome."""
+    try:
+        file_path.unlink()
+        if rejected:
+            logger.debug("Deleted rejected %s file: %s", file_type_label, file_path.name)
+        else:
+            logger.debug("Deleted non-%s file: %s", file_type_label, file_path.name)
+    except OSError as e:
+        if rejected:
+            logger.warning(
+                "Failed to delete rejected %s file %s: %s", file_type_label, file_path, e
+            )
+        else:
+            logger.warning("Failed to delete non-%s file %s: %s", file_type_label, file_path, e)
 
 
 # Check for rarfile availability at module load
@@ -30,19 +52,13 @@ except ImportError:
 class ArchiveExtractionError(Exception):
     """Raised when archive extraction fails."""
 
-    pass
-
 
 class PasswordProtectedError(ArchiveExtractionError):
     """Raised when archive requires a password."""
 
-    pass
-
 
 class CorruptedArchiveError(ArchiveExtractionError):
     """Raised when archive is corrupted."""
-
-    pass
 
 
 def is_archive(file_path: Path) -> bool:
@@ -51,7 +67,7 @@ def is_archive(file_path: Path) -> bool:
     return suffix in ("zip", "rar")
 
 
-def _is_supported_file(file_path: Path, content_type: Optional[str] = None) -> bool:
+def _is_supported_file(file_path: Path, content_type: str | None = None) -> bool:
     """Check if file matches user's supported formats setting based on content type."""
     ext = file_path.suffix.lower().lstrip(".")
     if check_audiobook(content_type):
@@ -62,16 +78,30 @@ def _is_supported_file(file_path: Path, content_type: Optional[str] = None) -> b
 
 
 # All known ebook extensions (superset of what user might enable)
-ALL_EBOOK_EXTENSIONS = {'.pdf', '.epub', '.mobi', '.azw', '.azw3', '.fb2', '.djvu', '.cbz', '.cbr', '.doc', '.docx', '.rtf', '.txt'}
+ALL_EBOOK_EXTENSIONS = {
+    ".pdf",
+    ".epub",
+    ".mobi",
+    ".azw",
+    ".azw3",
+    ".fb2",
+    ".djvu",
+    ".cbz",
+    ".cbr",
+    ".doc",
+    ".docx",
+    ".rtf",
+    ".txt",
+}
 
 # All known audio extensions (superset of what user might enable for audiobooks)
-ALL_AUDIO_EXTENSIONS = {'.m4b', '.mp3', '.m4a', '.aac', '.flac', '.ogg', '.wma', '.wav', '.opus'}
+ALL_AUDIO_EXTENSIONS = {".m4b", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".wma", ".wav", ".opus"}
 
 
 def _filter_files(
-    extracted_files: List[Path],
-    content_type: Optional[str] = None,
-) -> Tuple[List[Path], List[Path], List[Path]]:
+    extracted_files: list[Path],
+    content_type: str | None = None,
+) -> tuple[list[Path], list[Path], list[Path]]:
     """Filter files by content type. Returns (matched, rejected_format, other)."""
     is_audiobook = check_audiobook(content_type)
     known_extensions = ALL_AUDIO_EXTENSIONS if is_audiobook else ALL_EBOOK_EXTENSIONS
@@ -94,8 +124,8 @@ def _filter_files(
 def extract_archive(
     archive_path: Path,
     output_dir: Path,
-    content_type: Optional[str] = None,
-) -> Tuple[List[Path], List[str], List[Path]]:
+    content_type: str | None = None,
+) -> tuple[list[Path], list[str], list[Path]]:
     """Extract archive and filter by content type. Returns (matched, warnings, rejected)."""
     suffix = archive_path.suffix.lower().lstrip(".")
 
@@ -114,23 +144,17 @@ def extract_archive(
 
     # Delete rejected files (valid formats but not enabled by user)
     for rejected_file in rejected_files:
-        try:
-            rejected_file.unlink()
-            logger.debug(f"Deleted rejected {file_type_label} file: {rejected_file.name}")
-        except OSError as e:
-            logger.warning(f"Failed to delete rejected {file_type_label} file {rejected_file}: {e}")
+        _delete_file_with_logging(rejected_file, file_type_label, rejected=True)
 
     if rejected_files:
-        rejected_exts = sorted(set(f.suffix.lower() for f in rejected_files))
-        warnings.append(f"Skipped {len(rejected_files)} {file_type_label}(s) with unsupported format: {', '.join(rejected_exts)}")
+        rejected_exts = sorted({f.suffix.lower() for f in rejected_files})
+        warnings.append(
+            f"Skipped {len(rejected_files)} {file_type_label}(s) with unsupported format: {', '.join(rejected_exts)}"
+        )
 
     # Delete other files (images, html, etc)
     for other_file in other_files:
-        try:
-            other_file.unlink()
-            logger.debug(f"Deleted non-{file_type_label} file: {other_file.name}")
-        except OSError as e:
-            logger.warning(f"Failed to delete non-{file_type_label} file {other_file}: {e}")
+        _delete_file_with_logging(other_file, file_type_label, rejected=False)
 
     if other_files:
         warnings.append(f"Skipped {len(other_files)} non-{file_type_label} file(s)")
@@ -141,7 +165,7 @@ def extract_archive(
 def extract_archive_raw(
     archive_path: Path,
     output_dir: Path,
-) -> Tuple[List[Path], List[str]]:
+) -> tuple[list[Path], list[str]]:
     """Extract archive without filtering (returns all extracted files)."""
     suffix = archive_path.suffix.lower().lstrip(".")
 
@@ -153,7 +177,7 @@ def extract_archive_raw(
     raise ArchiveExtractionError(f"Unsupported archive format: {suffix}")
 
 
-def _extract_files_from_archive(archive, output_dir: Path) -> List[Path]:
+def _extract_files_from_archive(archive: ArchiveType, output_dir: Path) -> list[Path]:
     """Extract files from ZipFile or RarFile to output_dir with security checks."""
     extracted_files = []
 
@@ -169,7 +193,7 @@ def _extract_files_from_archive(archive, output_dir: Path) -> List[Path]:
         # Security: reject filenames with null bytes or path separators
         # Check both / and \ since archives may be created on different OSes
         if "\x00" in filename or "/" in filename or "\\" in filename:
-            logger.warning(f"Skipping suspicious filename in archive: {info.filename!r}")
+            logger.warning("Skipping suspicious filename in archive: %r", info.filename)
             continue
 
         # Extract to output_dir with flat structure
@@ -179,19 +203,19 @@ def _extract_files_from_archive(archive, output_dir: Path) -> List[Path]:
         try:
             target_path.resolve().relative_to(output_dir.resolve())
         except ValueError:
-            logger.warning(f"Path traversal attempt blocked: {info.filename!r}")
+            logger.warning("Path traversal attempt blocked: %r", info.filename)
             continue
 
         with archive.open(info) as src:
             data = src.read()
         final_path = atomic_write(target_path, data)
         extracted_files.append(final_path)
-        logger.debug(f"Extracted: {filename}")
+        logger.debug("Extracted: %s", filename)
 
     return extracted_files
 
 
-def _extract_zip(archive_path: Path, output_dir: Path) -> Tuple[List[Path], List[str]]:
+def _extract_zip(archive_path: Path, output_dir: Path) -> tuple[list[Path], list[str]]:
     """Extract files from a ZIP archive."""
     try:
         with zipfile.ZipFile(archive_path, "r") as zf:
@@ -208,12 +232,12 @@ def _extract_zip(archive_path: Path, output_dir: Path) -> Tuple[List[Path], List
             return _extract_files_from_archive(zf, output_dir), []
 
     except zipfile.BadZipFile as e:
-        raise CorruptedArchiveError(f"Invalid or corrupted ZIP: {e}")
+        raise CorruptedArchiveError(f"Invalid or corrupted ZIP: {e}") from e
     except PermissionError as e:
-        raise ArchiveExtractionError(f"Permission denied: {e}")
+        raise ArchiveExtractionError(f"Permission denied: {e}") from e
 
 
-def _extract_rar(archive_path: Path, output_dir: Path) -> Tuple[List[Path], List[str]]:
+def _extract_rar(archive_path: Path, output_dir: Path) -> tuple[list[Path], list[str]]:
     """Extract files from a RAR archive."""
     if not RAR_AVAILABLE:
         raise ArchiveExtractionError("RAR extraction not available - rarfile library not installed")
@@ -230,10 +254,8 @@ def _extract_rar(archive_path: Path, output_dir: Path) -> Tuple[List[Path], List
             return _extract_files_from_archive(rf, output_dir), []
 
     except rarfile.BadRarFile as e:
-        raise CorruptedArchiveError(f"Invalid or corrupted RAR: {e}")
-    except rarfile.RarCannotExec:
-        raise ArchiveExtractionError("unrar binary not found - install unrar package")
+        raise CorruptedArchiveError(f"Invalid or corrupted RAR: {e}") from e
+    except rarfile.RarCannotExec as e:
+        raise ArchiveExtractionError("unrar binary not found - install unrar package") from e
     except PermissionError as e:
-        raise ArchiveExtractionError(f"Permission denied: {e}")
-
-
+        raise ArchiveExtractionError(f"Permission denied: {e}") from e

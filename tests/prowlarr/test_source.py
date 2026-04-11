@@ -176,7 +176,9 @@ class TestSanitizeDownloadUrl:
     def test_sanitizes_multiple_query_params(self):
         """Sanitize all query pairs while keeping params."""
         url = "http://prowlarr:9696/5/download?apikey = 12345&indexer = 7"
-        assert sanitize_download_url(url) == "http://prowlarr:9696/5/download?apikey=12345&indexer=7"
+        assert (
+            sanitize_download_url(url) == "http://prowlarr:9696/5/download?apikey=12345&indexer=7"
+        )
 
     def test_leaves_non_http_urls_untouched(self):
         """Do not modify magnet or other non-http URLs."""
@@ -187,6 +189,7 @@ class TestSanitizeDownloadUrl:
         """Return clean URLs as-is."""
         url = "https://prowlarr:9696/5/download?apikey=12345"
         assert sanitize_download_url(url) == url
+
 
 class TestDetectContentType:
     """Tests for the _detect_content_type_from_categories function."""
@@ -227,7 +230,16 @@ class FakeTorznabClient:
             }
         ]
 
-    def torznab_search(self, *, indexer_id: int, query: str, categories=None, search_type="book", limit=100, offset=0):
+    def torznab_search(
+        self,
+        *,
+        indexer_id: int,
+        query: str,
+        categories=None,
+        search_type="book",
+        limit=100,
+        offset=0,
+    ):
         del indexer_id, search_type, limit, offset
         self.calls.append((query, categories))
         self.queries.append(query)
@@ -369,3 +381,47 @@ class TestProwlarrLocalizedQueries:
         assert "The Final Empire" in fake_client.queries
         assert "A végső birodalom" in fake_client.queries
         assert "Mistborn: The Final Empire" not in fake_client.queries
+
+    def test_auto_expand_logs_query_argument(self, monkeypatch):
+        import shelfmark.release_sources.prowlarr.source as prowlarr_source
+
+        def fake_get(key: str, default=None):
+            values = {
+                "PROWLARR_INDEXERS": "",
+                "PROWLARR_AUTO_EXPAND": True,
+            }
+            return values.get(key, default)
+
+        info_calls: list[tuple[str, tuple[object, ...]]] = []
+
+        monkeypatch.setattr(prowlarr_source.config, "get", fake_get)
+        monkeypatch.setattr(
+            prowlarr_source.logger,
+            "info",
+            lambda message, *args: info_calls.append((str(message), args)),
+        )
+
+        fake_client = FakeTorznabClient()
+        source = ProwlarrSource()
+        monkeypatch.setattr(source, "_get_client", lambda: fake_client)
+
+        book = BookMetadata(
+            provider="hardcover",
+            provider_id="123",
+            title="Anything",
+            authors=["Someone"],
+        )
+
+        from shelfmark.core.search_plan import build_release_search_plan
+
+        plan = build_release_search_plan(book, languages=["en"])
+        source.search(book, plan, content_type="ebook")
+
+        query = fake_client.calls[0][0]
+        assert fake_client.calls == [(query, [7000]), (query, None)]
+        assert info_calls == [
+            (
+                "Prowlarr: no results for query '%s' with category filter, auto-expanding search",
+                (query,),
+            )
+        ]

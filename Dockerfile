@@ -4,7 +4,7 @@ ARG BUILDPLATFORM
 ARG BUILDARCH
 
 # Frontend build stage.
-FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend-builder
 
 # Helpful debug output to see what platforms BuildKit thinks it's using
 RUN echo "BUILDPLATFORM=$BUILDPLATFORM BUILDARCH=$BUILDARCH TARGETPLATFORM=$TARGETPLATFORM TARGETARCH=$TARGETARCH"
@@ -27,6 +27,8 @@ RUN npm run build
 # Use python-slim as the base image
 FROM python:3.14-slim AS base
 
+COPY --from=ghcr.io/astral-sh/uv:0.11.3 /uv /uvx /bin/
+
 # Add build argument for version
 ARG BUILD_VERSION
 ENV BUILD_VERSION=${BUILD_VERSION}
@@ -39,13 +41,12 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Consistent environment variables grouped together
 ENV DEBIAN_FRONTEND=noninteractive \
     DOCKERMODE=true \
+    UV_LINK_MODE=copy \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONIOENCODING=UTF-8 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_DEFAULT_TIMEOUT=100 \
     NAME=Shelfmark \
+    PATH=/app/.venv/bin:$PATH \
     PYTHONPATH=/app \
     # PUID/PGID will be handled by entrypoint script, but TZ/Locale are still needed
     LANG=en_US.UTF-8 \
@@ -91,12 +92,10 @@ RUN apt-get update && \
 # Set working directory
 WORKDIR /app
 
-# Install Python dependencies using pip
-# Copying requirements files separately leverages build cache
-# Cache mount persists pip cache between builds for faster installs
-COPY requirements-base.txt requirements-shelfmark.txt ./
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r requirements-base.txt
+# Install core Python dependencies first for better layer caching
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups
 
 # Copy application code *after* dependencies are installed
 COPY . .
@@ -146,9 +145,9 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install additional dependencies (requirements file already copied in base stage)
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r requirements-shelfmark.txt
+# Install the browser automation stack used by the full image
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups --extra browser
 
 # Grant read/execute permissions to others
 RUN chmod -R o+rx /usr/bin/chromium

@@ -1,12 +1,11 @@
 """Core settings registration and derived configuration values."""
 
-import os
-from pathlib import Path
 import json
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any
 
 
-def _on_save_advanced(values: Dict[str, Any]) -> Dict[str, Any]:
+def _on_save_advanced(values: dict[str, Any]) -> dict[str, Any]:
     """Validate advanced settings before persisting."""
     from shelfmark.core.logger import setup_logger
 
@@ -37,7 +36,7 @@ def _on_save_advanced(values: Dict[str, Any]) -> Dict[str, Any]:
 
         if not host or not remote_path or not local_path:
             logger.debug(
-                "Skipping entry %d: missing field(s) - host=%r, remotePath=%r, localPath=%r",
+                "Skipping entry %d: missing field(s) - host=%s, remotePath=%s, localPath=%s",
                 i,
                 host,
                 remote_path,
@@ -57,7 +56,9 @@ def _on_save_advanced(values: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("Saved %d remote path mapping(s)", len(cleaned))
     if cleaned:
         for m in cleaned:
-            logger.debug("  Mapping: %s -> %s (client: %s)", m["remotePath"], m["localPath"], m["host"])
+            logger.debug(
+                "  Mapping: %s -> %s (client: %s)", m["remotePath"], m["localPath"], m["host"]
+            )
 
     values["PROWLARR_REMOTE_PATH_MAPPINGS"] = cleaned
     return {"error": False, "values": values}
@@ -76,19 +77,19 @@ logger = setup_logger(__name__)
 
 # Log bootstrap configuration values at DEBUG level
 logger.debug("Bootstrap configuration:")
-for key in ['CONFIG_DIR', 'LOG_DIR', 'TMP_DIR', 'INGEST_DIR', 'DEBUG', 'DOCKERMODE']:
+for key in ["CONFIG_DIR", "LOG_DIR", "TMP_DIR", "INGEST_DIR", "DEBUG", "DOCKERMODE"]:
     if hasattr(env, key):
-        logger.debug(f"  {key}: {getattr(env, key)}")
+        logger.debug("  %s: %s", key, getattr(env, key))
 
 # Load supported book languages from data file
 # Path is relative to the package root, not this file
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-with open(_DATA_DIR / "book-languages.json") as file:
+with (_DATA_DIR / "book-languages.json").open() as file:
     _SUPPORTED_BOOK_LANGUAGE = json.load(file)
 
 # Directory settings
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-logger.debug(f"BASE_DIR: {BASE_DIR}")
+logger.debug("BASE_DIR: %s", BASE_DIR)
 if env.ENABLE_LOGGING:
     env.LOG_DIR.mkdir(exist_ok=True)
 
@@ -106,6 +107,7 @@ RECORDING_DIR = env.LOG_DIR / "recording"
 def _log_external_bypasser_warning() -> None:
     """Log warning about external bypasser DNS limitations (called after config is available)."""
     from shelfmark.core.config import config
+
     if config.get("USING_EXTERNAL_BYPASSER", False) and config.get("USE_CF_BYPASS", True):
         logger.warning(
             "Using external bypasser (FlareSolverr). Note: FlareSolverr uses its own DNS resolution, "
@@ -116,36 +118,31 @@ def _log_external_bypasser_warning() -> None:
 
 
 from shelfmark.core.settings_registry import (
-    register_settings,
+    ActionButton,
+    CheckboxField,
+    HeadingField,
+    MultiSelectField,
+    NumberField,
+    OrderableListField,
+    PasswordField,
+    SelectField,
+    SettingsField,
+    TableField,
+    TagListField,
+    TextField,
+    load_config_file,
     register_group,
     register_on_save,
-    load_config_file,
-    TextField,
-    PasswordField,
-    NumberField,
-    CheckboxField,
-    SelectField,
-    MultiSelectField,
-    TagListField,
-    OrderableListField,
-    TableField,
-    HeadingField,
-    ActionButton,
+    register_settings,
 )
 
-
-register_group(
-    "direct_download",
-    "Direct Download",
-    icon="download",
-    order=20
-)
+register_group("direct_download", "Direct Download", icon="download", order=20)
 
 register_group(
     "metadata_providers",
     "Metadata Providers",
     icon="book",
-    order=12  # Between Network (10) and Advanced (15)
+    order=12,  # Between Network (10) and Advanced (15)
 )
 
 
@@ -203,15 +200,15 @@ _DOWNLOAD_TO_BROWSER_CONTENT_TYPE_VALUES = {
 }
 
 
-def _get_metadata_provider_options():
+def _get_metadata_provider_options() -> list[dict[str, str]]:
     """Build metadata provider options dynamically from enabled providers only."""
-    from shelfmark.metadata_providers import list_providers, is_provider_enabled
+    from shelfmark.metadata_providers import is_provider_enabled, list_providers
 
-    options = []
-    for provider in list_providers():
-        # Only show providers that are enabled
-        if is_provider_enabled(provider["name"]):
-            options.append({"value": provider["name"], "label": provider["display_name"]})
+    options = [
+        {"value": provider["name"], "label": provider["display_name"]}
+        for provider in list_providers()
+        if is_provider_enabled(provider["name"])
+    ]
 
     # If no providers enabled, show a placeholder option
     if not options:
@@ -222,12 +219,12 @@ def _get_metadata_provider_options():
     return options
 
 
-def _get_metadata_provider_options_with_none():
+def _get_metadata_provider_options_with_none() -> list[dict[str, str]]:
     """Build metadata provider options with a 'Use main provider' option first."""
-    return [{"value": "", "label": "Use book provider"}] + _get_metadata_provider_options()
+    return [{"value": "", "label": "Use book provider"}, *_get_metadata_provider_options()]
 
 
-def _get_release_source_options_for_content_type(content_type: str):
+def _get_release_source_options_for_content_type(content_type: str) -> list[dict[str, str]]:
     """Build release source options dynamically for a specific content type."""
     from shelfmark.release_sources import list_available_sources
 
@@ -239,25 +236,28 @@ def _get_release_source_options_for_content_type(content_type: str):
     ]
 
 
-def _get_book_release_source_options():
+def _get_book_release_source_options() -> list[dict[str, str]]:
     """Build default release source options for book searches."""
     return _get_release_source_options_for_content_type("ebook")
 
 
-def _get_audiobook_release_source_options():
+def _get_audiobook_release_source_options() -> list[dict[str, str]]:
     """Build default release source options for audiobook searches."""
-    return [{"value": "", "label": "Use book release source"}] + _get_release_source_options_for_content_type(
-        "audiobook"
-    )
+    return [
+        {"value": "", "label": "Use book release source"},
+        *_get_release_source_options_for_content_type("audiobook"),
+    ]
 
 
+_LANGUAGE_OPTIONS = [
+    {"value": lang["code"], "label": lang["language"]} for lang in _SUPPORTED_BOOK_LANGUAGE
+]
 
-_LANGUAGE_OPTIONS = [{"value": lang["code"], "label": lang["language"]} for lang in _SUPPORTED_BOOK_LANGUAGE]
 
-def _get_aa_base_url_options():
+def _get_aa_base_url_options() -> list[dict[str, str]]:
     """Build AA URL options dynamically, including additional mirrors from config."""
-    from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS, get_aa_mirrors
     from shelfmark.core.config import config
+    from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS, get_aa_mirrors
     from shelfmark.core.utils import normalize_http_url
 
     options = [{"value": "auto", "label": "Auto (Recommended)"}]
@@ -273,7 +273,7 @@ def _get_aa_base_url_options():
         allow_special=("auto",),
     )
     if configured_url and configured_url != "auto" and configured_url not in all_mirrors:
-        all_mirrors = [configured_url] + all_mirrors
+        all_mirrors = [configured_url, *all_mirrors]
 
     for url in all_mirrors:
         domain = url.replace("https://", "").replace("http://", "")
@@ -286,10 +286,10 @@ def _get_aa_base_url_options():
     return options
 
 
-def _get_zlib_mirror_options():
+def _get_zlib_mirror_options() -> list[dict[str, str]]:
     """Build Z-Library mirror options for SelectField."""
-    from shelfmark.core.mirrors import DEFAULT_ZLIB_MIRRORS
     from shelfmark.core.config import config
+    from shelfmark.core.mirrors import DEFAULT_ZLIB_MIRRORS
 
     options = []
 
@@ -310,10 +310,10 @@ def _get_zlib_mirror_options():
     return options
 
 
-def _get_welib_mirror_options():
+def _get_welib_mirror_options() -> list[dict[str, str]]:
     """Build Welib mirror options for SelectField."""
-    from shelfmark.core.mirrors import DEFAULT_WELIB_MIRRORS
     from shelfmark.core.config import config
+    from shelfmark.core.mirrors import DEFAULT_WELIB_MIRRORS
 
     options = []
 
@@ -345,15 +345,16 @@ def _clear_covers_cache(current_values: dict) -> dict:
         # Reset the singleton so it reinitializes with fresh state
         reset_image_cache()
 
+    except Exception as e:
+        logger.exception("Failed to clear cover cache")
+        return {
+            "success": False,
+            "message": f"Failed to clear cache: {e!s}",
+        }
+    else:
         return {
             "success": True,
             "message": f"Cleared {count} cached cover images.",
-        }
-    except Exception as e:
-        logger.error(f"Failed to clear cover cache: {e}")
-        return {
-            "success": False,
-            "message": f"Failed to clear cache: {str(e)}",
         }
 
 
@@ -371,15 +372,15 @@ def _clear_metadata_cache(current_values: dict) -> dict:
             "message": f"Cleared {stats_before['size']} cached entries.",
         }
     except Exception as e:
-        logger.error(f"Failed to clear metadata cache: {e}")
+        logger.exception("Failed to clear metadata cache")
         return {
             "success": False,
-            "message": f"Failed to clear cache: {str(e)}",
+            "message": f"Failed to clear cache: {e!s}",
         }
 
 
 @register_settings("general", "General", icon="settings", order=0)
-def general_settings():
+def general_settings() -> list[SettingsField]:
     """Core application settings."""
     return [
         TextField(
@@ -424,7 +425,7 @@ def general_settings():
 
 
 @register_settings("search_mode", "Search Mode", icon="search", order=1)
-def search_mode_settings():
+def search_mode_settings() -> list[SettingsField]:
     """Configure how you search for and download books."""
     return [
         HeadingField(
@@ -531,10 +532,9 @@ def search_mode_settings():
 
 
 @register_settings("network", "Network", icon="globe", order=10)
-def network_settings():
+def network_settings() -> list[SettingsField]:
     """Network and connectivity settings."""
-    # Check if Tor variant is available and if Tor is currently enabled
-    tor_available = env.TOR_VARIANT_AVAILABLE
+    # Check if Tor is currently enabled.
     tor_enabled = env.USING_TOR
 
     # When Tor is enabled, DNS/proxy settings are overridden by iptables rules
@@ -595,7 +595,10 @@ def network_settings():
             disabled=tor_overrides_network,
             disabled_reason="DNS over HTTPS is not used when Tor routing is enabled.",
             # Hide for manual and system (no DoH endpoint available for custom IPs or system DNS)
-            show_when={"field": "CUSTOM_DNS", "value": ["auto", "google", "cloudflare", "quad9", "opendns"]},
+            show_when={
+                "field": "CUSTOM_DNS",
+                "value": ["auto", "google", "cloudflare", "quad9", "opendns"],
+            },
             # Disable for auto (always uses DoH)
             disabled_when={
                 "field": "CUSTOM_DNS",
@@ -690,9 +693,7 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
             normalized_content_types: list[str] = []
         elif isinstance(raw_content_types, list):
             normalized_content_types = [
-                str(value).strip().lower()
-                for value in raw_content_types
-                if str(value).strip()
+                str(value).strip().lower() for value in raw_content_types if str(value).strip()
             ]
         else:
             return {
@@ -773,28 +774,44 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
 
         try:
             port = int(effective.get("EMAIL_SMTP_PORT", 587))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return {"error": True, "message": "SMTP port must be a number", "values": values}
 
         if port < 1 or port > 65535:
-            return {"error": True, "message": "SMTP port must be between 1 and 65535", "values": values}
+            return {
+                "error": True,
+                "message": "SMTP port must be between 1 and 65535",
+                "values": values,
+            }
 
         try:
             timeout_seconds = int(effective.get("EMAIL_SMTP_TIMEOUT_SECONDS", 60))
-        except (TypeError, ValueError):
-            return {"error": True, "message": "SMTP timeout (seconds) must be a number", "values": values}
+        except TypeError, ValueError:
+            return {
+                "error": True,
+                "message": "SMTP timeout (seconds) must be a number",
+                "values": values,
+            }
 
         if timeout_seconds < 1:
-            return {"error": True, "message": "SMTP timeout (seconds) must be >= 1", "values": values}
+            return {
+                "error": True,
+                "message": "SMTP timeout (seconds) must be >= 1",
+                "values": values,
+            }
 
         username = str(effective.get("EMAIL_SMTP_USERNAME", "") or "").strip()
         password = effective.get("EMAIL_SMTP_PASSWORD", "") or ""
         if username and not password:
-            return {"error": True, "message": "SMTP password is required when username is set", "values": values}
+            return {
+                "error": True,
+                "message": "SMTP password is required when username is set",
+                "values": values,
+            }
 
         try:
             attachment_limit_mb = int(effective.get("EMAIL_ATTACHMENT_SIZE_LIMIT_MB", 25))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return {
                 "error": True,
                 "message": "Attachment size limit (MB) must be a number",
@@ -846,7 +863,7 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
 
 
 @register_settings("downloads", "Downloads", icon="folder", order=5)
-def download_settings():
+def download_settings() -> list[SettingsField]:
     """Configure download behavior and file locations."""
     return [
         # === BOOKS SECTION ===
@@ -901,17 +918,17 @@ def download_settings():
                 {
                     "value": "none",
                     "label": "None",
-                    "description": "Keep original filename from source"
+                    "description": "Keep original filename from source",
                 },
                 {
                     "value": "rename",
                     "label": "Rename Only",
-                    "description": "Rename single-file downloads; multi-file keeps original names."
+                    "description": "Rename single-file downloads; multi-file keeps original names.",
                 },
                 {
                     "value": "organize",
                     "label": "Rename and Organize",
-                    "description": "Create folders and rename files using a template. Do not use with ingest folders."
+                    "description": "Create folders and rename files using a template. Do not use with ingest folders.",
                 },
             ],
             default="rename",
@@ -1095,7 +1112,11 @@ def download_settings():
             description="Transport security mode for SMTP.",
             options=[
                 {"value": "none", "label": "None", "description": "No TLS (not recommended)."},
-                {"value": "starttls", "label": "STARTTLS", "description": "Upgrade to TLS after connecting (recommended)."},
+                {
+                    "value": "starttls",
+                    "label": "STARTTLS",
+                    "description": "Upgrade to TLS after connecting (recommended).",
+                },
                 {"value": "ssl", "label": "SSL/TLS", "description": "Connect using TLS (SMTPS)."},
             ],
             default="starttls",
@@ -1153,7 +1174,6 @@ def download_settings():
             callback=test_email_connection,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
         ),
-
         # === AUDIOBOOKS SECTION ===
         # Universal mode only
         HeadingField(
@@ -1174,9 +1194,21 @@ def download_settings():
             label="File Organization",
             description="Choose how downloaded audiobook files are named and organized.",
             options=[
-                {"value": "none", "label": "None", "description": "Keep original filename from source"},
-                {"value": "rename", "label": "Rename Only", "description": "Rename single-file downloads; multi-file keeps original names."},
-                {"value": "organize", "label": "Rename and Organize", "description": "Create folders and rename files using a template. Recommended for Audiobookshelf. Do not use with ingest folders."},
+                {
+                    "value": "none",
+                    "label": "None",
+                    "description": "Keep original filename from source",
+                },
+                {
+                    "value": "rename",
+                    "label": "Rename Only",
+                    "description": "Rename single-file downloads; multi-file keeps original names.",
+                },
+                {
+                    "value": "organize",
+                    "label": "Rename and Organize",
+                    "description": "Create folders and rename files using a template. Recommended for Audiobookshelf. Do not use with ingest folders.",
+                },
             ],
             default="rename",
             universal_only=True,
@@ -1208,7 +1240,6 @@ def download_settings():
             default=True,
             universal_only=True,
         ),
-
         # === OPTIONS SECTION ===
         HeadingField(
             key="options_heading",
@@ -1253,7 +1284,7 @@ def download_settings():
 register_on_save("downloads", _on_save_downloads)
 
 
-def _get_fast_source_options():
+def _get_fast_source_options() -> list[dict[str, str | bool | int | None]]:
     """Fast download sources - configurable list shown in settings."""
     from shelfmark.core.config import config
 
@@ -1277,7 +1308,7 @@ def _get_fast_source_options():
     ]
 
 
-def _get_fast_source_defaults():
+def _get_fast_source_defaults() -> list[dict[str, str | bool]]:
     """Default values for fast sources display."""
     return [
         {"id": "aa-fast", "enabled": True},
@@ -1285,7 +1316,7 @@ def _get_fast_source_defaults():
     ]
 
 
-def _get_slow_source_options():
+def _get_slow_source_options() -> list[dict[str, str | bool | None]]:
     """Slow download sources - configurable order. All require bypasser."""
     from shelfmark.core.config import config
 
@@ -1325,7 +1356,7 @@ def _get_slow_source_options():
     ]
 
 
-def _get_slow_source_defaults():
+def _get_slow_source_defaults() -> list[dict[str, str | bool]]:
     """Default source priority order for slow sources."""
     from shelfmark.config.env import _LEGACY_ALLOW_USE_WELIB
 
@@ -1337,8 +1368,10 @@ def _get_slow_source_defaults():
     ]
 
 
-@register_settings("download_sources", "Download Sources", icon="download", order=21, group="direct_download")
-def download_source_settings():
+@register_settings(
+    "download_sources", "Download Sources", icon="download", order=21, group="direct_download"
+)
+def download_source_settings() -> list[SettingsField]:
     """Settings for download source behavior."""
     return [
         PasswordField(
@@ -1443,8 +1476,10 @@ def download_source_settings():
     ]
 
 
-@register_settings("cloudflare_bypass", "Cloudflare Bypass", icon="shield", order=22, group="direct_download")
-def cloudflare_bypass_settings():
+@register_settings(
+    "cloudflare_bypass", "Cloudflare Bypass", icon="shield", order=22, group="direct_download"
+)
+def cloudflare_bypass_settings() -> list[SettingsField]:
     """Settings for Cloudflare bypass behavior."""
     return [
         CheckboxField(
@@ -1491,7 +1526,8 @@ def cloudflare_bypass_settings():
         ),
     ]
 
-def _on_save_mirrors(values: Dict[str, Any]) -> Dict[str, Any]:
+
+def _on_save_mirrors(values: dict[str, Any]) -> dict[str, Any]:
     """Normalize mirror list settings before persisting."""
     from shelfmark.core.logger import setup_logger
     from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS
@@ -1526,14 +1562,19 @@ def _on_save_mirrors(values: Dict[str, Any]) -> Dict[str, Any]:
     values["AA_MIRROR_URLS"] = normalized
     return {"error": False, "values": values}
 
+
 # Register the on_save handler for this tab
 register_on_save("mirrors", _on_save_mirrors)
 
 
 @register_settings("mirrors", "Mirrors", icon="globe", order=23, group="direct_download")
-def mirror_settings():
+def mirror_settings() -> list[SettingsField]:
     """Configure download source mirrors."""
-    from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS, DEFAULT_ZLIB_MIRRORS, DEFAULT_WELIB_MIRRORS
+    from shelfmark.core.mirrors import (
+        DEFAULT_AA_MIRRORS,
+        DEFAULT_WELIB_MIRRORS,
+        DEFAULT_ZLIB_MIRRORS,
+    )
 
     return [
         # === PRIMARY SOURCE ===
@@ -1562,7 +1603,6 @@ def mirror_settings():
             description="Deprecated. Use Mirrors instead. This is kept for backwards compatibility with existing installs and environment variables.",
             show_when={"field": "AA_ADDITIONAL_URLS", "notEmpty": True},
         ),
-
         # === LIBGEN ===
         HeadingField(
             key="libgen_mirrors_heading",
@@ -1574,7 +1614,6 @@ def mirror_settings():
             label="Additional Mirrors",
             description="Comma-separated list of custom LibGen mirrors to add to the defaults.",
         ),
-
         # === Z-LIBRARY ===
         HeadingField(
             key="zlib_mirrors_heading",
@@ -1593,7 +1632,6 @@ def mirror_settings():
             label="Additional Mirrors",
             description="Comma-separated list of custom Z-Library mirror URLs.",
         ),
-
         # === WELIB ===
         HeadingField(
             key="welib_mirrors_heading",
@@ -1616,7 +1654,7 @@ def mirror_settings():
 
 
 @register_settings("advanced", "Advanced", icon="cog", order=15)
-def advanced_settings():
+def advanced_settings() -> list[SettingsField]:
     """Advanced settings for power users."""
     return [
         TextField(
@@ -1662,8 +1700,16 @@ def advanced_settings():
             label="Custom Script Path Mode",
             description="Pass the path to the custom script as an absolute path or relative to the destination folder.",
             options=[
-                {"value": "absolute", "label": "Absolute", "description": "Pass the full destination path (default)."},
-                {"value": "relative", "label": "Relative", "description": "Pass the path relative to the destination folder."},
+                {
+                    "value": "absolute",
+                    "label": "Absolute",
+                    "description": "Pass the full destination path (default).",
+                },
+                {
+                    "value": "relative",
+                    "label": "Relative",
+                    "description": "Pass the path relative to the destination folder.",
+                },
             ],
             default="absolute",
         ),

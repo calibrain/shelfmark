@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
-from typing import Callable, Optional
 
 from shelfmark.core.models import DownloadTask
 
-StatusCallback = Callable[[str, Optional[str]], None]
-OutputHandler = Callable[[Path, DownloadTask, Event, StatusCallback, bool], Optional[str]]
+StatusCallback = Callable[[str, str | None], None]
+OutputHandler = Callable[[Path, DownloadTask, Event, StatusCallback, bool], str | None]
 
 
 @dataclass(frozen=True)
@@ -48,9 +48,9 @@ def load_output_handlers() -> None:
     if _OUTPUTS_LOADED:
         return
 
-    from . import booklore  # noqa: F401
-    from . import email  # noqa: F401
-    from . import folder  # noqa: F401
+    from . import booklore as booklore
+    from . import email as email
+    from . import folder as folder
 
     _OUTPUTS_LOADED = True
 
@@ -65,7 +65,6 @@ def _derive_output_mode(task: DownloadTask) -> str:
     Prefer the mode captured at queue time. Fall back to current config for
     legacy tasks that do not have `output_mode` populated.
     """
-
     mode = _normalize_output_mode(getattr(task, "output_mode", None))
     if mode:
         return mode
@@ -80,7 +79,7 @@ def _derive_output_mode(task: DownloadTask) -> str:
     return _normalize_output_mode(config.get("BOOKS_OUTPUT_MODE", "folder")) or "folder"
 
 
-def resolve_output_handler(task: DownloadTask) -> Optional[OutputRegistration]:
+def resolve_output_handler(task: DownloadTask) -> OutputRegistration | None:
     load_output_handlers()
     desired_mode = _derive_output_mode(task)
 

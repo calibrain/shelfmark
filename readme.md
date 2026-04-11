@@ -221,6 +221,10 @@ Log level is configurable via Settings or `LOG_LEVEL` environment variable.
 ## Development
 
 ```bash
+# Python tooling
+make install-python-dev  # Sync Python runtime + dev tools with uv
+make python-checks       # Run Ruff, BasedPyright, and Vulture
+
 # Frontend development
 make install     # Install dependencies
 make dev         # Start Vite dev server (localhost:5173)

@@ -1,25 +1,24 @@
 """Prowlarr settings registration."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from shelfmark.core.settings_registry import (
-    register_settings,
+    ActionButton,
     CheckboxField,
     HeadingField,
-    TextField,
-    PasswordField,
-    ActionButton,
     MultiSelectField,
+    PasswordField,
+    SettingsField,
+    TextField,
+    register_settings,
 )
 from shelfmark.core.utils import normalize_http_url
-
 
 # ==================== Dynamic Options Loaders ====================
 
 
-def _get_indexer_options() -> List[Dict[str, str]]:
-    """
-    Fetch available indexers from Prowlarr for the multi-select field.
+def _get_indexer_options() -> list[dict[str, str]]:
+    """Fetch available indexers from Prowlarr for the multi-select field.
 
     Returns list of {value: "id", label: "name (protocol)"} options.
     """
@@ -56,22 +55,25 @@ def _get_indexer_options() -> List[Dict[str, str]]:
             if has_books:
                 label += " 📚"
 
-            options.append({
-                "value": str(idx_id),
-                "label": label,
-            })
+            options.append(
+                {
+                    "value": str(idx_id),
+                    "label": label,
+                }
+            )
 
-        return options
-
-    except Exception as e:
-        logger.error(f"Failed to fetch Prowlarr indexers: {e}")
+    except Exception:
+        logger.exception("Failed to fetch Prowlarr indexers")
         return []
+
+    else:
+        return options
 
 
 # ==================== Test Connection Callback ====================
 
 
-def _test_prowlarr_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _test_prowlarr_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     """Test the Prowlarr connection using current form values."""
     from shelfmark.core.config import config
     from shelfmark.release_sources.prowlarr.api import ProwlarrClient
@@ -93,9 +95,10 @@ def _test_prowlarr_connection(current_values: Optional[Dict[str, Any]] = None) -
     try:
         client = ProwlarrClient(url, api_key)
         success, message = client.test_connection()
-        return {"success": success, "message": message}
     except Exception as e:
-        return {"success": False, "message": f"Connection failed: {str(e)}"}
+        return {"success": False, "message": f"Connection failed: {e!s}"}
+    else:
+        return {"success": success, "message": message}
 
 
 # ==================== Configuration Tab ====================
@@ -107,7 +110,7 @@ def _test_prowlarr_connection(current_values: Optional[Dict[str, Any]] = None) -
     icon="download",
     order=41,
 )
-def prowlarr_config_settings():
+def prowlarr_config_settings() -> list[SettingsField]:
     """Prowlarr connection and indexer settings."""
     return [
         HeadingField(

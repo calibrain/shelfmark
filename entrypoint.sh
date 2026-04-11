@@ -68,6 +68,11 @@ else
 fi
 set -e
 
+PYTHON_BIN="/app/.venv/bin/python"
+if [ ! -x "$PYTHON_BIN" ]; then
+    PYTHON_BIN="python3"
+fi
+
 # Print build version
 echo "Build version: $BUILD_VERSION"
 echo "Release version: $RELEASE_VERSION"
@@ -294,7 +299,7 @@ if [ "${USING_EXTERNAL_BYPASSER}" != "true" ]; then
     # Keep SeleniumBase's bundled drivers directory writable as well for
     # compatibility with legacy UC code paths that still probe bundled assets.
     set +e
-    SELENIUMBASE_DRIVERS_DIR=$(python3 -c "import pathlib, seleniumbase; print(pathlib.Path(seleniumbase.__file__).resolve().parent / 'drivers')" 2>/dev/null)
+    SELENIUMBASE_DRIVERS_DIR=$("$PYTHON_BIN" -c "import pathlib, seleniumbase; print(pathlib.Path(seleniumbase.__file__).resolve().parent / 'drivers')" 2>/dev/null)
     set -e
 
     if [ -n "$SELENIUMBASE_DRIVERS_DIR" ] && [ -d "$SELENIUMBASE_DRIVERS_DIR" ]; then
@@ -317,7 +322,7 @@ make_writable "${INGEST_DIR:-/books}" root
 # Check any additional configured destination roots from saved settings
 echo "Checking for additional configured destination roots..."
 if [ -f /app/scripts/fix_permissions.py ]; then
-    configured_dirs=$(python3 /app/scripts/fix_permissions.py 2>/dev/null || echo "")
+    configured_dirs=$("$PYTHON_BIN" /app/scripts/fix_permissions.py 2>/dev/null || echo "")
     if [ -n "$configured_dirs" ]; then
         echo "$configured_dirs" | while read -r dir; do
             if [ -n "$dir" ] && [ -d "$dir" ]; then
@@ -372,7 +377,7 @@ if [ "$DEBUG" = "true" ] && [ "$USING_EXTERNAL_BYPASSER" != "true" ]; then
     set -x
     echo "vvvvvvvvvvvv DEBUG MODE vvvvvvvvvvvv"
     echo "Starting Xvfb for debugging"
-    python3 -c "from pyvirtualdisplay import Display; Display(visible=False, size=(1440,1880)).start()"
+    "$PYTHON_BIN" -c "from pyvirtualdisplay import Display; Display(visible=False, size=(1440,1880)).start()"
     id
     free -h
     uname -a

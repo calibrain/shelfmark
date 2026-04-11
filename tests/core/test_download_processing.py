@@ -786,6 +786,8 @@ class TestCustomScriptExecution:
         call_args = mock_run.call_args
         result_path = Path(result)
         assert call_args[0][0] == ["/path/to/script.sh", str(result_path)]
+        assert call_args.kwargs["stdin"] is subprocess.DEVNULL
+        assert "input" not in call_args.kwargs
 
     def test_runs_custom_script_with_json_payload_on_stdin(self, temp_dirs, sample_direct_task):
         """Sends a JSON payload to the custom script via stdin when enabled."""
@@ -824,6 +826,7 @@ class TestCustomScriptExecution:
 
         payload_json = mock_run.call_args.kwargs.get("input")
         assert payload_json
+        assert "stdin" not in mock_run.call_args.kwargs
         payload = json.loads(payload_json)
         assert payload["version"] == 1
         assert payload["phase"] == "post_transfer"
@@ -879,6 +882,7 @@ class TestCustomScriptExecution:
 
         payload_json = mock_run.call_args.kwargs.get("input")
         assert payload_json
+        assert "stdin" not in mock_run.call_args.kwargs
         payload = json.loads(payload_json)
         assert payload["version"] == 1
         assert payload["phase"] == "post_upload"

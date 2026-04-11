@@ -1,10 +1,8 @@
-"""
-SABnzbd download client for Prowlarr integration.
+"""SABnzbd download client for Prowlarr integration.
 
 Uses SABnzbd's REST API directly via requests (no external dependency).
 """
 
-from typing import Any, Optional, Tuple
 from urllib.parse import urlparse
 
 import requests
@@ -12,38 +10,41 @@ import requests
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
-from shelfmark.download.network import get_ssl_verify
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
     register_client,
     with_retry,
 )
+from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
 
+_ETA_PART_COUNT = 3
+_SPEED_PARTS_MIN = 2
 
-def _parse_eta(eta_str: str) -> Optional[int]:
+
+def _parse_eta(eta_str: str) -> int | None:
     """Parse SABnzbd ETA string (format: 'H:MM:SS') to seconds."""
     if not eta_str or eta_str == "0:00:00":
         return None
     try:
         parts = eta_str.split(":")
-        if len(parts) == 3:
+        if len(parts) == _ETA_PART_COUNT:
             return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         pass
     return None
 
 
-def _parse_speed(slot: dict) -> Optional[int]:
+def _parse_speed(slot: dict) -> int | None:
     """Parse download speed from SABnzbd slot data, returning bytes/sec."""
     # Prefer kbpersec field (more reliable numeric value)
     kbpersec_str = slot.get("kbpersec", "")
     if kbpersec_str:
         try:
             return int(float(kbpersec_str) * 1024)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             pass
 
     # Fall back to human-readable speed field
@@ -53,7 +54,7 @@ def _parse_speed(slot: dict) -> Optional[int]:
 
     try:
         speed_parts = speed_str.split()
-        if len(speed_parts) < 2:
+        if len(speed_parts) < _SPEED_PARTS_MIN:
             return None
         speed_val = float(speed_parts[0])
         unit = speed_parts[1].upper()
@@ -62,7 +63,7 @@ def _parse_speed(slot: dict) -> Optional[int]:
             if prefix in unit:
                 return int(speed_val * mult)
         return int(speed_val)
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         return None
 
 
@@ -100,19 +101,22 @@ class SABnzbdClient(DownloadClient):
     protocol = "usenet"
     name = "sabnzbd"
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize SABnzbd client with settings from config."""
         raw_url = config.get("SABNZBD_URL", "")
         if not raw_url:
-            raise ValueError("SABNZBD_URL is required")
+            msg = "SABNZBD_URL is required"
+            raise ValueError(msg)
 
         api_key = config.get("SABNZBD_API_KEY", "")
         if not api_key:
-            raise ValueError("SABNZBD_API_KEY is required")
+            msg = "SABNZBD_API_KEY is required"
+            raise ValueError(msg)
 
         self.url = normalize_http_url(raw_url)
         if not self.url:
-            raise ValueError("SABNZBD_URL is invalid")
+            msg = "SABNZBD_URL is invalid"
+            raise ValueError(msg)
         self.api_key = api_key
         self._category = config.get("SABNZBD_CATEGORY", "books")
 
@@ -125,9 +129,8 @@ class SABnzbdClient(DownloadClient):
         return client == "sabnzbd" and bool(url) and bool(api_key)
 
     @with_retry()
-    def _api_call(self, mode: str, params: Optional[dict] = None) -> Any:
-        """
-        Make an API call to SABnzbd.
+    def _api_call(self, mode: str, params: dict | None = None) -> object:
+        """Make an API call to SABnzbd.
 
         Args:
             mode: API mode (e.g., "version", "addurl", "queue", "history")
@@ -138,6 +141,7 @@ class SABnzbdClient(DownloadClient):
 
         Raises:
             Exception: If API call fails after retries.
+
         """
         api_url = f"{self.url}/api"
 
@@ -149,7 +153,9 @@ class SABnzbdClient(DownloadClient):
         if params:
             request_params.update(params)
 
-        response = requests.get(api_url, params=request_params, timeout=30, verify=get_ssl_verify(api_url))
+        response = requests.get(
+            api_url, params=request_params, timeout=30, verify=get_ssl_verify(api_url)
+        )
         response.raise_for_status()
 
         result = response.json()
@@ -157,16 +163,19 @@ class SABnzbdClient(DownloadClient):
         # Check for error in response
         if isinstance(result, dict) and result.get("status") is False:
             error = result.get("error", "Unknown error")
-            raise Exception(f"SABnzbd error: {error}")
+            msg = f"SABnzbd error: {error}"
+            raise RuntimeError(msg)
 
         return result
 
-    def _api_post_file(self, nzb_content: bytes, filename: str, nzb_name: str, category: str) -> Any:
-        """
-        Upload an NZB file to SABnzbd using addfile.
+    def _api_post_file(
+        self, nzb_content: bytes, filename: str, nzb_name: str, category: str
+    ) -> object:
+        """Upload an NZB file to SABnzbd using addfile.
 
         Returns:
             JSON response from SABnzbd.
+
         """
         api_url = f"{self.url}/api"
         request_params = {
@@ -178,13 +187,20 @@ class SABnzbdClient(DownloadClient):
         }
         files = {"name": (filename, nzb_content, "application/x-nzb")}
 
-        response = requests.post(api_url, params=request_params, files=files, timeout=30, verify=get_ssl_verify(api_url))
+        response = requests.post(
+            api_url,
+            params=request_params,
+            files=files,
+            timeout=30,
+            verify=get_ssl_verify(api_url),
+        )
         response.raise_for_status()
         result = response.json()
 
         if isinstance(result, dict) and result.get("status") is False:
             error = result.get("error", "Unknown error")
-            raise Exception(f"SABnzbd error: {error}")
+            msg = f"SABnzbd error: {error}"
+            raise RuntimeError(msg)
 
         return result
 
@@ -242,9 +258,10 @@ class SABnzbdClient(DownloadClient):
         return f"{base_name}.nzb"
 
     @staticmethod
-    def _extract_nzo_id(result: Any) -> str:
+    def _extract_nzo_id(result: object) -> str:
         if not isinstance(result, dict):
-            raise Exception("SABnzbd returned invalid response")
+            msg = "SABnzbd returned invalid response"
+            raise TypeError(msg)
 
         nzo_ids = result.get("nzo_ids") or result.get("nzo_id")
         if isinstance(nzo_ids, list) and nzo_ids:
@@ -254,31 +271,32 @@ class SABnzbdClient(DownloadClient):
         if isinstance(nzo_ids, int):
             return str(nzo_ids)
 
-        raise Exception("SABnzbd returned no nzo_id")
+        msg = "SABnzbd returned no nzo_id"
+        raise RuntimeError(msg)
 
-    def test_connection(self) -> Tuple[bool, str]:
+    def test_connection(self) -> tuple[bool, str]:
         """Test connection to SABnzbd."""
         try:
             result = self._api_call("version")
             version = result.get("version", "unknown")
-            return True, f"Connected to SABnzbd {version}"
         except requests.exceptions.ConnectionError:
             return False, "Could not connect to SABnzbd"
         except requests.exceptions.Timeout:
             return False, "Connection timed out"
         except Exception as e:
-            return False, f"Connection failed: {str(e)}"
+            return False, f"Connection failed: {e!s}"
+        else:
+            return True, f"Connected to SABnzbd {version}"
 
     def add_download(
         self,
         url: str,
         name: str,
-        category: Optional[str] = None,
-        expected_hash: Optional[str] = None,
+        category: str | None = None,
+        expected_hash: str | None = None,
         **kwargs,
     ) -> str:
-        """
-        Add NZB by URL.
+        """Add NZB by URL.
 
         Args:
             url: NZB URL (can be Prowlarr proxy URL)
@@ -291,20 +309,22 @@ class SABnzbdClient(DownloadClient):
 
         Raises:
             Exception: If adding fails.
+
         """
         # Use configured category if not explicitly provided
         category = category or self._category
 
         try:
-            logger.debug(f"Adding NZB to SABnzbd: {name}")
+            logger.debug("Adding NZB to SABnzbd: %s", name)
             nzb_filename = self._build_nzb_filename(name, url)
             nzb_content = self._fetch_nzb_content(url)
             result = self._api_post_file(nzb_content, nzb_filename, name, category)
             nzo_id = self._extract_nzo_id(result)
-            logger.info(f"Added NZB to SABnzbd: {nzo_id}")
-            return nzo_id
+            logger.info("Added NZB to SABnzbd: %s", nzo_id)
         except Exception as e:
-            logger.warning(f"SABnzbd addfile failed, falling back to addurl: {e}")
+            logger.warning("SABnzbd addfile failed, falling back to addurl: %s", e)
+        else:
+            return nzo_id
 
         try:
             result = self._api_call(
@@ -316,21 +336,22 @@ class SABnzbdClient(DownloadClient):
                 },
             )
             nzo_id = self._extract_nzo_id(result)
-            logger.info(f"Added NZB to SABnzbd via addurl: {nzo_id}")
-            return nzo_id
-        except Exception as e:
-            logger.error(f"SABnzbd add failed: {e}")
+            logger.info("Added NZB to SABnzbd via addurl: %s", nzo_id)
+        except Exception:
+            logger.exception("SABnzbd add failed")
             raise
+        else:
+            return nzo_id
 
     def get_status(self, download_id: str) -> DownloadStatus:
-        """
-        Get NZB status by nzo_id.
+        """Get NZB status by nzo_id.
 
         Args:
             download_id: SABnzbd nzo_id
 
         Returns:
             Current download status.
+
         """
         try:
             # Check active queue first
@@ -383,7 +404,12 @@ class SABnzbdClient(DownloadClient):
                     storage = slot.get("storage", "")
                     if storage is None:
                         storage = ""
-                    logger.debug(f"SABnzbd history: {download_id} status={status_text} storage='{storage}'")
+                    logger.debug(
+                        "SABnzbd history: %s status=%s storage='%s'",
+                        download_id,
+                        status_text,
+                        storage,
+                    )
 
                     if status_text == "COMPLETED":
                         title = slot.get("name") or slot.get("nzb_name") or ""
@@ -396,7 +422,7 @@ class SABnzbdClient(DownloadClient):
                             complete=True,
                             file_path=resolved_storage,
                         )
-                    elif status_text == "FAILED":
+                    if status_text == "FAILED":
                         fail_message = slot.get("fail_message", "Download failed")
                         title = slot.get("name") or slot.get("nzb_name") or ""
                         resolved_storage = self._resolve_completed_storage_path(storage, title)
@@ -407,27 +433,25 @@ class SABnzbdClient(DownloadClient):
                             complete=True,
                             file_path=resolved_storage,
                         )
-                    else:
-                        # Post-processing states: Queued, QuickCheck, Verifying,
-                        # Repairing, Fetching, Extracting, Moving, Running
-                        # Keep polling - not yet complete
-                        return DownloadStatus(
-                            progress=100,
-                            state="processing",
-                            message=status_text.title(),
-                            complete=False,
-                            file_path=None,
-                        )
+                    # Post-processing states: Queued, QuickCheck, Verifying,
+                    # Repairing, Fetching, Extracting, Moving, Running
+                    # Keep polling - not yet complete
+                    return DownloadStatus(
+                        progress=100,
+                        state="processing",
+                        message=status_text.title(),
+                        complete=False,
+                        file_path=None,
+                    )
 
             # Not found
-            logger.warning(f"SABnzbd: download {download_id} not found in queue or history")
+            logger.warning("SABnzbd: download %s not found in queue or history", download_id)
             return DownloadStatus.error("Download not found")
         except Exception as e:
             return DownloadStatus.error(self._log_error("get_status", e))
 
-    def remove(self, download_id: str, delete_files: bool = False, archive: bool = True) -> bool:
-        """
-        Remove a download from SABnzbd.
+    def remove(self, download_id: str, *, delete_files: bool = False, archive: bool = True) -> bool:
+        """Remove a download from SABnzbd.
 
         Args:
             download_id: SABnzbd nzo_id
@@ -436,6 +460,7 @@ class SABnzbdClient(DownloadClient):
 
         Returns:
             True if successful.
+
         """
         # First try to remove from queue. If it isn't there (common for completed jobs),
         # fall back to history removal instead of failing fast on a SABnzbd error response.
@@ -450,10 +475,10 @@ class SABnzbdClient(DownloadClient):
             )
 
             if result.get("status"):
-                logger.info(f"Removed NZB from SABnzbd queue: {download_id}")
+                logger.info("Removed NZB from SABnzbd queue: %s", download_id)
                 return True
         except Exception as e:
-            logger.debug(f"SABnzbd queue delete skipped for {download_id}: {e}")
+            logger.debug("SABnzbd queue delete skipped for %s: %s", download_id, e)
 
         # If not in queue (or queue delete failed), try to remove from history.
         try:
@@ -469,7 +494,7 @@ class SABnzbdClient(DownloadClient):
 
             if result.get("status"):
                 action = "archived" if archive else "removed"
-                logger.info(f"NZB {action} from SABnzbd history: {download_id}")
+                logger.info("NZB %s from SABnzbd history: %s", action, download_id)
                 return True
         except Exception as e:
             self._log_error("remove", e)
@@ -477,24 +502,23 @@ class SABnzbdClient(DownloadClient):
 
         return False
 
-    def get_download_path(self, download_id: str) -> Optional[str]:
-        """
-        Get the path where NZB files are located.
+    def get_download_path(self, download_id: str) -> str | None:
+        """Get the path where NZB files are located.
 
         Args:
             download_id: SABnzbd nzo_id
 
         Returns:
             Storage directory, or None.
+
         """
         status = self.get_status(download_id)
         return status.file_path
 
     def find_existing(
-        self, url: str, category: Optional[str] = None
-    ) -> Optional[Tuple[str, DownloadStatus]]:
-        """
-        Check if an NZB for this URL already exists in SABnzbd.
+        self, url: str, category: str | None = None
+    ) -> tuple[str, DownloadStatus] | None:
+        """Check if an NZB for this URL already exists in SABnzbd.
 
         Note: Unlike torrents which have a unique info_hash, usenet NZBs don't have
         a universal unique identifier. SABnzbd generates an nzo_id when adding,
@@ -507,23 +531,22 @@ class SABnzbdClient(DownloadClient):
 
         Returns:
             Tuple of (nzo_id, status) if found, None if not found.
+
         """
         try:
             # Extract NZB name from URL (last path component without extension)
             from urllib.parse import unquote, urlparse
+
             parsed = urlparse(url)
             path = unquote(parsed.path)
 
             # Get filename from path
-            if "/" in path:
-                filename = path.rsplit("/", 1)[-1]
-            else:
-                filename = path
+            filename = path.rsplit("/", 1)[-1] if "/" in path else path
 
             # Remove common NZB extensions
             for ext in [".nzb", ".nzb.gz"]:
                 if filename.lower().endswith(ext):
-                    filename = filename[:-len(ext)]
+                    filename = filename[: -len(ext)]
                     break
 
             if not filename:
@@ -543,7 +566,7 @@ class SABnzbdClient(DownloadClient):
                     nzo_id = slot.get("nzo_id")
                     if nzo_id:
                         status = self.get_status(nzo_id)
-                        logger.debug(f"Found existing NZB in SABnzbd queue: {nzo_id}")
+                        logger.debug("Found existing NZB in SABnzbd queue: %s", nzo_id)
                         return (nzo_id, status)
 
             # Search history (SABnzbd uses "category" field in history)
@@ -557,11 +580,11 @@ class SABnzbdClient(DownloadClient):
                     nzo_id = slot.get("nzo_id")
                     if nzo_id:
                         status = self.get_status(nzo_id)
-                        logger.debug(f"Found existing NZB in SABnzbd history: {nzo_id}")
+                        logger.debug("Found existing NZB in SABnzbd history: %s", nzo_id)
                         return (nzo_id, status)
 
-            return None
-
         except Exception as e:
-            logger.debug(f"Error checking for existing NZB: {e}")
+            logger.debug("Error checking for existing NZB: %s", e)
+            return None
+        else:
             return None

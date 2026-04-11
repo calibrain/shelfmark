@@ -1,5 +1,4 @@
-"""
-Onboarding wizard configuration.
+"""Onboarding wizard configuration.
 
 Defines the steps and fields for the first-run onboarding experience.
 Reuses field definitions from the settings registry where possible.
@@ -8,16 +7,16 @@ Reuses field definitions from the settings registry where possible.
 import json
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import (
     HeadingField,
     SettingsField,
-    get_settings_tab,
-    serialize_field,
-    save_config_file,
     get_setting_value,
+    get_settings_tab,
+    save_config_file,
+    serialize_field,
 )
 
 logger = setup_logger(__name__)
@@ -29,6 +28,7 @@ ONBOARDING_STORAGE_KEY = "onboarding_complete"
 def _get_config_dir() -> Path:
     """Get the config directory path."""
     from shelfmark.config.env import CONFIG_DIR
+
     return Path(CONFIG_DIR)
 
 
@@ -45,11 +45,11 @@ def is_onboarding_complete() -> bool:
         return False
 
     try:
-        with open(config_file, 'r') as f:
+        with config_file.open() as f:
             config = json.load(f)
             return config.get(ONBOARDING_STORAGE_KEY, False)
     except (json.JSONDecodeError, OSError) as e:
-        logger.warning(f"Could not read onboarding status from settings.json: {e}")
+        logger.warning("Could not read onboarding status from settings.json: %s", e)
         return False
 
 
@@ -57,14 +57,13 @@ def mark_onboarding_complete() -> bool:
     """Mark onboarding as complete."""
     try:
         return save_config_file("general", {ONBOARDING_STORAGE_KEY: True})
-    except Exception as e:
-        logger.error(f"Failed to mark onboarding complete: {e}")
+    except Exception:
+        logger.exception("Failed to mark onboarding complete")
         return False
 
 
-def _get_field_from_tab(tab_name: str, field_key: str) -> Optional[SettingsField]:
-    """
-    Extract a specific field from a registered settings tab.
+def _get_field_from_tab(tab_name: str, field_key: str) -> SettingsField | None:
+    """Extract a specific field from a registered settings tab.
 
     Args:
         tab_name: Name of the settings tab (e.g., 'search_mode', 'hardcover')
@@ -72,23 +71,23 @@ def _get_field_from_tab(tab_name: str, field_key: str) -> Optional[SettingsField
 
     Returns:
         The field if found, None otherwise
+
     """
     tab = get_settings_tab(tab_name)
     if not tab:
-        logger.warning(f"Settings tab not found: {tab_name}")
+        logger.warning("Settings tab not found: %s", tab_name)
         return None
 
     for field in tab.fields:
-        if hasattr(field, 'key') and field.key == field_key:
+        if hasattr(field, "key") and field.key == field_key:
             return field
 
-    logger.warning(f"Field {field_key} not found in tab {tab_name}")
+    logger.warning("Field %s not found in tab %s", field_key, tab_name)
     return None
 
 
 def _clone_field_with_overrides(field: SettingsField, **overrides) -> SettingsField:
-    """
-    Clone a field with optional attribute overrides.
+    """Clone a field with optional attribute overrides.
 
     Useful for customizing labels, descriptions, or defaults for onboarding context.
     """
@@ -100,9 +99,9 @@ def _clone_field_with_overrides(field: SettingsField, **overrides) -> SettingsFi
 # =============================================================================
 
 
-def get_search_mode_fields() -> List[SettingsField]:
+def get_search_mode_fields() -> list[SettingsField]:
     """Step 1: Choose search mode - uses actual SEARCH_MODE field from settings."""
-    fields: List[SettingsField] = [
+    fields: list[SettingsField] = [
         HeadingField(
             key="welcome_heading",
             title="Welcome to Shelfmark",
@@ -114,17 +113,19 @@ def get_search_mode_fields() -> List[SettingsField]:
     search_mode_field = _get_field_from_tab("search_mode", "SEARCH_MODE")
     if search_mode_field:
         # Clone with onboarding-specific description
-        fields.append(_clone_field_with_overrides(
-            search_mode_field,
-            description="Choose how you want to find books.",
-        ))
+        fields.append(
+            _clone_field_with_overrides(
+                search_mode_field,
+                description="Choose how you want to find books.",
+            )
+        )
 
     return fields
 
 
-def get_metadata_provider_fields() -> List[SettingsField]:
+def get_metadata_provider_fields() -> list[SettingsField]:
     """Step 2: Choose metadata provider - uses actual METADATA_PROVIDER field."""
-    fields: List[SettingsField] = [
+    fields: list[SettingsField] = [
         HeadingField(
             key="metadata_heading",
             title="Metadata Provider",
@@ -155,18 +156,20 @@ def get_metadata_provider_fields() -> List[SettingsField]:
         ]
 
         # Clone with onboarding-specific options and default
-        fields.append(_clone_field_with_overrides(
-            provider_field,
-            default="hardcover",
-            options=onboarding_options,
-        ))
+        fields.append(
+            _clone_field_with_overrides(
+                provider_field,
+                default="hardcover",
+                options=onboarding_options,
+            )
+        )
 
     return fields
 
 
-def get_hardcover_setup_fields() -> List[SettingsField]:
+def get_hardcover_setup_fields() -> list[SettingsField]:
     """Step 3a: Configure Hardcover - uses actual API key and test connection fields."""
-    fields: List[SettingsField] = [
+    fields: list[SettingsField] = [
         HeadingField(
             key="hardcover_setup_heading",
             title="Hardcover Setup",
@@ -189,9 +192,9 @@ def get_hardcover_setup_fields() -> List[SettingsField]:
     return fields
 
 
-def get_googlebooks_setup_fields() -> List[SettingsField]:
+def get_googlebooks_setup_fields() -> list[SettingsField]:
     """Step 3b: Configure Google Books - uses actual API key and test connection fields."""
-    fields: List[SettingsField] = [
+    fields: list[SettingsField] = [
         HeadingField(
             key="googlebooks_setup_heading",
             title="Google Books Setup",
@@ -214,9 +217,9 @@ def get_googlebooks_setup_fields() -> List[SettingsField]:
     return fields
 
 
-def get_prowlarr_fields() -> List[SettingsField]:
+def get_prowlarr_fields() -> list[SettingsField]:
     """Step 4: Configure Prowlarr connection - uses actual Prowlarr fields."""
-    fields: List[SettingsField] = [
+    fields: list[SettingsField] = [
         HeadingField(
             key="prowlarr_heading",
             title="Prowlarr Integration (Optional)",
@@ -234,9 +237,9 @@ def get_prowlarr_fields() -> List[SettingsField]:
     return fields
 
 
-def get_prowlarr_indexers_fields() -> List[SettingsField]:
+def get_prowlarr_indexers_fields() -> list[SettingsField]:
     """Step 5: Select Prowlarr indexers to search."""
-    fields: List[SettingsField] = [
+    fields: list[SettingsField] = [
         HeadingField(
             key="prowlarr_indexers_heading",
             title="Select Indexers",
@@ -316,10 +319,8 @@ ONBOARDING_STEPS = [
 ]
 
 
-def get_onboarding_config() -> Dict[str, Any]:
-    """
-    Get the full onboarding configuration including steps and current values.
-    """
+def get_onboarding_config() -> dict[str, Any]:
+    """Get the full onboarding configuration including steps and current values."""
     steps = []
     all_values = {}
 
@@ -334,9 +335,11 @@ def get_onboarding_config() -> Dict[str, Any]:
             serialized_fields.append(serialized)
 
             # Collect values (skip HeadingFields)
-            if hasattr(field, 'key') and field.key and not isinstance(field, HeadingField):
+            if hasattr(field, "key") and field.key and not isinstance(field, HeadingField):
                 value = get_setting_value(field, tab_name)
-                all_values[field.key] = value if value is not None else getattr(field, 'default', '')
+                all_values[field.key] = (
+                    value if value is not None else getattr(field, "default", "")
+                )
 
         step = {
             "id": step_config["id"],
@@ -359,19 +362,19 @@ def get_onboarding_config() -> Dict[str, Any]:
     }
 
 
-def save_onboarding_settings(values: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Save onboarding settings and mark as complete.
+def save_onboarding_settings(values: dict[str, Any]) -> dict[str, Any]:
+    """Save onboarding settings and mark as complete.
 
     Args:
         values: Dict of field key -> value
 
     Returns:
         Dict with success status and message
+
     """
     try:
         # Group values by their target tab
-        tab_values: Dict[str, Dict[str, Any]] = {}
+        tab_values: dict[str, dict[str, Any]] = {}
 
         for step_config in ONBOARDING_STEPS:
             tab_name = step_config["tab"]
@@ -391,7 +394,7 @@ def save_onboarding_settings(values: Dict[str, Any]) -> Dict[str, Any]:
         for tab_name, tab_data in tab_values.items():
             if tab_data:
                 save_config_file(tab_name, tab_data)
-                logger.info(f"Saved onboarding settings to {tab_name}: {list(tab_data.keys())}")
+                logger.info("Saved onboarding settings to %s: %s", tab_name, list(tab_data.keys()))
 
         # Enable the selected metadata provider
         search_mode = values.get("SEARCH_MODE", "direct")
@@ -416,7 +419,11 @@ def save_onboarding_settings(values: Dict[str, Any]) -> Dict[str, Any]:
                     provider_config["GOOGLEBOOKS_API_KEY"] = values["GOOGLEBOOKS_API_KEY"]
 
                 save_config_file(provider, provider_config)
-                logger.info(f"Enabled metadata provider: {provider} with keys: {list(provider_config.keys())}")
+                logger.info(
+                    "Enabled metadata provider: %s with keys: %s",
+                    provider,
+                    list(provider_config.keys()),
+                )
 
         # Mark onboarding as complete
         mark_onboarding_complete()
@@ -424,12 +431,13 @@ def save_onboarding_settings(values: Dict[str, Any]) -> Dict[str, Any]:
         # Refresh config
         try:
             from shelfmark.core.config import config
+
             config.refresh()
         except ImportError as e:
-            logger.debug(f"Could not refresh config after onboarding: {e}")
-
-        return {"success": True, "message": "Onboarding complete!"}
+            logger.debug("Could not refresh config after onboarding: %s", e)
 
     except Exception as e:
-        logger.error(f"Failed to save onboarding settings: {e}")
+        logger.exception("Failed to save onboarding settings")
         return {"success": False, "message": str(e)}
+    else:
+        return {"success": True, "message": "Onboarding complete!"}

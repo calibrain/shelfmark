@@ -1,17 +1,18 @@
 """AudiobookBay settings registration."""
 
 from shelfmark.core.settings_registry import (
-    register_settings,
     CheckboxField,
-    TextField,
     NumberField,
+    SettingsField,
+    TextField,
+    register_settings,
 )
-
 
 # ==================== Register Settings ====================
 
+
 @register_settings("audiobookbay_config", "AudiobookBay", icon="download", order=45)
-def audiobookbay_config_settings():
+def audiobookbay_config_settings() -> list[SettingsField]:
     """AudiobookBay configuration settings."""
     return [
         CheckboxField(
@@ -24,7 +25,6 @@ def audiobookbay_config_settings():
             key="ABB_HOSTNAME",
             label="Hostname",
             description="AudiobookBay domain (e.g., audiobookbay.lu, audiobookbay.is). Required to enable searches.",
-            placeholder="",
             default="",
             required=True,
             show_when={"field": "ABB_ENABLED", "value": True},
@@ -42,7 +42,6 @@ def audiobookbay_config_settings():
             key="ABB_EXACT_PHRASE",
             label="Prefer Exact-Phrase Search",
             description="Wrap generated queries in quotes for stricter matching. If no results are found, Shelfmark retries without quotes.",
-            default=False,
             show_when={"field": "ABB_ENABLED", "value": True},
         ),
         NumberField(

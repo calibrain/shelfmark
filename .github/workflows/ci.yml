@@ -14,20 +14,50 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
         with:
-          python-version: "3.10"
-          cache: "pip"
+          version: "0.11.3"
+          python-version: "3.14"
+          enable-cache: true
 
-      - name: Install dependencies
-        run: |
-          pip install -r requirements-base.txt
-          pip install -r requirements-shelfmark.txt
-          pip install pytest
+      - name: Sync dependencies
+        run: uv sync --locked --extra browser
+
+      - name: Lint backend
+        run: uv run ruff check shelfmark
+
+      - name: Check backend formatting
+        run: uv run ruff format --check shelfmark
+
+      - name: Typecheck backend
+        run: uv run basedpyright
+
+      - name: Check backend dead code
+        run: uv run vulture shelfmark
 
       - name: Run tests
-        run: pytest tests/ -x --tb=short
+        run: uv run pytest tests/ -x --tb=short
+
+  docker-build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Build shelfmark-lite image
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          target: shelfmark-lite
+          platforms: linux/amd64
+          push: false
+          build-args: |
+            BUILD_VERSION=pr-${{ github.sha }}
+            RELEASE_VERSION=pr-${{ github.event.pull_request.number }}
 
   frontend-checks:
     runs-on: ubuntu-latest

@@ -2,16 +2,23 @@
 E2E Test Configuration and Fixtures.
 
 These tests require the full application stack to be running.
-Run with: docker exec test-cwabd python3 -m pytest tests/e2e/ -v -m e2e
+Run with: uv run pytest tests/e2e/ -v -m e2e
 """
+
+from __future__ import annotations
 
 import os
 import time
-from typing import Generator, List, Optional
+from contextlib import suppress
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 import requests
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 # Default test configuration
@@ -19,6 +26,8 @@ DEFAULT_BASE_URL = "http://localhost:8084"
 DEFAULT_TIMEOUT = 10
 POLL_INTERVAL = 2
 DOWNLOAD_TIMEOUT = 300  # 5 minutes max for downloads
+E2E_USERNAME_ENV = "E2E_USERNAME"
+E2E_PASSWORD_ENV = "E2E_PASSWORD"
 
 
 @dataclass
@@ -63,12 +72,113 @@ class APIClient:
         return False
 
 
+def _get_auth_state(client: APIClient) -> dict[str, object]:
+    """Read the live server auth state for auth-sensitive E2E tests."""
+    try:
+        response = client.get("/api/auth/check")
+    except requests.exceptions.RequestException:
+        return {}
+
+    if response.status_code != 200:
+        return {}
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return {}
+
+    return payload if isinstance(payload, dict) else {}
+
+
+def _login_with_env_credentials(client: APIClient) -> bool:
+    """Try authenticating an E2E client with env-provided credentials."""
+    username = os.environ.get(E2E_USERNAME_ENV, "").strip()
+    password = os.environ.get(E2E_PASSWORD_ENV, "")
+    if not username or not password:
+        return False
+
+    response = client.post(
+        "/api/auth/login",
+        json={
+            "username": username,
+            "password": password,
+            "remember_me": False,
+        },
+    )
+    return response.status_code == 200
+
+
+def _is_explicit_e2e_run(markexpr: str, args: list[str]) -> bool:
+    """Detect when pytest was invoked specifically to exercise E2E coverage."""
+    normalized_markexpr = (markexpr or "").strip()
+    if "e2e" in normalized_markexpr and "not e2e" not in normalized_markexpr:
+        return True
+
+    target_args = [arg for arg in args if not arg.startswith("-")]
+    if not target_args:
+        return False
+
+    for arg in target_args:
+        base = arg.split("::", maxsplit=1)[0]
+        parts = Path(base).parts
+        if "tests" not in parts:
+            return False
+
+        tests_index = parts.index("tests")
+        if len(parts) <= tests_index + 1 or parts[tests_index + 1] != "e2e":
+            return False
+
+    return True
+
+
+def _require_authenticated_client(client: APIClient, *, strict: bool) -> APIClient:
+    """Require an authenticated client for protected-route E2E tests."""
+    auth_state = _get_auth_state(client)
+    if not auth_state or not auth_state.get("auth_required"):
+        return client
+
+    if auth_state.get("authenticated"):
+        return client
+
+    username = os.environ.get(E2E_USERNAME_ENV, "").strip()
+    password = os.environ.get(E2E_PASSWORD_ENV, "")
+    if not username or not password:
+        message = (
+            "Live server requires authentication for this E2E test. "
+            f"Set {E2E_USERNAME_ENV}/{E2E_PASSWORD_ENV} or run against a no-auth instance."
+        )
+        if strict:
+            pytest.fail(message)
+        pytest.skip(message)
+
+    if not _login_with_env_credentials(client):
+        message = (
+            "Failed to authenticate the E2E client with "
+            f"{E2E_USERNAME_ENV}/{E2E_PASSWORD_ENV}. "
+            "Check the credentials or run against a no-auth instance."
+        )
+        if strict:
+            pytest.fail(message)
+        pytest.skip(message)
+
+    refreshed_auth_state = _get_auth_state(client)
+    if refreshed_auth_state.get("authenticated"):
+        return client
+
+    message = (
+        "Login request completed but the live server still reports an unauthenticated session."
+    )
+    if strict:
+        pytest.fail(message)
+    pytest.skip(message)
+
+
 @dataclass
 class DownloadTracker:
     """Tracks downloads for cleanup after tests."""
 
     client: APIClient
-    queued_ids: List[str] = field(default_factory=list)
+    queued_ids: list[str] = field(default_factory=list)
 
     def track(self, book_id: str) -> str:
         """Track a book ID for cleanup."""
@@ -78,18 +188,16 @@ class DownloadTracker:
     def cleanup(self) -> None:
         """Cancel all tracked downloads."""
         for book_id in self.queued_ids:
-            try:
+            with suppress(Exception):
                 self.client.delete(f"/api/download/{book_id}/cancel")
-            except Exception:
-                pass  # Best effort cleanup
         self.queued_ids.clear()
 
     def wait_for_status(
         self,
         book_id: str,
-        target_states: List[str],
+        target_states: list[str],
         timeout: int = DOWNLOAD_TIMEOUT,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         Poll status until book reaches one of the target states.
 
@@ -141,32 +249,55 @@ def base_url() -> str:
 
 
 @pytest.fixture(scope="session")
-def api_client(base_url: str) -> Generator[APIClient, None, None]:
-    """Create an API client for the test session."""
+def healthy_base_url(base_url: str) -> str:
+    """Ensure the live server is reachable before creating per-test clients."""
     client = APIClient(base_url=base_url)
+    try:
+        if not client.wait_for_health():
+            pytest.skip("Server not available - ensure the app is running")
+        return base_url
+    finally:
+        client.session.close()
 
-    # Wait for server to be healthy
-    if not client.wait_for_health():
-        pytest.skip("Server not available - ensure the app is running")
 
+@pytest.fixture
+def api_client(healthy_base_url: str) -> Iterator[APIClient]:
+    """Create a fresh API client for each E2E test."""
+    client = APIClient(base_url=healthy_base_url)
     yield client
-
-    # Cleanup session
     client.session.close()
 
 
 @pytest.fixture
-def download_tracker(api_client: APIClient) -> Generator[DownloadTracker, None, None]:
+def protected_api_client(api_client: APIClient, request: pytest.FixtureRequest) -> APIClient:
+    """Create an authenticated client for protected-route E2E tests."""
+    strict = _is_explicit_e2e_run(
+        getattr(request.config.option, "markexpr", ""),
+        list(getattr(request.config, "args", [])),
+    )
+    return _require_authenticated_client(api_client, strict=strict)
+
+
+@pytest.fixture
+def download_tracker(request: pytest.FixtureRequest) -> Iterator[DownloadTracker]:
     """Create a download tracker that cleans up after each test."""
-    tracker = DownloadTracker(client=api_client)
+    client_fixture_name = (
+        "protected_api_client" if "protected_api_client" in request.fixturenames else "api_client"
+    )
+    client = request.getfixturevalue(client_fixture_name)
+    tracker = DownloadTracker(client=client)
     yield tracker
     tracker.cleanup()
 
 
 @pytest.fixture(scope="session")
-def server_config(api_client: APIClient) -> dict:
+def server_config(healthy_base_url: str) -> dict:
     """Get server configuration."""
-    resp = api_client.get("/api/config")
-    if resp.status_code != 200:
-        return {}
-    return resp.json()
+    client = APIClient(base_url=healthy_base_url)
+    try:
+        resp = client.get("/api/config")
+        if resp.status_code != 200:
+            return {}
+        return resp.json()
+    finally:
+        client.session.close()

@@ -1,10 +1,12 @@
 name: Create and publish Docker images
 on:
   push:
-    branches:
-      - 'main'
     tags:
       - 'v*'
+  schedule:
+    # Nightly at 03:17 UTC — only builds if there are new commits on main
+    # since the last successful run (see check-changes job).
+    - cron: '17 3 * * *'
   workflow_dispatch:
 permissions: read-all
 
@@ -12,7 +14,41 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/shelfmark
 jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+    steps:
+      - name: Check for new commits since last successful build
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          CURRENT_SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Always build on tag pushes and manual dispatch.
+          if [[ "$EVENT_NAME" != "schedule" ]]; then
+            echo "Event is $EVENT_NAME — building unconditionally."
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Scheduled run: only build if HEAD differs from the last successful build on main.
+          LAST_SHA=$(gh api "/repos/${REPO}/actions/workflows/build-and-publish-docker-image.yml/runs?branch=main&status=success&per_page=1" --jq '.workflow_runs[0].head_sha' 2>/dev/null || true)
+          echo "Last successful build SHA: ${LAST_SHA:-<none>}"
+          echo "Current HEAD SHA:          ${CURRENT_SHA}"
+          if [[ -z "$LAST_SHA" || "$LAST_SHA" != "$CURRENT_SHA" ]]; then
+            echo "New commits detected — building."
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No new commits since last successful build — skipping."
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build-and-push-images:
+    needs: check-changes
+    if: needs.check-changes.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -58,7 +94,7 @@ jobs:
 
       - name: Build and push ${{ matrix.target }} Docker image
         id: push
-        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           platforms: linux/amd64,linux/arm64
           context: .

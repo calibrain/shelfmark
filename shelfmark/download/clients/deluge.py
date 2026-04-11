@@ -12,13 +12,13 @@ Requirements:
 """
 
 import base64
-from typing import Any, Optional, Tuple
+from contextlib import suppress
+from typing import Any, NoReturn
 from urllib.parse import urlparse
 
 import requests
 
 from shelfmark.core.config import config
-from shelfmark.download.network import get_ssl_verify
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.clients import (
@@ -29,20 +29,30 @@ from shelfmark.download.clients import (
 from shelfmark.download.clients.torrent_utils import (
     extract_torrent_info,
 )
+from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
 
+MIN_DAEMON_HOST_ENTRY_LENGTH = 2
+MIN_DAEMON_HOST_STATUS_ENTRY_LENGTH = 4
+DOWNLOAD_COMPLETE_PROGRESS = 100
+ONE_WEEK_IN_SECONDS = 604800
+
 
 class DelugeRpcError(RuntimeError):
-    def __init__(self, message: str, code: int | None = None):
+    def __init__(self, message: str, code: int | None = None) -> None:
         super().__init__(message)
         self.code = code
 
 
-def _get_error_message(error: Any) -> Tuple[str, int | None]:
+def _get_error_message(error: object) -> tuple[str, int | None]:
     if isinstance(error, dict):
         return str(error.get("message") or error), error.get("code")
     return str(error), None
+
+
+def _raise_runtime_error(message: str) -> NoReturn:
+    raise RuntimeError(message)
 
 
 @register_client("torrent")
@@ -52,15 +62,17 @@ class DelugeClient(DownloadClient):
     protocol = "torrent"
     name = "deluge"
 
-    def __init__(self):
+    def __init__(self) -> None:
         raw_host = str(config.get("DELUGE_HOST", "localhost") or "")
         raw_port = str(config.get("DELUGE_PORT", "8112") or "8112")
         password = str(config.get("DELUGE_PASSWORD", "") or "")
 
         if not raw_host:
-            raise ValueError("DELUGE_HOST is required")
+            msg = "DELUGE_HOST is required"
+            raise ValueError(msg)
         if not password:
-            raise ValueError("DELUGE_PASSWORD is required")
+            msg = "DELUGE_PASSWORD is required"
+            raise ValueError(msg)
 
         scheme = "http"
         base_path = ""
@@ -69,7 +81,8 @@ class DelugeClient(DownloadClient):
         # (useful when Deluge is behind a reverse proxy path).
         raw_host = normalize_http_url(raw_host, strip_trailing_slash=False) if raw_host else ""
         if not raw_host:
-            raise ValueError("DELUGE_HOST is invalid")
+            msg = "DELUGE_HOST is invalid"
+            raise ValueError(msg)
 
         host = raw_host
         port = int(raw_port)
@@ -81,13 +94,12 @@ class DelugeClient(DownloadClient):
             if parsed.port is not None:
                 port = parsed.port
             base_path = (parsed.path or "").rstrip("/")
-        else:
-            # Allow "host:port" in DELUGE_HOST for convenience.
-            if ":" in raw_host and raw_host.count(":") == 1:
-                host_part, port_part = raw_host.split(":", 1)
-                if host_part and port_part.isdigit():
-                    host = host_part
-                    port = int(port_part)
+        # Allow "host:port" in DELUGE_HOST for convenience.
+        elif ":" in raw_host and raw_host.count(":") == 1:
+            host_part, port_part = raw_host.split(":", 1)
+            if host_part and port_part.isdigit():
+                host = host_part
+                port = int(port_part)
 
         self._rpc_url = f"{scheme}://{host}:{port}{base_path}/json"
         self._password = password
@@ -104,14 +116,19 @@ class DelugeClient(DownloadClient):
         self._rpc_id += 1
         return self._rpc_id
 
-    def _rpc_call(self, method: str, *params: Any, timeout: int = 15) -> Any:
+    def _rpc_call(self, method: str, *params: object, timeout: int = 15) -> object:
         payload = {
             "id": self._next_rpc_id(),
             "method": method,
             "params": list(params),
         }
 
-        response = self._session.post(self._rpc_url, json=payload, timeout=timeout, verify=get_ssl_verify(self._rpc_url))
+        response = self._session.post(
+            self._rpc_url,
+            json=payload,
+            timeout=timeout,
+            verify=get_ssl_verify(self._rpc_url),
+        )
         response.raise_for_status()
 
         data = response.json()
@@ -124,7 +141,8 @@ class DelugeClient(DownloadClient):
     def _login(self) -> None:
         result = self._rpc_call("auth.login", self._password)
         if result is not True:
-            raise DelugeRpcError("Deluge Web UI authentication failed")
+            msg = "Deluge Web UI authentication failed"
+            raise DelugeRpcError(msg)
         self._authenticated = True
 
     def _select_daemon_host_id(self, hosts: list) -> str:
@@ -133,11 +151,19 @@ class DelugeClient(DownloadClient):
         preferred_hosts = {"127.0.0.1", "localhost"}
 
         for entry in hosts:
-            if isinstance(entry, list) and len(entry) >= 2 and entry[1] in preferred_hosts:
+            if (
+                isinstance(entry, list)
+                and len(entry) >= MIN_DAEMON_HOST_ENTRY_LENGTH
+                and entry[1] in preferred_hosts
+            ):
                 return str(entry[0])
 
         for entry in hosts:
-            if isinstance(entry, list) and len(entry) >= 4 and str(entry[3]).lower() == "online":
+            if (
+                isinstance(entry, list)
+                and len(entry) >= MIN_DAEMON_HOST_STATUS_ENTRY_LENGTH
+                and str(entry[3]).lower() == "online"
+            ):
                 return str(entry[0])
 
         return str(hosts[0][0])
@@ -155,23 +181,25 @@ class DelugeClient(DownloadClient):
 
         hosts = self._rpc_call("web.get_hosts") or []
         if not hosts:
-            raise DelugeRpcError(
+            msg = (
                 "Deluge Web UI isn't connected to Deluge core (no hosts configured). "
                 "Add/connect a daemon in Deluge Web UI → Connection Manager."
             )
+            raise DelugeRpcError(msg)
 
         host_id = self._select_daemon_host_id(hosts)
         self._rpc_call("web.connect", host_id)
 
         if self._rpc_call("web.connected") is not True:
-            raise DelugeRpcError(
+            msg = (
                 "Deluge Web UI couldn't connect to Deluge core. "
                 "Check daemon status in Deluge Web UI → Connection Manager."
             )
+            raise DelugeRpcError(msg)
 
         self._connected = True
 
-    def _get_daemon_version(self) -> Any:
+    def _get_daemon_version(self) -> object:
         """Fetch daemon version, preferring daemon.get_version when available."""
         try:
             methods = self._rpc_call("system.listMethods")
@@ -190,14 +218,12 @@ class DelugeClient(DownloadClient):
 
         try:
             # label.add will error if the plugin is unavailable or the label exists.
-            try:
+            with suppress(Exception):
                 self._rpc_call("label.add", label)
-            except Exception:
-                pass
 
             self._rpc_call("label.set_torrent", torrent_id, label)
         except Exception as e:
-            logger.debug(f"Could not set Deluge label '{label}' for {torrent_id}: {e}")
+            logger.debug("Could not set Deluge label '%s' for %s: %s", label, torrent_id, e)
 
     @staticmethod
     def is_configured() -> bool:
@@ -206,22 +232,23 @@ class DelugeClient(DownloadClient):
         password = config.get("DELUGE_PASSWORD", "")
         return client == "deluge" and bool(host) and bool(password)
 
-    def test_connection(self) -> Tuple[bool, str]:
+    def test_connection(self) -> tuple[bool, str]:
         try:
             self._ensure_connected()
             version = self._get_daemon_version()
-            return True, f"Connected to Deluge {version}"
         except Exception as e:
             self._authenticated = False
             self._connected = False
-            return False, f"Connection failed: {str(e)}"
+            return False, f"Connection failed: {e!s}"
+        else:
+            return True, f"Connected to Deluge {version}"
 
     def add_download(
         self,
         url: str,
         name: str,
-        category: Optional[str] = None,
-        expected_hash: Optional[str] = None,
+        category: str | None = None,
+        expected_hash: str | None = None,
         **kwargs,
     ) -> str:
         try:
@@ -231,7 +258,7 @@ class DelugeClient(DownloadClient):
 
             torrent_info = extract_torrent_info(url, expected_hash=expected_hash)
             if not torrent_info.is_magnet and not torrent_info.torrent_data:
-                raise Exception("Failed to fetch torrent file")
+                _raise_runtime_error("Failed to fetch torrent file")
 
             options: dict[str, Any] = {}
             if self._download_dir:
@@ -252,7 +279,7 @@ class DelugeClient(DownloadClient):
             else:
                 torrent_data = torrent_info.torrent_data
                 if torrent_data is None:
-                    raise Exception("Failed to fetch torrent file")
+                    _raise_runtime_error("Failed to fetch torrent file")
 
                 torrent_data_bytes: bytes = torrent_data
                 filedump = base64.b64encode(torrent_data_bytes).decode("ascii")
@@ -264,19 +291,20 @@ class DelugeClient(DownloadClient):
                 )
 
             if not torrent_id:
-                raise Exception("Deluge returned no torrent ID")
+                _raise_runtime_error("Deluge returned no torrent ID")
 
             torrent_id = str(torrent_id).lower()
             self._try_set_label(torrent_id, category_value)
 
-            logger.info(f"Added torrent to Deluge: {torrent_id}")
-            return torrent_id
+            logger.info("Added torrent to Deluge: %s", torrent_id)
 
-        except Exception as e:
+        except Exception:
             self._authenticated = False
             self._connected = False
-            logger.error(f"Deluge add failed: {e}")
+            logger.exception("Deluge add failed")
             raise
+        else:
+            return torrent_id
 
     def get_status(self, download_id: str) -> DownloadStatus:
         try:
@@ -285,7 +313,14 @@ class DelugeClient(DownloadClient):
             status = self._rpc_call(
                 "core.get_torrent_status",
                 download_id,
-                ["state", "progress", "download_payload_rate", "eta", "save_path", "name"],
+                [
+                    "state",
+                    "progress",
+                    "download_payload_rate",
+                    "eta",
+                    "save_path",
+                    "name",
+                ],
             )
 
             if not status:
@@ -308,7 +343,7 @@ class DelugeClient(DownloadClient):
 
             progress = float(status.get("progress", 0))
             # Don't mark complete while files are being moved
-            complete = progress >= 100 and deluge_state != "Moving"
+            complete = progress >= DOWNLOAD_COMPLETE_PROGRESS and deluge_state != "Moving"
 
             if complete:
                 message = "Complete"
@@ -320,7 +355,7 @@ class DelugeClient(DownloadClient):
                 except Exception:
                     eta = None
 
-            if eta is not None and (eta < 0 or eta > 604800):
+            if eta is not None and (eta < 0 or eta > ONE_WEEK_IN_SECONDS):
                 eta = None
 
             file_path = None
@@ -344,24 +379,26 @@ class DelugeClient(DownloadClient):
         except Exception as e:
             return DownloadStatus.error(self._log_error("get_status", e))
 
-    def remove(self, download_id: str, delete_files: bool = False) -> bool:
+    def remove(self, download_id: str, *, delete_files: bool = False) -> bool:
         try:
             self._ensure_connected()
 
             result = self._rpc_call("core.remove_torrent", download_id, delete_files)
             if result:
                 logger.info(
-                    f"Removed torrent from Deluge: {download_id}"
-                    + (" (with files)" if delete_files else "")
+                    "Removed torrent from Deluge: %s%s",
+                    download_id,
+                    " (with files)" if delete_files else "",
                 )
                 return True
-            return False
 
         except Exception as e:
             self._log_error("remove", e)
             return False
+        else:
+            return False
 
-    def get_download_path(self, download_id: str) -> Optional[str]:
+    def get_download_path(self, download_id: str) -> str | None:
         try:
             self._ensure_connected()
 
@@ -376,15 +413,16 @@ class DelugeClient(DownloadClient):
                     str(status.get("save_path", "")),
                     str(status.get("name", "")),
                 )
-            return None
 
         except Exception as e:
             self._log_error("get_download_path", e, level="debug")
             return None
+        else:
+            return None
 
     def find_existing(
-        self, url: str, category: Optional[str] = None
-    ) -> Optional[Tuple[str, DownloadStatus]]:
+        self, url: str, category: str | None = None
+    ) -> tuple[str, DownloadStatus] | None:
         try:
             self._ensure_connected()
 
@@ -402,10 +440,10 @@ class DelugeClient(DownloadClient):
                 full_status = self.get_status(torrent_info.info_hash)
                 return (torrent_info.info_hash, full_status)
 
-            return None
-
         except Exception as e:
             self._authenticated = False
             self._connected = False
-            logger.debug(f"Error checking for existing torrent: {e}")
+            logger.debug("Error checking for existing torrent: %s", e)
+            return None
+        else:
             return None

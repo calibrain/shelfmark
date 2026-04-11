@@ -54,6 +54,7 @@ services:
       # Mount tests for running pytest in container
       - ./tests:/app/tests:ro
       - ./pyproject.toml:/app/pyproject.toml:ro
+      - ./uv.lock:/app/uv.lock:ro
       # Mount client configs for integration tests to read credentials
       - ./.local/test-clients/qbittorrent/config:/qbittorrent-config:ro
       - ./.local/test-clients/sabnzbd/config:/sabnzbd-config:ro

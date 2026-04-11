@@ -10,13 +10,16 @@ Keeping this separate from `pipeline.py` avoids circular imports:
 
 from __future__ import annotations
 
-from pathlib import Path
-from threading import Event
-from typing import Optional
+from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask, SearchMode
 from shelfmark.download.outputs import resolve_output_handler
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+    from threading import Event
 
 logger = setup_logger(__name__)
 
@@ -25,11 +28,11 @@ def post_process_download(
     temp_file: Path,
     task: DownloadTask,
     cancel_flag: Event,
-    status_callback,
+    status_callback: Callable[[str, str | None], None],
+    *,
     preserve_source_on_failure: bool = False,
-) -> Optional[str]:
+) -> str | None:
     """Post-process download using the selected output handler."""
-
     if task.search_mode is None:
         logger.warning(
             "Task %s: missing search_mode; defaulting to Direct mode behavior",
@@ -50,7 +53,7 @@ def post_process_download(
             task,
             cancel_flag,
             status_callback,
-            preserve_source_on_failure,
+            preserve_source_on_failure=preserve_source_on_failure,
         )
 
     from shelfmark.download.outputs.folder import process_folder_output
@@ -61,5 +64,5 @@ def post_process_download(
         task,
         cancel_flag,
         status_callback,
-        preserve_source_on_failure,
+        preserve_source_on_failure=preserve_source_on_failure,
     )

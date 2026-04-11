@@ -4,7 +4,7 @@ Integration tests for download clients.
 These tests require the Docker test stack to be running:
     docker compose -f docker-compose.test-clients.yml up -d
 
-Run with: docker exec test-cwabd python3 -m pytest /app/tests/prowlarr/test_integration_clients.py -v -m integration
+Run with: docker compose -f docker-compose.test-clients.yml exec shelfmark uv run pytest /app/tests/prowlarr/test_integration_clients.py -v -m integration
 
 These tests use the actual Docker stack configuration. Before running:
 1. Start the test stack: docker compose -f docker-compose.test-clients.yml up -d

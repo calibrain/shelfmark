@@ -9,7 +9,7 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from shelfmark.config import env
 from shelfmark.core.logger import setup_logger
@@ -28,46 +28,48 @@ DEFAULT_CACHE_TTL = 30 * 24 * 60 * 60
 _cache_lock = Lock()
 
 
-def _generate_cache_key(provider: str, provider_id: str, content_type: Optional[str] = None) -> str:
+def _generate_cache_key(provider: str, provider_id: str, content_type: str | None = None) -> str:
     """Generate a cache key from provider, provider_id, and content type."""
     normalized_content_type = "audiobook" if check_audiobook(content_type) else "ebook"
     return f"{provider}:{provider_id}:{normalized_content_type}"
 
 
-def _load_cache() -> Dict[str, Any]:
+def _load_cache() -> dict[str, Any]:
     """Load cache from disk."""
     try:
         if CACHE_FILE.exists():
             return json.loads(CACHE_FILE.read_text())
-    except (json.JSONDecodeError, IOError) as e:
-        logger.warning(f"Failed to load IRC cache: {e}")
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning("Failed to load IRC cache: %s", e)
     return {"entries": {}, "version": 1}
 
 
-def _save_cache(cache: Dict[str, Any]) -> None:
+def _save_cache(cache: dict[str, Any]) -> None:
     """Save cache to disk."""
     try:
         CACHE_FILE.write_text(json.dumps(cache, indent=2))
-    except IOError as e:
-        logger.error(f"Failed to save IRC cache: {e}")
+    except OSError:
+        logger.exception("Failed to save IRC cache")
 
 
-def _release_to_dict(release: Release) -> Dict[str, Any]:
+def _release_to_dict(release: Release) -> dict[str, Any]:
     """Convert Release to a JSON-serializable dict."""
     data = asdict(release)
     # Convert enum to string
     if data.get("protocol"):
-        data["protocol"] = data["protocol"].value if hasattr(data["protocol"], "value") else str(data["protocol"])
+        data["protocol"] = (
+            data["protocol"].value if hasattr(data["protocol"], "value") else str(data["protocol"])
+        )
     return data
 
 
-def _dict_to_release(data: Dict[str, Any]) -> Release:
+def _dict_to_release(data: dict[str, Any]) -> Release:
     """Convert dict back to Release object."""
     # Convert protocol string back to enum
     if data.get("protocol"):
         try:
             data["protocol"] = ReleaseProtocol(data["protocol"])
-        except (ValueError, KeyError):
+        except ValueError, KeyError:
             data["protocol"] = None
     return Release(**data)
 
@@ -75,11 +77,10 @@ def _dict_to_release(data: Dict[str, Any]) -> Release:
 def get_cached_results(
     provider: str,
     provider_id: str,
-    content_type: Optional[str] = None,
-    ttl_seconds: Optional[int] = None
-) -> Optional[Dict[str, Any]]:
-    """
-    Get cached search results for a book.
+    content_type: str | None = None,
+    ttl_seconds: int | None = None,
+) -> dict[str, Any] | None:
+    """Get cached search results for a book.
 
     Args:
         provider: Metadata provider name (e.g., "hardcover", "openlibrary")
@@ -90,6 +91,7 @@ def get_cached_results(
     Returns:
         Dict with 'releases' (List[Release]) and 'online_servers' (List[str]),
         or None if not cached or expired
+
     """
     from shelfmark.core.config import config
 
@@ -100,7 +102,7 @@ def get_cached_results(
 
     # TTL of 0 means cache forever
     if ttl_seconds == 0:
-        ttl_seconds = float('inf')
+        ttl_seconds = float("inf")
 
     cache_key = _generate_cache_key(provider, provider_id, content_type)
 
@@ -117,7 +119,12 @@ def get_cached_results(
 
         if age > ttl_seconds:
             title = entry.get("title", cache_key)
-            logger.debug(f"IRC cache expired for '{title}' (age: {age:.0f}s > TTL: {ttl_seconds}s)")
+            logger.debug(
+                "IRC cache expired for '%s' (age: %.0fs > TTL: %ss)",
+                title,
+                age,
+                ttl_seconds,
+            )
             # Don't delete here - let cleanup handle it
             return None
 
@@ -126,7 +133,12 @@ def get_cached_results(
         online_servers = entry.get("online_servers", [])
         title = entry.get("title", "")
 
-        logger.info(f"IRC cache hit for '{title}' ({len(releases)} releases, age: {age:.0f}s)")
+        logger.info(
+            "IRC cache hit for '%s' (%s releases, age: %.0fs)",
+            title,
+            len(releases),
+            age,
+        )
 
         return {
             "releases": releases,
@@ -139,12 +151,11 @@ def cache_results(
     provider: str,
     provider_id: str,
     title: str,
-    releases: List[Release],
-    content_type: Optional[str] = None,
-    online_servers: Optional[List[str]] = None
+    releases: list[Release],
+    content_type: str | None = None,
+    online_servers: list[str] | None = None,
 ) -> None:
-    """
-    Cache search results for a book.
+    """Cache search results for a book.
 
     Args:
         provider: Metadata provider name
@@ -153,6 +164,7 @@ def cache_results(
         releases: List of Release objects from search
         content_type: Search content type for cache isolation
         online_servers: List of online server nicks (optional)
+
     """
     cache_key = _generate_cache_key(provider, provider_id, content_type)
 
@@ -173,12 +185,11 @@ def cache_results(
         }
 
         _save_cache(cache)
-        logger.info(f"Cached {len(releases)} IRC releases for '{title}'")
+        logger.info("Cached %s IRC releases for '%s'", len(releases), title)
 
 
-def invalidate_cache(provider: str, provider_id: str, content_type: Optional[str] = None) -> bool:
-    """
-    Remove a specific entry from the cache.
+def invalidate_cache(provider: str, provider_id: str, content_type: str | None = None) -> bool:
+    """Remove a specific entry from the cache.
 
     Args:
         provider: Metadata provider name
@@ -187,6 +198,7 @@ def invalidate_cache(provider: str, provider_id: str, content_type: Optional[str
 
     Returns:
         True if entry was found and removed
+
     """
     cache_key = _generate_cache_key(provider, provider_id, content_type)
 
@@ -198,34 +210,34 @@ def invalidate_cache(provider: str, provider_id: str, content_type: Optional[str
         if cache_key in cache.get("entries", {}):
             del cache["entries"][cache_key]
             _save_cache(cache)
-            logger.info(f"Invalidated IRC cache for '{title}'")
+            logger.info("Invalidated IRC cache for '%s'", title)
             return True
 
         return False
 
 
 def clear_cache() -> int:
-    """
-    Clear all cached entries.
+    """Clear all cached entries.
 
     Returns:
         Number of entries cleared
+
     """
     with _cache_lock:
         cache = _load_cache()
         count = len(cache.get("entries", {}))
         cache["entries"] = {}
         _save_cache(cache)
-        logger.info(f"Cleared {count} IRC cache entries")
+        logger.info("Cleared %s IRC cache entries", count)
         return count
 
 
-def cleanup_expired(ttl_seconds: Optional[int] = None) -> int:
-    """
-    Remove all expired entries from the cache.
+def cleanup_expired(ttl_seconds: int | None = None) -> int:
+    """Remove all expired entries from the cache.
 
     Returns:
         Number of entries removed
+
     """
     from shelfmark.core.config import config
 
@@ -242,7 +254,8 @@ def cleanup_expired(ttl_seconds: Optional[int] = None) -> int:
         entries = cache.get("entries", {})
 
         expired_keys = [
-            key for key, entry in entries.items()
+            key
+            for key, entry in entries.items()
             if current_time - entry.get("cached_at", 0) > ttl_seconds
         ]
 
@@ -252,17 +265,17 @@ def cleanup_expired(ttl_seconds: Optional[int] = None) -> int:
 
         if removed:
             _save_cache(cache)
-            logger.info(f"Cleaned up {removed} expired IRC cache entries")
+            logger.info("Cleaned up %s expired IRC cache entries", removed)
 
     return removed
 
 
-def get_cache_stats() -> Dict[str, Any]:
-    """
-    Get cache statistics.
+def get_cache_stats() -> dict[str, Any]:
+    """Get cache statistics.
 
     Returns:
         Dict with cache stats
+
     """
     from shelfmark.core.config import config
 
@@ -277,15 +290,13 @@ def get_cache_stats() -> Dict[str, Any]:
 
         total = len(entries)
         expired = sum(
-            1 for entry in entries.values()
+            1
+            for entry in entries.values()
             if current_time - entry.get("cached_at", 0) > ttl_seconds
         )
 
         # Calculate total releases cached
-        total_releases = sum(
-            len(entry.get("releases", []))
-            for entry in entries.values()
-        )
+        total_releases = sum(len(entry.get("releases", [])) for entry in entries.values())
 
         return {
             "total_entries": total,

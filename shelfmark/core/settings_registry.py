@@ -2,34 +2,46 @@
 
 import json
 import os
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Type, Union
 from threading import Lock
+from typing import TYPE_CHECKING, Any
+
+from werkzeug.utils import secure_filename
 
 from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
+    from shelfmark.core.config import Config
+
 
 @dataclass
 class FieldBase:
     """Base class for all settings fields."""
-    key: str                              # Environment variable / config key
-    label: str                            # Display label in UI
-    description: str = ""                 # Help text
-    default: Any = None                   # Default value if not set
-    required: bool = False                # Whether field must have a value
-    env_var: Optional[str] = None         # Override env var name (defaults to key)
-    env_supported: bool = True            # Whether this setting can be set via ENV var (False = UI-only)
-    user_overridable: bool = False        # Whether admins can set per-user overrides for this field
-    disabled: bool = False                # Whether field is disabled/greyed out
-    disabled_reason: str = ""             # Explanation shown when disabled
-    show_when: Optional[Dict[str, Any] | List[Dict[str, Any]]] = None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
-    disabled_when: Optional[Dict[str, Any]] = None  # Conditional disable: {"field": "key", "value": "expected", "reason": "..."}
-    requires_restart: bool = False        # Whether changing this setting requires a container restart
-    universal_only: bool = False          # Only show in Universal search mode (hide in Direct mode)
-    hidden_in_ui: bool = False            # Keep field in schema/save path but hide default renderer
+
+    key: str  # Environment variable / config key
+    label: str  # Display label in UI
+    description: str = ""  # Help text
+    default: object = None  # Default value if not set
+    required: bool = False  # Whether field must have a value
+    env_var: str | None = None  # Override env var name (defaults to key)
+    env_supported: bool = True  # Whether this setting can be set via ENV var (False = UI-only)
+    user_overridable: bool = False  # Whether admins can set per-user overrides for this field
+    disabled: bool = False  # Whether field is disabled/greyed out
+    disabled_reason: str = ""  # Explanation shown when disabled
+    show_when: dict[str, Any] | list[dict[str, Any]] | None = (
+        None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
+    )
+    disabled_when: dict[str, Any] | None = (
+        None  # Conditional disable: {"field": "key", "value": "expected", "reason": "..."}
+    )
+    requires_restart: bool = False  # Whether changing this setting requires a container restart
+    universal_only: bool = False  # Only show in Universal search mode (hide in Direct mode)
+    hidden_in_ui: bool = False  # Keep field in schema/save path but hide default renderer
 
     def get_env_var_name(self) -> str:
         """Get the environment variable name for this field."""
@@ -43,21 +55,24 @@ class FieldBase:
 @dataclass
 class TextField(FieldBase):
     """Single-line text input."""
+
     placeholder: str = ""
-    max_length: Optional[int] = None
+    max_length: int | None = None
 
 
 @dataclass
 class PasswordField(FieldBase):
     """Password input (masked in UI, not returned in API responses)."""
+
     placeholder: str = ""
 
 
 @dataclass
 class NumberField(FieldBase):
     """Numeric input."""
-    min_value: Optional[float] = None
-    max_value: Optional[float] = None
+
+    min_value: float | None = None
+    max_value: float | None = None
     step: float = 1
     default: float = 0
 
@@ -65,31 +80,35 @@ class NumberField(FieldBase):
 @dataclass
 class CheckboxField(FieldBase):
     """Boolean checkbox."""
+
     default: bool = False
 
 
 @dataclass
 class SelectField(FieldBase):
     """Single-choice dropdown."""
+
     # Options can be a list or a callable that returns a list (for lazy evaluation)
-    options: Any = field(default_factory=list)  # [{value: "", label: ""}] or callable
-    filter_by_field: Optional[str] = None  # Field key whose value filters options via childOf property
+    options: object = field(default_factory=list)  # [{value: "", label: ""}] or callable
+    filter_by_field: str | None = None  # Field key whose value filters options via childOf property
 
 
 @dataclass
 class MultiSelectField(FieldBase):
     """Multiple-choice selection."""
+
     # Options can be a list or a callable that returns a list (for lazy evaluation)
-    options: Any = field(default_factory=list)  # [{value: "", label: ""}] or callable
-    default: List[str] = field(default_factory=list)
+    options: object = field(default_factory=list)  # [{value: "", label: ""}] or callable
+    default: list[str] = field(default_factory=list)
     variant: str = "pills"  # "pills" (default) or "dropdown" for checkbox dropdown style
 
 
 @dataclass
 class TagListField(FieldBase):
     """Editable list of free-form string values (tag/chip input)."""
+
     placeholder: str = ""
-    default: List[str] = field(default_factory=list)
+    default: list[str] = field(default_factory=list)
     normalize_urls: bool = True
 
 
@@ -99,9 +118,9 @@ class OrderableListField(FieldBase):
     # Each option: {id, label, description?, disabledReason?, isLocked?, section?, isPinned?}
     # - isLocked: toggle is disabled (can't enable/disable)
     # - isPinned: can't be reordered (but toggle may still work if not also isLocked)
-    options: Any = field(default_factory=list)
+    options: object = field(default_factory=list)
     # Default value: [{id, enabled}, ...] in priority order
-    default: List[Dict[str, Any]] = field(default_factory=list)
+    default: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -109,10 +128,10 @@ class TableField(FieldBase):
     """Editable table of structured rows."""
 
     # Column definitions: [{key, label, type, placeholder?, options?, defaultValue?}, ...]
-    columns: Any = field(default_factory=list)  # list or callable
+    columns: object = field(default_factory=list)  # list or callable
 
     # Value format: list of objects
-    default: List[Dict[str, Any]] = field(default_factory=list)
+    default: list[dict[str, Any]] = field(default_factory=list)
 
     add_label: str = "Add"
     empty_message: str = ""
@@ -123,37 +142,43 @@ class CustomComponentField:
     """Render a custom frontend component inside settings content."""
 
     key: str
-    component: str                        # Frontend component registry key
+    component: str  # Frontend component registry key
     label: str = ""
     description: str = ""
-    bind_keys: List[str] = field(default_factory=list)  # Related value keys this component edits
-    value_fields: List[Any] = field(default_factory=list)  # Backing value schema for this component
-    wrap_in_field_wrapper: bool = False   # Whether to render with standard FieldWrapper layout
+    bind_keys: list[str] = field(default_factory=list)  # Related value keys this component edits
+    value_fields: list[Any] = field(default_factory=list)  # Backing value schema for this component
+    wrap_in_field_wrapper: bool = False  # Whether to render with standard FieldWrapper layout
     disabled: bool = False
     disabled_reason: str = ""
-    show_when: Optional[Dict[str, Any] | List[Dict[str, Any]]] = None
+    show_when: dict[str, Any] | list[dict[str, Any]] | None = None
     universal_only: bool = False
 
     def get_field_type(self) -> str:
         return "CustomComponentField"
 
-    def get_bind_keys(self) -> List[str]:
+    def get_bind_keys(self) -> list[str]:
         if self.bind_keys:
             return self.bind_keys
-        return [getattr(f, "key") for f in self.value_fields if getattr(f, "key", None)]
+        return [f.key for f in self.value_fields if getattr(f, "key", None)]
 
 
 @dataclass
 class ActionButton:
-    key: str                              # Action identifier
-    label: str                            # Button text
-    description: str = ""                 # Help text
-    style: str = "default"                # "default", "primary", "danger"
-    callback: Optional[Callable[..., Dict[str, Any]]] = None  # Returns {"success": bool, "message": str}
-    disabled: bool = False                # Whether button is disabled/greyed out
-    disabled_reason: str = ""             # Explanation shown when disabled
-    show_when: Optional[Dict[str, Any] | List[Dict[str, Any]]] = None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
-    disabled_when: Optional[Dict[str, Any]] = None  # Conditional disable: {"field": "key", "value": "expected", "reason": "..."}
+    key: str  # Action identifier
+    label: str  # Button text
+    description: str = ""  # Help text
+    style: str = "default"  # "default", "primary", "danger"
+    callback: Callable[..., dict[str, Any]] | None = (
+        None  # Returns {"success": bool, "message": str}
+    )
+    disabled: bool = False  # Whether button is disabled/greyed out
+    disabled_reason: str = ""  # Explanation shown when disabled
+    show_when: dict[str, Any] | list[dict[str, Any]] | None = (
+        None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
+    )
+    disabled_when: dict[str, Any] | None = (
+        None  # Conditional disable: {"field": "key", "value": "expected", "reason": "..."}
+    )
 
     def get_field_type(self) -> str:
         return "ActionButton"
@@ -161,74 +186,75 @@ class ActionButton:
 
 @dataclass
 class HeadingField:
-    """
-    Display-only heading with title and description.
+    """Display-only heading with title and description.
 
     Used to add section titles and descriptive text to settings pages.
     Not an input field - purely for display.
     """
-    key: str                              # Unique identifier
-    title: str                            # Heading title
-    description: str = ""                 # Description text (supports markdown-style links)
-    description_by_auth_mode: Optional[Dict[str, str]] = None  # Optional auth-mode specific description map
-    link_url: str = ""                    # Optional URL for a link
-    link_text: str = ""                   # Text for the link (defaults to URL if not provided)
-    show_when: Optional[Dict[str, Any] | List[Dict[str, Any]]] = None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
-    universal_only: bool = False          # Only show in Universal search mode (hide in Direct mode)
+
+    key: str  # Unique identifier
+    title: str  # Heading title
+    description: str = ""  # Description text (supports markdown-style links)
+    description_by_auth_mode: dict[str, str] | None = (
+        None  # Optional auth-mode specific description map
+    )
+    link_url: str = ""  # Optional URL for a link
+    link_text: str = ""  # Text for the link (defaults to URL if not provided)
+    show_when: dict[str, Any] | list[dict[str, Any]] | None = (
+        None  # Conditional visibility: {"field": "key", "value": "expected"} or list of conditions
+    )
+    universal_only: bool = False  # Only show in Universal search mode (hide in Direct mode)
 
     def get_field_type(self) -> str:
         return "HeadingField"
 
 
 # Type alias for all field types
-SettingsField = Union[
-    TextField,
-    PasswordField,
-    NumberField,
-    CheckboxField,
-    SelectField,
-    MultiSelectField,
-    TagListField,
-    OrderableListField,
-    TableField,
-    CustomComponentField,
-    ActionButton,
-    HeadingField,
-]
+SettingsField = (
+    TextField
+    | PasswordField
+    | NumberField
+    | CheckboxField
+    | SelectField
+    | MultiSelectField
+    | TagListField
+    | OrderableListField
+    | TableField
+    | CustomComponentField
+    | ActionButton
+    | HeadingField
+)
 
 
 @dataclass
 class SettingsTab:
     """A tab/section in the settings UI."""
-    name: str                             # Internal name (used in URLs)
-    display_name: str                     # Display name in UI
-    fields: List[SettingsField] = field(default_factory=list)
-    icon: Optional[str] = None            # Icon name for UI
-    order: int = 100                      # Sort order (lower = earlier)
-    group: Optional[str] = None           # Group name this tab belongs to
+
+    name: str  # Internal name (used in URLs)
+    display_name: str  # Display name in UI
+    fields: list[SettingsField] = field(default_factory=list)
+    icon: str | None = None  # Icon name for UI
+    order: int = 100  # Sort order (lower = earlier)
+    group: str | None = None  # Group name this tab belongs to
 
 
 @dataclass
 class SettingsGroup:
     """A collapsible group of settings tabs in the UI."""
-    name: str                             # Internal name
-    display_name: str                     # Display name in UI
-    icon: Optional[str] = None            # Icon name for UI
-    order: int = 100                      # Sort order (lower = earlier)
+
+    name: str  # Internal name
+    display_name: str  # Display name in UI
+    icon: str | None = None  # Icon name for UI
+    order: int = 100  # Sort order (lower = earlier)
 
 
-_SETTINGS_REGISTRY: Dict[str, SettingsTab] = {}
-_GROUPS_REGISTRY: Dict[str, SettingsGroup] = {}
-_ON_SAVE_HANDLERS: Dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {}
+_SETTINGS_REGISTRY: dict[str, SettingsTab] = {}
+_GROUPS_REGISTRY: dict[str, SettingsGroup] = {}
+_ON_SAVE_HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {}
 _REGISTRY_LOCK = Lock()
 
 
-def register_group(
-    name: str,
-    display_name: str,
-    icon: Optional[str] = None,
-    order: int = 100
-) -> None:
+def register_group(name: str, display_name: str, icon: str | None = None, order: int = 100) -> None:
     with _REGISTRY_LOCK:
         group = SettingsGroup(
             name=name,
@@ -237,17 +263,17 @@ def register_group(
             order=order,
         )
         _GROUPS_REGISTRY[name] = group
-        logger.debug(f"Registered settings group: {name}")
+        logger.debug("Registered settings group: %s", name)
 
 
 def register_settings(
     name: str,
     display_name: str,
-    icon: Optional[str] = None,
+    icon: str | None = None,
     order: int = 100,
-    group: Optional[str] = None
-):
-    def decorator(func: Callable[[], List[SettingsField]]):
+    group: str | None = None,
+) -> Callable[[Callable[[], list[SettingsField]]], Callable[[], list[SettingsField]]]:
+    def decorator(func: Callable[[], list[SettingsField]]) -> Callable[[], list[SettingsField]]:
         with _REGISTRY_LOCK:
             fields = func()
             tab = SettingsTab(
@@ -259,53 +285,59 @@ def register_settings(
                 group=group,
             )
             _SETTINGS_REGISTRY[name] = tab
-            logger.debug(f"Registered settings tab: {name} ({len(fields)} fields)" +
-                        (f" in group {group}" if group else ""))
+            logger.debug(
+                "Registered settings tab: %s (%s fields)%s",
+                name,
+                len(fields),
+                f" in group {group}" if group else "",
+            )
         return func
+
     return decorator
 
 
-def register_on_save(
-    tab_name: str,
-    handler: Callable[[Dict[str, Any]], Dict[str, Any]]
-) -> None:
+def register_on_save(tab_name: str, handler: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
     with _REGISTRY_LOCK:
         _ON_SAVE_HANDLERS[tab_name] = handler
-        logger.debug(f"Registered on_save handler for tab: {tab_name}")
+        logger.debug("Registered on_save handler for tab: %s", tab_name)
 
 
-def get_on_save_handler(tab_name: str) -> Optional[Callable[[Dict[str, Any]], Dict[str, Any]]]:
+def get_on_save_handler(
+    tab_name: str,
+) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
     """Get the on_save handler for a settings tab, if any."""
     return _ON_SAVE_HANDLERS.get(tab_name)
 
 
-def get_settings_tab(name: str) -> Optional[SettingsTab]:
+def get_settings_tab(name: str) -> SettingsTab | None:
     """Get a specific settings tab by name."""
     return _SETTINGS_REGISTRY.get(name)
 
 
-def get_all_settings_tabs() -> List[SettingsTab]:
+def get_all_settings_tabs() -> list[SettingsTab]:
     """Get all registered settings tabs, sorted by order."""
     return sorted(_SETTINGS_REGISTRY.values(), key=lambda t: (t.order, t.name))
 
 
-def _iter_value_fields(tab: SettingsTab):
+def _iter_value_fields(tab: SettingsTab) -> Iterator[SettingsField]:
     """Yield value-bearing fields for a tab."""
-    for field in tab.fields:
-        if isinstance(field, CustomComponentField):
-            for value_field in field.value_fields:
+    for settings_field in tab.fields:
+        if isinstance(settings_field, CustomComponentField):
+            for value_field in settings_field.value_fields:
                 if isinstance(value_field, (ActionButton, HeadingField, CustomComponentField)):
                     continue
                 yield value_field
             continue
-        if isinstance(field, (ActionButton, HeadingField)):
+        if isinstance(settings_field, (ActionButton, HeadingField)):
             continue
-        yield field
+        yield settings_field
 
 
-def get_settings_field_map(tab_name: Optional[str] = None) -> Dict[str, tuple[SettingsField, str]]:
+def get_settings_field_map(
+    tab_name: str | None = None,
+) -> dict[str, tuple[SettingsField, str]]:
     """Return key -> (field, tab_name) map for value-bearing settings fields."""
-    tabs: List[SettingsTab]
+    tabs: list[SettingsTab]
     if tab_name:
         tab = get_settings_tab(tab_name)
         if not tab:
@@ -314,14 +346,16 @@ def get_settings_field_map(tab_name: Optional[str] = None) -> Dict[str, tuple[Se
     else:
         tabs = get_all_settings_tabs()
 
-    field_map: Dict[str, tuple[SettingsField, str]] = {}
+    field_map: dict[str, tuple[SettingsField, str]] = {}
     for tab in tabs:
-        for field in _iter_value_fields(tab):
-            field_map[field.key] = (field, tab.name)
+        for settings_field in _iter_value_fields(tab):
+            field_map[settings_field.key] = (settings_field, tab.name)
     return field_map
 
 
-def get_user_overridable_fields(tab_name: Optional[str] = None) -> Dict[str, tuple[SettingsField, str]]:
+def get_user_overridable_fields(
+    tab_name: str | None = None,
+) -> dict[str, tuple[SettingsField, str]]:
     """Return key -> (field, tab_name) map for fields marked user_overridable."""
     field_map = get_settings_field_map(tab_name=tab_name)
     return {
@@ -331,7 +365,7 @@ def get_user_overridable_fields(tab_name: Optional[str] = None) -> Dict[str, tup
     }
 
 
-def list_registered_settings() -> List[str]:
+def list_registered_settings() -> list[str]:
     """List all registered settings tab names."""
     return list(_SETTINGS_REGISTRY.keys())
 
@@ -339,6 +373,7 @@ def list_registered_settings() -> List[str]:
 def _get_config_dir() -> Path:
     """Get the config directory path."""
     from shelfmark.config.env import CONFIG_DIR
+
     return Path(CONFIG_DIR)
 
 
@@ -348,11 +383,21 @@ def _get_config_file_path(tab_name: str) -> Path:
     # Core settings tabs share the main settings.json file
     if tab_name in ("general", "search_mode"):
         return config_dir / "settings.json"
-    # Sanitize tab_name to prevent path traversal
-    safe_name = Path(tab_name).name
+
+    # Plugin config file names should match their tab names exactly after
+    # filename sanitization, so request input cannot escape the plugins folder.
+    safe_name = secure_filename(tab_name)
     if not safe_name or safe_name != tab_name:
-        raise ValueError(f"Invalid tab name: {tab_name}")
-    return config_dir / "plugins" / f"{safe_name}.json"
+        msg = f"Invalid tab name: {tab_name}"
+        raise ValueError(msg)
+
+    plugins_dir = (config_dir / "plugins").resolve(strict=False)
+    config_path = (plugins_dir / f"{safe_name}.json").resolve(strict=False)
+    if not config_path.is_relative_to(plugins_dir):
+        msg = f"Invalid tab name: {tab_name}"
+        raise ValueError(msg)
+
+    return config_path
 
 
 def _ensure_config_dir(tab_name: str) -> None:
@@ -361,21 +406,21 @@ def _ensure_config_dir(tab_name: str) -> None:
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
 
-def load_config_file(tab_name: str) -> Dict[str, Any]:
+def load_config_file(tab_name: str) -> dict[str, Any]:
     config_path = _get_config_file_path(tab_name)
 
     if not config_path.exists():
         return {}
 
     try:
-        with open(config_path, 'r') as f:
+        with config_path.open() as f:
             return json.load(f)
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in config file {config_path}: {e}")
+    except json.JSONDecodeError:
+        logger.exception("Invalid JSON in config file %s", config_path)
         return {}
 
 
-def save_config_file(tab_name: str, values: Dict[str, Any]) -> bool:
+def save_config_file(tab_name: str, values: dict[str, Any]) -> bool:
     try:
         _ensure_config_dir(tab_name)
         config_path = _get_config_file_path(tab_name)
@@ -384,14 +429,15 @@ def save_config_file(tab_name: str, values: Dict[str, Any]) -> bool:
         existing = load_config_file(tab_name)
         existing.update(values)
 
-        with open(config_path, 'w') as f:
+        with config_path.open("w") as f:
             json.dump(existing, f, indent=2)
 
-        logger.info(f"Saved settings to {config_path}")
-        return True
-    except Exception as e:
-        logger.error(f"Error saving config file for {tab_name}: {e}")
+        logger.info("Saved settings to %s", config_path)
+    except Exception:
+        logger.exception("Error saving config file for %s", tab_name)
         return False
+    else:
+        return True
 
 
 def initialize_default_configs() -> bool:
@@ -404,13 +450,14 @@ def initialize_default_configs() -> bool:
     Returns:
         True if initialization succeeded or was skipped (already initialized),
         False if there was an error accessing the config directory.
+
     """
     try:
         config_dir = _get_config_dir()
 
         # Check if config directory exists and is writable
         if not config_dir.exists():
-            logger.warning(f"Config directory does not exist: {config_dir}")
+            logger.warning("Config directory does not exist: %s", config_dir)
             return False
 
         # Test writability
@@ -419,7 +466,7 @@ def initialize_default_configs() -> bool:
             test_file.touch()
             test_file.unlink()
         except (OSError, PermissionError) as e:
-            logger.warning(f"Config directory is not writable: {config_dir} - {e}")
+            logger.warning("Config directory is not writable: %s - %s", config_dir, e)
             return False
 
         initialized_tabs = []
@@ -442,20 +489,20 @@ def initialize_default_configs() -> bool:
             if defaults:
                 _ensure_config_dir(tab.name)
                 try:
-                    with open(config_path, 'w') as f:
+                    with config_path.open("w") as f:
                         json.dump(defaults, f, indent=2)
                     initialized_tabs.append(tab.name)
-                except Exception as e:
-                    logger.error(f"Failed to initialize config for {tab.name}: {e}")
+                except Exception:
+                    logger.exception("Failed to initialize config for %s", tab.name)
 
         if initialized_tabs:
-            logger.info(f"Initialized default configs for: {initialized_tabs}")
+            logger.info("Initialized default configs for: %s", initialized_tabs)
 
-        return True
-
-    except Exception as e:
-        logger.error(f"Error during config initialization: {e}")
+    except Exception:
+        logger.exception("Error during config initialization")
         return False
+    else:
+        return True
 
 
 def sync_env_to_config() -> None:
@@ -465,24 +512,29 @@ def sync_env_to_config() -> None:
     for tab in get_all_settings_tabs():
         values_to_sync = {}
 
-        for field in _iter_value_fields(tab):
+        for settings_field in _iter_value_fields(tab):
             # Skip fields that don't support ENV vars
-            if not getattr(field, 'env_supported', True):
+            if not getattr(settings_field, "env_supported", True):
                 continue
 
             # Check if ENV var is set
-            env_var_name = field.get_env_var_name()
+            env_var_name = settings_field.get_env_var_name()
             env_value = os.environ.get(env_var_name)
 
             if env_value is not None:
                 # Parse the ENV value to the appropriate type
-                parsed_value = _parse_env_value(env_value, field)
-                values_to_sync[field.key] = parsed_value
+                parsed_value = _parse_env_value(env_value, settings_field)
+                values_to_sync[settings_field.key] = parsed_value
 
         # Save synced values to config file (merge with existing)
         if values_to_sync:
             save_config_file(tab.name, values_to_sync)
-            logger.debug(f"Synced {len(values_to_sync)} ENV values to {tab.name} config: {list(values_to_sync.keys())}")
+            logger.debug(
+                "Synced %s ENV values to %s config: %s",
+                len(values_to_sync),
+                tab.name,
+                list(values_to_sync.keys()),
+            )
 
     migrate_legacy_settings()
     migrate_download_to_browser_settings()
@@ -490,8 +542,7 @@ def sync_env_to_config() -> None:
 
 
 def migrate_mirror_settings() -> None:
-    """
-    Sync AA mirror list when code defaults change between versions.
+    """Sync AA mirror list when code defaults change between versions.
 
     On startup, compares a hash of DEFAULT_AA_MIRRORS against the hash stored
     in the config file. If they differ (i.e., an update shipped new defaults),
@@ -534,10 +585,12 @@ def migrate_mirror_settings() -> None:
 
     # Defaults changed since last startup — push new mirrors to config
     if stored_hash != current_defaults_hash:
-        _save_mirrors({
-            "AA_MIRROR_URLS": normalized_defaults,
-            "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-        })
+        _save_mirrors(
+            {
+                "AA_MIRROR_URLS": normalized_defaults,
+                "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+            }
+        )
         return
 
     # --- Legacy migration (only runs if hash already matches / first time) ---
@@ -547,10 +600,12 @@ def migrate_mirror_settings() -> None:
         normalized = _normalize_list([str(v) for v in raw_list])
         if normalized:
             return
-        _save_mirrors({
-            "AA_MIRROR_URLS": normalized_defaults,
-            "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-        })
+        _save_mirrors(
+            {
+                "AA_MIRROR_URLS": normalized_defaults,
+                "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+            }
+        )
         return
 
     # If saved as a string, convert to list.
@@ -558,15 +613,19 @@ def migrate_mirror_settings() -> None:
         parts = [p.strip() for p in raw_list.split(",") if p.strip()]
         normalized = _normalize_list(parts)
         if normalized:
-            _save_mirrors({
-                "AA_MIRROR_URLS": normalized,
-                "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-            })
+            _save_mirrors(
+                {
+                    "AA_MIRROR_URLS": normalized,
+                    "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+                }
+            )
             return
-        _save_mirrors({
-            "AA_MIRROR_URLS": normalized_defaults,
-            "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-        })
+        _save_mirrors(
+            {
+                "AA_MIRROR_URLS": normalized_defaults,
+                "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+            }
+        )
         return
 
     # If there's legacy additional mirrors, seed the full list.
@@ -574,17 +633,21 @@ def migrate_mirror_settings() -> None:
         additional_parts = [p.strip() for p in raw_additional.split(",") if p.strip()]
         combined = _normalize_list(DEFAULT_AA_MIRRORS + additional_parts)
         if combined:
-            _save_mirrors({
-                "AA_MIRROR_URLS": combined,
-                "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-            })
+            _save_mirrors(
+                {
+                    "AA_MIRROR_URLS": combined,
+                    "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+                }
+            )
             return
 
     # No config at all yet — write defaults
-    _save_mirrors({
-        "AA_MIRROR_URLS": normalized_defaults,
-        "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-    })
+    _save_mirrors(
+        {
+            "AA_MIRROR_URLS": normalized_defaults,
+            "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
+        }
+    )
 
 
 def migrate_legacy_settings() -> None:
@@ -600,7 +663,6 @@ def migrate_legacy_settings() -> None:
     """
     # Load existing downloads config
     downloads_config = load_config_file("downloads")
-    source_config = load_config_file("download_sources")
 
     # Skip migration if already using new settings
     if "FILE_ORGANIZATION" in downloads_config or "DESTINATION" in downloads_config:
@@ -608,9 +670,16 @@ def migrate_legacy_settings() -> None:
 
     # Skip migration if no legacy settings exist (fresh install)
     legacy_keys = {
-        "PROCESSING_MODE", "INGEST_DIR", "LIBRARY_PATH", "USE_BOOK_TITLE",
-        "LIBRARY_TEMPLATE", "PROCESSING_MODE_AUDIOBOOK", "INGEST_DIR_AUDIOBOOK",
-        "LIBRARY_PATH_AUDIOBOOK", "LIBRARY_TEMPLATE_AUDIOBOOK", "TORRENT_HARDLINK",
+        "PROCESSING_MODE",
+        "INGEST_DIR",
+        "LIBRARY_PATH",
+        "USE_BOOK_TITLE",
+        "LIBRARY_TEMPLATE",
+        "PROCESSING_MODE_AUDIOBOOK",
+        "INGEST_DIR_AUDIOBOOK",
+        "LIBRARY_PATH_AUDIOBOOK",
+        "LIBRARY_TEMPLATE_AUDIOBOOK",
+        "TORRENT_HARDLINK",
         "USE_CONTENT_TYPE_DIRECTORIES",
     }
     if not any(key in downloads_config for key in legacy_keys):
@@ -689,11 +758,11 @@ def migrate_legacy_settings() -> None:
     # Save migrated settings
     if migrated_downloads:
         save_config_file("downloads", migrated_downloads)
-        logger.info(f"Migrated download settings: {list(migrated_downloads.keys())}")
+        logger.info("Migrated download settings: %s", list(migrated_downloads.keys()))
 
     if migrated_sources:
         save_config_file("download_sources", migrated_sources)
-        logger.info(f"Migrated content-type routing settings: {list(migrated_sources.keys())}")
+        logger.info("Migrated content-type routing settings: %s", list(migrated_sources.keys()))
 
 
 def migrate_download_to_browser_settings() -> None:
@@ -703,13 +772,17 @@ def migrate_download_to_browser_settings() -> None:
     new_key = "DOWNLOAD_TO_BROWSER_CONTENT_TYPES"
     config_path = _get_config_file_path("downloads")
 
-    legacy_value: Any = None
+    legacy_value: object = None
     legacy_present = False
 
     if legacy_key in downloads_config:
         legacy_value = downloads_config.get(legacy_key)
         legacy_present = True
-    elif new_key not in downloads_config and os.environ.get(new_key) is None and legacy_key in os.environ:
+    elif (
+        new_key not in downloads_config
+        and os.environ.get(new_key) is None
+        and legacy_key in os.environ
+    ):
         legacy_value = os.environ.get(legacy_key)
         legacy_present = True
 
@@ -740,14 +813,14 @@ def migrate_download_to_browser_settings() -> None:
 
     try:
         _ensure_config_dir("downloads")
-        with open(config_path, "w") as f:
+        with config_path.open("w") as f:
             json.dump(updated_downloads, f, indent=2)
         logger.info("Migrated download-to-browser setting to content-type selection")
-    except Exception as exc:
-        logger.error(f"Failed to migrate download-to-browser settings: {exc}")
+    except Exception:
+        logger.exception("Failed to migrate download-to-browser settings")
 
 
-def get_setting_value(field: SettingsField, tab_name: str) -> Any:
+def get_setting_value(field: SettingsField, tab_name: str) -> object:
     if isinstance(field, (ActionButton, HeadingField, CustomComponentField)):
         return None  # Actions and headings don't have values
 
@@ -767,27 +840,25 @@ def get_setting_value(field: SettingsField, tab_name: str) -> Any:
     return field.default
 
 
-def _parse_env_value(value: str, field: SettingsField) -> Any:
+def _parse_env_value(value: str, field: SettingsField) -> object:
     """Parse an environment variable value to the appropriate type."""
     if isinstance(field, CheckboxField):
-        return value.lower() in ('true', '1', 'yes', 'on')
-    elif isinstance(field, NumberField):
+        return value.lower() in ("true", "1", "yes", "on")
+    if isinstance(field, NumberField):
         try:
-            if '.' in value:
+            if "." in value:
                 return float(value)
             return int(value)
         except ValueError:
             return field.default
-    elif isinstance(field, MultiSelectField):
-        return [v.strip() for v in value.split(',') if v.strip()]
-    elif isinstance(field, TagListField):
-        return [v.strip() for v in value.split(',') if v.strip()]
+    elif isinstance(field, (MultiSelectField, TagListField)):
+        return [v.strip() for v in value.split(",") if v.strip()]
     elif isinstance(field, OrderableListField):
         # Parse JSON array: [{"id": "...", "enabled": true}, ...]
         try:
             return json.loads(value)
         except json.JSONDecodeError:
-            logger.warning(f"Invalid JSON for {field.key}, using default")
+            logger.warning("Invalid JSON for %s, using default", field.key)
             return field.default
     elif isinstance(field, TableField):
         # Parse JSON array: [{"col": "value"}, ...]
@@ -795,7 +866,7 @@ def _parse_env_value(value: str, field: SettingsField) -> Any:
             parsed = json.loads(value)
             return parsed if isinstance(parsed, list) else field.default
         except json.JSONDecodeError:
-            logger.warning(f"Invalid JSON for {field.key}, using default")
+            logger.warning("Invalid JSON for %s, using default", field.key)
             return field.default
     else:
         return value
@@ -806,14 +877,18 @@ def is_value_from_env(field: SettingsField) -> bool:
     if isinstance(field, (ActionButton, HeadingField, CustomComponentField)):
         return False
     # UI-only settings never come from ENV (env_supported=False)
-    if not getattr(field, 'env_supported', True):
+    if not getattr(field, "env_supported", True):
         return False
     return field.get_env_var_name() in os.environ
 
 
-def serialize_field(field: SettingsField, tab_name: str, include_value: bool = True) -> Dict[str, Any]:
-    """
-    Serialize a field for API response.
+def serialize_field(
+    field: SettingsField,
+    tab_name: str,
+    *,
+    include_value: bool = True,
+) -> dict[str, Any]:
+    """Serialize a field for API response.
 
     Args:
         field: The settings field.
@@ -822,10 +897,11 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
 
     Returns:
         Dict representation of the field.
+
     """
     # CustomComponentField has a custom structure - handle separately
     if isinstance(field, CustomComponentField):
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "key": field.key,
             "label": field.label,
             "type": field.get_field_type(),
@@ -855,7 +931,7 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
 
     # HeadingField has a different structure - handle separately
     if isinstance(field, HeadingField):
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "key": field.key,
             "type": field.get_field_type(),
             "title": field.title,
@@ -872,25 +948,25 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
             result["universalOnly"] = True
         return result
 
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "key": field.key,
         "label": field.label,
         "type": field.get_field_type(),
-        "description": getattr(field, 'description', ''),
-        "required": getattr(field, 'required', False),
-        "disabled": getattr(field, 'disabled', False),
-        "disabledReason": getattr(field, 'disabled_reason', ''),
-        "requiresRestart": getattr(field, 'requires_restart', False),
-        "userOverridable": getattr(field, 'user_overridable', False),
-        "hiddenInUi": getattr(field, 'hidden_in_ui', False),
+        "description": getattr(field, "description", ""),
+        "required": getattr(field, "required", False),
+        "disabled": getattr(field, "disabled", False),
+        "disabledReason": getattr(field, "disabled_reason", ""),
+        "requiresRestart": getattr(field, "requires_restart", False),
+        "userOverridable": getattr(field, "user_overridable", False),
+        "hiddenInUi": getattr(field, "hidden_in_ui", False),
     }
 
     # Add optional properties if set
-    if getattr(field, 'show_when', None):
+    if getattr(field, "show_when", None):
         result["showWhen"] = field.show_when
-    if getattr(field, 'disabled_when', None):
+    if getattr(field, "disabled_when", None):
         result["disabledWhen"] = field.disabled_when
-    if getattr(field, 'universal_only', False):
+    if getattr(field, "universal_only", False):
         result["universalOnly"] = True
 
     # Add type-specific properties
@@ -961,11 +1037,8 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
                 value = [v.strip() for v in value.split(",") if v.strip()]
             else:
                 value = []
-        elif isinstance(field, TableField):
-            if value is None:
-                value = []
-            elif not isinstance(value, list):
-                value = []
+        elif isinstance(field, TableField) and (value is None or not isinstance(value, list)):
+            value = []
 
         result["value"] = value if value is not None else ""
         result["fromEnv"] = is_value_from_env(field)
@@ -973,7 +1046,11 @@ def serialize_field(field: SettingsField, tab_name: str, include_value: bool = T
     return result
 
 
-def serialize_tab(tab: SettingsTab, include_values: bool = True) -> Dict[str, Any]:
+def serialize_tab(
+    tab: SettingsTab,
+    *,
+    include_values: bool = True,
+) -> dict[str, Any]:
     """Serialize a settings tab for API response."""
     return {
         "name": tab.name,
@@ -981,11 +1058,11 @@ def serialize_tab(tab: SettingsTab, include_values: bool = True) -> Dict[str, An
         "icon": tab.icon,
         "order": tab.order,
         "group": tab.group,
-        "fields": [serialize_field(f, tab.name, include_values) for f in tab.fields],
+        "fields": [serialize_field(f, tab.name, include_value=include_values) for f in tab.fields],
     }
 
 
-def serialize_group(group: SettingsGroup) -> Dict[str, Any]:
+def serialize_group(group: SettingsGroup) -> dict[str, Any]:
     """Serialize a settings group for API response."""
     return {
         "name": group.name,
@@ -995,24 +1072,25 @@ def serialize_group(group: SettingsGroup) -> Dict[str, Any]:
     }
 
 
-def get_all_groups() -> List[SettingsGroup]:
+def get_all_groups() -> list[SettingsGroup]:
     """Get all registered settings groups, sorted by order."""
     return sorted(_GROUPS_REGISTRY.values(), key=lambda g: (g.order, g.name))
 
 
-def serialize_all_settings(include_values: bool = True) -> Dict[str, Any]:
+def serialize_all_settings(*, include_values: bool = True) -> dict[str, Any]:
     """Serialize all settings for API response."""
     tabs = get_all_settings_tabs()
     groups = get_all_groups()
     return {
-        "tabs": [serialize_tab(t, include_values) for t in tabs],
+        "tabs": [serialize_tab(t, include_values=include_values) for t in tabs],
         "groups": [serialize_group(g) for g in groups],
     }
 
 
-def execute_action(tab_name: str, action_key: str, current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """
-    Execute an action button's callback.
+def execute_action(
+    tab_name: str, action_key: str, current_values: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Execute an action button's callback.
 
     Args:
         tab_name: The settings tab name.
@@ -1022,6 +1100,7 @@ def execute_action(tab_name: str, action_key: str, current_values: Optional[Dict
 
     Returns:
         Dict with "success" (bool) and "message" (str).
+
     """
     import inspect
 
@@ -1029,18 +1108,17 @@ def execute_action(tab_name: str, action_key: str, current_values: Optional[Dict
     if not tab:
         return {"success": False, "message": f"Unknown settings tab: {tab_name}"}
 
-    for field in tab.fields:
-        if isinstance(field, ActionButton) and field.key == action_key:
-            if field.callback:
+    for settings_field in tab.fields:
+        if isinstance(settings_field, ActionButton) and settings_field.key == action_key:
+            if settings_field.callback:
                 try:
                     # Check if callback accepts current_values parameter
-                    sig = inspect.signature(field.callback)
+                    sig = inspect.signature(settings_field.callback)
                     if "current_values" in sig.parameters:
-                        return field.callback(current_values=current_values or {})
-                    else:
-                        return field.callback()
+                        return settings_field.callback(current_values=current_values or {})
+                    return settings_field.callback()
                 except Exception as e:
-                    logger.error(f"Action {action_key} failed: {e}")
+                    logger.exception("Action %s failed", action_key)
                     return {"success": False, "message": str(e)}
             else:
                 return {"success": False, "message": "Action has no callback defined"}
@@ -1049,22 +1127,21 @@ def execute_action(tab_name: str, action_key: str, current_values: Optional[Dict
 
 
 def _sync_metadata_provider_selection() -> None:
-    """
-    Sync the METADATA_PROVIDER setting based on enabled providers.
+    """Sync the METADATA_PROVIDER setting based on enabled providers.
 
     Called after saving metadata provider settings to auto-select
     the first enabled provider if the current selection is invalid.
     """
     try:
         from shelfmark.metadata_providers import sync_metadata_provider_selection
+
         sync_metadata_provider_selection()
     except ImportError:
         pass  # Metadata providers module not available
 
 
-def _apply_dns_settings(config) -> None:
-    """
-    Apply DNS settings changes to the network module.
+def _apply_dns_settings(config: Config) -> None:
+    """Apply DNS settings changes to the network module.
 
     This ensures DNS changes take effect immediately without requiring
     a container restart.
@@ -1086,11 +1163,11 @@ def _apply_dns_settings(config) -> None:
     except ImportError:
         pass  # Network module not available
     except Exception as e:
-        logger.warning(f"Failed to apply DNS settings: {e}")
+        logger.warning("Failed to apply DNS settings: %s", e)
 
-def _apply_aa_mirror_settings(config) -> None:
-    """
-    Apply AA mirror settings changes to the network module.
+
+def _apply_aa_mirror_settings(config: Config) -> None:
+    """Apply AA mirror settings changes to the network module.
 
     This ensures AA_BASE_URL / AA_ADDITIONAL_URLS changes take effect immediately
     without requiring a container restart.
@@ -1103,18 +1180,22 @@ def _apply_aa_mirror_settings(config) -> None:
     except ImportError:
         pass  # Network module not available
     except Exception as e:
-        logger.warning(f"Failed to apply AA mirror settings: {e}")
+        logger.warning("Failed to apply AA mirror settings: %s", e)
 
 
-def update_settings(tab_name: str, values: Dict[str, Any]) -> Dict[str, Any]:
+def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
     tab = get_settings_tab(tab_name)
     if not tab:
-        return {"success": False, "message": f"Unknown settings tab: {tab_name}", "updated": [], "requiresRestart": False}
+        return {
+            "success": False,
+            "message": f"Unknown settings tab: {tab_name}",
+            "updated": [],
+            "requiresRestart": False,
+        }
 
     # Build a map of field keys to fields (exclude non-value fields)
     field_map = {
-        key: field
-        for key, (field, _) in get_settings_field_map(tab_name=tab_name).items()
+        key: field for key, (field, _) in get_settings_field_map(tab_name=tab_name).items()
     }
 
     # Filter out values that are set via env vars or unknown
@@ -1140,14 +1221,19 @@ def update_settings(tab_name: str, values: Dict[str, Any]) -> Dict[str, Any]:
         values_to_save[key] = value
 
         # Track if this field requires restart
-        if getattr(field, 'requires_restart', False):
+        if getattr(field, "requires_restart", False):
             restart_required_keys.append(key)
 
     if not values_to_save:
         message = "No settings to update"
         if skipped_env:
             message += f". Skipped (set via env): {', '.join(skipped_env)}"
-        return {"success": True, "message": message, "updated": [], "requiresRestart": False}
+        return {
+            "success": True,
+            "message": message,
+            "updated": [],
+            "requiresRestart": False,
+        }
 
     # Call on_save handler if registered (for custom validation/transformation)
     on_save_handler = get_on_save_handler(tab_name)
@@ -1159,17 +1245,17 @@ def update_settings(tab_name: str, values: Dict[str, Any]) -> Dict[str, Any]:
                     "success": False,
                     "message": result.get("message", "Validation failed"),
                     "updated": [],
-                    "requiresRestart": False
+                    "requiresRestart": False,
                 }
             # Use the transformed values
             values_to_save = result.get("values", values_to_save)
         except Exception as e:
-            logger.error(f"on_save handler for {tab_name} failed: {e}")
+            logger.exception("on_save handler for %s failed", tab_name)
             return {
                 "success": False,
-                "message": f"Save handler error: {str(e)}",
+                "message": f"Save handler error: {e!s}",
                 "updated": [],
-                "requiresRestart": False
+                "requiresRestart": False,
             }
 
     # Save to config file
@@ -1199,10 +1285,13 @@ def update_settings(tab_name: str, values: Dict[str, Any]) -> Dict[str, Any]:
             and "CERTIFICATE_VALIDATION" in values_to_save
         ):
             try:
-                from shelfmark.download.network import _apply_ssl_warning_suppression
+                from shelfmark.download.network import (
+                    _apply_ssl_warning_suppression,
+                )
+
                 _apply_ssl_warning_suppression()
             except Exception as e:
-                logger.warning(f"Failed to apply certificate validation setting: {e}")
+                logger.warning("Failed to apply certificate validation setting: %s", e)
 
         # Apply AA mirror settings changes live (mirrors tab)
         aa_keys = {"AA_BASE_URL", "AA_MIRROR_URLS", "AA_ADDITIONAL_URLS"}
@@ -1230,5 +1319,9 @@ def update_settings(tab_name: str, values: Dict[str, Any]) -> Dict[str, Any]:
             "requiresRestart": requires_restart,
             "restartRequiredFor": restart_required_keys,
         }
-    else:
-        return {"success": False, "message": "Failed to save settings", "updated": [], "requiresRestart": False}
+    return {
+        "success": False,
+        "message": "Failed to save settings",
+        "updated": [],
+        "requiresRestart": False,
+    }

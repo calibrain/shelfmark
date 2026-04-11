@@ -1,17 +1,22 @@
 """Shared helpers for user-overridable settings metadata and payloads."""
 
-from typing import Any
+from importlib import import_module
+from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.settings_registry import load_config_file
-from shelfmark.core.user_db import UserDB
+
+if TYPE_CHECKING:
+    from types import ModuleType
+
+    from shelfmark.core.user_db import UserDB
 
 
-def get_settings_registry():
+def get_settings_registry() -> ModuleType:
     # Ensure settings modules are loaded before reading registry metadata.
-    import shelfmark.config.settings  # noqa: F401
-    import shelfmark.config.security  # noqa: F401
-    import shelfmark.config.notifications_settings  # noqa: F401
-    import shelfmark.config.users_settings  # noqa: F401
+    import_module("shelfmark.config.notifications_settings")
+    import_module("shelfmark.config.security")
+    import_module("shelfmark.config.settings")
+    import_module("shelfmark.config.users_settings")
     from shelfmark.core import settings_registry
 
     return settings_registry
@@ -33,7 +38,8 @@ def build_user_preferences_payload(user_db: UserDB, user_id: int, tab_name: str)
     ordered_fields = get_ordered_user_overridable_fields(tab_name)
     if not ordered_fields:
         tab_label = tab_name.capitalize()
-        raise ValueError(f"{tab_label} settings tab not found")
+        msg = f"{tab_label} settings tab not found"
+        raise ValueError(msg)
 
     tab_config = load_config_file(tab_name)
     user_settings = user_db.get_user_settings(user_id)
@@ -45,7 +51,9 @@ def build_user_preferences_payload(user_db: UserDB, user_id: int, tab_name: str)
 
     for key, field in ordered_fields:
         serialized = settings_registry.serialize_field(field, tab_name, include_value=False)
-        serialized["fromEnv"] = bool(field.env_supported and settings_registry.is_value_from_env(field))
+        serialized["fromEnv"] = bool(
+            field.env_supported and settings_registry.is_value_from_env(field)
+        )
         fields_payload.append(serialized)
 
         global_values[key] = app_config.get(key, field.default)

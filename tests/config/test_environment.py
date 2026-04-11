@@ -4,7 +4,7 @@ Environment and configuration tests.
 These tests verify the application behaves correctly with different
 configuration settings, environment variables, and Docker setups.
 
-Run with: docker exec test-cwabd python3 -m pytest /app/tests/config/test_environment.py -v
+Run with: uv run pytest tests/config/test_environment.py -v
 """
 
 import json
