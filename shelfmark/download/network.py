@@ -16,6 +16,7 @@ from dns.exception import DNSException
 
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import coerce_bool, normalize_optional_text
 from shelfmark.core.utils import normalize_http_url
 
 if TYPE_CHECKING:
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
 
 def _get_no_proxy_patterns() -> list[str]:
     """Get list of NO_PROXY patterns from config."""
-    no_proxy = app_config.get("NO_PROXY", "")
+    no_proxy = normalize_optional_text(app_config.get("NO_PROXY", ""))
     if not no_proxy:
         return []
     return [p.strip().lower() for p in no_proxy.split(",") if p.strip()]
@@ -243,6 +244,32 @@ def _save_state(aa_url: str | None = None, dns_provider: str | None = None) -> N
     if dns_provider:
         state["dns_provider"] = dns_provider
     state["chosen_at"] = datetime.now(UTC).isoformat()
+
+
+def _set_runtime_dns_state(servers: list[str], doh_server: str) -> None:
+    """Update the module DNS state and mirrored config attributes.
+
+    The config singleton's `get()` values still represent persisted/configured
+    settings. These attribute writes are only for runtime consumers that read
+    the live resolver state via attribute access.
+    """
+    global CUSTOM_DNS, DOH_SERVER
+
+    CUSTOM_DNS = list(servers)
+    DOH_SERVER = doh_server
+    runtime_config = cast(Any, app_config)
+    runtime_config.CUSTOM_DNS = CUSTOM_DNS
+    runtime_config.DOH_SERVER = DOH_SERVER
+
+
+def _get_configured_aa_url() -> str:
+    """Return the configured AA base URL normalized for runtime use."""
+    configured_url = normalize_http_url(
+        normalize_optional_text(app_config.get("AA_BASE_URL", "auto")),
+        default_scheme="https",
+        allow_special=("auto",),
+    )
+    return configured_url or "auto"
 
 
 # AA URL failover state
@@ -856,10 +883,7 @@ def switch_dns_provider() -> bool:
 
         _current_dns_index += 1
         name, servers, doh = DNS_PROVIDERS[_current_dns_index]
-        CUSTOM_DNS = servers
-        DOH_SERVER = doh
-        app_config.CUSTOM_DNS = servers
-        app_config.DOH_SERVER = doh
+        _set_runtime_dns_state(servers, doh)
 
         logger.warning("Switched DNS provider to: %s (using DoH)", name)
         _save_state(dns_provider=name)
@@ -895,13 +919,7 @@ def rotate_dns_and_reset_aa() -> bool:
         return False
     # Reset AA URL to first available auto option if using auto AA
     global _aa_base_url, _current_aa_url_index
-    configured_url = normalize_http_url(
-        app_config.get("AA_BASE_URL", "auto"),
-        default_scheme="https",
-        allow_special=("auto",),
-    )
-    if not configured_url:
-        configured_url = "auto"
+    configured_url = _get_configured_aa_url()
 
     if configured_url == "auto":
         # Auto mode always resets to the first mirror to restart the cascade
@@ -939,17 +957,18 @@ def set_dns_provider(
     provider = provider.lower().strip()
 
     # Determine DoH preference - use provided value or fall back to config setting
-    doh_enabled = use_doh if use_doh is not None else app_config.get("USE_DOH", True)
+    doh_enabled = (
+        use_doh
+        if use_doh is not None
+        else coerce_bool(app_config.get("USE_DOH", True), default=True)
+    )
 
     with _dns_switch_lock:
         if provider == "system":
             # Use system DNS only - no custom resolver, no failover rotation
             _current_dns_index = -1
             _dns_exhausted_logged = False
-            CUSTOM_DNS = []
-            DOH_SERVER = ""
-            app_config.CUSTOM_DNS = []
-            app_config.DOH_SERVER = ""
+            _set_runtime_dns_state([], "")
             # Restore original system getaddrinfo
             socket.getaddrinfo = original_getaddrinfo
             logger.info("DNS set to system mode (using OS default resolver)")
@@ -961,10 +980,7 @@ def set_dns_provider(
             # Note: Auto mode always uses DoH when rotating for reliability
             _current_dns_index = -1
             _dns_exhausted_logged = False
-            CUSTOM_DNS = []
-            DOH_SERVER = ""
-            app_config.CUSTOM_DNS = []
-            app_config.DOH_SERVER = ""
+            _set_runtime_dns_state([], "")
             logger.info("DNS set to auto mode (system DNS, will rotate on failure with DoH)")
             init_dns_resolvers()
             _notify_dns_rotation("auto", [], "")
@@ -975,10 +991,7 @@ def set_dns_provider(
                 logger.warning("Manual DNS requested but no servers provided")
                 return False
             _current_dns_index = -1  # Not using preset providers
-            CUSTOM_DNS = manual_servers
-            DOH_SERVER = ""  # No DoH for manual servers
-            app_config.CUSTOM_DNS = manual_servers
-            app_config.DOH_SERVER = ""
+            _set_runtime_dns_state(manual_servers, "")
             logger.info("DNS set to manual servers: %s", manual_servers)
             init_dns_resolvers()
             _notify_dns_rotation("manual", manual_servers, "")
@@ -989,11 +1002,9 @@ def set_dns_provider(
             if name == provider:
                 _current_dns_index = i
                 _dns_exhausted_logged = False
-                CUSTOM_DNS = servers
                 # Only set DoH server if DoH is enabled
-                DOH_SERVER = doh if doh_enabled else ""
-                app_config.CUSTOM_DNS = servers
-                app_config.DOH_SERVER = DOH_SERVER
+                runtime_doh_server = doh if doh_enabled else ""
+                _set_runtime_dns_state(servers, runtime_doh_server)
                 doh_status = "DoH enabled" if doh_enabled else "standard DNS"
                 logger.info("DNS set to: %s (%s)", name, doh_status)
                 _save_state(dns_provider=name)
@@ -1007,21 +1018,13 @@ def set_dns_provider(
 
 def init_dns_resolvers() -> None:
     """Initialize DNS resolvers based on configuration."""
-    global CUSTOM_DNS, DOH_SERVER
-
     if _is_auto_dns_mode():
         if _current_dns_index >= 0:
             name, servers, doh = DNS_PROVIDERS[_current_dns_index]
-            CUSTOM_DNS = servers
-            DOH_SERVER = doh
-            app_config.CUSTOM_DNS = servers
-            app_config.DOH_SERVER = doh
+            _set_runtime_dns_state(servers, doh)
             logger.info("Using DNS provider: %s (DoH enabled)", name)
         else:
-            CUSTOM_DNS = []
-            DOH_SERVER = ""
-            app_config.CUSTOM_DNS = []
-            app_config.DOH_SERVER = ""
+            _set_runtime_dns_state([], "")
             logger.debug("Using system DNS (auto mode - will switch on failure)")
             socket.getaddrinfo = cast("Any", create_system_failover_getaddrinfo())
             return
@@ -1043,7 +1046,7 @@ def _get_initial_dns_config() -> tuple[str, list[str] | None, bool]:
 
     """
     provider = str(app_config.get("CUSTOM_DNS", "auto")).lower().strip()
-    use_doh = app_config.get("USE_DOH", True)
+    use_doh = coerce_bool(app_config.get("USE_DOH", True), default=True)
     manual_servers = None
 
     # Check for manual DNS servers in config
@@ -1095,13 +1098,7 @@ def _initialize_aa_state() -> None:
     _aa_urls = _build_aa_urls()
 
     # Get configured base URL from config
-    configured_url = normalize_http_url(
-        app_config.get("AA_BASE_URL", "auto"),
-        default_scheme="https",
-        allow_special=("auto",),
-    )
-    if not configured_url:
-        configured_url = "auto"
+    configured_url = _get_configured_aa_url()
 
     # If AA_BASE_URL is pinned to a custom URL that's not in the mirror list, we still
     # want to treat it as the active base (and rewrite known mirror links to it).
@@ -1222,14 +1219,7 @@ def get_aa_base_url() -> str:
 
 def is_aa_auto_mode() -> bool:
     """Return True when AA_BASE_URL is set to 'auto' (mirror failover enabled)."""
-    configured_url = normalize_http_url(
-        app_config.get("AA_BASE_URL", "auto"),
-        default_scheme="https",
-        allow_special=("auto",),
-    )
-    if not configured_url:
-        configured_url = "auto"
-    return configured_url == "auto"
+    return _get_configured_aa_url() == "auto"
 
 
 def get_available_aa_urls() -> list[str]:
