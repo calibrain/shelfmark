@@ -319,7 +319,8 @@ def _parse_book_info_page(
     data = soup.select_one("body > main > div:nth-of-type(1)")
 
     if not data:
-        raise RuntimeError(f"Failed to parse book info for ID: {book_id}")
+        msg = f"Failed to parse book info for ID: {book_id}"
+        raise RuntimeError(msg)
 
     preview: str = ""
 

@@ -2477,13 +2477,15 @@ def _resolve_metadata_provider(provider_name: str) -> MetadataProvider:
     )
 
     if not is_provider_registered(provider_name):
-        raise ValueError(f"Unknown metadata provider: {provider_name}")
+        msg = f"Unknown metadata provider: {provider_name}"
+        raise ValueError(msg)
 
     kwargs = get_provider_kwargs(provider_name)
     prov = get_provider(provider_name, **kwargs)
 
     if not prov.is_available():
-        raise RuntimeError(f"Provider '{provider_name}' is not available")
+        msg = f"Provider '{provider_name}' is not available"
+        raise RuntimeError(msg)
 
     return prov
 

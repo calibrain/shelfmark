@@ -2066,7 +2066,8 @@ class HardcoverProvider(MetadataProvider):
         try:
             return int(value.split(":", 1)[1])
         except (IndexError, ValueError) as exc:
-            raise ValueError(f"Invalid Hardcover {label}") from exc
+            msg = f"Invalid Hardcover {label}"
+            raise ValueError(msg) from exc
 
     @staticmethod
     def _check_mutation_result(result: Any, key: str, *, check_error: bool = True) -> None:
@@ -2443,7 +2444,8 @@ class HardcoverProvider(MetadataProvider):
             else:
                 logger.exception("Hardcover API HTTP error")
                 if raise_on_error:
-                    raise RuntimeError(f"Hardcover API HTTP error: {e}") from e
+                    msg = f"Hardcover API HTTP error: {e}"
+                    raise RuntimeError(msg) from e
             return None
         except HardcoverGraphQLError:
             raise

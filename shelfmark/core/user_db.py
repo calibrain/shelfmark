@@ -274,7 +274,8 @@ class UserDB:
     ) -> dict[str, Any]:
         """Create a new user. Raises ValueError if username or oidc_subject already exists."""
         if auth_source not in self._VALID_AUTH_SOURCES:
-            raise ValueError(f"Invalid auth_source: {auth_source}")
+            msg = f"Invalid auth_source: {auth_source}"
+            raise ValueError(msg)
         with self._lock:
             conn = self._connect()
             try:
@@ -297,7 +298,8 @@ class UserDB:
                 user_id = cursor.lastrowid
                 return self._get_user_by_id(conn, user_id)
             except sqlite3.IntegrityError as e:
-                raise ValueError(f"User already exists: {e}") from e
+                msg = f"User already exists: {e}"
+                raise ValueError(msg) from e
             finally:
                 conn.close()
 
@@ -345,15 +347,18 @@ class UserDB:
             return
         for k in kwargs:
             if k not in self._ALLOWED_UPDATE_COLUMNS:
-                raise ValueError(f"Invalid column: {k}")
+                msg = f"Invalid column: {k}"
+                raise ValueError(msg)
         if "auth_source" in kwargs and kwargs["auth_source"] not in self._VALID_AUTH_SOURCES:
-            raise ValueError(f"Invalid auth_source: {kwargs['auth_source']}")
+            msg = f"Invalid auth_source: {kwargs['auth_source']}"
+            raise ValueError(msg)
         with self._lock:
             conn = self._connect()
             try:
                 # Verify user exists
                 if not self._get_user_by_id(conn, user_id):
-                    raise ValueError(f"User {user_id} not found")
+                    msg = f"User {user_id} not found"
+                    raise ValueError(msg)
                 sets = ", ".join(f"{k} = ?" for k in kwargs)
                 values = [*list(kwargs.values()), user_id]
                 conn.execute(f"UPDATE users SET {sets} WHERE id = ?", values)
@@ -462,7 +467,8 @@ class UserDB:
         try:
             return json.dumps(value)
         except TypeError as exc:
-            raise ValueError(f"{field} must be JSON-serializable") from exc
+            msg = f"{field} must be JSON-serializable"
+            raise ValueError(msg) from exc
 
     @staticmethod
     def _parse_request_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -544,7 +550,8 @@ class UserDB:
         ).fetchone()
         parsed = self._parse_request_row(row)
         if parsed is None:
-            raise ValueError(f"Request {request_id} not found after creation")
+            msg = f"Request {request_id} not found after creation"
+            raise ValueError(msg)
         return parsed
 
     def create_request(
@@ -705,7 +712,8 @@ class UserDB:
         if not kwargs:
             request = self.get_request(request_id)
             if request is None:
-                raise ValueError(f"Request {request_id} not found")
+                msg = f"Request {request_id} not found"
+                raise ValueError(msg)
             if expected_current_status is not None:
                 normalized_expected_status = normalize_request_status(expected_current_status)
                 if request["status"] != normalized_expected_status:
@@ -715,7 +723,8 @@ class UserDB:
 
         for key in kwargs:
             if key not in self._ALLOWED_REQUEST_UPDATE_COLUMNS:
-                raise ValueError(f"Invalid request column: {key}")
+                msg = f"Invalid request column: {key}"
+                raise ValueError(msg)
 
         with self._lock:
             conn = self._connect()
@@ -726,7 +735,8 @@ class UserDB:
                 ).fetchone()
                 current = self._parse_request_row(row)
                 if current is None:
-                    raise ValueError(f"Request {request_id} not found")
+                    msg = f"Request {request_id} not found"
+                    raise ValueError(msg)
 
                 if expected_current_status is not None:
                     normalized_expected_status = normalize_request_status(expected_current_status)
@@ -793,7 +803,8 @@ class UserDB:
                 ).fetchone()
                 parsed = self._parse_request_row(updated_row)
                 if parsed is None:
-                    raise ValueError(f"Request {request_id} not found after update")
+                    msg = f"Request {request_id} not found after update"
+                    raise ValueError(msg)
                 return parsed
             finally:
                 conn.close()
@@ -875,7 +886,8 @@ class UserDB:
                 ).fetchone()
                 current = self._parse_request_row(row)
                 if current is None:
-                    raise ValueError(f"Request {request_id} not found")
+                    msg = f"Request {request_id} not found"
+                    raise ValueError(msg)
 
                 conn.execute(
                     """
@@ -903,7 +915,8 @@ class UserDB:
                 conn.commit()
                 parsed = self._parse_request_row(updated_row)
                 if parsed is None:
-                    raise ValueError(f"Request {request_id} not found after rollback")
+                    msg = f"Request {request_id} not found after rollback"
+                    raise ValueError(msg)
                 return parsed
             finally:
                 conn.close()

@@ -61,13 +61,16 @@ class EmailSmtpConfig:
 
 def _parse_int(value: Any, label: str, *, minimum: int = 1) -> int:
     if value is None or value == "":
-        raise EmailOutputError(f"{label} is required")
+        msg = f"{label} is required"
+        raise EmailOutputError(msg)
     try:
         parsed = int(value)
     except (TypeError, ValueError) as exc:
-        raise EmailOutputError(f"{label} must be a number") from exc
+        msg = f"{label} must be a number"
+        raise EmailOutputError(msg) from exc
     if parsed < minimum:
-        raise EmailOutputError(f"{label} must be >= {minimum}")
+        msg = f"{label} must be >= {minimum}"
+        raise EmailOutputError(msg)
     return parsed
 
 
@@ -78,9 +81,8 @@ def build_email_smtp_config(values: Mapping[str, Any]) -> EmailSmtpConfig:
 
     security = str(values.get("EMAIL_SMTP_SECURITY", SECURITY_STARTTLS) or "").strip().lower()
     if security not in ALLOWED_SECURITY:
-        raise EmailOutputError(
-            f"SMTP security must be one of: {', '.join(sorted(ALLOWED_SECURITY))}"
-        )
+        msg = f"SMTP security must be one of: {', '.join(sorted(ALLOWED_SECURITY))}"
+        raise EmailOutputError(msg)
 
     username = str(values.get("EMAIL_SMTP_USERNAME", "") or "").strip()
     password = values.get("EMAIL_SMTP_PASSWORD", "") or ""
@@ -230,7 +232,8 @@ def test_smtp_connection(smtp_config: EmailSmtpConfig) -> None:
         msg = "SMTP authentication failed"
         raise EmailOutputError(msg) from exc
     except (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected, TimeoutError, OSError) as exc:
-        raise EmailOutputError(f"Could not connect to SMTP server: {exc}") from exc
+        msg = f"Could not connect to SMTP server: {exc}"
+        raise EmailOutputError(msg) from exc
     finally:
         if smtp is not None:
             with suppress(Exception):
@@ -271,7 +274,8 @@ def send_email_message(smtp_config: EmailSmtpConfig, message: EmailMessage) -> N
         msg = "SMTP authentication failed"
         raise EmailOutputError(msg) from exc
     except (smtplib.SMTPException, TimeoutError, OSError) as exc:
-        raise EmailOutputError(f"Failed to send email: {exc}") from exc
+        msg = f"Failed to send email: {exc}"
+        raise EmailOutputError(msg) from exc
     finally:
         if smtp is not None:
             with suppress(Exception):
