@@ -1,3 +1,5 @@
+"""Helpers for staging downloaded files before post-processing."""
+
 from __future__ import annotations
 
 import hashlib

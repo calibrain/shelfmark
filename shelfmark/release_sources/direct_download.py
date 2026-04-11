@@ -1204,6 +1204,7 @@ class DirectDownloadSource(ReleaseSource):
     supported_content_types: ClassVar[list[str]] = ["ebook"]  # Direct downloads only support ebooks
 
     def __init__(self) -> None:
+        """Initialize per-instance search state for direct downloads."""
         # Tracks which search method was used in the last search() call
         # "isbn" = ISBN search returned results, "title_author" = title+author was used
         self._last_search_type: str = "title_author"
@@ -1307,6 +1308,7 @@ class DirectDownloadSource(ReleaseSource):
 
         Args:
             book: Book metadata from provider
+            plan: Precomputed search plan with normalized queries and filters.
             expand_search: If True, skip ISBN and use title+author directly
             languages: Language codes to filter by (overrides book.language/config)
             content_type: Ignored - Direct download uses format filtering instead
@@ -1477,7 +1479,7 @@ class DirectDownloadHandler(DownloadHandler):
         progress_callback: Callable[[float], None],
         status_callback: Callable[[str, str | None], None],
     ) -> str | None:
-        """Internal method to execute the download with fetched browse record.
+        """Execute the direct-download flow with a fetched browse record.
 
         This contains the core download logic: cascade through sources,
         handle bypass, move to final location.

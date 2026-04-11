@@ -1,3 +1,5 @@
+"""Booklore output integration for uploading completed downloads."""
+
 from __future__ import annotations
 
 import os
@@ -53,6 +55,8 @@ class BookloreError(Exception):
 
 @dataclass(frozen=True)
 class BookloreConfig:
+    """Configuration required to upload files into Booklore."""
+
     base_url: str
     username: str
     password: str
@@ -85,6 +89,7 @@ def build_booklore_config(
     values: Mapping[str, Any],
     user_id: int | None = None,
 ) -> BookloreConfig:
+    """Build and validate the effective Booklore configuration."""
     base_url = str(values.get("BOOKLORE_HOST", "")).strip()
     username = str(values.get("BOOKLORE_USERNAME", "")).strip()
     password = values.get("BOOKLORE_PASSWORD", "") or ""
@@ -139,6 +144,7 @@ def build_booklore_config(
 
 
 def booklore_login(booklore_config: BookloreConfig) -> str:
+    """Authenticate with Booklore and return an API token."""
     url = f"{booklore_config.base_url}/api/v1/auth/login"
     payload = {
         "username": booklore_config.username,
@@ -182,6 +188,7 @@ def booklore_login(booklore_config: BookloreConfig) -> str:
 
 
 def booklore_list_libraries(booklore_config: BookloreConfig, token: str) -> list[dict[str, Any]]:
+    """Fetch the available Booklore libraries for the current user."""
     url = f"{booklore_config.base_url}/api/v1/libraries"
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -200,6 +207,7 @@ def booklore_list_libraries(booklore_config: BookloreConfig, token: str) -> list
 
 
 def booklore_upload_file(booklore_config: BookloreConfig, token: str, file_path: Path) -> None:
+    """Upload a completed file into Booklore."""
     if booklore_config.upload_to_bookdrop:
         url = f"{booklore_config.base_url}/api/v1/files/upload/bookdrop"
         params = None
@@ -244,6 +252,7 @@ def booklore_upload_file(booklore_config: BookloreConfig, token: str, file_path:
 
 
 def booklore_refresh_library(booklore_config: BookloreConfig, token: str) -> None:
+    """Trigger a Booklore library refresh after upload."""
     url = f"{booklore_config.base_url}/api/v1/libraries/{booklore_config.library_id}/refresh"
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -464,6 +473,7 @@ def process_booklore_output(
     *,
     preserve_source_on_failure: bool = False,
 ) -> str | None:
+    """Process a completed download through the Booklore output."""
     return _post_process_booklore(
         temp_file,
         task,

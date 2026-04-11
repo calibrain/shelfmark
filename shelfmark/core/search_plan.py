@@ -1,3 +1,5 @@
+"""Helpers for building release search plans from metadata and user input."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,6 +28,7 @@ class ReleaseSearchVariant:
 
     @property
     def query(self) -> str:
+        """Return the combined title-and-author query for this variant."""
         return " ".join(part for part in [self.title, self.author] if part).strip()
 
 
@@ -44,6 +47,7 @@ class ReleaseSearchPlan:
 
     @property
     def primary_query(self) -> str:
+        """Return the first expanded title query, if one exists."""
         return self.title_variants[0].query if self.title_variants else ""
 
 
@@ -94,6 +98,7 @@ def build_release_search_plan(
     indexers: list[str] | None = None,
     source_filters: SearchFilters | None = None,
 ) -> ReleaseSearchPlan:
+    """Build normalized search variants shared across release sources."""
     resolved_languages = _normalize_languages(languages)
 
     resolved_manual_query = None

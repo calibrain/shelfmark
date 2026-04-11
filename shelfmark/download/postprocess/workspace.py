@@ -1,3 +1,5 @@
+"""Workspace helpers for managing mutable post-processing directories."""
+
 from __future__ import annotations
 
 import shutil
@@ -48,7 +50,7 @@ def is_within_tmp_dir(path: Path) -> bool:
 
 
 def is_managed_workspace_path(path: Path) -> bool:
-    """True if Shelfmark should treat this path as mutable.
+    """Return whether Shelfmark should treat this path as mutable.
 
     The managed workspace is `TMP_DIR`. Anything outside it should be treated as
     read-only for safety (e.g. torrent seeding directories).
@@ -90,6 +92,7 @@ def cleanup_output_staging(
     task: DownloadTask,
     cleanup_paths: list[Path] | None = None,
 ) -> None:
+    """Clean up staging paths created for output processing."""
     if output_plan.stage_action != STAGE_NONE:
         cleanup_target = output_plan.staging_dir
         if output_plan.staging_dir == _tmp_dir():

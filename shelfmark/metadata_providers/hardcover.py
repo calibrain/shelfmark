@@ -1516,7 +1516,7 @@ class HardcoverProvider(MetadataProvider):
 
     @cacheable(ttl=120, key_prefix="hardcover:user_lists")
     def _get_user_lists_cached(self, _cache_user_id: str) -> list[dict[str, str]]:
-        """Cached wrapper keyed by Hardcover user id to avoid cross-user cache leakage."""
+        """Return cached user lists keyed by Hardcover user id."""
         return self._fetch_user_lists()
 
     def _fetch_current_user_books_by_status(
@@ -1544,7 +1544,7 @@ class HardcoverProvider(MetadataProvider):
         page: int,
         limit: int,
     ) -> SearchResult:
-        """Cached wrapper keyed by Hardcover user id and status shelf."""
+        """Return cached status-shelf books keyed by user id and shelf."""
         return self._fetch_user_books_by_status(status_id, page, limit)
 
     def _fetch_user_books_by_status(self, status_id: int, page: int, limit: int) -> SearchResult:
@@ -2146,7 +2146,7 @@ class HardcoverProvider(MetadataProvider):
 
     @cacheable(ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="hardcover:search")
     def _search_cached(self, cache_key: str, options: MetadataSearchOptions) -> SearchResult:
-        """Cached search implementation."""
+        """Return cached Hardcover search results."""
         # Determine query and fields based on custom search fields
         # Note: Hardcover API requires 'weights' when using 'fields' parameter
         author_value = options.fields.get("author", "").strip()

@@ -1358,7 +1358,7 @@ def _get_slow_source_defaults() -> list[dict[str, str | bool]]:
     "download_sources", "Download Sources", icon="download", order=21, group="direct_download"
 )
 def download_source_settings() -> list[SettingsField]:
-    """Settings for download source behavior."""
+    """Return settings for download source behavior."""
     return [
         PasswordField(
             key="AA_DONATOR_KEY",
@@ -1466,7 +1466,7 @@ def download_source_settings() -> list[SettingsField]:
     "cloudflare_bypass", "Cloudflare Bypass", icon="shield", order=22, group="direct_download"
 )
 def cloudflare_bypass_settings() -> list[SettingsField]:
-    """Settings for Cloudflare bypass behavior."""
+    """Return settings for Cloudflare bypass behavior."""
     return [
         CheckboxField(
             key="USE_CF_BYPASS",

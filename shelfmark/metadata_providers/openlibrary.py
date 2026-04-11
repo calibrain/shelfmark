@@ -148,7 +148,7 @@ class OpenLibraryProvider(MetadataProvider):
         ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="openlibrary:search"
     )
     def _search_cached(self, cache_key: str, options: MetadataSearchOptions) -> list[BookMetadata]:
-        """Cached search implementation."""
+        """Return cached Open Library search results."""
         _rate_limiter.wait_if_needed()
 
         # Build query params

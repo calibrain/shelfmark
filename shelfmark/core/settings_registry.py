@@ -114,6 +114,8 @@ class TagListField(FieldBase):
 
 @dataclass
 class OrderableListField(FieldBase):
+    """Settings field for ordered, toggleable option lists."""
+
     # Options can be a list or a callable that returns a list (for lazy evaluation)
     # Each option: {id, label, description?, disabledReason?, isLocked?, section?, isPinned?}
     # - isLocked: toggle is disabled (can't enable/disable)
@@ -154,9 +156,11 @@ class CustomComponentField:
     universal_only: bool = False
 
     def get_field_type(self) -> str:
+        """Return the serialized field type for this custom component."""
         return "CustomComponentField"
 
     def get_bind_keys(self) -> list[str]:
+        """Return the config keys this custom component reads or writes."""
         if self.bind_keys:
             return self.bind_keys
         return [f.key for f in self.value_fields if getattr(f, "key", None)]
@@ -164,6 +168,8 @@ class CustomComponentField:
 
 @dataclass
 class ActionButton:
+    """Definition for a custom action button in the settings UI."""
+
     key: str  # Action identifier
     label: str  # Button text
     description: str = ""  # Help text
@@ -181,6 +187,7 @@ class ActionButton:
     )
 
     def get_field_type(self) -> str:
+        """Return the serialized field type for this action button."""
         return "ActionButton"
 
 
@@ -206,6 +213,7 @@ class HeadingField:
     universal_only: bool = False  # Only show in Universal search mode (hide in Direct mode)
 
     def get_field_type(self) -> str:
+        """Return the serialized field type for this heading field."""
         return "HeadingField"
 
 
@@ -255,6 +263,7 @@ _REGISTRY_LOCK = Lock()
 
 
 def register_group(name: str, display_name: str, icon: str | None = None, order: int = 100) -> None:
+    """Register a settings group used to organize tabs in the UI."""
     with _REGISTRY_LOCK:
         group = SettingsGroup(
             name=name,
@@ -273,6 +282,7 @@ def register_settings(
     order: int = 100,
     group: str | None = None,
 ) -> Callable[[Callable[[], list[SettingsField]]], Callable[[], list[SettingsField]]]:
+    """Register a settings tab and its field factory."""
     def decorator(func: Callable[[], list[SettingsField]]) -> Callable[[], list[SettingsField]]:
         with _REGISTRY_LOCK:
             fields = func()
@@ -297,6 +307,7 @@ def register_settings(
 
 
 def register_on_save(tab_name: str, handler: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
+    """Register an on-save hook for a settings tab."""
     with _REGISTRY_LOCK:
         _ON_SAVE_HANDLERS[tab_name] = handler
         logger.debug("Registered on_save handler for tab: %s", tab_name)
@@ -407,6 +418,7 @@ def _ensure_config_dir(tab_name: str) -> None:
 
 
 def load_config_file(tab_name: str) -> dict[str, Any]:
+    """Load a settings tab config file, returning an empty dict on failure."""
     config_path = _get_config_file_path(tab_name)
 
     if not config_path.exists():
@@ -421,6 +433,7 @@ def load_config_file(tab_name: str) -> dict[str, Any]:
 
 
 def save_config_file(tab_name: str, values: dict[str, Any]) -> bool:
+    """Merge and save persisted settings values for a tab."""
     try:
         _ensure_config_dir(tab_name)
         config_path = _get_config_file_path(tab_name)
@@ -506,6 +519,7 @@ def initialize_default_configs() -> bool:
 
 
 def sync_env_to_config() -> None:
+    """Sync supported environment-backed settings into config files."""
     # Initialize default configs first (for fresh installs)
     initialize_default_configs()
 
@@ -821,6 +835,7 @@ def migrate_download_to_browser_settings() -> None:
 
 
 def get_setting_value(field: SettingsField, tab_name: str) -> object:
+    """Resolve the effective value for a settings field."""
     if isinstance(field, (ActionButton, HeadingField, CustomComponentField)):
         return None  # Actions and headings don't have values
 
@@ -1184,6 +1199,7 @@ def _apply_aa_mirror_settings(config: Config) -> None:
 
 
 def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
+    """Validate, persist, and post-process updates for a settings tab."""
     tab = get_settings_tab(tab_name)
     if not tab:
         return {

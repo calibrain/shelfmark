@@ -47,7 +47,7 @@ def with_retry(
     max_delay: float = 10.0,
     jitter: float = 0.5,
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
-    """Decorator for retrying API calls with exponential backoff.
+    """Retry API calls with exponential backoff.
 
     Args:
         max_attempts: Maximum number of attempts (default 3)
@@ -288,6 +288,7 @@ class DownloadClient(ABC):
             name: Display name for the download
             category: Category/label for organization (None = client default)
             expected_hash: Optional info_hash hint (torrents only)
+            **kwargs: Client-specific options passed through to the implementation.
 
         Returns:
             Client-specific download ID (hash for torrents, ID for NZBGet).
@@ -361,7 +362,7 @@ _CLIENTS: dict[str, list[type[DownloadClient]]] = {}
 def register_client(
     protocol: str,
 ) -> Callable[[type[DownloadClient]], type[DownloadClient]]:
-    """Decorator to register a download client for a protocol.
+    """Register a download client for a protocol.
 
     Multiple clients can be registered for the same protocol.
     The `is_configured()` method determines which one is active.

@@ -54,6 +54,7 @@ sanitize_path_component = sanitize_filename
 
 
 def format_series_position(position: str | float | None) -> str:
+    """Format a series position for naming templates."""
     if position is None:
         return ""
 
@@ -95,6 +96,7 @@ def parse_naming_template(
     *,
     allow_path_separators: bool = True,
 ) -> str:
+    """Render a naming template with Shelfmark metadata placeholders."""
     if not template:
         return ""
 
@@ -194,6 +196,7 @@ def build_library_path(
     metadata: Mapping[str, str | int | float | None],
     extension: str | None = None,
 ) -> Path:
+    """Build a final library path from a template and metadata."""
     relative = parse_naming_template(template, metadata, allow_path_separators=True)
 
     if not relative:

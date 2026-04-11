@@ -117,7 +117,7 @@ class GoogleBooksProvider(MetadataProvider):
         key_prefix="googlebooks:search",
     )
     def _search_cached(self, cache_key: str, options: MetadataSearchOptions) -> list[BookMetadata]:
-        """Cached search implementation."""
+        """Return cached search results for Google Books."""
         # Build query string with Google Books operators
         author_value = options.fields.get("author", "").strip()
         title_value = options.fields.get("title", "").strip()

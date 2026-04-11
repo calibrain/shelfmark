@@ -175,6 +175,7 @@ class UserDB:
     _VALID_AUTH_SOURCES: ClassVar[frozenset[str]] = frozenset(AUTH_SOURCE_SET)
 
     def __init__(self, db_path: str) -> None:
+        """Initialize the user database wrapper for the given SQLite path."""
         self._db_path = db_path
         self._lock = threading.Lock()
 

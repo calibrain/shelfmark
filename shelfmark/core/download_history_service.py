@@ -75,6 +75,7 @@ class DownloadHistoryService:
     """Service for persisted canonical download activity rows."""
 
     def __init__(self, db_path: str) -> None:
+        """Initialize the service with the SQLite history database path."""
         self._db_path = db_path
         self._lock = threading.Lock()
 
@@ -146,6 +147,7 @@ class DownloadHistoryService:
 
     @staticmethod
     def is_retry_available(row: dict[str, Any]) -> bool:
+        """Return whether a persisted download row can be retried."""
         final_status = (
             str(row.get("retry_final_status") or row.get("final_status") or "").strip().lower()
         )
@@ -175,6 +177,7 @@ class DownloadHistoryService:
 
     @staticmethod
     def to_download_payload(row: dict[str, Any]) -> dict[str, Any]:
+        """Build the sidebar/history download payload for a persisted row."""
         return {
             "id": row.get("task_id"),
             "title": row.get("title"),
@@ -211,6 +214,7 @@ class DownloadHistoryService:
 
     @classmethod
     def to_history_row(cls, row: dict[str, Any], *, dismissed_at: str) -> dict[str, Any]:
+        """Build the activity-history payload for a persisted download row."""
         task_id = str(row.get("task_id") or "").strip()
         item_key = cls._to_item_key(task_id)
         download_payload = cls.to_download_payload(row)
@@ -368,6 +372,7 @@ class DownloadHistoryService:
                 conn.close()
 
     def get_by_task_id(self, task_id: str) -> dict[str, Any] | None:
+        """Return a persisted download row for the given task id."""
         normalized_task_id = _normalize_task_id(task_id)
         conn = self._connect()
         try:
@@ -385,6 +390,7 @@ class DownloadHistoryService:
         user_id: int | None,
         limit: int = 200,
     ) -> list[dict[str, Any]]:
+        """Return recent persisted download rows, optionally scoped to one user."""
         normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
         normalized_limit = _normalize_limit(limit, default=200, minimum=1, maximum=1000)
         query = "SELECT * FROM download_history"

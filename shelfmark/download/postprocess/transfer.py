@@ -1,3 +1,5 @@
+"""File transfer helpers for post-processing output delivery."""
+
 from __future__ import annotations
 
 import os
@@ -53,6 +55,7 @@ def should_hardlink(task: DownloadTask) -> bool:
 
 
 def build_metadata_dict(task: DownloadTask) -> dict:
+    """Build template metadata from a download task."""
     return {
         "Author": task.author,
         "Title": task.title,
@@ -67,6 +70,7 @@ def build_metadata_dict(task: DownloadTask) -> dict:
 def build_file_metadata(
     task: DownloadTask, source_file: Path, part_number: str | None = None
 ) -> dict:
+    """Build template metadata for a specific source file."""
     metadata = build_metadata_dict(task)
     metadata["OriginalName"] = source_file.stem
     if part_number is not None:
@@ -167,6 +171,7 @@ def transfer_book_files(
     preserve_source: bool = False,
     organization_mode: str | None = None,
 ) -> tuple[list[Path], str | None, dict[str, int]]:
+    """Transfer discovered book files into their final destination layout."""
     if not book_files:
         return [], "No book files found", {"hardlink": 0, "copy": 0, "move": 0}
 
@@ -337,6 +342,7 @@ def transfer_file_to_library(
     *,
     use_hardlink: bool,
 ) -> str | None:
+    """Transfer a single file into a library path derived from metadata."""
     extension = source_path.suffix.lstrip(".") or task.format
     template_metadata = dict(metadata)
     template_metadata.setdefault("OriginalName", source_path.stem)
@@ -379,6 +385,7 @@ def transfer_directory_to_library(
     *,
     use_hardlink: bool,
 ) -> str | None:
+    """Transfer a directory tree into a library path derived from metadata."""
     content_type = task.content_type.lower() if task.content_type else None
     source_files, _, _, scan_error = scan_directory_tree(source_dir, content_type)
     if scan_error:

@@ -437,7 +437,7 @@ _PROVIDER_KWARGS_FACTORIES: dict[str, Any] = {}  # Callable[[], Dict]
 def register_provider(
     name: str,
 ) -> Callable[[type[MetadataProvider]], type[MetadataProvider]]:
-    """Decorator to register a metadata provider."""
+    """Register a metadata provider."""
 
     def decorator(cls: type[MetadataProvider]) -> type[MetadataProvider]:
         _PROVIDERS[name] = cls
@@ -449,7 +449,7 @@ def register_provider(
 def register_provider_kwargs(
     name: str,
 ) -> Callable[[Callable[[], dict[str, Any]]], Callable[[], dict[str, Any]]]:
-    """Decorator to register a provider's kwargs factory.
+    """Register a provider kwargs factory.
 
     The decorated function should return a Dict of kwargs to pass to the
     provider constructor. This allows each provider to define its own
@@ -471,7 +471,7 @@ def register_provider_kwargs(
 
 
 def get_provider(name: str, **kwargs) -> MetadataProvider:
-    """Factory - instantiate any registered provider."""
+    """Instantiate a registered metadata provider."""
     if name not in _PROVIDERS:
         msg = f"Unknown metadata provider: {name}"
         raise ValueError(msg)

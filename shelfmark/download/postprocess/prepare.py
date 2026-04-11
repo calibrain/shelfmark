@@ -1,3 +1,5 @@
+"""Preparation helpers for staging files before final output handling."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -54,6 +56,7 @@ def prepare_output_files(
     *,
     preserve_source_on_failure: bool = False,
 ) -> PreparedFiles | None:
+    """Prepare staged files and output metadata for final processing."""
     if output_plan is None:
         output_plan = build_output_plan(
             temp_file,

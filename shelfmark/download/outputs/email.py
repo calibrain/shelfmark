@@ -1,3 +1,5 @@
+"""Email output integration for delivering completed downloads as attachments."""
+
 from __future__ import annotations
 
 import mimetypes
@@ -44,6 +46,8 @@ class EmailOutputError(Exception):
 
 @dataclass(frozen=True)
 class EmailSmtpConfig:
+    """SMTP connection settings for the email output."""
+
     host: str
     port: int
     security: str
@@ -68,6 +72,7 @@ def _parse_int(value: Any, label: str, *, minimum: int = 1) -> int:
 
 
 def build_email_smtp_config(values: Mapping[str, Any]) -> EmailSmtpConfig:
+    """Build and validate SMTP settings for the email output."""
     host = str(values.get("EMAIL_SMTP_HOST", "") or "").strip()
     port = _parse_int(values.get("EMAIL_SMTP_PORT", 587), "SMTP port", minimum=1)
 
@@ -161,6 +166,7 @@ def compose_email_message(
     recipient: str,
     files: list[Path],
 ) -> EmailMessage:
+    """Compose the outbound email message for a completed download."""
     message = EmailMessage()
     message["From"] = smtp_config.from_addr
     message["To"] = recipient
@@ -232,6 +238,7 @@ def test_smtp_connection(smtp_config: EmailSmtpConfig) -> None:
 
 
 def send_email_message(smtp_config: EmailSmtpConfig, message: EmailMessage) -> None:
+    """Send a prepared email message using the configured SMTP transport."""
     smtp: smtplib.SMTP | None = None
     try:
         if smtp_config.security == SECURITY_SSL:
@@ -454,6 +461,7 @@ def process_email_output(
     *,
     preserve_source_on_failure: bool = False,
 ) -> str | None:
+    """Process a completed download through the email output."""
     return _post_process_email(
         temp_file,
         task,

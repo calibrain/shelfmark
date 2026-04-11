@@ -90,7 +90,7 @@ def get_bypassed_page(
     selector: network.AAMirrorSelector | None = None,
     cancel_flag: Event | None = None,
 ) -> str | None:
-    """Wrapper that delegates to the appropriate bypasser based on config."""
+    """Fetch a bypassed page using the active bypasser implementation."""
     if _is_using_external_bypasser():
         return _get_external_bypasser().get_bypassed_page(url, selector, cancel_flag)
     return _get_internal_bypasser().get_bypassed_page(url, selector, cancel_flag)
@@ -218,11 +218,18 @@ def html_get_page(
     """Fetch HTML content from a URL with retry mechanism.
 
     Args:
+        url: URL to fetch.
+        retry: Maximum number of attempts before giving up.
+        selector: Mirror selector used for AA mirror and DNS rotation.
+        cancel_flag: Optional event used to abort retries early.
+        status_callback: Optional callback for UI status updates.
         allow_bypasser_fallback: If False, 403 errors will trigger mirror rotation
             instead of switching to the bypasser. Use for search operations.
+        use_bypasser: Whether to start with the bypasser instead of direct HTTP.
         include_response_url: If True, return `(html, final_url)` to expose the
             resolved response URL after redirects.
         success_delay: Optional delay (seconds) after successful fetch.
+        session: Optional requests session to reuse across attempts.
 
     """
 

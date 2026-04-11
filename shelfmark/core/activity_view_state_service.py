@@ -15,6 +15,7 @@ USER_VIEWER_SCOPE_PREFIX = "user:"
 
 
 def user_viewer_scope(user_id: int) -> str:
+    """Build the persisted viewer scope string for a specific user."""
     if not isinstance(user_id, int) or user_id < 1:
         msg = "user_id must be a positive integer"
         raise ValueError(msg)
@@ -22,6 +23,7 @@ def user_viewer_scope(user_id: int) -> str:
 
 
 def normalize_viewer_scope(viewer_scope: object) -> str:
+    """Validate and normalize a persisted viewer scope string."""
     if not isinstance(viewer_scope, str) or not viewer_scope.strip():
         msg = "viewer_scope must be a non-empty string"
         raise ValueError(msg)
@@ -75,6 +77,7 @@ class ActivityViewStateService:
     """Service for per-viewer activity dismissal and history visibility."""
 
     def __init__(self, db_path: str) -> None:
+        """Initialize the service with the SQLite state database path."""
         self._db_path = db_path
         self._lock = threading.Lock()
 
@@ -90,6 +93,7 @@ class ActivityViewStateService:
         viewer_scope: str,
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
+        """Return dismissed rows for a viewer, including cleared history entries."""
         normalized_scope = normalize_viewer_scope(viewer_scope)
         normalized_limit = None if limit is None else max(1, int(limit))
         query = """
@@ -118,6 +122,7 @@ class ActivityViewStateService:
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
+        """Return active dismissal history rows for a viewer."""
         normalized_scope = normalize_viewer_scope(viewer_scope)
         normalized_limit = max(1, min(int(limit), 5000))
         normalized_offset = max(0, int(offset))
@@ -147,6 +152,7 @@ class ActivityViewStateService:
         item_type: str,
         item_key: str,
     ) -> int:
+        """Mark a single activity item as dismissed for a viewer."""
         normalized_scope = normalize_viewer_scope(viewer_scope)
         normalized_type = _normalize_item_type(item_type)
         normalized_key = _normalize_item_key(item_key, item_type=normalized_type)
@@ -183,6 +189,7 @@ class ActivityViewStateService:
         viewer_scope: str,
         items: list[dict[str, str]],
     ) -> int:
+        """Mark multiple activity items as dismissed for a viewer."""
         normalized_scope = normalize_viewer_scope(viewer_scope)
         if not items:
             return 0
@@ -236,6 +243,7 @@ class ActivityViewStateService:
                 conn.close()
 
     def clear_history(self, *, viewer_scope: str) -> int:
+        """Mark all dismissed items as cleared for a viewer."""
         normalized_scope = normalize_viewer_scope(viewer_scope)
         cleared_at = now_utc_iso()
 
@@ -259,6 +267,7 @@ class ActivityViewStateService:
                 conn.close()
 
     def clear_item_for_all_viewers(self, *, item_type: str, item_key: str) -> int:
+        """Delete a dismissed item record for every viewer."""
         normalized_type = _normalize_item_type(item_type)
         normalized_key = _normalize_item_key(item_key, item_type=normalized_type)
 
@@ -279,6 +288,7 @@ class ActivityViewStateService:
                 conn.close()
 
     def delete_viewer_scope(self, *, viewer_scope: str) -> int:
+        """Delete all activity-view state rows for a viewer scope."""
         normalized_scope = normalize_viewer_scope(viewer_scope)
 
         with self._lock:
@@ -295,6 +305,7 @@ class ActivityViewStateService:
                 conn.close()
 
     def delete_items(self, *, item_type: str, item_keys: list[str]) -> int:
+        """Delete multiple dismissed item records for a given item type."""
         normalized_type = _normalize_item_type(item_type)
         normalized_keys = [
             _normalize_item_key(item_key, item_type=normalized_type) for item_key in item_keys

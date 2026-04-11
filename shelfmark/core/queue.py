@@ -26,6 +26,7 @@ class BookQueue:
     """Thread-safe download queue manager with priority support and cancellation."""
 
     def __init__(self) -> None:
+        """Initialize queue state, locks, and lifecycle hooks."""
         self._queue: queue.PriorityQueue[QueueItem] = queue.PriorityQueue()
         self._lock = Lock()
         self._status: dict[str, QueueStatus] = {}
@@ -104,7 +105,7 @@ class BookQueue:
             return self._status.get(task_id)
 
     def _update_status(self, book_id: str, status: QueueStatus) -> None:
-        """Internal method to update status and timestamp."""
+        """Update the status and timestamp for a task."""
         self._status[book_id] = status
         self._status_timestamps[book_id] = datetime.now()
 

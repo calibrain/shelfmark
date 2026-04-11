@@ -38,6 +38,7 @@ class IRCConnectionManager:
         return cls._instance
 
     def __init__(self) -> None:
+        """Initialize connection caches for the singleton manager."""
         if self._initialized:
             return
 

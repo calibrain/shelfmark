@@ -1,3 +1,5 @@
+"""Scanning helpers for discovering candidate files after download completion."""
+
 from __future__ import annotations
 
 import os
@@ -26,6 +28,7 @@ logger = setup_logger("shelfmark.download.postprocess.pipeline")
 
 
 def get_supported_formats(content_type: str | None = None) -> list[str]:
+    """Return supported file extensions for the requested content type."""
     if check_audiobook(content_type):
         return get_supported_audiobook_formats()
     return get_book_formats()
@@ -60,6 +63,7 @@ def extract_archive_files(
     *,
     cleanup_archive: bool,
 ) -> tuple[list[Path], list[Path], list[Path], str | None]:
+    """Extract an archive and classify the resulting files."""
     content_type = task.content_type
 
     try:
@@ -213,6 +217,7 @@ def collect_directory_files(
     status_callback: Callable[[str, str | None], None] | None = None,
     cleanup_archives: bool = False,
 ) -> tuple[list[Path], list[Path], list[Path], str | None]:
+    """Collect supported files from a directory, extracting archives when allowed."""
     content_type = task.content_type
     book_files, rejected_files, archive_files, scan_error = scan_directory_tree(
         directory, content_type
@@ -313,6 +318,7 @@ def collect_staged_files(
     status_callback: Callable[[str, str | None], None] | None,
     cleanup_archives: bool,
 ) -> tuple[list[Path], list[Path], list[Path], str | None]:
+    """Collect supported files from a staged file or directory path."""
     if run_blocking_io(working_path.is_dir):
         if status_callback:
             status_callback("resolving", "Processing download folder")

@@ -138,6 +138,7 @@ class NZBGetClient(DownloadClient):
             name: Display name for the download
             category: Category for organization (uses configured default if not specified)
             expected_hash: Optional info_hash hint (unused)
+            **kwargs: Client-specific options passed through to the implementation.
 
         Returns:
             NZBGet download ID (NZBID).

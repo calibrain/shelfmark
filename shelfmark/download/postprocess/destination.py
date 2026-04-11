@@ -1,3 +1,5 @@
+"""Destination planning helpers for post-processing outputs."""
+
 from __future__ import annotations
 
 import uuid

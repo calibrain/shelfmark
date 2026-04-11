@@ -903,7 +903,7 @@ def _process_single_download(task_id: str, cancel_flag: Event) -> None:
 
 
 def concurrent_download_loop() -> None:
-    """Main download coordinator using ThreadPoolExecutor for concurrent downloads."""
+    """Run the main concurrent download coordinator."""
     max_workers = config.MAX_CONCURRENT_DOWNLOADS
     logger.info("Starting concurrent download loop with %s workers", max_workers)
 

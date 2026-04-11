@@ -110,6 +110,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
     """Shared lifecycle handler for sources that hand off to torrent/usenet clients."""
 
     def __init__(self) -> None:
+        """Initialize cleanup tracking for client-managed downloads."""
         # Track downloads that may need client-side cleanup after Shelfmark completes import.
         # task_id -> (client, download_id, protocol)
         self._cleanup_refs: dict[str, tuple[DownloadClient, str, str]] = {}
@@ -123,7 +124,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         """Resolve source-specific task metadata into a client download request."""
 
     def _on_download_complete(self, task: DownloadTask) -> None:
-        """Hook called after successful completion; override for source cleanup."""
+        """Run post-completion source cleanup hooks."""
         return
 
     def _get_client(self, protocol: str) -> DownloadClient | None:
@@ -135,7 +136,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         return list_configured_clients()
 
     def _poll_interval(self) -> float:
-        """Polling interval for status checks (seconds)."""
+        """Return the polling interval for status checks."""
         return POLL_INTERVAL
 
     def _completed_path_retry_interval(self) -> float:
@@ -163,6 +164,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         return config.get(audiobook_key, "") or None if audiobook_key else None
 
     def post_process_cleanup(self, task: DownloadTask, *, success: bool) -> None:
+        """Clean up external-client state after post-processing finishes."""
         if not success:
             self._cleanup_refs.pop(task.task_id, None)
             return

@@ -28,6 +28,7 @@ class CustomLogger(logging.Logger):
         self.debug(msg, *args, exc_info=has_exception, **kwargs)
 
     def log_resource_usage(self) -> None:
+        """Log best-effort CPU and memory usage for the current container."""
         # Best-effort only; this should never raise during exception logging.
         try:
             import psutil

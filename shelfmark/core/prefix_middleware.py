@@ -17,11 +17,13 @@ class PrefixMiddleware:
         prefix: str,
         bypass_paths: Iterable[str] | None = None,
     ) -> None:
+        """Initialize the middleware with a prefix and optional bypass paths."""
         self.app = app
         self.prefix = prefix.rstrip("/")
         self.bypass_paths = set(bypass_paths or [])
 
     def __call__(self, environ: dict[str, object], start_response: Callable[..., object]) -> object:
+        """Rewrite prefixed requests before handing them to the wrapped app."""
         path = environ.get("PATH_INFO", "") or ""
 
         if path in self.bypass_paths:

@@ -525,6 +525,7 @@ class LogNoiseFilter(logging.Filter):
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
+        """Return whether a log record should be emitted."""
         message = record.getMessage() if hasattr(record, "getMessage") else str(record.msg)
 
         # Exclude GET /api/status requests (polling noise)
@@ -753,6 +754,7 @@ def set_security_headers(response: Response) -> Response:
 def login_required(
     f: Callable[..., Response | tuple[Response, int]],
 ) -> Callable[..., Response | tuple[Response, int]]:
+    """Require authentication for a Flask route."""
     @wraps(f)
     def decorated_function(*args, **kwargs) -> Response | tuple[Response, int]:
         auth_mode = get_auth_mode()
@@ -821,6 +823,7 @@ def serve_frontend_assets(filename: str) -> Response:
 @app.route("/")
 def index() -> Response:
     """Serve the React frontend application.
+
     Authentication is handled by the React app itself.
     """
     return _serve_index_html()
@@ -859,9 +862,9 @@ if DEBUG:
     @app.route("/api/debug", methods=["GET"])
     @login_required
     def debug() -> Response | tuple[Response, int]:
-        """This will run the /app/genDebug.sh script, which will generate a debug zip with all the logs
-        The file will be named /tmp/shelfmark-debug.zip
-        And then return it to the user
+        """Run `/app/genDebug.sh`, generate a debug zip, and return it.
+
+        The file is written to `/tmp/shelfmark-debug.zip` before being returned.
         """
         try:
             logger.info("Debug endpoint called, stopping GUI and generating debug info...")
@@ -895,7 +898,7 @@ if DEBUG:
     @app.route("/api/restart", methods=["GET"])
     @login_required
     def restart() -> Response | tuple[Response, int]:
-        """Restart the application"""
+        """Restart the application."""
         os._exit(0)
 
 
@@ -1132,6 +1135,7 @@ def api_config() -> Response | tuple[Response, int]:
 @app.route("/api/health", methods=["GET"])
 def api_health() -> Response | tuple[Response, int]:
     """Health check endpoint for container orchestration.
+
     No authentication required.
 
     Returns:
@@ -1866,6 +1870,7 @@ def _failed_login_response(username: str, ip_address: str) -> tuple[Response, in
 @app.route("/api/auth/login", methods=["POST"])
 def api_login() -> Response | tuple[Response, int]:
     """Login endpoint that validates credentials and creates a session.
+
     Supports both built-in credentials and CWA database authentication.
     Includes rate limiting: 10 failed attempts = 30 minute lockout.
 
@@ -2032,6 +2037,7 @@ def api_login() -> Response | tuple[Response, int]:
 @app.route("/api/auth/logout", methods=["POST"])
 def api_logout() -> Response | tuple[Response, int]:
     """Logout endpoint that clears the session.
+
     For proxy auth, returns the logout URL if configured.
 
     Returns:
@@ -2524,7 +2530,7 @@ def _handle_target_errors(
 ) -> Callable[
     [Callable[..., Response | tuple[Response, int]]], Callable[..., Response | tuple[Response, int]]
 ]:
-    """Decorator that wraps a metadata-target route with standard error handling."""
+    """Wrap a metadata-target route with standard error handling."""
 
     def decorator(
         fn: Callable[..., Response | tuple[Response, int]],
@@ -3125,6 +3131,7 @@ def api_onboarding_skip() -> Response | tuple[Response, int]:
 @app.route("/<path:path>")
 def catch_all(path: str) -> Response:
     """Serve the React app for any route not matched by API endpoints.
+
     This allows React Router to handle client-side routing.
     Authentication is handled by the React app itself.
     """

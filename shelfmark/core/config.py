@@ -62,6 +62,7 @@ class Config:
     _lock = Lock()
 
     def __new__(cls) -> Config:
+        """Return the shared configuration singleton instance."""
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -70,6 +71,7 @@ class Config:
         return cls._instance
 
     def __init__(self) -> None:
+        """Initialize caches and backing stores for the singleton."""
         if self._initialized:
             return
         self._cache: dict[str, Any] = {}

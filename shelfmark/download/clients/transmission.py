@@ -158,6 +158,7 @@ class TransmissionClient(DownloadClient):
             name: Display name for the torrent
             category: Category for organization (uses configured default if not specified)
             expected_hash: Optional info_hash hint (from Prowlarr)
+            **kwargs: Client-specific options passed through to the implementation.
 
         Returns:
             Torrent hash (info_hash).

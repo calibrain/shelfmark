@@ -1,5 +1,7 @@
 """qBittorrent download client for Prowlarr integration."""
 
+from __future__ import annotations
+
 import time
 from http import HTTPStatus
 from pathlib import Path
@@ -316,6 +318,7 @@ class QBittorrentClient(DownloadClient):
             name: Display name for the torrent
             category: Category for organization (uses configured default if not specified)
             expected_hash: Optional info_hash hint (from Prowlarr)
+            **kwargs: Client-specific options passed through to the implementation.
 
         Returns:
             Torrent hash (info_hash).
@@ -596,7 +599,7 @@ class QBittorrentClient(DownloadClient):
         """
         import os
 
-        def get_with_auth(url: str, params: dict[str, str]) -> "requests.Response":
+        def get_with_auth(url: str, params: dict[str, str]) -> requests.Response:
             self._client.auth_log_in()
             resp = self._client._session.get(url, params=params, timeout=10)
             if resp.status_code == _HTTP_STATUS_FORBIDDEN:

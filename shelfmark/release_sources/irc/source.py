@@ -75,6 +75,7 @@ class IRCReleaseSource(ReleaseSource):
     can_be_default = False  # Exclude from default source options (requires deliberate selection)
 
     def __init__(self) -> None:
+        """Initialize per-search IRC source state."""
         # Track online servers from most recent search
         self._online_servers: set[str] | None = None
 

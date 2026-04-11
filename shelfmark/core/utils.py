@@ -257,7 +257,7 @@ def get_aa_content_type_dir(content_type: str | None = None) -> Path | None:
 
 
 def get_ingest_dir(content_type: str | None = None) -> Path:
-    """DEPRECATED: Use get_destination() and get_aa_content_type_dir() instead."""
+    """Return the legacy ingest directory for a content type."""
     from shelfmark.core.config import config
 
     # Check new DESTINATION setting first, then legacy INGEST_DIR

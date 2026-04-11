@@ -65,7 +65,7 @@ extend-exclude = [".local"]
 
 [tool.ruff.lint]
 select = [
-    "F", "I", "UP", "B", "C4", "SIM", "PTH", "RET", "PIE", "FURB", "PERF", "TRY",
+    "F", "I", "UP", "B", "C4", "SIM", "PTH", "RET", "PIE", "FURB", "PERF", "TRY", "D",
     "ANN001", "ANN201", "ANN202", "ANN204",
     "E731",
     "FBT001", "FBT002", "FBT003",
@@ -76,7 +76,7 @@ select = [
     "RUF005", "RUF012", "RUF013", "RUF059", "RUF100",
     "TC001", "TC002", "TC003",
 ]
-ignore = ["UP035", "TRY003", "E501"]
+ignore = ["UP035", "TRY003", "E501", "D203", "D213"]
 
 [tool.basedpyright]
 include = ["shelfmark"]

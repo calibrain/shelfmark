@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 def validate_user_settings(
     settings: dict[str, Any],
 ) -> tuple[dict[str, Any], list[str]]:
+    """Validate and normalize per-user settings overrides."""
     settings_registry = _get_settings_registry()
     field_map = settings_registry.get_settings_field_map()
     overridable_map = settings_registry.get_user_overridable_fields()
@@ -132,6 +133,7 @@ def build_user_notification_test_response(
     user_id: int,
     payload: object,
 ) -> tuple[dict[str, Any], int]:
+    """Build a notification test response using effective per-user routes."""
     from shelfmark.core.config import config as app_config
 
     routes_input = app_config.get("USER_NOTIFICATION_ROUTES", [], user_id=user_id)
@@ -151,6 +153,7 @@ def register_admin_settings_routes(
     user_db: UserDB,
     require_admin: Callable[[Callable[..., object]], Callable[..., object]],
 ) -> None:
+    """Register admin endpoints for user-specific settings and defaults."""
     @app.route("/api/admin/download-defaults", methods=["GET"])
     @require_admin
     def admin_download_defaults() -> Response | tuple[Response, int]:

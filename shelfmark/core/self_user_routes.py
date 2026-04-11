@@ -147,7 +147,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
     def _require_authenticated_user(
         f: Callable[..., Response | tuple[Response, int]],
     ) -> Callable[..., Response | tuple[Response, int]]:
-        """Decorator requiring an authenticated session linked to a local user row.
+        """Require an authenticated session linked to a local user row.
 
         Caches the resolved auth_mode in ``g.auth_mode`` for the request.
         """

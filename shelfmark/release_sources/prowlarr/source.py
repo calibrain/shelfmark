@@ -443,6 +443,7 @@ class ProwlarrSource(ReleaseSource):
     ]  # Explicitly declare support for both
 
     def __init__(self) -> None:
+        """Initialize per-instance search state for Prowlarr."""
         self.last_search_type: str | None = None
 
     def get_column_config(self) -> ReleaseColumnConfig:

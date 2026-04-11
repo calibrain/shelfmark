@@ -21,6 +21,7 @@ class ProwlarrClient:
     """Client for interacting with the Prowlarr API."""
 
     def __init__(self, url: str, api_key: str, timeout: int = 30) -> None:
+        """Initialize the API client with base URL, key, and timeout."""
         self.base_url = normalize_http_url(url)
         self.api_key = api_key
         self.timeout = timeout

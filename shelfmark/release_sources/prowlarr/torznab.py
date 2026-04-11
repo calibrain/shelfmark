@@ -44,7 +44,9 @@ def _coerce_float(value: str | None) -> float | None:
 
 
 def _strip_author_from_title(title: str, author: str | None) -> str:
-    """Prowlarr's MyAnonamouse parser appends " by {author}" into the title while
+    """Strip duplicate trailing author text from a Torznab title.
+
+    Prowlarr's MyAnonamouse parser appends " by {author}" into the title while
     also emitting author/booktitle fields. Shelfmark's UI shows author
     separately, so strip the duplicated " by author" segment when present.
     """
@@ -59,8 +61,9 @@ def _strip_author_from_title(title: str, author: str | None) -> str:
 
 
 def parse_torznab_xml(xml_text: str) -> list[dict[str, Any]]:
-    """Parse a Torznab/Newznab XML response into a list of dicts that roughly match
-    Prowlarr's JSON search results shape.
+    """Parse a Torznab/Newznab XML response into Prowlarr-like result dicts.
+
+    This keeps the parsed shape close to Prowlarr's JSON search results.
     """
     if not xml_text or not xml_text.strip():
         return []

@@ -78,6 +78,7 @@ class IRCClient:
         use_tls: bool = True,
         version: str = "Shelfmark 1.0",
     ) -> None:
+        """Initialize the IRC client with connection settings and defaults."""
         if not nick:
             msg = "IRC nickname is required"
             raise IRCError(msg)
@@ -457,8 +458,10 @@ class IRCClient:
         return self._connected and self._socket is not None
 
     def __enter__(self) -> IRCClient:
+        """Connect and return the IRC client for context-manager usage."""
         self.connect()
         return self
 
     def __exit__(self, *args) -> None:
+        """Disconnect the IRC client when leaving a context manager."""
         self.disconnect()

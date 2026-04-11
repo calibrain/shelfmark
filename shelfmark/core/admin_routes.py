@@ -143,7 +143,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
     def _require_admin(
         f: Callable[..., Response | tuple[Response, int]],
     ) -> Callable[..., Response | tuple[Response, int]]:
-        """Decorator to require admin session for admin routes.
+        """Require an admin session for admin routes.
 
         In no-auth mode, everyone has access (is_admin defaults True).
         In auth-required modes, requires an authenticated session with admin role.

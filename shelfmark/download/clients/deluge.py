@@ -40,7 +40,10 @@ ONE_WEEK_IN_SECONDS = 604800
 
 
 class DelugeRpcError(RuntimeError):
+    """Raised when Deluge returns a JSON-RPC error response."""
+
     def __init__(self, message: str, code: int | None = None) -> None:
+        """Initialize the RPC error with an optional Deluge error code."""
         super().__init__(message)
         self.code = code
 
@@ -63,6 +66,7 @@ class DelugeClient(DownloadClient):
     name = "deluge"
 
     def __init__(self) -> None:
+        """Initialize the client from the configured Deluge connection settings."""
         raw_host = str(config.get("DELUGE_HOST", "localhost") or "")
         raw_port = str(config.get("DELUGE_PORT", "8112") or "8112")
         password = str(config.get("DELUGE_PASSWORD", "") or "")
@@ -227,12 +231,14 @@ class DelugeClient(DownloadClient):
 
     @staticmethod
     def is_configured() -> bool:
+        """Return whether Deluge is the active configured torrent client."""
         client = config.get("PROWLARR_TORRENT_CLIENT", "")
         host = config.get("DELUGE_HOST", "")
         password = config.get("DELUGE_PASSWORD", "")
         return client == "deluge" and bool(host) and bool(password)
 
     def test_connection(self) -> tuple[bool, str]:
+        """Test connectivity and authentication against the Deluge server."""
         try:
             self._ensure_connected()
             version = self._get_daemon_version()
@@ -251,6 +257,7 @@ class DelugeClient(DownloadClient):
         expected_hash: str | None = None,
         **kwargs,
     ) -> str:
+        """Add a torrent to Deluge and return the torrent id."""
         try:
             self._ensure_connected()
 
@@ -307,6 +314,7 @@ class DelugeClient(DownloadClient):
             return torrent_id
 
     def get_status(self, download_id: str) -> DownloadStatus:
+        """Return the current Deluge status for a torrent."""
         try:
             self._ensure_connected()
 
@@ -380,6 +388,7 @@ class DelugeClient(DownloadClient):
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, *, delete_files: bool = False) -> bool:
+        """Remove a torrent from Deluge, optionally deleting its files."""
         try:
             self._ensure_connected()
 
@@ -399,6 +408,7 @@ class DelugeClient(DownloadClient):
             return False
 
     def get_download_path(self, download_id: str) -> str | None:
+        """Return the resolved download path for a Deluge torrent."""
         try:
             self._ensure_connected()
 
@@ -423,6 +433,7 @@ class DelugeClient(DownloadClient):
     def find_existing(
         self, url: str, category: str | None = None
     ) -> tuple[str, DownloadStatus] | None:
+        """Find an existing Deluge torrent matching a release URL."""
         try:
             self._ensure_connected()
 

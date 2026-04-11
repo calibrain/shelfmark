@@ -92,8 +92,7 @@ def get_proxies(url: str = "") -> dict:
 
 
 def get_ssl_verify(url: str = "") -> bool:
-    """Return the ``verify`` value for outbound requests based on the
-    CERTIFICATE_VALIDATION setting.
+    """Return the ``verify`` value for outbound requests.
 
     - ``enabled``        → always ``True``
     - ``disabled_local`` → ``False`` for local/private addresses, ``True`` otherwise
@@ -120,8 +119,7 @@ _ssl_warnings_suppressed = False
 
 
 def _apply_ssl_warning_suppression() -> None:
-    """Suppress or restore urllib3 InsecureRequestWarning based on the
-    CERTIFICATE_VALIDATION setting.
+    """Suppress or restore urllib3 InsecureRequestWarning.
 
     Called once at init and again whenever the setting changes via the UI.
     Only modifies warning filters when the mode is not 'enabled', so the
@@ -715,7 +713,7 @@ def create_system_failover_getaddrinfo() -> Callable[
 
 
 def _init_doh_resolver_internal(doh_server: str) -> DoHResolver:
-    """Internal: Initialize DNS over HTTPS resolver with specified server.
+    """Initialize a DNS-over-HTTPS resolver for the given server.
 
     Args:
         doh_server: The DoH server URL
@@ -773,7 +771,7 @@ def _init_doh_resolver_internal(doh_server: str) -> DoHResolver:
 
 
 def _init_custom_resolver_internal(servers: list[str]) -> dns.resolver.Resolver:
-    """Internal: Initialize custom DNS resolver with specified servers.
+    """Initialize a custom DNS resolver for the given servers.
 
     Args:
         servers: List of DNS server IPs to use
@@ -856,8 +854,7 @@ def rotate_dns_provider() -> bool:
 
 
 def rotate_dns_and_reset_aa() -> bool:
-    """Switch DNS provider (auto mode) and reset AA URL list to the first entry.
-    Returns True if DNS switched; False if no providers left or not in auto mode.
+    """Switch DNS provider and reset the AA URL list.
 
     Note: This function can be called during initialization, so we must NOT call
     _ensure_initialized() here to avoid recursive init loops.
@@ -1223,11 +1220,13 @@ def set_aa_url_index(new_index: int) -> bool:
 
 
 class AAMirrorSelector:
-    """Small helper to keep AA mirror switching consistent across call sites.
+    """Keep AA mirror switching consistent across call sites.
+
     Tracks attempts per DNS cycle and rewrites URLs safely.
     """
 
     def __init__(self) -> None:
+        """Initialize mirror state from the current AA configuration."""
         self._ensure_fresh_state(reset_attempts=True)
 
     def _ensure_fresh_state(self, *, reset_attempts: bool = False) -> None:
@@ -1251,7 +1250,8 @@ class AAMirrorSelector:
         return url
 
     def next_mirror_or_rotate_dns(self, *, allow_dns: bool = True) -> tuple[str | None, str]:
-        """Advance to next mirror; if exhausted and allowed, rotate DNS and reset to first.
+        """Advance to the next mirror or rotate DNS if needed.
+
         Returns (new_base, action) where action is 'mirror', 'dns', or 'exhausted'.
         """
         self.attempts_this_dns += 1

@@ -126,7 +126,7 @@ def cacheable(
     ttl_default: int = 300,
     key_prefix: str = "",
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """Decorator for caching function results. Use ttl (static) or ttl_key (from config)."""
+    """Cache function results with a static or config-backed TTL."""
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
         @wraps(func)

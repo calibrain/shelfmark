@@ -382,7 +382,7 @@ class DownloadHandler(ABC):
         """Execute download and return a path to the downloaded payload."""
 
     def post_process_cleanup(self, task: DownloadTask, *, success: bool) -> None:
-        """Optional hook called after orchestrator post-processing.
+        """Run optional cleanup after orchestrator post-processing.
 
         This is primarily used for external download clients, where the handler may need
         to trigger client-side cleanup only after Shelfmark has safely imported the files.
@@ -403,7 +403,7 @@ _HANDLERS: dict[str, type[DownloadHandler]] = {}
 def register_source(
     name: str,
 ) -> Callable[[type[ReleaseSource]], type[ReleaseSource]]:
-    """Decorator to register a release source."""
+    """Register a release source."""
 
     def decorator(cls: type[ReleaseSource]) -> type[ReleaseSource]:
         _SOURCES[name] = cls
@@ -415,7 +415,7 @@ def register_source(
 def register_handler(
     name: str,
 ) -> Callable[[type[DownloadHandler]], type[DownloadHandler]]:
-    """Decorator to register a download handler."""
+    """Register a download handler."""
 
     def decorator(cls: type[DownloadHandler]) -> type[DownloadHandler]:
         _HANDLERS[name] = cls
