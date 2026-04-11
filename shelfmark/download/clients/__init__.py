@@ -17,6 +17,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
+from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar, cast
 
@@ -357,6 +358,26 @@ class DownloadClient(ABC):
 
 # Client registry: protocol -> list of client classes
 _CLIENTS: dict[str, list[type[DownloadClient]]] = {}
+_BUILTIN_CLIENT_MODULES = (
+    "shelfmark.download.clients.deluge",
+    "shelfmark.download.clients.nzbget",
+    "shelfmark.download.clients.qbittorrent",
+    "shelfmark.download.clients.rtorrent",
+    "shelfmark.download.clients.sabnzbd",
+    "shelfmark.download.clients.transmission",
+)
+_builtin_client_state = {"loaded": False}
+
+
+def _ensure_builtin_clients_registered() -> None:
+    """Import built-in client modules once to populate the registry."""
+    if _builtin_client_state["loaded"]:
+        return
+
+    for module_name in _BUILTIN_CLIENT_MODULES:
+        import_module(module_name)
+
+    _builtin_client_state["loaded"] = True
 
 
 def register_client(
@@ -399,6 +420,8 @@ def get_client(protocol: str) -> DownloadClient | None:
         Configured client instance, or None if not available/configured.
 
     """
+    _ensure_builtin_clients_registered()
+
     if protocol not in _CLIENTS:
         return None
 
@@ -416,6 +439,8 @@ def list_configured_clients() -> list[str]:
         List of protocol names (e.g., ["torrent", "usenet"]).
 
     """
+    _ensure_builtin_clients_registered()
+
     result = []
     for protocol, client_classes in _CLIENTS.items():
         for cls in client_classes:
@@ -432,14 +457,8 @@ def get_all_clients() -> dict[str, list[type[DownloadClient]]]:
         Dict of protocol -> list of client classes.
 
     """
+    _ensure_builtin_clients_registered()
     return dict(_CLIENTS)
 
 
-# Import client implementations to trigger registration
-# These imports are at the bottom to avoid circular imports
-from shelfmark.download.clients import deluge as deluge
-from shelfmark.download.clients import nzbget as nzbget
-from shelfmark.download.clients import qbittorrent as qbittorrent
-from shelfmark.download.clients import rtorrent as rtorrent
-from shelfmark.download.clients import sabnzbd as sabnzbd
-from shelfmark.download.clients import transmission as transmission
+_ensure_builtin_clients_registered()

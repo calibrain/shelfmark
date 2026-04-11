@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-MANUAL_QUERY_MAX_LEN = 256
-
 from shelfmark.core.config import config
 from shelfmark.metadata_providers import (
     BookMetadata,
@@ -16,6 +14,8 @@ from shelfmark.metadata_providers import (
 
 if TYPE_CHECKING:
     from shelfmark.core.models import SearchFilters
+
+MANUAL_QUERY_MAX_LEN = 256
 
 
 @dataclass(frozen=True)

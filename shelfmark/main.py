@@ -31,8 +31,12 @@ from shelfmark.config.env import (
     HIDE_LOCAL_AUTH,
     OIDC_AUTO_REDIRECT,
     RELEASE_VERSION,
+    SESSION_COOKIE_NAME,
+    SESSION_COOKIE_SECURE_ENV,
     _is_config_dir_writable,
+    string_to_bool,
 )
+from shelfmark.config.security import _migrate_security_settings
 from shelfmark.config.settings import _SUPPORTED_BOOK_LANGUAGE
 from shelfmark.core.activity_view_state_service import ActivityViewStateService
 from shelfmark.core.auth_modes import (
@@ -74,6 +78,7 @@ from shelfmark.core.requests_service import (
     reopen_failed_request,
     sync_delivery_states_from_queue_status,
 )
+from shelfmark.core.user_db import UserDB
 from shelfmark.core.utils import normalize_base_path
 from shelfmark.download import orchestrator as backend
 from shelfmark.release_sources import (
@@ -150,17 +155,11 @@ except ImportError as e:
     logger.warning("Failed to import plugin modules: %s", e)
 
 # Migrate legacy security settings if needed
-from shelfmark.config.security import _migrate_security_settings
-
 _migrate_security_settings()
 
 # Initialize user database and register multi-user routes
 # If CONFIG_DIR doesn't exist or is read-only, multi-user features will be disabled
-import os as _os
-
-from shelfmark.core.user_db import UserDB
-
-_user_db_path = str(Path(_os.environ.get("CONFIG_DIR", "/config")) / "users.db")
+_user_db_path = str(Path(os.environ.get("CONFIG_DIR", "/config")) / "users.db")
 user_db: UserDB | None = None
 download_history_service: DownloadHistoryService | None = None
 activity_view_state_service: ActivityViewStateService | None = None
@@ -181,7 +180,7 @@ except (sqlite3.OperationalError, OSError) as e:
     logger.warning(
         "User database initialization failed: %s. Multi-user authentication features will be disabled. Ensure CONFIG_DIR (%s) exists and is writable.",
         e,
-        _os.environ.get("CONFIG_DIR", "/config"),
+        os.environ.get("CONFIG_DIR", "/config"),
     )
     user_db = None
     download_history_service = None
@@ -567,8 +566,6 @@ werkzeug_logger.setLevel(logger.level)
 werkzeug_logger.addFilter(LogNoiseFilter())
 
 # Set up authentication defaults
-from shelfmark.config.env import SESSION_COOKIE_NAME, SESSION_COOKIE_SECURE_ENV, string_to_bool
-
 SESSION_COOKIE_SECURE = string_to_bool(SESSION_COOKIE_SECURE_ENV)
 
 

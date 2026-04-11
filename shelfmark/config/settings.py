@@ -4,6 +4,33 @@ import json
 from pathlib import Path
 from typing import Any
 
+from shelfmark.config import env
+from shelfmark.config.booklore_settings import (
+    get_booklore_library_options,
+    get_booklore_path_options,
+    test_booklore_connection,
+)
+from shelfmark.config.email_settings import test_email_connection
+from shelfmark.core.logger import setup_logger
+from shelfmark.core.settings_registry import (
+    ActionButton,
+    CheckboxField,
+    HeadingField,
+    MultiSelectField,
+    NumberField,
+    OrderableListField,
+    PasswordField,
+    SelectField,
+    SettingsField,
+    TableField,
+    TagListField,
+    TextField,
+    load_config_file,
+    register_group,
+    register_on_save,
+    register_settings,
+)
+
 
 def _on_save_advanced(values: dict[str, Any]) -> dict[str, Any]:
     """Validate advanced settings before persisting."""
@@ -63,16 +90,6 @@ def _on_save_advanced(values: dict[str, Any]) -> dict[str, Any]:
     values["PROWLARR_REMOTE_PATH_MAPPINGS"] = cleaned
     return {"error": False, "values": values}
 
-
-from shelfmark.config import env
-from shelfmark.config.booklore_settings import (
-    get_booklore_library_options,
-    get_booklore_path_options,
-    test_booklore_connection,
-)
-from shelfmark.config.email_settings import test_email_connection
-from shelfmark.core.logger import setup_logger
-
 logger = setup_logger(__name__)
 _SMTP_PORT_MAX = 65535
 _EMAIL_ATTACHMENT_LIMIT_MB_MAX = 600
@@ -117,26 +134,6 @@ def _log_external_bypasser_warning() -> None:
             "configure DNS at the Docker/system level for your FlareSolverr container, "
             "or consider using the internal bypasser which integrates with the app's DNS system."
         )
-
-
-from shelfmark.core.settings_registry import (
-    ActionButton,
-    CheckboxField,
-    HeadingField,
-    MultiSelectField,
-    NumberField,
-    OrderableListField,
-    PasswordField,
-    SelectField,
-    SettingsField,
-    TableField,
-    TagListField,
-    TextField,
-    load_config_file,
-    register_group,
-    register_on_save,
-    register_settings,
-)
 
 register_group("direct_download", "Direct Download", icon="download", order=20)
 

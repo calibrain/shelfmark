@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum
+from importlib import import_module
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 if TYPE_CHECKING:
@@ -398,6 +399,24 @@ class DownloadHandler(ABC):
 
 _SOURCES: dict[str, type[ReleaseSource]] = {}
 _HANDLERS: dict[str, type[DownloadHandler]] = {}
+_BUILTIN_SOURCE_MODULES = (
+    "shelfmark.release_sources.audiobookbay",
+    "shelfmark.release_sources.direct_download",
+    "shelfmark.release_sources.irc",
+    "shelfmark.release_sources.prowlarr",
+)
+_builtin_source_state = {"loaded": False}
+
+
+def _ensure_builtin_sources_registered() -> None:
+    """Import built-in source modules once to populate source registries."""
+    if _builtin_source_state["loaded"]:
+        return
+
+    for module_name in _BUILTIN_SOURCE_MODULES:
+        import_module(module_name)
+
+    _builtin_source_state["loaded"] = True
 
 
 def register_source(
@@ -426,6 +445,7 @@ def register_handler(
 
 def get_source(name: str) -> ReleaseSource:
     """Get a release source instance by name."""
+    _ensure_builtin_sources_registered()
     if name not in _SOURCES:
         msg = f"Unknown release source: {name}"
         raise ValueError(msg)
@@ -434,6 +454,7 @@ def get_source(name: str) -> ReleaseSource:
 
 def get_handler(name: str) -> DownloadHandler:
     """Get a download handler instance by name."""
+    _ensure_builtin_sources_registered()
     if name not in _HANDLERS:
         msg = f"Unknown download handler: {name}"
         raise ValueError(msg)
@@ -442,6 +463,7 @@ def get_handler(name: str) -> DownloadHandler:
 
 def list_available_sources() -> list[dict]:
     """List all registered sources with their availability status."""
+    _ensure_builtin_sources_registered()
     result = []
     for name, src_class in _SOURCES.items():
         instance = src_class()
@@ -462,6 +484,7 @@ def list_available_sources() -> list[dict]:
 
 def get_source_display_name(name: str) -> str:
     """Get display name for a source by its identifier."""
+    _ensure_builtin_sources_registered()
     if name in _SOURCES:
         return _SOURCES[name]().display_name
     return name.replace("_", " ").title()
@@ -505,14 +528,10 @@ def browse_record_to_book_metadata(
 
 def source_results_are_releases(name: str) -> bool:
     """Whether a source's browse/search results already map to concrete releases."""
+    _ensure_builtin_sources_registered()
     if name not in _SOURCES:
         return False
     return _SOURCES[name]().search_results_are_releases()
 
 
-# Import source implementations to trigger registration
-# These must be imported AFTER the base classes and registry are defined
-from shelfmark.release_sources import audiobookbay as audiobookbay
-from shelfmark.release_sources import direct_download as direct_download
-from shelfmark.release_sources import irc as irc
-from shelfmark.release_sources import prowlarr as prowlarr
+_ensure_builtin_sources_registered()
