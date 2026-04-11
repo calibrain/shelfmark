@@ -109,6 +109,35 @@ Shelfmark supports three organization modes for the destination:
 
 Configure templates in Settings -> Downloads. Template syntax details are documented separately.
 
+### CWA Sidecar Manifest
+
+Shelfmark can optionally write a CWA provenance sidecar next to delivered book files for the Calibre-Web-Automated ingest flow.
+
+- Setting: `ENABLE_CWA_SIDECAR_MANIFEST`
+- Default: `false`
+- UI: Settings -> Downloads -> `Emit CWA Sidecar Manifest`
+- Output filename: `<delivered filename>.cwa.json`
+
+This is additive only. When disabled, ordinary downloads are delivered exactly as before. When enabled, Shelfmark writes the sidecar only for book deliveries that have exact Hardcover provenance.
+
+This does not change Shelfmark's download policy, release selection, or request attribution behavior. It only adds an extra provenance file for the CWA ingest path.
+
+Example sidecar:
+
+```json
+{
+  "provenance": {
+    "provider": "hardcover",
+    "provider_id": "379631",
+    "hardcover_slug": "mort"
+  },
+  "identifiers": {
+    "hardcover-id": "379631",
+    "hardcover-slug": "mort"
+  }
+}
+```
+
 ## Common Mistakes
 
 - "Download failed - file not found": Path mismatch between Shelfmark and the download client. Ensure container paths match or use Remote Path Mappings.

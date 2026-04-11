@@ -9,6 +9,8 @@ from urllib.parse import urlparse
 
 from shelfmark.core.models import DownloadTask
 
+CWA_SIDECAR_MANIFEST_SETTING = "ENABLE_CWA_SIDECAR_MANIFEST"
+
 
 def _normalize_optional_text(value: Any) -> str | None:
     if not isinstance(value, str):
@@ -47,6 +49,13 @@ def _extract_hardcover_slug_from_url(value: Any) -> str | None:
 def sidecar_path_for(delivered_path: Path) -> Path:
     """Return the CWA sidecar path for a delivered file path."""
     return delivered_path.with_name(f"{delivered_path.name}.cwa.json")
+
+
+def cwa_sidecar_manifest_enabled() -> bool:
+    """Return whether additive `.cwa.json` sidecars are enabled for CWA ingest."""
+    from shelfmark.core.config import config
+
+    return bool(config.get(CWA_SIDECAR_MANIFEST_SETTING, False))
 
 
 def build_cwa_manifest(task: DownloadTask) -> Optional[dict[str, Any]]:

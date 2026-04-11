@@ -76,6 +76,23 @@ def test_download_settings_grimmory_copy_is_exposed_in_ui_metadata():
     assert url_field.label == "Grimmory URL"
 
 
+def test_download_settings_cwa_sidecar_manifest_field_is_opt_in_folder_only():
+    from shelfmark.config.settings import download_settings
+
+    fields = download_settings()
+    sidecar_field = next(
+        field for field in fields if getattr(field, "key", None) == "ENABLE_CWA_SIDECAR_MANIFEST"
+    )
+
+    assert sidecar_field.label == "Emit CWA Sidecar Manifest"
+    assert sidecar_field.default is False
+    assert "Calibre-Web-Automated ingest" in sidecar_field.description
+    assert sidecar_field.show_when == {
+        "field": "BOOKS_OUTPUT_MODE",
+        "value": "folder",
+    }
+
+
 def test_download_settings_booklore_library_and_path_depend_on_library_destination():
     from shelfmark.config.settings import download_settings
 

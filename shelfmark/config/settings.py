@@ -955,6 +955,20 @@ def download_settings():
                 "value": "folder",
             },
         ),
+        CheckboxField(
+            key="ENABLE_CWA_SIDECAR_MANIFEST",
+            label="Emit CWA Sidecar Manifest",
+            description=(
+                "Write an additive `<delivered filename>.cwa.json` manifest next to delivered book files "
+                "for Calibre-Web-Automated ingest. Disabled by default. Only emits when exact Hardcover "
+                "provenance is available."
+            ),
+            default=False,
+            show_when={
+                "field": "BOOKS_OUTPUT_MODE",
+                "value": "folder",
+            },
+        ),
         HeadingField(
             key="booklore_heading",
             title="Grimmory",

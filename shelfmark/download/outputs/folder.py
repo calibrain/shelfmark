@@ -11,7 +11,10 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download.outputs import register_output
-from shelfmark.download.outputs.cwa_sidecar import write_cwa_sidecar
+from shelfmark.download.outputs.cwa_sidecar import (
+    cwa_sidecar_manifest_enabled,
+    write_cwa_sidecar,
+)
 from shelfmark.download.staging import StageAction, STAGE_NONE
 
 logger = setup_logger(__name__)
@@ -240,24 +243,30 @@ def process_folder_output(
         return None
 
     emitted_sidecars = 0
-    for final_path in final_paths:
-        try:
-            sidecar_path = write_cwa_sidecar(final_path, task)
-        except Exception as exc:
-            logger.warning(
-                "Task %s: failed to write CWA sidecar for %s: %s",
-                task.task_id,
-                final_path,
-                exc,
-            )
-            continue
-        if sidecar_path is not None:
-            emitted_sidecars += 1
-            logger.info(
-                "Task %s: wrote CWA sidecar %s",
-                task.task_id,
-                sidecar_path,
-            )
+    sidecars_enabled = cwa_sidecar_manifest_enabled()
+    # Sidecars are optional CWA integration output. Delivery semantics remain the
+    # same when emission is disabled or when sidecar writing fails.
+    if sidecars_enabled:
+        for final_path in final_paths:
+            try:
+                sidecar_path = write_cwa_sidecar(final_path, task)
+            except Exception as exc:
+                logger.warning(
+                    "Task %s: failed to write CWA sidecar for %s: %s",
+                    task.task_id,
+                    final_path,
+                    exc,
+                )
+                continue
+            if sidecar_path is not None:
+                emitted_sidecars += 1
+                logger.info(
+                    "Task %s: wrote CWA sidecar %s",
+                    task.task_id,
+                    sidecar_path,
+                )
+    else:
+        logger.debug("Task %s: CWA sidecar manifest emission disabled by configuration", task.task_id)
 
     cleanup_output_staging(
         prepared.output_plan,
