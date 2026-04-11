@@ -418,6 +418,7 @@ class MetadataProvider(ABC):
         self,
         book_id: str,
         target: str,
+        *,
         selected: bool,
     ) -> dict[str, Any]:
         """Set whether a book belongs to a provider-managed list or shelf.

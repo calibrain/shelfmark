@@ -44,7 +44,7 @@ def get_supported_audiobook_formats() -> list[str]:
     return [fmt.lower() for fmt in formats]
 
 
-def get_file_organization(is_audiobook: bool) -> str:
+def get_file_organization(*, is_audiobook: bool) -> str:
     """Get the file organization mode for the content type."""
     key = "FILE_ORGANIZATION_AUDIOBOOK" if is_audiobook else "FILE_ORGANIZATION"
     mode = core_config.config.get(key, "rename")
@@ -62,7 +62,7 @@ def get_file_organization(is_audiobook: bool) -> str:
     return mode
 
 
-def get_template(is_audiobook: bool, organization_mode: str) -> str:
+def get_template(*, is_audiobook: bool, organization_mode: str) -> str:
     """Get the template for the content type and organization mode."""
     # Determine the correct key based on content type and organization mode
     if is_audiobook:

@@ -68,13 +68,13 @@ select = [
     "F", "I", "UP", "B", "C4", "SIM", "PTH", "RET", "PIE", "FURB", "PERF", "TRY",
     "ANN001", "ANN201", "ANN202", "ANN204",
     "E731",
-    "FBT002", "FBT003",
+    "FBT001", "FBT002", "FBT003",
     "G003", "G004",
     "PLR1714",
     "PLW0108",
     "Q000",
     "RUF005", "RUF012", "RUF013", "RUF059", "RUF100",
-    "TC001", "TC003",
+    "TC001", "TC002", "TC003",
 ]
 ignore = ["UP035", "TRY003", "E501"]
 

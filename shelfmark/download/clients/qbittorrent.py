@@ -4,7 +4,7 @@ import time
 from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
-from typing import NoReturn
+from typing import TYPE_CHECKING, NoReturn
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -18,6 +18,9 @@ from shelfmark.download.clients.torrent_utils import (
     extract_torrent_info,
 )
 from shelfmark.download.network import get_ssl_verify
+
+if TYPE_CHECKING:
+    import requests
 
 logger = setup_logger(__name__)
 
@@ -593,9 +596,7 @@ class QBittorrentClient(DownloadClient):
         """
         import os
 
-        import requests
-
-        def get_with_auth(url: str, params: dict[str, str]) -> requests.Response:
+        def get_with_auth(url: str, params: dict[str, str]) -> "requests.Response":
             self._client.auth_log_in()
             resp = self._client._session.get(url, params=params, timeout=10)
             if resp.status_code == _HTTP_STATUS_FORBIDDEN:

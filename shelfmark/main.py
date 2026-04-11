@@ -2589,7 +2589,7 @@ def api_metadata_book_targets_update(
     if not isinstance(selected, bool):
         return jsonify({"error": "selected must be a boolean"}), 400
 
-    result = prov.set_book_target_state(book_id, target, selected)
+    result = prov.set_book_target_state(book_id, target, selected=selected)
     response: dict = {
         "success": True,
         "changed": bool(result.get("changed", True)),
@@ -3146,7 +3146,7 @@ def handle_connect() -> None:
 
     # Join appropriate room based on authenticated user session
     is_admin, db_user_id, can_access_status = _resolve_status_scope()
-    ws_manager.join_user_room(request.sid, is_admin, db_user_id)
+    ws_manager.join_user_room(request.sid, is_admin=is_admin, db_user_id=db_user_id)
 
     # Send initial status to the newly connected client (filtered)
     try:
@@ -3178,7 +3178,7 @@ def handle_status_request() -> None:
     """Handle manual status request from client."""
     try:
         is_admin, db_user_id, can_access_status = _resolve_status_scope()
-        ws_manager.sync_user_room(request.sid, is_admin, db_user_id)
+        ws_manager.sync_user_room(request.sid, is_admin=is_admin, db_user_id=db_user_id)
 
         if not can_access_status:
             emit("status_update", {})

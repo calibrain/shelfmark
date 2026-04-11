@@ -1722,7 +1722,13 @@ class HardcoverProvider(MetadataProvider):
 
         return options
 
-    def set_book_target_state(self, book_id: str, target: str, selected: bool) -> dict[str, Any]:
+    def set_book_target_state(
+        self,
+        book_id: str,
+        target: str,
+        *,
+        selected: bool,
+    ) -> dict[str, Any]:
         """Set whether a Hardcover book belongs to a status shelf or user list."""
         if not self.api_key:
             raise ValueError("Hardcover is not configured")

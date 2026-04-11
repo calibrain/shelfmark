@@ -178,7 +178,7 @@ def transfer_book_files(
     op_counts: dict[str, int] = {"hardlink": 0, "copy": 0, "move": 0}
 
     if organization_mode == "organize":
-        template = get_template(is_audiobook, "organize")
+        template = get_template(is_audiobook=is_audiobook, organization_mode="organize")
 
         if len(book_files) == 1:
             source_file = book_files[0]
@@ -239,7 +239,7 @@ def transfer_book_files(
             if not task.format:
                 task.format = book_file.suffix.lower().lstrip(".")
 
-            template = get_template(is_audiobook, "rename")
+            template = get_template(is_audiobook=is_audiobook, organization_mode="rename")
             metadata = build_file_metadata(task, book_file)
             extension = book_file.suffix.lstrip(".") or task.format or ""
 
