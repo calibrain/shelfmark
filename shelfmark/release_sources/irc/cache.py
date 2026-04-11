@@ -69,7 +69,7 @@ def _dict_to_release(data: dict[str, Any]) -> Release:
     if data.get("protocol"):
         try:
             data["protocol"] = ReleaseProtocol(data["protocol"])
-        except ValueError, KeyError:
+        except (ValueError, KeyError):
             data["protocol"] = None
     return Release(**data)
 

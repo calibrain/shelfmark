@@ -180,7 +180,7 @@ class Config:
 
         try:
             settings = user_db.get_user_settings(user_id)
-        except sqlite3.OperationalError, OSError, ValueError, TypeError:
+        except (sqlite3.OperationalError, OSError, ValueError, TypeError):
             return {}
 
         if not isinstance(settings, dict):

@@ -147,8 +147,27 @@ FULL_COOKIE_DOMAINS = {"z-lib.fm", "z-lib.gs", "z-lib.id", "z-library.sk", "zlib
 
 
 def _get_base_domain(domain: str) -> str:
-    """Extract base domain from hostname (e.g., 'www.example.com' -> 'example.com')."""
-    return ".".join(domain.split(".")[-2:]) if "." in domain else domain
+    """Extract base domain from hostname (e.g., 'www.example.com' -> 'example.com').
+
+    Handles compound TLDs like .z-lib.fm, .zlibrary-global.se where naive
+    split-on-dot produces the wrong result (e.g. 'www.z-lib.fm' -> 'fm').
+    """
+    if not domain:
+        return domain
+    parts = domain.split(".")
+    # Compound TLDs that need to be preserved as the base domain
+    compound_tlds = {
+        "co.uk", "com.au", "com.br", "com.mx", "com.sg", "com.hk",
+        "co.jp", "co.nz", "co.za", "co.kr", "co.id", "co.th",
+        "org.uk", "org.au", "org.nz", "org.za",
+        "net.au", "net.br", "net.nz",
+        "z-lib.fm", "z-lib.gs", "z-lib.id", "z-lib.sk",
+        "zlibrary-global.se",
+    }
+    tld = ".".join(parts[-2:])
+    if tld in compound_tlds:
+        return tld
+    return ".".join(parts[-2:]) if len(parts) >= 2 else domain
 
 
 def _should_extract_cookie(name: str, *, extract_all: bool) -> bool:

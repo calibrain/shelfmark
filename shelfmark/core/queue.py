@@ -75,22 +75,21 @@ class BookQueue:
         """Get next task ID from queue with cancellation flag."""
         # Use iterative approach to avoid stack overflow if many items are cancelled
         while True:
-            try:
-                queue_item = self._queue.get_nowait()
-                task_id = queue_item.book_id  # QueueItem uses book_id as the ID field
+            with self._lock:
+                try:
+                    queue_item = self._queue.get_nowait()
+                    task_id = queue_item.book_id  # QueueItem uses book_id as the ID field
+                except queue.Empty:
+                    return None
 
-                with self._lock:
-                    # Check if task was cancelled while in queue
-                    if task_id in self._status and self._status[task_id] == QueueStatus.CANCELLED:
-                        continue  # Skip cancelled items, try next
+                # Check if task was cancelled while in queue
+                if task_id in self._status and self._status[task_id] == QueueStatus.CANCELLED:
+                    continue  # Skip cancelled items, try next
 
-                    # Create cancellation flag for this download
-                    cancel_flag = Event()
-                    self._cancel_flags[task_id] = cancel_flag
-                    self._active_downloads[task_id] = True
-            except queue.Empty:
-                return None
-            else:
+                # Create cancellation flag for this download
+                cancel_flag = Event()
+                self._cancel_flags[task_id] = cancel_flag
+                self._active_downloads[task_id] = True
                 return task_id, cancel_flag
 
     def get_task(self, task_id: str) -> DownloadTask | None:
@@ -232,7 +231,20 @@ class BookQueue:
                 # Signal active download to stop
                 if task_id in self._cancel_flags:
                     self._cancel_flags[task_id].set()
-            elif current_status != QueueStatus.QUEUED:
+            elif current_status == QueueStatus.QUEUED:
+                # Remove from PriorityQueue immediately to prevent ghost items
+                # that get_next() would have to skip (causing recursion/performance issues)
+                temp_items = []
+                while not self._queue.empty():
+                    try:
+                        item = self._queue.get_nowait()
+                        if item.book_id != task_id:
+                            temp_items.append(item)
+                    except queue.Empty:
+                        break
+                for item in temp_items:
+                    self._queue.put(item)
+            else:
                 # Not in a cancellable state
                 return False
 

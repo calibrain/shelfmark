@@ -67,7 +67,7 @@ def parse_torznab_xml(xml_text: str) -> list[dict[str, Any]]:
 
     try:
         root = DefusedElementTree.fromstring(xml_text)
-    except DefusedElementTree.ParseError, DefusedXmlException:
+    except (DefusedElementTree.ParseError, DefusedXmlException):
         return []
 
     items = root.findall(".//item")

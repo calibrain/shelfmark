@@ -160,9 +160,10 @@ def parse_size_string(size: str) -> float | None:
         multipliers = {"GB": 1024**3, "MB": 1024**2, "KB": 1024}
         for suffix, mult in multipliers.items():
             if normalized.endswith(suffix):
-                return float(normalized[:-2]) * mult
+                # Strip the actual suffix length, not a hardcoded 2 characters
+                return float(normalized[:-len(suffix)]) * mult
         return float(normalized)
-    except ValueError, IndexError:
+    except (ValueError, IndexError):
         return None
 
 

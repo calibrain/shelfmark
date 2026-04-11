@@ -167,7 +167,7 @@ def _resolve_db_user_id(
         )
     try:
         parsed_db_user_id = int(raw_db_user_id)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         if not require_in_auth_mode:
             return None, None
         return None, _activity_error_response(

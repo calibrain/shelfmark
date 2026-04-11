@@ -411,7 +411,7 @@ class MetadataProvider(ABC):
         """Safely fetch targets for one book, falling back to an empty list."""
         try:
             return self.get_book_targets(book_id)
-        except NotImplementedError, ValueError:
+        except (NotImplementedError, ValueError):
             return []
 
     def set_book_target_state(

@@ -55,7 +55,7 @@ def _get_current_user(
     raw_user_id = session.get("db_user_id")
     try:
         user_id = int(raw_user_id)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return None, None, (jsonify({"error": "Invalid user context"}), 400)
 
     user = user_db.get_user(user_id=user_id)

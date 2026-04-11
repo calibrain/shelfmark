@@ -23,10 +23,15 @@ def build_filename(
         parts.append(f" ({year})")
 
     filename = "".join(parts)
-    filename = re.sub(r'[\\/:*?"<>|]', "_", filename.strip())[:245]
+    filename = re.sub(r'[\\/:*?"<>|]', "_", filename.strip())
 
     if fmt:
+        # Reserve space for extension so truncation doesn't silently discard it
+        max_base_len = 245 - (len(fmt) + 1)  # +1 for the dot
+        filename = filename[:max_base_len] if len(filename) > max_base_len else filename
         filename = f"{filename}.{fmt}"
+    else:
+        filename = filename[:245]
 
     return filename
 

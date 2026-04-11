@@ -351,7 +351,7 @@ def _parse_book_info_page(
                     slow_urls_no_waitlist.add(href)
                 else:
                     slow_urls_with_waitlist.add(href)
-        except AttributeError, TypeError:
+        except (AttributeError, TypeError):
             pass
 
     logger.debug(
@@ -1153,7 +1153,7 @@ def _parse_countdown_seconds_from_element(element: Tag) -> int | None:
     """Parse an integer countdown from a tag, returning None when invalid."""
     try:
         seconds = int(element.get_text(strip=True))
-    except ValueError, TypeError:
+    except (ValueError, TypeError):
         return None
 
     if 0 < seconds < 300:

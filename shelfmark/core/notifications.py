@@ -256,7 +256,7 @@ def _resolve_admin_routes() -> list[dict[str, str]]:
 def _normalize_user_id(value: object) -> int | None:
     try:
         user_id = int(value)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return None
     if user_id < 1:
         return None

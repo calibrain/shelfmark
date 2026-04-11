@@ -112,7 +112,7 @@ def _optional_number(value: object) -> float | None:
         return float(value)
     try:
         return float(value)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return None
 
 
@@ -121,7 +121,7 @@ def _optional_positive_int(value: object) -> int | None:
         return None
     try:
         parsed = int(value)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return None
     return parsed if parsed > 0 else None
 
