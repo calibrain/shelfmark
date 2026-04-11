@@ -27,7 +27,7 @@ class IRCConnectionManager:
     being idle for IDLE_TIMEOUT seconds.
     """
 
-    _instance: IRCConnectionManager | None = None
+    _instance: Self | None = None
     _lock = threading.Lock()
 
     def __new__(cls) -> Self:

@@ -120,6 +120,20 @@ def cache_key(*args: object, **kwargs: object) -> str:
     return ":".join(parts)
 
 
+def _coerce_ttl_seconds(value: object, *, default: int) -> int:
+    """Normalize cache TTL values read from config or decorator arguments."""
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value if value > 0 else default
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            parsed = int(stripped)
+            return parsed if parsed > 0 else default
+    return default
+
+
 def cacheable(
     ttl: int | None = None,
     ttl_key: str | None = None,
@@ -142,7 +156,10 @@ def cacheable(
             if ttl is not None:
                 effective_ttl = ttl
             elif ttl_key:
-                effective_ttl = config.get(ttl_key, ttl_default)
+                effective_ttl = _coerce_ttl_seconds(
+                    config.get(ttl_key, ttl_default),
+                    default=ttl_default,
+                )
             else:
                 effective_ttl = ttl_default
 

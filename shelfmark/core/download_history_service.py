@@ -7,7 +7,7 @@ import sqlite3
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, SupportsIndex, SupportsInt, TypeGuard
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import TERMINAL_QUEUE_STATUSES
@@ -23,6 +23,25 @@ logger = setup_logger(__name__)
 VALID_TERMINAL_STATUSES = frozenset(s.value for s in TERMINAL_QUEUE_STATUSES)
 ACTIVE_DOWNLOAD_STATUS = "active"
 VALID_ORIGINS = frozenset({"direct", "requested"})
+
+
+def _is_convertible_to_int(
+    value: object,
+) -> TypeGuard[str | bytes | bytearray | SupportsInt | SupportsIndex]:
+    """Return True when *value* can be safely passed to ``int``."""
+    return (
+        isinstance(value, (str, bytes, bytearray))
+        or hasattr(value, "__int__")
+        or hasattr(value, "__index__")
+    )
+
+
+def _coerce_int_value(value: object) -> int:
+    """Normalize int-like values and raise TypeError for unsupported inputs."""
+    if isinstance(value, bool) or not _is_convertible_to_int(value):
+        msg = "limit must be an integer"
+        raise TypeError(msg)
+    return int(value)
 
 
 def _normalize_task_id(task_id: object) -> str:
@@ -60,7 +79,7 @@ def _normalize_limit(value: object, *, default: int, minimum: int, maximum: int)
     if value is None:
         return default
     try:
-        parsed = int(value)
+        parsed = _coerce_int_value(value)
     except (TypeError, ValueError) as exc:
         msg = "limit must be an integer"
         raise ValueError(msg) from exc

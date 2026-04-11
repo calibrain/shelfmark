@@ -3,6 +3,7 @@
 Handles downloading IRC releases via DCC protocol.
 """
 
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,6 +23,41 @@ if TYPE_CHECKING:
 logger = setup_logger(__name__)
 
 
+def _config_text(key: str) -> str:
+    """Read a string config value with whitespace trimmed."""
+    value = config.get(key, "")
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _config_port(key: str, default: int) -> int:
+    """Read an IRC port value from config, accepting ints and numeric strings."""
+    value = config.get(key, default)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            with suppress(ValueError):
+                return int(stripped)
+    return default
+
+
+def _config_bool(key: str, default: bool) -> bool:
+    """Read a boolean config value from config."""
+    value = config.get(key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    return default
+
+
 @register_handler("irc")
 class IRCDownloadHandler(DownloadHandler):
     """Handle IRC DCC downloads."""
@@ -38,11 +74,11 @@ class IRCDownloadHandler(DownloadHandler):
         logger.info("IRC download: %s...", download_request[:60])
 
         # Get IRC settings
-        server = config.get("IRC_SERVER", "")
-        port = config.get("IRC_PORT", 6697)
-        use_tls = config.get("IRC_USE_TLS", True)
-        channel = config.get("IRC_CHANNEL", "")
-        nick = config.get("IRC_NICK", "")
+        server = _config_text("IRC_SERVER")
+        port = _config_port("IRC_PORT", 6697)
+        use_tls = _config_bool("IRC_USE_TLS", True)
+        channel = _config_text("IRC_CHANNEL")
+        nick = _config_text("IRC_NICK")
 
         if not server or not channel or not nick:
             logger.warning("IRC not fully configured")

@@ -255,6 +255,11 @@ _LANGUAGE_OPTIONS = [
 ]
 
 
+def _string_setting(value: object) -> str:
+    """Normalize free-form string settings used by select option builders."""
+    return value if isinstance(value, str) else str(value or "")
+
+
 def _get_aa_base_url_options() -> list[dict[str, str]]:
     """Build AA URL options dynamically, including additional mirrors from config."""
     from shelfmark.core.config import config
@@ -269,7 +274,7 @@ def _get_aa_base_url_options() -> list[dict[str, str]]:
     # If AA_BASE_URL is configured to a custom mirror that isn't present in the
     # defaults/additional list, include it so the UI can display the active value.
     configured_url = normalize_http_url(
-        config.get("AA_BASE_URL", "auto"),
+        _string_setting(config.get("AA_BASE_URL", "auto")),
         default_scheme="https",
         allow_special=("auto",),
     )
@@ -300,7 +305,7 @@ def _get_zlib_mirror_options() -> list[dict[str, str]]:
         options.append({"value": url, "label": domain})
 
     # Add custom mirrors
-    additional = config.get("ZLIB_ADDITIONAL_URLS", "")
+    additional = _string_setting(config.get("ZLIB_ADDITIONAL_URLS", ""))
     if additional:
         for raw_url in additional.split(","):
             url = raw_url.strip()
@@ -324,7 +329,7 @@ def _get_welib_mirror_options() -> list[dict[str, str]]:
         options.append({"value": url, "label": domain})
 
     # Add custom mirrors
-    additional = config.get("WELIB_ADDITIONAL_URLS", "")
+    additional = _string_setting(config.get("WELIB_ADDITIONAL_URLS", ""))
     if additional:
         for raw_url in additional.split(","):
             url = raw_url.strip()

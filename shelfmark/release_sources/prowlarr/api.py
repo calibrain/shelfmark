@@ -1,5 +1,6 @@
 """Prowlarr API client for connection testing, indexer listing, and search."""
 
+from collections.abc import Mapping
 from contextlib import suppress
 from http import HTTPStatus
 from typing import Any
@@ -10,6 +11,7 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.network import get_ssl_verify
 from shelfmark.release_sources.prowlarr.torznab import parse_torznab_xml
+from shelfmark.release_sources.prowlarr.utils import coerce_int_like
 
 logger = setup_logger(__name__)
 
@@ -23,6 +25,31 @@ _PROWLARR_CLIENT_ERRORS = (
     TypeError,
     ValueError,
 )
+
+
+def _normalize_json_object(payload: object, *, context: str) -> dict[str, Any]:
+    """Return a JSON object payload with string keys or raise on unexpected shapes."""
+    if not isinstance(payload, Mapping):
+        msg = f"Unexpected {context} response payload"
+        raise TypeError(msg)
+
+    normalized: dict[str, Any] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str):
+            msg = f"Unexpected {context} response payload"
+            raise TypeError(msg)
+        normalized[key] = value
+
+    return normalized
+
+
+def _normalize_json_object_list(payload: object, *, context: str) -> list[dict[str, Any]]:
+    """Return a list of JSON objects or raise on unexpected item shapes."""
+    if not isinstance(payload, list):
+        msg = f"Unexpected {context} response payload"
+        raise TypeError(msg)
+
+    return [_normalize_json_object(item, context=context) for item in payload]
 
 
 class ProwlarrClient:
@@ -89,7 +116,10 @@ class ProwlarrClient:
         """Test connection to Prowlarr. Returns (success, message)."""
         logger.info("Testing Prowlarr connection to: %s", self.base_url)
         try:
-            data = self._request("GET", "/api/v1/system/status")
+            data = _normalize_json_object(
+                self._request("GET", "/api/v1/system/status"),
+                context="Prowlarr status",
+            )
             version = data.get("version", "unknown")
         except requests.exceptions.ConnectionError:
             return False, "Could not connect to Prowlarr. Check the URL."
@@ -107,7 +137,10 @@ class ProwlarrClient:
     def get_indexers(self) -> list[dict[str, Any]]:
         """Get all configured indexers."""
         try:
-            return self._request("GET", "/api/v1/indexer")
+            return _normalize_json_object_list(
+                self._request("GET", "/api/v1/indexer"),
+                context="Prowlarr indexer list",
+            )
         except _PROWLARR_CLIENT_ERRORS:
             logger.exception("Failed to get indexers")
             return []
@@ -131,12 +164,8 @@ class ProwlarrClient:
         enriched_ids: list[int] = []
 
         for idx in self.get_enabled_indexers_detailed():
-            idx_id = idx.get("id")
-            if idx_id is None:
-                continue
-            try:
-                idx_id_int = int(idx_id)
-            except TypeError, ValueError:
+            idx_id_int = coerce_int_like(idx.get("id"))
+            if idx_id_int is None:
                 continue
 
             if restrict_to is not None and idx_id_int not in restrict_to:

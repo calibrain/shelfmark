@@ -31,6 +31,7 @@ from shelfmark.metadata_providers import (
     DisplayField,
     MetadataProvider,
     MetadataSearchOptions,
+    SearchField,
     SearchType,
     SortOrder,
     TextSearchField,
@@ -76,7 +77,7 @@ class GoogleBooksProvider(MetadataProvider):
         SortOrder.RELEVANCE,
         SortOrder.NEWEST,
     )
-    search_fields: ClassVar[tuple[TextSearchField, ...]] = (
+    search_fields: ClassVar[tuple[SearchField, ...]] = (
         TextSearchField(
             key="author",
             label="Author",

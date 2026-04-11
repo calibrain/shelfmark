@@ -26,6 +26,12 @@ if TYPE_CHECKING:
 logger = setup_logger(__name__)
 
 
+def _resolve_configured_hostname() -> str:
+    """Return a normalized ABB hostname from config when available."""
+    configured_hostname = config.get("ABB_HOSTNAME", "")
+    return normalize_hostname(configured_hostname if isinstance(configured_hostname, str) else "")
+
+
 @register_handler("audiobookbay")
 class AudiobookBayHandler(ExternalClientHandler):
     """Handler for AudiobookBay downloads via configured torrent client."""
@@ -63,7 +69,7 @@ class AudiobookBayHandler(ExternalClientHandler):
             logger.warning("Missing details URL for AudiobookBay task: %s", task.task_id)
             return None
 
-        hostname = normalize_hostname(config.get("ABB_HOSTNAME", ""))
+        hostname = _resolve_configured_hostname()
         if not hostname:
             hostname = normalize_hostname(urlparse(detail_url).hostname)
 

@@ -58,7 +58,7 @@ class Config:
     Values are cached for performance and can be refreshed when settings change.
     """
 
-    _instance: Config | None = None
+    _instance: Self | None = None
     _lock = Lock()
 
     def __new__(cls) -> Self:
@@ -68,7 +68,11 @@ class Config:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
                     cls._instance._initialized = False
-        return cls._instance
+        instance = cls._instance
+        if instance is None:
+            msg = "Config singleton failed to initialize"
+            raise RuntimeError(msg)
+        return instance
 
     def __init__(self) -> None:
         """Initialize caches and backing stores for the singleton."""

@@ -1,9 +1,11 @@
 """Authentication mode, auth-source normalization, and admin access policy helpers."""
 
+from __future__ import annotations
+
 import os
 import sqlite3
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, TypeGuard
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -22,6 +24,17 @@ AUTH_SOURCE_SET = frozenset(AUTH_SOURCES)
 _ALWAYS_ADMIN_SETTINGS_TABS = frozenset({"security", "users"})
 
 
+class _UserDBWithAdminPassword(Protocol):
+    """Minimal user DB surface needed for local-admin checks."""
+
+    def has_admin_with_password(self) -> bool: ...
+
+
+def _has_admin_password_api(candidate: object) -> TypeGuard[_UserDBWithAdminPassword]:
+    """Return True when *candidate* exposes the admin-password lookup we need."""
+    return callable(getattr(candidate, "has_admin_with_password", None))
+
+
 def has_local_password_admin(user_db: object | None = None) -> bool:
     """Return True when at least one local admin with a password exists."""
     try:
@@ -33,6 +46,8 @@ def has_local_password_admin(user_db: object | None = None) -> bool:
             db = UserDB(str(Path(config_root) / "users.db"))
             db.initialize()
 
+        if not _has_admin_password_api(db):
+            return False
         return db.has_admin_with_password()
     except AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError, sqlite3.Error:
         return False

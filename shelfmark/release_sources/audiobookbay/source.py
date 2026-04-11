@@ -28,6 +28,20 @@ logger = setup_logger(__name__)
 MIN_RELEVANCE_QUERY_WORD_LENGTH = 2
 
 
+def _coerce_hostname_config(value: object) -> str:
+    """Return a normalized ABB hostname from config."""
+    return normalize_hostname(value if isinstance(value, str) else "")
+
+
+def _coerce_positive_int(value: object, default: int) -> int:
+    """Return a positive integer config value or the provided default."""
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int) and value > 0:
+        return value
+    return default
+
+
 # Map language names to ISO 639-1 codes (matching frontend color maps)
 LANGUAGE_MAP = {
     "english": "en",
@@ -169,11 +183,11 @@ class AudiobookBaySource(ReleaseSource):
         if content_type != "audiobook":
             return []
 
-        hostname = normalize_hostname(config.get("ABB_HOSTNAME", ""))
+        hostname = _coerce_hostname_config(config.get("ABB_HOSTNAME", ""))
         if not hostname:
             logger.debug("AudiobookBay hostname is not configured")
             return []
-        max_pages = config.get("ABB_PAGE_LIMIT", 1)
+        max_pages = _coerce_positive_int(config.get("ABB_PAGE_LIMIT", 1), 1)
         exact_phrase = bool(config.get("ABB_EXACT_PHRASE", False))
 
         # Build search query candidates from plan.
@@ -321,7 +335,7 @@ class AudiobookBaySource(ReleaseSource):
     def is_available(self) -> bool:
         """Check if AudiobookBay source is enabled and configured."""
         return config.get("ABB_ENABLED", False) is True and bool(
-            normalize_hostname(config.get("ABB_HOSTNAME", ""))
+            _coerce_hostname_config(config.get("ABB_HOSTNAME", ""))
         )
 
     def get_column_config(self) -> ReleaseColumnConfig:

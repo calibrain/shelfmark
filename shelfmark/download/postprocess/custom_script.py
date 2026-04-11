@@ -284,7 +284,8 @@ def maybe_run_custom_script(
         )
         return True
 
-    path_mode = core_config.config.get("CUSTOM_SCRIPT_PATH_MODE", "absolute")
+    configured_path_mode = core_config.config.get("CUSTOM_SCRIPT_PATH_MODE", "absolute")
+    path_mode = configured_path_mode if isinstance(configured_path_mode, str) else "absolute"
 
     payload: dict[str, Any] | None = None
     if core_config.config.get("CUSTOM_SCRIPT_JSON_PAYLOAD", False):

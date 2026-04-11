@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, ClassVar, TypeVar
 
+from shelfmark.core.request_helpers import normalize_optional_text
+
 
 class SearchType(StrEnum):
     """Type of search to perform."""
@@ -531,11 +533,17 @@ def get_configured_provider(
 
     # For audiobooks, try audiobook-specific provider first, then fall back to main provider
     if content_type == "audiobook":
-        metadata_provider = app_config.get("METADATA_PROVIDER_AUDIOBOOK", "", user_id=user_id)
+        metadata_provider = normalize_optional_text(
+            app_config.get("METADATA_PROVIDER_AUDIOBOOK", "", user_id=user_id)
+        )
         if not metadata_provider:
-            metadata_provider = app_config.get("METADATA_PROVIDER", "", user_id=user_id)
+            metadata_provider = normalize_optional_text(
+                app_config.get("METADATA_PROVIDER", "", user_id=user_id)
+            )
     else:
-        metadata_provider = app_config.get("METADATA_PROVIDER", "", user_id=user_id)
+        metadata_provider = normalize_optional_text(
+            app_config.get("METADATA_PROVIDER", "", user_id=user_id)
+        )
 
     if not metadata_provider:
         return None
@@ -563,24 +571,28 @@ def get_configured_provider_name(
     app_config.refresh()
 
     if content_type == "combined":
-        combined_provider = app_config.get(
-            "METADATA_PROVIDER_COMBINED",
-            "",
-            user_id=user_id,
+        combined_provider = normalize_optional_text(
+            app_config.get(
+                "METADATA_PROVIDER_COMBINED",
+                "",
+                user_id=user_id,
+            )
         )
         if combined_provider or not fallback_to_main:
-            return combined_provider
+            return combined_provider or ""
 
     if content_type == "audiobook":
-        audiobook_provider = app_config.get(
-            "METADATA_PROVIDER_AUDIOBOOK",
-            "",
-            user_id=user_id,
+        audiobook_provider = normalize_optional_text(
+            app_config.get(
+                "METADATA_PROVIDER_AUDIOBOOK",
+                "",
+                user_id=user_id,
+            )
         )
         if audiobook_provider or not fallback_to_main:
-            return audiobook_provider
+            return audiobook_provider or ""
 
-    return app_config.get("METADATA_PROVIDER", "", user_id=user_id)
+    return normalize_optional_text(app_config.get("METADATA_PROVIDER", "", user_id=user_id)) or ""
 
 
 def get_provider_sort_options(
@@ -652,7 +664,9 @@ def get_provider_default_sort(
 
     # Look up provider-specific default sort setting
     setting_key = f"{provider_name.upper()}_DEFAULT_SORT"
-    return app_config.get(setting_key, "relevance", user_id=user_id)
+    return normalize_optional_text(app_config.get(setting_key, "relevance", user_id=user_id)) or (
+        "relevance"
+    )
 
 
 def sync_metadata_provider_selection() -> None:

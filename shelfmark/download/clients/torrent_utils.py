@@ -1,5 +1,7 @@
 """Shared utilities for torrent clients."""
 
+from __future__ import annotations
+
 import base64
 import hashlib
 import re
@@ -30,6 +32,8 @@ _TORRENT_FETCH_ERRORS = (
     ValueError,
 )
 _TORRENT_PARSE_ERRORS = (IndexError, KeyError, TypeError, ValueError)
+
+type BencodeValue = dict[str | bytes, BencodeValue] | list[BencodeValue] | int | bytes | str
 
 
 @dataclass
@@ -222,7 +226,7 @@ def bencode_decode(data: bytes) -> tuple:
     raise ValueError(msg)
 
 
-def bencode_encode(data: dict[str | bytes, object] | list[object] | int | bytes | str) -> bytes:
+def bencode_encode(data: BencodeValue) -> bytes:
     """Encode data to bencode format."""
     if isinstance(data, dict):
         # Keys must be sorted (bencode spec requirement)

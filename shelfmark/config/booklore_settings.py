@@ -123,7 +123,7 @@ def get_booklore_library_options() -> list[dict[str, Any]]:
 
     base_url = str(config.get("BOOKLORE_HOST", "") or "").strip().rstrip("/")
     username = str(config.get("BOOKLORE_USERNAME", "") or "").strip()
-    password = config.get("BOOKLORE_PASSWORD", "") or ""
+    password = str(config.get("BOOKLORE_PASSWORD", "") or "")
 
     if not base_url or not username or not password:
         return []
@@ -148,7 +148,7 @@ def get_booklore_path_options() -> list[dict[str, Any]]:
 
     base_url = str(config.get("BOOKLORE_HOST", "") or "").strip().rstrip("/")
     username = str(config.get("BOOKLORE_USERNAME", "") or "").strip()
-    password = config.get("BOOKLORE_PASSWORD", "") or ""
+    password = str(config.get("BOOKLORE_PASSWORD", "") or "")
 
     if not base_url or not username or not password:
         return []
@@ -182,7 +182,7 @@ def check_booklore_connection(
 
     base_url = str(_get_value("BOOKLORE_HOST", "") or "").strip().rstrip("/")
     username = str(_get_value("BOOKLORE_USERNAME", "") or "").strip()
-    password = _get_value("BOOKLORE_PASSWORD", "") or ""
+    password = str(_get_value("BOOKLORE_PASSWORD", "") or "")
 
     if not base_url:
         return {"success": False, "message": "Grimmory URL is required"}

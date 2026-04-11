@@ -23,6 +23,20 @@ logger = setup_logger(__name__)
 _QUEUE_HOOK_ERRORS = (OSError, RuntimeError, TypeError, ValueError)
 
 
+def _coerce_status_timeout_seconds(value: object, *, default: int) -> int:
+    """Normalize STATUS_TIMEOUT into a usable positive integer."""
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value if value > 0 else default
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            parsed = int(stripped)
+            return parsed if parsed > 0 else default
+    return default
+
+
 class BookQueue:
     """Thread-safe download queue manager with priority support and cancellation."""
 
@@ -41,7 +55,12 @@ class BookQueue:
     @property
     def _status_timeout(self) -> timedelta:
         """Get status timeout from config (allows live updates)."""
-        return timedelta(seconds=app_config.get("STATUS_TIMEOUT", 3600))
+        return timedelta(
+            seconds=_coerce_status_timeout_seconds(
+                app_config.get("STATUS_TIMEOUT", 3600),
+                default=3600,
+            )
+        )
 
     def add(self, task: DownloadTask) -> bool:
         """Add a download task to the queue. Returns False if already exists."""

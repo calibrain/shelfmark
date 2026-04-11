@@ -26,6 +26,7 @@ from shelfmark.download.clients.base_handler import (
 from shelfmark.release_sources import register_handler
 from shelfmark.release_sources.prowlarr.cache import get_release, remove_release
 from shelfmark.release_sources.prowlarr.utils import (
+    coerce_int_like,
     get_preferred_download_url,
     get_protocol,
 )
@@ -55,9 +56,8 @@ def _coerce_seed_time_minutes(raw_seed_time: object) -> int | None:
     if raw_seed_time is None:
         return None
 
-    try:
-        seed_time_seconds = int(raw_seed_time)
-    except TypeError, ValueError:
+    seed_time_seconds = coerce_int_like(raw_seed_time)
+    if seed_time_seconds is None:
         logger.warning("Invalid Prowlarr minimumSeedTime value: %r", raw_seed_time)
         return None
 

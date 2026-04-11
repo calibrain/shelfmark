@@ -2,6 +2,7 @@
 
 import logging
 import sys
+from collections.abc import Mapping
 from logging.handlers import RotatingFileHandler
 from typing import TYPE_CHECKING
 
@@ -17,15 +18,29 @@ class CustomLogger(logging.Logger):
     def error_trace(self, msg: object, *args: object, **kwargs: object) -> None:
         """Log an error message with full stack trace."""
         self.log_resource_usage()
-        kwargs.pop("exc_info", None)
-        self.error(msg, *args, exc_info=True, **kwargs)
+        stack_info, stacklevel, extra = _extract_log_kwargs(kwargs)
+        self.error(
+            msg,
+            *args,
+            exc_info=True,
+            stack_info=stack_info,
+            stacklevel=stacklevel,
+            extra=extra,
+        )
 
     def debug_trace(self, msg: object, *args: object, **kwargs: object) -> None:
         """Log a debug message (stack trace only if exception active)."""
-        kwargs.pop("exc_info", None)
+        stack_info, stacklevel, extra = _extract_log_kwargs(kwargs)
         # Only include exc_info if there's actually an exception
         has_exception = sys.exc_info()[0] is not None
-        self.debug(msg, *args, exc_info=has_exception, **kwargs)
+        self.debug(
+            msg,
+            *args,
+            exc_info=has_exception,
+            stack_info=stack_info,
+            stacklevel=stacklevel,
+            extra=extra,
+        )
 
     def log_resource_usage(self) -> None:
         """Log best-effort CPU and memory usage for the current container."""
@@ -39,9 +54,13 @@ class CustomLogger(logging.Logger):
 
             def _get_process_rss_mb(proc: object) -> float | None:
                 try:
-                    mem = proc.info.get("memory_info")
-                    if mem:
-                        return mem.rss / (1024 * 1024)
+                    proc_info = getattr(proc, "info", None)
+                    if not isinstance(proc_info, Mapping):
+                        return None
+                    mem = proc_info.get("memory_info")
+                    rss = getattr(mem, "rss", None)
+                    if isinstance(rss, int | float):
+                        return rss / (1024 * 1024)
                 except (
                     psutil.NoSuchProcess,
                     psutil.AccessDenied,
@@ -76,6 +95,31 @@ class CustomLogger(logging.Logger):
         except AttributeError, OSError, psutil.Error:
             # Avoid breaking the original log call if psutil is missing or restricted.
             return
+
+
+def _extract_log_kwargs(
+    kwargs: Mapping[str, object],
+) -> tuple[bool, int, Mapping[str, object] | None]:
+    stack_info = kwargs.get("stack_info")
+    normalized_stack_info = stack_info if isinstance(stack_info, bool) else False
+
+    stacklevel = kwargs.get("stacklevel")
+    normalized_stacklevel = stacklevel if isinstance(stacklevel, int) else 1
+
+    extra = kwargs.get("extra")
+    normalized_extra = _normalize_log_extra(extra)
+
+    return normalized_stack_info, normalized_stacklevel, normalized_extra
+
+
+def _normalize_log_extra(value: object) -> Mapping[str, object] | None:
+    if not isinstance(value, Mapping):
+        return None
+
+    if all(isinstance(key, str) for key in value):
+        return value
+
+    return None
 
 
 def setup_logger(name: str, log_file: Path = LOG_FILE) -> CustomLogger:

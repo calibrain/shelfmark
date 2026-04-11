@@ -109,20 +109,31 @@ def _parse_release_search_mode(value: object) -> SearchMode:
 
 
 def _optional_number(value: object) -> float | None:
+    if isinstance(value, bool):
+        return float(value)
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
-    try:
-        return float(value)
-    except TypeError, ValueError:
-        return None
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
 
 
 def _optional_positive_int(value: object) -> int | None:
     if isinstance(value, bool):
         return None
-    try:
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, float):
         parsed = int(value)
-    except TypeError, ValueError:
+    elif isinstance(value, str):
+        try:
+            parsed = int(value)
+        except ValueError:
+            return None
+    else:
         return None
     return parsed if parsed > 0 else None
 
@@ -132,6 +143,19 @@ def _seed_time_seconds_to_minutes(value: object) -> int | None:
     if seed_time_seconds is None:
         return None
     return (seed_time_seconds + 59) // 60
+
+
+def _config_float(value: object, default: float) -> float:
+    if isinstance(value, bool) or value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return default
+    return default
 
 
 def _build_retry_resolution_fields(
@@ -689,6 +713,7 @@ def update_download_progress(book_id: str, progress: float) -> None:
     # Broadcast progress via WebSocket with throttling
     if ws_manager:
         current_time = time.time()
+        progress_update_interval = _config_float(config.DOWNLOAD_PROGRESS_UPDATE_INTERVAL, 1.0)
         should_broadcast = False
 
         with _progress_lock:
@@ -700,7 +725,7 @@ def update_download_progress(book_id: str, progress: float) -> None:
             should_broadcast = (
                 progress <= _PROGRESS_BROADCAST_START_PERCENT
                 or progress >= _PROGRESS_BROADCAST_COMPLETE_PERCENT
-                or time_elapsed >= config.DOWNLOAD_PROGRESS_UPDATE_INTERVAL
+                or time_elapsed >= progress_update_interval
                 or progress - last_progress >= _PROGRESS_BROADCAST_MIN_DELTA
             )
 
@@ -863,7 +888,8 @@ def _process_single_download(task_id: str, cancel_flag: Event) -> None:
 
 def concurrent_download_loop() -> None:
     """Run the main concurrent download coordinator."""
-    max_workers = config.MAX_CONCURRENT_DOWNLOADS
+    max_workers = normalize_positive_int(config.MAX_CONCURRENT_DOWNLOADS) or 1
+    main_loop_sleep_time = _config_float(config.MAIN_LOOP_SLEEP_TIME, 0.5)
     logger.info("Starting concurrent download loop with %s workers", max_workers)
 
     with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="Download") as executor:
@@ -953,7 +979,7 @@ def concurrent_download_loop() -> None:
                     active_futures[future] = (task_id, cancel_flag)
 
                 # Brief sleep to prevent busy waiting
-                time.sleep(config.MAIN_LOOP_SLEEP_TIME)
+                time.sleep(main_loop_sleep_time)
             except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError) as e:
                 logger.error_trace("Download coordinator loop error: %s", e)
                 time.sleep(COORDINATOR_LOOP_ERROR_RETRY_DELAY)

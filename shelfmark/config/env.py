@@ -79,7 +79,9 @@ def is_covers_cache_enabled() -> bool:
     from shelfmark.core.config import config
 
     setting_enabled = config.get("COVERS_CACHE_ENABLED", True)
-    return setting_enabled and _is_config_dir_writable()
+    if isinstance(setting_enabled, str):
+        return string_to_bool(setting_enabled) and _is_config_dir_writable()
+    return bool(setting_enabled) and _is_config_dir_writable()
 
 
 # =============================================================================

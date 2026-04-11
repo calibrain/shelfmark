@@ -44,7 +44,11 @@ def _get_io_threadpool() -> ThreadPool:
     global _IO_THREADPOOL
     if _IO_THREADPOOL is None:
         pool_size = max(2, min(8, os.cpu_count() or 2))
-        _IO_THREADPOOL = _GeventThreadPool(pool_size)
+        threadpool_cls = _GeventThreadPool
+        if threadpool_cls is None:
+            msg = "gevent threadpool is unavailable"
+            raise RuntimeError(msg)
+        _IO_THREADPOOL = threadpool_cls(pool_size)
     return _IO_THREADPOOL
 
 

@@ -45,10 +45,13 @@ def _migrate_security_settings() -> None:
         save_config_file,
     )
 
+    def _save_users_config(values: dict[str, Any]) -> None:
+        save_config_file("users", values)
+
     migrate_security_settings(
         load_security_config=lambda: load_config_file("security"),
         load_users_config=lambda: load_config_file("users"),
-        save_users_config=lambda values: save_config_file("users", values),
+        save_users_config=_save_users_config,
         ensure_config_dir=lambda: _ensure_config_dir("security"),
         get_config_path=lambda: _get_config_file_path("security"),
         sync_builtin_admin_user=sync_builtin_admin_user,
