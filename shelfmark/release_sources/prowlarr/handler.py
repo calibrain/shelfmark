@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-from shelfmark.core.config import config as config
+from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import normalize_optional_text
 from shelfmark.download.clients import (
@@ -36,6 +36,13 @@ if TYPE_CHECKING:
     from shelfmark.core.models import DownloadTask
 
 logger = setup_logger(__name__)
+__all__ = [
+    "ProwlarrHandler",
+    "POLL_INTERVAL",
+    "COMPLETED_PATH_RETRY_INTERVAL",
+    "COMPLETED_PATH_MAX_ATTEMPTS",
+    "config",
+]
 
 # Backwards-compat constants for tests patching this module.
 POLL_INTERVAL = _DEFAULT_POLL_INTERVAL
