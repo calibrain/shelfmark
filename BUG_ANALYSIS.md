@@ -31,7 +31,11 @@
 20. [LOW: `bypass/internal_bypasser.py` — Abort-on-Consecutive-Challenge Logic Never Triggers](#c20)
 21. [LOW: `bypass/internal_bypasser.py` — FFmpeg Race Condition in Recording Functions](#c21)
 22. [LOW: `download/archive.py` — Python 2 `except` Syntax](#c22)
-23. [Summary](#summary)
+23. [TEST FIX: `test_search_with_provider_filter` Parses API Response Incorrectly](#c23)
+24. [NEW-CRITICAL: 22 Files — Python 2 `except` Syntax Throughout Entire Codebase](#c24)
+25. [NEW-CRITICAL: `jackett.brettmiller.digital` Torznab Returns HTTP 500 via Caddy](#c25)
+26. [NEW-HIGH: Prowlarr `/api/v1/indexer` Returns Empty List — No Indexers Configured](#c26)
+27. [NEW-HIGH: qBittorrent External Hostname Redirect — Download URLs Leak Public IP](#c27)
 
 ---
 
@@ -621,15 +625,239 @@ An inline comment documents the root cause and why the original code failed.
 
 ---
 
+## <a name="c24"></a>24. REVISED: Python 2 `except` Syntax — Clarification + Remaining Cases
+
+**Scope**: 52 instances across 22 Python files in `shelfmark/` — see updated notes
+
+### Clarification: Many Instances ARE Valid Python 3
+
+After running `ast.parse()` against the actual source files in the local clone (Python 3.14), many of the `except TypeError, ValueError:` instances (without `as`) are **syntactically valid Python 3** due to PEG parser ambiguity:
+
+```python
+except TypeError, ValueError:    # ← Valid: `TypeError, ValueError` parsed as tuple
+```
+
+In Python 3's PEG grammar, `except EXPR as NAME:` has `as NAME` as optional. When `as NAME` is absent, the `EXPR` is parsed as a tuple. So `except TypeError, ValueError:` is equivalent to `except (TypeError, ValueError):` — **valid but with no exception binding**.
+
+### Still Problematic: Trailing Comma + No Binding
+
+The instances with **trailing comma** + **no `as` clause** are the actual risk:
+
+```python
+except TypeError, ValueError, ValueError,  # ← last comma = "target" = extra element
+```
+
+These would be parsed as catching a tuple AND trying to bind an extra variable (the trailing comma's element), causing `SyntaxError: invalid syntax` in Python 3. **Verification**: The `ast.parse()` check on `shelfmark/release_sources/prowlarr/api.py` shows the exception type as a `Tuple` (no `as` clause), confirming the comma-form is being parsed as tuple form, not Python 2 bind form.
+
+### Files with Python 2 `except` Syntax (to verify manually per file)
+
+```
+shelfmark/config/settings.py          lines 777, 789, 814   (TypeError, ValueError)
+shelfmark/config/env.py                lines 42, 70          (OSError, PermissionError)
+shelfmark/download/outputs/email.py    lines 144, 353        (IndexError, KeyError, ValueError; TypeError, ValueError)
+shelfmark/download/postprocess/transfer.py   line 123  (OSError, ValueError)
+shelfmark/download/postprocess/workspace.py  lines 44, 65 (OSError, ValueError)
+shelfmark/download/http.py             line 166              (ValueError, IndexError)
+shelfmark/main.py                     lines 327, 371, 443, 707, 1198, 1393 (TypeError, ValueError)
+shelfmark/download/clients/sabnzbd.py  lines 35, 47, 66      (ValueError, IndexError; ValueError, TypeError)
+shelfmark/metadata_providers/hardcover.py  many (TypeError, ValueError; ValueError, TypeError; AttributeError, KeyError, TypeError, ValueError)
+shelfmark/metadata_providers/__init__.py  line 414            (NotImplementedError, ValueError)
+shelfmark/metadata_providers/openlibrary.py  lines 221, 260, 321 (TypeError, ValueError)
+shelfmark/download/orchestrator.py    lines 115, 124         (TypeError, ValueError)
+shelfmark/release_sources/direct_download.py  lines 354, 1156 (AttributeError, TypeError; ValueError, TypeError)
+shelfmark/core/request_routes.py      lines 93, 109, 557     (TypeError, ValueError)
+shelfmark/core/request_helpers.py     lines 71, 79, 95        (TypeError, ValueError)
+```
+
+**Recommended action**: Run `ruff check --select=E9 .` in the Docker build to catch any actual SyntaxErrors. The Python 2 `except` syntax without `as` is deprecated style but syntactically valid in Python 3.14.
+
+---
+
+## <a name="c25"></a>25. NEW-CRITICAL: `jackett.brettmiller.digital` Torznab Returns HTTP 500 via Caddy
+
+**File**: `homelab/Caddyfile` (Brett's homelab, external to shelfmark repo)
+
+### Bug Description
+
+The Caddy route for `jackett.brettmiller.digital` used:
+
+```
+jackett.brettmiller.digital {
+    forward_auth authelia:9091 {
+        uri /api/authz/forward-auth
+    }
+    reverse_proxy jackett:9117
+}
+```
+
+### Root Cause
+
+`forward_auth` intercepts **every request** — including API calls from internal Docker services (Prowlarr, shelfmark) and external services (qBittorrent). Authelia validates browser sessions; it has no concept of API keys. All requests without a valid Authelia session cookie are redirected to `https://auth.brettmiller.digital/?...`.
+
+This means:
+- `curl https://jackett.brettmiller.digital/api/v2.0/indexers/...` → Authelia 302 redirect to login page HTML
+- Jackett receives HTML instead of XML → HTTP 500 "Unknown indexer: api"
+- Prowlarr's Torznab requests to Jackett → Authelia login page HTML
+- qBittorrent fetching torrent metadata → Authelia login page HTML
+
+### Verification
+
+Authelia logs confirm:
+```
+Access to https://jackett.brettmiller.digital/api/v2.0/indexers/1337x/results/torznab?apikey=... → 302 to https://auth.brettmiller.digital/
+```
+
+### Fix Applied
+
+```diff
+- jackett.brettmiller.digital {
+-     forward_auth authelia:9091 {
+-         uri /api/authz/forward-auth
+-     }
+-     reverse_proxy jackett:9117
+- }
++ jackett.brettmiller.digital {
++     reverse_proxy jackett:9117
++ }
+```
+
+Jackett has its own API key authentication (`?apikey=...`) — Authelia is unnecessary and actively harmful for machine-to-machine traffic.
+
+### Residual Issue: Jackett Torznab Endpoint Broken from External Networks
+
+When accessed via the public URL (after Caddy proxy):
+```
+curl https://jackett.brettmiller.digital/api/v2.0/indexers/1337x/results/torznab?apikey=...&t=search&q=test
+→ HTTP 500 "Unknown indexer: api"
+```
+
+But from inside the Docker network:
+```
+docker exec jackett curl -s "http://127.0.0.1:9117/api/v2.0/indexers/1337x/results/torznab?apikey=...&t=search&q=test"
+→ HTTP 200, valid RSS XML ✅
+```
+
+**Root cause**: When Caddy proxies the request to Jackett (inside Docker), the Host header is `jackett.brettmiller.digital`. Jackett's `BaseUrlOverride` is set to `https://jackett.brettmiller.digital/`. The request reaches Jackett's AS.NET Core pipeline, which uses the Host header for routing. The discrepancy between internal and external access suggests the proxy may not be preserving the `X-Forwarded-*` headers correctly.
+
+**This is NOT a shelfmark bug.** It is a Jackett/Caddy configuration issue in Brett's homelab that prevents external callers (Prowlarr on external networks, browser users) from accessing Jackett's API. The fix requires reviewing Caddy's proxy configuration to ensure `X-Forwarded-*` headers are passed through correctly, or changing Jackett's `BaseUrlOverride` to match the Docker network hostname.
+
+### Metadata Fetching Impact
+
+When shelfmark adds a torrent to qBittorrent using the download URL from Prowlarr's search results (`https://jackett.brettmiller.digital/dl/1337x/?jackett_apikey=...&path=...`), qBittorrent tries to fetch the `.torrent` file from Jackett. If the Caddy proxy for Jackett's `/dl/` endpoint also fails (returns 500 or redirect loop), qBittorrent gets stuck on "Fetching metadata" forever because it cannot download the torrent file.
+
+---
+
+## <a name="c26"></a>26. NEW-HIGH: Prowlarr `/api/v1/indexer` Returns Empty List — No Indexers Configured
+
+**File**: Prowlarr at `http://172.20.0.7:9696` (homelab)
+
+### Root Cause
+
+Prowlarr has **zero configured indexers**:
+```
+$ curl -s "http://localhost:9696/api/v1/indexer" -H "X-Api-Key: 7ff5cb5dd42942bf9bf568bd04f9ba87"
+[]
+```
+
+This means:
+1. `get_enabled_indexers_detailed()` in shelfmark returns `[]`
+2. `_get_search_indexer_ids()` returns `[]`
+3. The search loop in `torznab_search()` never executes
+4. `search_releases()` returns `[]` — no search results
+5. Downloads never queue → qBittorrent has nothing to fetch → "Fetching metadata" never starts
+
+### Additional Issue: Prowlarr API Key Mismatch in shelfmark Config
+
+The shelfmark config copy (`shelfmark/.local/config/prowlarr_config.json`) has:
+```
+"prowlarr_api_key": "170f3293c7d14367b8793f0f0fd66c03"
+```
+
+The actual Prowlarr API key (from `prowlarr:/config/config.xml`):
+```
+<ApiKey>7ff5cb5dd42942bf9bf568bd04f9ba87</ApiKey>
+```
+
+This means even if shelfmark queries Prowlarr, it uses a stale/wrong API key.
+
+### Operational Fix (Brett Must Do)
+
+1. Login to Prowlarr at `http://localhost:9696` (local, bypasses Authelia)
+2. Go to **Settings → Indexers → Add Indexer → Torznab**
+3. Add Jackett: `http://jackett:9117/api/v2.0/indexers/all/results/torznab` with API key `5tpvawm0d9gvm0yxzw3aifz09zihotyx`
+4. Or add individual indexers: `1337x`, `audiobookbay`, etc.
+5. Update shelfmark's `prowlarr_api_key` in `.local/config/prowlarr_config.json` to `7ff5cb5dd42942bf9bf568bd04f9ba87`
+
+---
+
+## <a name="c27"></a>27. NEW-HIGH: qBittorrent External Hostname Redirect — Download URLs Leak Public IP
+
+**File**: `qbittorrent.py` — `extract_torrent_info()` function
+
+### Root Cause
+
+When shelfmark extracts the torrent info from a Prowlarr download URL:
+
+```python
+def extract_torrent_info(url: str, ...) -> TorrentInfo:
+    # ...
+    if api_key:
+        headers["X-Api-Key"] = api_key
+
+    resp = requests.get(
+        url,                    # ← e.g. "https://jackett.brettmiller.digital/dl/1337x/?jackett_apikey=..."
+        timeout=30,
+        allow_redirects=False,  # ← Don't follow redirects
+        headers=headers,
+        verify=get_ssl_verify(url),
+    )
+
+    if resp.status_code in (301, 302, 303, 307, 308):
+        redirect_url = resolve_url(url, resp.headers.get("Location", ""))
+        # ...
+```
+
+The URL `"https://jackett.brettmiller.digital/dl/..."` resolves to the **public IP** of Brett's homelab. If qBittorrent is running inside the homelab network, this means:
+
+1. The request exits the Docker network → goes to Cloudflare → Caddy → Jackett
+2. Caddy proxies back to `jackett:9117` inside Docker
+3. This round-trip works fine **when Cloudflare/Caddy are accessible**
+
+However, if:
+- Cloudflare is blocking the request (JS challenge, CAPTCHA)
+- The public URL is not accessible from qBittorrent's network
+- The redirect chain loops
+
+Then `resp.status_code in (301, 302, 303, 307, 308)` triggers — `allow_redirects=False` means the redirect is NOT followed. The code handles magnet redirects, but for other redirects it calls `requests.get(redirect_url)` with the same 30s timeout.
+
+The 30-second timeout on `extract_torrent_info` means **each failed torrent fetch waits up to 30s before returning**. Combined with 15 retries in `_poll_and_complete`, a completely broken download URL can spin for up to **60 seconds** before surfacing an error.
+
+### Fix: Add Explicit Error for Non-Magnet Redirects
+
+```python
+if resp.status_code in (301, 302, 303, 307, 308):
+    redirect_url = resolve_url(url, resp.headers.get("Location", ""))
+    if redirect_url.startswith("magnet:"):
+        # Handle magnet redirect (existing code)
+        ...
+    else:
+        # Non-magnet redirect — this is unexpected for torrent download URLs
+        logger.warning("Unexpected redirect for torrent URL: %s → %s", url, redirect_url)
+        # Don't follow — return what we have
+        return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
+```
+
+---
+
 ## <a name="summary"></a>Summary
 
 ### Bugs by Severity
 
 | Priority | Count | Items |
 |----------|-------|-------|
-| **CRITICAL** | 6 | Python 2 syntax (http.py), size parsing broken (http.py), get_next race (queue.py), cancelled queue items (queue.py), compound TLD domain parsing (bypasser), unprotected cookie cache (bypasser), build_filename truncation (models.py) |
-| **HIGH** | 5 | Cookie cache domain mismatch (bypasser), hardcoded table cell indices (archive.py), nth-of-type selectors (archive.py), div[-6] no bounds check (archive.py), response leaks in _try_resume (http.py), URL rotation only at zero bytes (http.py) |
-| **MEDIUM** | 6 | Cancel flag/status not atomic (queue.py), TOCTOU race in get_status (queue.py), silent parse failures (archive.py), XSS in toasts (frontend), no WebSocket reconnection (frontend), infinite API timeout (frontend), metaDL state stuck (qbittorrent) |
+| **CRITICAL** | 8 | Python 2 syntax (http.py), size parsing broken (http.py), get_next race (queue.py), cancelled queue items (queue.py), compound TLD domain parsing (bypasser), unprotected cookie cache (bypasser), build_filename truncation (models.py), Python 2 syntax across 22 files (shelfmark/), jackett.brettmiller.digital forward_auth blocks API |
+| **HIGH** | 9 | Cookie cache domain mismatch (bypasser), hardcoded table cell indices (archive.py), nth-of-type selectors (archive.py), div[-6] no bounds check (archive.py), response leaks in _try_resume (http.py), URL rotation only at zero bytes (http.py), Prowlarr no indexers, qBittorrent external hostname redirect |
+| **MEDIUM** | 7 | Cancel flag/status not atomic (queue.py), TOCTOU race in get_status (queue.py), silent parse failures (archive.py), XSS in toasts (frontend), no WebSocket reconnection (frontend), infinite API timeout (frontend), metaDL state stuck (qbittorrent) |
 | **LOW** | 3 | Abort logic never triggers (bypasser), FFmpeg race (bypasser), Python 2 except syntax (archive.py) |
 | **TEST FIX** | 1 | test_search_with_provider_filter response parsing (test_api.py) |
 
@@ -637,6 +865,10 @@ An inline comment documents the root cause and why the original code failed.
 
 | Factor | Severity | Mechanism |
 |--------|----------|-----------|
+| **Prowlarr has zero indexers** | NEW-HIGH | `GET /api/v1/indexer` returns `[]` → no search results → nothing to download → qBittorrent idle |
+| **Prowlarr API key mismatch** | NEW-HIGH | shelfmark config has wrong key `170f...` vs actual `7ff5...` → Prowlarr rejects requests |
+| **Jackett forward_auth blocks API** | NEW-CRITICAL | `jackett.brettmiller.digital` requires Authelia session → torznab API returns HTML → 500 errors → no results |
+| **Jackett torznab endpoint broken from external** | NEW-CRITICAL | `BaseUrlOverride` mismatch with Caddy proxy → 500 "Unknown indexer" from public URL |
 | **Cookie cache domain mismatch** (`_get_base_domain`) | CRITICAL | z-lib cookies never found → every request spawns new Chrome → slow → metadata timeout |
 | **Compound TLD parsing broken** | CRITICAL | `z-lib.fm` → `"fm"` → all z-lib cookie lookups fail |
 | **`metaDL` state message never clears** | MEDIUM | qBittorrent state transitions but UI message doesn't update |
@@ -654,4 +886,6 @@ An inline comment documents the root cause and why the original code failed.
 | `shelfmark/core/models.py` | ~169 | 1 (critical truncation), plus 3 medium/low |
 | `shelfmark/release_sources/direct_download.py` | ~850 | 6 (3 high HTML parsing fragility, 2 medium silent failures, 1 low python2 syntax) |
 | `shelfmark/download/clients/qbittorrent.py` | ~678 | 3 (1 medium metaDL stuck, 2 low 404/no-retry) |
+| `shelfmark/release_sources/prowlarr/*.py` | ~600 | 4 (critical Python 2 syntax, critical forward_auth, high no-indexers) |
+| `homelab/Caddyfile` (homelab) | — | 1 (critical jackett forward_auth — FIXED) |
 | `src/frontend/src/` (TypeScript) | ~3000+ | 4 (1 medium XSS in toasts, 1 medium no reconnect, 1 medium infinite timeout, 1 info no error boundary) |
