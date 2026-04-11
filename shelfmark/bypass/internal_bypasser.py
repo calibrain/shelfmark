@@ -87,16 +87,13 @@ class _CdpWorker:
         self._loop = loop
         self._ready.set()
         loop.run_forever()
-        try:
+        with suppress(Exception):
             pending = asyncio.all_tasks(loop)
             for task in pending:
                 task.cancel()
             if pending:
                 loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-        except Exception:
-            pass
-        finally:
-            loop.close()
+        loop.close()
 
     def start(self) -> None:
         with self._lock:
@@ -741,8 +738,8 @@ async def _get(url: str, driver: Any, cancel_flag: Event | None = None) -> str:
         body = await page.evaluate("document.body ? document.body.innerText : ''")
         if body:
             logger.debug(f"Page content: {body[:500]}..." if len(body) > 500 else body)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Could not inspect protected page body: %s", exc)
 
     return ""
 
@@ -1018,8 +1015,8 @@ def _try_with_cached_cookies(url: str, hostname: str) -> str | None:
         if response.status_code == 200:
             logger.debug("Cached cookies worked, skipped Chrome bypass")
             return response.text
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Cached cookie retry failed for %s: %s", url, exc)
 
     return None
 

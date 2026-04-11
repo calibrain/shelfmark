@@ -1,5 +1,6 @@
 """Prowlarr API client for connection testing, indexer listing, and search."""
 
+from contextlib import suppress
 from http import HTTPStatus
 from typing import Any
 
@@ -55,11 +56,9 @@ class ProwlarrClient:
             )
 
             if not response.ok:
-                try:
+                with suppress(Exception):
                     error_body = response.text[:500]
                     logger.error("Prowlarr API error response: %s", error_body)
-                except Exception:
-                    pass
 
             response.raise_for_status()
             return response.json()
@@ -216,11 +215,9 @@ class ProwlarrClient:
                 verify=get_ssl_verify(url),
             )
             if not response.ok:
-                try:
+                with suppress(Exception):
                     error_body = response.text[:500]
                     logger.error("Prowlarr Torznab error response: %s", error_body)
-                except Exception:
-                    pass
             response.raise_for_status()
 
             results = parse_torznab_xml(response.text)

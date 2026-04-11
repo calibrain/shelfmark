@@ -322,8 +322,12 @@ class RTorrentClient(DownloadClient):
                 status = self.get_status(torrent_info.info_hash)
                 if status.state != DownloadStatus.error("").state:
                     return (torrent_info.info_hash, status)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(
+                    "Could not fetch existing rTorrent status for %s: %s",
+                    torrent_info.info_hash,
+                    exc,
+                )
         except Exception as e:
             logger.debug("Error checking for existing torrent: %s", e)
             return None

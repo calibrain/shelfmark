@@ -20,6 +20,7 @@ from shelfmark.core.auth_modes import (
     load_active_auth_mode,
     normalize_auth_source,
 )
+from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_settings_overrides import (
@@ -370,11 +371,13 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
 
             user_db.set_user_settings(user_id, validated_settings)
             try:
-                from shelfmark.core.config import config as app_config
-
                 app_config.refresh(force=True)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "Updated settings for user %s but failed to refresh runtime config: %s",
+                    user_id,
+                    exc,
+                )
 
         updated = user_db.get_user(user_id=user_id)
         if not updated:

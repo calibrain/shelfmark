@@ -2097,8 +2097,8 @@ def api_auth_check() -> Response | tuple[Response, int]:
                 db_user = user_db.get_user(user_id=session["db_user_id"])
                 if db_user:
                     display_name = db_user.get("display_name") or None
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Could not load display name for session user: %s", exc)
 
         response_data = {
             "authenticated": is_authenticated,
@@ -2188,8 +2188,12 @@ def api_metadata_providers() -> Response | tuple[Response, int]:
                 kwargs = get_provider_kwargs(info["name"])
                 provider = get_provider(info["name"], **kwargs)
                 provider_info["available"] = provider.is_available()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(
+                    "Metadata provider %s availability check failed: %s",
+                    info["name"],
+                    exc,
+                )
 
             providers.append(provider_info)
 

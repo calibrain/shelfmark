@@ -205,13 +205,10 @@ class DelugeClient(DownloadClient):
 
     def _get_daemon_version(self) -> object:
         """Fetch daemon version, preferring daemon.get_version when available."""
-        try:
+        with suppress(Exception):
             methods = self._rpc_call("system.listMethods")
             if isinstance(methods, list) and "daemon.get_version" in methods:
                 return self._rpc_call("daemon.get_version")
-        except Exception:
-            # Fall back to daemon.info to preserve existing behavior.
-            pass
 
         return self._rpc_call("daemon.info")
 

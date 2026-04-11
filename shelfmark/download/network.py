@@ -606,8 +606,8 @@ def create_custom_getaddrinfo(
                     logger.debug(msg)
                 else:
                     logger.info(msg)
-            except Exception:
-                pass  # Silently ignore logging failures
+            except Exception as exc:
+                logger.debug("Could not log DNS resolution result for %s: %s", host_str, exc)
 
         # Skip custom resolution for IP addresses, local addresses, or if skip check passes
         if (
@@ -1092,8 +1092,8 @@ def _initialize_aa_state() -> None:
                         _aa_base_url = url
                         _save_state(aa_url=_aa_base_url)
                         break
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Could not reach AA mirror candidate %s: %s", url, exc)
             if not _aa_base_url or _aa_base_url == "auto":
                 _aa_base_url = _aa_urls[0]
                 _current_aa_url_index = 0

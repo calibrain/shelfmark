@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -29,7 +30,7 @@ def is_within_tmp_dir(path: Path) -> bool:
     # This is a *negative* check only; for potential TMP paths we still resolve to
     # prevent symlink escapes from being treated as managed.
     tmp_dir = _tmp_dir()
-    try:
+    with suppress(Exception):
         if (
             path.is_absolute()
             and tmp_dir.is_absolute()
@@ -37,9 +38,6 @@ def is_within_tmp_dir(path: Path) -> bool:
             and tmp_dir not in path.parents
         ):
             return False
-    except Exception:
-        # Fall back to the slower resolve-based check below.
-        pass
 
     try:
         run_blocking_io(path.resolve).relative_to(run_blocking_io(tmp_dir.resolve))

@@ -365,11 +365,13 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             user_db.set_user_settings(user_id, validated_settings)
             # Ensure runtime reads see updated per-user overrides immediately.
             try:
-                from shelfmark.core.config import config as app_config
-
                 app_config.refresh(force=True)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "Updated settings for user %s but failed to refresh runtime config: %s",
+                    user_id,
+                    exc,
+                )
 
         updated = user_db.get_user(user_id=user_id)
         result = _serialize_user(

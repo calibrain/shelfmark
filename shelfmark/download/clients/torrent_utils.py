@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import re
+from binascii import Error as BinasciiError
 from dataclasses import dataclass
 from urllib.parse import parse_qs, urljoin, urlparse
 
@@ -135,21 +136,18 @@ def extract_torrent_info(
         # Check if response is actually a magnet link (text response)
         # Some indexers return magnet links as plain text instead of redirecting
         if len(torrent_data) < _MAGNET_RESPONSE_MAX_BYTES:  # Magnet links are typically short
-            try:
-                text_content = torrent_data.decode("utf-8", errors="ignore").strip()
-                if text_content.startswith("magnet:"):
-                    logger.debug("Download URL returned magnet link as response body")
-                    info_hash = extract_hash_from_magnet(text_content)
-                    if not info_hash and expected_hash:
-                        info_hash = expected_hash
-                    return TorrentInfo(
-                        info_hash=info_hash,
-                        torrent_data=None,
-                        is_magnet=True,
-                        magnet_url=text_content,
-                    )
-            except Exception:
-                pass  # Not text, continue with torrent parsing
+            text_content = torrent_data.decode("utf-8", errors="ignore").strip()
+            if text_content.startswith("magnet:"):
+                logger.debug("Download URL returned magnet link as response body")
+                info_hash = extract_hash_from_magnet(text_content)
+                if not info_hash and expected_hash:
+                    info_hash = expected_hash
+                return TorrentInfo(
+                    info_hash=info_hash,
+                    torrent_data=None,
+                    is_magnet=True,
+                    magnet_url=text_content,
+                )
 
         info_hash = extract_info_hash_from_torrent(torrent_data) or expected_hash
         if info_hash:
@@ -326,8 +324,8 @@ def extract_hash_from_magnet(magnet_url: str) -> str | None:
             if re.match(r"^[A-Z2-7]{32}$", hash_value.upper()):
                 try:
                     return base64.b32decode(hash_value.upper()).hex().lower()
-                except Exception:
-                    pass
+                except (BinasciiError, ValueError):
+                    logger.debug("Could not decode base32 BTIH hash from magnet URI: %s", hash_value)
 
             # Fallback: return as-is
             return hash_value.lower()
