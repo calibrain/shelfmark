@@ -5,13 +5,14 @@ import ipaddress
 import socket
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from socket import AddressFamily, SocketKind
 from typing import TYPE_CHECKING, Any, cast
 
 import dns.resolver
 import requests
+from dns.exception import DNSException
 
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
@@ -173,7 +174,7 @@ def _call_dns_rotation_callback(
     try:
         logger.debug("Calling DNS rotation callback: %s", callback.__name__)
         callback(provider_name, servers, doh_url)
-    except Exception as e:
+    except (OSError, RuntimeError, TypeError, ValueError) as e:
         logger.warning("DNS rotation callback %s failed: %s", callback.__name__, e)
 
 
@@ -228,7 +229,9 @@ def _load_state() -> dict[str, Any]:
     """Return current in-memory network state (no disk persistence)."""
     if state.get("chosen_at"):
         chosen = datetime.fromisoformat(state["chosen_at"])
-        if datetime.now() - chosen > timedelta(days=STATE_TTL_DAYS):
+        if chosen.tzinfo is None:
+            chosen = chosen.replace(tzinfo=UTC)
+        if datetime.now(UTC) - chosen > timedelta(days=STATE_TTL_DAYS):
             state.clear()
     return state
 
@@ -239,7 +242,7 @@ def _save_state(aa_url: str | None = None, dns_provider: str | None = None) -> N
         state["aa_base_url"] = aa_url
     if dns_provider:
         state["dns_provider"] = dns_provider
-    state["chosen_at"] = datetime.now().isoformat()
+    state["chosen_at"] = datetime.now(UTC).isoformat()
 
 
 # AA URL failover state
@@ -451,7 +454,7 @@ class DoHResolver:
         key = (hostname, record_type)
         if key in self._cache:
             ips, timestamp = self._cache[key]
-            if datetime.now() - timestamp < timedelta(seconds=self.CACHE_TTL):
+            if datetime.now(UTC) - timestamp < timedelta(seconds=self.CACHE_TTL):
                 logger.debug("DoH cache hit for %s: %s", hostname, ips)
                 return ips
             # Cache expired, remove it
@@ -461,7 +464,7 @@ class DoHResolver:
     def _set_cached(self, hostname: str, record_type: str, ips: list[str]) -> None:
         """Cache DNS result."""
         if ips:  # Only cache non-empty results
-            self._cache[(hostname, record_type)] = (ips, datetime.now())
+            self._cache[(hostname, record_type)] = (ips, datetime.now(UTC))
 
     def resolve(self, hostname: str, record_type: str) -> list[str]:
         """Resolve a hostname using DoH.
@@ -522,7 +525,7 @@ class DoHResolver:
             self._set_cached(hostname, record_type, answers)
 
             # Don't log here - the caller (custom_getaddrinfo) will log the final result
-        except Exception as e:
+        except (OSError, ValueError, requests.RequestException) as e:
             logger.warning("DoH resolution failed for %s: %s", hostname, e)
             return []
         else:
@@ -545,7 +548,7 @@ def resolve_with_custom_dns(
     try:
         answers = resolver.resolve(hostname, record_type)
         return [str(answer) for answer in answers]
-    except Exception:
+    except DNSException:
         # Don't log here - let the caller handle it to prevent spam
         # Don't trigger DNS switch here either - caller handles it
         return []
@@ -575,7 +578,7 @@ def create_custom_getaddrinfo(
         host: str | bytes | None,
         port: str | bytes | int | None,
         family: int = 0,
-        type: int = 0,
+        socket_type: int = 0,
         proto: int = 0,
         flags: int = 0,
     ) -> Sequence[tuple[AddressFamily, SocketKind, int, str, tuple[Any, ...]]]:
@@ -601,20 +604,21 @@ def create_custom_getaddrinfo(
             # Skip logging entirely for localhost to reduce noise
             if host_str in ("localhost", "127.0.0.1", "::1"):
                 return
-            try:
-                ips = [
-                    entry[_GETADDRINFO_SOCKADDR_INDEX][0]
-                    for entry in res
-                    if len(entry) > _GETADDRINFO_SOCKADDR_INDEX
-                    and entry[_GETADDRINFO_SOCKADDR_INDEX]
-                ]
-                msg = f"Resolved {host_str} via {source} [{provider_label}]: {ips}"
-                if is_bypass:
-                    logger.debug(msg)
-                else:
-                    logger.info(msg)
-            except Exception as exc:
-                logger.debug("Could not log DNS resolution result for %s: %s", host_str, exc)
+            ips = []
+            for entry in res:
+                if not isinstance(entry, tuple) or len(entry) <= _GETADDRINFO_SOCKADDR_INDEX:
+                    continue
+                sockaddr = entry[_GETADDRINFO_SOCKADDR_INDEX]
+                if not isinstance(sockaddr, tuple) or not sockaddr:
+                    continue
+                ip = sockaddr[0]
+                if isinstance(ip, str):
+                    ips.append(ip)
+            msg = f"Resolved {host_str} via {source} [{provider_label}]: {ips}"
+            if is_bypass:
+                logger.debug(msg)
+            else:
+                logger.info(msg)
 
         # Skip custom resolution for IP addresses, local addresses, or if skip check passes
         if (
@@ -623,7 +627,7 @@ def create_custom_getaddrinfo(
             or (skip_check and skip_check(host_str))
         ):
             # Quietly bypass custom resolution for IP/local targets
-            res = original_getaddrinfo(host, port, family, type, proto, flags)
+            res = original_getaddrinfo(host, port, family, socket_type, proto, flags)
             _log_results("system resolver (bypass)", "system", res, is_bypass=True)
             return res
 
@@ -635,7 +639,13 @@ def create_custom_getaddrinfo(
                 ipv4_answers = resolve_ipv4(host_str)
                 results.extend(
                     [
-                        (socket.AF_INET, cast("SocketKind", type), proto, "", (answer, port_int))
+                        (
+                            socket.AF_INET,
+                            cast("SocketKind", socket_type),
+                            proto,
+                            "",
+                            (answer, port_int),
+                        )
                         for answer in ipv4_answers
                     ]
                 )
@@ -644,7 +654,7 @@ def create_custom_getaddrinfo(
                 _log_results("custom resolver", _current_dns_label(), results)
                 return results
 
-        except Exception as e:
+        except (DNSException, OSError, RuntimeError, TypeError, ValueError, requests.RequestException) as e:
             logger.warning(
                 "Custom DNS resolution failed for %s: %s, falling back to system DNS", host_str, e
             )
@@ -665,14 +675,22 @@ def create_custom_getaddrinfo(
             "Custom DNS returned no addresses for %s; falling back to system resolver", host_str
         )
         try:
-            res = original_getaddrinfo(host, port, family, type, proto, flags)
+            res = original_getaddrinfo(host, port, family, socket_type, proto, flags)
             _log_results("system resolver (fallback)", "system", res)
-        except Exception:
+        except OSError:
             logger.exception("System DNS resolution also failed for %s", host_str)
             # Last resort: Try to connect to the hostname directly
             if family in {0, socket.AF_INET}:
                 logger.warning("Using direct hostname as last resort for %s", host_str)
-                return [(socket.AF_INET, cast("SocketKind", type), proto, "", (host_str, port_int))]
+                return [
+                    (
+                        socket.AF_INET,
+                        cast("SocketKind", socket_type),
+                        proto,
+                        "",
+                        (host_str, port_int),
+                    )
+                ]
             raise  # Re-raise the exception if we can't provide a last resort
         else:
             return res
@@ -691,14 +709,14 @@ def create_system_failover_getaddrinfo() -> Callable[
         host: str | bytes | None,
         port: str | bytes | int | None,
         family: int = 0,
-        type: int = 0,
+        socket_type: int = 0,
         proto: int = 0,
         flags: int = 0,
     ) -> Sequence[tuple[AddressFamily, SocketKind, int, str, tuple[Any, ...]]]:
         host_str = _decode_host(host)
         try:
-            return original_getaddrinfo(host, port, family, type, proto, flags)
-        except Exception as e:
+            return original_getaddrinfo(host, port, family, socket_type, proto, flags)
+        except OSError as e:
             if host_str not in _switch_logged:
                 logger.warning("System DNS resolution failed for %s: %s", host_str, e)
 
@@ -713,7 +731,7 @@ def create_system_failover_getaddrinfo() -> Callable[
                     logger.info("Switching DNS provider after system DNS failure for %s", host_str)
                     _switch_logged.add(host_str)
                 if switch_dns_provider():
-                    return socket.getaddrinfo(host, port, family, type, proto, flags)
+                    return socket.getaddrinfo(host, port, family, socket_type, proto, flags)
             raise
 
     return system_failover_getaddrinfo
@@ -744,7 +762,7 @@ def _init_doh_resolver_internal(doh_server: str) -> DoHResolver:
 
         # Restore custom getaddrinfo if it was previously set
         socket.getaddrinfo = temp_getaddrinfo
-    except Exception:
+    except OSError:
         logger.exception("Failed to resolve DoH server %s", server_hostname)
         # Fall back to a known public DNS if resolution fails
         server_ip = "1.1.1.1"
@@ -1099,7 +1117,7 @@ def _initialize_aa_state() -> None:
                         _aa_base_url = url
                         _save_state(aa_url=_aa_base_url)
                         break
-                except Exception as exc:
+                except (OSError, requests.RequestException) as exc:
                     logger.debug("Could not reach AA mirror candidate %s: %s", url, exc)
             if not _aa_base_url or _aa_base_url == "auto":
                 _aa_base_url = _aa_urls[0]

@@ -31,7 +31,7 @@ def get_staging_dir() -> Path:
 def get_staging_path(task_id: str, extension: str) -> Path:
     """Get a staging path for a download."""
     staging_dir = get_staging_dir()
-    safe_id = hashlib.md5(task_id.encode()).hexdigest()[:16]
+    safe_id = hashlib.blake2b(task_id.encode(), digest_size=8).hexdigest()
     return staging_dir / f"{safe_id}.{extension.lstrip('.')}"
 
 
@@ -41,7 +41,7 @@ def build_staging_dir(prefix: str | None, task_id: str) -> Path:
     if not prefix:
         return base_dir
 
-    safe_id = hashlib.md5(task_id.encode()).hexdigest()[:8]
+    safe_id = hashlib.blake2b(task_id.encode(), digest_size=4).hexdigest()
     staging_dir = base_dir / f"{prefix}_{safe_id}"
     counter = 1
 

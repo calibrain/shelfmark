@@ -21,6 +21,7 @@ COMMON_RESOLUTIONS = [
 
 # Current screen size (module-level singleton)
 _current_screen_size: tuple[int, int] | None = None
+_RNG = random.SystemRandom()
 
 
 def get_screen_size() -> tuple[int, int]:
@@ -66,4 +67,4 @@ def clear_screen_size() -> None:
 def _generate_screen_size() -> tuple[int, int]:
     resolutions = [(w, h) for w, h, _ in COMMON_RESOLUTIONS]
     weights = [weight for _, _, weight in COMMON_RESOLUTIONS]
-    return random.choices(resolutions, weights=weights)[0]
+    return _RNG.choices(resolutions, weights=weights)[0]

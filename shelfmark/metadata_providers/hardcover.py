@@ -3,7 +3,7 @@
 import re
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import Any, ClassVar
 from urllib.parse import urlparse
@@ -1231,7 +1231,7 @@ class HardcoverProvider(MetadataProvider):
 
         exclude_compilations = app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False)
         exclude_unreleased = app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False)
-        current_year = datetime.now().year
+        current_year = datetime.now(UTC).year
 
         options: list[dict[str, str]] = []
         seen_labels: set[str] = set()
@@ -1428,7 +1428,7 @@ class HardcoverProvider(MetadataProvider):
             str(series_data.get("name") or "").strip() if isinstance(series_data, dict) else ""
         )
         allow_split_parts = _series_allows_split_parts(series_name)
-        today = datetime.now().date()
+        today = datetime.now(UTC).date()
 
         book_series_rows = (
             series_data.get("book_series", []) if isinstance(series_data, dict) else []
@@ -2216,7 +2216,7 @@ class HardcoverProvider(MetadataProvider):
             # Parse hits, filtering compilations and unreleased books if enabled
             exclude_compilations = app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False)
             exclude_unreleased = app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False)
-            current_year = datetime.now().year
+            current_year = datetime.now(UTC).year
             books = []
             for hit in hits:
                 item = _unwrap_hit_document(hit)

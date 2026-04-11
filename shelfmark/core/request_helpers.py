@@ -32,7 +32,7 @@ def emit_ws_event(
         if socketio is None or not callable(is_enabled) or not is_enabled():
             return
         socketio.emit(event_name, payload, to=room)
-    except Exception as exc:
+    except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
         _logger.warning(
             "Failed to emit WebSocket event '%s' to room '%s': %s",
             event_name,

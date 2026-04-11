@@ -33,6 +33,7 @@ from shelfmark.release_sources import (
 )
 
 logger = setup_logger(__name__)
+_RNG = random.SystemRandom()
 
 
 # =============================================================================
@@ -948,7 +949,7 @@ def concurrent_download_loop() -> None:
                     # Stagger concurrent downloads to avoid rate limiting on shared download servers
                     # Only delay if other downloads are already active
                     if active_futures:
-                        stagger_delay = random.uniform(2, 5)
+                        stagger_delay = _RNG.uniform(2, 5)
                         logger.debug("Staggering download start by %.1fs", stagger_delay)
                         time.sleep(stagger_delay)
 

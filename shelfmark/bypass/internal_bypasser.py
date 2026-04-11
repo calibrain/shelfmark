@@ -8,11 +8,12 @@ import signal
 import socket
 import stat
 import subprocess
+import tempfile
 import threading
 import time
 import traceback
 from contextlib import suppress
-from datetime import datetime
+from datetime import UTC, datetime
 from http import HTTPStatus
 from pathlib import Path
 from threading import Event
@@ -34,7 +35,7 @@ from shelfmark.download.network import get_proxies, get_ssl_verify
 
 logger = setup_logger(__name__)
 
-SELENIUMBASE_RUNTIME_ROOT = Path("/tmp/shelfmark/seleniumbase")
+SELENIUMBASE_RUNTIME_ROOT = Path(tempfile.gettempdir()) / "shelfmark" / "seleniumbase"
 SELENIUMBASE_DOWNLOADS_DIR = SELENIUMBASE_RUNTIME_ROOT / "downloaded_files"
 _BYPASSED_BODY_LENGTH_MIN = 100_000
 _BYPASS_EMOJI_MATCH_MIN = 3
@@ -64,6 +65,7 @@ DISPLAY = {
 LOCKED = threading.Lock()
 _PGREP_PATH = shutil.which("pgrep")
 _PKILL_PATH = shutil.which("pkill")
+_RNG = random.SystemRandom()
 
 
 def _describe_runtime_path(path: str | Path) -> str:
@@ -447,15 +449,15 @@ async def _bypass_method_humanlike(page: Any) -> bool:
     """Human-like behavior with scroll, wait, and reload."""
     try:
         logger.debug("Attempting bypass: human-like interaction")
-        await asyncio.sleep(random.uniform(6, 10))
+        await asyncio.sleep(_RNG.uniform(6, 10))
 
         try:
             await page.evaluate("window.scrollTo(0, 10000);")
             await page.wait()
-            await asyncio.sleep(random.uniform(1, 2))
+            await asyncio.sleep(_RNG.uniform(1, 2))
             await page.evaluate("window.scrollTo(0, 0);")
             await page.wait()
-            await asyncio.sleep(random.uniform(2, 3))
+            await asyncio.sleep(_RNG.uniform(2, 3))
         except Exception as e:
             logger.debug("Scroll behavior failed: %s", e)
 
@@ -464,14 +466,14 @@ async def _bypass_method_humanlike(page: Any) -> bool:
 
         logger.debug("Trying page refresh...")
         await page.reload(ignore_cache=True)
-        await asyncio.sleep(random.uniform(5, 8))
+        await asyncio.sleep(_RNG.uniform(5, 8))
 
         if await _is_bypassed(page):
             return True
 
         try:
             await page.solve_captcha()
-            await asyncio.sleep(random.uniform(3, 5))
+            await asyncio.sleep(_RNG.uniform(3, 5))
         except Exception as e:
             logger.debug("Final captcha click failed: %s", e)
 
@@ -486,7 +488,7 @@ async def _bypass_method_cdp_solve(page: Any) -> bool:
     try:
         logger.debug("Attempting bypass: CDP solve_captcha")
         await page.solve_captcha()
-        await asyncio.sleep(random.uniform(3, 5))
+        await asyncio.sleep(_RNG.uniform(3, 5))
         return await _is_bypassed(page)
     except Exception as e:
         logger.debug("CDP solve_captcha failed: %s", e)
@@ -515,7 +517,7 @@ async def _bypass_method_cdp_click(page: Any) -> bool:
 
                 logger.debug("CDP clicking: %s", selector)
                 await page.click(selector)
-                await asyncio.sleep(random.uniform(2, 4))
+                await asyncio.sleep(_RNG.uniform(2, 4))
 
                 if await _is_bypassed(page):
                     return True
@@ -545,7 +547,7 @@ async def _bypass_method_cdp_gui_click(page: Any) -> bool:
         try:
             logger.debug("Trying solve_captcha()")
             await page.solve_captcha()
-            await asyncio.sleep(random.uniform(3, 5))
+            await asyncio.sleep(_RNG.uniform(3, 5))
 
             if await _is_bypassed(page):
                 return True
@@ -559,7 +561,7 @@ async def _bypass_method_cdp_gui_click(page: Any) -> bool:
 
                 logger.debug("CDP click_with_offset: %s", selector)
                 await page.click_with_offset(selector, 0, 0, center=True)
-                await asyncio.sleep(random.uniform(3, 5))
+                await asyncio.sleep(_RNG.uniform(3, 5))
 
                 if await _is_bypassed(page):
                     return True
@@ -615,13 +617,13 @@ async def _bypass(
         # No challenge detected but page doesn't look bypassed - wait and retry
         if challenge_type == "none":
             logger.info("No challenge detected, waiting for page to settle...")
-            await asyncio.sleep(random.uniform(2, 3))
+            await asyncio.sleep(_RNG.uniform(2, 3))
             if await _is_bypassed(page):
                 return True
             # Try a simple refresh instead of captcha methods
             try:
                 await page.reload(ignore_cache=True)
-                await asyncio.sleep(random.uniform(1, 2))
+                await asyncio.sleep(_RNG.uniform(1, 2))
                 if await _is_bypassed(page):
                     logger.info("Bypass successful after refresh")
                     return True
@@ -646,7 +648,7 @@ async def _bypass(
         logger.info("Bypass attempt %s/%s using %s", try_count + 1, max_retries, method.__name__)
 
         if try_count > 0:
-            wait_time = min(random.uniform(2, 4) * try_count, 12)
+            wait_time = min(_RNG.uniform(2, 4) * try_count, 12)
             logger.info("Waiting %0.1fs before trying...", wait_time)
             for _ in range(int(wait_time)):
                 _check_cancellation(cancel_flag, "Bypass cancelled during wait")
@@ -856,7 +858,7 @@ async def _create_cdp_browser(url: str) -> Any:
             _describe_runtime_path(SELENIUMBASE_DOWNLOADS_DIR),
             _describe_runtime_path("/app/downloaded_files"),
             _describe_runtime_path("downloaded_files"),
-            _describe_runtime_path("/tmp"),
+            _describe_runtime_path(tempfile.gettempdir()),
         )
         raise
 
@@ -942,7 +944,7 @@ def _start_ffmpeg_recording(display: str) -> None:
     """Start FFmpeg screen recording for debug mode."""
     global DISPLAY
     RECORDING_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%y%m%d-%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%y%m%d-%H%M%S")
     output_file = RECORDING_DIR / f"screen_recording_{timestamp}.mp4"
 
     screen_width, screen_height = get_screen_size()

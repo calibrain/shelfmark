@@ -134,7 +134,7 @@ def _parse_bitrate_to_kbps(bitrate: str | None) -> int | None:
 
 def _generate_source_id(detail_url: str) -> str:
     """Generate a unique source ID from detail URL."""
-    return hashlib.md5(detail_url.encode()).hexdigest()
+    return hashlib.blake2b(detail_url.encode(), digest_size=16).hexdigest()
 
 
 @register_source("audiobookbay")

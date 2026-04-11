@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import smtplib
 from typing import Any
 
 from shelfmark.core.config import config
@@ -43,7 +44,7 @@ def check_email_connection(
         test_smtp_connection(smtp_config)
     except EmailOutputError as exc:
         return {"success": False, "message": str(exc)}
-    except Exception as exc:
+    except (OSError, smtplib.SMTPException) as exc:
         return {"success": False, "message": f"SMTP test failed: {exc}"}
     else:
         return {"success": True, "message": "Connected to SMTP server"}

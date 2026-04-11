@@ -1,6 +1,7 @@
 """Authentication mode, auth-source normalization, and admin access policy helpers."""
 
 import os
+import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -33,7 +34,7 @@ def has_local_password_admin(user_db: object | None = None) -> bool:
             db.initialize()
 
         return db.has_admin_with_password()
-    except Exception:
+    except (AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError, sqlite3.Error):
         return False
 
 
@@ -99,7 +100,7 @@ def load_active_auth_mode(
             cwa_db_path,
             has_local_admin=has_local_password_admin(user_db),
         )
-    except Exception:
+    except (ImportError, OSError, RuntimeError, TypeError, ValueError, sqlite3.Error):
         return "none"
 
 

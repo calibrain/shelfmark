@@ -254,7 +254,8 @@ def extract_info_hash_from_torrent(torrent_data: bytes) -> str | None:
         info_bencoded = bencode_encode(decoded[b"info"])
         info_dict = decoded[b"info"]
         if isinstance(info_dict, dict) and b"pieces" in info_dict:
-            return hashlib.sha1(info_bencoded).hexdigest().lower()
+            # BitTorrent v1 info hashes are defined as SHA-1.
+            return hashlib.sha1(info_bencoded).hexdigest().lower()  # noqa: S324
         return hashlib.sha256(info_bencoded).hexdigest().lower()
     except Exception as e:
         logger.debug("Failed to parse torrent file: %s", e)

@@ -33,6 +33,7 @@ _APPRISE_LOGO_URL = (
     "https://raw.githubusercontent.com/calibrain/shelfmark/main/src/frontend/public/logo.png"
 )
 _APPRISE_LOGGER_NAME = "apprise"
+_APPRISE_DISPATCH_ERRORS = (RuntimeError, TypeError, ValueError)
 
 
 class NotificationEvent(StrEnum):
@@ -401,7 +402,7 @@ def _dispatch_to_apprise(
         with _capture_apprise_logs(min_level=logging.INFO) as apprise_records:
             try:
                 plugin = apprise.Apprise.instantiate(url, asset=getattr(apobj, "asset", None))
-            except Exception as exc:
+            except _APPRISE_DISPATCH_ERRORS as exc:
                 logger.warning(
                     "Failed to register notification route URL for scheme '%s': %s",
                     scheme,
@@ -435,7 +436,7 @@ def _dispatch_to_apprise(
 
             try:
                 delivered = bool(apobj.notify(title=title, body=body, notify_type=notify_type))
-            except Exception as exc:
+            except _APPRISE_DISPATCH_ERRORS as exc:
                 _log_apprise_records(apprise_records)
                 failed_delivery_urls += 1
                 logger.warning(
@@ -526,16 +527,17 @@ def _create_apprise_client() -> object:
         )
     except TypeError:
         # Support older Apprise versions that do not expose image_url_logo.
-        asset = apprise_asset_cls(
-            app_id=_APPRISE_APP_ID,
-            app_desc=_APPRISE_APP_DESC,
-        )
-    except Exception:
-        return apprise_cls()
+        try:
+            asset = apprise_asset_cls(
+                app_id=_APPRISE_APP_ID,
+                app_desc=_APPRISE_APP_DESC,
+            )
+        except TypeError:
+            return apprise_cls()
 
     try:
         return apprise_cls(asset=asset)
-    except Exception:
+    except TypeError:
         return apprise_cls()
 
 
@@ -556,7 +558,7 @@ def notify_admin(event: NotificationEvent, context: NotificationContext) -> None
 
     try:
         _executor.submit(_dispatch_admin_async, event, context, urls)
-    except Exception as exc:
+    except RuntimeError as exc:
         logger.warning("Failed to queue admin notification '%s': %s", event.value, exc)
 
 
@@ -575,7 +577,7 @@ def notify_user(
 
     try:
         _executor.submit(_dispatch_user_async, normalized_user_id, event, context, urls)
-    except Exception as exc:
+    except RuntimeError as exc:
         logger.warning(
             "Failed to queue user notification '%s' for user_id=%s: %s",
             event.value,

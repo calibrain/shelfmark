@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import importlib
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Tuple
 from unittest.mock import Mock, patch
 
@@ -71,7 +71,7 @@ class TestGetAuthMode:
                 assert main_module.get_auth_mode() == "cwa"
 
     def test_get_auth_mode_default_on_error(self, main_module):
-        with patch.object(main_module.app_config, "get", side_effect=Exception("boom")):
+        with patch.object(main_module.app_config, "get", side_effect=RuntimeError("boom")):
             assert main_module.get_auth_mode() == "none"
 
 
@@ -335,7 +335,7 @@ class TestRateLimiting:
         main_module.failed_login_attempts.clear()
         main_module.failed_login_attempts["testuser"] = {
             "count": 10,
-            "lockout_until": datetime.now() + timedelta(hours=1),
+            "lockout_until": datetime.now(UTC) + timedelta(hours=1),
         }
 
         assert main_module.is_account_locked("testuser") is True

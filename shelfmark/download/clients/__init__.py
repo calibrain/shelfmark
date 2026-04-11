@@ -40,6 +40,7 @@ RETRYABLE_EXCEPTIONS = (
 _MIN_RETRYABLE_STATUS = 500
 _MIN_PROGRESS_PERCENT = 0
 _MAX_PROGRESS_PERCENT = 100
+_RNG = random.SystemRandom()
 
 
 def with_retry(
@@ -87,7 +88,7 @@ def with_retry(
                     # Calculate delay with exponential backoff
                     delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
                     # Add jitter to prevent thundering herd
-                    delay += random.uniform(0, delay * jitter)
+                    delay += _RNG.uniform(0, delay * jitter)
                     _logger.debug(
                         "Retry %s/%s for %s after %.1fs (error: %s)",
                         attempt,

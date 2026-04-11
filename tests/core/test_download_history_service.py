@@ -30,7 +30,7 @@ def test_record_download_stores_utc_iso_timestamps():
             source_display_name="Direct Download",
             title="Example",
             author=None,
-            format=None,
+            file_format=None,
             size=None,
             preview=None,
             content_type="ebook",

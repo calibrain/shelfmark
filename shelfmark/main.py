@@ -1,5 +1,6 @@
 """Flask app - routes, WebSocket handlers, and middleware."""
 
+import binascii
 import io
 import logging
 import os
@@ -7,7 +8,7 @@ import re
 import sqlite3
 import time
 from contextlib import suppress
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from functools import wraps
 from importlib import import_module
 from pathlib import Path
@@ -93,6 +94,8 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 FLASK_SECRET_KEY_MIN_BYTES = 32
+_OPERATIONAL_ERRORS = (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error)
+_IMPORT_OPERATIONAL_ERRORS = (ImportError, *_OPERATIONAL_ERRORS)
 
 
 def _raise_runtime_error(message: str) -> NoReturn:
@@ -199,7 +202,7 @@ LOGIN_ATTEMPT_WARNING_THRESHOLD = 5
 
 def cleanup_old_lockouts() -> None:
     """Remove expired lockout entries to prevent memory buildup."""
-    current_time = datetime.now()
+    current_time = datetime.now(UTC)
     expired_users = [
         username
         for username, data in failed_login_attempts.items()
@@ -218,7 +221,7 @@ def is_account_locked(username: str) -> bool:
         return False
 
     lockout_until = failed_login_attempts[username].get("lockout_until")
-    return lockout_until is not None and datetime.now() < lockout_until
+    return lockout_until is not None and datetime.now(UTC) < lockout_until
 
 
 def record_failed_login(username: str, ip_address: str) -> bool:
@@ -241,7 +244,7 @@ def record_failed_login(username: str, ip_address: str) -> bool:
     )
 
     if count >= MAX_LOGIN_ATTEMPTS:
-        lockout_until = datetime.now() + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+        lockout_until = datetime.now(UTC) + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
         failed_login_attempts[username]["lockout_until"] = lockout_until
         logger.warning(
             "Account locked for user '%s' until %s due to %s failed login attempts",
@@ -498,7 +501,7 @@ if user_db is not None:
                 emit_request_updates=_emit_request_updates,
                 ws_manager=ws_manager,
             )
-    except Exception as e:
+    except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.warning("Failed to register request routes: %s", e)
 
 
@@ -730,7 +733,7 @@ def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
                 session["db_user_id"] = db_user["id"]
 
         session.permanent = False
-    except Exception:
+    except _OPERATIONAL_ERRORS:
         logger.exception("Proxy auth middleware error")
         return jsonify({"error": "Authentication error"}), 500
     else:
@@ -779,7 +782,7 @@ def login_required(
                 ):
                     return jsonify({"error": "Admin access required"}), 403
 
-            except Exception:
+            except (RuntimeError, TypeError, ValueError):
                 logger.exception("Admin access check error")
                 return jsonify({"error": "Internal Server Error"}), 500
 
@@ -890,7 +893,7 @@ if DEBUG:
         except subprocess.CalledProcessError as e:
             logger.error_trace(f"Debug script error: {e}, stdout: {e.stdout}, stderr: {e.stderr}")
             return jsonify({"error": f"Debug script failed: {e.stderr}"}), 500
-        except Exception as e:
+        except _OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Debug endpoint error: {e}")
             return jsonify({"error": str(e)}), 500
 
@@ -993,7 +996,7 @@ def api_download_release() -> Response | tuple[Response, int]:
 
     """
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({"error": "No data provided"}), 400
 
@@ -1037,7 +1040,7 @@ def api_download_release() -> Response | tuple[Response, int]:
         if success:
             return jsonify({"status": "queued", "priority": priority})
         return jsonify({"error": error_msg or "Failed to queue release"}), 500
-    except Exception as e:
+    except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Release download error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -1126,7 +1129,7 @@ def api_config() -> Response | tuple[Response, int]:
             ),  # For universal mode
         }
         return jsonify(config)
-    except Exception as e:
+    except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Config error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -1218,7 +1221,7 @@ def _notify_admin_for_terminal_download_status(
     )
     try:
         notify_admin(event, context)
-    except Exception as exc:
+    except (RuntimeError, TypeError, ValueError) as exc:
         logger.warning(
             "Failed to trigger admin notification for download %s (%s): %s",
             task_id,
@@ -1229,7 +1232,7 @@ def _notify_admin_for_terminal_download_status(
         return
     try:
         notify_user(owner_user_id, event, context)
-    except Exception as exc:
+    except (RuntimeError, TypeError, ValueError) as exc:
         logger.warning(
             "Failed to trigger user notification for download %s (%s, user_id=%s): %s",
             task_id,
@@ -1267,10 +1270,7 @@ def _record_download_queued(task_id: str, task: Any) -> None:
     origin = "requested" if request_id else "direct"
 
     source_name = normalize_source(getattr(task, "source", None))
-    try:
-        source_display = get_source_display_name(source_name)
-    except Exception:
-        source_display = None
+    source_display = get_source_display_name(source_name)
 
     try:
         download_history_service.record_download(
@@ -1282,14 +1282,14 @@ def _record_download_queued(task_id: str, task: Any) -> None:
             source_display_name=source_display,
             title=str(getattr(task, "title", "Unknown title") or "Unknown title"),
             author=normalize_optional_text(getattr(task, "author", None)),
-            format=normalize_optional_text(getattr(task, "format", None)),
+            file_format=normalize_optional_text(getattr(task, "format", None)),
             size=normalize_optional_text(getattr(task, "size", None)),
             preview=normalize_optional_text(getattr(task, "preview", None)),
             content_type=normalize_optional_text(getattr(task, "content_type", None)),
             origin=origin,
             retry_payload=backend.serialize_task_for_retry(task),
         )
-    except Exception as exc:
+    except _OPERATIONAL_ERRORS as exc:
         logger.warning("Failed to record download at queue time for task %s: %s", task_id, exc)
         return
 
@@ -1315,7 +1315,7 @@ def _record_download_queued(task_id: str, task: Any) -> None:
                     "task_id": task_id,
                 },
             )
-    except Exception as exc:
+    except _OPERATIONAL_ERRORS as exc:
         logger.warning("Failed to reset activity viewer state for task %s: %s", task_id, exc)
 
 
@@ -1337,7 +1337,7 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
                 retry_payload=backend.serialize_task_for_retry(task),
             )
             finalized_download = True
-        except Exception as exc:
+        except _OPERATIONAL_ERRORS as exc:
             logger.warning("Failed to finalize download history for task %s: %s", task_id, exc)
 
     if finalized_download:
@@ -1378,7 +1378,7 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
                     item_key=f"request:{request_id}",
                 )
             _emit_request_update_events([reopened_request])
-    except Exception as exc:
+    except _OPERATIONAL_ERRORS as exc:
         logger.warning(
             "Failed to reopen request %s after terminal download error %s: %s",
             request_id,
@@ -1432,23 +1432,25 @@ def _emit_request_update_events(updated_requests: list[dict[str, Any]]) -> None:
     if not updated_requests or ws_manager is None:
         return
 
-    try:
-        socketio_ref = getattr(ws_manager, "socketio", None)
-        is_enabled = getattr(ws_manager, "is_enabled", None)
-        if socketio_ref is None or not callable(is_enabled) or not is_enabled():
-            return
-
-        for updated in updated_requests:
-            payload = {
-                "request_id": updated["id"],
-                "status": updated["status"],
-                "delivery_state": updated.get("delivery_state"),
-                "title": (updated.get("book_data") or {}).get("title") or "Unknown title",
-            }
-            socketio_ref.emit("request_update", payload, to=f"user_{updated['user_id']}")
-            socketio_ref.emit("request_update", payload, to="admins")
-    except Exception as exc:
-        logger.warning("Failed to emit delivery request_update events: %s", exc)
+    for updated in updated_requests:
+        payload = {
+            "request_id": updated["id"],
+            "status": updated["status"],
+            "delivery_state": updated.get("delivery_state"),
+            "title": (updated.get("book_data") or {}).get("title") or "Unknown title",
+        }
+        emit_ws_event(
+            ws_manager,
+            event_name="request_update",
+            room=f"user_{updated['user_id']}",
+            payload=payload,
+        )
+        emit_ws_event(
+            ws_manager,
+            event_name="request_update",
+            room="admins",
+            payload=payload,
+        )
 
 
 @app.route("/api/status", methods=["GET"])
@@ -1475,7 +1477,7 @@ def api_status() -> Response | tuple[Response, int]:
             )
             _emit_request_update_events(updated_requests)
         return jsonify(status)
-    except Exception as e:
+    except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Status error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -1524,7 +1526,7 @@ def api_local_download() -> Response | tuple[Response, int]:
         data = io.BytesIO(file_data)
         return send_file(data, download_name=file_name, as_attachment=True)
 
-    except Exception as e:
+    except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Local download error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -1574,7 +1576,7 @@ def api_cover(cover_id: str) -> Response | tuple[Response, int]:
 
         try:
             original_url = base64.urlsafe_b64decode(encoded_url).decode()
-        except Exception as e:
+        except (binascii.Error, UnicodeDecodeError) as e:
             logger.warning("Failed to decode cover URL: %s", e)
             return jsonify({"error": "Invalid cover URL encoding"}), 400
 
@@ -1587,7 +1589,7 @@ def api_cover(cover_id: str) -> Response | tuple[Response, int]:
         response = app.response_class(response=image_data, status=200, mimetype=content_type)
         response.headers["Cache-Control"] = "public, max-age=86400"
         response.headers["X-Cache"] = "MISS"
-    except Exception as e:
+    except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Cover fetch error: {e}")
         return jsonify({"error": str(e)}), 500
     else:
@@ -1636,7 +1638,7 @@ def api_cancel_download(book_id: str) -> Response | tuple[Response, int]:
         if success:
             return jsonify({"status": "cancelled", "book_id": book_id})
         return jsonify({"error": "Failed to cancel download or book not found"}), 404
-    except Exception as e:
+    except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Cancel download error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -1710,7 +1712,7 @@ def api_retry_download(book_id: str) -> Response | tuple[Response, int]:
             return jsonify({"error": error}), 404
 
         return jsonify({"error": error or "Download cannot be retried"}), 409
-    except Exception as e:
+    except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Retry download error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -1731,7 +1733,7 @@ def api_set_priority(book_id: str) -> Response | tuple[Response, int]:
 
     """
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data or "priority" not in data:
             return jsonify({"error": "Priority not provided"}), 400
 
@@ -1743,7 +1745,7 @@ def api_set_priority(book_id: str) -> Response | tuple[Response, int]:
         return jsonify({"error": "Failed to update priority or book not found"}), 404
     except ValueError:
         return jsonify({"error": "Invalid priority value"}), 400
-    except Exception as e:
+    except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Set priority error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -1761,7 +1763,7 @@ def api_reorder_queue() -> Response | tuple[Response, int]:
 
     """
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data or "book_priorities" not in data:
             return jsonify({"error": "book_priorities not provided"}), 400
 
@@ -1779,7 +1781,7 @@ def api_reorder_queue() -> Response | tuple[Response, int]:
         if success:
             return jsonify({"status": "reordered", "updated_count": len(book_priorities)})
         return jsonify({"error": "Failed to reorder queue"}), 500
-    except Exception as e:
+    except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Reorder queue error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -1796,7 +1798,7 @@ def api_queue_order() -> Response | tuple[Response, int]:
     try:
         queue_order = backend.get_queue_order()
         return jsonify({"queue": queue_order})
-    except Exception as e:
+    except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Queue order error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -1813,7 +1815,7 @@ def api_active_downloads() -> Response | tuple[Response, int]:
     try:
         active_downloads = backend.get_active_downloads()
         return jsonify({"active_downloads": active_downloads})
-    except Exception as e:
+    except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Active downloads error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -1886,7 +1888,7 @@ def api_login() -> Response | tuple[Response, int]:
     """
     try:
         ip_address = get_client_ip()
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({"error": "No data provided"}), 400
 
@@ -1907,7 +1909,7 @@ def api_login() -> Response | tuple[Response, int]:
         # Check if account is locked due to failed login attempts
         if is_account_locked(username):
             lockout_until = failed_login_attempts[username].get("lockout_until")
-            remaining_time = (lockout_until - datetime.now()).total_seconds() / 60
+            remaining_time = (lockout_until - datetime.now(UTC)).total_seconds() / 60
             logger.warning(
                 "Login attempt blocked for locked account '%s' from IP %s", username, ip_address
             )
@@ -1966,7 +1968,7 @@ def api_login() -> Response | tuple[Response, int]:
 
                 return _failed_login_response(username, ip_address)
 
-            except Exception as e:
+            except _OPERATIONAL_ERRORS as e:
                 logger.error_trace(f"Built-in auth error: {e}")
                 return jsonify({"error": "Authentication system error"}), 500
 
@@ -2023,14 +2025,14 @@ def api_login() -> Response | tuple[Response, int]:
                 )
                 return jsonify({"success": True})
 
-            except Exception as e:
+            except _OPERATIONAL_ERRORS as e:
                 logger.error_trace(f"CWA database error during login: {e}")
                 return jsonify({"error": "Authentication system error"}), 500
 
         # Should not reach here, but handle gracefully
         return jsonify({"error": "Unknown authentication mode"}), 500
 
-    except Exception as e:
+    except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Login error: {e}")
         return jsonify({"error": "Login failed"}), 500
 
@@ -2059,7 +2061,7 @@ def api_logout() -> Response | tuple[Response, int]:
                 return jsonify({"success": True, "logout_url": logout_url})
 
         return jsonify({"success": True})
-    except Exception as e:
+    except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Logout error: {e}")
         return jsonify({"error": "Logout failed"}), 500
 
@@ -2098,7 +2100,7 @@ def api_auth_check() -> Response | tuple[Response, int]:
                 db_user = user_db.get_user(user_id=session["db_user_id"])
                 if db_user:
                     display_name = db_user.get("display_name") or None
-            except Exception as exc:
+            except (sqlite3.Error, TypeError, ValueError) as exc:
                 logger.debug("Could not load display name for session user: %s", exc)
 
         response_data = {
@@ -2127,7 +2129,7 @@ def api_auth_check() -> Response | tuple[Response, int]:
                 response_data["oidc_auto_redirect"] = True
 
         return jsonify(response_data)
-    except Exception as e:
+    except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Auth check error: {e}")
         return jsonify(
             {
@@ -2189,7 +2191,7 @@ def api_metadata_providers() -> Response | tuple[Response, int]:
                 kwargs = get_provider_kwargs(info["name"])
                 provider = get_provider(info["name"], **kwargs)
                 provider_info["available"] = provider.is_available()
-            except Exception as exc:
+            except _OPERATIONAL_ERRORS as exc:
                 logger.debug(
                     "Metadata provider %s availability check failed: %s",
                     info["name"],
@@ -2206,7 +2208,7 @@ def api_metadata_providers() -> Response | tuple[Response, int]:
                 "configured_provider_combined": configured_combined_metadata_provider or None,
             }
         )
-    except Exception as e:
+    except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Metadata providers error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -2275,7 +2277,7 @@ def api_metadata_config() -> Response | tuple[Response, int]:
                 "default_sort": get_provider_default_sort(provider_name, user_id=db_user_id),
             }
         )
-    except Exception as e:
+    except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Metadata config error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -2420,7 +2422,7 @@ def api_metadata_search() -> Response | tuple[Response, int]:
         if search_result.source_title:
             response_data["source_title"] = search_result.source_title
         return jsonify(response_data)
-    except Exception as e:
+    except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Metadata search error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -2461,7 +2463,7 @@ def api_metadata_field_options() -> Response:
 
         options = provider.get_search_field_options(field_key, query=query_text or None)
         return jsonify({"options": options})
-    except Exception as e:
+    except _OPERATIONAL_ERRORS as e:
         logger.warning("Metadata field options endpoint error: %s", e)
         return jsonify({"options": []})
 
@@ -2527,7 +2529,7 @@ def api_metadata_book(provider: str, book_id: str) -> Response | tuple[Response,
         return jsonify({"error": str(e)}), 400
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 503
-    except Exception as e:
+    except (OSError, TypeError, sqlite3.Error) as e:
         logger.error_trace(f"Metadata book error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -2550,7 +2552,7 @@ def _handle_target_errors(
                 return jsonify({"error": str(e)}), 400
             except RuntimeError as e:
                 return jsonify({"error": str(e)}), 502
-            except Exception as e:
+            except (OSError, TypeError, sqlite3.Error) as e:
                 logger.error_trace(f"{fallback_message}: {e}")
                 return jsonify({"error": fallback_message}), 500
 
@@ -2693,7 +2695,7 @@ def api_releases() -> Response | tuple[Response, int]:
                 )
             except ValueError:
                 return None, [], f"Unknown source: {source_name}"
-            except Exception as e:
+            except (SourceUnavailableError, *_OPERATIONAL_ERRORS) as e:
                 logger.warning("Release search failed for source %s: %s", source_name, e)
                 return None, [], f"{source_name}: {e!s}"
             else:
@@ -2822,7 +2824,7 @@ def api_releases() -> Response | tuple[Response, int]:
             try:
                 first_source = source_instances[sources_to_search[0]]
                 column_config = serialize_column_config(first_source.get_column_config())
-            except Exception as e:
+            except _OPERATIONAL_ERRORS as e:
                 logger.warning("Failed to get column config: %s", e)
 
         # Convert book to dict and transform cover_url
@@ -2864,7 +2866,7 @@ def api_releases() -> Response | tuple[Response, int]:
     except SourceUnavailableError as e:
         logger.warning("Release search unavailable: %s", e)
         return jsonify({"error": str(e)}), 503
-    except Exception as e:
+    except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Releases search error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -2883,7 +2885,7 @@ def api_release_sources() -> Response | tuple[Response, int]:
 
         sources = list_available_sources()
         return jsonify(sources)
-    except Exception as e:
+    except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Release sources error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -2905,7 +2907,7 @@ def api_release_source_record(source_name: str, record_id: str) -> Response | tu
     except SourceUnavailableError as e:
         logger.warning("Release source record unavailable: %s", e)
         return jsonify({"error": str(e)}), 503
-    except Exception as e:
+    except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Release source record error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -2931,7 +2933,7 @@ def api_settings_get_all() -> Response | tuple[Response, int]:
 
         data = serialize_all_settings(include_values=True)
         return jsonify(data)
-    except Exception as e:
+    except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Settings get error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -2965,7 +2967,7 @@ def api_settings_get_tab(tab_name: str) -> Response | tuple[Response, int]:
             return jsonify({"error": f"Unknown settings tab: {tab_name}"}), 404
 
         return jsonify(serialize_tab(tab, include_values=True))
-    except Exception as e:
+    except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Settings get tab error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -3001,7 +3003,7 @@ def api_settings_update_tab(tab_name: str) -> Response | tuple[Response, int]:
         if not tab:
             return jsonify({"error": f"Unknown settings tab: {tab_name}"}), 404
 
-        values = request.get_json()
+        values = request.get_json(silent=True)
         if values is None or not isinstance(values, dict):
             return jsonify({"error": "Request body must be a JSON object"}), 400
 
@@ -3014,7 +3016,7 @@ def api_settings_update_tab(tab_name: str) -> Response | tuple[Response, int]:
         if result["success"]:
             return jsonify(result)
         return jsonify(result), 400
-    except Exception as e:
+    except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Settings update error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -3052,7 +3054,7 @@ def api_settings_execute_action(tab_name: str, action_key: str) -> Response | tu
         if result["success"]:
             return jsonify(result)
         return jsonify(result), 400
-    except Exception as e:
+    except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Settings action error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -3078,7 +3080,7 @@ def api_onboarding_get() -> Response | tuple[Response, int]:
 
         config = get_onboarding_config()
         return jsonify(config)
-    except Exception as e:
+    except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Onboarding get error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -3100,7 +3102,7 @@ def api_onboarding_save() -> Response | tuple[Response, int]:
         import_module("shelfmark.config.settings")
         from shelfmark.core.onboarding import save_onboarding_settings
 
-        data = request.get_json()
+        data = request.get_json(silent=True)
         if not data:
             return jsonify({"success": False, "message": "No data provided"}), 400
 
@@ -3109,7 +3111,7 @@ def api_onboarding_save() -> Response | tuple[Response, int]:
         if result["success"]:
             return jsonify(result)
         return jsonify(result), 400
-    except Exception as e:
+    except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Onboarding save error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -3128,7 +3130,7 @@ def api_onboarding_skip() -> Response | tuple[Response, int]:
 
         mark_onboarding_complete()
         return jsonify({"success": True, "message": "Onboarding skipped"})
-    except Exception as e:
+    except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Onboarding skip error: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -3171,7 +3173,7 @@ def handle_connect() -> None:
         user_id = None if is_admin else db_user_id
         status = backend.queue_status(user_id=user_id)
         emit("status_update", status)
-    except Exception:
+    except _OPERATIONAL_ERRORS:
         logger.exception("Error sending initial status")
 
 
@@ -3201,7 +3203,7 @@ def handle_status_request() -> None:
         user_id = None if is_admin else db_user_id
         status = backend.queue_status(user_id=user_id)
         emit("status_update", status)
-    except Exception:
+    except _OPERATIONAL_ERRORS:
         logger.exception("Error handling status request")
         emit("error", {"message": "Failed to get status"})
 

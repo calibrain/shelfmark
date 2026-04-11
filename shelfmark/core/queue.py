@@ -2,7 +2,7 @@
 
 import queue
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Event, Lock
 from typing import TYPE_CHECKING, Any
@@ -107,7 +107,7 @@ class BookQueue:
     def _update_status(self, book_id: str, status: QueueStatus) -> None:
         """Update the status and timestamp for a task."""
         self._status[book_id] = status
-        self._status_timestamps[book_id] = datetime.now()
+        self._status_timestamps[book_id] = datetime.now(UTC)
 
     def set_terminal_status_hook(
         self,
@@ -350,7 +350,7 @@ class BookQueue:
         """Remove any tasks that are done downloading or have stale status."""
         terminal_statuses = TERMINAL_QUEUE_STATUSES
         with self._lock:
-            current_time = datetime.now()
+            current_time = datetime.now(UTC)
             to_remove = []
 
             for task_id, status in self._status.items():

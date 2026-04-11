@@ -151,7 +151,7 @@ class TestReleaseDownloadEndpointGuardrails:
         assert captured["release_data"] == {**payload, "content_type": "audiobook"}
         assert captured["priority"] == 1
 
-    def test_non_json_payload_returns_500_current_behavior(self, main_module, client):
+    def test_non_json_payload_returns_400(self, main_module, client):
         with patch.object(main_module, "get_auth_mode", return_value="none"):
             with patch.object(main_module.backend, "queue_release") as mock_queue_release:
                 resp = client.post(
@@ -161,8 +161,8 @@ class TestReleaseDownloadEndpointGuardrails:
                 )
 
         body = resp.get_json()
-        assert resp.status_code == 500
-        assert "Unsupported Media Type" in body["error"]
+        assert resp.status_code == 400
+        assert body == {"error": "No data provided"}
         mock_queue_release.assert_not_called()
 
     def test_admin_can_queue_release_on_behalf_of_another_user(self, main_module, client):
@@ -520,7 +520,7 @@ class TestRetryDownloadEndpointGuardrails:
             source_display_name="Direct Download",
             title="Persisted Direct Task",
             author="Direct Author",
-            format="epub",
+            file_format="epub",
             size="1 MB",
             preview=None,
             content_type="ebook",
@@ -705,7 +705,7 @@ class TestRetryDownloadEndpointGuardrails:
             source_display_name="Prowlarr",
             title="Persisted Requested Book",
             author="Request Author",
-            format="epub",
+            file_format="epub",
             size="1 MB",
             preview=None,
             content_type="ebook",

@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from types import ModuleType
 
 logger = setup_logger(__name__)
+_RNG = random.SystemRandom()
 
 _MAX_REDIRECTS = 5
 _HTTP_STATUS_FORBIDDEN = HTTPStatus.FORBIDDEN
@@ -168,7 +169,7 @@ def parse_size_string(size: str) -> float | None:
 
 def _backoff_delay(attempt: int, base: float = 0.25, cap: float = 3.0) -> float:
     """Exponential backoff with jitter."""
-    return min(cap, base * (2 ** (attempt - 1))) + random.random() * base
+    return min(cap, base * (2 ** (attempt - 1))) + _RNG.random() * base
 
 
 def _get_status_code(e: Exception) -> int | None:

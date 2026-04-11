@@ -383,15 +383,15 @@ def _parse_book_info_page(
     divs = [div for div in divs if div.text.strip() != ""]
 
     all_details = _find_in_divs(divs, " · ")
-    format = ""
+    file_format = ""
     size = ""
     content = ""
 
     for _details in all_details:
         _details = _details.split(" · ")
         for f in _details:
-            if format == "" and f.strip().lower() in config.SUPPORTED_FORMATS:
-                format = f.strip().lower()
+            if file_format == "" and f.strip().lower() in config.SUPPORTED_FORMATS:
+                file_format = f.strip().lower()
             if size == "" and any(u in f.strip().lower() for u in ("mb", "kb", "gb")):
                 size = _normalize_size(f)
             if content == "":
@@ -399,11 +399,11 @@ def _parse_book_info_page(
                     if ct in f.strip().lower():
                         content = ct
                         break
-        if format == "" or size == "":
+        if file_format == "" or size == "":
             for f in _details:
                 stripped = f.strip().lower()
-                if format == "" and stripped and " " not in stripped:
-                    format = stripped
+                if file_format == "" and stripped and " " not in stripped:
+                    file_format = stripped
                 if size == "" and "." in stripped:
                     size = _normalize_size(f)
 
@@ -420,7 +420,7 @@ def _parse_book_info_page(
         content=content,
         publisher=(_find_in_divs(divs, "icon-[mdi--company]", is_class=True) or [""])[0],
         author=(_find_in_divs(divs, "icon-[mdi--user-edit]", is_class=True) or [""])[0],
-        format=format,
+        format=file_format,
         size=size,
         description=description,
         download_urls=urls,
@@ -1060,13 +1060,13 @@ def _extract_slow_download_url(
 
     countdown_seconds = _extract_countdown_seconds(soup, html_str)
     if countdown_seconds > 0:
-        MAX_COUNTDOWN_SECONDS = 600
-        sleep_time = min(countdown_seconds, MAX_COUNTDOWN_SECONDS)
-        if countdown_seconds > MAX_COUNTDOWN_SECONDS:
+        max_countdown_seconds = 600
+        sleep_time = min(countdown_seconds, max_countdown_seconds)
+        if countdown_seconds > max_countdown_seconds:
             logger.warning(
                 "Countdown %ss exceeds max, capping at %ss",
                 countdown_seconds,
-                MAX_COUNTDOWN_SECONDS,
+                max_countdown_seconds,
             )
         logger.info("AA waitlist: %ss for %s", sleep_time, title)
 
