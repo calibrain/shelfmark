@@ -7,6 +7,7 @@ Business logic remains in oidc_auth.py.
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
+from authlib.integrations.base_client.errors import OAuthError
 from authlib.integrations.flask_client import OAuth
 from authlib.jose.errors import InvalidClaimError
 from flask import Flask, Response, jsonify, redirect, request, session
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
 logger = setup_logger(__name__)
 oauth = OAuth()
 _RETURN_TO_SESSION_KEY = "oidc_return_to"
+_OIDC_CLIENT_ERRORS = (OAuthError, OSError, RuntimeError, TypeError, ValueError)
 
 
 def _normalize_claims(raw_claims: object) -> dict[str, Any]:
@@ -38,7 +40,7 @@ def _normalize_claims(raw_claims: object) -> dict[str, Any]:
         return raw_claims.to_dict()  # type: ignore[no-any-return]
     try:
         return dict(raw_claims)
-    except Exception:
+    except (TypeError, ValueError):
         return {}
 
 
@@ -214,7 +216,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
                     metadata = client.load_server_metadata()
                     if isinstance(metadata, dict):
                         provider_issuer = str(metadata.get("issuer", ""))
-                except Exception as metadata_error:
+                except _OIDC_CLIENT_ERRORS as metadata_error:
                     logger.debug(
                         "OIDC metadata lookup failed during claim diagnostics: %s",
                         metadata_error,

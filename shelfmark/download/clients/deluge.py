@@ -48,6 +48,17 @@ class DelugeRpcError(RuntimeError):
         self.code = code
 
 
+_DELUGE_CLIENT_ERRORS = (
+    AttributeError,
+    DelugeRpcError,
+    OSError,
+    requests.exceptions.RequestException,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
+
+
 def _get_error_message(error: object) -> tuple[str, int | None]:
     if isinstance(error, dict):
         return str(error.get("message") or error), error.get("code")
@@ -204,7 +215,7 @@ class DelugeClient(DownloadClient):
 
     def _get_daemon_version(self) -> object:
         """Fetch daemon version, preferring daemon.get_version when available."""
-        with suppress(Exception):
+        with suppress(*_DELUGE_CLIENT_ERRORS):
             methods = self._rpc_call("system.listMethods")
             if isinstance(methods, list) and "daemon.get_version" in methods:
                 return self._rpc_call("daemon.get_version")
@@ -218,11 +229,11 @@ class DelugeClient(DownloadClient):
 
         try:
             # label.add will error if the plugin is unavailable or the label exists.
-            with suppress(Exception):
+            with suppress(*_DELUGE_CLIENT_ERRORS):
                 self._rpc_call("label.add", label)
 
             self._rpc_call("label.set_torrent", torrent_id, label)
-        except Exception as e:
+        except _DELUGE_CLIENT_ERRORS as e:
             logger.debug("Could not set Deluge label '%s' for %s: %s", label, torrent_id, e)
 
     @staticmethod
@@ -238,7 +249,7 @@ class DelugeClient(DownloadClient):
         try:
             self._ensure_connected()
             version = self._get_daemon_version()
-        except Exception as e:
+        except _DELUGE_CLIENT_ERRORS as e:
             self._authenticated = False
             self._connected = False
             return False, f"Connection failed: {e!s}"
@@ -301,7 +312,7 @@ class DelugeClient(DownloadClient):
 
             logger.info("Added torrent to Deluge: %s", torrent_id)
 
-        except Exception:
+        except _DELUGE_CLIENT_ERRORS:
             self._authenticated = False
             self._connected = False
             logger.exception("Deluge add failed")
@@ -356,7 +367,7 @@ class DelugeClient(DownloadClient):
             if eta is not None:
                 try:
                     eta = int(eta)
-                except Exception:
+                except (TypeError, ValueError):
                     eta = None
 
             if eta is not None and (eta < 0 or eta > ONE_WEEK_IN_SECONDS):
@@ -380,7 +391,7 @@ class DelugeClient(DownloadClient):
                 eta=eta,
             )
 
-        except Exception as e:
+        except _DELUGE_CLIENT_ERRORS as e:
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, *, delete_files: bool = False) -> bool:
@@ -397,7 +408,7 @@ class DelugeClient(DownloadClient):
                 )
                 return True
 
-        except Exception as e:
+        except _DELUGE_CLIENT_ERRORS as e:
             self._log_error("remove", e)
             return False
         else:
@@ -420,7 +431,7 @@ class DelugeClient(DownloadClient):
                     str(status.get("name", "")),
                 )
 
-        except Exception as e:
+        except _DELUGE_CLIENT_ERRORS as e:
             self._log_error("get_download_path", e, level="debug")
             return None
         else:
@@ -447,7 +458,7 @@ class DelugeClient(DownloadClient):
                 full_status = self.get_status(torrent_info.info_hash)
                 return (torrent_info.info_hash, full_status)
 
-        except Exception as e:
+        except _DELUGE_CLIENT_ERRORS as e:
             self._authenticated = False
             self._connected = False
             logger.debug("Error checking for existing torrent: %s", e)

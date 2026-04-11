@@ -4,6 +4,7 @@ Uses xmlrpc to communicate with rTorrent's RPC interface.
 """
 
 import ssl
+import xmlrpc.client as stdlib_xmlrpc_client
 from typing import NoReturn
 from urllib.parse import urlparse
 
@@ -24,6 +25,14 @@ logger = setup_logger(__name__)
 
 
 _ETA_MAX_SECONDS = 604800
+_RTORRENT_CLIENT_ERRORS = (
+    AttributeError,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+    stdlib_xmlrpc_client.Error,
+)
 
 
 def _create_rtorrent_server_proxy(url: str) -> object:
@@ -86,7 +95,7 @@ class RTorrentClient(DownloadClient):
         """Test connection to rTorrent."""
         try:
             version = self._rpc.system.client_version()
-        except Exception as e:
+        except _RTORRENT_CLIENT_ERRORS as e:
             return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to rTorrent {version}"
@@ -154,7 +163,7 @@ class RTorrentClient(DownloadClient):
 
             logger.debug("Added torrent to rTorrent: %s", torrent_hash)
 
-        except Exception:
+        except _RTORRENT_CLIENT_ERRORS:
             logger.exception("rTorrent add failed")
             raise
         else:
@@ -214,7 +223,7 @@ class RTorrentClient(DownloadClient):
 
             try:
                 state = int(state)
-            except Exception:
+            except (TypeError, ValueError):
                 state = 0
 
             complete = bool(complete)
@@ -256,7 +265,7 @@ class RTorrentClient(DownloadClient):
                 eta=eta,
             )
 
-        except Exception as e:
+        except _RTORRENT_CLIENT_ERRORS as e:
             error_type = type(e).__name__
             logger.exception("rTorrent get_status failed (%s)", error_type)
             return DownloadStatus.error(f"{error_type}: {e}")
@@ -285,7 +294,7 @@ class RTorrentClient(DownloadClient):
                 download_id,
                 " (with files)" if delete_files else "",
             )
-        except Exception as e:
+        except _RTORRENT_CLIENT_ERRORS as e:
             error_type = type(e).__name__
             logger.exception("rTorrent remove failed (%s)", error_type)
             return False
@@ -304,7 +313,7 @@ class RTorrentClient(DownloadClient):
         """
         try:
             return self._get_torrent_path(download_id)
-        except Exception as e:
+        except _RTORRENT_CLIENT_ERRORS as e:
             error_type = type(e).__name__
             logger.debug("rTorrent get_download_path failed (%s): %s", error_type, e)
             return None
@@ -322,13 +331,13 @@ class RTorrentClient(DownloadClient):
                 status = self.get_status(torrent_info.info_hash)
                 if status.state != DownloadStatus.error("").state:
                     return (torrent_info.info_hash, status)
-            except Exception as exc:
+            except _RTORRENT_CLIENT_ERRORS as exc:
                 logger.debug(
                     "Could not fetch existing rTorrent status for %s: %s",
                     torrent_info.info_hash,
                     exc,
                 )
-        except Exception as e:
+        except _RTORRENT_CLIENT_ERRORS as e:
             logger.debug("Error checking for existing torrent: %s", e)
             return None
         else:
@@ -338,7 +347,7 @@ class RTorrentClient(DownloadClient):
         """Get the download directory from rTorrent config."""
         try:
             return self._rpc.directory.default()
-        except Exception:
+        except _RTORRENT_CLIENT_ERRORS:
             return "/downloads"
 
     def _get_torrent_path(self, download_id: str) -> str | None:
@@ -360,7 +369,7 @@ class RTorrentClient(DownloadClient):
             if not details:
                 return None
             path = details[0][0]
-        except Exception:
+        except _RTORRENT_CLIENT_ERRORS:
             return None
         else:
             return path or None

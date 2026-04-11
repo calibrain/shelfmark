@@ -159,7 +159,7 @@ class TestRTorrentClientTestConnection:
         )
 
         mock_rpc = MagicMock()
-        mock_rpc.system.client_version.side_effect = Exception("Connection refused")
+        mock_rpc.system.client_version.side_effect = RuntimeError("Connection refused")
 
         mock_xmlrpc = create_mock_xmlrpc_module()
         mock_xmlrpc.ServerProxy.return_value = mock_rpc
@@ -328,7 +328,7 @@ class TestRTorrentClientAddDownload:
         )
 
         mock_rpc = MagicMock()
-        mock_rpc.load.start.side_effect = Exception("RPC Error")
+        mock_rpc.load.start.side_effect = RuntimeError("RPC Error")
         mock_xmlrpc = create_mock_xmlrpc_module()
         mock_xmlrpc.ServerProxy.return_value = mock_rpc
 
@@ -352,7 +352,7 @@ class TestRTorrentClientAddDownload:
                 )
 
                 client = RTorrentClient()
-                with pytest.raises(Exception) as excinfo:
+                with pytest.raises(RuntimeError) as excinfo:
                     client.add_download("magnet:...", "Test")
 
                 assert "RPC Error" in str(excinfo.value)
@@ -626,7 +626,7 @@ class TestRTorrentClientRemove:
         )
 
         mock_rpc = MagicMock()
-        mock_rpc.d.stop.side_effect = Exception("Connection lost")
+        mock_rpc.d.stop.side_effect = RuntimeError("Connection lost")
 
         mock_xmlrpc = create_mock_xmlrpc_module()
         mock_xmlrpc.ServerProxy.return_value = mock_rpc

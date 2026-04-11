@@ -167,6 +167,15 @@ class TestOIDCLoginEndpoint:
 
 
 class TestOIDCCallbackEndpoint:
+    def test_normalize_claims_returns_empty_dict_for_invalid_mapping(self):
+        from shelfmark.core.oidc_routes import _normalize_claims
+
+        class BadClaims:
+            def __iter__(self):
+                raise TypeError("bad claims")
+
+        assert _normalize_claims(BadClaims()) == {}
+
     @patch("shelfmark.core.oidc_routes._get_oidc_client")
     def test_callback_creates_session(self, mock_get_client, client):
         fake_client = Mock()
@@ -332,6 +341,20 @@ class TestOIDCCallbackEndpoint:
         fake_client = Mock()
         fake_client.authorize_access_token.side_effect = InvalidClaimError("iss")
         fake_client.load_server_metadata.return_value = {"issuer": "https://auth.example.com/application/o/shelfmark/"}
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        error = _get_oidc_error(resp)
+        assert error is not None
+        assert "issuer validation failed" in error
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_tolerates_metadata_lookup_failure_during_claim_diagnostics(
+        self, mock_get_client, client
+    ):
+        fake_client = Mock()
+        fake_client.authorize_access_token.side_effect = InvalidClaimError("iss")
+        fake_client.load_server_metadata.side_effect = RuntimeError("metadata failed")
         mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
 
         resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")

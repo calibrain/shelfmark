@@ -10,12 +10,13 @@ from typing import Self
 
 from shelfmark.core.logger import setup_logger
 
-from .client import IRCClient
+from .client import IRCClient, IRCError
 
 logger = setup_logger(__name__)
 
 # How long to keep an idle connection before closing it
 IDLE_TIMEOUT = 300.0  # 5 minutes
+_IRC_CONNECTION_ERRORS = (IRCError, OSError, RuntimeError)
 
 
 class IRCConnectionManager:
@@ -89,7 +90,7 @@ class IRCConnectionManager:
                     logger.info("Closing idle IRC connection: %s", key)
                     try:
                         client.disconnect()
-                    except Exception as e:
+                    except _IRC_CONNECTION_ERRORS as e:
                         logger.debug("Error closing idle connection: %s", e)
 
     def get_connection(
@@ -185,7 +186,7 @@ class IRCConnectionManager:
                 self._last_used[key] = time.time()
                 self._channels[key] = channel
                 self._connecting.pop(key, None)
-        except Exception:
+        except _IRC_CONNECTION_ERRORS:
             # Clear connecting flag on failure
             with self._conn_lock:
                 self._connecting.pop(key, None)
@@ -222,7 +223,7 @@ class IRCConnectionManager:
 
         try:
             client.disconnect()
-        except Exception as e:
+        except _IRC_CONNECTION_ERRORS as e:
             logger.debug("Error closing connection: %s", e)
 
         logger.debug("Closed IRC connection: %s", key)
@@ -244,7 +245,7 @@ class IRCConnectionManager:
         """Disconnect one IRC client and log failures."""
         try:
             client.disconnect()
-        except Exception as e:
+        except _IRC_CONNECTION_ERRORS as e:
             logger.debug("Error closing connection %s: %s", key, e)
 
 

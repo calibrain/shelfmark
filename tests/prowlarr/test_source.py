@@ -425,3 +425,36 @@ class TestProwlarrLocalizedQueries:
                 (query,),
             )
         ]
+
+    def test_get_column_config_ignores_indexer_lookup_failure(self, monkeypatch):
+        source = ProwlarrSource()
+
+        class FailingClient:
+            def get_enabled_indexers_detailed(self):
+                raise RuntimeError("indexers unavailable")
+
+        monkeypatch.setattr(source, "_get_client", lambda: FailingClient())
+        monkeypatch.setattr(source, "_get_selected_indexer_ids", lambda: None)
+
+        config = source.get_column_config()
+
+        assert config.available_indexers is None
+        assert config.default_indexers is None
+
+    def test_resolve_indexer_ids_from_names_returns_none_on_lookup_failure(self):
+        source = ProwlarrSource()
+
+        class FailingClient:
+            def get_enabled_indexers_detailed(self):
+                raise RuntimeError("indexers unavailable")
+
+        assert source._resolve_indexer_ids_from_names(FailingClient(), ["Alpha"]) is None
+
+    def test_get_search_indexer_ids_returns_empty_on_lookup_failure(self):
+        source = ProwlarrSource()
+
+        class FailingClient:
+            def get_enabled_indexers_detailed(self):
+                raise RuntimeError("indexers unavailable")
+
+        assert source._get_search_indexer_ids(FailingClient(), None, [7000]) == []
