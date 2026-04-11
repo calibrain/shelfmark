@@ -58,6 +58,7 @@ def normalize_http_url(
 
 _xmlrpc_patch_lock = Lock()
 _xmlrpc_patch_applied = False
+_XMLRPC_PATCH_ERRORS = (ImportError, AttributeError, OSError, RuntimeError)
 
 
 def get_hardened_xmlrpc_client() -> ModuleType:
@@ -71,7 +72,7 @@ def get_hardened_xmlrpc_client() -> ModuleType:
 
                     monkey_patch()
                     _xmlrpc_patch_applied = True
-                except Exception:
+                except _XMLRPC_PATCH_ERRORS:
                     # Keep runtime behavior unchanged if defusedxml is unavailable.
                     _xmlrpc_patch_applied = False
 

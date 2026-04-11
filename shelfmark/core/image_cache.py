@@ -485,13 +485,12 @@ class ImageCacheService:
         """Check that a URL is safe to fetch (no SSRF to internal resources)."""
         try:
             parsed = urlparse(url)
-        except Exception:
+            hostname = parsed.hostname
+        except ValueError:
             return False
 
         if parsed.scheme not in ("http", "https"):
             return False
-
-        hostname = parsed.hostname
         if not hostname:
             return False
 
@@ -570,7 +569,7 @@ class ImageCacheService:
             is_404 = e.response is not None and e.response.status_code == HTTP_NOT_FOUND
             self.put_negative(cache_id, transient=not is_404)
             return None
-        except Exception:
+        except requests.exceptions.RequestException:
             return None
         else:
             return cached_data

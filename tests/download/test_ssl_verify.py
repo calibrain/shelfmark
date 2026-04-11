@@ -4,7 +4,6 @@ import warnings
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # get_ssl_verify()
 # ---------------------------------------------------------------------------
@@ -158,6 +157,7 @@ class TestApplySslWarningSuppression:
 
     def test_disabled_mode_suppresses_warnings(self, monkeypatch):
         import urllib3
+
         import shelfmark.download.network as network
 
         monkeypatch.setattr(network.app_config, "get", lambda k, d="": "disabled" if k == "CERTIFICATE_VALIDATION" else d)
@@ -176,6 +176,7 @@ class TestApplySslWarningSuppression:
 
     def test_disabled_local_mode_suppresses_warnings(self, monkeypatch):
         import urllib3
+
         import shelfmark.download.network as network
 
         monkeypatch.setattr(network.app_config, "get", lambda k, d="": "disabled_local" if k == "CERTIFICATE_VALIDATION" else d)
@@ -186,6 +187,7 @@ class TestApplySslWarningSuppression:
 
     def test_enabled_mode_restores_warnings(self, monkeypatch):
         import urllib3
+
         import shelfmark.download.network as network
 
         # First suppress
@@ -213,7 +215,6 @@ class TestCertificateValidationSetting:
 
     def _get_network_fields(self):
         import shelfmark.config.settings  # noqa: F401 — ensure settings tabs are registered
-
         from shelfmark.core.settings_registry import get_settings_tab
 
         tab = get_settings_tab("network")
@@ -252,7 +253,6 @@ class TestCertificateValidationSetting:
 def test_update_settings_certificate_validation_triggers_suppression(monkeypatch):
     """Changing CERTIFICATE_VALIDATION via update_settings calls _apply_ssl_warning_suppression."""
     import shelfmark.config.settings  # noqa: F401 — ensure settings tabs are registered
-
     from shelfmark.core.config import config as config_obj
     from shelfmark.core.settings_registry import update_settings
 
@@ -272,3 +272,39 @@ def test_update_settings_certificate_validation_triggers_suppression(monkeypatch
 
     assert result["success"] is True
     assert called["count"] == 1
+
+
+def test_update_settings_certificate_validation_logs_live_apply_failure(monkeypatch):
+    """Runtime live-apply failures should warn without failing the save."""
+    import shelfmark.config.settings  # noqa: F401
+    import shelfmark.core.settings_registry as registry
+    from shelfmark.core.config import config as config_obj
+    from shelfmark.core.settings_registry import update_settings
+
+    monkeypatch.setattr("shelfmark.core.settings_registry.save_config_file", lambda _tab, _values: True)
+    monkeypatch.setattr(config_obj, "refresh", lambda: None)
+
+    import shelfmark.download.network as network
+
+    monkeypatch.setattr(
+        network,
+        "_apply_ssl_warning_suppression",
+        lambda: (_ for _ in ()).throw(RuntimeError("ssl apply failed")),
+    )
+
+    warnings_logged: list[tuple[str, tuple[object, ...]]] = []
+    monkeypatch.setattr(
+        registry.logger,
+        "warning",
+        lambda message, *args: warnings_logged.append((str(message), args)),
+    )
+
+    result = update_settings("network", {"CERTIFICATE_VALIDATION": "disabled"})
+
+    assert result["success"] is True
+    assert len(warnings_logged) == 1
+    message, args = warnings_logged[0]
+    assert message == "Failed to apply certificate validation setting: %s"
+    assert len(args) == 1
+    assert isinstance(args[0], RuntimeError)
+    assert str(args[0]) == "ssl apply failed"

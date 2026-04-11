@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 logger = setup_logger(__name__)
+_QUEUE_HOOK_ERRORS = (OSError, RuntimeError, TypeError, ValueError)
 
 
 class BookQueue:
@@ -68,7 +69,7 @@ class BookQueue:
         if hook is not None:
             try:
                 hook(task_id, task)
-            except Exception as exc:
+            except _QUEUE_HOOK_ERRORS as exc:
                 logger.warning("Queue hook failed while adding task %s: %s", task_id, exc)
         return True
 
@@ -307,7 +308,7 @@ class BookQueue:
         if hook is not None and hook_task is not None:
             try:
                 hook(task_id, hook_task)
-            except Exception as exc:
+            except _QUEUE_HOOK_ERRORS as exc:
                 logger.warning("Queue hook failed while requeueing task %s: %s", task_id, exc)
         return True
 

@@ -12,6 +12,7 @@ from werkzeug.utils import secure_filename
 from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
+_SETTINGS_LIVE_APPLY_ERRORS = (OSError, RuntimeError, TypeError, ValueError)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -1177,7 +1178,7 @@ def _apply_dns_settings(config: Config) -> None:
         network.set_dns_provider(provider, manual_servers, use_doh=use_doh)
     except ImportError:
         pass  # Network module not available
-    except Exception as e:
+    except _SETTINGS_LIVE_APPLY_ERRORS as e:
         logger.warning("Failed to apply DNS settings: %s", e)
 
 
@@ -1194,7 +1195,7 @@ def _apply_aa_mirror_settings(config: Config) -> None:
         network.init_aa(force=True)
     except ImportError:
         pass  # Network module not available
-    except Exception as e:
+    except _SETTINGS_LIVE_APPLY_ERRORS as e:
         logger.warning("Failed to apply AA mirror settings: %s", e)
 
 
@@ -1306,7 +1307,7 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
                 )
 
                 _apply_ssl_warning_suppression()
-            except Exception as e:
+            except _SETTINGS_LIVE_APPLY_ERRORS as e:
                 logger.warning("Failed to apply certificate validation setting: %s", e)
 
         # Apply AA mirror settings changes live (mirrors tab)
