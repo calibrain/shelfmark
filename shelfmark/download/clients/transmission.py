@@ -3,8 +3,11 @@
 Uses the transmission-rpc library to communicate with Transmission's RPC API.
 """
 
+from __future__ import annotations
+
+import importlib
 from contextlib import contextmanager, suppress
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -69,6 +72,23 @@ class _TransmissionProtocolAttribute(Protocol):
     protocol: str
 
 
+def _is_requests_namespace_with_session(
+    candidate: object,
+) -> TypeGuard[_TransmissionRequestsNamespace]:
+    return hasattr(candidate, "Session") and callable(getattr(candidate, "Session", None))
+
+
+def _has_protocol_attr(candidate: object) -> TypeGuard[_TransmissionProtocolAttribute]:
+    return hasattr(candidate, "protocol")
+
+
+def _set_transmission_protocol_if_supported(client: object, protocol: str) -> None:
+    if protocol != "https" or not _has_protocol_attr(client):
+        return
+    with suppress(AttributeError, OSError, RuntimeError, TypeError, ValueError):
+        client.protocol = protocol
+
+
 @contextmanager
 def _transmission_session_verify_override(url: str) -> Iterator[None]:
     """Temporarily override transmission-rpc's session factory when verify is disabled.
@@ -82,19 +102,17 @@ def _transmission_session_verify_override(url: str) -> Iterator[None]:
         return
 
     try:
-        import transmission_rpc.client as transmission_rpc_client
-
+        transmission_rpc_client = importlib.import_module("transmission_rpc.client")
         requests_namespace = getattr(transmission_rpc_client, "requests", None)
     except ImportError:
         # If internals differ, gracefully fall back to default behavior.
         yield
         return
 
-    if requests_namespace is None or not hasattr(requests_namespace, "Session"):
+    if not _is_requests_namespace_with_session(requests_namespace):
         yield
         return
 
-    requests_namespace = cast(_TransmissionRequestsNamespace, requests_namespace)
     original_session_factory = requests_namespace.Session
 
     def _session_factory(*args: object, **kwargs: object) -> _TransmissionSessionProtocol:
@@ -166,10 +184,7 @@ class TransmissionClient(DownloadClient):
             with _transmission_session_verify_override(url):
                 self._client = Client(**client_kwargs)
             # Some versions expose protocol as an attribute rather than kwarg.
-            if protocol == "https" and hasattr(self._client, "protocol"):
-                with suppress(AttributeError, OSError, RuntimeError, TypeError, ValueError):
-                    legacy_client = cast(_TransmissionProtocolAttribute, self._client)
-                    legacy_client.protocol = protocol
+            _set_transmission_protocol_if_supported(self._client, protocol)
         _apply_transmission_ssl_verify(self._client, url)
         self._category = config_text(config.get("TRANSMISSION_CATEGORY", "books"))
         self._download_dir = config_text(config.get("TRANSMISSION_DOWNLOAD_DIR", ""))

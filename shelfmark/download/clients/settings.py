@@ -1,7 +1,10 @@
 """Shared download client settings registration."""
 
+from __future__ import annotations
+
+import importlib
 from contextlib import contextmanager, suppress
-from typing import TYPE_CHECKING, Any, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn, Protocol, TypeGuard
 
 from shelfmark.core.settings_registry import (
     ActionButton,
@@ -31,10 +34,22 @@ except ImportError:
     _ImportedTransmissionError = RuntimeError
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 # ==================== Test Connection Callbacks ====================
 _DELUGE_HOST_ENTRY_MIN_LENGTH = 2
+
+
+class _SessionWithVerify(Protocol):
+    verify: bool
+
+
+class _RequestsModuleWithSession(Protocol):
+    Session: Callable[..., _SessionWithVerify]
+
+
+class _TransmissionClientWithProtocol(Protocol):
+    protocol: str
 
 
 def _resolve_exception_type(candidate: object) -> type[Exception]:
@@ -69,6 +84,39 @@ def _raise_runtime_error(message: str) -> NoReturn:
     raise RuntimeError(message)
 
 
+def _is_requests_module_with_session(candidate: object) -> TypeGuard[_RequestsModuleWithSession]:
+    return callable(getattr(candidate, "Session", None))
+
+
+def _has_protocol_attr(candidate: object) -> TypeGuard[_TransmissionClientWithProtocol]:
+    return hasattr(candidate, "protocol")
+
+
+def _set_transmission_protocol_if_supported(client: object, protocol: str) -> None:
+    if protocol != "https" or not _has_protocol_attr(client):
+        return
+    with suppress(AttributeError, OSError, RuntimeError, TypeError, ValueError):
+        client.protocol = protocol
+
+
+def _resolve_string_setting(
+    current_values: dict[str, Any],
+    config_get: Callable[[str, str], object],
+    key: str,
+    *,
+    default: str = "",
+) -> str:
+    current_value = current_values.get(key)
+    if isinstance(current_value, str) and current_value:
+        return current_value
+
+    config_value = config_get(key, default)
+    if isinstance(config_value, str) and config_value:
+        return config_value
+
+    return default
+
+
 @contextmanager
 def _transmission_session_verify_override(url: str) -> Iterator[None]:
     """Ensure transmission-rpc constructor uses the configured TLS verify mode."""
@@ -78,23 +126,28 @@ def _transmission_session_verify_override(url: str) -> Iterator[None]:
         return
 
     try:
-        import transmission_rpc.client as transmission_rpc_client
+        transmission_rpc_client = importlib.import_module("transmission_rpc.client")
     except ImportError:
         yield
         return
 
-    original_session_factory = transmission_rpc_client.requests.Session
+    requests_module = getattr(transmission_rpc_client, "requests", None)
+    if not _is_requests_module_with_session(requests_module):
+        yield
+        return
+
+    original_session_factory = requests_module.Session
 
     def _session_factory(*args: Any, **kwargs: Any) -> Any:
         session = original_session_factory(*args, **kwargs)
         session.verify = False
         return session
 
-    transmission_rpc_client.requests.Session = _session_factory
+    requests_module.Session = _session_factory
     try:
         yield
     finally:
-        transmission_rpc_client.requests.Session = original_session_factory
+        requests_module.Session = original_session_factory
 
 
 def _test_qbittorrent_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -103,9 +156,9 @@ def _test_qbittorrent_connection(current_values: dict[str, Any] | None = None) -
 
     current_values = current_values or {}
 
-    raw_url = current_values.get("QBITTORRENT_URL") or config.get("QBITTORRENT_URL", "")
-    username = current_values.get("QBITTORRENT_USERNAME") or config.get("QBITTORRENT_USERNAME", "")
-    password = current_values.get("QBITTORRENT_PASSWORD") or config.get("QBITTORRENT_PASSWORD", "")
+    raw_url = _resolve_string_setting(current_values, config.get, "QBITTORRENT_URL")
+    username = _resolve_string_setting(current_values, config.get, "QBITTORRENT_USERNAME")
+    password = _resolve_string_setting(current_values, config.get, "QBITTORRENT_PASSWORD")
 
     if not raw_url:
         return {"success": False, "message": "qBittorrent URL is required"}
@@ -142,13 +195,9 @@ def _test_transmission_connection(current_values: dict[str, Any] | None = None) 
 
     current_values = current_values or {}
 
-    raw_url = current_values.get("TRANSMISSION_URL") or config.get("TRANSMISSION_URL", "")
-    username = current_values.get("TRANSMISSION_USERNAME") or config.get(
-        "TRANSMISSION_USERNAME", ""
-    )
-    password = current_values.get("TRANSMISSION_PASSWORD") or config.get(
-        "TRANSMISSION_PASSWORD", ""
-    )
+    raw_url = _resolve_string_setting(current_values, config.get, "TRANSMISSION_URL")
+    username = _resolve_string_setting(current_values, config.get, "TRANSMISSION_USERNAME")
+    password = _resolve_string_setting(current_values, config.get, "TRANSMISSION_PASSWORD")
 
     if not raw_url:
         return {"success": False, "message": "Transmission URL is required"}
@@ -180,9 +229,7 @@ def _test_transmission_connection(current_values: dict[str, Any] | None = None) 
             client_kwargs.pop("protocol", None)
             with _transmission_session_verify_override(url):
                 client = Client(**client_kwargs)
-        if protocol == "https" and hasattr(client, "protocol"):
-            with suppress(Exception):
-                client.protocol = protocol
+        _set_transmission_protocol_if_supported(client, protocol)
 
         # Keep session verify aligned for subsequent calls beyond constructor bootstrap.
         http_session = getattr(client, "_http_session", None)
@@ -209,9 +256,11 @@ def _test_deluge_connection(current_values: dict[str, Any] | None = None) -> dic
 
     current_values = current_values or {}
 
-    raw_host = current_values.get("DELUGE_HOST") or config.get("DELUGE_HOST", "localhost")
-    raw_port = current_values.get("DELUGE_PORT") or config.get("DELUGE_PORT", "8112")
-    password = current_values.get("DELUGE_PASSWORD") or config.get("DELUGE_PASSWORD", "")
+    raw_host = _resolve_string_setting(
+        current_values, config.get, "DELUGE_HOST", default="localhost"
+    )
+    raw_port = _resolve_string_setting(current_values, config.get, "DELUGE_PORT", default="8112")
+    password = _resolve_string_setting(current_values, config.get, "DELUGE_PASSWORD")
 
     if not raw_host:
         return {"success": False, "message": "Deluge host is required"}
@@ -330,9 +379,9 @@ def _test_rtorrent_connection(current_values: dict[str, Any] | None = None) -> d
 
     current_values = current_values or {}
 
-    raw_url = current_values.get("RTORRENT_URL") or config.get("RTORRENT_URL", "")
-    username = current_values.get("RTORRENT_USERNAME") or config.get("RTORRENT_USERNAME", "")
-    password = current_values.get("RTORRENT_PASSWORD") or config.get("RTORRENT_PASSWORD", "")
+    raw_url = _resolve_string_setting(current_values, config.get, "RTORRENT_URL")
+    username = _resolve_string_setting(current_values, config.get, "RTORRENT_USERNAME")
+    password = _resolve_string_setting(current_values, config.get, "RTORRENT_PASSWORD")
 
     if not raw_url:
         return {"success": False, "message": "rTorrent URL is required"}
@@ -343,7 +392,10 @@ def _test_rtorrent_connection(current_values: dict[str, Any] | None = None) -> d
 
     try:
         xmlrpc_client = get_hardened_xmlrpc_client()
+    except (RuntimeError, OSError, ValueError, TypeError) as e:
+        return {"success": False, "message": f"Connection failed: {e!s}"}
 
+    try:
         # Add HTTP auth to URL if credentials provided
         if username and password:
             parsed = urlparse(url)
@@ -378,9 +430,14 @@ def _test_nzbget_connection(current_values: dict[str, Any] | None = None) -> dic
 
     current_values = current_values or {}
 
-    raw_url = current_values.get("NZBGET_URL") or config.get("NZBGET_URL", "")
-    username = current_values.get("NZBGET_USERNAME") or config.get("NZBGET_USERNAME", "nzbget")
-    password = current_values.get("NZBGET_PASSWORD") or config.get("NZBGET_PASSWORD", "")
+    raw_url = _resolve_string_setting(current_values, config.get, "NZBGET_URL")
+    username = _resolve_string_setting(
+        current_values,
+        config.get,
+        "NZBGET_USERNAME",
+        default="nzbget",
+    )
+    password = _resolve_string_setting(current_values, config.get, "NZBGET_PASSWORD")
 
     if not raw_url:
         return {"success": False, "message": "NZBGet URL is required"}
@@ -428,8 +485,8 @@ def _test_sabnzbd_connection(current_values: dict[str, Any] | None = None) -> di
 
     current_values = current_values or {}
 
-    raw_url = current_values.get("SABNZBD_URL") or config.get("SABNZBD_URL", "")
-    api_key = current_values.get("SABNZBD_API_KEY") or config.get("SABNZBD_API_KEY", "")
+    raw_url = _resolve_string_setting(current_values, config.get, "SABNZBD_URL")
+    api_key = _resolve_string_setting(current_values, config.get, "SABNZBD_API_KEY")
 
     if not raw_url:
         return {"success": False, "message": "SABnzbd URL is required"}
