@@ -43,8 +43,9 @@ services:
 Notes:
 - Point `/books` to your library ingest folder (Calibre-Web, Booklore, Audiobookshelf, etc) for automatic import.
 - If you set Books Output Mode to Booklore (API), books are uploaded via API instead of written to `/books`. Audiobooks still use a destination folder.
-- Ensure `PUID`/`PGID` (or legacy `UID`/`GID`) match the owner of the host directories to avoid permission errors.
-- Hardened Docker/Kubernetes deployments can instead start Shelfmark as `1000:1000` from the beginning by setting the container user directly. `PUID`/`PGID` alone do not enable this mode. In that mode ownership must be prepared outside the container because the entrypoint skips `PUID`/`PGID` repair.
+- Ensure `PUID`/`PGID` (or legacy `UID`/`GID`) match the owner of the host directories.
+- For non-root mode, start the container as `1000:1000`; `PUID`/`PGID` keep the default root startup flow.
+- In non-root mode, mounted paths must already be writable by `1000:1000`.
 - `USING_TOR=true` still requires starting the container as root.
 
 ## Torrent / Usenet Setup

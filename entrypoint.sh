@@ -127,7 +127,6 @@ if [ "$RUN_AS_NON_ROOT" = "true" ]; then
         echo "No passwd entry found for UID $RUN_UID; using numeric identity"
     fi
     TARGET_USER_SPEC="${RUN_UID}:${RUN_GID}"
-    echo "Running in non-root mode as $USERNAME (${RUN_UID}:${RUN_GID})"
 else
     # Determine user ID with proper precedence:
     # 1. PUID (LinuxServer.io standard - recommended)
@@ -179,7 +178,6 @@ else
         USERNAME="$RUN_UID"
     fi
     TARGET_USER_SPEC="${RUN_UID}:${RUN_GID}"
-    echo "Username for UID $RUN_UID is $USERNAME"
 fi
 
 # Avoid unnecessary gosu hops when we're already running as the target user.
@@ -506,6 +504,15 @@ if [ "$RUN_AS_NON_ROOT" = "true" ]; then
     fi
     require_writable_dir "$TARGET_HOME" "Home"
 fi
+
+if [ "$RUN_AS_NON_ROOT" = "true" ]; then
+    echo "Startup mode: non-root"
+elif [ "$RUN_UID" = "0" ] && [ "$RUN_GID" = "0" ]; then
+    echo "Startup mode: root"
+else
+    echo "Startup mode: root bootstrap with privilege drop"
+fi
+echo "Runtime identity: $USERNAME (${RUN_UID}:${RUN_GID})"
 
 echo "Running command: '$command' as '$USERNAME' (debug=${DEBUG:-false})"
 

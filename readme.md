@@ -77,10 +77,9 @@ volumes:
 
 ### Non-root container mode
 
-Optional hardened mode:
-- Start the container as `1000:1000` from the beginning with Docker `user: "1000:1000"`, `docker run --user 1000:1000`, or Kubernetes `runAsUser: 1000`.
-- `PUID`/`PGID` alone do not enable this mode. The default compose file still starts as root, then drops to `PUID`/`PGID`.
-- In this mode mounted paths must already be writable by that user.
+- Start the container as `1000:1000` with Docker `user: "1000:1000"`, `docker run --user 1000:1000`, or Kubernetes `runAsUser: 1000` / `runAsNonRoot: true`.
+- `PUID`/`PGID` keep the default root startup flow.
+- Mounted paths must already be writable by `1000:1000`.
 - `USING_TOR=true` still requires root startup.
 
 ## ⚙️ Configuration
@@ -107,7 +106,7 @@ Environment variables work for initial setup and Docker deployments. They serve 
 | `FLASK_PORT` | Web interface port | `8084` |
 | `INGEST_DIR` | Book download directory | `/books` |
 | `TZ` | Container timezone | `UTC` |
-| `PUID` / `PGID` | Runtime user/group ID (also supports legacy `UID`/`GID`) | `1000` / `1000` |
+| `PUID` / `PGID` | Runtime user/group for the default root-startup flow (also supports legacy `UID`/`GID`) | `1000` / `1000` |
 | `SEARCH_MODE` | `direct` or `universal` | `direct` |
 | `USING_TOR` | Enable Tor routing (requires `NET_ADMIN` capability) | `false` |
 
