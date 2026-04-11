@@ -341,7 +341,7 @@ class UserDB:
         }
     )
 
-    def update_user(self, user_id: int, **kwargs) -> None:
+    def update_user(self, user_id: int, **kwargs: object) -> None:
         """Update user fields. Raises ValueError if user not found or invalid column."""
         if not kwargs:
             return
@@ -706,7 +706,7 @@ class UserDB:
         self,
         request_id: int,
         expected_current_status: str | None = None,
-        **kwargs,
+        **kwargs: object,
     ) -> dict[str, Any]:
         """Update request fields and return the updated record."""
         if not kwargs:

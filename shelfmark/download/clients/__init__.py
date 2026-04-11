@@ -69,7 +69,7 @@ def with_retry(
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
-        def wrapper(*args, **kwargs) -> T:
+        def wrapper(*args, **kwargs: object) -> T:
             last_exception = None
 
             for attempt in range(1, max_attempts + 1):
@@ -233,7 +233,7 @@ class DownloadClient(ABC):
         # Join and normalize
         return os.path.normpath(str(Path(valid[0]).joinpath(*valid[1:])))
 
-    def __init_subclass__(cls, **kwargs) -> None:
+    def __init_subclass__(cls, **kwargs: object) -> None:
         """Validate that subclasses define required class attributes."""
         super().__init_subclass__(**kwargs)
 

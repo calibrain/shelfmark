@@ -66,7 +66,7 @@ extend-exclude = [".local"]
 [tool.ruff.lint]
 select = [
     "F", "I", "UP", "B", "C4", "SIM", "PTH", "RET", "PIE", "FURB", "PERF", "TRY", "D",
-    "ANN001", "ANN201", "ANN202", "ANN204",
+    "ANN001", "ANN003", "ANN201", "ANN202", "ANN204",
     "E402",
     "E731",
     "EM101",

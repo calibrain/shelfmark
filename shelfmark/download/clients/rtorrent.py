@@ -97,7 +97,7 @@ class RTorrentClient(DownloadClient):
         name: str,
         category: str | None = None,
         expected_hash: str | None = None,
-        **kwargs,
+        **kwargs: object,
     ) -> str:
         """Add torrent by URL (magnet or .torrent).
 

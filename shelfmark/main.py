@@ -755,7 +755,7 @@ def login_required(
 ) -> Callable[..., Response | tuple[Response, int]]:
     """Require authentication for a Flask route."""
     @wraps(f)
-    def decorated_function(*args, **kwargs) -> Response | tuple[Response, int]:
+    def decorated_function(*args, **kwargs: object) -> Response | tuple[Response, int]:
         auth_mode = get_auth_mode()
 
         # If no authentication is configured, allow access
@@ -2541,7 +2541,7 @@ def _handle_target_errors(
         fn: Callable[..., Response | tuple[Response, int]],
     ) -> Callable[..., Response | tuple[Response, int]]:
         @wraps(fn)
-        def wrapper(*args, **kwargs) -> Response | tuple[Response, int]:
+        def wrapper(*args, **kwargs: object) -> Response | tuple[Response, int]:
             try:
                 return fn(*args, **kwargs)
             except (NotImplementedError, ValueError) as e:

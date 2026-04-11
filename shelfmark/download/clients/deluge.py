@@ -252,7 +252,7 @@ class DelugeClient(DownloadClient):
         name: str,
         category: str | None = None,
         expected_hash: str | None = None,
-        **kwargs,
+        **kwargs: object,
     ) -> str:
         """Add a torrent to Deluge and return the torrent id."""
         try:

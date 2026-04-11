@@ -470,7 +470,7 @@ def register_provider_kwargs(
     return decorator
 
 
-def get_provider(name: str, **kwargs) -> MetadataProvider:
+def get_provider(name: str, **kwargs: object) -> MetadataProvider:
     """Instantiate a registered metadata provider."""
     if name not in _PROVIDERS:
         msg = f"Unknown metadata provider: {name}"
