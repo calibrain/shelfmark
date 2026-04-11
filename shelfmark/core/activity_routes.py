@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from flask import Flask, Response, jsonify, request, session
@@ -37,6 +38,7 @@ if TYPE_CHECKING:
     from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
+_USER_DB_IDENTITY_ERRORS = (sqlite3.Error, OSError)
 
 
 def _normalize_log_field(value: object) -> str:
@@ -192,7 +194,7 @@ def _resolve_db_user_id(
     if user_db is not None:
         try:
             db_user = user_db.get_user(user_id=parsed_db_user_id)
-        except Exception as exc:
+        except _USER_DB_IDENTITY_ERRORS as exc:
             logger.warning("Failed to validate activity db identity %s: %s", parsed_db_user_id, exc)
             db_user = None
         if db_user is None:

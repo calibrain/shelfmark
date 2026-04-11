@@ -16,6 +16,13 @@ logger = setup_logger(__name__)
 _HTTP_STATUS_UNAUTHORIZED = HTTPStatus.UNAUTHORIZED
 _BOOK_CATEGORY_RANGE_START = 7000
 _BOOK_CATEGORY_RANGE_END = 8000
+_PROWLARR_CLIENT_ERRORS = (
+    requests.exceptions.RequestException,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
 
 
 class ProwlarrClient:
@@ -91,7 +98,7 @@ class ProwlarrClient:
             if e.response is not None and e.response.status_code == _HTTP_STATUS_UNAUTHORIZED:
                 return False, "Invalid API key"
             return False, f"HTTP error {status}"
-        except Exception as e:
+        except _PROWLARR_CLIENT_ERRORS as e:
             return False, f"Connection failed: {e!s}"
         else:
             logger.info("Prowlarr connection successful: version %s", version)
@@ -101,7 +108,7 @@ class ProwlarrClient:
         """Get all configured indexers."""
         try:
             return self._request("GET", "/api/v1/indexer")
-        except Exception:
+        except _PROWLARR_CLIENT_ERRORS:
             logger.exception("Failed to get indexers")
             return []
 

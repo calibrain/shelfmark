@@ -2,6 +2,8 @@
 
 from typing import Any
 
+import requests
+
 from shelfmark.core.settings_registry import (
     ActionButton,
     CheckboxField,
@@ -15,6 +17,15 @@ from shelfmark.core.settings_registry import (
 from shelfmark.core.utils import normalize_http_url
 
 # ==================== Dynamic Options Loaders ====================
+
+_PROWLARR_SETTINGS_ERRORS = (
+    requests.exceptions.RequestException,
+    AttributeError,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
 
 
 def _get_indexer_options() -> list[dict[str, str]]:
@@ -62,7 +73,7 @@ def _get_indexer_options() -> list[dict[str, str]]:
                 }
             )
 
-    except Exception:
+    except _PROWLARR_SETTINGS_ERRORS:
         logger.exception("Failed to fetch Prowlarr indexers")
         return []
 
@@ -95,7 +106,7 @@ def _test_prowlarr_connection(current_values: dict[str, Any] | None = None) -> d
     try:
         client = ProwlarrClient(url, api_key)
         success, message = client.test_connection()
-    except Exception as e:
+    except _PROWLARR_SETTINGS_ERRORS as e:
         return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": success, "message": message}

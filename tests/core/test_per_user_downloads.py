@@ -5,6 +5,8 @@ Tests that DownloadTask has a user_id field and that the queue
 can be filtered by user.
 """
 
+import sqlite3
+
 from shelfmark.core.models import DownloadTask, QueueStatus
 from shelfmark.core.queue import BookQueue
 
@@ -276,6 +278,52 @@ class TestUserDestinationTemplate:
         monkeypatch.setattr(config, "get", fake_config_get)
         result = get_destination(is_audiobook=True, user_id=42, username="alice")
         assert result == Path("/audiobooks/alice")
+
+    def test_get_destination_looks_up_username_from_user_db(self, monkeypatch, tmp_path):
+        from pathlib import Path
+
+        from shelfmark.core.config import config
+        from shelfmark.core.user_db import UserDB
+        from shelfmark.core.utils import get_destination
+
+        monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+
+        user_db = UserDB(str(tmp_path / "users.db"))
+        user_db.initialize()
+        user = user_db.create_user(username="alice")
+
+        def fake_config_get(key, default=None, user_id=None):
+            if key == "DESTINATION":
+                return "/books/{User}"
+            if key == "INGEST_DIR":
+                return "/books"
+            return default
+
+        monkeypatch.setattr(config, "get", fake_config_get)
+        result = get_destination(is_audiobook=False, user_id=user["id"], username=None)
+        assert result == Path("/books/alice")
+
+    def test_get_destination_falls_back_when_user_db_lookup_fails(self, monkeypatch):
+        from pathlib import Path
+
+        from shelfmark.core.config import config
+        from shelfmark.core.utils import get_destination
+
+        def fake_config_get(key, default=None, user_id=None):
+            if key == "DESTINATION":
+                return "/books/{User}"
+            if key == "INGEST_DIR":
+                return "/books"
+            return default
+
+        monkeypatch.setattr(config, "get", fake_config_get)
+        monkeypatch.setattr(
+            "shelfmark.core.user_db.UserDB.get_user",
+            lambda self, **kwargs: (_ for _ in ()).throw(sqlite3.OperationalError("locked")),
+        )
+
+        result = get_destination(is_audiobook=False, user_id=42, username=None)
+        assert result == Path("/books")
 
 
 class TestTaskToDictUsername:

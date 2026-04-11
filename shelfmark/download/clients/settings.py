@@ -16,11 +16,53 @@ from shelfmark.core.settings_registry import (
 from shelfmark.core.utils import get_hardened_xmlrpc_client, normalize_http_url
 from shelfmark.download.network import get_ssl_verify
 
+try:
+    import qbittorrentapi as _qbittorrentapi
+except ImportError:
+    _ImportedQBittorrentApiError = RuntimeError
+    _ImportedQBittorrentLoginFailed = RuntimeError
+else:
+    _ImportedQBittorrentApiError = getattr(_qbittorrentapi, "APIError", RuntimeError)
+    _ImportedQBittorrentLoginFailed = getattr(_qbittorrentapi, "LoginFailed", RuntimeError)
+
+try:
+    from transmission_rpc import TransmissionError as _ImportedTransmissionError
+except ImportError:
+    _ImportedTransmissionError = RuntimeError
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
 # ==================== Test Connection Callbacks ====================
 _DELUGE_HOST_ENTRY_MIN_LENGTH = 2
+
+
+def _resolve_exception_type(candidate: object) -> type[Exception]:
+    if isinstance(candidate, type) and issubclass(candidate, Exception):
+        return candidate
+    return RuntimeError
+
+
+_QBittorrentApiError = _resolve_exception_type(_ImportedQBittorrentApiError)
+_QBittorrentLoginFailed = _resolve_exception_type(_ImportedQBittorrentLoginFailed)
+_TransmissionError = _resolve_exception_type(_ImportedTransmissionError)
+_QBITTORRENT_SETTINGS_ERRORS = (
+    _QBittorrentLoginFailed,
+    _QBittorrentApiError,
+    AttributeError,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
+_TRANSMISSION_SETTINGS_ERRORS = (
+    _TransmissionError,
+    AttributeError,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
 
 
 def _raise_runtime_error(message: str) -> NoReturn:
@@ -85,7 +127,7 @@ def _test_qbittorrent_connection(current_values: dict[str, Any] | None = None) -
         api_version = client.app.web_api_version
     except ImportError:
         return {"success": False, "message": "qbittorrent-api package not installed"}
-    except Exception as e:
+    except _QBITTORRENT_SETTINGS_ERRORS as e:
         return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": True, "message": f"Connected to qBittorrent (API v{api_version})"}
@@ -151,7 +193,7 @@ def _test_transmission_connection(current_values: dict[str, Any] | None = None) 
         version = session.version
     except ImportError:
         return {"success": False, "message": "transmission-rpc package not installed"}
-    except Exception as e:
+    except _TRANSMISSION_SETTINGS_ERRORS as e:
         return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": True, "message": f"Connected to Transmission {version}"}

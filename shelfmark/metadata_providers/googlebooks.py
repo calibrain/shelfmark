@@ -352,7 +352,7 @@ class GoogleBooksProvider(MetadataProvider):
                 display_fields=display_fields,
             )
 
-        except Exception as e:
+        except (AttributeError, TypeError, ValueError) as e:
             logger.debug("Failed to parse Google Books volume: %s", e)
             return None
 

@@ -22,6 +22,14 @@ _BTIH_PREFIX_BYTE = 0x12
 _BTIH_DIGEST_LENGTH = 32
 _BTIH_HASH_LENGTH_40 = 40
 _BTIH_HASH_LENGTH_32 = 32
+_TORRENT_FETCH_ERRORS = (
+    requests.exceptions.RequestException,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
+_TORRENT_PARSE_ERRORS = (IndexError, KeyError, TypeError, ValueError)
 
 
 @dataclass
@@ -155,7 +163,7 @@ def extract_torrent_info(
         else:
             logger.warning("Could not extract hash from torrent file")
         return TorrentInfo(info_hash=info_hash, torrent_data=torrent_data, is_magnet=False)
-    except Exception as e:
+    except _TORRENT_FETCH_ERRORS as e:
         logger.debug("Could not fetch torrent file: %s", e)
         return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
 
@@ -257,7 +265,7 @@ def extract_info_hash_from_torrent(torrent_data: bytes) -> str | None:
             # BitTorrent v1 info hashes are defined as SHA-1.
             return hashlib.sha1(info_bencoded).hexdigest().lower()  # noqa: S324
         return hashlib.sha256(info_bencoded).hexdigest().lower()
-    except Exception as e:
+    except _TORRENT_PARSE_ERRORS as e:
         logger.debug("Failed to parse torrent file: %s", e)
         return None
 
@@ -287,7 +295,7 @@ def extract_hash_from_magnet(magnet_url: str) -> str | None:
             padded = raw_value.upper() + "=" * (-len(raw_value) % 8)
             try:
                 data = base64.b32decode(padded, casefold=True)
-            except Exception:
+            except (BinasciiError, ValueError):
                 return None
 
         if not data:

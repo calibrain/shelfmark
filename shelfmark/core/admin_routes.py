@@ -41,6 +41,7 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 MIN_PASSWORD_LENGTH = 4
+_CONFIG_REFRESH_ERRORS = (ImportError, OSError, RuntimeError, TypeError, ValueError)
 
 __all__ = [
     "get_booklore_library_options",
@@ -370,7 +371,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             # Ensure runtime reads see updated per-user overrides immediately.
             try:
                 app_config.refresh(force=True)
-            except Exception as exc:
+            except _CONFIG_REFRESH_ERRORS as exc:
                 logger.warning(
                     "Updated settings for user %s but failed to refresh runtime config: %s",
                     user_id,

@@ -700,6 +700,24 @@ class TestAdminUserUpdateEndpoint:
         assert resp.json["error"] == "Invalid settings payload"
         assert any("Unknown setting: destination" in msg for msg in resp.json["details"])
 
+    def test_update_user_settings_warns_when_runtime_refresh_fails(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+
+        with (
+            patch("shelfmark.core.admin_routes.app_config.refresh", side_effect=RuntimeError("boom")),
+            patch("shelfmark.core.admin_routes.logger.warning") as mock_warning,
+        ):
+            resp = admin_client.put(
+                f"/api/admin/users/{user['id']}",
+                json={"settings": {"DESTINATION": "/books/alice"}},
+            )
+
+        assert resp.status_code == 200
+        settings = user_db.get_user_settings(user["id"])
+        assert settings["DESTINATION"] == "/books/alice"
+        mock_warning.assert_called_once()
+        assert "failed to refresh runtime config" in mock_warning.call_args[0][0]
+
     def test_update_response_excludes_password_hash(self, admin_client, user_db):
         user = user_db.create_user(username="alice", password_hash="secret")
 

@@ -4,6 +4,7 @@ import base64
 import importlib
 import os
 import re
+import sqlite3
 from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING
@@ -173,7 +174,7 @@ def _resolve_destination_username(
         if not user:
             return ""
         return str(user.get("username") or "").strip()
-    except Exception:
+    except (ImportError, OSError, sqlite3.Error):
         return ""
 
 
