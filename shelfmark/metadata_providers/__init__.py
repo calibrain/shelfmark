@@ -1,13 +1,11 @@
 """Metadata provider plugin system - base classes and registry."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, ClassVar
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from typing import Any, ClassVar, TypeVar
 
 
 class SearchType(StrEnum):
@@ -431,15 +429,20 @@ class MetadataProvider(ABC):
 
 # Provider registry
 _PROVIDERS: dict[str, type[MetadataProvider]] = {}
-_PROVIDER_KWARGS_FACTORIES: dict[str, Any] = {}  # Callable[[], Dict]
+_PROVIDER_KWARGS_FACTORIES: dict[str, Callable[[], dict[str, Any]]] = {}
+ProviderType = TypeVar("ProviderType", bound=MetadataProvider)
+ProviderKwargsFactory = TypeVar(
+    "ProviderKwargsFactory",
+    bound=Callable[[], dict[str, Any]],
+)
 
 
 def register_provider(
     name: str,
-) -> Callable[[type[MetadataProvider]], type[MetadataProvider]]:
+) -> Callable[[type[ProviderType]], type[ProviderType]]:
     """Register a metadata provider."""
 
-    def decorator(cls: type[MetadataProvider]) -> type[MetadataProvider]:
+    def decorator(cls: type[ProviderType]) -> type[ProviderType]:
         _PROVIDERS[name] = cls
         return cls
 
@@ -448,7 +451,7 @@ def register_provider(
 
 def register_provider_kwargs(
     name: str,
-) -> Callable[[Callable[[], dict[str, Any]]], Callable[[], dict[str, Any]]]:
+) -> Callable[[ProviderKwargsFactory], ProviderKwargsFactory]:
     """Register a provider kwargs factory.
 
     The decorated function should return a Dict of kwargs to pass to the
@@ -463,7 +466,7 @@ def register_provider_kwargs(
 
     """
 
-    def decorator(fn: Callable[[], dict[str, Any]]) -> Callable[[], dict[str, Any]]:
+    def decorator(fn: ProviderKwargsFactory) -> ProviderKwargsFactory:
         _PROVIDER_KWARGS_FACTORIES[name] = fn
         return fn
 
