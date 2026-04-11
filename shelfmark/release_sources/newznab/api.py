@@ -1,6 +1,9 @@
 """Newznab API client - connects to any Newznab-compatible indexer or aggregator."""
 
-from typing import Any, Dict, List, Optional, Tuple
+from __future__ import annotations
+
+import re
+from typing import Any
 
 import requests
 
@@ -19,7 +22,7 @@ NEWZNAB_AUDIOBOOKS = 3030
 class NewznabClient:
     """Client for any Newznab-compatible indexer API."""
 
-    def __init__(self, url: str, api_key: str, timeout: int = 30):
+    def __init__(self, url: str, api_key: str, timeout: int = 30) -> None:
         self.base_url = normalize_http_url(url)
         self.api_key = api_key
         self.timeout = timeout
@@ -36,7 +39,8 @@ class NewznabClient:
 
     def _get(
         self,
-        params: Dict[str, Any],
+        params: dict[str, Any],
+        *,
         accept_xml: bool = False,
     ) -> requests.Response:
         """Make a GET request to the Newznab API endpoint."""
@@ -45,7 +49,7 @@ class NewznabClient:
             params["apikey"] = self.api_key
 
         url = self._api_url()
-        logger.debug(f"Newznab API: GET {url} params={list(params.keys())}")
+        logger.debug("Newznab API: GET %s params=%s", url, *params)
 
         headers = {}
         if accept_xml:
@@ -61,24 +65,22 @@ class NewznabClient:
         response.raise_for_status()
         return response
 
-    def test_connection(self) -> Tuple[bool, str]:
+    def test_connection(self) -> tuple[bool, str]:
         """Test connection via the capabilities endpoint. Returns (success, message)."""
-        logger.info(f"Testing Newznab connection to: {self.base_url}")
+        logger.info("Testing Newznab connection to: %s", self.base_url)
         try:
             response = self._get({"t": "caps"})
             # Caps endpoint returns XML; a 200 is sufficient to confirm connectivity.
             # Try to extract the server title from the XML for a friendly message.
             text = response.text or ""
             title = "Newznab indexer"
-            import re
             # Try <server title="..."/> attribute (NZBHydra2 style), then <title> element
             m = re.search(r'<server[^>]+title="([^"]+)"', text, re.IGNORECASE)
             if not m:
-                m = re.search(r'<title>([^<]+)</title>', text, re.IGNORECASE)
+                m = re.search(r"<title>([^<]+)</title>", text, re.IGNORECASE)
             if m:
                 title = m.group(1).strip()
-            logger.info(f"Newznab connection successful: {title}")
-            return True, f"Connected to {title}"
+            logger.info("Newznab connection successful: %s", title)
         except requests.exceptions.ConnectionError:
             return False, "Could not connect. Check the URL."
         except requests.exceptions.HTTPError as e:
@@ -87,18 +89,19 @@ class NewznabClient:
                 return False, "Invalid API key"
             return False, f"HTTP error {status}"
         except Exception as e:
-            return False, f"Connection failed: {str(e)}"
+            return False, f"Connection failed: {e!s}"
+        else:
+            return True, f"Connected to {title}"
 
     def search(
         self,
         query: str,
-        categories: Optional[List[int]] = None,
+        categories: list[int] | None = None,
         search_type: str = "search",
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
-        """
-        Search the Newznab indexer and return parsed results.
+    ) -> list[dict[str, Any]]:
+        """Search the Newznab indexer and return parsed results.
 
         Args:
             query: Search string.
@@ -114,7 +117,7 @@ class NewznabClient:
         if not query:
             return []
 
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "t": search_type,
             "q": query,
             "limit": limit,
@@ -126,11 +129,15 @@ class NewznabClient:
         try:
             response = self._get(params, accept_xml=True)
             results = parse_torznab_xml(response.text)
-            logger.debug(f"Newznab search '{query}': {len(results)} results")
+            logger.debug("Newznab search '%s': %d results", query, len(results))
+            if not results:
+                preview = response.text[:300].strip() if response.text else "<empty>"
+                logger.debug("Newznab empty response body: %s", preview)
+        except requests.exceptions.RequestException:
+            logger.exception("Newznab search request failed")
+            return []
+        except Exception:
+            logger.exception("Newznab search failed")
+            return []
+        else:
             return results
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Newznab search request failed: {e}")
-            return []
-        except Exception as e:
-            logger.error(f"Newznab search failed: {e}")
-            return []

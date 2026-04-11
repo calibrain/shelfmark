@@ -26,6 +26,7 @@ help:
 	@echo "  python-typecheck - Run BasedPyright against Python backend code"
 	@echo "  python-dead-code - Run Vulture against Python backend code"
 	@echo "  python-checks - Run all Python static analysis checks"
+	@echo "  python-test - Run all Python unit tests"
 	@echo "  clean      - Remove node_modules and build artifacts"
 	@echo ""
 	@echo "Backend (Docker):"
@@ -98,6 +99,11 @@ python-dead-code:
 	uv run vulture shelfmark
 
 python-checks: python-lint python-format-check python-typecheck python-dead-code
+
+# Run python unit tests
+python-test:
+	@echo "Running Python unit tests..."
+	uv run pytest tests
 
 # Run frontend unit tests
 frontend-test:

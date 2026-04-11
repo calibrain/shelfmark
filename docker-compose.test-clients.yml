@@ -13,6 +13,7 @@
 #   - Transmission: http://localhost:9091 (admin / admin)
 #   - Deluge:       http://localhost:8112 (password: deluge)
 #   - NZBGet:       http://localhost:6789 (nzbget / tegbzn6789)
+#   - NZBHydra:     http://localhost:5076 (no auth by default)
 #   - SABnzbd:      http://localhost:8085 (complete setup wizard for API key)
 #   - rTorrent:     http://localhost:8000 (admin / admin - if auth enabled)
 #
@@ -35,6 +36,7 @@ services:
       #   - Transmission: http://transmission:9091
       #   - Deluge Web UI: http://deluge:8112
       #   - NZBGet: http://nzbget:6789
+      #   - NZBHydra: http://nzbhydra:5076
       #   - SABnzbd: http://sabnzbd:8080
       #   - rTorrent: http://rtorrent:80 (XMLRPC via HTTP) or rtorrent (port 5000 for SCGI)
     ports:
@@ -60,6 +62,7 @@ services:
       - ./.local/test-clients/sabnzbd/config:/sabnzbd-config:ro
     depends_on:
       - nzbget
+      - nzbhydra
       - sabnzbd
       - qbittorrent
       - transmission
@@ -180,3 +183,18 @@ services:
       - "50000:50000"  # Incoming connections
       - "6881:6881/udp"
     restart: unless-stopped
+
+  nzbhydra:
+    image: lscr.io/linuxserver/nzbhydra2:latest
+    container_name: nzbhydra
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/London
+    volumes:
+      - ./.local/test-clients/nzbhydra/config:/config
+      - ./.local/test-clients/downloads:/downloads
+    ports:
+      - 5076:5076
+    restart: unless-stopped
+

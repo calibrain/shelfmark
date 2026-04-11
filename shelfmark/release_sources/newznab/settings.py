@@ -1,19 +1,20 @@
 """Newznab settings registration."""
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from shelfmark.core.settings_registry import (
-    register_settings,
     ActionButton,
     CheckboxField,
     HeadingField,
     PasswordField,
+    SettingsField,
     TextField,
+    register_settings,
 )
 from shelfmark.core.utils import normalize_http_url
 
 
-def _test_newznab_connection(current_values: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _test_newznab_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     """Test the Newznab connection using current form values."""
     from shelfmark.core.config import config
     from shelfmark.release_sources.newznab.api import NewznabClient
@@ -33,9 +34,10 @@ def _test_newznab_connection(current_values: Optional[Dict[str, Any]] = None) ->
     try:
         client = NewznabClient(url, api_key)
         success, message = client.test_connection()
-        return {"success": success, "message": message}
     except Exception as e:
-        return {"success": False, "message": f"Connection failed: {str(e)}"}
+        return {"success": False, "message": f"Connection failed: {e!s}"}
+    else:
+        return {"success": success, "message": message}
 
 
 @register_settings(
@@ -44,7 +46,7 @@ def _test_newznab_connection(current_values: Optional[Dict[str, Any]] = None) ->
     icon="download",
     order=42,
 )
-def newznab_config_settings():
+def newznab_config_settings() -> list[SettingsField]:
     """Newznab connection settings."""
     return [
         HeadingField(
@@ -65,7 +67,7 @@ def newznab_config_settings():
             key="NEWZNAB_URL",
             label="Newznab URL",
             description="Base URL of your Newznab indexer or aggregator",
-            placeholder="http://nzbhydra2:5076",
+            placeholder="http://nzbhydra:5076",
             required=True,
             show_when={"field": "NEWZNAB_ENABLED", "value": True},
         ),

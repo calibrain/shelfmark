@@ -1,14 +1,24 @@
 """Newznab download handler - resolves releases and delegates to shared clients."""
 
-from typing import Callable, Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    from shelfmark.core.models import DownloadTask
 
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask
 from shelfmark.download.clients import DownloadClient, get_client, list_configured_clients
 from shelfmark.download.clients.base_handler import (
     COMPLETED_PATH_MAX_ATTEMPTS as _DEFAULT_COMPLETED_PATH_MAX_ATTEMPTS,
+)
+from shelfmark.download.clients.base_handler import (
     COMPLETED_PATH_RETRY_INTERVAL as _DEFAULT_COMPLETED_PATH_RETRY_INTERVAL,
+)
+from shelfmark.download.clients.base_handler import (
     POLL_INTERVAL as _DEFAULT_POLL_INTERVAL,
+)
+from shelfmark.download.clients.base_handler import (
     DownloadRequest,
     ExternalClientHandler,
 )
@@ -58,7 +68,7 @@ def _get_download_url(result: dict) -> str:
 class NewznabHandler(ExternalClientHandler):
     """Handler for Newznab downloads via configured usenet/torrent client."""
 
-    def _get_client(self, protocol: str) -> Optional[DownloadClient]:
+    def _get_client(self, protocol: str) -> DownloadClient | None:
         return get_client(protocol)
 
     def _list_configured_clients(self) -> list[str]:
@@ -76,11 +86,11 @@ class NewznabHandler(ExternalClientHandler):
     def _resolve_download(
         self,
         task: DownloadTask,
-        status_callback: Callable[[str, Optional[str]], None],
-    ) -> Optional[DownloadRequest]:
+        status_callback: Callable[[str, str | None], None],
+    ) -> DownloadRequest | None:
         result = get_release(task.task_id)
         if not result:
-            logger.warning(f"Newznab release cache miss: {task.task_id}")
+            logger.warning("Newznab release cache miss: %s", task.task_id)
             status_callback("error", "Release not found in cache (may have expired)")
             return None
 
@@ -108,6 +118,6 @@ class NewznabHandler(ExternalClientHandler):
         remove_release(task.task_id)
 
     def cancel(self, task_id: str) -> bool:
-        logger.debug(f"Cancel requested for Newznab task: {task_id}")
+        logger.debug("Cancel requested for Newznab task: %s", task_id)
         remove_release(task_id)
         return super().cancel(task_id)

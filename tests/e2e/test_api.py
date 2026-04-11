@@ -143,22 +143,17 @@ class TestMetadataSearch:
         if not providers_data:
             pytest.skip("No providers available")
 
-        # Handle both list and dict formats
+        # Response shape: {"providers": [...], "configured_provider": ...}
+        # or a plain list of provider dicts
         if isinstance(providers_data, dict):
-            # Dict format: get first provider name from keys or values
-            if providers_data:
-                first_key = list(providers_data.keys())[0]
-                provider_info = providers_data[first_key]
-                provider_name = (
-                    provider_info.get("name", first_key)
-                    if isinstance(provider_info, dict)
-                    else first_key
-                )
-            else:
-                pytest.skip("No providers available")
+            providers_list = providers_data.get("providers") or []
         else:
-            # List format
-            provider_name = providers_data[0].get("name") if providers_data else None
+            providers_list = providers_data
+
+        if not providers_list:
+            pytest.skip("No providers available")
+
+        provider_name = providers_list[0].get("name") if providers_list else None
 
         if not provider_name:
             pytest.skip("Could not determine provider name")

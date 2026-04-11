@@ -515,5 +515,5 @@ def source_results_are_releases(name: str) -> bool:
 from shelfmark.release_sources import audiobookbay as audiobookbay
 from shelfmark.release_sources import direct_download as direct_download
 from shelfmark.release_sources import irc as irc
+from shelfmark.release_sources import newznab as newznab
 from shelfmark.release_sources import prowlarr as prowlarr
-from shelfmark.release_sources import newznab
