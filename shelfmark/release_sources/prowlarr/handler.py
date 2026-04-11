@@ -2,7 +2,6 @@
 
 from typing import TYPE_CHECKING
 
-from shelfmark.core.config import config as config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import normalize_optional_text
 from shelfmark.download.clients import (

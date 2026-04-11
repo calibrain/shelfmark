@@ -1,5 +1,5 @@
 """Cloudflare bypass utilities."""
 
 
-class BypassCancelledException(Exception):
+class BypassCancelledError(Exception):
     """Raised when a bypass operation is cancelled."""

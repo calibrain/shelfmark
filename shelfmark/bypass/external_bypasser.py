@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import requests
 
-from shelfmark.bypass import BypassCancelledException
+from shelfmark.bypass import BypassCancelledError
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
@@ -102,7 +102,7 @@ def _check_cancelled(cancel_flag: Event | None, context: str) -> None:
     if cancel_flag and cancel_flag.is_set():
         logger.info("External bypasser cancelled %s", context)
         msg = "Bypass cancelled"
-        raise BypassCancelledException(msg)
+        raise BypassCancelledError(msg)
 
 
 def _sleep_with_cancellation(seconds: float, cancel_flag: Event | None) -> None:

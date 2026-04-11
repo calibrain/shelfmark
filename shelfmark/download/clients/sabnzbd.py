@@ -212,7 +212,7 @@ class SABnzbdClient(DownloadClient):
         return response.content
 
     def _get_prowlarr_headers(self, url: str) -> dict:
-        # TODO: Move this source-specific Prowlarr auth handling into a source hook.
+        # TODO(shelfmark): Move this source-specific Prowlarr auth handling into a source hook.
         api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()
         if not api_key:
             return {}

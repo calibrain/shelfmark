@@ -10,7 +10,7 @@ import time
 from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from shelfmark.core.logger import setup_logger
 
@@ -457,7 +457,7 @@ class IRCClient:
         """Check if currently connected."""
         return self._connected and self._socket is not None
 
-    def __enter__(self) -> IRCClient:
+    def __enter__(self) -> Self:
         """Connect and return the IRC client for context-manager usage."""
         self.connect()
         return self

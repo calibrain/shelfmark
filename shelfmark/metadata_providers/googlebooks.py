@@ -275,7 +275,6 @@ class GoogleBooksProvider(MetadataProvider):
             if not volume_id or not title:
                 return None
 
-            # Authors (list)
             authors = volume_info.get("authors", [])
 
             # ISBNs - extract from industryIdentifiers

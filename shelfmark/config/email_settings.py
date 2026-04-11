@@ -12,7 +12,7 @@ from shelfmark.download.outputs.email import (
 )
 
 
-def test_email_connection(
+def check_email_connection(
     current_values: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Test SMTP connectivity using current form values (including unsaved changes)."""

@@ -166,7 +166,7 @@ def get_booklore_path_options() -> list[dict[str, Any]]:
         return path_options
 
 
-def test_booklore_connection(
+def check_booklore_connection(
     current_values: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Test the Booklore connection using current form values."""

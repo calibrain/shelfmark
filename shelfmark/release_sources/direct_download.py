@@ -165,7 +165,7 @@ def _normalize_size(size_str: str) -> str:
     return _SIZE_UNIT_PATTERN.sub(lambda m: m.group(1).upper(), size_str.strip())
 
 
-class SearchUnavailable(SourceUnavailableError):
+class SearchUnavailableError(SourceUnavailableError):
     """Raised when Anna's Archive cannot be reached via any mirror/DNS."""
 
 
@@ -180,7 +180,7 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
         List[BrowseRecord]: List of matching books
 
     Raises:
-        SearchUnavailable: If Anna's Archive cannot be reached
+        SearchUnavailableError: If Anna's Archive cannot be reached
         Exception: If parsing fails
 
     """
@@ -227,7 +227,7 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
     if not html:
         # Network/mirror exhaustion path bubbles up so API can notify clients
         msg = "Unable to reach download source. Network restricted or mirrors are blocked."
-        raise SearchUnavailable(msg)
+        raise SearchUnavailableError(msg)
 
     if "No files found." in html:
         logger.info("No books found for query: %s", query)
@@ -277,7 +277,7 @@ def get_book_info(book_id: str, *, fetch_download_count: bool = True) -> BrowseR
 
     if not html:
         msg = "Unable to reach download source. Network restricted or mirrors are blocked."
-        raise SearchUnavailable(msg)
+        raise SearchUnavailableError(msg)
 
     soup = BeautifulSoup(html, "html.parser")
 
@@ -440,7 +440,7 @@ def _parse_book_info_page(
                 if "downloads_total" in summary_data:
                     info["Downloads"] = [str(summary_data["downloads_total"])]
         except (
-            SearchUnavailable,
+            SearchUnavailableError,
             RuntimeError,
             json.JSONDecodeError,
             TypeError,
@@ -594,7 +594,7 @@ def _fetch_aa_page_urls(book_info: BrowseRecord, urls_by_source: dict[str, list[
     try:
         fresh_book_info = get_book_info(book_info.id, fetch_download_count=False)
         _group_urls_by_source(fresh_book_info.download_urls, urls_by_source)
-    except (SearchUnavailable, RuntimeError, TypeError, AttributeError) as e:
+    except (SearchUnavailableError, RuntimeError, TypeError, AttributeError) as e:
         logger.warning("Failed to fetch AA page: %s", e)
 
 
@@ -742,7 +742,7 @@ def _get_download_urls_from_welib(
             status_callback=status_callback,
         )
     except (
-        SearchUnavailable,
+        SearchUnavailableError,
         requests.exceptions.RequestException,
         RuntimeError,
         ValueError,
@@ -1351,7 +1351,7 @@ class DirectDownloadSource(ReleaseSource):
                         self._last_search_type = "isbn"
                         return [_browse_record_to_release(record) for record in results]
                     logger.debug("No ISBN results, falling back to title+author")
-                except SearchUnavailable:
+                except SearchUnavailableError:
                     raise
                 except (ValueError, TypeError, AttributeError, RuntimeError) as e:
                     logger.warning("ISBN search failed: %s", e)
@@ -1376,7 +1376,7 @@ class DirectDownloadSource(ReleaseSource):
                     if bi.id not in seen_ids:
                         seen_ids.add(bi.id)
                         all_results.append(bi)
-            except SearchUnavailable:
+            except SearchUnavailableError:
                 raise
             except Exception:
                 logger.exception("Search error")
@@ -1396,7 +1396,7 @@ class DirectDownloadSource(ReleaseSource):
                         if bi.id not in seen_ids:
                             seen_ids.add(bi.id)
                             all_results.append(bi)
-                except SearchUnavailable:
+                except SearchUnavailableError:
                     raise
                 except Exception:
                     logger.exception("Search error")

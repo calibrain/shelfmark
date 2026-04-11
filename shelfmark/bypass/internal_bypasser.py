@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 import requests
 from seleniumbase import cdp_driver
 
-from shelfmark.bypass import BypassCancelledException
+from shelfmark.bypass import BypassCancelledError
 from shelfmark.bypass.fingerprint import get_screen_size
 from shelfmark.config import env
 from shelfmark.config.env import LOG_DIR
@@ -127,7 +127,7 @@ class _CdpWorker:
 _CDP_WORKER = _CdpWorker()
 
 # Cookie storage - shared with requests library for Cloudflare bypass
-# Structure: {domain: {cookie_name: {value, expiry, ...}}}
+# Nested mapping of domain to cookie name to cookie metadata.
 _cf_cookies: dict[str, dict] = {}
 _cf_cookies_lock = threading.Lock()
 
@@ -573,7 +573,7 @@ def _check_cancellation(cancel_flag: Event | None, message: str) -> None:
     if cancel_flag and cancel_flag.is_set():
         logger.info(message)
         msg = "Bypass cancelled"
-        raise BypassCancelledException(msg)
+        raise BypassCancelledError(msg)
 
 
 async def _bypass(
@@ -643,7 +643,7 @@ async def _bypass(
             if await method(page):
                 logger.info("Bypass successful using %s", method.__name__)
                 return True
-        except BypassCancelledException:
+        except BypassCancelledError:
             raise
         except Exception as e:
             logger.warning("Exception in %s: %s", method.__name__, e)
@@ -777,7 +777,7 @@ def get(url: str, retry: int | None = None, cancel_flag: Event | None = None) ->
                         result = await _get(url, driver, cancel_flag)
                         if result:
                             return result
-                    except BypassCancelledException:
+                    except BypassCancelledError:
                         raise
                     except Exception as e:
                         error_details = f"{type(e).__name__}: {e}"
@@ -1046,7 +1046,7 @@ def get_bypassed_page(
 
     try:
         response_html = get(attempt_url, cancel_flag=cancel_flag)
-    except BypassCancelledException:
+    except BypassCancelledError:
         raise
     except Exception:
         _check_cancellation(cancel_flag, "Bypass cancelled")

@@ -108,7 +108,7 @@ BASE_PATH = normalize_base_path(app_config.get("URL_BASE", ""))
 app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0  # Disable caching
 app.config["APPLICATION_ROOT"] = BASE_PATH or "/"
-app.wsgi_app = ProxyFix(app.wsgi_app)  # type: ignore
+app.wsgi_app = ProxyFix(app.wsgi_app)  # type: ignore[assignment]
 if BASE_PATH:
     app.wsgi_app = PrefixMiddleware(app.wsgi_app, BASE_PATH, bypass_paths={"/api/health"})
 
@@ -190,7 +190,7 @@ except (sqlite3.OperationalError, OSError) as e:
 backend.start()
 
 # Rate limiting for login attempts
-# Structure: {username: {'count': int, 'lockout_until': datetime}}
+# Map usernames to their failed-attempt counters and lockout timestamps.
 failed_login_attempts: dict[str, dict[str, Any]] = {}
 MAX_LOGIN_ATTEMPTS = 10
 LOCKOUT_DURATION_MINUTES = 30

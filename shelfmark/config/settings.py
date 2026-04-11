@@ -6,11 +6,11 @@ from typing import Any
 
 from shelfmark.config import env
 from shelfmark.config.booklore_settings import (
+    check_booklore_connection,
     get_booklore_library_options,
     get_booklore_path_options,
-    test_booklore_connection,
 )
-from shelfmark.config.email_settings import test_email_connection
+from shelfmark.config.email_settings import check_email_connection
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import (
     ActionButton,
@@ -300,8 +300,8 @@ def _get_zlib_mirror_options() -> list[dict[str, str]]:
     # Add custom mirrors
     additional = config.get("ZLIB_ADDITIONAL_URLS", "")
     if additional:
-        for url in additional.split(","):
-            url = url.strip()
+        for raw_url in additional.split(","):
+            url = raw_url.strip()
             if url and url not in DEFAULT_ZLIB_MIRRORS:
                 domain = url.replace("https://", "").replace("http://", "").split("/")[0]
                 options.append({"value": url, "label": f"{domain} (custom)"})
@@ -324,8 +324,8 @@ def _get_welib_mirror_options() -> list[dict[str, str]]:
     # Add custom mirrors
     additional = config.get("WELIB_ADDITIONAL_URLS", "")
     if additional:
-        for url in additional.split(","):
-            url = url.strip()
+        for raw_url in additional.split(","):
+            url = raw_url.strip()
             if url and url not in DEFAULT_WELIB_MIRRORS:
                 domain = url.replace("https://", "").replace("http://", "").split("/")[0]
                 options.append({"value": url, "label": f"{domain} (custom)"})
@@ -1051,7 +1051,7 @@ def download_settings() -> list[SettingsField]:
             label="Test Connection",
             description="Verify your Grimmory configuration",
             style="primary",
-            callback=test_booklore_connection,
+            callback=check_booklore_connection,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
         ),
         HeadingField(
@@ -1159,7 +1159,7 @@ def download_settings() -> list[SettingsField]:
             label="Test SMTP Connection",
             description="Verify your SMTP configuration (connect + optional login).",
             style="primary",
-            callback=test_email_connection,
+            callback=check_email_connection,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
         ),
         # === AUDIOBOOKS SECTION ===

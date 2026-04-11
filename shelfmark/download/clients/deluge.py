@@ -150,8 +150,7 @@ class DelugeClient(DownloadClient):
         self._authenticated = True
 
     def _select_daemon_host_id(self, hosts: list) -> str:
-        # Hosts returned by web.get_hosts look like:
-        #   [[host_id, host, port, status], ...]
+        # Deluge returns entries containing host id, host, port, and status.
         preferred_hosts = {"127.0.0.1", "localhost"}
 
         for entry in hosts:

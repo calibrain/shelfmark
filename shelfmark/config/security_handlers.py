@@ -50,7 +50,7 @@ def on_save_security(
     return {"error": False, "values": normalized_values}
 
 
-def test_oidc_connection(
+def check_oidc_connection(
     *,
     load_security_config: Callable[[], dict[str, Any]],
     current_values: dict[str, Any] | None = None,
