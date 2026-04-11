@@ -154,7 +154,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
         """
 
         @wraps(f)
-        def decorated(*args, **kwargs: object) -> Response | tuple[Response, int]:
+        def decorated(*args: object, **kwargs: object) -> Response | tuple[Response, int]:
             auth_mode = load_active_auth_mode(CWA_DB_PATH, user_db=user_db)
             g.auth_mode = auth_mode
             if auth_mode != "none" and "user_id" not in session:

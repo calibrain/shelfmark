@@ -69,7 +69,7 @@ def with_retry(
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
-        def wrapper(*args, **kwargs: object) -> T:
+        def wrapper(*args: object, **kwargs: object) -> T:
             last_exception = None
 
             for attempt in range(1, max_attempts + 1):

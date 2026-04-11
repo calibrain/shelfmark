@@ -462,6 +462,6 @@ class IRCClient:
         self.connect()
         return self
 
-    def __exit__(self, *args) -> None:
+    def __exit__(self, *args: object) -> None:
         """Disconnect the IRC client when leaving a context manager."""
         self.disconnect()

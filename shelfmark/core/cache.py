@@ -113,7 +113,7 @@ def get_metadata_cache() -> CacheService:
     return _metadata_cache
 
 
-def cache_key(*args, **kwargs: object) -> str:
+def cache_key(*args: object, **kwargs: object) -> str:
     """Generate cache key from arguments."""
     parts = [str(arg) for arg in args]
     parts.extend(f"{k}={v}" for k, v in sorted(kwargs.items()))
