@@ -144,9 +144,22 @@ class TestMetadataSearch:
             pytest.skip("No providers available")
 
         # Handle both list and dict formats
+        # NOTE: The /api/metadata/providers endpoint returns a dict with a "providers" key
+        # containing the list of provider objects: {"providers": [...], "configured_provider": "..."}.
+        # We must detect this pattern and extract the actual list, not treat the key name
+        # "providers" as a provider name. The key name is "providers" (plural), which is not
+        # a registered provider — it would cause the subsequent search to return 400:
+        # "Invalid provider 'providers': not registered in _PROVIDERS".
+        # Root cause: the dict-handling branch falls back to first_key (the dict key itself)
+        # when the value at that key is not a dict. For the {"providers": [...]} format,
+        # the value is a list, so the fallback incorrectly uses "providers" as the name.
         if isinstance(providers_data, dict):
-            # Dict format: get first provider name from keys or values
-            if providers_data:
+            # Check if the dict has a "providers" key whose value is a list of provider dicts.
+            # This is the actual format returned by the shelfmark /api/metadata/providers endpoint.
+            if "providers" in providers_data and isinstance(providers_data["providers"], list) and providers_data["providers"]:
+                provider_name = providers_data["providers"][0].get("name")
+            else:
+                # Fallback for other dict formats (e.g., {"openlibrary": {...}}).
                 first_key = list(providers_data.keys())[0]
                 provider_info = providers_data[first_key]
                 provider_name = (
@@ -154,10 +167,8 @@ class TestMetadataSearch:
                     if isinstance(provider_info, dict)
                     else first_key
                 )
-            else:
-                pytest.skip("No providers available")
         else:
-            # List format
+            # List format: direct list of provider dicts
             provider_name = providers_data[0].get("name") if providers_data else None
 
         if not provider_name:
