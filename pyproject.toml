@@ -68,6 +68,8 @@ select = [
     "F", "I", "UP", "B", "C4", "SIM", "PTH", "RET", "PIE", "FURB", "PERF", "TRY", "D",
     "ANN001", "ANN201", "ANN202", "ANN204",
     "E731",
+    "EM101",
+    "S110",
     "FBT001", "FBT002", "FBT003",
     "G003", "G004",
     "PLR1714",

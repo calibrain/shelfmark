@@ -107,12 +107,14 @@ class _CdpWorker:
             )
             self._thread.start()
         if not self._ready.wait(timeout=10):
-            raise RuntimeError("CDP worker loop failed to start")
+            msg = "CDP worker loop failed to start"
+            raise RuntimeError(msg)
 
     def run(self, coro: Any, timeout: float | None = None) -> Any:
         self.start()
         if not self._loop or self._loop.is_closed():
-            raise RuntimeError("CDP worker loop not available")
+            msg = "CDP worker loop not available"
+            raise RuntimeError(msg)
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
         return future.result(timeout=timeout)
 
@@ -565,7 +567,8 @@ def _check_cancellation(cancel_flag: Event | None, message: str) -> None:
     """Check if cancellation was requested and raise if so."""
     if cancel_flag and cancel_flag.is_set():
         logger.info(message)
-        raise BypassCancelledException("Bypass cancelled")
+        msg = "Bypass cancelled"
+        raise BypassCancelledException(msg)
 
 
 async def _bypass(
@@ -1047,6 +1050,7 @@ def get_bypassed_page(
             raise
 
     if not response_html.strip():
-        raise requests.exceptions.RequestException("Failed to bypass Cloudflare")
+        msg = "Failed to bypass Cloudflare"
+        raise requests.exceptions.RequestException(msg)
 
     return response_html

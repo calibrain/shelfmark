@@ -567,11 +567,14 @@ class UserDB:
     ) -> dict[str, Any]:
         """Create a download request row and return the created record."""
         if not isinstance(book_data, dict):
-            raise TypeError("book_data must be an object")
+            msg = "book_data must be an object"
+            raise TypeError(msg)
         if release_data is not None and not isinstance(release_data, dict):
-            raise TypeError("release_data must be an object when provided")
+            msg = "release_data must be an object when provided"
+            raise TypeError(msg)
         if not content_type:
-            raise ValueError("content_type is required")
+            msg = "content_type is required"
+            raise ValueError(msg)
 
         normalized_status = normalize_request_status(status)
         normalized_delivery_state = normalize_delivery_state(delivery_state)
@@ -706,7 +709,8 @@ class UserDB:
             if expected_current_status is not None:
                 normalized_expected_status = normalize_request_status(expected_current_status)
                 if request["status"] != normalized_expected_status:
-                    raise ValueError("Request state changed before update")
+                    msg = "Request state changed before update"
+                    raise ValueError(msg)
             return request
 
         for key in kwargs:
@@ -727,7 +731,8 @@ class UserDB:
                 if expected_current_status is not None:
                     normalized_expected_status = normalize_request_status(expected_current_status)
                     if current["status"] != normalized_expected_status:
-                        raise ValueError("Request state changed before update")
+                        msg = "Request state changed before update"
+                        raise ValueError(msg)
 
                 updates = dict(kwargs)
 
@@ -747,24 +752,28 @@ class UserDB:
                 if "delivery_updated_at" in updates:
                     delivery_updated_at = updates["delivery_updated_at"]
                     if delivery_updated_at is not None and not isinstance(delivery_updated_at, str):
-                        raise TypeError("delivery_updated_at must be a string when provided")
+                        msg = "delivery_updated_at must be a string when provided"
+                        raise TypeError(msg)
 
                 if "content_type" in updates and not updates["content_type"]:
-                    raise ValueError("content_type is required")
+                    msg = "content_type is required"
+                    raise ValueError(msg)
 
                 if "request_level" in updates:
                     updates["request_level"] = normalize_request_level(updates["request_level"])
 
                 if "book_data" in updates:
                     if not isinstance(updates["book_data"], dict):
-                        raise TypeError("book_data must be an object")
+                        msg = "book_data must be an object"
+                        raise TypeError(msg)
                     updates["book_data"] = self._serialize_json(updates["book_data"], "book_data")
 
                 if "release_data" in updates:
                     if updates["release_data"] is not None and not isinstance(
                         updates["release_data"], dict
                     ):
-                        raise TypeError("release_data must be an object when provided")
+                        msg = "release_data must be an object when provided"
+                        raise TypeError(msg)
                     updates["release_data"] = self._serialize_json(
                         updates["release_data"],
                         "release_data",

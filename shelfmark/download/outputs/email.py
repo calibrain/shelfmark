@@ -93,9 +93,11 @@ def build_email_smtp_config(values: Mapping[str, Any]) -> EmailSmtpConfig:
     allow_unverified_tls = bool(values.get("EMAIL_ALLOW_UNVERIFIED_TLS", False))
 
     if not host:
-        raise EmailOutputError("SMTP host is required")
+        msg = "SMTP host is required"
+        raise EmailOutputError(msg)
     if username and not password:
-        raise EmailOutputError("SMTP password is required when username is set")
+        msg = "SMTP password is required when username is set"
+        raise EmailOutputError(msg)
 
     if not from_addr:
         # If From is not configured, fall back to the SMTP username if it is an email address.
@@ -103,9 +105,8 @@ def build_email_smtp_config(values: Mapping[str, Any]) -> EmailSmtpConfig:
         if username_email and "@" in username_email:
             from_addr = f"Shelfmark <{username_email}>"
         else:
-            raise EmailOutputError(
-                "From address is required (or set SMTP username to an email address)."
-            )
+            msg = "From address is required (or set SMTP username to an email address)."
+            raise EmailOutputError(msg)
 
     return EmailSmtpConfig(
         host=host,
@@ -226,7 +227,8 @@ def test_smtp_connection(smtp_config: EmailSmtpConfig) -> None:
         if smtp_config.username:
             smtp.login(smtp_config.username, smtp_config.password)
     except smtplib.SMTPAuthenticationError as exc:
-        raise EmailOutputError("SMTP authentication failed") from exc
+        msg = "SMTP authentication failed"
+        raise EmailOutputError(msg) from exc
     except (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected, TimeoutError, OSError) as exc:
         raise EmailOutputError(f"Could not connect to SMTP server: {exc}") from exc
     finally:
@@ -266,7 +268,8 @@ def send_email_message(smtp_config: EmailSmtpConfig, message: EmailMessage) -> N
 
         smtp.send_message(message)
     except smtplib.SMTPAuthenticationError as exc:
-        raise EmailOutputError("SMTP authentication failed") from exc
+        msg = "SMTP authentication failed"
+        raise EmailOutputError(msg) from exc
     except (smtplib.SMTPException, TimeoutError, OSError) as exc:
         raise EmailOutputError(f"Failed to send email: {exc}") from exc
     finally:

@@ -222,7 +222,8 @@ def _extract_zip(archive_path: Path, output_dir: Path) -> tuple[list[Path], list
             # Check for password protection
             for info in zf.infolist():
                 if info.flag_bits & 0x1:  # Encrypted flag
-                    raise PasswordProtectedError("ZIP archive is password protected")
+                    msg = "ZIP archive is password protected"
+                    raise PasswordProtectedError(msg)
 
             # Test archive integrity
             bad_file = zf.testzip()
@@ -240,13 +241,15 @@ def _extract_zip(archive_path: Path, output_dir: Path) -> tuple[list[Path], list
 def _extract_rar(archive_path: Path, output_dir: Path) -> tuple[list[Path], list[str]]:
     """Extract files from a RAR archive."""
     if not RAR_AVAILABLE:
-        raise ArchiveExtractionError("RAR extraction not available - rarfile library not installed")
+        msg = "RAR extraction not available - rarfile library not installed"
+        raise ArchiveExtractionError(msg)
 
     try:
         with rarfile.RarFile(archive_path, "r") as rf:
             # Check for password protection
             if rf.needs_password():
-                raise PasswordProtectedError("RAR archive is password protected")
+                msg = "RAR archive is password protected"
+                raise PasswordProtectedError(msg)
 
             # Test archive integrity
             rf.testrar()
@@ -256,6 +259,7 @@ def _extract_rar(archive_path: Path, output_dir: Path) -> tuple[list[Path], list
     except rarfile.BadRarFile as e:
         raise CorruptedArchiveError(f"Invalid or corrupted RAR: {e}") from e
     except rarfile.RarCannotExec as e:
-        raise ArchiveExtractionError("unrar binary not found - install unrar package") from e
+        msg = "unrar binary not found - install unrar package"
+        raise ArchiveExtractionError(msg) from e
     except PermissionError as e:
         raise ArchiveExtractionError(f"Permission denied: {e}") from e

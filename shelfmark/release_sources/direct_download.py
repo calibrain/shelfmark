@@ -224,9 +224,8 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
     html = downloader.html_get_page(url, selector=selector, allow_bypasser_fallback=False)
     if not html:
         # Network/mirror exhaustion path bubbles up so API can notify clients
-        raise SearchUnavailable(
-            "Unable to reach download source. Network restricted or mirrors are blocked."
-        )
+        msg = "Unable to reach download source. Network restricted or mirrors are blocked."
+        raise SearchUnavailable(msg)
 
     if "No files found." in html:
         logger.info("No books found for query: %s", query)
@@ -237,7 +236,8 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
 
     if not tbody:
         logger.warning("No results table found for query: %s", query)
-        raise RuntimeError("No books found. Please try another query.")
+        msg = "No books found. Please try another query."
+        raise RuntimeError(msg)
 
     books = []
     if isinstance(tbody, Tag):
@@ -274,9 +274,8 @@ def get_book_info(book_id: str, *, fetch_download_count: bool = True) -> BrowseR
     html = downloader.html_get_page(url, selector=selector, allow_bypasser_fallback=False)
 
     if not html:
-        raise SearchUnavailable(
-            "Unable to reach download source. Network restricted or mirrors are blocked."
-        )
+        msg = "Unable to reach download source. Network restricted or mirrors are blocked."
+        raise SearchUnavailable(msg)
 
     soup = BeautifulSoup(html, "html.parser")
 

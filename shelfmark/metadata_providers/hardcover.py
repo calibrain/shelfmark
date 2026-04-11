@@ -1706,7 +1706,8 @@ class HardcoverProvider(MetadataProvider):
 
         book_id_int = coerce_int(book_id, 0)
         if book_id_int < 1:
-            raise ValueError("book_id must be a valid Hardcover book id")
+            msg = "book_id must be a valid Hardcover book id"
+            raise ValueError(msg)
 
         state = self._fetch_book_target_state(book_id_int)
         options = [
@@ -1731,18 +1732,22 @@ class HardcoverProvider(MetadataProvider):
     ) -> dict[str, Any]:
         """Set whether a Hardcover book belongs to a status shelf or user list."""
         if not self.api_key:
-            raise ValueError("Hardcover is not configured")
+            msg = "Hardcover is not configured"
+            raise ValueError(msg)
 
         book_id_int = coerce_int(book_id, 0)
         if book_id_int < 1:
-            raise ValueError("book_id must be a valid Hardcover book id")
+            msg = "book_id must be a valid Hardcover book id"
+            raise ValueError(msg)
 
         selected_target = str(target or "").strip()
         if not selected_target:
-            raise ValueError("target is required")
+            msg = "target is required"
+            raise ValueError(msg)
 
         if selected_target not in self._get_writable_targets():
-            raise ValueError("Unsupported Hardcover target")
+            msg = "Unsupported Hardcover target"
+            raise ValueError(msg)
 
         state = self._fetch_book_target_state(book_id_int)
         status_ids_to_invalidate: set[int] = set()
@@ -1775,7 +1780,8 @@ class HardcoverProvider(MetadataProvider):
             if changed:
                 list_ids_to_invalidate.add(list_id)
         else:
-            raise ValueError("Unsupported Hardcover target")
+            msg = "Unsupported Hardcover target"
+            raise ValueError(msg)
 
         if changed:
             self._invalidate_book_target_caches(
@@ -1793,13 +1799,15 @@ class HardcoverProvider(MetadataProvider):
     def _unwrap_me_data(result: dict | None) -> dict:
         """Extract and validate the ``me`` payload from a GraphQL result."""
         if not isinstance(result, dict):
-            raise HardcoverTargetPayloadError("Hardcover could not load book targets")
+            msg = "Hardcover could not load book targets"
+            raise HardcoverTargetPayloadError(msg)
 
         me_data = result.get("me", {})
         if isinstance(me_data, list) and me_data:
             me_data = me_data[0]
         if not isinstance(me_data, dict):
-            raise HardcoverTargetPayloadError("Hardcover returned an invalid target payload")
+            msg = "Hardcover returned an invalid target payload"
+            raise HardcoverTargetPayloadError(msg)
         return me_data
 
     def _fetch_book_target_state(self, book_id: int) -> HardcoverBookTargetState:
@@ -2077,7 +2085,8 @@ class HardcoverProvider(MetadataProvider):
                     raise ValueError(error_text)
             if payload.get("id") is not None:
                 return
-        raise RuntimeError("Hardcover could not complete this action")
+        msg = "Hardcover could not complete this action"
+        raise RuntimeError(msg)
 
     def search(self, options: MetadataSearchOptions) -> list[BookMetadata]:
         """Search for books using Hardcover's search API."""
@@ -2422,13 +2431,15 @@ class HardcoverProvider(MetadataProvider):
         except requests.Timeout as e:
             logger.warning("Hardcover API request timed out")
             if raise_on_error:
-                raise RuntimeError("Hardcover API request timed out") from e
+                msg = "Hardcover API request timed out"
+                raise RuntimeError(msg) from e
             return None
         except requests.HTTPError as e:
             if e.response.status_code == 401:
                 logger.exception("Hardcover API key is invalid")
                 if raise_on_error:
-                    raise RuntimeError("Hardcover API key is invalid") from e
+                    msg = "Hardcover API key is invalid"
+                    raise RuntimeError(msg) from e
             else:
                 logger.exception("Hardcover API HTTP error")
                 if raise_on_error:
@@ -2439,12 +2450,14 @@ class HardcoverProvider(MetadataProvider):
         except ValueError as e:
             logger.exception("Hardcover API returned invalid JSON")
             if raise_on_error:
-                raise RuntimeError("Hardcover API returned an invalid response") from e
+                msg = "Hardcover API returned an invalid response"
+                raise RuntimeError(msg) from e
             return None
         except (TypeError, requests.RequestException) as e:
             logger.exception("Hardcover API request failed")
             if raise_on_error:
-                raise RuntimeError("Hardcover API request failed") from e
+                msg = "Hardcover API request failed"
+                raise RuntimeError(msg) from e
             return None
 
     def _parse_search_result(self, item: dict) -> BookMetadata | None:

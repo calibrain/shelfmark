@@ -122,7 +122,8 @@ def _serialize_user(
 def _sync_all_cwa_users(user_db: UserDB) -> dict[str, int]:
     """Sync all users from the Calibre-Web database into users.db."""
     if not CWA_DB_PATH or not CWA_DB_PATH.exists():
-        raise FileNotFoundError("Calibre-Web database is not available")
+        msg = "Calibre-Web database is not available"
+        raise FileNotFoundError(msg)
 
     db_path = os.fspath(CWA_DB_PATH)
     db_uri = f"file:{db_path}?mode=ro&immutable=1"
