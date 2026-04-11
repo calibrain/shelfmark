@@ -5,11 +5,10 @@ These tests mock the transmission-rpc library to test the client logic
 without requiring a running Transmission instance.
 """
 
-from unittest.mock import MagicMock, patch
-from datetime import timedelta
-import pytest
 import sys
 import types
+from datetime import timedelta
+from unittest.mock import MagicMock, patch
 
 from shelfmark.download.clients import DownloadStatus
 
@@ -284,7 +283,7 @@ class TestTransmissionClientTestConnection:
         )
 
         mock_client_instance = MagicMock()
-        mock_client_instance.get_session.side_effect = Exception("Connection refused")
+        mock_client_instance.get_session.side_effect = RuntimeError("Connection refused")
 
         mock_transmission_rpc = create_mock_transmission_rpc_module()
         mock_transmission_rpc.Client.return_value = mock_client_instance
@@ -645,7 +644,7 @@ class TestTransmissionClientRemove:
         )
 
         mock_client_instance = MagicMock()
-        mock_client_instance.remove_torrent.side_effect = Exception("Not found")
+        mock_client_instance.remove_torrent.side_effect = RuntimeError("Not found")
 
         mock_transmission_rpc = create_mock_transmission_rpc_module()
         mock_transmission_rpc.Client.return_value = mock_client_instance

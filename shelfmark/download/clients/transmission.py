@@ -20,6 +20,11 @@ from shelfmark.download.clients.torrent_utils import (
 )
 from shelfmark.download.network import get_ssl_verify
 
+try:
+    from transmission_rpc import TransmissionError as _ImportedTransmissionError
+except ImportError:
+    _ImportedTransmissionError = RuntimeError
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -27,6 +32,20 @@ logger = setup_logger(__name__)
 
 _SEEDING_PROGRESS_PERCENT = 100
 _ETA_MAX_SECONDS = 604800
+_TransmissionError = (
+    _ImportedTransmissionError
+    if isinstance(_ImportedTransmissionError, type)
+    and issubclass(_ImportedTransmissionError, Exception)
+    else RuntimeError
+)
+_TRANSMISSION_CLIENT_ERRORS = (
+    _TransmissionError,
+    AttributeError,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
 
 
 @contextmanager
@@ -43,12 +62,11 @@ def _transmission_session_verify_override(url: str) -> Iterator[None]:
 
     try:
         import transmission_rpc.client as transmission_rpc_client
-    except Exception:
+        original_session_factory = transmission_rpc_client.requests.Session
+    except (AttributeError, ImportError):
         # If internals differ, gracefully fall back to default behavior.
         yield
         return
-
-    original_session_factory = transmission_rpc_client.requests.Session
 
     def _session_factory(*args: object, **kwargs: object) -> object:
         session = original_session_factory(*args, **kwargs)
@@ -69,7 +87,7 @@ def _apply_transmission_ssl_verify(client: object, url: str) -> None:
         return
     try:
         session.verify = get_ssl_verify(url)
-    except Exception as e:
+    except (AttributeError, OSError, TypeError, ValueError) as e:
         logger.debug("Unable to apply Transmission TLS verify setting: %s", e)
 
 
@@ -138,7 +156,7 @@ class TransmissionClient(DownloadClient):
         try:
             session = self._client.get_session()
             version = session.version
-        except Exception as e:
+        except _TRANSMISSION_CLIENT_ERRORS as e:
             return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to Transmission {version}"
@@ -207,10 +225,10 @@ class TransmissionClient(DownloadClient):
             if seed_kwargs:
                 try:
                     self._client.change_torrent(ids=torrent_hash, **seed_kwargs)
-                except Exception as e:
+                except _TRANSMISSION_CLIENT_ERRORS as e:
                     logger.warning("Failed to set seeding limits for %s: %s", torrent_hash, e)
 
-        except Exception:
+        except _TRANSMISSION_CLIENT_ERRORS:
             logger.exception("Transmission add failed")
             raise
         else:
@@ -293,7 +311,7 @@ class TransmissionClient(DownloadClient):
 
         except KeyError:
             return DownloadStatus.error("Torrent not found")
-        except Exception as e:
+        except _TRANSMISSION_CLIENT_ERRORS as e:
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, *, delete_files: bool = False) -> bool:
@@ -317,7 +335,7 @@ class TransmissionClient(DownloadClient):
                 download_id,
                 " (with files)" if delete_files else "",
             )
-        except Exception as e:
+        except _TRANSMISSION_CLIENT_ERRORS as e:
             self._log_error("remove", e)
             return False
         else:
@@ -342,7 +360,7 @@ class TransmissionClient(DownloadClient):
                 getattr(torrent, "download_dir", ""),
                 torrent_name,
             )
-        except Exception as e:
+        except _TRANSMISSION_CLIENT_ERRORS as e:
             self._log_error("get_download_path", e, level="debug")
             return None
 
@@ -362,6 +380,6 @@ class TransmissionClient(DownloadClient):
                 return None
             else:
                 return (torrent_info.info_hash, status)
-        except Exception as e:
+        except _TRANSMISSION_CLIENT_ERRORS as e:
             logger.debug("Error checking for existing torrent: %s", e)
             return None

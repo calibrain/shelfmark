@@ -158,7 +158,7 @@ class TestQBittorrentClientTestConnection:
         )
 
         mock_client_instance = MagicMock()
-        mock_client_instance.auth_log_in.side_effect = Exception("401 Unauthorized")
+        mock_client_instance.auth_log_in.side_effect = RuntimeError("401 Unauthorized")
         mock_client_class = MagicMock(return_value=mock_client_instance)
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):
@@ -679,7 +679,7 @@ class TestQBittorrentClientAddDownload:
             client = qb_module.QBittorrentClient()
             magnet = f"magnet:?xt=urn:btih:{valid_hash}&dn=test"
 
-            with pytest.raises(Exception, match="Failed to add torrent: Fails\\."):
+            with pytest.raises(RuntimeError, match="Failed to add torrent: Fails\\."):
                 client.add_download(magnet, "Test")
 
     def test_add_download_omits_empty_category(self, monkeypatch):
@@ -803,7 +803,7 @@ class TestQBittorrentClientRemove:
         )
 
         mock_client_instance = MagicMock()
-        mock_client_instance.torrents_delete.side_effect = Exception("Not found")
+        mock_client_instance.torrents_delete.side_effect = RuntimeError("Not found")
         mock_client_class = MagicMock(return_value=mock_client_instance)
 
         with patch.dict('sys.modules', {'qbittorrentapi': MagicMock(Client=mock_client_class)}):

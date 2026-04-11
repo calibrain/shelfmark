@@ -218,7 +218,7 @@ class TestNZBGetClientRPCCall:
             )
 
             client = NZBGetClient()
-            with pytest.raises(Exception) as exc_info:
+            with pytest.raises(RuntimeError) as exc_info:
                 client._rpc_call("invalid_method")
 
             assert "Invalid method" in str(exc_info.value)
@@ -510,7 +510,7 @@ class TestNZBGetClientAddDownload:
             )
 
             client = NZBGetClient()
-            with pytest.raises(Exception) as exc_info:
+            with pytest.raises(RuntimeError) as exc_info:
                 client.add_download("https://example.com/download.nzb", "Test")
 
             assert "fetch" in str(exc_info.value).lower()

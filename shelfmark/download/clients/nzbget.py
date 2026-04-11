@@ -19,6 +19,7 @@ from shelfmark.download.clients import (
 from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
+_NZBGET_CLIENT_ERRORS = (AttributeError, OSError, RuntimeError, TypeError, ValueError)
 
 
 @register_client("usenet")
@@ -59,7 +60,7 @@ class NZBGetClient(DownloadClient):
             if result:
                 logger.info("Removed NZB from NZBGet (%s): %s", command, download_id)
                 return True, None
-        except Exception as e:
+        except _NZBGET_CLIENT_ERRORS as e:
             return False, e
         return False, None
 
@@ -115,7 +116,7 @@ class NZBGetClient(DownloadClient):
             return False, "Could not connect to NZBGet"
         except requests.exceptions.Timeout:
             return False, "Connection timed out"
-        except Exception as e:
+        except _NZBGET_CLIENT_ERRORS as e:
             return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to NZBGet {version}"
@@ -194,7 +195,7 @@ class NZBGetClient(DownloadClient):
             logger.exception("Failed to fetch NZB from URL")
             msg = f"Failed to fetch NZB: {e}"
             raise RuntimeError(msg) from e
-        except Exception:
+        except _NZBGET_CLIENT_ERRORS:
             logger.exception("NZBGet add failed")
             raise
 
@@ -287,7 +288,7 @@ class NZBGetClient(DownloadClient):
 
             # Not found in queue or history
             return DownloadStatus.error("Download not found")
-        except Exception as e:
+        except _NZBGET_CLIENT_ERRORS as e:
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, *, delete_files: bool = False) -> bool:
