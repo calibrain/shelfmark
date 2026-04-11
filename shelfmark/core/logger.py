@@ -29,10 +29,13 @@ class CustomLogger(logging.Logger):
 
     def log_resource_usage(self) -> None:
         """Log best-effort CPU and memory usage for the current container."""
-        # Best-effort only; this should never raise during exception logging.
         try:
             import psutil
+        except ImportError:
+            return
 
+        # Best-effort only; this should never raise during exception logging.
+        try:
             def _get_process_rss_mb(proc: object) -> float | None:
                 try:
                     mem = proc.info.get("memory_info")
@@ -55,10 +58,10 @@ class CustomLogger(logging.Logger):
                     proc_rss_mb = _get_process_rss_mb(proc)
                     if proc_rss_mb is not None:
                         app_memory_mb += proc_rss_mb
-            except PermissionError, psutil.AccessDenied, OSError:
+            except (PermissionError, psutil.AccessDenied, OSError):
                 try:
                     app_memory_mb = psutil.Process().memory_info().rss / (1024 * 1024)
-                except Exception:
+                except (AttributeError, OSError, psutil.Error):
                     app_memory_mb = 0.0
 
             memory = psutil.virtual_memory()
@@ -69,7 +72,7 @@ class CustomLogger(logging.Logger):
                 f"Container Memory: App={app_memory_mb:.2f} MB, System={system_used_mb:.2f} MB, "
                 f"Available={available_mb:.2f} MB, CPU: {cpu_percent:.2f}%"
             )
-        except Exception:
+        except (AttributeError, OSError, psutil.Error):
             # Avoid breaking the original log call if psutil is missing or restricted.
             return
 
@@ -125,7 +128,7 @@ def setup_logger(name: str, log_file: Path = LOG_FILE) -> CustomLogger:
             )
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
-    except Exception as e:
+    except (OSError, TypeError, ValueError) as e:
         logger.error_trace(f"Failed to create log file: {e}", exc_info=True)
 
     return logger

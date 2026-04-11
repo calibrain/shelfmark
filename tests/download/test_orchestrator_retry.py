@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from threading import Event
 from pathlib import Path
+from threading import Event
 from unittest.mock import MagicMock
-
-import pytest
 
 from shelfmark.core.models import DownloadTask, QueueStatus
 from shelfmark.core.queue import BookQueue
@@ -249,3 +247,25 @@ def test_output_stage_retry_falls_back_to_download_when_staged_file_missing(monk
     handler.download.assert_called_once()
     assert seen_temp_files == [downloaded_file]
     assert task.staged_path is None
+
+
+def test_get_book_data_clears_download_path_when_file_read_fails(monkeypatch, tmp_path):
+    import shelfmark.download.orchestrator as orchestrator
+
+    missing_file = tmp_path / "missing.epub"
+    task = DownloadTask(
+        task_id="task-book-data-1",
+        source="direct_download",
+        title="Missing File",
+        download_path=str(missing_file),
+    )
+
+    mock_queue = MagicMock()
+    mock_queue.get_task.return_value = task
+    monkeypatch.setattr(orchestrator, "book_queue", mock_queue)
+
+    file_data, returned_task = orchestrator.get_book_data(task.task_id)
+
+    assert file_data is None
+    assert returned_task is task
+    assert task.download_path is None

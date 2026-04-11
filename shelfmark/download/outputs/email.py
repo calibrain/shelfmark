@@ -149,7 +149,7 @@ def _render_subject(template: str, task: DownloadTask) -> str:
     }
     try:
         rendered = template.format(**mapping)
-    except IndexError, KeyError, ValueError:
+    except (IndexError, KeyError, ValueError):
         rendered = template
 
     rendered = " ".join(str(rendered).split()).strip()
@@ -364,7 +364,7 @@ def _post_process_email(
         limit_mb_raw = core_config.config.get("EMAIL_ATTACHMENT_SIZE_LIMIT_MB", 25)
         try:
             attachment_limit_mb = int(limit_mb_raw)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             attachment_limit_mb = 25
 
         if attachment_limit_mb > 0:
@@ -442,7 +442,7 @@ def _post_process_email(
         logger.warning("Task %s: email send failed: %s", task.task_id, exc)
         status_callback("error", str(exc))
         return None
-    except Exception as exc:
+    except (OSError, TypeError, ValueError) as exc:
         logger.error_trace("Task %s: unexpected error sending email: %s", task.task_id, exc)
         status_callback("error", f"Email send failed: {exc}")
         return None

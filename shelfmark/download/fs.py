@@ -53,7 +53,14 @@ def _call_and_capture[T](
 ) -> tuple[bool, T | Exception]:
     try:
         return True, func(*args, **kwargs)
-    except Exception as exc:
+    except (
+        AttributeError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        subprocess.SubprocessError,
+    ) as exc:
         return False, exc
 
 

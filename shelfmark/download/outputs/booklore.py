@@ -447,7 +447,7 @@ def _post_process_booklore(
         logger.warning("Task %s: Booklore upload failed: %s", task.task_id, e)
         status_callback("error", str(e))
         return None
-    except Exception as e:
+    except (OSError, TypeError, ValueError) as e:
         logger.error_trace("Task %s: unexpected error uploading to Booklore: %s", task.task_id, e)
         status_callback("error", f"{BOOKLORE_DISPLAY_NAME} upload failed: {e}")
         return None

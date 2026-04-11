@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 from shelfmark.core.models import SearchMode
 
 
@@ -152,3 +154,26 @@ def test_queue_release_persists_generic_retry_resolution_fields(monkeypatch):
     assert task.retry_ratio_limit == 1.25
     assert task.retry_seeding_time_limit_minutes == 90
     assert task.can_retry_without_staged_source is True
+
+
+def test_queue_release_returns_error_for_operational_queue_failure(monkeypatch):
+    import shelfmark.download.orchestrator as orchestrator
+
+    monkeypatch.setattr(
+        orchestrator.book_queue,
+        "add",
+        MagicMock(side_effect=RuntimeError("queue offline")),
+    )
+    monkeypatch.setattr(orchestrator, "ws_manager", None)
+
+    success, error = orchestrator.queue_release(
+        {
+            "source": "direct_download",
+            "source_id": "release-broken-1",
+            "title": "Broken Queue",
+            "content_type": "ebook",
+        }
+    )
+
+    assert success is False
+    assert error == "Error queueing release: queue offline"
