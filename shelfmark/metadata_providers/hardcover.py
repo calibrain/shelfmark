@@ -4,6 +4,7 @@ import re
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
+from http import HTTPStatus
 from typing import Any, ClassVar
 from urllib.parse import urlparse
 
@@ -42,6 +43,10 @@ logger = setup_logger(__name__)
 
 HARDCOVER_API_URL = "https://api.hardcover.app/v1/graphql"
 HARDCOVER_PAGE_SIZE = 25  # Hardcover API returns max 25 results per page
+HARDCOVER_MIN_AUTHOR_PARTS = 2
+HARDCOVER_MIN_TYPEAHEAD_QUERY_LENGTH = 2
+HARDCOVER_MAX_SERIES_OPTIONS = 7
+HARDCOVER_API_KEY_MIN_LENGTH = 100
 HARDCOVER_LIST_URL_PATTERN = re.compile(
     r"^/(?:@([\w.-]+)/)?lists?/([\w-]+)/?$",
     re.IGNORECASE,
@@ -693,11 +698,11 @@ def _simplify_author_for_search(author: str) -> str | None:
     # Handle "Last, First ..." -> "First ... Last"
     if "," in normalized:
         parts = [p.strip() for p in normalized.split(",") if p.strip()]
-        if len(parts) >= 2:
+        if len(parts) >= HARDCOVER_MIN_AUTHOR_PARTS:
             normalized = " ".join([*parts[1:], parts[0]]).strip()
 
     tokens = normalized.split(" ")
-    if len(tokens) < 2:
+    if len(tokens) < HARDCOVER_MIN_AUTHOR_PARTS:
         return None
 
     keep_suffixes = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v"}
@@ -1117,7 +1122,7 @@ class HardcoverProvider(MetadataProvider):
     ) -> list[dict[str, Any]]:
         """Run a Hardcover search request for field-level typeahead options."""
         normalized_query = _normalize_search_text(query)
-        if not self.api_key or len(normalized_query) < 2:
+        if not self.api_key or len(normalized_query) < HARDCOVER_MIN_TYPEAHEAD_QUERY_LENGTH:
             return []
 
         result = self._execute_query(
@@ -1327,7 +1332,7 @@ class HardcoverProvider(MetadataProvider):
             if description:
                 option["description"] = description
             options.append(option)
-            if len(options) >= 7:
+            if len(options) >= HARDCOVER_MAX_SERIES_OPTIONS:
                 break
 
         return options
@@ -2436,7 +2441,7 @@ class HardcoverProvider(MetadataProvider):
                 raise RuntimeError(msg) from e
             return None
         except requests.HTTPError as e:
-            if e.response.status_code == 401:
+            if e.response.status_code == HTTPStatus.UNAUTHORIZED:
                 logger.exception("Hardcover API key is invalid")
                 if raise_on_error:
                     msg = "Hardcover API key is invalid"
@@ -2726,10 +2731,13 @@ def _test_hardcover_connection(current_values: dict[str, Any] | None = None) -> 
         _save_connected_user(None, None)
         return {"success": False, "message": "API key is required"}
 
-    if key_len < 100:
+    if key_len < HARDCOVER_API_KEY_MIN_LENGTH:
         return {
             "success": False,
-            "message": f"API key seems too short ({key_len} chars). Expected 500+ chars.",
+            "message": (
+                f"API key seems too short ({key_len} chars). "
+                f"Expected {HARDCOVER_API_KEY_MIN_LENGTH}+ chars."
+            ),
         }
 
     connection_result = {"success": False, "message": "API request failed - check your API key"}

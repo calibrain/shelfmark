@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
+MIN_PASSWORD_LENGTH = 4
 
 __all__ = [
     "get_booklore_library_options",
@@ -198,8 +199,8 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
         if not username:
             return jsonify({"error": "Username is required"}), 400
-        if not password or len(password) < 4:
-            return jsonify({"error": "Password must be at least 4 characters"}), 400
+        if not password or len(password) < MIN_PASSWORD_LENGTH:
+            return jsonify({"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters"}), 400
         if role not in ("admin", "user"):
             return jsonify({"error": "Role must be 'admin' or 'user'"}), 400
 
@@ -278,8 +279,10 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
                         "message": "Password authentication is only available for local users.",
                     }
                 ), 400
-            if len(password) < 4:
-                return jsonify({"error": "Password must be at least 4 characters"}), 400
+            if len(password) < MIN_PASSWORD_LENGTH:
+                return jsonify(
+                    {"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters"}
+                ), 400
             user_db.update_user(user_id, password_hash=generate_password_hash(password))
 
         # Update user fields

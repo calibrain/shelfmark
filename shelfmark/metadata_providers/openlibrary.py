@@ -4,6 +4,7 @@ import re
 import threading
 import time
 from collections import deque
+from http import HTTPStatus
 from typing import Any, ClassVar
 
 import requests
@@ -39,6 +40,8 @@ COVERS_BASE_URL = "https://covers.openlibrary.org"
 # We use a sliding window with 90 requests per 60 seconds for safety margin
 RATE_LIMIT_REQUESTS = 90
 RATE_LIMIT_WINDOW_SECONDS = 60
+ISBN_10_LENGTH = 10
+ISBN_13_LENGTH = 13
 
 
 class RateLimiter:
@@ -210,7 +213,7 @@ class OpenLibraryProvider(MetadataProvider):
             logger.warning("Open Library search timed out")
             return []
         except requests.HTTPError as e:
-            if e.response.status_code == 503:
+            if e.response.status_code == HTTPStatus.SERVICE_UNAVAILABLE:
                 logger.warning("Open Library service unavailable (503)")
             else:
                 logger.exception("Open Library HTTP error")
@@ -249,7 +252,7 @@ class OpenLibraryProvider(MetadataProvider):
             logger.warning("Open Library get_book timed out")
             return None
         except requests.HTTPError as e:
-            if e.response.status_code == 404:
+            if e.response.status_code == HTTPStatus.NOT_FOUND:
                 logger.debug("Open Library work not found: %s", book_id)
             else:
                 logger.exception("Open Library HTTP error")
@@ -310,7 +313,7 @@ class OpenLibraryProvider(MetadataProvider):
             return self._parse_edition(edition, clean_isbn)
 
         except requests.HTTPError as e:
-            if e.response.status_code == 404:
+            if e.response.status_code == HTTPStatus.NOT_FOUND:
                 logger.debug("Open Library ISBN not found: %s", isbn)
             else:
                 logger.exception("Open Library ISBN search HTTP error")
@@ -339,8 +342,8 @@ class OpenLibraryProvider(MetadataProvider):
 
             # Get ISBNs - find first ISBN-10 and ISBN-13
             isbns = doc.get("isbn", [])
-            isbn_10 = next((i for i in isbns if len(i) == 10), None)
-            isbn_13 = next((i for i in isbns if len(i) == 13), None)
+            isbn_10 = next((i for i in isbns if len(i) == ISBN_10_LENGTH), None)
+            isbn_13 = next((i for i in isbns if len(i) == ISBN_13_LENGTH), None)
 
             # Get cover URL
             cover_id = doc.get("cover_i")

@@ -5,6 +5,7 @@ import json
 import re
 import time
 from dataclasses import replace
+from http import HTTPStatus
 from typing import TYPE_CHECKING, ClassVar, NoReturn
 from urllib.parse import quote
 
@@ -68,6 +69,7 @@ _DOWNLOAD_SOURCES = [
 
 _SOURCE_FAILURE_THRESHOLD = 4
 _MIN_VALID_FILE_SIZE = 10 * 1024
+_AA_COUNTDOWN_MAX_SECONDS = 300
 
 # Sources that require Cloudflare bypass
 _CF_BYPASS_REQUIRED = frozenset({"aa-slow-nowait", "aa-slow-wait", "zlib", "welib"})
@@ -780,7 +782,7 @@ def _extract_libgen_download_url(link: str, cancel_flag: Event | None = None) ->
             verify=network.get_ssl_verify(link),
         )
 
-        if response.status_code != 200:
+        if response.status_code != HTTPStatus.OK:
             logger.debug("Libgen fast: %s returned %s", link, response.status_code)
             return ""
 
@@ -1114,36 +1116,36 @@ def _extract_countdown_seconds(soup: BeautifulSoup, html_str: str) -> int:
     countdown_attr = re.search(r'data-countdown=["\'](\d+)["\']', html_str)
     if countdown_attr:
         seconds = int(countdown_attr.group(1))
-        if 0 < seconds < 300:
+        if 0 < seconds < _AA_COUNTDOWN_MAX_SECONDS:
             return seconds
 
     js_countdown = re.search(r"countdown:\s*(\d+)", html_str)
     if js_countdown:
         seconds = int(js_countdown.group(1))
-        if 0 < seconds < 300:
+        if 0 < seconds < _AA_COUNTDOWN_MAX_SECONDS:
             return seconds
     js_var = re.search(r"(?:var|let|const)\s+countdown\s*=\s*(\d+)", html_str)
     if js_var:
         seconds = int(js_var.group(1))
-        if 0 < seconds < 300:
+        if 0 < seconds < _AA_COUNTDOWN_MAX_SECONDS:
             return seconds
 
     countdown_secs = re.search(r"countdownSeconds\s*=\s*(\d+)", html_str)
     if countdown_secs:
         seconds = int(countdown_secs.group(1))
-        if 0 < seconds < 300:
+        if 0 < seconds < _AA_COUNTDOWN_MAX_SECONDS:
             return seconds
 
     json_countdown = re.search(r'["\']countdown[_-]?seconds["\']\s*:\s*(\d+)', html_str)
     if json_countdown:
         seconds = int(json_countdown.group(1))
-        if 0 < seconds < 300:
+        if 0 < seconds < _AA_COUNTDOWN_MAX_SECONDS:
             return seconds
 
     wait_text = re.search(r"wait\s+(\d+)\s+seconds", html_str, re.IGNORECASE)
     if wait_text:
         seconds = int(wait_text.group(1))
-        if 0 < seconds < 300:
+        if 0 < seconds < _AA_COUNTDOWN_MAX_SECONDS:
             return seconds
 
     return 0
@@ -1156,7 +1158,7 @@ def _parse_countdown_seconds_from_element(element: Tag) -> int | None:
     except ValueError, TypeError:
         return None
 
-    if 0 < seconds < 300:
+    if 0 < seconds < _AA_COUNTDOWN_MAX_SECONDS:
         return seconds
     return None
 

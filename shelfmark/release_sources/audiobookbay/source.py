@@ -25,6 +25,7 @@ from shelfmark.release_sources.audiobookbay import scraper
 from shelfmark.release_sources.audiobookbay.utils import normalize_hostname, parse_size
 
 logger = setup_logger(__name__)
+MIN_RELEVANCE_QUERY_WORD_LENGTH = 2
 
 
 # Map language names to ISO 639-1 codes (matching frontend color maps)
@@ -246,7 +247,11 @@ class AudiobookBaySource(ReleaseSource):
                     )
 
             # Extract query words for relevance checking
-            query_words = {word.lower() for word in query_lower.split() if len(word) > 2}
+            query_words = {
+                word.lower()
+                for word in query_lower.split()
+                if len(word) > MIN_RELEVANCE_QUERY_WORD_LENGTH
+            }
 
             releases = []
             for result in results:

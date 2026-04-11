@@ -87,6 +87,7 @@ if TYPE_CHECKING:
     from shelfmark.metadata_providers import BookMetadata, MetadataProvider
 
 logger = setup_logger(__name__)
+FLASK_SECRET_KEY_MIN_BYTES = 32
 
 
 def _raise_runtime_error(message: str) -> NoReturn:
@@ -194,6 +195,7 @@ backend.start()
 failed_login_attempts: dict[str, dict[str, Any]] = {}
 MAX_LOGIN_ATTEMPTS = 10
 LOCKOUT_DURATION_MINUTES = 30
+LOGIN_ATTEMPT_WARNING_THRESHOLD = 5
 
 
 def cleanup_old_lockouts() -> None:
@@ -577,7 +579,7 @@ def _load_or_create_secret_key() -> bytes:
     try:
         if secret_path.exists():
             secret_key = secret_path.read_bytes()
-            if len(secret_key) >= 32:
+            if len(secret_key) >= FLASK_SECRET_KEY_MIN_BYTES:
                 return secret_key
             logger.warning(
                 "Invalid persisted Flask secret key at %s (length=%s). Regenerating.",
@@ -1859,7 +1861,7 @@ def _failed_login_response(username: str, ip_address: str) -> tuple[Response, in
         ), 429
 
     attempts_remaining = MAX_LOGIN_ATTEMPTS - failed_login_attempts[username]["count"]
-    if attempts_remaining <= 5:
+    if attempts_remaining <= LOGIN_ATTEMPT_WARNING_THRESHOLD:
         return jsonify(
             {"error": f"Invalid username or password. {attempts_remaining} attempts remaining."}
         ), 401

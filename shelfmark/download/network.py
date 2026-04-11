@@ -6,6 +6,7 @@ import socket
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
+from http import HTTPStatus
 from socket import AddressFamily, SocketKind
 from typing import TYPE_CHECKING, Any, cast
 
@@ -159,6 +160,7 @@ except ImportError:
     _using_gevent_locks = False
 
 logger = setup_logger(__name__)
+_GETADDRINFO_SOCKADDR_INDEX = 4
 
 
 def _call_dns_rotation_callback(
@@ -600,7 +602,12 @@ def create_custom_getaddrinfo(
             if host_str in ("localhost", "127.0.0.1", "::1"):
                 return
             try:
-                ips = [entry[4][0] for entry in res if len(entry) >= 5 and entry[4]]
+                ips = [
+                    entry[_GETADDRINFO_SOCKADDR_INDEX][0]
+                    for entry in res
+                    if len(entry) > _GETADDRINFO_SOCKADDR_INDEX
+                    and entry[_GETADDRINFO_SOCKADDR_INDEX]
+                ]
                 msg = f"Resolved {host_str} via {source} [{provider_label}]: {ips}"
                 if is_bypass:
                     logger.debug(msg)
@@ -1087,7 +1094,7 @@ def _initialize_aa_state() -> None:
                     response = requests.get(
                         url, proxies=get_proxies(url), timeout=3, verify=get_ssl_verify(url)
                     )
-                    if response.status_code == 200:
+                    if response.status_code == HTTPStatus.OK:
                         _current_aa_url_index = i
                         _aa_base_url = url
                         _save_state(aa_url=_aa_base_url)

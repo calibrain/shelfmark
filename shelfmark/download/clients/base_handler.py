@@ -32,6 +32,9 @@ logger = setup_logger(__name__)
 
 # How often to poll the download client for status (seconds)
 POLL_INTERVAL = 2
+WINDOWS_DRIVE_PREFIX_LENGTH = 2
+SECONDS_PER_MINUTE = 60
+SECONDS_PER_HOUR = 3600
 # How long to wait for completed files to appear (seconds)
 COMPLETED_PATH_RETRY_INTERVAL = 5
 COMPLETED_PATH_MAX_ATTEMPTS = 12  # 12 attempts * 5s = 60s grace period
@@ -60,7 +63,7 @@ def _diagnose_path_issue(path: str) -> str:
 
     """
     # Detect Windows-style paths (won't work in Linux containers)
-    if len(path) >= 2 and path[1] == ":":
+    if len(path) >= WINDOWS_DRIVE_PREFIX_LENGTH and path[1] == ":":
         return (
             f"Path '{path}' appears to be a Windows path. "
             f"Shelfmark runs in Linux and cannot access Windows paths directly. "
@@ -559,12 +562,15 @@ class ExternalClientHandler(DownloadHandler, ABC):
             msg += f" ({speed_mb:.1f} MB/s)"
 
         if status.eta and status.eta > 0:
-            if status.eta < 60:
+            if status.eta < SECONDS_PER_MINUTE:
                 msg += f" - {status.eta}s left"
-            elif status.eta < 3600:
-                msg += f" - {status.eta // 60}m left"
+            elif status.eta < SECONDS_PER_HOUR:
+                msg += f" - {status.eta // SECONDS_PER_MINUTE}m left"
             else:
-                msg += f" - {status.eta // 3600}h {(status.eta % 3600) // 60}m left"
+                msg += (
+                    f" - {status.eta // SECONDS_PER_HOUR}h "
+                    f"{(status.eta % SECONDS_PER_HOUR) // SECONDS_PER_MINUTE}m left"
+                )
 
         return msg
 

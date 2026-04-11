@@ -74,6 +74,8 @@ from shelfmark.config.email_settings import test_email_connection
 from shelfmark.core.logger import setup_logger
 
 logger = setup_logger(__name__)
+_SMTP_PORT_MAX = 65535
+_EMAIL_ATTACHMENT_LIMIT_MB_MAX = 600
 
 # Log bootstrap configuration values at DEBUG level
 logger.debug("Bootstrap configuration:")
@@ -777,10 +779,10 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
         except TypeError, ValueError:
             return {"error": True, "message": "SMTP port must be a number", "values": values}
 
-        if port < 1 or port > 65535:
+        if port < 1 or port > _SMTP_PORT_MAX:
             return {
                 "error": True,
-                "message": "SMTP port must be between 1 and 65535",
+                "message": f"SMTP port must be between 1 and {_SMTP_PORT_MAX}",
                 "values": values,
             }
 
@@ -818,10 +820,13 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
                 "values": values,
             }
 
-        if attachment_limit_mb < 1 or attachment_limit_mb > 600:
+        if attachment_limit_mb < 1 or attachment_limit_mb > _EMAIL_ATTACHMENT_LIMIT_MB_MAX:
             return {
                 "error": True,
-                "message": "Attachment size limit (MB) must be between 1 and 600",
+                "message": (
+                    "Attachment size limit (MB) must be between 1 and "
+                    f"{_EMAIL_ATTACHMENT_LIMIT_MB_MAX}"
+                ),
                 "values": values,
             }
 

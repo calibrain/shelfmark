@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 # ==================== Test Connection Callbacks ====================
+_DELUGE_HOST_ENTRY_MIN_LENGTH = 2
 
 
 def _raise_runtime_error(message: str) -> NoReturn:
@@ -245,7 +246,7 @@ def _test_deluge_connection(current_values: dict[str, Any] | None = None) -> dic
             for entry in hosts:
                 if (
                     isinstance(entry, list)
-                    and len(entry) >= 2
+                    and len(entry) >= _DELUGE_HOST_ENTRY_MIN_LENGTH
                     and entry[1] in {"127.0.0.1", "localhost"}
                 ):
                     host_id = entry[0]

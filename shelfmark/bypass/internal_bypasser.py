@@ -12,6 +12,7 @@ import time
 import traceback
 from contextlib import suppress
 from datetime import datetime
+from http import HTTPStatus
 from pathlib import Path
 from threading import Event
 from typing import Any
@@ -34,6 +35,10 @@ logger = setup_logger(__name__)
 
 SELENIUMBASE_RUNTIME_ROOT = Path("/tmp/shelfmark/seleniumbase")
 SELENIUMBASE_DOWNLOADS_DIR = SELENIUMBASE_RUNTIME_ROOT / "downloaded_files"
+_BYPASSED_BODY_LENGTH_MIN = 100_000
+_BYPASS_EMOJI_MATCH_MIN = 3
+_LOADING_BODY_LENGTH_MAX = 50
+_PAGE_BODY_PREVIEW_CHARS = 500
 
 # Challenge detection indicators
 CLOUDFLARE_INDICATORS = [
@@ -394,7 +399,7 @@ async def _is_bypassed(page: Any, *, escape_emojis: bool = True) -> bool:
         body_len = len(body.strip())
 
         # Long page content = probably bypassed
-        if body_len > 100000:
+        if body_len > _BYPASSED_BODY_LENGTH_MIN:
             logger.debug("Page content too long, probably bypassed (len: %s)", body_len)
             return True
 
@@ -402,7 +407,7 @@ async def _is_bypassed(page: Any, *, escape_emojis: bool = True) -> bool:
         if escape_emojis:
             import emoji
 
-            if len(emoji.emoji_list(body)) >= 3:
+            if len(emoji.emoji_list(body)) >= _BYPASS_EMOJI_MATCH_MIN:
                 logger.debug("Detected emojis in page, probably bypassed")
                 return True
 
@@ -416,7 +421,7 @@ async def _is_bypassed(page: Any, *, escape_emojis: bool = True) -> bool:
             return False
 
         # Page too short = still loading
-        if body_len < 50:
+        if body_len < _LOADING_BODY_LENGTH_MAX:
             logger.debug("Page content too short, might still be loading")
             return False
 
@@ -740,7 +745,10 @@ async def _get(url: str, driver: Any, cancel_flag: Event | None = None) -> str:
     try:
         body = await page.evaluate("document.body ? document.body.innerText : ''")
         if body:
-            logger.debug(f"Page content: {body[:500]}..." if len(body) > 500 else body)
+            preview = body
+            if len(body) > _PAGE_BODY_PREVIEW_CHARS:
+                preview = body[:_PAGE_BODY_PREVIEW_CHARS] + "..."
+            logger.debug("Page content: %s", preview)
     except Exception as exc:
         logger.debug("Could not inspect protected page body: %s", exc)
 
@@ -1015,7 +1023,7 @@ def _try_with_cached_cookies(url: str, hostname: str) -> str | None:
             timeout=(5, 10),
             verify=get_ssl_verify(url),
         )
-        if response.status_code == 200:
+        if response.status_code == HTTPStatus.OK:
             logger.debug("Cached cookies worked, skipped Chrome bypass")
             return response.text
     except Exception as exc:
