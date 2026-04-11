@@ -105,7 +105,7 @@ ignore = ["D", "EM", "FBT", "PLR2004", "UP035", "TRY003", "E501", "TD002", "S104
 include = ["shelfmark"]
 exclude = [".local", "tests", "**/__pycache__", "**/node_modules"]
 pythonVersion = "3.14"
-typeCheckingMode = "off"
+typeCheckingMode = "standard"
 
 [tool.vulture]
 paths = ["shelfmark"]
