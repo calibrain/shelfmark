@@ -1,5 +1,7 @@
 """Logging configuration and custom logger with error tracing."""
 
+from __future__ import annotations
+
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
