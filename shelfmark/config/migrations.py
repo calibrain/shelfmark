@@ -1,17 +1,30 @@
 """Configuration migration helpers."""
 
+from __future__ import annotations
+
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from os import PathLike
 
 _DEPRECATED_SETTINGS_RESTRICTION_KEYS = (
     "PROXY_AUTH_RESTRICT_SETTINGS_TO_ADMIN",
     "CWA_RESTRICT_SETTINGS_TO_ADMIN",
     "RESTRICT_SETTINGS_TO_ADMIN",
 )
+
+
+class MigrationLogger(Protocol):
+    """Logger surface used by config migration helpers."""
+
+    def info(self, msg: str, *args: object) -> object: ...
+
+    def debug(self, msg: str, *args: object) -> object: ...
+
+    def exception(self, msg: str, *args: object) -> object: ...
 
 
 def _as_bool(value: object) -> bool:
@@ -50,9 +63,9 @@ def migrate_security_settings(
     load_users_config: Callable[[], dict[str, Any]],
     save_users_config: Callable[[dict[str, Any]], None],
     ensure_config_dir: Callable[[], None],
-    get_config_path: Callable[[], object],
+    get_config_path: Callable[[], str | PathLike[str]],
     sync_builtin_admin_user: Callable[[str, str], None],
-    logger: object,
+    logger: MigrationLogger,
 ) -> None:
     """Migrate legacy security keys and sync builtin admin credentials."""
     try:
