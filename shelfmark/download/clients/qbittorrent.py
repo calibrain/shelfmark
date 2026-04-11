@@ -12,11 +12,16 @@ import requests
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
     register_client,
+)
+from shelfmark.download.clients._coercion import (
+    coerce_optional_float,
+    coerce_optional_int,
+    config_text,
+    normalize_http_config_url,
 )
 from shelfmark.download.clients.torrent_utils import (
     extract_torrent_info,
@@ -83,46 +88,6 @@ def _hashes_match(hash1: str, hash2: str) -> bool:
 
 def _raise_runtime_error(message: str) -> NoReturn:
     raise RuntimeError(message)
-
-
-def _config_text(value: object, default: str = "") -> str:
-    """Coerce text config values to strings."""
-    if value is None:
-        return default
-    if isinstance(value, str):
-        return value
-    return str(value)
-
-
-def _normalize_qbittorrent_url(value: object) -> str:
-    """Normalize qBittorrent URLs while rejecting non-string config values."""
-    if not isinstance(value, str):
-        return ""
-    return normalize_http_url(value)
-
-
-def _coerce_optional_int(value: object) -> int | None:
-    """Convert optional numeric inputs to ints."""
-    if value is None:
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        return int(value)
-    msg = f"Expected int-compatible value, got {type(value).__name__}"
-    raise TypeError(msg)
-
-
-def _coerce_optional_float(value: object) -> float | None:
-    """Convert optional numeric inputs to floats."""
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        return float(value)
-    msg = f"Expected float-compatible value, got {type(value).__name__}"
-    raise TypeError(msg)
 
 
 def _normalize_tags(raw_tags: object) -> list[str]:
@@ -246,13 +211,13 @@ class QBittorrentClient(DownloadClient):
             raise ValueError(msg)
 
         # We use `_base_url` for direct HTTP calls, so it must be a fully-qualified URL.
-        self._base_url = _normalize_qbittorrent_url(raw_url)
+        self._base_url = normalize_http_config_url(raw_url, require_string=True)
         if not self._base_url:
             msg = "QBITTORRENT_URL is invalid"
             raise ValueError(msg)
 
-        username = _config_text(config.get("QBITTORRENT_USERNAME", ""))
-        password = _config_text(config.get("QBITTORRENT_PASSWORD", ""))
+        username = config_text(config.get("QBITTORRENT_USERNAME", ""))
+        password = config_text(config.get("QBITTORRENT_PASSWORD", ""))
 
         # qbittorrent-api accepts either a full URL or host:port; prefer the normalized URL
         # for consistency.
@@ -262,8 +227,8 @@ class QBittorrentClient(DownloadClient):
             password=password,
             VERIFY_WEBUI_CERTIFICATE=get_ssl_verify(self._base_url),
         )
-        self._category = _config_text(config.get("QBITTORRENT_CATEGORY", "books"))
-        self._download_dir = _config_text(config.get("QBITTORRENT_DOWNLOAD_DIR", ""))
+        self._category = config_text(config.get("QBITTORRENT_CATEGORY", "books"))
+        self._download_dir = config_text(config.get("QBITTORRENT_DOWNLOAD_DIR", ""))
         self._tags = _normalize_tags(config.get("QBITTORRENT_TAG", []))
 
     def _get_torrents_info(
@@ -370,8 +335,8 @@ class QBittorrentClient(DownloadClient):
     @staticmethod
     def is_configured() -> bool:
         """Check if qBittorrent is configured and selected as the torrent client."""
-        client = _config_text(config.get("PROWLARR_TORRENT_CLIENT", ""))
-        url = _normalize_qbittorrent_url(config.get("QBITTORRENT_URL", ""))
+        client = config_text(config.get("PROWLARR_TORRENT_CLIENT", ""))
+        url = normalize_http_config_url(config.get("QBITTORRENT_URL", ""), require_string=True)
         return client == "qbittorrent" and bool(url)
 
     def test_connection(self) -> tuple[bool, str]:
@@ -436,9 +401,9 @@ class QBittorrentClient(DownloadClient):
 
             # Per-torrent seeding limits from indexer
             seeding_time_limit_value = kwargs.get("seeding_time_limit")
-            seeding_time_limit = _coerce_optional_int(seeding_time_limit_value)
+            seeding_time_limit = coerce_optional_int(seeding_time_limit_value)
             ratio_limit_value = kwargs.get("ratio_limit")
-            ratio_limit = _coerce_optional_float(ratio_limit_value)
+            ratio_limit = coerce_optional_float(ratio_limit_value)
 
             add_kwargs: _QBittorrentAddKwargs = {"rename": name}
             if category:

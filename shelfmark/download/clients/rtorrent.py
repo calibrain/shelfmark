@@ -5,17 +5,18 @@ Uses xmlrpc to communicate with rTorrent's RPC interface.
 
 import ssl
 import xmlrpc.client as stdlib_xmlrpc_client
-from typing import NoReturn
+from typing import Any, NoReturn, Protocol, cast
 from urllib.parse import urlparse
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.utils import get_hardened_xmlrpc_client, normalize_http_url
+from shelfmark.core.utils import get_hardened_xmlrpc_client
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
     register_client,
 )
+from shelfmark.download.clients._coercion import config_text, normalize_http_config_url
 from shelfmark.download.clients.torrent_utils import (
     extract_torrent_info,
 )
@@ -35,7 +36,38 @@ _RTORRENT_CLIENT_ERRORS = (
 )
 
 
-def _create_rtorrent_server_proxy(url: str) -> object:
+class _RTorrentSystemProtocol(Protocol):
+    def client_version(self) -> object: ...
+
+
+class _RTorrentLoadProtocol(Protocol):
+    def raw_start(self, target: str, torrent_data: bytes, commands: str) -> object: ...
+
+    def start(self, target: str, url: str, commands: str) -> object: ...
+
+
+class _RTorrentDownloadProtocol(Protocol):
+    def multicall2(self, *args: object) -> list[list[Any]]: ...
+
+    def delete_tied(self, download_id: str) -> object: ...
+
+    def erase(self, download_id: str) -> object: ...
+
+    def stop(self, download_id: str) -> object: ...
+
+
+class _RTorrentDirectoryProtocol(Protocol):
+    def default(self) -> str: ...
+
+
+class _RTorrentRpcProtocol(Protocol):
+    system: _RTorrentSystemProtocol
+    load: _RTorrentLoadProtocol
+    d: _RTorrentDownloadProtocol
+    directory: _RTorrentDirectoryProtocol
+
+
+def _create_rtorrent_server_proxy(url: str) -> _RTorrentRpcProtocol:
     """Create an XML-RPC ServerProxy honoring certificate validation mode."""
     xmlrpc_client = get_hardened_xmlrpc_client()
 
@@ -45,9 +77,9 @@ def _create_rtorrent_server_proxy(url: str) -> object:
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
         transport = xmlrpc_client.SafeTransport(context=ssl_context)
-        return xmlrpc_client.ServerProxy(url, transport=transport)
+        return cast(_RTorrentRpcProtocol, xmlrpc_client.ServerProxy(url, transport=transport))
 
-    return xmlrpc_client.ServerProxy(url)
+    return cast(_RTorrentRpcProtocol, xmlrpc_client.ServerProxy(url))
 
 
 def _raise_runtime_error(message: str) -> NoReturn:
@@ -63,32 +95,32 @@ class RTorrentClient(DownloadClient):
 
     def __init__(self) -> None:
         """Initialize rTorrent client with settings from config."""
-        raw_url = config.get("RTORRENT_URL", "")
+        raw_url = config_text(config.get("RTORRENT_URL", ""))
         if not raw_url:
             msg = "RTORRENT_URL is required"
             raise ValueError(msg)
 
-        self._base_url = normalize_http_url(raw_url)
+        self._base_url = normalize_http_config_url(raw_url)
         if not self._base_url:
             msg = "RTORRENT_URL is invalid"
             raise ValueError(msg)
 
-        username = config.get("RTORRENT_USERNAME", "")
-        password = config.get("RTORRENT_PASSWORD", "")
+        username = config_text(config.get("RTORRENT_USERNAME", ""))
+        password = config_text(config.get("RTORRENT_PASSWORD", ""))
 
         if username and password:
             parsed = urlparse(self._base_url)
             self._base_url = f"{parsed.scheme}://{username}:{password}@{parsed.netloc}{parsed.path}"
 
         self._rpc = _create_rtorrent_server_proxy(self._base_url)
-        self._download_dir = config.get("RTORRENT_DOWNLOAD_DIR", "")
-        self._label = config.get("RTORRENT_LABEL", "")
+        self._download_dir = config_text(config.get("RTORRENT_DOWNLOAD_DIR", ""))
+        self._label = config_text(config.get("RTORRENT_LABEL", ""))
 
     @staticmethod
     def is_configured() -> bool:
         """Check if rTorrent is configured and selected as the torrent client."""
-        client = config.get("PROWLARR_TORRENT_CLIENT", "")
-        url = normalize_http_url(config.get("RTORRENT_URL", ""))
+        client = config_text(config.get("PROWLARR_TORRENT_CLIENT", ""))
+        url = normalize_http_config_url(config.get("RTORRENT_URL", ""))
         return client == "rtorrent" and bool(url)
 
     def test_connection(self) -> tuple[bool, str]:
@@ -372,4 +404,4 @@ class RTorrentClient(DownloadClient):
         except _RTORRENT_CLIENT_ERRORS:
             return None
         else:
-            return path or None
+            return str(path) if path else None

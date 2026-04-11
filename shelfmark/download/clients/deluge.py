@@ -26,6 +26,11 @@ from shelfmark.download.clients import (
     DownloadStatus,
     register_client,
 )
+from shelfmark.download.clients._coercion import (
+    coerce_optional_float,
+    coerce_optional_int,
+    config_text,
+)
 from shelfmark.download.clients.torrent_utils import (
     extract_torrent_info,
 )
@@ -78,9 +83,9 @@ class DelugeClient(DownloadClient):
 
     def __init__(self) -> None:
         """Initialize the client from the configured Deluge connection settings."""
-        raw_host = str(config.get("DELUGE_HOST", "localhost") or "")
-        raw_port = str(config.get("DELUGE_PORT", "8112") or "8112")
-        password = str(config.get("DELUGE_PASSWORD", "") or "")
+        raw_host = config_text(config.get("DELUGE_HOST", "localhost"))
+        raw_port = config_text(config.get("DELUGE_PORT", "8112"), "8112")
+        password = config_text(config.get("DELUGE_PASSWORD", ""))
 
         if not raw_host:
             msg = "DELUGE_HOST is required"
@@ -124,14 +129,14 @@ class DelugeClient(DownloadClient):
         self._connected = False
         self._rpc_id = 0
 
-        self._category = str(config.get("DELUGE_CATEGORY", "books") or "books")
-        self._download_dir = str(config.get("DELUGE_DOWNLOAD_DIR", "") or "")
+        self._category = config_text(config.get("DELUGE_CATEGORY", "books"), "books")
+        self._download_dir = config_text(config.get("DELUGE_DOWNLOAD_DIR", ""))
 
     def _next_rpc_id(self) -> int:
         self._rpc_id += 1
         return self._rpc_id
 
-    def _rpc_call(self, method: str, *params: object, timeout: int = 15) -> object:
+    def _rpc_call(self, method: str, *params: object, timeout: int = 15) -> Any:
         payload = {
             "id": self._next_rpc_id(),
             "method": method,
@@ -239,9 +244,9 @@ class DelugeClient(DownloadClient):
     @staticmethod
     def is_configured() -> bool:
         """Return whether Deluge is the active configured torrent client."""
-        client = config.get("PROWLARR_TORRENT_CLIENT", "")
-        host = config.get("DELUGE_HOST", "")
-        password = config.get("DELUGE_PASSWORD", "")
+        client = config_text(config.get("PROWLARR_TORRENT_CLIENT", ""))
+        host = config_text(config.get("DELUGE_HOST", ""))
+        password = config_text(config.get("DELUGE_PASSWORD", ""))
         return client == "deluge" and bool(host) and bool(password)
 
     def test_connection(self) -> tuple[bool, str]:
@@ -279,12 +284,12 @@ class DelugeClient(DownloadClient):
                 options["download_location"] = self._download_dir
 
             # Per-torrent seeding limits from indexer
-            seeding_time_limit = kwargs.get("seeding_time_limit")
+            seeding_time_limit = coerce_optional_int(kwargs.get("seeding_time_limit"))
             if seeding_time_limit is not None:
-                options["seed_time_limit"] = int(seeding_time_limit)
-            ratio_limit = kwargs.get("ratio_limit")
+                options["seed_time_limit"] = seeding_time_limit
+            ratio_limit = coerce_optional_float(kwargs.get("ratio_limit"))
             if ratio_limit is not None:
-                options["stop_at_ratio"] = float(ratio_limit)
+                options["stop_at_ratio"] = ratio_limit
                 options["stop_at_ratio_enabled"] = True
 
             if torrent_info.is_magnet:

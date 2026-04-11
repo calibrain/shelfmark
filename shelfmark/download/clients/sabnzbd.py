@@ -3,19 +3,20 @@
 Uses SABnzbd's REST API directly via requests (no external dependency).
 """
 
+from typing import Any
 from urllib.parse import urlparse
 
 import requests
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
     register_client,
     with_retry,
 )
+from shelfmark.download.clients._coercion import config_text, normalize_http_config_url
 from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
@@ -29,6 +30,7 @@ _SABNZBD_CLIENT_ERRORS = (
     TypeError,
     ValueError,
 )
+_SabnzbdRequestParam = str | int | float | bool
 
 
 def _parse_eta(eta_str: str) -> int | None:
@@ -110,33 +112,33 @@ class SABnzbdClient(DownloadClient):
 
     def __init__(self) -> None:
         """Initialize SABnzbd client with settings from config."""
-        raw_url = config.get("SABNZBD_URL", "")
+        raw_url = config_text(config.get("SABNZBD_URL", ""))
         if not raw_url:
             msg = "SABNZBD_URL is required"
             raise ValueError(msg)
 
-        api_key = config.get("SABNZBD_API_KEY", "")
+        api_key = config_text(config.get("SABNZBD_API_KEY", ""))
         if not api_key:
             msg = "SABNZBD_API_KEY is required"
             raise ValueError(msg)
 
-        self.url = normalize_http_url(raw_url)
+        self.url = normalize_http_config_url(raw_url)
         if not self.url:
             msg = "SABNZBD_URL is invalid"
             raise ValueError(msg)
         self.api_key = api_key
-        self._category = config.get("SABNZBD_CATEGORY", "books")
+        self._category = config_text(config.get("SABNZBD_CATEGORY", "books"))
 
     @staticmethod
     def is_configured() -> bool:
         """Check if SABnzbd is configured and selected as the usenet client."""
-        client = config.get("PROWLARR_USENET_CLIENT", "")
-        url = normalize_http_url(config.get("SABNZBD_URL", ""))
-        api_key = config.get("SABNZBD_API_KEY", "")
+        client = config_text(config.get("PROWLARR_USENET_CLIENT", ""))
+        url = normalize_http_config_url(config.get("SABNZBD_URL", ""))
+        api_key = config_text(config.get("SABNZBD_API_KEY", ""))
         return client == "sabnzbd" and bool(url) and bool(api_key)
 
     @with_retry()
-    def _api_call(self, mode: str, params: dict | None = None) -> object:
+    def _api_call(self, mode: str, params: dict[str, _SabnzbdRequestParam] | None = None) -> Any:
         """Make an API call to SABnzbd.
 
         Args:
@@ -152,7 +154,7 @@ class SABnzbdClient(DownloadClient):
         """
         api_url = f"{self.url}/api"
 
-        request_params = {
+        request_params: dict[str, _SabnzbdRequestParam] = {
             "apikey": self.api_key,
             "mode": mode,
             "output": "json",
@@ -177,7 +179,7 @@ class SABnzbdClient(DownloadClient):
 
     def _api_post_file(
         self, nzb_content: bytes, filename: str, nzb_name: str, category: str
-    ) -> object:
+    ) -> Any:
         """Upload an NZB file to SABnzbd using addfile.
 
         Returns:
@@ -185,7 +187,7 @@ class SABnzbdClient(DownloadClient):
 
         """
         api_url = f"{self.url}/api"
-        request_params = {
+        request_params: dict[str, _SabnzbdRequestParam] = {
             "apikey": self.api_key,
             "mode": "addfile",
             "output": "json",
@@ -224,7 +226,7 @@ class SABnzbdClient(DownloadClient):
         if not api_key:
             return {}
 
-        prowlarr_url = normalize_http_url(config.get("PROWLARR_URL", ""))
+        prowlarr_url = normalize_http_config_url(config.get("PROWLARR_URL", ""))
         if not prowlarr_url:
             return {}
 
@@ -320,13 +322,13 @@ class SABnzbdClient(DownloadClient):
 
         """
         # Use configured category if not explicitly provided
-        category = category or self._category
+        resolved_category = category or self._category
 
         try:
             logger.debug("Adding NZB to SABnzbd: %s", name)
             nzb_filename = self._build_nzb_filename(name, url)
             nzb_content = self._fetch_nzb_content(url)
-            result = self._api_post_file(nzb_content, nzb_filename, name, category)
+            result = self._api_post_file(nzb_content, nzb_filename, name, resolved_category)
             nzo_id = self._extract_nzo_id(result)
             logger.info("Added NZB to SABnzbd: %s", nzo_id)
         except _SABNZBD_CLIENT_ERRORS as e:
@@ -340,7 +342,7 @@ class SABnzbdClient(DownloadClient):
                 {
                     "name": url,
                     "nzbname": name,
-                    "cat": category,
+                    "cat": resolved_category,
                 },
             )
             nzo_id = self._extract_nzo_id(result)
