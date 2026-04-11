@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
+_NOTIFICATION_TRIGGER_ERRORS = (RuntimeError, TypeError, ValueError)
 
 
 def _error_response(
@@ -508,7 +509,7 @@ def _notify_admin_for_request_event(
     owner_user_id = normalize_positive_int(request_row.get("user_id"))
     try:
         notify_admin(event, context)
-    except Exception as exc:
+    except _NOTIFICATION_TRIGGER_ERRORS as exc:
         logger.warning(
             "Failed to trigger admin notification for request event '%s': %s",
             event.value,
@@ -518,7 +519,7 @@ def _notify_admin_for_request_event(
         return
     try:
         notify_user(owner_user_id, event, context)
-    except Exception as exc:
+    except _NOTIFICATION_TRIGGER_ERRORS as exc:
         logger.warning(
             "Failed to trigger user notification for request event '%s' (user_id=%s): %s",
             event.value,

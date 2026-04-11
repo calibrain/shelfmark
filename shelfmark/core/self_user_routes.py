@@ -1,5 +1,6 @@
 """Self-service user account routes."""
 
+import sqlite3
 from functools import wraps
 from typing import TYPE_CHECKING, Any
 
@@ -48,6 +49,8 @@ _VALID_SELF_SETTINGS_SECTIONS = (
     _SELF_SETTINGS_SECTION_NOTIFICATIONS,
 )
 _DEFAULT_VISIBLE_SELF_SETTINGS_SECTIONS = list(_VALID_SELF_SETTINGS_SECTIONS)
+_USER_PREFERENCES_FALLBACK_ERRORS = (ImportError, OSError, RuntimeError, TypeError, sqlite3.Error)
+_CONFIG_REFRESH_ERRORS = (ImportError, OSError, RuntimeError, TypeError, ValueError)
 
 
 def _get_current_user(
@@ -90,6 +93,36 @@ def _serialize_self_user(user: Mapping[str, Any], auth_mode: str) -> dict[str, A
     payload["is_active"] = is_user_active_for_auth_mode(payload, auth_mode)
     payload["edit_capabilities"] = _get_self_edit_capabilities(payload)
     return payload
+
+
+def _build_optional_user_preferences(
+    user_db: UserDB,
+    *,
+    user_id: int,
+    tab_name: str,
+    missing_tab_error: str,
+    preference_label: str,
+) -> tuple[dict[str, Any] | None, tuple[Response, int] | None]:
+    try:
+        return _build_user_preferences_payload(user_db, user_id, tab_name), None
+    except ValueError as exc:
+        if str(exc) == missing_tab_error:
+            return None, (jsonify({"error": missing_tab_error}), 500)
+        logger.warning(
+            "Failed to build user %s preferences for user_id=%s: %s",
+            preference_label,
+            user_id,
+            exc,
+        )
+        return None, None
+    except _USER_PREFERENCES_FALLBACK_ERRORS as exc:
+        logger.warning(
+            "Failed to build user %s preferences for user_id=%s: %s",
+            preference_label,
+            user_id,
+            exc,
+        )
+        return None, None
 
 
 def _normalize_visible_self_settings_sections(raw_sections: object) -> list[str]:
@@ -180,51 +213,39 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
 
         delivery_preferences = None
         if _SELF_SETTINGS_SECTION_DELIVERY in visible_self_settings_sections:
-            try:
-                delivery_preferences = _build_user_preferences_payload(
-                    user_db, user_id, "downloads"
-                )
-            except ValueError:
-                return jsonify({"error": "Downloads settings tab not found"}), 500
-            except Exception as exc:
-                logger.warning(
-                    "Failed to build user delivery preferences for user_id=%s: %s",
-                    user_id,
-                    exc,
-                )
-                delivery_preferences = None
+            delivery_preferences, error_response = _build_optional_user_preferences(
+                user_db,
+                user_id=user_id,
+                tab_name="downloads",
+                missing_tab_error="Downloads settings tab not found",
+                preference_label="delivery",
+            )
+            if error_response:
+                return error_response
 
         search_preferences = None
         if _SELF_SETTINGS_SECTION_SEARCH in visible_self_settings_sections:
-            try:
-                search_preferences = _build_user_preferences_payload(
-                    user_db, user_id, "search_mode"
-                )
-            except ValueError:
-                return jsonify({"error": "Search mode settings tab not found"}), 500
-            except Exception as exc:
-                logger.warning(
-                    "Failed to build user search preferences for user_id=%s: %s",
-                    user_id,
-                    exc,
-                )
-                search_preferences = None
+            search_preferences, error_response = _build_optional_user_preferences(
+                user_db,
+                user_id=user_id,
+                tab_name="search_mode",
+                missing_tab_error="Search mode settings tab not found",
+                preference_label="search",
+            )
+            if error_response:
+                return error_response
 
         notification_preferences = None
         if _SELF_SETTINGS_SECTION_NOTIFICATIONS in visible_self_settings_sections:
-            try:
-                notification_preferences = _build_user_preferences_payload(
-                    user_db, user_id, "notifications"
-                )
-            except ValueError:
-                return jsonify({"error": "Notifications settings tab not found"}), 500
-            except Exception as exc:
-                logger.warning(
-                    "Failed to build user notification preferences for user_id=%s: %s",
-                    user_id,
-                    exc,
-                )
-                notification_preferences = None
+            notification_preferences, error_response = _build_optional_user_preferences(
+                user_db,
+                user_id=user_id,
+                tab_name="notifications",
+                missing_tab_error="Notifications settings tab not found",
+                preference_label="notification",
+            )
+            if error_response:
+                return error_response
 
         user_overridable_keys = sorted(
             set(delivery_preferences.get("keys", []) if delivery_preferences else [])
@@ -372,7 +393,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
             user_db.set_user_settings(user_id, validated_settings)
             try:
                 app_config.refresh(force=True)
-            except Exception as exc:
+            except _CONFIG_REFRESH_ERRORS as exc:
                 logger.warning(
                     "Updated settings for user %s but failed to refresh runtime config: %s",
                     user_id,

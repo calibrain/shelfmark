@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 logger = setup_logger(__name__)
 
 _T = TypeVar("_T")
+_PERMISSION_DEBUG_ERRORS = (LookupError, OSError, RuntimeError, TypeError, ValueError)
+_IO_OFFLOAD_FALLBACK_ERRORS = (RuntimeError, TypeError)
 
 
 def _log_path_permissions(probe: Path, label: str) -> None:
@@ -39,7 +41,7 @@ def _log_path_permissions(probe: Path, label: str) -> None:
             _run_io(probe.exists),
             _run_io(probe.is_dir),
         )
-    except Exception as stat_error:
+    except _PERMISSION_DEBUG_ERRORS as stat_error:
         logger.debug("Path permissions (%s): stat failed for %s: %s", label, probe, stat_error)
 
 
@@ -51,12 +53,12 @@ def _run_io[T](func: Callable[..., _T], *args: Any, **kwargs: Any) -> _T:
     """
     try:
         from shelfmark.download.fs import run_blocking_io as _run_blocking_io
-    except Exception:
+    except ImportError:
         return func(*args, **kwargs)
 
     try:
         return _run_blocking_io(func, *args, **kwargs)
-    except Exception:
+    except _IO_OFFLOAD_FALLBACK_ERRORS:
         # Fall back to direct call if threadpool offload is unavailable.
         return func(*args, **kwargs)
 
@@ -66,7 +68,7 @@ def _format_uid(uid: int) -> str:
         import pwd
 
         return pwd.getpwuid(uid).pw_name
-    except Exception:
+    except (ImportError, KeyError):
         return str(uid)
 
 
@@ -75,7 +77,7 @@ def _format_gid(gid: int) -> str:
         import grp
 
         return grp.getgrgid(gid).gr_name
-    except Exception:
+    except (ImportError, KeyError):
         return str(gid)
 
 
@@ -103,7 +105,7 @@ def log_path_permission_context(label: str, path: Path) -> None:
         for probe in [path, path.parent]:
             try:
                 resolved = _run_io(probe.resolve)
-            except Exception:
+            except (OSError, RuntimeError):
                 resolved = probe
 
             try:
@@ -121,14 +123,14 @@ def log_path_permission_context(label: str, path: Path) -> None:
                     _run_io(probe.is_dir),
                     _run_io(probe.is_symlink),
                 )
-            except Exception as stat_error:
+            except _PERMISSION_DEBUG_ERRORS as stat_error:
                 logger.debug(
                     "Path permissions (%s): stat failed for %s: %s",
                     label,
                     probe,
                     stat_error,
                 )
-    except Exception as context_error:
+    except _PERMISSION_DEBUG_ERRORS as context_error:
         logger.debug("Permission context (%s): failed to collect: %s", label, context_error)
 
 
@@ -153,5 +155,5 @@ def log_transfer_permission_context(label: str, source: Path, dest: Path, error:
 
         for probe in [source, dest, dest.parent]:
             _log_path_permissions(probe, label)
-    except Exception as context_error:
+    except _PERMISSION_DEBUG_ERRORS as context_error:
         logger.debug("Permission context (%s): failed to collect: %s", label, context_error)
