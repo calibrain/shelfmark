@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 from werkzeug.utils import secure_filename
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import coerce_bool, normalize_optional_text
 
 logger = setup_logger(__name__)
 _SETTINGS_LIVE_APPLY_ERRORS = (OSError, RuntimeError, TypeError, ValueError)
@@ -27,7 +28,7 @@ class FieldBase:
     key: str  # Environment variable / config key
     label: str  # Display label in UI
     description: str = ""  # Help text
-    default: object = None  # Default value if not set
+    default: Any = None  # Default value if not set
     required: bool = False  # Whether field must have a value
     env_var: str | None = None  # Override env var name (defaults to key)
     env_supported: bool = True  # Whether this setting can be set via ENV var (False = UI-only)
@@ -219,7 +220,7 @@ class HeadingField:
 
 
 # Type alias for all field types
-SettingsField = (
+ValueField = (
     TextField
     | PasswordField
     | NumberField
@@ -229,10 +230,9 @@ SettingsField = (
     | TagListField
     | OrderableListField
     | TableField
-    | CustomComponentField
-    | ActionButton
-    | HeadingField
 )
+
+SettingsField = ValueField | CustomComponentField | ActionButton | HeadingField
 
 
 @dataclass
@@ -332,23 +332,21 @@ def get_all_settings_tabs() -> list[SettingsTab]:
     return sorted(_SETTINGS_REGISTRY.values(), key=lambda t: (t.order, t.name))
 
 
-def _iter_value_fields(tab: SettingsTab) -> Iterator[SettingsField]:
+def _iter_value_fields(tab: SettingsTab) -> Iterator[FieldBase]:
     """Yield value-bearing fields for a tab."""
     for settings_field in tab.fields:
         if isinstance(settings_field, CustomComponentField):
             for value_field in settings_field.value_fields:
-                if isinstance(value_field, (ActionButton, HeadingField, CustomComponentField)):
-                    continue
-                yield value_field
+                if isinstance(value_field, FieldBase):
+                    yield value_field
             continue
-        if isinstance(settings_field, (ActionButton, HeadingField)):
-            continue
-        yield settings_field
+        if isinstance(settings_field, FieldBase):
+            yield settings_field
 
 
 def get_settings_field_map(
     tab_name: str | None = None,
-) -> dict[str, tuple[SettingsField, str]]:
+) -> dict[str, tuple[FieldBase, str]]:
     """Return key -> (field, tab_name) map for value-bearing settings fields."""
     tabs: list[SettingsTab]
     if tab_name:
@@ -359,7 +357,7 @@ def get_settings_field_map(
     else:
         tabs = get_all_settings_tabs()
 
-    field_map: dict[str, tuple[SettingsField, str]] = {}
+    field_map: dict[str, tuple[FieldBase, str]] = {}
     for tab in tabs:
         for settings_field in _iter_value_fields(tab):
             field_map[settings_field.key] = (settings_field, tab.name)
@@ -368,7 +366,7 @@ def get_settings_field_map(
 
 def get_user_overridable_fields(
     tab_name: str | None = None,
-) -> dict[str, tuple[SettingsField, str]]:
+) -> dict[str, tuple[FieldBase, str]]:
     """Return key -> (field, tab_name) map for fields marked user_overridable."""
     field_map = get_settings_field_map(tab_name=tab_name)
     return {
@@ -836,11 +834,8 @@ def migrate_download_to_browser_settings() -> None:
         logger.exception("Failed to migrate download-to-browser settings")
 
 
-def get_setting_value(field: SettingsField, tab_name: str) -> object:
+def get_setting_value(field: FieldBase, tab_name: str) -> object:
     """Resolve the effective value for a settings field."""
-    if isinstance(field, (ActionButton, HeadingField, CustomComponentField)):
-        return None  # Actions and headings don't have values
-
     # 1. Check environment variable (if supported for this field)
     if field.env_supported:
         env_var_name = field.get_env_var_name()
@@ -857,7 +852,7 @@ def get_setting_value(field: SettingsField, tab_name: str) -> object:
     return field.default
 
 
-def _parse_env_value(value: str, field: SettingsField) -> object:
+def _parse_env_value(value: str, field: FieldBase) -> object:
     """Parse an environment variable value to the appropriate type."""
     if isinstance(field, CheckboxField):
         return value.lower() in ("true", "1", "yes", "on")
@@ -889,10 +884,8 @@ def _parse_env_value(value: str, field: SettingsField) -> object:
         return value
 
 
-def is_value_from_env(field: SettingsField) -> bool:
+def is_value_from_env(field: FieldBase) -> bool:
     """Check if a field's value comes from an environment variable."""
-    if isinstance(field, (ActionButton, HeadingField, CustomComponentField)):
-        return False
     # UI-only settings never come from ENV (env_supported=False)
     if not getattr(field, "env_supported", True):
         return False
@@ -918,7 +911,7 @@ def serialize_field(
     """
     # CustomComponentField has a custom structure - handle separately
     if isinstance(field, CustomComponentField):
-        result: dict[str, Any] = {
+        component_result: dict[str, Any] = {
             "key": field.key,
             "label": field.label,
             "type": field.get_field_type(),
@@ -939,31 +932,31 @@ def serialize_field(
                 )
                 serialized_bound_field["hiddenInUi"] = True
                 bound_fields.append(serialized_bound_field)
-            result["boundFields"] = bound_fields
+            component_result["boundFields"] = bound_fields
         if field.show_when:
-            result["showWhen"] = field.show_when
+            component_result["showWhen"] = field.show_when
         if field.universal_only:
-            result["universalOnly"] = True
-        return result
+            component_result["universalOnly"] = True
+        return component_result
 
     # HeadingField has a different structure - handle separately
     if isinstance(field, HeadingField):
-        result: dict[str, Any] = {
+        heading_result: dict[str, Any] = {
             "key": field.key,
             "type": field.get_field_type(),
             "title": field.title,
             "description": field.description,
         }
         if field.description_by_auth_mode:
-            result["descriptionByAuthMode"] = field.description_by_auth_mode
+            heading_result["descriptionByAuthMode"] = field.description_by_auth_mode
         if field.link_url:
-            result["linkUrl"] = field.link_url
-            result["linkText"] = field.link_text or field.link_url
+            heading_result["linkUrl"] = field.link_url
+            heading_result["linkText"] = field.link_text or field.link_url
         if field.show_when:
-            result["showWhen"] = field.show_when
+            heading_result["showWhen"] = field.show_when
         if field.universal_only:
-            result["universalOnly"] = True
-        return result
+            heading_result["universalOnly"] = True
+        return heading_result
 
     result: dict[str, Any] = {
         "key": field.key,
@@ -1166,12 +1159,12 @@ def _apply_dns_settings(config: Config) -> None:
     try:
         from shelfmark.download import network
 
-        provider = config.get("CUSTOM_DNS", "auto")
-        use_doh = config.get("USE_DOH", False)
+        provider = normalize_optional_text(config.get("CUSTOM_DNS", "auto")) or "auto"
+        use_doh = coerce_bool(config.get("USE_DOH", False), default=False)
         manual_servers = None
 
         if provider == "manual":
-            manual_dns = config.get("CUSTOM_DNS_MANUAL", "")
+            manual_dns = normalize_optional_text(config.get("CUSTOM_DNS_MANUAL", ""))
             if manual_dns:
                 # Parse comma-separated server list
                 manual_servers = [s.strip() for s in manual_dns.split(",") if s.strip()]
