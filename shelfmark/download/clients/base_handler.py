@@ -431,9 +431,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 f"Remapped path '{remapped}' does not exist. "
                 f"Check your Docker volume mounts match the Local Path in Settings > Advanced > Remote Path Mappings."
             )
-            failure_log = (
-                "Download path does not exist after remapping: %s -> %s (probe_error=%s). Client: %s, ID: %s."
-            )
+            failure_log = "Download path does not exist after remapping: %s -> %s (probe_error=%s). Client: %s, ID: %s."
             failure_args = (
                 raw_path,
                 remapped,
@@ -475,9 +473,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         if mappings:
             message = f"{hint} No remote path mapping matched for client '{client.name}'."
             failure_label = "completed_download_original"
-            failure_log = (
-                "Download path does not exist and no remote path mapping matched for %s (%s): %s (probe_error=%s). %s"
-            )
+            failure_log = "Download path does not exist and no remote path mapping matched for %s (%s): %s (probe_error=%s). %s"
             failure_args = (
                 client.name,
                 download_id,
