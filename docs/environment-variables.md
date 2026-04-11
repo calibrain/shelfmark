@@ -277,6 +277,7 @@ The release source tab to open by default in the release modal for audiobooks. U
 | `TEMPLATE_RENAME` | Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension). Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. Applies to single-file downloads. | string | `{Author} - {Title} ({Year})` |
 | `TEMPLATE_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension). Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title} ({Year})` |
 | `HARDLINK_TORRENTS` | Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder. | boolean | `false` |
+| `ENABLE_CWA_SIDECAR_MANIFEST` | Write an additive `<delivered filename>.cwa.json` manifest next to delivered book files for Calibre-Web-Automated ingest. Disabled by default. Only emits when exact Hardcover provenance is available. | boolean | `false` |
 | `BOOKLORE_HOST` | Base URL of your Booklore instance | string | _none_ |
 | `BOOKLORE_USERNAME` | Booklore account username | string | _none_ |
 | `BOOKLORE_PASSWORD` | Booklore account password | string (secret) | _none_ |
@@ -360,6 +361,15 @@ Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {Original
 **Hardlink Book Torrents**
 
 Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `ENABLE_CWA_SIDECAR_MANIFEST`
+
+**Emit CWA Sidecar Manifest**
+
+Write an additive `<delivered filename>.cwa.json` manifest next to delivered book files for Calibre-Web-Automated ingest. Disabled by default. Only emits when exact Hardcover provenance is available.
 
 - **Type:** boolean
 - **Default:** `false`
