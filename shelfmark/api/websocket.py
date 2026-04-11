@@ -90,7 +90,6 @@ class WebSocketManager:
     def sync_user_room(
         self,
         sid: str,
-        *,
         is_admin: bool,
         db_user_id: int | None = None,
     ) -> None:
@@ -107,7 +106,6 @@ class WebSocketManager:
     def join_user_room(
         self,
         sid: str,
-        *,
         is_admin: bool,
         db_user_id: int | None = None,
     ) -> None:
