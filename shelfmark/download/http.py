@@ -560,7 +560,8 @@ def download_url(
                     return resumed
 
             # Try mirror/DNS rotation if nothing downloaded yet
-            if bytes_downloaded == 0 and retryable:
+            # Also rotate if we have partial data and resume failed (C12)
+            if retryable and (bytes_downloaded == 0 or not resumed):
                 new_url = _try_rotation(link, current_url, selector)
                 if new_url:
                     current_url = new_url
@@ -617,9 +618,11 @@ def _try_resume(
             # Check resume support
             if response.status_code == _HTTP_STATUS_OK:  # Server doesn't support resume
                 logger.info("Server doesn't support resume")
+                response.close()
                 return None
             if response.status_code == _HTTP_STATUS_RANGE_NOT_SATISFIABLE:  # Range not satisfiable
                 logger.warning("Range not satisfiable")
+                response.close()
                 return None
             if response.status_code != _HTTP_STATUS_PARTIAL_CONTENT:
                 response.raise_for_status()

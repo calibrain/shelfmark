@@ -284,7 +284,11 @@ def get_book_info(book_id: str, *, fetch_download_count: bool = True) -> BrowseR
 
 
 def _parse_search_result_row(row: Tag) -> BrowseRecord | None:
-    """Parse a single search result row into a browse record."""
+    """Parse a single search result row into a browse record.
+
+    Uses header-based column mapping to avoid breakage when Anna's Archive
+    adds/reorders table columns (fixes C8).
+    """
     try:
         if row.text.strip().lower().startswith("your ad here"):
             return None
@@ -292,18 +296,55 @@ def _parse_search_result_row(row: Tag) -> BrowseRecord | None:
         preview_img = cells[0].find("img")
         preview = preview_img["src"] if preview_img else None
 
+        # Build column index map from table header (C8 fix)
+        header_map: dict[str, int] = {}
+        try:
+            thead = row.find_parent("table").find("thead")
+            if thead:
+                header_cells = thead.find_all("th")
+                header_map = {th.text.strip().lower(): idx for idx, th in enumerate(header_cells)}
+        except Exception:
+            pass  # Fall back to hardcoded indices if header parsing fails
+
+        def get_cell(name: str, default=None):
+            idx = header_map.get(name)
+            if idx is not None and idx < len(cells):
+                span = cells[idx].find("span")
+                return span.next if span else default
+            return default
+
+        # If no header map, fall back to positional indices (backwards compat)
+        if header_map:
+            title = get_cell("title")
+            author = get_cell("author")
+            publisher = get_cell("publisher")
+            year = get_cell("year")
+            language = get_cell("language")
+            content = get_cell("content")
+            format_ = get_cell("format")
+            size = get_cell("size")
+        else:
+            title = cells[1].find("span").next if len(cells) > 1 else None
+            author = cells[2].find("span").next if len(cells) > 2 else None
+            publisher = cells[3].find("span").next if len(cells) > 3 else None
+            year = cells[4].find("span").next if len(cells) > 4 else None
+            language = cells[7].find("span").next if len(cells) > 7 else None
+            content = cells[8].find("span").next.lower() if len(cells) > 8 else None
+            format_ = cells[9].find("span").next.lower() if len(cells) > 9 else None
+            size = cells[10].find("span").next if len(cells) > 10 else None
+
         return BrowseRecord(
             id=row.find_all("a")[0]["href"].split("/")[-1],
-            title=cells[1].find("span").next,
+            title=title,
             source="direct_download",
             preview=preview,
-            author=cells[2].find("span").next,
-            publisher=cells[3].find("span").next,
-            year=cells[4].find("span").next,
-            language=cells[7].find("span").next,
-            content=cells[8].find("span").next.lower(),
-            format=cells[9].find("span").next.lower(),
-            size=cells[10].find("span").next,
+            author=author,
+            publisher=publisher,
+            year=year,
+            language=language,
+            content=content,
+            format=format_,
+            size=size,
         )
     except (AttributeError, IndexError, KeyError, TypeError) as e:
         logger.error_trace(f"Error parsing search result row: {e}")
@@ -316,15 +357,20 @@ def _parse_book_info_page(
     *,
     fetch_download_count: bool = True,
 ) -> BrowseRecord:
-    """Parse the book info page HTML into a browse record."""
-    data = soup.select_one("body > main > div:nth-of-type(1)")
+    """Parse the book info page HTML into a browse record.
+
+    Uses semantic selectors instead of hardcoded nth-of-type positions (C9 fix).
+    """
+    # Use semantic selector for main content area (C9 fix)
+    data = soup.select_one("main form, main > div, .main-content, main > section")
 
     if not data:
         raise RuntimeError(f"Failed to parse book info for ID: {book_id}")
 
     preview: str = ""
 
-    node = data.select_one("div:nth-of-type(1) > img")
+    # Use alt text to find cover image instead of hardcoded nth-of-type (C9 fix)
+    node = data.select_one("img[alt*='cover'], img[src*='cover'], img[class*='cover']")
     if node:
         preview_value = node.get("src", "")
         preview = preview_value[0] if isinstance(preview_value, list) else preview_value
@@ -351,7 +397,7 @@ def _parse_book_info_page(
                     slow_urls_no_waitlist.add(href)
                 else:
                     slow_urls_with_waitlist.add(href)
-        except AttributeError, TypeError:
+        except AttributeError | TypeError:
             pass
 
     logger.debug(
@@ -424,8 +470,12 @@ def _parse_book_info_page(
         download_urls=urls,
     )
 
-    # Extract additional metadata
-    info = _extract_book_metadata(original_divs[-6])
+    # Extract additional metadata (C10 fix — bounds check original_divs)
+    if len(original_divs) >= 6:
+        info = _extract_book_metadata(original_divs[-6])
+    else:
+        logger.warning("Book page has fewer divs than expected (%d)", len(original_divs))
+        info = {}
 
     if fetch_download_count:
         try:

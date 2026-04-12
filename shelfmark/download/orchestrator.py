@@ -751,8 +751,9 @@ def update_download_status(book_id: str, status: str, message: str | None = None
 
     # Update status message first so terminal snapshots capture the final message
     # (for example, "Complete" or "Sent to ...") instead of a stale in-progress one.
-    if message is not None:
-        book_queue.update_status_message(book_id, message)
+    # Always call update_status_message to clear stale messages (e.g., "Fetching metadata"
+    # when transitioning from metaDL to downloading state).
+    book_queue.update_status_message(book_id, message)
 
     book_queue.update_status(book_id, queue_status_enum)
 

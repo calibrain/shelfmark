@@ -1,25 +1,25 @@
-# Local development - builds from source with debug enabled
 services:
   shelfmark-dev:
-    extends:
-      file: ./compose/docker-compose.yml
-      service: shelfmark
     build:
       context: .
       dockerfile: Dockerfile
-      target: shelfmark
-    cap_add:
-      - SYS_PTRACE
+      target: shelfmark-lite
+    container_name: shelfmark-dev
+    ports:
+      - 8085:8084
     environment:
-      DEBUG: true
-      # HIDE_LOCAL_AUTH: true
-      OIDC_AUTO_REDIRECT: true
+      DEBUG: "true"
+      FLASK_PORT: 8084
+      PUID: 1000
+      PGID: 1000
     volumes:
       - ./.local/config:/config
-      - ./.local/books:/books
+      - /home/blickysparqo/homelab/data/books:/books
       - ./.local/log:/var/log/shelfmark
       - ./.local/tmp:/tmp/shelfmark
-      - ./shelfmark:/app/shelfmark:ro
-      - ./frontend-dist:/app/frontend-dist:ro
-      # Required for torrent / usenet - path must match your download client's volume exactly
-      # - /path/to/downloads:/path/to/downloads
+    networks:
+      - homelab_homelab
+
+networks:
+  homelab_homelab:
+    external: true
