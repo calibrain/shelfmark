@@ -6,9 +6,8 @@ without requiring a running SABnzbd instance.
 """
 
 from unittest.mock import MagicMock, patch
-import pytest
 
-from shelfmark.download.clients import DownloadStatus
+import pytest
 
 
 class TestSABnzbdClientIsConfigured:
@@ -487,19 +486,64 @@ class TestSABnzbdClientAddDownload:
             SABnzbdClient,
         )
 
-        with patch.object(SABnzbdClient, "_fetch_nzb_content", return_value=b"nzbdata"):
-            with patch.object(
+        with (
+            patch.object(
+                SABnzbdClient,
+                "_fetch_nzb_content",
+                return_value=b"nzbdata",
+            ),
+            patch.object(
                 SABnzbdClient,
                 "_api_post_file",
                 return_value={"status": True, "nzo_ids": ["SABnzbd_nzo_xyz789"]},
-            ):
-                client = SABnzbdClient()
-                result = client.add_download(
-                    "https://example.com/download.nzb",
-                    "Test Book",
-                )
+            ),
+        ):
+            client = SABnzbdClient()
+            result = client.add_download(
+                "https://example.com/download.nzb",
+                "Test Book",
+            )
 
-                assert result == "SABnzbd_nzo_xyz789"
+            assert result == "SABnzbd_nzo_xyz789"
+
+    def test_add_download_uses_configured_category_and_nzb_filename(self, monkeypatch):
+        """Test add_download posts the expected SABnzbd payload."""
+        config_values = {
+            "SABNZBD_URL": "http://localhost:8080",
+            "SABNZBD_API_KEY": "abc123",
+            "SABNZBD_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.sabnzbd.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        mock_get_response = MagicMock()
+        mock_get_response.content = b"<nzb>test</nzb>"
+
+        mock_post_response = MagicMock()
+        mock_post_response.json.return_value = {"status": True, "nzo_ids": ["SABnzbd_nzo_xyz789"]}
+
+        with (
+            patch(
+                "shelfmark.download.clients.sabnzbd.requests.get",
+                return_value=mock_get_response,
+            ),
+            patch(
+                "shelfmark.download.clients.sabnzbd.requests.post",
+                return_value=mock_post_response,
+            ) as mock_post,
+        ):
+            from shelfmark.download.clients.sabnzbd import SABnzbdClient
+
+            client = SABnzbdClient()
+            result = client.add_download("https://example.com/download.nzb.gz", "Test Book")
+
+        assert result == "SABnzbd_nzo_xyz789"
+        assert mock_post.call_args.kwargs["params"]["mode"] == "addfile"
+        assert mock_post.call_args.kwargs["params"]["cat"] == "books"
+        assert mock_post.call_args.kwargs["params"]["nzbname"] == "Test Book"
+        assert mock_post.call_args.kwargs["files"]["name"][0] == "Test Book.nzb.gz"
 
     def test_add_download_no_nzo_id(self, monkeypatch):
         """Test add_download when SABnzbd returns no nzo_id."""
@@ -517,22 +561,28 @@ class TestSABnzbdClientAddDownload:
             SABnzbdClient,
         )
 
-        with patch.object(SABnzbdClient, "_fetch_nzb_content", return_value=b"nzbdata"):
-            with patch.object(
+        with (
+            patch.object(
+                SABnzbdClient,
+                "_fetch_nzb_content",
+                return_value=b"nzbdata",
+            ),
+            patch.object(
                 SABnzbdClient,
                 "_api_post_file",
                 return_value={"status": True, "nzo_ids": []},
-            ):
-                with patch.object(
-                    SABnzbdClient,
-                    "_api_call",
-                    return_value={"status": True, "nzo_ids": []},
-                ):
-                    client = SABnzbdClient()
-                    with pytest.raises(Exception) as exc_info:
-                        client.add_download("https://example.com/download.nzb", "Test")
+            ),
+            patch.object(
+                SABnzbdClient,
+                "_api_call",
+                return_value={"status": True, "nzo_ids": []},
+            ),
+        ):
+            client = SABnzbdClient()
+            with pytest.raises(Exception) as exc_info:
+                client.add_download("https://example.com/download.nzb", "Test")
 
-                    assert "nzo_id" in str(exc_info.value).lower()
+            assert "nzo_id" in str(exc_info.value).lower()
 
     def test_add_download_fallback_to_addurl(self, monkeypatch):
         """Test fallback to addurl when NZB fetch fails."""
@@ -552,21 +602,23 @@ class TestSABnzbdClientAddDownload:
             SABnzbdClient,
         )
 
-        with patch.object(
-            SABnzbdClient,
-            "_fetch_nzb_content",
-            side_effect=requests.RequestException("Fetch failed"),
-        ):
-            with patch.object(
+        with (
+            patch.object(
+                SABnzbdClient,
+                "_fetch_nzb_content",
+                side_effect=requests.RequestException("Fetch failed"),
+            ),
+            patch.object(
                 SABnzbdClient,
                 "_api_call",
                 return_value={"status": True, "nzo_ids": ["SABnzbd_nzo_fallback"]},
-            ) as mock_api_call:
-                client = SABnzbdClient()
-                result = client.add_download("https://example.com/download.nzb", "Test Book")
+            ) as mock_api_call,
+        ):
+            client = SABnzbdClient()
+            result = client.add_download("https://example.com/download.nzb", "Test Book")
 
-                assert result == "SABnzbd_nzo_fallback"
-                assert mock_api_call.call_args[0][0] == "addurl"
+            assert result == "SABnzbd_nzo_fallback"
+            assert mock_api_call.call_args[0][0] == "addurl"
 
 
 class TestSABnzbdClientRemove:
@@ -643,6 +695,44 @@ class TestSABnzbdClientRemove:
             assert result is True
             assert call_count["history"] == 1
 
+    def test_remove_from_history_passes_archive_flag(self, monkeypatch):
+        """Test remove forwards the archive flag to history deletes."""
+        config_values = {
+            "SABNZBD_URL": "http://localhost:8080",
+            "SABNZBD_API_KEY": "abc123",
+            "SABNZBD_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.sabnzbd.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        history_calls = []
+
+        def mock_api_call(mode, params=None):
+            if mode == "queue":
+                return {"status": False}
+            if mode == "history":
+                history_calls.append(params or {})
+                return {"status": True}
+            return {}
+
+        from shelfmark.download.clients.sabnzbd import SABnzbdClient
+
+        with patch.object(SABnzbdClient, "__init__", lambda x: None):
+            client = SABnzbdClient()
+            client.url = "http://localhost:8080"
+            client.api_key = "abc123"
+            client._category = "cwabd"
+            client._api_call = mock_api_call
+
+            result = client.remove("SABnzbd_nzo_abc123", delete_files=True, archive=False)
+
+        assert result is True
+        assert history_calls == [
+            {"name": "delete", "value": "SABnzbd_nzo_abc123", "del_files": 1, "archive": 0}
+        ]
+
 
 class TestSABnzbdClientFindExisting:
     """Tests for SABnzbdClient.find_existing()."""
@@ -692,7 +782,7 @@ class TestSABnzbdClientFindExisting:
             result = client.find_existing("https://example.com/Test_Book.nzb")
 
             assert result is not None
-            nzo_id, status = result
+            nzo_id, _status = result
             assert nzo_id == "SABnzbd_nzo_found"
 
     def test_find_existing_in_history(self, monkeypatch):
@@ -740,7 +830,7 @@ class TestSABnzbdClientFindExisting:
             result = client.find_existing("https://example.com/Test%20Book.nzb")
 
             assert result is not None
-            nzo_id, status = result
+            nzo_id, _status = result
             assert nzo_id == "SABnzbd_nzo_history"
 
     def test_find_existing_not_found(self, monkeypatch):

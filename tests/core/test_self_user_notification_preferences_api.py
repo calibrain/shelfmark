@@ -54,6 +54,7 @@ class TestSelfNotificationPreferencesTestAction:
         (plugins_dir / "notifications.json").write_text(json.dumps(notifications_config))
 
         from shelfmark.core.config import config as app_config
+
         app_config.refresh()
 
     def test_users_me_notification_test_uses_payload_routes(self, app, user_db):
@@ -81,9 +82,7 @@ class TestSelfNotificationPreferencesTestAction:
 
         assert resp.status_code == 200
         assert resp.json["success"] is True
-        mock_send.assert_called_once_with(
-            ["ntfys://ntfy.sh/alice", "ntfys://ntfy.sh/alice-errors"]
-        )
+        mock_send.assert_called_once_with(["ntfys://ntfy.sh/alice", "ntfys://ntfy.sh/alice-errors"])
 
     def test_users_me_notification_test_requires_user_context(self, app):
         client = app.test_client()

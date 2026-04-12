@@ -26,7 +26,6 @@ from shelfmark.config.env import (
     BUILD_VERSION,
     CONFIG_DIR,
     CWA_DB_PATH,
-    DEBUG,
     FLASK_HOST,
     FLASK_PORT,
     HIDE_LOCAL_AUTH,
@@ -96,6 +95,13 @@ logger = setup_logger(__name__)
 FLASK_SECRET_KEY_MIN_BYTES = 32
 _OPERATIONAL_ERRORS = (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error)
 _IMPORT_OPERATIONAL_ERRORS = (ImportError, *_OPERATIONAL_ERRORS)
+
+
+def _is_debug_enabled() -> bool:
+    debug_value = app_config.get("DEBUG", False)
+    if isinstance(debug_value, str):
+        return string_to_bool(debug_value)
+    return bool(debug_value)
 
 
 def _raise_runtime_error(message: str) -> NoReturn:
@@ -535,7 +541,7 @@ if user_db is not None:
 
 
 # Enable CORS in development mode for local frontend development
-if DEBUG:
+if _is_debug_enabled():
     CORS(
         app,
         resources={
@@ -890,7 +896,7 @@ def favicon(_: Any = None) -> Response:
     return send_from_directory(FRONTEND_DIST, "favicon.ico", mimetype="image/vnd.microsoft.icon")
 
 
-if DEBUG:
+if _is_debug_enabled():
     import subprocess
 
     def _stop_gui() -> None:
@@ -3299,16 +3305,17 @@ if not _is_config_dir_writable():
     )
 
 if __name__ == "__main__":
+    debug_enabled = _is_debug_enabled()
     logger.info(
         "Starting Flask application with WebSocket support on %s:%s (debug=%s)",
         FLASK_HOST,
         FLASK_PORT,
-        DEBUG,
+        debug_enabled,
     )
     socketio.run(
         app,
         host=FLASK_HOST,
         port=FLASK_PORT,
-        debug=DEBUG,
+        debug=debug_enabled,
         allow_unsafe_werkzeug=True,  # For development only
     )

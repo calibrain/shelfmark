@@ -8,7 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  backend-tests:
+  backend-quality:
+    name: Backend Quality
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -22,19 +23,62 @@ jobs:
           enable-cache: true
 
       - name: Sync dependencies
-        run: uv sync --locked --extra browser
+        run: make install-python-dev
 
       - name: Lint backend
-        run: uv run ruff check shelfmark
+        run: make python-lint
 
       - name: Check backend formatting
-        run: uv run ruff format --check shelfmark
-
-      - name: Typecheck backend
-        run: uv run basedpyright
+        run: make python-format-check
 
       - name: Check backend dead code
-        run: uv run vulture shelfmark
+        run: make python-dead-code
+
+      - name: Lint tests
+        run: make python-test-lint
+
+      - name: Check test formatting
+        run: make python-test-format-check
+
+  backend-typechecks:
+    name: Backend Typechecks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
+        with:
+          version: "0.11.3"
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: make install-python-dev
+
+      - name: Typecheck backend
+        run: make python-typecheck
+
+      - name: Typecheck tests
+        run: make python-test-typecheck
+
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
+        with:
+          version: "0.11.3"
+          python-version: "3.14"
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: make install-python-dev
 
       - name: Run tests
         run: uv run pytest tests/ -x --tb=short

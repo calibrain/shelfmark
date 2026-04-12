@@ -6,17 +6,19 @@ show_when conditions, defaults, and field types.
 """
 
 from shelfmark.core.settings_registry import (
-    TextField,
-    PasswordField,
     CheckboxField,
+    PasswordField,
     TagListField,
+    TextField,
 )
 
 
 def _reload_security_module():
     """Reload security module to pick up patched values."""
     import importlib
+
     import shelfmark.config.security
+
     importlib.reload(shelfmark.config.security)
     return shelfmark.config.security.security_settings()
 
@@ -133,8 +135,7 @@ class TestOIDCFieldShowWhen:
                 conditions = [show_when]
             # At least one condition should reference AUTH_METHOD=oidc
             has_oidc_condition = any(
-                c.get("field") == "AUTH_METHOD" and c.get("value") == "oidc"
-                for c in conditions
+                c.get("field") == "AUTH_METHOD" and c.get("value") == "oidc" for c in conditions
             )
             assert has_oidc_condition, f"Field {key} missing AUTH_METHOD=oidc show_when"
 

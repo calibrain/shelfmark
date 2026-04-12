@@ -1,6 +1,6 @@
 """Download queue orchestration and worker management.
 
-Two-stage architecture: handlers stage to TMP_DIR, orchestrator moves to INGEST_DIR
+Two-stage architecture: handlers stage to TMP_DIR, orchestrator delivers to the configured destination
 with archive extraction and custom script support.
 """
 
@@ -538,7 +538,7 @@ def _task_to_dict(
         "priority": task.priority,
         "added_time": task.added_time,
         "progress": task.progress,
-        "status": task.status,
+        "status": retry_status.value if isinstance(retry_status, QueueStatus) else task.status,
         "status_message": task.status_message,
         "download_path": task.download_path,
         "user_id": task.user_id,

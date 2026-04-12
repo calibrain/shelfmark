@@ -8,7 +8,19 @@ Run with: uv run pytest tests/e2e/ -v -m e2e
 
 import pytest
 
-from .conftest import APIClient, DownloadTracker
+from .conftest import (
+    APIClient,
+    DownloadTracker,
+    assert_queue_order_response,
+    assert_queued_download_response,
+)
+
+
+def _assert_json_object(response, *, status_code: int = 200) -> dict:
+    assert response.status_code == status_code
+    data = response.json()
+    assert isinstance(data, dict)
+    return data
 
 
 @pytest.mark.e2e
@@ -37,26 +49,23 @@ class TestConfigEndpoint:
     """Tests for the configuration endpoint."""
 
     def test_config_returns_expected_fields(self, protected_api_client: APIClient):
-        """Test that config includes expected configuration fields."""
-        resp = protected_api_client.get("/api/config")
-
-        assert resp.status_code == 200
-        data = resp.json()
-        # Config should be a dict with various settings
-        assert isinstance(data, dict)
-        # Should have some standard config fields
-        assert "supported_formats" in data or "book_languages" in data
+        """Test that config exposes the stable frontend contract."""
+        data = _assert_json_object(protected_api_client.get("/api/config"))
+        assert isinstance(data["supported_formats"], list)
+        assert isinstance(data["supported_audiobook_formats"], list)
+        assert isinstance(data["book_languages"], list)
+        assert isinstance(data["settings_enabled"], bool)
+        assert isinstance(data["onboarding_complete"], bool)
+        assert isinstance(data["search_mode"], str)
+        assert isinstance(data["default_release_source"], str)
 
     def test_config_returns_supported_formats(self, protected_api_client: APIClient):
         """Test that config includes supported formats."""
-        resp = protected_api_client.get("/api/config")
-
-        data = resp.json()
-        assert "supported_formats" in data
-        assert isinstance(data["supported_formats"], list)
-        # Should include common ebook formats
+        data = _assert_json_object(protected_api_client.get("/api/config"))
         formats = data["supported_formats"]
-        assert "epub" in formats or "EPUB" in [f.upper() for f in formats]
+        assert formats
+        assert all(isinstance(fmt, str) for fmt in formats)
+        assert "epub" in {fmt.lower() for fmt in formats}
 
 
 @pytest.mark.e2e
@@ -73,12 +82,22 @@ class TestReleaseSourcesEndpoint:
 
     def test_release_sources_have_required_fields(self, protected_api_client: APIClient):
         """Test that each release source has required fields."""
-        resp = protected_api_client.get("/api/release-sources")
-
-        data = resp.json()
+        data = protected_api_client.get("/api/release-sources").json()
         for source in data:
-            assert "name" in source
-            assert "display_name" in source or "label" in source
+            assert set(source) == {
+                "name",
+                "display_name",
+                "enabled",
+                "supported_content_types",
+                "browse_results_are_releases",
+                "can_be_default",
+            }
+            assert isinstance(source["name"], str)
+            assert isinstance(source["display_name"], str)
+            assert isinstance(source["enabled"], bool)
+            assert isinstance(source["supported_content_types"], list)
+            assert isinstance(source["browse_results_are_releases"], bool)
+            assert isinstance(source["can_be_default"], bool)
 
 
 @pytest.mark.e2e
@@ -86,29 +105,32 @@ class TestMetadataProvidersEndpoint:
     """Tests for the metadata providers endpoint."""
 
     def test_providers_returns_data(self, protected_api_client: APIClient):
-        """Test that providers endpoint returns provider data."""
-        resp = protected_api_client.get("/api/metadata/providers")
-
-        assert resp.status_code == 200
-        data = resp.json()
-        # May be list or dict depending on implementation
-        assert isinstance(data, (list, dict))
+        """Test that providers endpoint returns the documented object contract."""
+        data = _assert_json_object(protected_api_client.get("/api/metadata/providers"))
+        assert set(data) == {
+            "providers",
+            "configured_provider",
+            "configured_provider_audiobook",
+            "configured_provider_combined",
+        }
+        assert isinstance(data["providers"], list)
 
     def test_providers_have_required_fields(self, protected_api_client: APIClient):
         """Test that each provider has required fields."""
-        resp = protected_api_client.get("/api/metadata/providers")
-
-        data = resp.json()
-        # Handle both list and dict formats
-        if isinstance(data, dict):
-            providers = list(data.values()) if data else []
-        else:
-            providers = data
-
-        for provider in providers:
-            if isinstance(provider, dict):
-                # Should have name or be identifiable
-                assert "name" in provider or "id" in provider or "label" in provider
+        data = _assert_json_object(protected_api_client.get("/api/metadata/providers"))
+        for provider in data["providers"]:
+            assert set(provider) == {
+                "name",
+                "display_name",
+                "requires_auth",
+                "enabled",
+                "available",
+            }
+            assert isinstance(provider["name"], str)
+            assert isinstance(provider["display_name"], str)
+            assert isinstance(provider["requires_auth"], bool)
+            assert isinstance(provider["enabled"], bool)
+            assert isinstance(provider["available"], bool)
 
 
 @pytest.mark.e2e
@@ -119,57 +141,56 @@ class TestMetadataSearch:
         """Test that search requires a query parameter."""
         resp = protected_api_client.get("/api/metadata/search")
 
-        # Should return error for missing query
-        assert resp.status_code in [400, 422]
+        assert resp.status_code == 400
+        assert resp.json() == {"error": "Either 'query' or search field values are required"}
 
     def test_search_returns_results(self, protected_api_client: APIClient):
         """Test that search returns results for a known book."""
         resp = protected_api_client.get("/api/metadata/search", params={"query": "1984 Orwell"})
 
-        # May return 200 with results or 503 if provider unavailable
         if resp.status_code == 200:
+            data = _assert_json_object(resp)
+            assert isinstance(data["books"], list)
+            assert isinstance(data["provider"], str)
+            assert data["query"] == "1984 Orwell"
+            assert isinstance(data["page"], int)
+            assert isinstance(data["total_found"], int)
+            assert isinstance(data["has_more"], bool)
+        else:
+            assert resp.status_code == 503
             data = resp.json()
-            # Response may be list directly, or dict with results key
-            assert "results" in data or isinstance(data, list) or "query" in data
+            assert isinstance(data, dict)
+            assert "error" in data
+            assert "message" in data
 
     def test_search_with_provider_filter(self, protected_api_client: APIClient):
         """Test searching with a specific provider."""
-        # Get available providers first
         providers_resp = protected_api_client.get("/api/metadata/providers")
         if providers_resp.status_code != 200:
             pytest.skip("Could not get providers")
 
         providers_data = providers_resp.json()
-        if not providers_data:
+        providers = providers_data.get("providers", [])
+        if not providers:
             pytest.skip("No providers available")
 
-        # Handle both list and dict formats
-        if isinstance(providers_data, dict):
-            # Dict format: get first provider name from keys or values
-            if providers_data:
-                first_key = list(providers_data.keys())[0]
-                provider_info = providers_data[first_key]
-                provider_name = (
-                    provider_info.get("name", first_key)
-                    if isinstance(provider_info, dict)
-                    else first_key
-                )
-            else:
-                pytest.skip("No providers available")
-        else:
-            # List format
-            provider_name = providers_data[0].get("name") if providers_data else None
-
-        if not provider_name:
-            pytest.skip("Could not determine provider name")
+        provider_name = providers[0]["name"]
 
         resp = protected_api_client.get(
             "/api/metadata/search",
             params={"query": "Moby Dick", "provider": provider_name},
         )
 
-        # Should return 200 or 503 (provider unavailable)
-        assert resp.status_code in [200, 503]
+        if resp.status_code == 200:
+            data = _assert_json_object(resp)
+            assert data["provider"] == provider_name
+            assert data["query"] == "Moby Dick"
+            assert isinstance(data["books"], list)
+        else:
+            assert resp.status_code == 503
+            data = resp.json()
+            assert isinstance(data, dict)
+            assert "error" in data
 
 
 @pytest.mark.e2e
@@ -182,8 +203,10 @@ class TestStatusEndpoint:
 
         assert resp.status_code == 200
         data = resp.json()
-        # Should have standard status categories
         assert isinstance(data, dict)
+        for status_name, tasks in data.items():
+            assert isinstance(status_name, str)
+            assert isinstance(tasks, dict)
 
     def test_active_downloads_endpoint(self, protected_api_client: APIClient):
         """Test the active downloads endpoint."""
@@ -191,7 +214,8 @@ class TestStatusEndpoint:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert isinstance(data, (list, dict))
+        assert data == {"active_downloads": data["active_downloads"]}
+        assert isinstance(data["active_downloads"], list)
 
 
 @pytest.mark.e2e
@@ -202,14 +226,8 @@ class TestQueueEndpoint:
         """Test that queue order endpoint returns queue data."""
         resp = protected_api_client.get("/api/queue/order")
 
-        assert resp.status_code == 200
-        data = resp.json()
-        # May return list directly or dict with queue key
-        if isinstance(data, dict):
-            assert "queue" in data
-            assert isinstance(data["queue"], list)
-        else:
-            assert isinstance(data, list)
+        queue = assert_queue_order_response(resp)
+        assert isinstance(queue, list)
 
 
 @pytest.mark.e2e
@@ -226,7 +244,16 @@ class TestSettingsEndpoint:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert isinstance(data, (list, dict))
+        assert data == {"tabs": data["tabs"], "groups": data["groups"]}
+        assert isinstance(data["tabs"], list)
+        assert isinstance(data["groups"], list)
+        for tab in data["tabs"]:
+            assert isinstance(tab, dict)
+            assert "name" in tab
+            assert "fields" in tab
+        for group in data["groups"]:
+            assert isinstance(group, dict)
+            assert "name" in group
 
     def test_get_specific_settings_tab(self, protected_api_client: APIClient):
         """Test getting a specific settings tab."""
@@ -236,20 +263,20 @@ class TestSettingsEndpoint:
             pytest.skip("Settings disabled")
 
         data = resp.json()
-        if not data:
+        tabs = data.get("tabs", []) if isinstance(data, dict) else []
+        if not tabs:
             pytest.skip("No settings tabs available")
 
-        # Get the first tab
-        if isinstance(data, list):
-            tab_name = data[0].get("name") or data[0].get("id")
-        else:
-            tab_name = list(data.keys())[0] if data else None
-
+        tab_name = tabs[0].get("name")
         if not tab_name:
             pytest.skip("Could not determine tab name")
 
         resp = protected_api_client.get(f"/api/settings/{tab_name}")
-        assert resp.status_code in [200, 404]
+        assert resp.status_code == 200
+        tab_data = resp.json()
+        assert isinstance(tab_data, dict)
+        assert tab_data.get("name") == tab_name
+        assert isinstance(tab_data.get("fields"), list)
 
 
 @pytest.mark.e2e
@@ -260,8 +287,9 @@ class TestDownloadFlow:
         """Test cancelling a download that doesn't exist."""
         resp = protected_api_client.delete("/api/download/nonexistent-id-xyz/cancel")
 
-        # Should handle gracefully (may return 200, 204, or 404)
-        assert resp.status_code in [200, 204, 404]
+        assert resp.status_code == 404
+        data = resp.json()
+        assert data.get("error") == "Failed to cancel download or book not found"
 
 
 @pytest.mark.e2e
@@ -270,11 +298,14 @@ class TestReleaseDownloadFlow:
 
     def test_release_download_requires_source_id(self, protected_api_client: APIClient):
         """Test that release download requires source_id."""
-        resp = protected_api_client.post("/api/releases/download", json={})
+        resp = protected_api_client.post(
+            "/api/releases/download",
+            json={"source": "test_source"},
+        )
 
         assert resp.status_code == 400
         data = resp.json()
-        assert "error" in data
+        assert data == {"error": "source_id is required"}
 
     def test_release_download_with_minimal_data(
         self, protected_api_client: APIClient, download_tracker: DownloadTracker
@@ -291,10 +322,8 @@ class TestReleaseDownloadFlow:
             },
         )
 
-        if resp.status_code == 200:
-            download_tracker.track(test_id)
-            data = resp.json()
-            assert data.get("status") == "queued"
+        download_tracker.track(test_id)
+        assert_queued_download_response(resp)
 
     def test_cancel_release_with_slash_id(
         self, protected_api_client: APIClient, download_tracker: DownloadTracker
@@ -315,9 +344,11 @@ class TestReleaseDownloadFlow:
             pytest.skip("Release download endpoint not available")
 
         download_tracker.track(test_id)
+        assert resp.json() == {"status": "queued", "priority": 0}
 
         cancel_resp = protected_api_client.delete(f"/api/download/{test_id}/cancel")
-        assert cancel_resp.status_code in [200, 204]
+        assert cancel_resp.status_code == 200
+        assert cancel_resp.json() == {"status": "cancelled", "book_id": test_id}
 
 
 @pytest.mark.e2e
@@ -329,8 +360,7 @@ class TestReleasesSearch:
         resp = protected_api_client.get("/api/releases")
 
         assert resp.status_code == 400
-        data = resp.json()
-        assert "error" in data
+        assert resp.json() == {"error": "Parameters 'provider' and 'book_id' are required"}
 
     def test_releases_with_invalid_provider(self, protected_api_client: APIClient):
         """Test releases with invalid provider."""
@@ -340,8 +370,7 @@ class TestReleasesSearch:
         )
 
         assert resp.status_code == 400
-        data = resp.json()
-        assert "error" in data
+        assert resp.json() == {"error": "Unknown metadata provider: nonexistent_provider"}
 
 
 @pytest.mark.e2e
@@ -352,8 +381,11 @@ class TestCoverProxy:
         """Test that cover endpoint without URL returns error."""
         resp = protected_api_client.get("/api/covers/test-id")
 
-        # Should return error for missing URL
-        assert resp.status_code in [400, 404]
+        assert resp.status_code == 404
+        assert resp.json() in [
+            {"error": "Cover caching is disabled"},
+            {"error": "Cover URL not provided"},
+        ]
 
 
 @pytest.mark.e2e
@@ -364,7 +396,9 @@ class TestDirectSourceQueryEndpoint:
         """Source query mode requires a query or browse filters."""
         resp = protected_api_client.get("/api/releases", params={"source": "direct_download"})
 
-        assert resp.status_code in [400, 422]
+        assert resp.status_code == 400
+        data = resp.json()
+        assert data == {"error": "Parameters 'provider' and 'book_id' are required"}
 
     def test_direct_source_query_returns_results(self, protected_api_client: APIClient):
         """Direct mode uses /api/releases source query mode."""
@@ -373,11 +407,20 @@ class TestDirectSourceQueryEndpoint:
             params={"source": "direct_download", "query": "Pride Prejudice"},
         )
 
-        # May return results or 503 if source unavailable
         if resp.status_code == 200:
             data = resp.json()
-            assert data.get("sources_searched") == ["direct_download"]
-            assert isinstance(data.get("releases"), list)
+            expected_keys = {"releases", "book", "sources_searched", "column_config", "search_info"}
+            assert expected_keys <= set(data)
+            assert data["sources_searched"] == ["direct_download"]
+            assert isinstance(data["releases"], list)
+            assert isinstance(data["book"], dict)
+            assert isinstance(data["search_info"], dict)
+            if "errors" in data:
+                assert isinstance(data["errors"], list)
+        else:
+            assert resp.status_code == 503
+            data = resp.json()
+            assert "error" in data
 
 
 @pytest.mark.e2e
@@ -390,5 +433,7 @@ class TestSourceRecordEndpoint:
             "/api/release-sources/direct_download/records/invalid-id-xyz"
         )
 
-        # Should return 404 or error
-        assert resp.status_code in [404, 500, 503]
+        if resp.status_code == 503:
+            pytest.skip("Direct source record lookup unavailable")
+        assert resp.status_code == 404
+        assert resp.json() == {"error": "Record not found"}

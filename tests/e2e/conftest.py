@@ -12,7 +12,7 @@ import time
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 import requests
@@ -28,6 +28,8 @@ POLL_INTERVAL = 2
 DOWNLOAD_TIMEOUT = 300  # 5 minutes max for downloads
 E2E_USERNAME_ENV = "E2E_USERNAME"
 E2E_PASSWORD_ENV = "E2E_PASSWORD"
+TERMINAL_DOWNLOAD_STATES = {"complete", "done", "available", "error", "cancelled"}
+SUCCESS_DOWNLOAD_STATES = {"complete", "done", "available"}
 
 
 @dataclass
@@ -58,6 +60,10 @@ class APIClient:
         kwargs.setdefault("timeout", self.timeout)
         return self.session.delete(f"{self.base_url}{path}", **kwargs)
 
+    def close(self) -> None:
+        """Close the underlying HTTP session."""
+        self.session.close()
+
     def wait_for_health(self, max_wait: int = 30) -> bool:
         """Wait for the server to be healthy."""
         start = time.time()
@@ -66,28 +72,75 @@ class APIClient:
                 resp = self.get("/api/health")
                 if resp.status_code == 200:
                     return True
-            except requests.exceptions.ConnectionError:
+            except requests.exceptions.RequestException:
                 pass
             time.sleep(1)
         return False
 
 
-def _get_auth_state(client: APIClient) -> dict[str, object]:
+def assert_json_object(response: requests.Response, *, context: str) -> dict[str, Any]:
+    """Assert that a response is a JSON object."""
+    assert response.status_code == 200, f"{context} failed: {response.status_code} {response.text}"
+    try:
+        data = response.json()
+    except ValueError:
+        pytest.fail(f"{context} did not return valid JSON: {response.text}")
+    assert isinstance(data, dict), f"{context} did not return a JSON object: {data!r}"
+    return data
+
+
+def assert_json_list(response: requests.Response, *, context: str) -> list[Any]:
+    """Assert that a response is a JSON list."""
+    assert response.status_code == 200, f"{context} failed: {response.status_code} {response.text}"
+    try:
+        data = response.json()
+    except ValueError:
+        pytest.fail(f"{context} did not return valid JSON: {response.text}")
+    assert isinstance(data, list), f"{context} did not return a JSON list: {data!r}"
+    return data
+
+
+def assert_queued_download_response(
+    response: requests.Response,
+    *,
+    expected_priority: int = 0,
+) -> dict[str, Any]:
+    """Assert the shared queued-download payload shape."""
+    data = assert_json_object(response, context="download queue")
+    assert data == {"status": "queued", "priority": expected_priority}
+    return data
+
+
+def assert_queue_order_response(response: requests.Response) -> list[dict[str, Any]]:
+    """Assert the queue order response shape."""
+    data = assert_json_object(response, context="queue order")
+    queue = data.get("queue")
+    assert isinstance(queue, list), f"queue order payload missing queue list: {data!r}"
+    for entry in queue:
+        assert isinstance(entry, dict), f"queue entry is not a JSON object: {entry!r}"
+        assert isinstance(entry.get("id"), str)
+        assert isinstance(entry.get("priority"), int)
+        assert isinstance(entry.get("added_time"), (int, float))
+        assert isinstance(entry.get("status"), str)
+    return queue
+
+
+def _get_auth_state(client: APIClient) -> dict[str, object] | None:
     """Read the live server auth state for auth-sensitive E2E tests."""
     try:
         response = client.get("/api/auth/check")
     except requests.exceptions.RequestException:
-        return {}
+        return None
 
     if response.status_code != 200:
-        return {}
+        return None
 
     try:
         payload = response.json()
     except ValueError:
-        return {}
+        return None
 
-    return payload if isinstance(payload, dict) else {}
+    return payload if isinstance(payload, dict) else None
 
 
 def _login_with_env_credentials(client: APIClient) -> bool:
@@ -122,19 +175,28 @@ def _is_explicit_e2e_run(markexpr: str, args: list[str]) -> bool:
         base = arg.split("::", maxsplit=1)[0]
         parts = Path(base).parts
         if "tests" not in parts:
-            return False
+            continue
 
         tests_index = parts.index("tests")
-        if len(parts) <= tests_index + 1 or parts[tests_index + 1] != "e2e":
-            return False
+        if len(parts) > tests_index + 1 and parts[tests_index + 1] == "e2e":
+            return True
 
-    return True
+    return False
 
 
 def _require_authenticated_client(client: APIClient, *, strict: bool) -> APIClient:
     """Require an authenticated client for protected-route E2E tests."""
     auth_state = _get_auth_state(client)
-    if not auth_state or not auth_state.get("auth_required"):
+    if auth_state is None:
+        message = (
+            "Unable to read auth state from the live server. "
+            "Check the stack or run against a reachable instance."
+        )
+        if strict:
+            pytest.fail(message)
+        pytest.skip(message)
+
+    if not auth_state.get("auth_required"):
         return client
 
     if auth_state.get("authenticated"):
@@ -173,6 +235,21 @@ def _require_authenticated_client(client: APIClient, *, strict: bool) -> APIClie
     pytest.skip(message)
 
 
+def _require_healthy_server(base_url: str, *, strict: bool) -> str:
+    """Require a reachable live server before running live E2E tests."""
+    client = APIClient(base_url=base_url)
+    try:
+        if client.wait_for_health():
+            return base_url
+    finally:
+        client.close()
+
+    message = "Server not available - ensure the app is running"
+    if strict:
+        pytest.fail(message)
+    pytest.skip(message)
+
+
 @dataclass
 class DownloadTracker:
     """Tracks downloads for cleanup after tests."""
@@ -188,7 +265,7 @@ class DownloadTracker:
     def cleanup(self) -> None:
         """Cancel all tracked downloads."""
         for book_id in self.queued_ids:
-            with suppress(Exception):
+            with suppress(requests.exceptions.RequestException):
                 self.client.delete(f"/api/download/{book_id}/cancel")
         self.queued_ids.clear()
 
@@ -218,23 +295,28 @@ class DownloadTracker:
                     continue
 
                 status_data = resp.json()
+                if not isinstance(status_data, dict):
+                    time.sleep(POLL_INTERVAL)
+                    continue
 
                 # Check each status category
                 for state in target_states:
-                    if state in status_data and book_id in status_data[state]:
+                    state_entries = status_data.get(state)
+                    if isinstance(state_entries, dict) and book_id in state_entries:
                         return {
                             "state": state,
-                            "data": status_data[state][book_id],
+                            "data": state_entries[book_id],
                         }
 
                 # Check for error state
-                if "error" in status_data and book_id in status_data["error"]:
+                error_entries = status_data.get("error")
+                if isinstance(error_entries, dict) and book_id in error_entries:
                     return {
                         "state": "error",
-                        "data": status_data["error"][book_id],
+                        "data": error_entries[book_id],
                     }
 
-            except Exception:
+            except requests.exceptions.RequestException, ValueError, TypeError:
                 pass
 
             time.sleep(POLL_INTERVAL)
@@ -249,15 +331,13 @@ def base_url() -> str:
 
 
 @pytest.fixture(scope="session")
-def healthy_base_url(base_url: str) -> str:
+def healthy_base_url(base_url: str, request: pytest.FixtureRequest) -> str:
     """Ensure the live server is reachable before creating per-test clients."""
-    client = APIClient(base_url=base_url)
-    try:
-        if not client.wait_for_health():
-            pytest.skip("Server not available - ensure the app is running")
-        return base_url
-    finally:
-        client.session.close()
+    strict = _is_explicit_e2e_run(
+        getattr(request.config.option, "markexpr", ""),
+        list(getattr(request.config, "args", [])),
+    )
+    return _require_healthy_server(base_url, strict=strict)
 
 
 @pytest.fixture
@@ -265,7 +345,7 @@ def api_client(healthy_base_url: str) -> Iterator[APIClient]:
     """Create a fresh API client for each E2E test."""
     client = APIClient(base_url=healthy_base_url)
     yield client
-    client.session.close()
+    client.close()
 
 
 @pytest.fixture
@@ -300,4 +380,4 @@ def server_config(healthy_base_url: str) -> dict:
             return {}
         return resp.json()
     finally:
-        client.session.close()
+        client.close()

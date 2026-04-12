@@ -4,17 +4,15 @@ Tests for the Prowlarr source module.
 Tests the utility functions for parsing release metadata.
 """
 
-import pytest
-
 # Import the functions to test
+from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources.prowlarr.source import (
     ProwlarrSource,
-    _parse_size,
-    _extract_format,
     _detect_content_type_from_categories,
+    _extract_format,
+    _parse_size,
 )
 from shelfmark.release_sources.prowlarr.utils import get_protocol_display, sanitize_download_url
-from shelfmark.metadata_providers import BookMetadata
 
 
 class TestParseSize:

@@ -45,16 +45,24 @@ class TestActivityViewStateService:
         user_hidden = activity_view_state_service.list_hidden(viewer_scope="user:1")
         assert {row["item_key"] for row in user_hidden} == {"download:first-task", "request:12"}
 
-        user_history = activity_view_state_service.list_history(viewer_scope="user:1", limit=10, offset=0)
+        user_history = activity_view_state_service.list_history(
+            viewer_scope="user:1", limit=10, offset=0
+        )
         assert [row["item_key"] for row in user_history] == ["request:12", "download:first-task"]
         assert all(isinstance(row["dismissed_at"], str) for row in user_history)
 
         cleared_count = activity_view_state_service.clear_history(viewer_scope="user:1")
         assert cleared_count == 2
-        assert activity_view_state_service.list_history(viewer_scope="user:1", limit=10, offset=0) == []
+        assert (
+            activity_view_state_service.list_history(viewer_scope="user:1", limit=10, offset=0)
+            == []
+        )
 
         user_hidden_after_clear = activity_view_state_service.list_hidden(viewer_scope="user:1")
-        assert {row["item_key"] for row in user_hidden_after_clear} == {"download:first-task", "request:12"}
+        assert {row["item_key"] for row in user_hidden_after_clear} == {
+            "download:first-task",
+            "request:12",
+        }
 
         admin_history = activity_view_state_service.list_history(
             viewer_scope="admin:shared",
@@ -106,8 +114,7 @@ class TestActivityViewStateService:
 
     def test_list_hidden_returns_all_rows_by_default(self, activity_view_state_service):
         items = [
-            {"item_type": "request", "item_key": f"request:{index}"}
-            for index in range(1, 5002)
+            {"item_type": "request", "item_key": f"request:{index}"} for index in range(1, 5002)
         ]
         activity_view_state_service.dismiss_many(
             viewer_scope="user:1",

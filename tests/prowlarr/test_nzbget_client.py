@@ -1,14 +1,14 @@
-"""
-Unit tests for the NZBGet client.
+"""Unit tests for the NZBGet client.
 
 These tests mock the requests library to test the client logic
 without requiring a running NZBGet instance.
 """
 
+import base64
+import json
 from unittest.mock import MagicMock, patch
-import pytest
 
-from shelfmark.download.clients import DownloadStatus
+import pytest
 
 
 class TestNZBGetClientIsConfigured:
@@ -321,6 +321,94 @@ class TestNZBGetClientGetStatus:
             assert status.complete is True
             assert status.file_path == "/downloads/completed/book"
 
+    def test_get_status_complete_prefers_final_dir_and_normalizes_path(self, monkeypatch):
+        """Test completed jobs use FinalDir and normalize redundant separators."""
+        config_values = {
+            "NZBGET_URL": "http://localhost:6789",
+            "NZBGET_USERNAME": "nzbget",
+            "NZBGET_PASSWORD": "password",
+            "NZBGET_CATEGORY": "Books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.nzbget.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        def mock_rpc_call(method, params=None):
+            if method == "listgroups":
+                return []
+            if method == "history":
+                return [
+                    {
+                        "NZBID": 123,
+                        "Status": "SUCCESS",
+                        "FinalDir": "/downloads/completed//book/./",
+                        "DestDir": "/downloads/completed/book",
+                    }
+                ]
+            return []
+
+        from shelfmark.download.clients.nzbget import NZBGetClient
+
+        with patch.object(NZBGetClient, "__init__", lambda x: None):
+            client = NZBGetClient()
+            client.url = "http://localhost:6789"
+            client.username = "nzbget"
+            client.password = "password"
+            client._category = "Books"
+            client._rpc_call = mock_rpc_call
+
+            status = client.get_status("123")
+
+        assert status.complete is True
+        assert status.file_path == "/downloads/completed/book"
+
+    def test_get_status_processing_in_queue(self, monkeypatch):
+        """Test processing status mapping for queued NZB jobs."""
+        config_values = {
+            "NZBGET_URL": "http://localhost:6789",
+            "NZBGET_USERNAME": "nzbget",
+            "NZBGET_PASSWORD": "password",
+            "NZBGET_CATEGORY": "Books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.nzbget.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        def mock_rpc_call(method, params=None):
+            if method == "listgroups":
+                return [
+                    {
+                        "NZBID": 123,
+                        "FileSizeHi": 0,
+                        "FileSizeLo": 100000000,
+                        "RemainingSizeHi": 0,
+                        "RemainingSizeLo": 1000000,
+                        "Status": "POST-PROCESSING",
+                        "DownloadRate": 0,
+                        "RemainingSec": 0,
+                    }
+                ]
+            return []
+
+        from shelfmark.download.clients.nzbget import NZBGetClient
+
+        with patch.object(NZBGetClient, "__init__", lambda x: None):
+            client = NZBGetClient()
+            client.url = "http://localhost:6789"
+            client.username = "nzbget"
+            client.password = "password"
+            client._category = "Books"
+            client._rpc_call = mock_rpc_call
+
+            status = client.get_status("123")
+
+        assert status.state_value == "processing"
+        assert status.complete is False
+        assert status.file_path is None
+        assert status.message == "Post Processing"
+
     def test_get_status_failed_in_history(self, monkeypatch):
         """Test status for failed NZB in history."""
         config_values = {
@@ -467,12 +555,15 @@ class TestNZBGetClientAddDownload:
         mock_post_response = MagicMock()
         mock_post_response.json.return_value = {"result": 456}
 
-        with patch(
-            "shelfmark.download.clients.nzbget.requests.get",
-            return_value=mock_get_response,
-        ), patch(
-            "shelfmark.download.clients.nzbget.requests.post",
-            return_value=mock_post_response,
+        with (
+            patch(
+                "shelfmark.download.clients.nzbget.requests.get",
+                return_value=mock_get_response,
+            ),
+            patch(
+                "shelfmark.download.clients.nzbget.requests.post",
+                return_value=mock_post_response,
+            ),
         ):
             from shelfmark.download.clients.nzbget import (
                 NZBGetClient,
@@ -485,6 +576,48 @@ class TestNZBGetClientAddDownload:
             )
 
             assert result == "456"
+
+    def test_add_download_uses_configured_category_and_nzb_filename(self, monkeypatch):
+        """Test add_download sends the expected NZBGet append payload."""
+        config_values = {
+            "NZBGET_URL": "http://localhost:6789",
+            "NZBGET_USERNAME": "nzbget",
+            "NZBGET_PASSWORD": "password",
+            "NZBGET_CATEGORY": "Books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.nzbget.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        mock_get_response = MagicMock()
+        mock_get_response.content = b"<nzb>test</nzb>"
+
+        mock_post_response = MagicMock()
+        mock_post_response.json.return_value = {"result": "789"}
+
+        with (
+            patch(
+                "shelfmark.download.clients.nzbget.requests.get",
+                return_value=mock_get_response,
+            ),
+            patch(
+                "shelfmark.download.clients.nzbget.requests.post",
+                return_value=mock_post_response,
+            ) as mock_post,
+        ):
+            from shelfmark.download.clients.nzbget import NZBGetClient
+
+            client = NZBGetClient()
+            result = client.add_download("https://example.com/download", "Test Book")
+
+        assert result == "789"
+
+        payload = json.loads(mock_post.call_args.kwargs["data"])
+        assert payload["method"] == "append"
+        assert payload["params"][0] == "Test Book.nzb"
+        assert payload["params"][1] == base64.b64encode(b"<nzb>test</nzb>").decode("ascii")
+        assert payload["params"][2] == "Books"
 
     def test_add_download_fetch_failure(self, monkeypatch):
         """Test handling of NZB fetch failure."""
@@ -629,4 +762,8 @@ class TestNZBGetClientRemove:
             result = client.remove("123", delete_files=True)
 
         assert result is True
-        assert [call[1][0] for call in calls] == ["GroupFinalDelete", "HistoryFinalDelete", "HistoryDelete"]
+        assert [call[1][0] for call in calls] == [
+            "GroupFinalDelete",
+            "HistoryFinalDelete",
+            "HistoryDelete",
+        ]

@@ -14,11 +14,11 @@ import hashlib
 import pytest
 
 from shelfmark.download.clients.torrent_utils import (
-    parse_transmission_url,
     bencode_decode,
     bencode_encode,
-    extract_info_hash_from_torrent,
     extract_hash_from_magnet,
+    extract_info_hash_from_torrent,
+    parse_transmission_url,
 )
 
 
@@ -43,7 +43,9 @@ class TestParseTransmissionUrl:
 
     def test_parse_url_with_path(self):
         """Test parsing URL with existing path."""
-        protocol, host, port, path = parse_transmission_url("http://localhost:9091/transmission/rpc")
+        protocol, host, port, path = parse_transmission_url(
+            "http://localhost:9091/transmission/rpc"
+        )
         assert protocol == "http"
         assert host == "localhost"
         assert port == 9091
@@ -75,7 +77,9 @@ class TestParseTransmissionUrl:
 
     def test_parse_https_url(self):
         """Test parsing HTTPS URL."""
-        protocol, host, port, path = parse_transmission_url("https://secure.transmission.local:9091")
+        protocol, host, port, path = parse_transmission_url(
+            "https://secure.transmission.local:9091"
+        )
         assert protocol == "https"
         assert host == "secure.transmission.local"
         assert port == 9091
@@ -109,17 +113,17 @@ class TestBencodeDecode:
 
     def test_decode_negative_integer(self):
         """Test decoding negative integers."""
-        result, remaining = bencode_decode(b"i-42e")
+        result, _remaining = bencode_decode(b"i-42e")
         assert result == -42
 
     def test_decode_zero(self):
         """Test decoding zero."""
-        result, remaining = bencode_decode(b"i0e")
+        result, _remaining = bencode_decode(b"i0e")
         assert result == 0
 
     def test_decode_large_integer(self):
         """Test decoding large integers."""
-        result, remaining = bencode_decode(b"i999999999999e")
+        result, _remaining = bencode_decode(b"i999999999999e")
         assert result == 999999999999
 
     def test_decode_string(self):
@@ -130,14 +134,14 @@ class TestBencodeDecode:
 
     def test_decode_empty_string(self):
         """Test decoding empty string."""
-        result, remaining = bencode_decode(b"0:")
+        result, _remaining = bencode_decode(b"0:")
         assert result == b""
 
     def test_decode_unicode_string(self):
         """Test decoding unicode bytes."""
-        data = "tëst".encode("utf-8")
+        data = "tëst".encode()
         encoded = f"{len(data)}:".encode() + data
-        result, remaining = bencode_decode(encoded)
+        result, _remaining = bencode_decode(encoded)
         assert result == data
 
     def test_decode_list(self):
@@ -148,17 +152,17 @@ class TestBencodeDecode:
 
     def test_decode_empty_list(self):
         """Test decoding empty list."""
-        result, remaining = bencode_decode(b"le")
+        result, _remaining = bencode_decode(b"le")
         assert result == []
 
     def test_decode_nested_list(self):
         """Test decoding nested lists."""
-        result, remaining = bencode_decode(b"lli1eeli2eee")
+        result, _remaining = bencode_decode(b"lli1eeli2eee")
         assert result == [[1], [2]]
 
     def test_decode_mixed_list(self):
         """Test decoding list with mixed types."""
-        result, remaining = bencode_decode(b"l5:helloi42ee")
+        result, _remaining = bencode_decode(b"l5:helloi42ee")
         assert result == [b"hello", 42]
 
     def test_decode_dict(self):
@@ -169,14 +173,14 @@ class TestBencodeDecode:
 
     def test_decode_empty_dict(self):
         """Test decoding empty dictionary."""
-        result, remaining = bencode_decode(b"de")
+        result, _remaining = bencode_decode(b"de")
         assert result == {}
 
     def test_decode_complex_structure(self):
         """Test decoding complex nested structures."""
         # Dict with string, int, and list values
         data = b"d3:agei25e4:name4:John5:itemsli1ei2ei3eee"
-        result, remaining = bencode_decode(data)
+        result, _remaining = bencode_decode(data)
         assert result == {
             b"age": 25,
             b"name": b"John",
@@ -229,8 +233,6 @@ class TestBencodeEncode:
         data = {b"list": [1, 2, 3], b"num": 42}
         result = bencode_encode(data)
         assert result == b"d4:listli1ei2ei3ee3:numi42ee"
-
-
 
     def test_encode_invalid_type_raises(self):
         """Test that invalid types raise ValueError."""

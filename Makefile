@@ -1,4 +1,4 @@
-.PHONY: help install install-python-dev dev build preview typecheck frontend-test clean up up down docker-build refresh restart build-serve python-lint python-lint-fix python-format python-format-check python-typecheck python-dead-code python-checks
+.PHONY: help install install-python-dev dev build preview typecheck frontend-test clean up up down docker-build refresh restart build-serve python-lint python-lint-fix python-format python-format-check python-typecheck python-dead-code python-checks python-test-lint python-test-lint-fix python-test-format python-test-format-check python-test-typecheck python-test-checks
 
 # Frontend directory
 FRONTEND_DIR := src/frontend
@@ -26,6 +26,12 @@ help:
 	@echo "  python-typecheck - Run BasedPyright against Python backend code"
 	@echo "  python-dead-code - Run Vulture against Python backend code"
 	@echo "  python-checks - Run all Python static analysis checks"
+	@echo "  python-test-lint - Run Ruff against Python tests with the relaxed tests profile"
+	@echo "  python-test-lint-fix - Run Ruff with safe auto-fixes against Python tests"
+	@echo "  python-test-format - Format Python tests with Ruff"
+	@echo "  python-test-format-check - Check Python test formatting with Ruff"
+	@echo "  python-test-typecheck - Run lightweight BasedPyright checks against Python tests"
+	@echo "  python-test-checks - Run all relaxed Python test static analysis checks"
 	@echo "  clean      - Remove node_modules and build artifacts"
 	@echo ""
 	@echo "Backend (Docker):"
@@ -98,6 +104,28 @@ python-dead-code:
 	uv run vulture shelfmark
 
 python-checks: python-lint python-format-check python-typecheck python-dead-code
+
+python-test-lint:
+	@echo "Running Ruff against tests with the relaxed tests profile..."
+	uv run ruff check tests
+
+python-test-lint-fix:
+	@echo "Running Ruff with safe auto-fixes against tests..."
+	uv run ruff check tests --fix
+
+python-test-format:
+	@echo "Formatting Python tests with Ruff..."
+	uv run ruff format tests
+
+python-test-format-check:
+	@echo "Checking Python test formatting with Ruff..."
+	uv run ruff format --check tests
+
+python-test-typecheck:
+	@echo "Running lightweight BasedPyright checks against tests..."
+	uv run basedpyright tests --skipunannotated
+
+python-test-checks: python-test-lint python-test-format-check python-test-typecheck
 
 # Run frontend unit tests
 frontend-test:

@@ -199,7 +199,9 @@ def test_get_bypassed_page_retries_next_mirror_after_runtime_error(monkeypatch):
             raise RuntimeError("browser hiccup")
         return "<html>ok</html>"
 
-    monkeypatch.setattr(internal_bypasser, "_try_with_cached_cookies", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        internal_bypasser, "_try_with_cached_cookies", lambda *_args, **_kwargs: None
+    )
     monkeypatch.setattr(internal_bypasser, "get", _fake_get)
 
     selector = FakeSelector()

@@ -265,13 +265,16 @@ class TestTerminalSnapshotCapture:
         assert main_module.backend.book_queue.add(task) is True
 
         try:
-            main_module.backend.book_queue.update_status_message(task_id, "Destination not writable")
+            main_module.backend.book_queue.update_status_message(
+                task_id, "Destination not writable"
+            )
             with patch.object(main_module, "reopen_failed_request") as mock_reopen:
                 main_module.backend.book_queue.update_status(task_id, QueueStatus.ERROR)
 
             mock_reopen.assert_not_called()
             persisted_request = next(
-                row for row in main_module.user_db.list_requests(user_id=user["id"])
+                row
+                for row in main_module.user_db.list_requests(user_id=user["id"])
                 if row["id"] == request_row["id"]
             )
             assert persisted_request["status"] == "fulfilled"

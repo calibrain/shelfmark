@@ -4,7 +4,9 @@ def test_update_settings_network_logs_dns_apply_failure(monkeypatch):
     from shelfmark.core.config import config as config_obj
     from shelfmark.core.settings_registry import update_settings
 
-    monkeypatch.setattr("shelfmark.core.settings_registry.save_config_file", lambda _tab, _values: True)
+    monkeypatch.setattr(
+        "shelfmark.core.settings_registry.save_config_file", lambda _tab, _values: True
+    )
     monkeypatch.setattr(config_obj, "refresh", lambda: None)
 
     import shelfmark.download.network as network

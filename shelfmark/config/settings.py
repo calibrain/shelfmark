@@ -544,8 +544,12 @@ def search_mode_settings() -> list[SettingsField]:
 @register_settings("network", "Network", icon="globe", order=10)
 def network_settings() -> list[SettingsField]:
     """Network and connectivity settings."""
-    # Check if Tor is currently enabled.
-    tor_enabled = env.USING_TOR
+    from shelfmark.core.config import config as app_config
+
+    tor_setting = app_config.get("USING_TOR", False)
+    tor_enabled = (
+        env.string_to_bool(tor_setting) if isinstance(tor_setting, str) else bool(tor_setting)
+    )
 
     # When Tor is enabled, DNS/proxy settings are overridden by iptables rules
     # Tor uses iptables to force ALL traffic through Tor

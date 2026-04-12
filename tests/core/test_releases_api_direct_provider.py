@@ -36,7 +36,7 @@ def client(main_module):
 class _FakeDirectSource:
     last_search_type = "title_author"
 
-    def get_record(self, record_id, *, fetch_download_count=True):  # noqa: ANN001
+    def get_record(self, record_id, *, fetch_download_count=True):
         assert record_id == "md5-abc"
         assert fetch_download_count is True
         return SimpleNamespace(
@@ -52,7 +52,7 @@ class _FakeDirectSource:
             source_url=None,
         )
 
-    def search(self, book, plan, expand_search=False, content_type="ebook"):  # noqa: ANN001
+    def search(self, book, plan, expand_search=False, content_type="ebook"):
         assert book.provider == "direct_download"
         assert book.provider_id == "md5-abc"
         assert book.title == "The Gun Seller"
@@ -86,7 +86,9 @@ def test_releases_accepts_direct_download_provider(main_module, client):
     fake_direct_source = _FakeDirectSource()
 
     with patch.object(main_module, "get_auth_mode", return_value="none"):
-        with patch("shelfmark.release_sources.get_source", return_value=fake_direct_source) as mock_get_source:
+        with patch(
+            "shelfmark.release_sources.get_source", return_value=fake_direct_source
+        ) as mock_get_source:
             with patch(
                 "shelfmark.release_sources.list_available_sources",
                 side_effect=AssertionError("list_available_sources should not be called"),
@@ -114,13 +116,15 @@ def test_releases_accepts_direct_download_provider(main_module, client):
 
 def test_releases_direct_provider_returns_404_when_book_missing(main_module, client):
     class _MissingDirectSource:
-        def get_record(self, record_id, *, fetch_download_count=True):  # noqa: ANN001
+        def get_record(self, record_id, *, fetch_download_count=True):
             assert record_id == "missing-md5"
             assert fetch_download_count is True
             return None
 
     with patch.object(main_module, "get_auth_mode", return_value="none"):
-        with patch("shelfmark.release_sources.get_source", return_value=_MissingDirectSource()) as mock_get_source:
+        with patch(
+            "shelfmark.release_sources.get_source", return_value=_MissingDirectSource()
+        ) as mock_get_source:
             resp = client.get(
                 "/api/releases",
                 query_string={
@@ -138,7 +142,7 @@ def test_releases_accepts_direct_source_query_mode(main_module, client):
     class _QueryDirectSource:
         last_search_type = "manual"
 
-        def search(self, book, plan, expand_search=False, content_type="ebook"):  # noqa: ANN001
+        def search(self, book, plan, expand_search=False, content_type="ebook"):
             assert book.provider == "manual"
             assert book.title == "Pride and Prejudice"
             assert plan.source_filters is not None
@@ -175,7 +179,9 @@ def test_releases_accepts_direct_source_query_mode(main_module, client):
             )
 
     with patch.object(main_module, "get_auth_mode", return_value="none"):
-        with patch("shelfmark.release_sources.get_source", return_value=_QueryDirectSource()) as mock_get_source:
+        with patch(
+            "shelfmark.release_sources.get_source", return_value=_QueryDirectSource()
+        ) as mock_get_source:
             resp = client.get(
                 "/api/releases",
                 query_string={
@@ -200,7 +206,9 @@ def test_release_source_record_endpoint_returns_generic_browse_record(main_modul
     fake_direct_source = _FakeDirectSource()
 
     with patch.object(main_module, "get_auth_mode", return_value="none"):
-        with patch("shelfmark.release_sources.get_source", return_value=fake_direct_source) as mock_get_source:
+        with patch(
+            "shelfmark.release_sources.get_source", return_value=fake_direct_source
+        ) as mock_get_source:
             resp = client.get("/api/release-sources/direct_download/records/md5-abc")
 
     assert resp.status_code == 200
@@ -213,8 +221,10 @@ def test_release_source_record_endpoint_returns_generic_browse_record(main_modul
 
 def test_releases_direct_provider_returns_503_when_source_unavailable(main_module, client):
     class _UnavailableDirectSource:
-        def get_record(self, record_id, *, fetch_download_count=True):  # noqa: ANN001
-            raise SourceUnavailableError("Unable to reach download source. Network restricted or mirrors are blocked.")
+        def get_record(self, record_id, *, fetch_download_count=True):
+            raise SourceUnavailableError(
+                "Unable to reach download source. Network restricted or mirrors are blocked."
+            )
 
     with patch.object(main_module, "get_auth_mode", return_value="none"):
         with patch("shelfmark.release_sources.get_source", return_value=_UnavailableDirectSource()):
@@ -234,8 +244,10 @@ def test_releases_direct_provider_returns_503_when_source_unavailable(main_modul
 
 def test_release_source_record_endpoint_returns_503_when_source_unavailable(main_module, client):
     class _UnavailableDirectSource:
-        def get_record(self, record_id, *, fetch_download_count=True):  # noqa: ANN001
-            raise SourceUnavailableError("Unable to reach download source. Network restricted or mirrors are blocked.")
+        def get_record(self, record_id, *, fetch_download_count=True):
+            raise SourceUnavailableError(
+                "Unable to reach download source. Network restricted or mirrors are blocked."
+            )
 
     with patch.object(main_module, "get_auth_mode", return_value="none"):
         with patch("shelfmark.release_sources.get_source", return_value=_UnavailableDirectSource()):

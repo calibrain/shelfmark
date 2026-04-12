@@ -2,11 +2,13 @@
 Tests for bencode encoding/decoding in the torrent utilities.
 """
 
-import pytest
-
+from shelfmark.download.clients.torrent_utils import (
+    bencode_decode as _bencode_decode,
+)
 from shelfmark.download.clients.torrent_utils import (
     bencode_encode as _bencode_encode,
-    bencode_decode as _bencode_decode,
+)
+from shelfmark.download.clients.torrent_utils import (
     extract_info_hash_from_torrent as _extract_info_hash_from_torrent,
 )
 
@@ -22,12 +24,12 @@ class TestBencodeDecode:
 
     def test_decode_negative_integer(self):
         """Test decoding negative integers."""
-        result, remaining = _bencode_decode(b"i-42e")
+        result, _remaining = _bencode_decode(b"i-42e")
         assert result == -42
 
     def test_decode_zero(self):
         """Test decoding zero."""
-        result, remaining = _bencode_decode(b"i0e")
+        result, _remaining = _bencode_decode(b"i0e")
         assert result == 0
 
     def test_decode_string(self):
@@ -38,7 +40,7 @@ class TestBencodeDecode:
 
     def test_decode_empty_string(self):
         """Test decoding empty string."""
-        result, remaining = _bencode_decode(b"0:")
+        result, _remaining = _bencode_decode(b"0:")
         assert result == b""
 
     def test_decode_list(self):
@@ -49,12 +51,12 @@ class TestBencodeDecode:
 
     def test_decode_empty_list(self):
         """Test decoding empty list."""
-        result, remaining = _bencode_decode(b"le")
+        result, _remaining = _bencode_decode(b"le")
         assert result == []
 
     def test_decode_nested_list(self):
         """Test decoding nested lists."""
-        result, remaining = _bencode_decode(b"lli1eeli2eee")
+        result, _remaining = _bencode_decode(b"lli1eeli2eee")
         assert result == [[1], [2]]
 
     def test_decode_dict(self):
@@ -65,14 +67,14 @@ class TestBencodeDecode:
 
     def test_decode_empty_dict(self):
         """Test decoding empty dictionary."""
-        result, remaining = _bencode_decode(b"de")
+        result, _remaining = _bencode_decode(b"de")
         assert result == {}
 
     def test_decode_complex_structure(self):
         """Test decoding complex nested structures."""
         # Dict with string, int, and list values
         data = b"d3:agei25e4:name4:John5:itemsli1ei2ei3eee"
-        result, remaining = _bencode_decode(data)
+        result, _remaining = _bencode_decode(data)
         assert result == {
             b"age": 25,
             b"name": b"John",
