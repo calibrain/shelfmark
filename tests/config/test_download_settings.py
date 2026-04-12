@@ -1,3 +1,6 @@
+from unittest.mock import patch
+
+
 def _base_email_mode_values() -> dict[str, object]:
     return {
         "BOOKS_OUTPUT_MODE": "email",
@@ -177,3 +180,82 @@ def test_test_books_destination_rejects_relative_user_placeholder_path():
 
     assert result["success"] is False
     assert result["message"] == "Destination must be absolute: {User}/books"
+
+
+def test_test_books_destination_requires_value():
+    from shelfmark.config.download_settings_handlers import check_books_destination
+
+    result = check_books_destination({"DESTINATION": ""})
+
+    assert result["success"] is False
+    assert result["message"] == "Books destination is required"
+
+
+def test_test_books_destination_uses_persisted_value_when_current_values_missing(monkeypatch, tmp_path):
+    from shelfmark.config.download_settings_handlers import check_books_destination
+    from shelfmark.core.config import config
+
+    destination = tmp_path / "persisted-books"
+
+    def _fake_get(key: str, default=None):
+        if key == "DESTINATION":
+            return str(destination)
+        return default
+
+    monkeypatch.setattr(config, "get", _fake_get)
+
+    result = check_books_destination()
+
+    assert result["success"] is True
+    assert result["message"] == f"Books destination is writable: {destination}"
+
+
+def test_test_audiobook_destination_preserves_books_fallback_suffix_on_failure(tmp_path):
+    from shelfmark.config.download_settings_handlers import check_audiobook_destination
+
+    destination = tmp_path / "books"
+
+    def _fake_validate_destination(path, status_callback):
+        status_callback("error", f"Destination not writable: {path}")
+        return False
+
+    with patch(
+        "shelfmark.download.postprocess.destination.validate_destination",
+        side_effect=_fake_validate_destination,
+    ):
+        result = check_audiobook_destination(
+            {
+                "DESTINATION": str(destination),
+                "DESTINATION_AUDIOBOOK": "",
+            }
+        )
+
+    assert result["success"] is False
+    assert result["message"] == (
+        f"Destination not writable: {destination} (using the Books destination)"
+    )
+
+
+def test_execute_action_passes_unsaved_values_to_destination_test(tmp_path):
+    import shelfmark.config.settings  # noqa: F401
+    from shelfmark.core.settings_registry import execute_action
+
+    destination = tmp_path / "action-books"
+    captured: dict[str, object] = {}
+
+    def _fake_validate_destination(path, status_callback):
+        captured["path"] = path
+        return True
+
+    with patch(
+        "shelfmark.download.postprocess.destination.validate_destination",
+        side_effect=_fake_validate_destination,
+    ):
+        result = execute_action(
+            "downloads",
+            "test_destination",
+            {"DESTINATION": str(destination)},
+        )
+
+    assert result["success"] is True
+    assert captured["path"] == destination
