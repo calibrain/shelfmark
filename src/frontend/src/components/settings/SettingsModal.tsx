@@ -1,6 +1,9 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 
 import { useSearchMode } from '../../contexts/SearchModeContext';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useSettings } from '../../hooks/useSettings';
 import { getAdminSettingsOverridesSummary, getSettingsTab } from '../../services/api';
 import { SettingsContent } from './SettingsContent';
@@ -53,9 +56,8 @@ export const SettingsModal = ({
   } = useSettings();
 
   const { isUniversalMode } = useSearchMode();
+  const isMobile = useMediaQuery('(max-width: 767px)');
 
-  // Track if we're showing detail view on mobile
-  const [isMobile, setIsMobile] = useState(false);
   const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [securityAccessError, setSecurityAccessError] = useState<string | null>(null);
@@ -73,16 +75,6 @@ export const SettingsModal = ({
   const prevIsOpenRef = useRef(false);
   const overrideSummaryRequestIdRef = useRef(0);
 
-  // Check for mobile viewport
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-
   const handleClose = useCallback(() => {
     setIsClosing(true);
     setTimeout(() => {
@@ -91,38 +83,17 @@ export const SettingsModal = ({
     }, 150);
   }, [onClose]);
 
-  // Handle ESC key
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
+  const handleEscape = useCallback(() => {
+    if (isMobile && showMobileDetail) {
+      setShowMobileDetail(false);
+      return;
     }
 
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (isMobile && showMobileDetail) {
-          setShowMobileDetail(false);
-        } else {
-          handleClose();
-        }
-      }
-    };
+    handleClose();
+  }, [handleClose, isMobile, showMobileDetail]);
 
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, isMobile, showMobileDetail, handleClose]);
-
-  // Prevent body scroll when open
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isOpen]);
+  useBodyScrollLock(isOpen);
+  useEscapeKey(isOpen, handleEscape);
 
   // Reset mobile detail view when modal opens
   useEffect(() => {

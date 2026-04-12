@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, RefObject } from 'react';
+import type { InputHTMLAttributes } from 'react';
 import {
   forwardRef,
   startTransition,
@@ -11,6 +11,7 @@ import {
 } from 'react';
 
 import { useSearchMode } from '../contexts/SearchModeContext';
+import { useDismiss } from '../hooks/useDismiss';
 import type { DynamicFieldOption } from '../services/api';
 import { fetchFieldOptions } from '../services/api';
 import type { ContentType, MetadataSearchField, QueryTargetOption, SortOption } from '../types';
@@ -51,43 +52,6 @@ interface SearchBarProps {
 export interface SearchBarHandle {
   submit: () => void;
 }
-
-const useDismiss = (
-  isOpen: boolean,
-  refs: RefObject<HTMLElement | null>[],
-  onClose: () => void,
-) => {
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  const refsRef = useRef(refs);
-  refsRef.current = refs;
-
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-
-    const handleClickOutside = (event: MouseEvent) => {
-      const { target } = event;
-      if (!(target instanceof Node)) {
-        return;
-      }
-      if (refsRef.current.some((r) => r.current?.contains(target))) return;
-      onCloseRef.current();
-    };
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onCloseRef.current();
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [isOpen]);
-};
 
 const autocompleteOptionsCache = new Map<string, DynamicFieldOption[]>();
 const AUTOCOMPLETE_CACHE_MAX = 100;

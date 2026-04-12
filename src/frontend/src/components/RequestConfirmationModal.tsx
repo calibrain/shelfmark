@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 import { getMetadataBookInfo } from '../services/api';
 import type { CreateRequestPayload } from '../types';
 import type { RequestConfirmationPreview } from '../utils/requestConfirmation';
@@ -61,6 +63,9 @@ export const RequestConfirmationModal = ({
     }, 150);
   }, [isSubmitting, onClose]);
 
+  useBodyScrollLock(Boolean(payload));
+  useEscapeKey(Boolean(payload), handleClose);
+
   useEffect(() => {
     if (payload) {
       setNote('');
@@ -68,30 +73,6 @@ export const RequestConfirmationModal = ({
       setIsClosing(false);
     }
   }, [payload]);
-
-  useEffect(() => {
-    if (!payload) {
-      return undefined;
-    }
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [payload]);
-
-  useEffect(() => {
-    if (!payload) {
-      return undefined;
-    }
-    const onEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        handleClose();
-      }
-    };
-    document.addEventListener('keydown', onEscape);
-    return () => document.removeEventListener('keydown', onEscape);
-  }, [payload, handleClose]);
 
   const basePreview = useMemo(() => {
     return payload ? buildRequestConfirmationPreview(payload) : null;

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
 
+import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import type { RequestRecord, StatusData } from '../../types';
 import { Dropdown } from '../Dropdown';
 import { ActivityCard } from './ActivityCard';
@@ -222,13 +224,6 @@ const getInitialPinnedPreference = (): boolean => {
   }
 };
 
-const getInitialDesktopState = (): boolean => {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-  return window.matchMedia('(min-width: 1024px)').matches;
-};
-
 export const ActivitySidebar = ({
   isOpen,
   onClose,
@@ -258,7 +253,7 @@ export const ActivitySidebar = ({
   pinnedTopOffset = 0,
 }: ActivitySidebarProps) => {
   const [isPinned, setIsPinned] = useState<boolean>(() => getInitialPinnedPreference());
-  const [isDesktop, setIsDesktop] = useState<boolean>(() => getInitialDesktopState());
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
   const [activeTab, setActiveTab] = useState<ActivityTabKey>('all');
   const [selectedUser, setSelectedUser] = useState(ALL_USERS_FILTER);
   const [rejectingRequest, setRejectingRequest] = useState<{ requestId: number } | null>(null);
@@ -273,21 +268,6 @@ export const ActivitySidebar = ({
     },
     [onActiveTabChange],
   );
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(min-width: 1024px)');
-
-    const handleMediaChange = (event: MediaQueryListEvent) => {
-      setIsDesktop(event.matches);
-    };
-
-    setIsDesktop(mediaQuery.matches);
-    mediaQuery.addEventListener('change', handleMediaChange);
-
-    return () => {
-      mediaQuery.removeEventListener('change', handleMediaChange);
-    };
-  }, []);
 
   useEffect(() => {
     if (!showRequestsTab && activeTab === 'requests') {
@@ -308,22 +288,7 @@ export const ActivitySidebar = ({
     onPinnedOpenChange?.(isPinnedOpen);
   }, [isPinnedOpen, onPinnedOpenChange]);
 
-  useEffect(() => {
-    if (!isOpen || isPinnedOpen) {
-      return undefined;
-    }
-
-    const onEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-
-    document.addEventListener('keydown', onEscape);
-    return () => {
-      document.removeEventListener('keydown', onEscape);
-    };
-  }, [isOpen, isPinnedOpen, onClose]);
+  useEscapeKey(isOpen && !isPinnedOpen, onClose);
 
   const downloadItems = useMemo(() => {
     const items: ActivityItem[] = [];

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 import type { AdminUser, DeliveryPreferencesResponse } from '../../services/api';
 import {
   getSelfUserEditContext,
@@ -126,17 +128,6 @@ export const SelfSettingsModal = ({
     void loadEditContext();
   }, [isOpen, loadEditContext]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isOpen]);
-
   const handleClose = useCallback(() => {
     if (isSaving) {
       return;
@@ -148,18 +139,8 @@ export const SelfSettingsModal = ({
     }, 150);
   }, [isSaving, onClose]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        handleClose();
-      }
-    };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, handleClose]);
+  useBodyScrollLock(isOpen);
+  useEscapeKey(isOpen, handleClose);
 
   const hasProfileChanges = Boolean(
     editingUser &&

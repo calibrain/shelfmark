@@ -8,6 +8,7 @@ import {
   useImperativeHandle,
 } from 'react';
 
+import { useDismiss } from '../hooks/useDismiss';
 import { getAdminUsers } from '../services/api';
 import type {
   ContentType,
@@ -263,33 +264,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
       }, 150); // Match the animation duration
     };
 
-    // Close dropdown when clicking outside or pressing ESC
-    useEffect(() => {
-      const handleClickOutside = (event: MouseEvent) => {
-        if (!(event.target instanceof Node)) {
-          return;
-        }
-        if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-          closeDropdown();
-        }
-      };
-
-      const handleEscapeKey = (event: KeyboardEvent) => {
-        if (event.key === 'Escape') {
-          closeDropdown();
-        }
-      };
-
-      if (isDropdownOpen && !isClosing) {
-        document.addEventListener('mousedown', handleClickOutside);
-        document.addEventListener('keydown', handleEscapeKey);
-      }
-
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-        document.removeEventListener('keydown', handleEscapeKey);
-      };
-    }, [isDropdownOpen, isClosing]);
+    useDismiss(isDropdownOpen && !isClosing, [dropdownRef], closeDropdown);
 
     const handleLogout = () => {
       closeDropdown();

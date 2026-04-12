@@ -9,6 +9,8 @@ import {
 import { createPortal } from 'react-dom';
 
 import { useSocket } from '../contexts/SocketContext';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 import { getReleases, getReleaseSources } from '../services/api';
 import type {
   Book,
@@ -788,6 +790,9 @@ export const ReleaseModal = ({
     }, 150);
   }, [onClose]);
 
+  useBodyScrollLock(Boolean(book));
+  useEscapeKey(Boolean(book), handleClose);
+
   const handleRequestBook = useCallback(async (): Promise<void> => {
     if (!book || !onRequestBook || isRequestingBook) {
       return;
@@ -800,28 +805,6 @@ export const ReleaseModal = ({
       setIsRequestingBook(false);
     }
   }, [book, onRequestBook, isRequestingBook, contentType, handleClose]);
-
-  // Handle ESC key
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleClose();
-    };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [handleClose]);
-
-  // Body scroll lock
-  useEffect(() => {
-    if (!book) {
-      return undefined;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [book]);
 
   // Restore staged selection when navigating between phases
   useEffect(() => {

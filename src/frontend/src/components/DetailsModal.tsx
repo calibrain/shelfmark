@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 import type { Book, ButtonStateInfo } from '../types';
 import { isMetadataBook } from '../types';
 import { bookSupportsTargets } from '../utils/bookTargetLoader';
@@ -39,6 +41,9 @@ export const DetailsModal = ({
     }, 150);
   }, [onClose]);
 
+  useBodyScrollLock(Boolean(book));
+  useEscapeKey(Boolean(book), handleClose);
+
   // Clear queuing state and close modal once button state changes from download
   useEffect(() => {
     if (!isQueuing || buttonState.state === 'download') {
@@ -50,30 +55,6 @@ export const DetailsModal = ({
     const timer = setTimeout(handleClose, 500);
     return () => clearTimeout(timer);
   }, [buttonState.state, isQueuing, handleClose]);
-
-  // Handle ESC key to close modal
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        handleClose();
-      }
-    };
-
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [handleClose]);
-
-  useEffect(() => {
-    if (!book) {
-      return undefined;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [book]);
 
   const hasBookTargets = Boolean(book && isMetadataBook(book) && bookSupportsTargets(book));
 

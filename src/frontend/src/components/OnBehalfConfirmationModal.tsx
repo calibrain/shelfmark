@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { useEscapeKey } from '../hooks/useEscapeKey';
+
 interface OnBehalfConfirmationModalProps {
   isOpen: boolean;
   actingAsName: string;
@@ -29,6 +32,9 @@ export const OnBehalfConfirmationModal = ({
     }, 150);
   }, [isSubmitting, onClose]);
 
+  useBodyScrollLock(isOpen);
+  useEscapeKey(isOpen, handleClose);
+
   useEffect(() => {
     if (!isOpen) {
       return;
@@ -36,32 +42,6 @@ export const OnBehalfConfirmationModal = ({
     setIsSubmitting(false);
     setIsClosing(false);
   }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-    const onEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        handleClose();
-      }
-    };
-    document.addEventListener('keydown', onEscape);
-    return () => {
-      document.removeEventListener('keydown', onEscape);
-    };
-  }, [isOpen, handleClose]);
 
   if (!isOpen && !isClosing) return null;
   if (!isOpen) return null;

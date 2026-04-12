@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 import type { OnboardingStep } from '../services/api';
 import {
   getOnboarding,
@@ -237,6 +239,9 @@ export const OnboardingModal = ({
     }, 150);
   }, [onClose]);
 
+  useBodyScrollLock(isOpen);
+  useEscapeKey(isOpen, handleClose);
+
   // Handle skip
   const handleSkip = useCallback(async () => {
     try {
@@ -291,35 +296,6 @@ export const OnboardingModal = ({
     },
     [currentStep, values],
   );
-
-  // Handle ESC key
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        handleClose();
-      }
-    };
-
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, handleClose]);
-
-  // Prevent body scroll when open
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isOpen]);
 
   if (!isOpen && !isClosing) return null;
 

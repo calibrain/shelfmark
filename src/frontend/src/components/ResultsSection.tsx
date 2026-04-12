@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useSearchMode } from '../contexts/SearchModeContext';
 import { SORT_OPTIONS } from '../data/filterOptions';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import type { Book, ButtonStateInfo, SortOption } from '../types';
 import { Dropdown } from './Dropdown';
 import { CardView } from './resultsViews/CardView';
@@ -64,33 +65,11 @@ export const ResultsSection = ({
     const saved = localStorage.getItem('bookViewMode');
     return saved === 'card' || saved === 'compact' || saved === 'list' ? saved : 'compact';
   });
+  const isDesktop = useMediaQuery('(min-width: 640px)');
 
-  const [isDesktop, setIsDesktop] = useState(false);
   useEffect(() => {
     localStorage.setItem('bookViewMode', viewMode);
   }, [viewMode]);
-
-  // Track whether we're in desktop layout (sm breakpoint and above)
-  // Debounced to avoid excessive state updates during resize
-  useEffect(() => {
-    let timeoutId: number;
-
-    const checkDesktop = () => {
-      clearTimeout(timeoutId);
-      timeoutId = window.setTimeout(() => {
-        setIsDesktop(window.innerWidth >= 640); // sm breakpoint
-      }, 100);
-    };
-
-    // Initial check without debounce
-    setIsDesktop(window.innerWidth >= 640);
-
-    window.addEventListener('resize', checkDesktop);
-    return () => {
-      clearTimeout(timeoutId);
-      window.removeEventListener('resize', checkDesktop);
-    };
-  }, []);
 
   if (!visible) return null;
 

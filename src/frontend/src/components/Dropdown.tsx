@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+
+import { useDismiss } from '../hooks/useDismiss';
 
 // Find the closest scrollable ancestor element
 function getScrollableAncestor(element: HTMLElement | null): HTMLElement | null {
@@ -111,34 +113,7 @@ export const Dropdown = ({
     onOpenChange?.(false);
   }, [onOpenChange]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return undefined;
-    }
-
-    const handleClick = (event: MouseEvent) => {
-      if (!(event.target instanceof Node)) {
-        return;
-      }
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
-        close();
-      }
-    };
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        close();
-      }
-    };
-
-    document.addEventListener('mousedown', handleClick);
-    document.addEventListener('keydown', handleEscape);
-
-    return () => {
-      document.removeEventListener('mousedown', handleClick);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [isOpen, close]);
+  useDismiss(isOpen, [containerRef], close);
 
   // Memoize the panel direction calculation
   const updatePanelDirection = useCallback(() => {
