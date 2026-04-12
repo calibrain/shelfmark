@@ -96,4 +96,3 @@ make typecheck
 - Clear `node_modules` and reinstall: `make clean && make install`
 - Check Node.js version compatibility
 - Verify TypeScript configuration
-

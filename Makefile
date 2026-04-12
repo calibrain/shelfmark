@@ -1,4 +1,4 @@
-.PHONY: help install install-python-dev dev build preview typecheck frontend-test clean up up down docker-build refresh restart build-serve python-lint python-lint-fix python-format python-format-check python-typecheck python-dead-code python-checks python-test-lint python-test-lint-fix python-test-format python-test-format-check python-test-typecheck python-test-checks
+.PHONY: help install install-python-dev dev build preview typecheck frontend-test clean up up down docker-build refresh restart build-serve python-lint python-lint-fix python-format python-format-check python-typecheck python-dead-code python-checks python-test-lint python-test-lint-fix python-test-format python-test-format-check python-test-typecheck python-test-checks python-coverage prek-install
 
 # Frontend directory
 FRONTEND_DIR := src/frontend
@@ -32,6 +32,8 @@ help:
 	@echo "  python-test-format-check - Check Python test formatting with Ruff"
 	@echo "  python-test-typecheck - Run lightweight BasedPyright checks against Python tests"
 	@echo "  python-test-checks - Run all relaxed Python test static analysis checks"
+	@echo "  python-coverage - Run tests with coverage report"
+	@echo "  prek-install - Install prek git hooks"
 	@echo "  clean      - Remove node_modules and build artifacts"
 	@echo ""
 	@echo "Backend (Docker):"
@@ -126,6 +128,14 @@ python-test-typecheck:
 	uv run basedpyright tests --skipunannotated
 
 python-test-checks: python-test-lint python-test-format-check python-test-typecheck
+
+python-coverage:
+	@echo "Running tests with coverage..."
+	uv run pytest tests/ -x --tb=short -m "not integration and not e2e" --cov --cov-report=term-missing
+
+prek-install:
+	@echo "Installing prek git hooks..."
+	uv run prek install
 
 # Run frontend unit tests
 frontend-test:
