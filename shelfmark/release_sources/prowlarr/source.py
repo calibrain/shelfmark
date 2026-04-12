@@ -2,7 +2,6 @@
 
 import re
 import time
-from contextlib import suppress
 from typing import TYPE_CHECKING, ClassVar, NoReturn
 
 if TYPE_CHECKING:
@@ -11,6 +10,7 @@ if TYPE_CHECKING:
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import normalize_optional_text
 from shelfmark.core.search_plan import ReleaseSearchVariant
 from shelfmark.core.utils import normalize_http_url
 from shelfmark.release_sources import (
@@ -30,6 +30,8 @@ from shelfmark.release_sources import (
 from shelfmark.release_sources.prowlarr.api import ProwlarrClient
 from shelfmark.release_sources.prowlarr.cache import cache_release
 from shelfmark.release_sources.prowlarr.utils import (
+    coerce_float_like,
+    coerce_int_like,
     get_preferred_download_url,
     get_protocol,
 )
@@ -43,6 +45,21 @@ _PROWLARR_SOURCE_ERRORS = (AttributeError, OSError, RuntimeError, TypeError, Val
 
 def _raise_timeout_error(message: str) -> NoReturn:
     raise TimeoutError(message)
+
+
+def _raise_invalid_indexer_id(item: object) -> NoReturn:
+    msg = f"Invalid indexer id: {item!r}"
+    raise ValueError(msg)
+
+
+def _raise_invalid_indexer_selection_type(selected: object) -> NoReturn:
+    msg = f"Invalid PROWLARR_INDEXERS type: {type(selected).__name__}"
+    raise TypeError(msg)
+
+
+def _coerce_indexer_id(value: object) -> int | None:
+    """Best-effort coercion for indexer identifiers from config/API payloads."""
+    return coerce_int_like(value)
 
 
 def _parse_size(size_bytes: int | None) -> str | None:
@@ -370,13 +387,8 @@ def _prowlarr_result_to_release(
     cache_release(source_id, result)
 
     # Derive common indicators from torznab/newznab attrs when present.
-    download_volume_factor = result.get("downloadVolumeFactor")
-    is_freeleech = False
-    try:
-        if download_volume_factor is not None and float(download_volume_factor) == 0.0:
-            is_freeleech = True
-    except TypeError, ValueError:
-        pass
+    download_volume_factor = coerce_float_like(result.get("downloadVolumeFactor"))
+    is_freeleech = download_volume_factor == 0.0
 
     if any(flag.lower() in {"freeleech", "fl"} for flag in indexer_flags):
         is_freeleech = True
@@ -473,11 +485,9 @@ class ProwlarrSource(ReleaseSource):
 
                     # If user has selected specific indexers, track those separately
                     if selected_ids is not None:
-                        try:
-                            if int(idx_id) in selected_ids:
-                                selected_indexer_names.append(idx_name)
-                        except TypeError, ValueError:
-                            pass
+                        idx_id_int = _coerce_indexer_id(idx_id)
+                        if idx_id_int is not None and idx_id_int in selected_ids:
+                            selected_indexer_names.append(idx_name)
 
                 available_indexers = sorted(all_indexer_names) if all_indexer_names else None
                 # Only set default_indexers if user has selected specific ones
@@ -559,8 +569,8 @@ class ProwlarrSource(ReleaseSource):
 
     def _get_client(self) -> ProwlarrClient | None:
         """Get a configured Prowlarr client or None if not configured."""
-        raw_url = config.get("PROWLARR_URL", "")
-        api_key = config.get("PROWLARR_API_KEY", "")
+        raw_url = normalize_optional_text(config.get("PROWLARR_URL", "")) or ""
+        api_key = normalize_optional_text(config.get("PROWLARR_API_KEY", "")) or ""
 
         if not raw_url or not api_key:
             return None
@@ -585,10 +595,26 @@ class ProwlarrSource(ReleaseSource):
         try:
             if isinstance(selected, list):
                 # Already a list from JSON config
-                ids = [int(x) for x in selected if x]
-            else:
+                ids = []
+                for item in selected:
+                    if not item:
+                        continue
+                    parsed_id = _coerce_indexer_id(item)
+                    if parsed_id is None:
+                        _raise_invalid_indexer_id(item)
+                    ids.append(parsed_id)
+            elif isinstance(selected, str):
                 # Comma-separated string from env var
-                ids = [int(x.strip()) for x in selected.split(",") if x.strip()]
+                ids = []
+                for item in selected.split(","):
+                    if not item.strip():
+                        continue
+                    parsed_id = _coerce_indexer_id(item)
+                    if parsed_id is None:
+                        _raise_invalid_indexer_id(item)
+                    ids.append(parsed_id)
+            else:
+                _raise_invalid_indexer_selection_type(selected)
         except (ValueError, TypeError) as e:
             logger.warning("Invalid PROWLARR_INDEXERS format: %s (%s)", selected, e)
             return None
@@ -616,9 +642,9 @@ class ProwlarrSource(ReleaseSource):
             ids = []
             for name in names:
                 idx_id = name_to_id.get(name)
-                if idx_id is not None:
-                    with suppress(TypeError, ValueError):
-                        ids.append(int(idx_id))
+                parsed_id = _coerce_indexer_id(idx_id)
+                if parsed_id is not None:
+                    ids.append(parsed_id)
         except _PROWLARR_SOURCE_ERRORS as e:
             logger.warning("Failed to resolve indexer names to IDs: %s", e)
             return None
@@ -647,10 +673,10 @@ class ProwlarrSource(ReleaseSource):
                 continue
 
             indexer_id = indexer.get("id")
-            try:
-                indexer_ids.append(int(indexer_id))
-            except TypeError, ValueError:
+            parsed_indexer_id = _coerce_indexer_id(indexer_id)
+            if parsed_indexer_id is None:
                 continue
+            indexer_ids.append(parsed_indexer_id)
 
         return indexer_ids
 
@@ -815,10 +841,7 @@ class ProwlarrSource(ReleaseSource):
 
             for r in all_results:
                 idx_id = r.get("indexerId")
-                try:
-                    idx_id_int = int(idx_id) if idx_id is not None else None
-                except TypeError, ValueError:
-                    idx_id_int = None
+                idx_id_int = _coerce_indexer_id(idx_id)
 
                 is_enriched = bool(
                     idx_id_int is not None and idx_id_int in enriched_indexer_ids_set
@@ -864,6 +887,6 @@ class ProwlarrSource(ReleaseSource):
         """Check if Prowlarr is enabled and configured."""
         if not config.get("PROWLARR_ENABLED", False):
             return False
-        url = normalize_http_url(config.get("PROWLARR_URL", ""))
-        api_key = config.get("PROWLARR_API_KEY", "")
+        url = normalize_http_url(normalize_optional_text(config.get("PROWLARR_URL", "")))
+        api_key = normalize_optional_text(config.get("PROWLARR_API_KEY", "")) or ""
         return bool(url and api_key)

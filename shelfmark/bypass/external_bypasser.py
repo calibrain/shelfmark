@@ -31,11 +31,30 @@ BACKOFF_BASE = 1.0
 BACKOFF_CAP = 10.0
 
 
+def _coerce_config_str(value: object, default: str) -> str:
+    """Return a string config value or a safe default."""
+    if isinstance(value, str):
+        return value
+    return default
+
+
+def _coerce_timeout_ms(value: object, default: int) -> int:
+    """Return a positive timeout in milliseconds or the default."""
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int) and value > 0:
+        return value
+    return default
+
+
 def _fetch_via_bypasser(target_url: str) -> str | None:
     """Make a single request to the external bypasser service. Returns HTML or None."""
-    raw_bypasser_url = config.get("EXT_BYPASSER_URL", "http://flaresolverr:8191")
-    bypasser_path = config.get("EXT_BYPASSER_PATH", "/v1")
-    bypasser_timeout = config.get("EXT_BYPASSER_TIMEOUT", 60000)
+    raw_bypasser_url = _coerce_config_str(
+        config.get("EXT_BYPASSER_URL", "http://flaresolverr:8191"),
+        "http://flaresolverr:8191",
+    )
+    bypasser_path = _coerce_config_str(config.get("EXT_BYPASSER_PATH", "/v1"), "/v1")
+    bypasser_timeout = _coerce_timeout_ms(config.get("EXT_BYPASSER_TIMEOUT", 60000), 60000)
 
     bypasser_url = normalize_http_url(raw_bypasser_url)
     if not bypasser_url or not bypasser_path:

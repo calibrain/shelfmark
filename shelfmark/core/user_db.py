@@ -116,6 +116,14 @@ WHERE dismissed_at IS NOT NULL;
 """
 
 
+def _require_loaded_user(user: dict[str, Any] | None) -> dict[str, Any]:
+    """Return a loaded user row or raise when the DB insert result is inconsistent."""
+    if user is None:
+        msg = "Failed to load newly created user"
+        raise RuntimeError(msg)
+    return user
+
+
 def get_users_db_path(config_dir: str | None = None) -> str:
     """Return the configured users database path."""
     root = config_dir or os.environ.get("CONFIG_DIR", "/config")
@@ -296,7 +304,11 @@ class UserDB:
                 )
                 conn.commit()
                 user_id = cursor.lastrowid
-                return self._get_user_by_id(conn, user_id)
+                if not isinstance(user_id, int):
+                    msg = "Failed to create user"
+                    raise TypeError(msg)
+                created_user = self._get_user_by_id(conn, user_id)
+                return _require_loaded_user(created_user)
             except sqlite3.IntegrityError as e:
                 msg = f"User already exists: {e}"
                 raise ValueError(msg) from e

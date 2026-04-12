@@ -6,17 +6,22 @@ import time
 from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
-from typing import NoReturn
+from typing import NoReturn, TypedDict
 
 import requests
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
     register_client,
+)
+from shelfmark.download.clients._coercion import (
+    coerce_optional_float,
+    coerce_optional_int,
+    config_text,
+    normalize_http_config_url,
 )
 from shelfmark.download.clients.torrent_utils import (
     extract_torrent_info,
@@ -39,6 +44,15 @@ _HASH_LENGTH_ED2K = 32
 _HTTP_STATUS_FORBIDDEN = HTTPStatus.FORBIDDEN
 _HTTP_STATUS_NOT_FOUND = HTTPStatus.NOT_FOUND
 _ONE_WEEK_IN_SECONDS = 604800
+
+
+class _QBittorrentAddKwargs(TypedDict, total=False):
+    rename: str
+    category: str
+    save_path: str
+    tags: str
+    seeding_time_limit: int
+    ratio_limit: float
 
 
 def _resolve_qbittorrent_exception_type(candidate: object) -> type[Exception]:
@@ -197,21 +211,24 @@ class QBittorrentClient(DownloadClient):
             raise ValueError(msg)
 
         # We use `_base_url` for direct HTTP calls, so it must be a fully-qualified URL.
-        self._base_url = normalize_http_url(raw_url)
+        self._base_url = normalize_http_config_url(raw_url, require_string=True)
         if not self._base_url:
             msg = "QBITTORRENT_URL is invalid"
             raise ValueError(msg)
+
+        username = config_text(config.get("QBITTORRENT_USERNAME", ""))
+        password = config_text(config.get("QBITTORRENT_PASSWORD", ""))
 
         # qbittorrent-api accepts either a full URL or host:port; prefer the normalized URL
         # for consistency.
         self._client = Client(
             host=self._base_url,
-            username=config.get("QBITTORRENT_USERNAME", ""),
-            password=config.get("QBITTORRENT_PASSWORD", ""),
+            username=username,
+            password=password,
             VERIFY_WEBUI_CERTIFICATE=get_ssl_verify(self._base_url),
         )
-        self._category = config.get("QBITTORRENT_CATEGORY", "books")
-        self._download_dir = config.get("QBITTORRENT_DOWNLOAD_DIR", "")
+        self._category = config_text(config.get("QBITTORRENT_CATEGORY", "books"))
+        self._download_dir = config_text(config.get("QBITTORRENT_DOWNLOAD_DIR", ""))
         self._tags = _normalize_tags(config.get("QBITTORRENT_TAG", []))
 
     def _get_torrents_info(
@@ -318,8 +335,8 @@ class QBittorrentClient(DownloadClient):
     @staticmethod
     def is_configured() -> bool:
         """Check if qBittorrent is configured and selected as the torrent client."""
-        client = config.get("PROWLARR_TORRENT_CLIENT", "")
-        url = normalize_http_url(config.get("QBITTORRENT_URL", ""))
+        client = config_text(config.get("PROWLARR_TORRENT_CLIENT", ""))
+        url = normalize_http_config_url(config.get("QBITTORRENT_URL", ""), require_string=True)
         return client == "qbittorrent" and bool(url)
 
     def test_connection(self) -> tuple[bool, str]:
@@ -360,6 +377,8 @@ class QBittorrentClient(DownloadClient):
             # Use configured category if not explicitly provided
             category = category or self._category
             tags = self._tags
+            seeding_time_limit: int | None = None
+            ratio_limit: float | None = None
 
             # Ensure category exists (may already exist, which is fine)
             if category:
@@ -380,24 +399,23 @@ class QBittorrentClient(DownloadClient):
             expected_hash = torrent_info.info_hash
             torrent_data = torrent_info.torrent_data
 
-            # Add the torrent - use file content if we have it, otherwise URL
-            add_kwargs = {
-                "rename": name,
-            }
+            # Per-torrent seeding limits from indexer
+            seeding_time_limit_value = kwargs.get("seeding_time_limit")
+            seeding_time_limit = coerce_optional_int(seeding_time_limit_value)
+            ratio_limit_value = kwargs.get("ratio_limit")
+            ratio_limit = coerce_optional_float(ratio_limit_value)
+
+            add_kwargs: _QBittorrentAddKwargs = {"rename": name}
             if category:
                 add_kwargs["category"] = category
             if self._download_dir:
                 add_kwargs["save_path"] = self._download_dir
             if tags:
                 add_kwargs["tags"] = ",".join(tags)
-
-            # Per-torrent seeding limits from indexer
-            seeding_time_limit = kwargs.get("seeding_time_limit")
             if seeding_time_limit is not None:
-                add_kwargs["seeding_time_limit"] = int(seeding_time_limit)
-            ratio_limit = kwargs.get("ratio_limit")
+                add_kwargs["seeding_time_limit"] = seeding_time_limit
             if ratio_limit is not None:
-                add_kwargs["ratio_limit"] = float(ratio_limit)
+                add_kwargs["ratio_limit"] = ratio_limit
 
             if torrent_data:
                 result = self._client.torrents_add(

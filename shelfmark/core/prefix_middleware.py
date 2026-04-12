@@ -24,7 +24,8 @@ class PrefixMiddleware:
 
     def __call__(self, environ: dict[str, object], start_response: Callable[..., object]) -> object:
         """Rewrite prefixed requests before handing them to the wrapped app."""
-        path = environ.get("PATH_INFO", "") or ""
+        raw_path = environ.get("PATH_INFO", "")
+        path = raw_path if isinstance(raw_path, str) else str(raw_path or "")
 
         if path in self.bypass_paths:
             return self.app(environ, start_response)

@@ -71,7 +71,8 @@ def prepare_output_files(
         step_label = (
             "Staging torrent files" if output_plan.stage_action == STAGE_COPY else "Staging files"
         )
-        status_callback("resolving", step_label)
+        if status_callback is not None:
+            status_callback("resolving", step_label)
         working_path = stage_path(working_path, output_plan.staging_dir, output_plan.stage_action)
 
     can_delete_source_archives = (
@@ -88,7 +89,8 @@ def prepare_output_files(
     )
 
     if error:
-        status_callback("error", error)
+        if status_callback is not None:
+            status_callback("error", error)
         if not preserve_source_on_failure:
             cleanup_output_staging(output_plan, working_path, task, cleanup_paths)
         return None

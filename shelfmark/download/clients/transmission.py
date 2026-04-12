@@ -3,16 +3,24 @@
 Uses the transmission-rpc library to communicate with Transmission's RPC API.
 """
 
+from __future__ import annotations
+
+import importlib
 from contextlib import contextmanager, suppress
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
     register_client,
+)
+from shelfmark.download.clients._coercion import (
+    coerce_optional_float,
+    coerce_optional_int,
+    config_text,
+    normalize_http_config_url,
 )
 from shelfmark.download.clients.torrent_utils import (
     extract_torrent_info,
@@ -48,6 +56,39 @@ _TRANSMISSION_CLIENT_ERRORS = (
 )
 
 
+class _TransmissionSessionProtocol(Protocol):
+    verify: bool
+
+
+class _TransmissionSessionFactory(Protocol):
+    def __call__(self, *args: object, **kwargs: object) -> _TransmissionSessionProtocol: ...
+
+
+class _TransmissionRequestsNamespace(Protocol):
+    Session: _TransmissionSessionFactory
+
+
+class _TransmissionProtocolAttribute(Protocol):
+    protocol: str
+
+
+def _is_requests_namespace_with_session(
+    candidate: object,
+) -> TypeGuard[_TransmissionRequestsNamespace]:
+    return hasattr(candidate, "Session") and callable(getattr(candidate, "Session", None))
+
+
+def _has_protocol_attr(candidate: object) -> TypeGuard[_TransmissionProtocolAttribute]:
+    return hasattr(candidate, "protocol")
+
+
+def _set_transmission_protocol_if_supported(client: object, protocol: str) -> None:
+    if protocol != "https" or not _has_protocol_attr(client):
+        return
+    with suppress(AttributeError, OSError, RuntimeError, TypeError, ValueError):
+        client.protocol = protocol
+
+
 @contextmanager
 def _transmission_session_verify_override(url: str) -> Iterator[None]:
     """Temporarily override transmission-rpc's session factory when verify is disabled.
@@ -61,24 +102,29 @@ def _transmission_session_verify_override(url: str) -> Iterator[None]:
         return
 
     try:
-        import transmission_rpc.client as transmission_rpc_client
-
-        original_session_factory = transmission_rpc_client.requests.Session
-    except AttributeError, ImportError:
+        transmission_rpc_client = importlib.import_module("transmission_rpc.client")
+        requests_namespace = getattr(transmission_rpc_client, "requests", None)
+    except ImportError:
         # If internals differ, gracefully fall back to default behavior.
         yield
         return
 
-    def _session_factory(*args: object, **kwargs: object) -> object:
+    if not _is_requests_namespace_with_session(requests_namespace):
+        yield
+        return
+
+    original_session_factory = requests_namespace.Session
+
+    def _session_factory(*args: object, **kwargs: object) -> _TransmissionSessionProtocol:
         session = original_session_factory(*args, **kwargs)
         session.verify = False
         return session
 
-    transmission_rpc_client.requests.Session = _session_factory
+    requests_namespace.Session = _session_factory
     try:
         yield
     finally:
-        transmission_rpc_client.requests.Session = original_session_factory
+        requests_namespace.Session = original_session_factory
 
 
 def _apply_transmission_ssl_verify(client: object, url: str) -> None:
@@ -103,18 +149,18 @@ class TransmissionClient(DownloadClient):
         """Initialize Transmission client with settings from config."""
         from transmission_rpc import Client
 
-        raw_url = config.get("TRANSMISSION_URL", "")
+        raw_url = config_text(config.get("TRANSMISSION_URL", ""))
         if not raw_url:
             msg = "TRANSMISSION_URL is required"
             raise ValueError(msg)
 
-        url = normalize_http_url(raw_url)
+        url = normalize_http_config_url(raw_url)
         if not url:
             msg = "TRANSMISSION_URL is invalid"
             raise ValueError(msg)
 
-        username = config.get("TRANSMISSION_USERNAME", "")
-        password = config.get("TRANSMISSION_PASSWORD", "")
+        username = config_text(config.get("TRANSMISSION_USERNAME", ""))
+        password = config_text(config.get("TRANSMISSION_PASSWORD", ""))
 
         # Parse URL to extract host, port, and path
         protocol, host, port, path = parse_transmission_url(url)
@@ -138,18 +184,16 @@ class TransmissionClient(DownloadClient):
             with _transmission_session_verify_override(url):
                 self._client = Client(**client_kwargs)
             # Some versions expose protocol as an attribute rather than kwarg.
-            if protocol == "https" and hasattr(self._client, "protocol"):
-                with suppress(Exception):
-                    self._client.protocol = protocol
+            _set_transmission_protocol_if_supported(self._client, protocol)
         _apply_transmission_ssl_verify(self._client, url)
-        self._category = config.get("TRANSMISSION_CATEGORY", "books")
-        self._download_dir = config.get("TRANSMISSION_DOWNLOAD_DIR", "")
+        self._category = config_text(config.get("TRANSMISSION_CATEGORY", "books"))
+        self._download_dir = config_text(config.get("TRANSMISSION_DOWNLOAD_DIR", ""))
 
     @staticmethod
     def is_configured() -> bool:
         """Check if Transmission is configured and selected as the torrent client."""
-        client = config.get("PROWLARR_TORRENT_CLIENT", "")
-        url = normalize_http_url(config.get("TRANSMISSION_URL", ""))
+        client = config_text(config.get("PROWLARR_TORRENT_CLIENT", ""))
+        url = normalize_http_config_url(config.get("TRANSMISSION_URL", ""))
         return client == "transmission" and bool(url)
 
     def test_connection(self) -> tuple[bool, str]:
@@ -187,7 +231,7 @@ class TransmissionClient(DownloadClient):
 
         """
         try:
-            resolved_category = category or self._category or ""
+            resolved_category = category or self._category
 
             torrent_info = extract_torrent_info(url, expected_hash=expected_hash)
             add_kwargs = {}
@@ -215,13 +259,13 @@ class TransmissionClient(DownloadClient):
 
             # Apply per-torrent seeding limits from indexer
             seed_kwargs = {}
-            seeding_time_limit = kwargs.get("seeding_time_limit")
+            seeding_time_limit = coerce_optional_int(kwargs.get("seeding_time_limit"))
             if seeding_time_limit is not None:
-                seed_kwargs["seed_idle_limit"] = int(seeding_time_limit)
+                seed_kwargs["seed_idle_limit"] = seeding_time_limit
                 seed_kwargs["seed_idle_mode"] = 1  # per-torrent
-            ratio_limit = kwargs.get("ratio_limit")
+            ratio_limit = coerce_optional_float(kwargs.get("ratio_limit"))
             if ratio_limit is not None:
-                seed_kwargs["seed_ratio_limit"] = float(ratio_limit)
+                seed_kwargs["seed_ratio_limit"] = ratio_limit
                 seed_kwargs["seed_ratio_mode"] = 1  # per-torrent
             if seed_kwargs:
                 try:

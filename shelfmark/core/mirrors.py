@@ -1,18 +1,18 @@
 """Centralized mirror configuration for all download sources."""
 
-# Lazy import to avoid circular imports
+from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from shelfmark.core.utils import normalize_http_url
 
 if TYPE_CHECKING:
-    from types import ModuleType
+    from shelfmark.core.config import Config
 
 _config_module = None
 
 
-def _get_config() -> ModuleType:
+def _get_config() -> Config:
     """Lazy import of config module to avoid circular imports."""
     global _config_module
     if _config_module is None:
@@ -55,6 +55,11 @@ def _normalize_mirror_url(url: str) -> str:
     return normalize_http_url(url, default_scheme="https")
 
 
+def _string_config_value(value: object) -> str:
+    """Normalize mirror-related config values to strings."""
+    return value if isinstance(value, str) else str(value or "")
+
+
 def get_aa_mirrors() -> list[str]:
     """Get Anna's Archive mirrors.
 
@@ -91,7 +96,7 @@ def get_aa_mirrors() -> list[str]:
         mirrors = [url for url in mirrors if url]
 
         # Backwards-compatible append-only behavior for legacy configs/env.
-        additional = config.get("AA_ADDITIONAL_URLS", "")
+        additional = _string_config_value(config.get("AA_ADDITIONAL_URLS", ""))
         if additional:
             for url in additional.split(","):
                 normalized = _normalize_mirror_url(url)
@@ -112,7 +117,7 @@ def get_libgen_mirrors() -> list[str]:
     mirrors = [url for url in mirrors if url]
     config = _get_config()
 
-    additional = config.get("LIBGEN_ADDITIONAL_URLS", "")
+    additional = _string_config_value(config.get("LIBGEN_ADDITIONAL_URLS", ""))
     if additional:
         for url in additional.split(","):
             normalized = _normalize_mirror_url(url)
@@ -131,7 +136,9 @@ def get_zlib_mirrors() -> list[str]:
     """
     config = _get_config()
 
-    primary = _normalize_mirror_url(config.get("ZLIB_PRIMARY_URL", DEFAULT_ZLIB_MIRRORS[0]))
+    primary = _normalize_mirror_url(
+        _string_config_value(config.get("ZLIB_PRIMARY_URL", DEFAULT_ZLIB_MIRRORS[0]))
+    )
     if not primary:
         primary = _normalize_mirror_url(DEFAULT_ZLIB_MIRRORS[0])
     mirrors = [primary]
@@ -143,7 +150,7 @@ def get_zlib_mirrors() -> list[str]:
             mirrors.append(normalized)
 
     # Add custom mirrors
-    additional = config.get("ZLIB_ADDITIONAL_URLS", "")
+    additional = _string_config_value(config.get("ZLIB_ADDITIONAL_URLS", ""))
     if additional:
         for url in additional.split(","):
             normalized = _normalize_mirror_url(url)
@@ -161,7 +168,9 @@ def get_zlib_primary_url() -> str:
 
     """
     config = _get_config()
-    primary = _normalize_mirror_url(config.get("ZLIB_PRIMARY_URL", DEFAULT_ZLIB_MIRRORS[0]))
+    primary = _normalize_mirror_url(
+        _string_config_value(config.get("ZLIB_PRIMARY_URL", DEFAULT_ZLIB_MIRRORS[0]))
+    )
     return primary or _normalize_mirror_url(DEFAULT_ZLIB_MIRRORS[0])
 
 
@@ -185,7 +194,9 @@ def get_welib_mirrors() -> list[str]:
     """
     config = _get_config()
 
-    primary = _normalize_mirror_url(config.get("WELIB_PRIMARY_URL", DEFAULT_WELIB_MIRRORS[0]))
+    primary = _normalize_mirror_url(
+        _string_config_value(config.get("WELIB_PRIMARY_URL", DEFAULT_WELIB_MIRRORS[0]))
+    )
     if not primary:
         primary = _normalize_mirror_url(DEFAULT_WELIB_MIRRORS[0])
     mirrors = [primary]
@@ -197,7 +208,7 @@ def get_welib_mirrors() -> list[str]:
             mirrors.append(normalized)
 
     # Add custom mirrors
-    additional = config.get("WELIB_ADDITIONAL_URLS", "")
+    additional = _string_config_value(config.get("WELIB_ADDITIONAL_URLS", ""))
     if additional:
         for url in additional.split(","):
             normalized = _normalize_mirror_url(url)
@@ -215,7 +226,9 @@ def get_welib_primary_url() -> str:
 
     """
     config = _get_config()
-    primary = _normalize_mirror_url(config.get("WELIB_PRIMARY_URL", DEFAULT_WELIB_MIRRORS[0]))
+    primary = _normalize_mirror_url(
+        _string_config_value(config.get("WELIB_PRIMARY_URL", DEFAULT_WELIB_MIRRORS[0]))
+    )
     return primary or _normalize_mirror_url(DEFAULT_WELIB_MIRRORS[0])
 
 
@@ -250,7 +263,7 @@ def get_zlib_cookie_domains() -> set:
 
     # Add custom domains
     config = _get_config()
-    additional = config.get("ZLIB_ADDITIONAL_URLS", "")
+    additional = _string_config_value(config.get("ZLIB_ADDITIONAL_URLS", ""))
     if additional:
         for url in additional.split(","):
             normalized = _normalize_mirror_url(url)

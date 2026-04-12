@@ -55,8 +55,10 @@ _CONFIG_REFRESH_ERRORS = (ImportError, OSError, RuntimeError, TypeError, ValueEr
 
 def _get_current_user(
     user_db: UserDB,
-) -> tuple[int | None, dict[str, Any] | None, tuple[Any, int] | None]:
+) -> tuple[int | None, dict[str, Any] | None, tuple[Response, int] | None]:
     raw_user_id = session.get("db_user_id")
+    if raw_user_id is None:
+        return None, None, (jsonify({"error": "Invalid user context"}), 400)
     try:
         user_id = int(raw_user_id)
     except TypeError, ValueError:
@@ -206,6 +208,8 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
         user_id, user, user_error = _get_current_user(user_db)
         if user_error:
             return user_error
+        if user_id is None or user is None:
+            return jsonify({"error": "User not found"}), 404
 
         serialized_user = _serialize_self_user(user, g.auth_mode)
         serialized_user["settings"] = user_db.get_user_settings(user_id)
@@ -286,6 +290,8 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
         user_id, user, user_error = _get_current_user(user_db)
         if user_error:
             return user_error
+        if user_id is None or user is None:
+            return jsonify({"error": "User not found"}), 404
 
         data = request.get_json() or {}
         if not isinstance(data, dict):

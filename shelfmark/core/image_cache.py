@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 import requests
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import coerce_int
 from shelfmark.download.network import get_ssl_verify
 
 if TYPE_CHECKING:
@@ -594,8 +595,8 @@ def get_image_cache() -> ImageCacheService:
                 from shelfmark.core.config import config
 
                 cache_dir = CONFIG_DIR / "covers"
-                max_size_mb = config.get("COVERS_CACHE_MAX_SIZE_MB", 500)
-                ttl_days = config.get("COVERS_CACHE_TTL", 0)
+                max_size_mb = coerce_int(config.get("COVERS_CACHE_MAX_SIZE_MB", 500), 500)
+                ttl_days = coerce_int(config.get("COVERS_CACHE_TTL", 0), 0)
                 ttl_seconds = ttl_days * 86400 if ttl_days > 0 else 0
 
                 _instance = ImageCacheService(

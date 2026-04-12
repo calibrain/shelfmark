@@ -28,6 +28,34 @@ DEFAULT_CACHE_TTL = 30 * 24 * 60 * 60
 _cache_lock = Lock()
 
 
+def _coerce_cache_ttl(value: object, default: int) -> int:
+    """Coerce a cache TTL value from config into a non-negative integer."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return max(value, 0)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            try:
+                return max(int(stripped), 0)
+            except ValueError:
+                return default
+    return default
+
+
+def _coerce_timestamp(value: object) -> float:
+    """Coerce cached timestamps into floats for age calculations."""
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return float(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            try:
+                return float(stripped)
+            except ValueError:
+                return 0.0
+    return 0.0
+
+
 def _generate_cache_key(provider: str, provider_id: str, content_type: str | None = None) -> str:
     """Generate a cache key from provider, provider_id, and content type."""
     normalized_content_type = "audiobook" if check_audiobook(content_type) else "ebook"
@@ -97,12 +125,7 @@ def get_cached_results(
 
     if ttl_seconds is None:
         ttl_value = config.get("IRC_CACHE_TTL", DEFAULT_CACHE_TTL)
-        # Config values are stored as strings, convert to int
-        ttl_seconds = int(ttl_value) if ttl_value else DEFAULT_CACHE_TTL
-
-    # TTL of 0 means cache forever
-    if ttl_seconds == 0:
-        ttl_seconds = float("inf")
+        ttl_seconds = _coerce_cache_ttl(ttl_value, DEFAULT_CACHE_TTL)
 
     cache_key = _generate_cache_key(provider, provider_id, content_type)
 
@@ -114,10 +137,10 @@ def get_cached_results(
             return None
 
         # Check expiration
-        cached_at = entry.get("cached_at", 0)
+        cached_at = _coerce_timestamp(entry.get("cached_at", 0))
         age = time.time() - cached_at
 
-        if age > ttl_seconds:
+        if ttl_seconds != 0 and age > ttl_seconds:
             title = entry.get("title", cache_key)
             logger.debug(
                 "IRC cache expired for '%s' (age: %.0fs > TTL: %ss)",
@@ -243,8 +266,7 @@ def cleanup_expired(ttl_seconds: int | None = None) -> int:
 
     if ttl_seconds is None:
         ttl_value = config.get("IRC_CACHE_TTL", DEFAULT_CACHE_TTL)
-        # Config values are stored as strings, convert to int
-        ttl_seconds = int(ttl_value) if ttl_value else DEFAULT_CACHE_TTL
+        ttl_seconds = _coerce_cache_ttl(ttl_value, DEFAULT_CACHE_TTL)
 
     current_time = time.time()
     removed = 0
@@ -256,7 +278,8 @@ def cleanup_expired(ttl_seconds: int | None = None) -> int:
         expired_keys = [
             key
             for key, entry in entries.items()
-            if current_time - entry.get("cached_at", 0) > ttl_seconds
+            if ttl_seconds != 0
+            and current_time - _coerce_timestamp(entry.get("cached_at", 0)) > ttl_seconds
         ]
 
         for key in expired_keys:
@@ -280,8 +303,7 @@ def get_cache_stats() -> dict[str, Any]:
     from shelfmark.core.config import config
 
     ttl_value = config.get("IRC_CACHE_TTL", DEFAULT_CACHE_TTL)
-    # Config values are stored as strings, convert to int
-    ttl_seconds = int(ttl_value) if ttl_value else DEFAULT_CACHE_TTL
+    ttl_seconds = _coerce_cache_ttl(ttl_value, DEFAULT_CACHE_TTL)
     current_time = time.time()
 
     with _cache_lock:
@@ -292,7 +314,8 @@ def get_cache_stats() -> dict[str, Any]:
         expired = sum(
             1
             for entry in entries.values()
-            if current_time - entry.get("cached_at", 0) > ttl_seconds
+            if ttl_seconds != 0
+            and current_time - _coerce_timestamp(entry.get("cached_at", 0)) > ttl_seconds
         )
 
         # Calculate total releases cached

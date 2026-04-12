@@ -15,6 +15,7 @@ import requests
 from shelfmark.core.cache import cacheable
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import normalize_optional_text
 from shelfmark.core.settings_registry import (
     ActionButton,
     CheckboxField,
@@ -30,6 +31,7 @@ from shelfmark.metadata_providers import (
     DisplayField,
     MetadataProvider,
     MetadataSearchOptions,
+    SearchField,
     SearchType,
     SortOrder,
     TextSearchField,
@@ -53,10 +55,15 @@ SORT_MAPPING: dict[SortOrder, str | None] = {
 }
 
 
+def _normalize_googlebooks_api_key(value: object) -> str:
+    """Normalize Google Books API keys loaded from config or form values."""
+    return normalize_optional_text(value) or ""
+
+
 @register_provider_kwargs("googlebooks")
 def _googlebooks_kwargs() -> dict[str, Any]:
     """Provide Google Books-specific constructor kwargs."""
-    return {"api_key": app_config.get("GOOGLEBOOKS_API_KEY", "")}
+    return {"api_key": _normalize_googlebooks_api_key(app_config.get("GOOGLEBOOKS_API_KEY", ""))}
 
 
 @register_provider("googlebooks")
@@ -70,7 +77,7 @@ class GoogleBooksProvider(MetadataProvider):
         SortOrder.RELEVANCE,
         SortOrder.NEWEST,
     )
-    search_fields: ClassVar[tuple[TextSearchField, ...]] = (
+    search_fields: ClassVar[tuple[SearchField, ...]] = (
         TextSearchField(
             key="author",
             label="Author",
@@ -85,7 +92,8 @@ class GoogleBooksProvider(MetadataProvider):
 
     def __init__(self, api_key: str | None = None) -> None:
         """Initialize provider with optional API key (falls back to config)."""
-        self.api_key = api_key or app_config.get("GOOGLEBOOKS_API_KEY", "")
+        raw_key = api_key or app_config.get("GOOGLEBOOKS_API_KEY", "")
+        self.api_key = _normalize_googlebooks_api_key(raw_key)
         self.session = requests.Session()
 
     def is_available(self) -> bool:
@@ -364,7 +372,8 @@ def _test_googlebooks_connection(
     current_values = current_values or {}
 
     # Use current form values first, fall back to saved config
-    api_key = current_values.get("GOOGLEBOOKS_API_KEY") or app_config.get("GOOGLEBOOKS_API_KEY", "")
+    raw_key = current_values.get("GOOGLEBOOKS_API_KEY") or app_config.get("GOOGLEBOOKS_API_KEY", "")
+    api_key = _normalize_googlebooks_api_key(raw_key)
 
     if not api_key:
         return {

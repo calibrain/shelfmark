@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -53,10 +54,14 @@ class ReleaseSearchPlan:
 
 def _normalize_languages(languages: list[str] | None) -> list[str] | None:
     if not languages:
-        default = config.BOOK_LANGUAGE
-        if not default:
+        default = getattr(config, "BOOK_LANGUAGE", None)
+        if isinstance(default, str):
+            default_values: list[object] = [default]
+        elif isinstance(default, Iterable) and not isinstance(default, (bytes, bytearray, dict)):
+            default_values = list(default)
+        else:
             return None
-        return [str(lang).strip() for lang in default if str(lang).strip()]
+        return [str(lang).strip() for lang in default_values if str(lang).strip()]
 
     normalized: list[str] = []
     for lang in languages:

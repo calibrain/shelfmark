@@ -45,7 +45,7 @@ def _log_path_permissions(probe: Path, label: str) -> None:
         logger.debug("Path permissions (%s): stat failed for %s: %s", label, probe, stat_error)
 
 
-def _run_io[T](func: Callable[..., _T], *args: Any, **kwargs: Any) -> _T:
+def _run_io(func: Callable[..., _T], *args: Any, **kwargs: Any) -> _T:  # noqa: UP047
     """Best-effort offload for potentially blocking filesystem calls.
 
     Keep this module import-cycle safe: `shelfmark.download.fs` imports this module,

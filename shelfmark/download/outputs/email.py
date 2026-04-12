@@ -63,6 +63,9 @@ def _parse_int(value: Any, label: str, *, minimum: int = 1) -> int:
     if value is None or value == "":
         msg = f"{label} is required"
         raise EmailOutputError(msg)
+    if not isinstance(value, (int, float, str)):
+        msg = f"{label} must be a number"
+        raise EmailOutputError(msg)
     try:
         parsed = int(value)
     except (TypeError, ValueError) as exc:
@@ -135,6 +138,15 @@ def _get_email_settings() -> dict[str, Any]:
         "EMAIL_SMTP_TIMEOUT_SECONDS": core_config.config.get("EMAIL_SMTP_TIMEOUT_SECONDS", 60),
         "EMAIL_ALLOW_UNVERIFIED_TLS": core_config.config.get("EMAIL_ALLOW_UNVERIFIED_TLS", False),
     }
+
+
+def _parse_attachment_limit_mb(value: object) -> int:
+    if not isinstance(value, (int, float, str)):
+        return 25
+    try:
+        return int(value)
+    except TypeError, ValueError:
+        return 25
 
 
 def _render_subject(template: str, task: DownloadTask) -> str:
@@ -362,10 +374,7 @@ def _post_process_email(
     success = False
     try:
         limit_mb_raw = core_config.config.get("EMAIL_ATTACHMENT_SIZE_LIMIT_MB", 25)
-        try:
-            attachment_limit_mb = int(limit_mb_raw)
-        except TypeError, ValueError:
-            attachment_limit_mb = 25
+        attachment_limit_mb = _parse_attachment_limit_mb(limit_mb_raw)
 
         if attachment_limit_mb > 0:
             limit_bytes = attachment_limit_mb * 1024 * 1024

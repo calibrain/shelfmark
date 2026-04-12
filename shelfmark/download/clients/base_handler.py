@@ -1,15 +1,18 @@
 """Shared download handler for external torrent/usenet clients."""
 
+from __future__ import annotations
+
 import errno
 import shutil
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import normalize_optional_text
 from shelfmark.core.utils import is_audiobook
 from shelfmark.download.clients import (
     DownloadClient,
@@ -30,6 +33,19 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 _CLIENT_CLEANUP_ERRORS = (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError)
+
+
+class _SabnzbdLikeClient(Protocol):
+    name: str
+
+    def remove(
+        self, download_id: str, *, delete_files: bool = False, archive: bool = True
+    ) -> bool: ...
+
+
+def _is_sabnzbd_like_client(candidate: DownloadClient) -> TypeGuard[_SabnzbdLikeClient]:
+    return getattr(candidate, "name", "") == "sabnzbd"
+
 
 # How often to poll the download client for status (seconds)
 POLL_INTERVAL = 2
@@ -165,7 +181,16 @@ class ExternalClientHandler(DownloadHandler, ABC):
             "sabnzbd": "SABNZBD_CATEGORY_AUDIOBOOK",
         }
         audiobook_key = audiobook_keys.get(client.name)
-        return config.get(audiobook_key, "") or None if audiobook_key else None
+        if audiobook_key is None:
+            return None
+        configured_category = config.get(audiobook_key, "")
+        normalized_category = normalize_optional_text(configured_category)
+        if normalized_category is not None:
+            return normalized_category
+        if configured_category is None:
+            return None
+        fallback_category = str(configured_category).strip()
+        return fallback_category or None
 
     def post_process_cleanup(self, task: DownloadTask, *, success: bool) -> None:
         """Clean up external-client state after post-processing finishes."""
@@ -216,7 +241,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         archive: bool = True,
     ) -> None:
         """Remove a usenet download with SABnzbd-specific archive handling."""
-        if getattr(client, "name", "") == "sabnzbd":
+        if _is_sabnzbd_like_client(client):
             client.remove(download_id, delete_files=delete_files, archive=archive)
         else:
             client.remove(download_id, delete_files=delete_files)

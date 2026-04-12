@@ -4,13 +4,16 @@ Registers /api/auth/oidc/login and /api/auth/oidc/callback endpoints.
 Business logic remains in oidc_auth.py.
 """
 
-from typing import TYPE_CHECKING, Any
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, Protocol, TypeGuard
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from authlib.integrations.base_client.errors import OAuthError
 from authlib.integrations.flask_client import OAuth
 from authlib.jose.errors import InvalidClaimError
-from flask import Flask, Response, jsonify, redirect, request, session
+from flask import Flask, jsonify, redirect, request, session
 
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
@@ -22,6 +25,8 @@ from shelfmark.core.oidc_auth import (
 from shelfmark.download.network import get_ssl_verify
 
 if TYPE_CHECKING:
+    from flask.typing import ResponseReturnValue
+
     from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
@@ -30,18 +35,33 @@ _RETURN_TO_SESSION_KEY = "oidc_return_to"
 _OIDC_CLIENT_ERRORS = (OAuthError, OSError, RuntimeError, TypeError, ValueError)
 
 
+class _ClaimsMappingLike(Protocol):
+    """Protocol for Authlib claims payloads that expose a to_dict method."""
+
+    def to_dict(self) -> Mapping[object, object]: ...
+
+
+def _has_claims_to_dict(candidate: object) -> TypeGuard[_ClaimsMappingLike]:
+    """Return True when a claims object exposes a callable to_dict method."""
+    return callable(getattr(candidate, "to_dict", None))
+
+
+def _normalize_claim_mapping(raw_claims: Mapping[object, object]) -> dict[str, Any]:
+    """Return only string-keyed claims for downstream OIDC helpers."""
+    return {key: value for key, value in raw_claims.items() if isinstance(key, str)}
+
+
 def _normalize_claims(raw_claims: object) -> dict[str, Any]:
     """Return a plain dict for claims from Authlib token/userinfo payloads."""
     if raw_claims is None:
         return {}
-    if isinstance(raw_claims, dict):
-        return raw_claims
-    if hasattr(raw_claims, "to_dict"):
-        return raw_claims.to_dict()  # type: ignore[no-any-return]
-    try:
-        return dict(raw_claims)
-    except TypeError, ValueError:
-        return {}
+    if isinstance(raw_claims, Mapping):
+        return _normalize_claim_mapping(raw_claims)
+    if _has_claims_to_dict(raw_claims):
+        converted_claims = raw_claims.to_dict()
+        if isinstance(converted_claims, Mapping):
+            return _normalize_claim_mapping(converted_claims)
+    return {}
 
 
 def _has_username_or_email(claims: dict[str, Any]) -> bool:
@@ -135,8 +155,14 @@ def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
 
     scopes = list(dict.fromkeys(["openid", *scope_values]))
 
-    admin_group = app_config.get("OIDC_ADMIN_GROUP", "")
-    group_claim = app_config.get("OIDC_GROUP_CLAIM", "groups")
+    admin_group_value = app_config.get("OIDC_ADMIN_GROUP", "")
+    admin_group = admin_group_value.strip() if isinstance(admin_group_value, str) else ""
+    group_claim_value = app_config.get("OIDC_GROUP_CLAIM", "groups")
+    group_claim = (
+        group_claim_value.strip()
+        if isinstance(group_claim_value, str) and group_claim_value.strip()
+        else "groups"
+    )
     use_admin_group = app_config.get("OIDC_USE_ADMIN_GROUP", True)
     if admin_group and use_admin_group and group_claim and group_claim not in scopes:
         scopes.append(group_claim)
@@ -179,7 +205,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
     oauth.init_app(app)
 
     @app.route("/api/auth/oidc/login", methods=["GET"])
-    def oidc_login() -> Response | tuple[Response, int]:
+    def oidc_login() -> ResponseReturnValue:
         """Initiate OIDC login flow and redirect to the provider."""
         try:
             client, _ = _get_oidc_client()
@@ -197,7 +223,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             return jsonify({"error": "OIDC login failed"}), 500
 
     @app.route("/api/auth/oidc/callback", methods=["GET"])
-    def oidc_callback() -> Response | tuple[Response, int]:
+    def oidc_callback() -> ResponseReturnValue:
         """Handle OIDC callback from identity provider."""
         try:
             error = request.args.get("error")

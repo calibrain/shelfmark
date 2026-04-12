@@ -13,7 +13,7 @@ import requests
 from shelfmark.core.cache import cache_key, cacheable, get_metadata_cache
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.request_helpers import coerce_int
+from shelfmark.core.request_helpers import coerce_bool, coerce_int, normalize_optional_text
 from shelfmark.core.settings_registry import (
     ActionButton,
     CheckboxField,
@@ -31,6 +31,7 @@ from shelfmark.metadata_providers import (
     MetadataCapability,
     MetadataProvider,
     MetadataSearchOptions,
+    SearchField,
     SearchResult,
     SearchType,
     SortOrder,
@@ -546,6 +547,12 @@ def _normalize_series_position(value: Any) -> float | None:
         return None
 
 
+def _normalize_hardcover_api_key(value: object) -> str:
+    """Normalize Hardcover API keys, stripping copied auth-header prefixes."""
+    normalized_value = normalize_optional_text(value) or ""
+    return normalized_value.removeprefix("Bearer ").strip()
+
+
 def _normalize_search_text(value: str) -> str:
     """Normalize free-text search input for matching and caching."""
     return " ".join(value.split()).strip()
@@ -856,7 +863,7 @@ class HardcoverProvider(MetadataProvider):
             sort=SortOrder.SERIES_ORDER,
         ),
     )
-    search_fields: ClassVar[tuple[TextSearchField | DynamicSelectSearchField, ...]] = (
+    search_fields: ClassVar[tuple[SearchField, ...]] = (
         TextSearchField(
             key="author",
             label="Author",
@@ -888,8 +895,7 @@ class HardcoverProvider(MetadataProvider):
     def __init__(self, api_key: str | None = None) -> None:
         """Initialize provider with optional API key (falls back to config)."""
         raw_key = api_key or app_config.get("HARDCOVER_API_KEY", "")
-        # Strip "Bearer " prefix if user pasted the full auth header from Hardcover
-        self.api_key = raw_key.removeprefix("Bearer ").strip() if raw_key else ""
+        self.api_key = _normalize_hardcover_api_key(raw_key)
         self.session = requests.Session()
         if self.api_key:
             self.session.headers.update(
@@ -1049,10 +1055,8 @@ class HardcoverProvider(MetadataProvider):
         if not selected:
             return SearchResult(books=[], page=page, total_found=0, has_more=False)
 
-        list_id_raw = selected.get("id")
-        try:
-            list_id = int(list_id_raw)
-        except TypeError, ValueError:
+        list_id = coerce_int(selected.get("id"), 0)
+        if list_id < 1:
             return SearchResult(books=[], page=page, total_found=0, has_more=False)
 
         return self._fetch_list_books_by_id(list_id, page, limit)
@@ -1164,9 +1168,8 @@ class HardcoverProvider(MetadataProvider):
             if not _query_matches_author_name(query, author_name):
                 continue
 
-            try:
-                author_id = int(item.get("id"))
-            except TypeError, ValueError:
+            author_id = coerce_int(item.get("id"), 0)
+            if author_id < 1:
                 continue
 
             if author_id not in author_ids:
@@ -1229,8 +1232,14 @@ class HardcoverProvider(MetadataProvider):
             weights=TITLE_SUGGESTION_WEIGHTS,
         )
 
-        exclude_compilations = app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False)
-        exclude_unreleased = app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False)
+        exclude_compilations = coerce_bool(
+            app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False),
+            default=False,
+        )
+        exclude_unreleased = coerce_bool(
+            app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False),
+            default=False,
+        )
         current_year = datetime.now(UTC).year
 
         options: list[dict[str, str]] = []
@@ -1375,9 +1384,8 @@ class HardcoverProvider(MetadataProvider):
             item = _unwrap_hit_document(hit)
             if item is None:
                 continue
-            try:
-                series_id = int(item.get("id"))
-            except TypeError, ValueError:
+            series_id = coerce_int(item.get("id"), 0)
+            if series_id < 1:
                 continue
             name = str(item.get("name") or "").strip()
             if not name:
@@ -1715,7 +1723,7 @@ class HardcoverProvider(MetadataProvider):
             raise ValueError(msg)
 
         state = self._fetch_book_target_state(book_id_int)
-        options = [
+        options: list[dict[str, Any]] = [
             dict(option)
             for option in self.get_user_lists()
             if option.get("group") in HARDCOVER_WRITABLE_TARGET_GROUPS
@@ -1919,7 +1927,7 @@ class HardcoverProvider(MetadataProvider):
             return {bid: [] for bid in book_ids}
 
         states = self._fetch_book_target_states_batch(int_ids)
-        writable_options = [
+        writable_options: list[dict[str, Any]] = [
             dict(option)
             for option in self.get_user_lists()
             if option.get("group") in HARDCOVER_WRITABLE_TARGET_GROUPS
@@ -2136,8 +2144,14 @@ class HardcoverProvider(MetadataProvider):
             resolved_series = self._resolve_series_search_value(series_value_from_field)
             if not resolved_series:
                 return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
-            exclude_compilations = app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False)
-            exclude_unreleased = app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False)
+            exclude_compilations = coerce_bool(
+                app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False),
+                default=False,
+            )
+            exclude_unreleased = coerce_bool(
+                app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False),
+                default=False,
+            )
             return self._fetch_series_books_by_id(
                 int(resolved_series["id"]),
                 options.page,
@@ -2154,8 +2168,14 @@ class HardcoverProvider(MetadataProvider):
 
         # Build cache key from options (include fields and settings for cache differentiation)
         fields_key = ":".join(f"{k}={v}" for k, v in sorted(options.fields.items()))
-        exclude_compilations = app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False)
-        exclude_unreleased = app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False)
+        exclude_compilations = coerce_bool(
+            app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False),
+            default=False,
+        )
+        exclude_unreleased = coerce_bool(
+            app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False),
+            default=False,
+        )
         cache_key = f"{options.query}:{options.search_type.value}:{options.sort.value}:{options.limit}:{options.page}:{fields_key}:excl_comp={exclude_compilations}:excl_unrel={exclude_unreleased}"
         return self._search_cached(cache_key, options)
 
@@ -2214,8 +2234,14 @@ class HardcoverProvider(MetadataProvider):
             hits, found_count = _extract_typesense_hits(result)
 
             # Parse hits, filtering compilations and unreleased books if enabled
-            exclude_compilations = app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False)
-            exclude_unreleased = app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False)
+            exclude_compilations = coerce_bool(
+                app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False),
+                default=False,
+            )
+            exclude_unreleased = coerce_bool(
+                app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False),
+                default=False,
+            )
             current_year = datetime.now(UTC).year
             books = []
             for hit in hits:
@@ -2720,8 +2746,7 @@ def _test_hardcover_connection(current_values: dict[str, Any] | None = None) -> 
 
     # Use current form values first, fall back to saved config
     raw_key = current_values.get("HARDCOVER_API_KEY") or app_config.get("HARDCOVER_API_KEY", "")
-    # Strip "Bearer " prefix if user pasted the full auth header from Hardcover
-    api_key = raw_key.removeprefix("Bearer ").strip() if raw_key else ""
+    api_key = _normalize_hardcover_api_key(raw_key)
 
     key_len = len(api_key) if api_key else 0
     logger.debug("Hardcover test: key length=%s", key_len)

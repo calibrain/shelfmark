@@ -4,13 +4,29 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
-from threading import Event
+from typing import TYPE_CHECKING, Protocol
 
-from shelfmark.core.models import DownloadTask
+if TYPE_CHECKING:
+    from pathlib import Path
+    from threading import Event
+
+    from shelfmark.core.models import DownloadTask
 
 StatusCallback = Callable[[str, str | None], None]
-OutputHandler = Callable[[Path, DownloadTask, Event, StatusCallback, bool], str | None]
+
+
+class OutputHandler(Protocol):
+    """Callable contract for post-download output handlers."""
+
+    def __call__(
+        self,
+        temp_file: Path,
+        task: DownloadTask,
+        cancel_flag: Event,
+        status_callback: StatusCallback,
+        *,
+        preserve_source_on_failure: bool = False,
+    ) -> str | None: ...
 
 
 @dataclass(frozen=True)

@@ -1,8 +1,10 @@
 """Admin settings-introspection routes and settings validation helpers."""
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
-from flask import Flask, Response, jsonify, request
+from flask import Flask, jsonify, request
 
 from shelfmark.config.notifications_settings import (
     build_notification_test_result,
@@ -25,6 +27,8 @@ from shelfmark.core.user_settings_overrides import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from flask.typing import ResponseReturnValue
 
     from shelfmark.core.user_db import UserDB
 
@@ -151,13 +155,15 @@ def build_user_notification_test_response(
 def register_admin_settings_routes(
     app: Flask,
     user_db: UserDB,
-    require_admin: Callable[[Callable[..., object]], Callable[..., object]],
+    require_admin: Callable[
+        [Callable[..., ResponseReturnValue]], Callable[..., ResponseReturnValue]
+    ],
 ) -> None:
     """Register admin endpoints for user-specific settings and defaults."""
 
     @app.route("/api/admin/download-defaults", methods=["GET"])
     @require_admin
-    def admin_download_defaults() -> Response | tuple[Response, int]:
+    def admin_download_defaults() -> ResponseReturnValue:
         defaults = {
             key: ("" if (value := app_config.get(key, field.default)) is None else value)
             for key, field in _get_ordered_user_overridable_fields("downloads")
@@ -170,7 +176,7 @@ def register_admin_settings_routes(
 
     @app.route("/api/admin/booklore-options", methods=["GET"])
     @require_admin
-    def admin_booklore_options() -> Response | tuple[Response, int]:
+    def admin_booklore_options() -> ResponseReturnValue:
         from shelfmark.core import admin_routes
 
         return jsonify(
@@ -182,7 +188,7 @@ def register_admin_settings_routes(
 
     @app.route("/api/admin/users/<int:user_id>/delivery-preferences", methods=["GET"])
     @require_admin
-    def admin_get_delivery_preferences(user_id: int) -> Response | tuple[Response, int]:
+    def admin_get_delivery_preferences(user_id: int) -> ResponseReturnValue:
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -196,7 +202,7 @@ def register_admin_settings_routes(
 
     @app.route("/api/admin/users/<int:user_id>/search-preferences", methods=["GET"])
     @require_admin
-    def admin_get_search_preferences(user_id: int) -> Response | tuple[Response, int]:
+    def admin_get_search_preferences(user_id: int) -> ResponseReturnValue:
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -210,7 +216,7 @@ def register_admin_settings_routes(
 
     @app.route("/api/admin/users/<int:user_id>/notification-preferences", methods=["GET"])
     @require_admin
-    def admin_get_notification_preferences(user_id: int) -> Response | tuple[Response, int]:
+    def admin_get_notification_preferences(user_id: int) -> ResponseReturnValue:
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -224,7 +230,7 @@ def register_admin_settings_routes(
 
     @app.route("/api/admin/users/<int:user_id>/notification-preferences/test", methods=["POST"])
     @require_admin
-    def admin_test_notification_preferences(user_id: int) -> Response | tuple[Response, int]:
+    def admin_test_notification_preferences(user_id: int) -> ResponseReturnValue:
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -238,7 +244,7 @@ def register_admin_settings_routes(
 
     @app.route("/api/admin/settings/overrides-summary", methods=["GET"])
     @require_admin
-    def admin_settings_overrides_summary() -> Response | tuple[Response, int]:
+    def admin_settings_overrides_summary() -> ResponseReturnValue:
         settings_registry = _get_settings_registry()
 
         tab_name = (request.args.get("tab") or "downloads").strip()
@@ -272,7 +278,7 @@ def register_admin_settings_routes(
 
     @app.route("/api/admin/users/<int:user_id>/effective-settings", methods=["GET"])
     @require_admin
-    def admin_get_effective_settings(user_id: int) -> Response | tuple[Response, int]:
+    def admin_get_effective_settings(user_id: int) -> ResponseReturnValue:
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404

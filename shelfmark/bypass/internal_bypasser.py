@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from http import HTTPStatus
 from pathlib import Path
 from threading import Event
-from typing import Any
+from typing import Any, Protocol, TypedDict, TypeGuard
 from urllib.parse import urlparse
 
 import requests
@@ -59,7 +59,21 @@ DDOS_GUARD_INDICATORS = [
     "could not verify your browser automatically",
 ]
 
-DISPLAY = {
+
+class _DisplayState(TypedDict):
+    ffmpeg: subprocess.Popen[bytes] | None
+    ffmpeg_output: Path | None
+
+
+class _PageWithWindowRect(Protocol):
+    async def set_window_rect(self, x: int, _y: int, width: int, height: int) -> object: ...
+
+
+class _BrowserWithWindowRectPage(Protocol):
+    page: _PageWithWindowRect
+
+
+DISPLAY: _DisplayState = {
     "ffmpeg": None,
     "ffmpeg_output": None,
 }
@@ -93,6 +107,30 @@ _SUBPROCESS_OPERATION_ERRORS = (
     ValueError,
     subprocess.SubprocessError,
 )
+
+
+def _coerce_positive_int(value: object, default: int) -> int:
+    """Return a positive integer config value or the provided default."""
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int) and value > 0:
+        return value
+    return default
+
+
+def _coerce_non_negative_float(value: object, default: float) -> float:
+    """Return a non-negative float config value or the provided default."""
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int | float) and value >= 0:
+        return float(value)
+    return default
+
+
+def _has_window_rect_page(candidate: object) -> TypeGuard[_BrowserWithWindowRectPage]:
+    """Check whether a browser wrapper exposes page.set_window_rect()."""
+    page = getattr(candidate, "page", None)
+    return callable(getattr(page, "set_window_rect", None))
 
 
 def _describe_runtime_path(path: str | Path) -> str:
@@ -613,7 +651,9 @@ async def _bypass(
     page: Any, max_retries: int | None = None, cancel_flag: Event | None = None
 ) -> bool:
     """Attempt to bypass Cloudflare/DDOS-Guard protection using multiple methods."""
-    max_retries = max_retries if max_retries is not None else app_config.MAX_RETRY
+    max_retries = (
+        max_retries if max_retries is not None else _coerce_positive_int(app_config.MAX_RETRY, 10)
+    )
 
     last_challenge_type = None
     consecutive_same_challenge = 0
@@ -790,7 +830,7 @@ async def _get(url: str, driver: Any, cancel_flag: Event | None = None) -> str:
 
 def get(url: str, retry: int | None = None, cancel_flag: Event | None = None) -> str:
     """Fetch a URL with protection bypass. Creates fresh Chrome instance for each bypass."""
-    retry = retry if retry is not None else app_config.MAX_RETRY
+    retry = retry if retry is not None else _coerce_positive_int(app_config.MAX_RETRY, 10)
 
     with LOCKED:
         # Try cookies first - another request may have completed bypass while waiting
@@ -879,16 +919,17 @@ async def _create_cdp_browser(url: str) -> Any:
         )
         raise
 
-    try:
-        await driver.page.set_window_rect(0, 0, screen_width, screen_height)
-    except _CDP_OPERATION_ERRORS as e:
-        logger.debug("Failed to set window size: %s", e)
+    if _has_window_rect_page(driver):
+        try:
+            await driver.page.set_window_rect(0, 0, screen_width, screen_height)
+        except _CDP_OPERATION_ERRORS as e:
+            logger.debug("Failed to set window size: %s", e)
 
     # Start FFmpeg recording if debug mode (record each bypass session)
     if app_config.get("DEBUG", False) and not DISPLAY.get("ffmpeg"):
         _start_ffmpeg_recording(display=os.environ.get("DISPLAY", ":0"))
 
-    await asyncio.sleep(app_config.DEFAULT_SLEEP)
+    await asyncio.sleep(_coerce_non_negative_float(app_config.DEFAULT_SLEEP, 5.0))
     logger.info("Chrome browser ready (Pure CDP)")
     logger.log_resource_usage()
     return driver

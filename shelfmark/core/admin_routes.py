@@ -4,10 +4,12 @@ Registers /api/admin/users CRUD endpoints for managing users.
 All endpoints require admin session.
 """
 
+from __future__ import annotations
+
 import os
 import sqlite3
 from functools import wraps
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ParamSpec
 
 from flask import Flask, Response, g, jsonify, request, session
 from werkzeug.security import generate_password_hash
@@ -37,7 +39,11 @@ from shelfmark.core.logger import setup_logger
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from flask.typing import ResponseReturnValue
+
     from shelfmark.core.user_db import UserDB
+
+P = ParamSpec("P")
 
 logger = setup_logger(__name__)
 MIN_PASSWORD_LENGTH = 4
@@ -144,8 +150,8 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
     """Register admin user management routes on the Flask app."""
 
     def _require_admin(
-        f: Callable[..., Response | tuple[Response, int]],
-    ) -> Callable[..., Response | tuple[Response, int]]:
+        f: Callable[P, ResponseReturnValue],
+    ) -> Callable[P, ResponseReturnValue]:
         """Require an admin session for admin routes.
 
         In no-auth mode, everyone has access (is_admin defaults True).
@@ -154,7 +160,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         """
 
         @wraps(f)
-        def decorated(*args: object, **kwargs: object) -> Response | tuple[Response, int]:
+        def decorated(*args: P.args, **kwargs: P.kwargs) -> ResponseReturnValue:
             auth_mode = load_active_auth_mode(CWA_DB_PATH, user_db=user_db)
             g.auth_mode = auth_mode
             if auth_mode != "none":
@@ -381,6 +387,8 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
                 )
 
         updated = user_db.get_user(user_id=user_id)
+        if not isinstance(updated, dict):
+            return jsonify({"error": "User not found"}), 404
         result = _serialize_user(
             updated,
             g.auth_mode,

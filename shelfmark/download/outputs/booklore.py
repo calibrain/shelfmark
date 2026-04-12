@@ -71,6 +71,9 @@ def _parse_int(value: object, label: str) -> int:
     if value is None or value == "":
         msg = f"{label} is required"
         raise BookloreError(msg)
+    if not isinstance(value, (int, float, str)):
+        msg = f"{label} must be a number"
+        raise BookloreError(msg)
     try:
         return int(value)
     except (TypeError, ValueError) as exc:

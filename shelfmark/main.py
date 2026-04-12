@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from functools import wraps
 from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, NoReturn
+from typing import TYPE_CHECKING, Any, Callable, NoReturn, cast
 
 from flask import Flask, jsonify, request, send_file, send_from_directory, session
 from flask_cors import CORS
@@ -106,14 +106,15 @@ def _raise_runtime_error(message: str) -> NoReturn:
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = PROJECT_ROOT / "frontend-dist"
 
-BASE_PATH = normalize_base_path(app_config.get("URL_BASE", ""))
+BASE_PATH = normalize_base_path(normalize_optional_text(app_config.get("URL_BASE", "")))
 
 app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0  # Disable caching
 app.config["APPLICATION_ROOT"] = BASE_PATH or "/"
-app.wsgi_app = ProxyFix(app.wsgi_app)  # type: ignore[assignment]
+wsgi_app = cast(Any, ProxyFix(app.wsgi_app))
 if BASE_PATH:
-    app.wsgi_app = PrefixMiddleware(app.wsgi_app, BASE_PATH, bypass_paths={"/api/health"})
+    wsgi_app = cast(Any, PrefixMiddleware(wsgi_app, BASE_PATH, bypass_paths={"/api/health"}))
+app.wsgi_app = wsgi_app
 
 # Socket.IO async mode.
 # We run this app under Gunicorn with a gevent websocket worker (even when DEBUG=true),
@@ -123,23 +124,23 @@ socketio_cors_allowed_origins = "*"
 
 # Initialize Flask-SocketIO with reverse proxy support
 socketio_path = f"{BASE_PATH}/socket.io" if BASE_PATH else "/socket.io"
-socketio = SocketIO(
-    app,
-    cors_allowed_origins=socketio_cors_allowed_origins,
-    async_mode=async_mode,
-    logger=False,
-    engineio_logger=False,
+socketio_init_kwargs: dict[str, Any] = {
+    "cors_allowed_origins": socketio_cors_allowed_origins,
+    "async_mode": async_mode,
+    "logger": False,
+    "engineio_logger": False,
     # Reverse proxy / Traefik compatibility settings
-    path=socketio_path,
-    ping_timeout=60,  # Time to wait for pong response
-    ping_interval=25,  # Send ping every 25 seconds
+    "path": socketio_path,
+    "ping_timeout": 60,
+    "ping_interval": 25,
     # Allow both websocket and polling for better compatibility
-    transports=["websocket", "polling"],
+    "transports": ["websocket", "polling"],
     # Enable CORS for all origins (you can restrict this in production)
-    allow_upgrades=True,
+    "allow_upgrades": True,
     # Important for proxies that buffer
-    http_compression=True,
-)
+    "http_compression": True,
+}
+socketio = SocketIO(app, **socketio_init_kwargs)
 
 # Initialize WebSocket manager
 ws_manager.init_app(app, socketio)
@@ -203,14 +204,42 @@ LOGIN_ATTEMPT_WARNING_THRESHOLD = 5
 def cleanup_old_lockouts() -> None:
     """Remove expired lockout entries to prevent memory buildup."""
     current_time = datetime.now(UTC)
-    expired_users = [
-        username
-        for username, data in failed_login_attempts.items()
-        if "lockout_until" in data and data["lockout_until"] < current_time
-    ]
+    expired_users = []
+    for username in list(failed_login_attempts):
+        lockout_until = _get_lockout_until(username, repair_if_locked=True)
+        if lockout_until is not None and lockout_until < current_time:
+            expired_users.append(username)
     for username in expired_users:
         logger.info("Lockout expired for user: %s", username)
         del failed_login_attempts[username]
+
+
+def _get_lockout_until(username: str, *, repair_if_locked: bool = False) -> datetime | None:
+    """Return a valid lockout timestamp for the user when one exists.
+
+    When a user has already crossed the lockout threshold but the timestamp is
+    missing or malformed, optionally repair the state to keep the lockout in
+    force rather than silently letting the user through.
+    """
+    lockout_state = failed_login_attempts.get(username)
+    if lockout_state is None:
+        return None
+
+    lockout_until = lockout_state.get("lockout_until")
+    if isinstance(lockout_until, datetime):
+        return lockout_until
+
+    attempt_count = lockout_state.get("count")
+    if repair_if_locked and isinstance(attempt_count, int) and attempt_count >= MAX_LOGIN_ATTEMPTS:
+        repaired_lockout_until = datetime.now(UTC) + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+        lockout_state["lockout_until"] = repaired_lockout_until
+        logger.warning("Repaired missing lockout timestamp for locked account '%s'", username)
+        return repaired_lockout_until
+
+    if lockout_until is not None:
+        logger.warning("Ignoring invalid lockout timestamp for user '%s'", username)
+
+    return None
 
 
 def is_account_locked(username: str) -> bool:
@@ -220,7 +249,7 @@ def is_account_locked(username: str) -> bool:
     if username not in failed_login_attempts:
         return False
 
-    lockout_until = failed_login_attempts[username].get("lockout_until")
+    lockout_until = _get_lockout_until(username, repair_if_locked=True)
     return lockout_until is not None and datetime.now(UTC) < lockout_until
 
 
@@ -656,7 +685,10 @@ def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
         return None
 
     try:
-        user_header = app_config.get("PROXY_AUTH_USER_HEADER", "X-Auth-User")
+        user_header = (
+            normalize_optional_text(app_config.get("PROXY_AUTH_USER_HEADER", "X-Auth-User"))
+            or "X-Auth-User"
+        )
 
         # Extract username from proxy header
         username = get_proxy_header(user_header)
@@ -672,8 +704,15 @@ def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
         # If an admin group is configured, derive from groups header.
         # Otherwise preserve existing DB role for known users and default
         # first-time users to admin (to avoid lockouts).
-        admin_group_header = app_config.get("PROXY_AUTH_ADMIN_GROUP_HEADER", "X-Auth-Groups")
-        admin_group_name = str(app_config.get("PROXY_AUTH_ADMIN_GROUP_NAME", "") or "").strip()
+        admin_group_header = (
+            normalize_optional_text(
+                app_config.get("PROXY_AUTH_ADMIN_GROUP_HEADER", "X-Auth-Groups")
+            )
+            or "X-Auth-Groups"
+        )
+        admin_group_name = (
+            normalize_optional_text(app_config.get("PROXY_AUTH_ADMIN_GROUP_NAME", "")) or ""
+        )
         is_admin = True
 
         if admin_group_name:
@@ -860,7 +899,10 @@ if DEBUG:
     if app_config.get("USING_EXTERNAL_BYPASSER", False):
         pass
     else:
-        from shelfmark.bypass.internal_bypasser import _cleanup_orphan_processes as _stop_gui
+        from shelfmark.bypass.internal_bypasser import _cleanup_orphan_processes
+
+        def _stop_gui() -> None:
+            _cleanup_orphan_processes()
 
     @app.route("/api/debug", methods=["GET"])
     @login_required
@@ -1076,15 +1118,19 @@ def api_config() -> Response | tuple[Response, int]:
             "",
             user_id=db_user_id,
         )
-        configured_metadata_provider = app_config.get(
-            "METADATA_PROVIDER",
-            "",
-            user_id=db_user_id,
+        configured_metadata_provider = normalize_optional_text(
+            app_config.get(
+                "METADATA_PROVIDER",
+                "",
+                user_id=db_user_id,
+            )
         )
-        _configured_metadata_provider_audiobook = app_config.get(
-            "METADATA_PROVIDER_AUDIOBOOK",
-            "",
-            user_id=db_user_id,
+        _configured_metadata_provider_audiobook = normalize_optional_text(
+            app_config.get(
+                "METADATA_PROVIDER_AUDIOBOOK",
+                "",
+                user_id=db_user_id,
+            )
         )
         metadata_ui_provider = (
             configured_metadata_provider or _configured_metadata_provider_audiobook
@@ -1145,7 +1191,7 @@ def api_health() -> Response | tuple[Response, int]:
         flask.Response: JSON with status "ok" and optional degraded features.
 
     """
-    response = {"status": "ok"}
+    response: dict[str, object] = {"status": "ok"}
 
     # Report degraded features
     if not backend.WEBSOCKET_AVAILABLE:
@@ -1695,12 +1741,17 @@ def api_retry_download(book_id: str) -> Response | tuple[Response, int]:
             request_id = normalize_positive_int(history_row.get("request_id"))
             retry_payload = history_row.get("retry_payload")
             final_status = history_row.get("final_status")
-            if request_id is not None and not download_history_service.is_retry_available(
-                history_row
-            ):
-                return jsonify(
-                    {"error": "Forbidden", "code": "requested_download_retry_forbidden"}
-                ), 403
+            if request_id is not None:
+                history_service = download_history_service
+                if history_service is None:
+                    logger.error(
+                        "Download history service unavailable while retrying task %s", book_id
+                    )
+                    return jsonify({"error": "Download history unavailable"}), 500
+                if not history_service.is_retry_available(history_row):
+                    return jsonify(
+                        {"error": "Forbidden", "code": "requested_download_retry_forbidden"}
+                    ), 403
             success, error = backend.retry_persisted_download(
                 retry_payload,
                 final_status=final_status,
@@ -1909,7 +1960,14 @@ def api_login() -> Response | tuple[Response, int]:
 
         # Check if account is locked due to failed login attempts
         if is_account_locked(username):
-            lockout_until = failed_login_attempts[username].get("lockout_until")
+            lockout_until = _get_lockout_until(username, repair_if_locked=True)
+            if lockout_until is None:
+                logger.error("Locked account '%s' is missing a lockout timestamp", username)
+                return jsonify(
+                    {
+                        "error": f"Account temporarily locked due to multiple failed login attempts. Try again in {LOCKOUT_DURATION_MINUTES} minutes."
+                    }
+                ), 429
             remaining_time = (lockout_until - datetime.now(UTC)).total_seconds() / 60
             logger.warning(
                 "Login attempt blocked for locked account '%s' from IP %s", username, ip_address
@@ -2652,13 +2710,15 @@ def api_releases() -> Response | tuple[Response, int]:
             source_results_are_releases,
         )
 
-        def _search_source_releases(source_name: str) -> tuple[Any | None, list[Any], str | None]:
+        def _search_source_releases(
+            source_name: str, search_book: BookMetadata
+        ) -> tuple[Any | None, list[Any], str | None]:
             """Search one source and return any error message instead of raising."""
             try:
                 source = get_source(source_name)
 
                 plan = build_release_search_plan(
-                    book,
+                    search_book,
                     languages=browse_filters.lang
                     if source_query_filters is not None
                     else languages,
@@ -2685,14 +2745,14 @@ def api_releases() -> Response | tuple[Response, int]:
                     source_name,
                     planned_query_type,
                     planned_query,
-                    book.title,
-                    book.authors,
+                    search_book.title,
+                    search_book.authors,
                     expand_search,
                     content_type,
                 )
 
                 releases = source.search(
-                    book, plan, expand_search=expand_search, content_type=content_type
+                    search_book, plan, expand_search=expand_search, content_type=content_type
                 )
             except ValueError:
                 return None, [], f"Unknown source: {source_name}"
@@ -2734,6 +2794,8 @@ def api_releases() -> Response | tuple[Response, int]:
 
         source_query_filters = None
         is_source_provider = bool(provider) and source_results_are_releases(provider)
+
+        book: BookMetadata
 
         if not provider or not book_id:
             if not source_filter or not has_browse_filters:
@@ -2780,10 +2842,11 @@ def api_releases() -> Response | tuple[Response, int]:
             # Get book metadata from provider
             kwargs = get_provider_kwargs(provider)
             prov = get_provider(provider, **kwargs)
-            book = prov.get_book(book_id)
+            resolved_book = prov.get_book(book_id)
 
-            if not book:
+            if not resolved_book:
                 return jsonify({"error": "Book not found in metadata provider"}), 404
+            book = resolved_book
 
             # Override title from frontend if available (search results may have better data)
             # Note: We intentionally DON'T override authors here - get_book() now returns
@@ -2808,7 +2871,7 @@ def api_releases() -> Response | tuple[Response, int]:
         source_instances = {}  # Keep source instances for column config
 
         for source_name in sources_to_search:
-            source, releases, error = _search_source_releases(source_name)
+            source, releases, error = _search_source_releases(source_name, book)
             if source is not None:
                 source_instances[source_name] = source
                 all_releases.extend(releases)
@@ -3139,7 +3202,7 @@ def api_onboarding_skip() -> Response | tuple[Response, int]:
 # Catch-all route for React Router (must be last)
 # This handles client-side routing by serving index.html for any unmatched routes
 @app.route("/<path:path>")
-def catch_all(path: str) -> Response:
+def catch_all(path: str) -> Response | tuple[Response, int]:
     """Serve the React app for any route not matched by API endpoints.
 
     This allows React Router to handle client-side routing.
@@ -3150,6 +3213,12 @@ def catch_all(path: str) -> Response:
         return jsonify({"error": "Resource not found"}), 404
     # Otherwise serve the React app
     return _serve_index_html()
+
+
+def _get_request_sid() -> str | None:
+    """Return the Socket.IO session id for the active request when available."""
+    sid = getattr(request, "sid", None)
+    return sid if isinstance(sid, str) and sid else None
 
 
 # WebSocket event handlers
@@ -3163,7 +3232,11 @@ def handle_connect() -> None:
 
     # Join appropriate room based on authenticated user session
     is_admin, db_user_id, can_access_status = _resolve_status_scope()
-    ws_manager.join_user_room(request.sid, is_admin=is_admin, db_user_id=db_user_id)
+    sid = _get_request_sid()
+    if sid is None:
+        logger.warning("Socket.IO connect event missing sid")
+        return
+    ws_manager.join_user_room(sid, is_admin=is_admin, db_user_id=db_user_id)
 
     # Send initial status to the newly connected client (filtered)
     try:
@@ -3184,7 +3257,9 @@ def handle_disconnect() -> None:
     logger.info("WebSocket client disconnected")
 
     # Leave room
-    ws_manager.leave_user_room(request.sid)
+    sid = _get_request_sid()
+    if sid is not None:
+        ws_manager.leave_user_room(sid)
 
     # Track the disconnection
     ws_manager.client_disconnected()
@@ -3195,7 +3270,12 @@ def handle_status_request() -> None:
     """Handle manual status request from client."""
     try:
         is_admin, db_user_id, can_access_status = _resolve_status_scope()
-        ws_manager.sync_user_room(request.sid, is_admin=is_admin, db_user_id=db_user_id)
+        sid = _get_request_sid()
+        if sid is None:
+            logger.warning("Socket.IO request_status event missing sid")
+            emit("status_update", {})
+            return
+        ws_manager.sync_user_room(sid, is_admin=is_admin, db_user_id=db_user_id)
 
         if not can_access_status:
             emit("status_update", {})
