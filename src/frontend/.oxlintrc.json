@@ -14,7 +14,12 @@
     "no-console": "off",
     "unicorn/no-null": "off",
     "unicorn/filename-case": "off",
-    "unicorn/prefer-top-level-await": "off"
+    "unicorn/prefer-top-level-await": "off",
+    "import/no-default-export": "error",
+    "import/no-cycle": ["error", { "maxDepth": 5 }],
+    "unicorn/no-abusive-eslint-disable": "error",
+    "no-new-func": "error",
+    "unicorn/custom-error-definition": "error"
   },
   "overrides": [
     {
