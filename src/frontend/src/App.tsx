@@ -289,7 +289,7 @@ function App() {
     isAdmin: authIsAdmin,
   });
 
-  const requestRoleIsAdmin = requestPolicy ? Boolean(requestPolicy.is_admin) : false;
+  const requestRoleIsAdmin = requestPolicy?.is_admin ?? false;
 
   // Compute which content types this user is allowed to search for.
   // If a content type's default policy mode is 'blocked', hide it from the dropdown.
@@ -551,7 +551,7 @@ function App() {
   const [activeMetadataConfig, setActiveMetadataConfig] = useState<MetadataSearchConfig | null>(
     null,
   );
-  const [activeQueryTarget, setActiveQueryTarget] = useState<string>('general');
+  const [activeQueryTarget, setActiveQueryTarget] = useState('general');
   const [activeResultsSort, setActiveResultsSort] = useState('');
   const [downloadsSidebarOpen, setDownloadsSidebarOpen] = useState(false);
   const [sidebarPinnedOpen, setSidebarPinnedOpen] = useState(false);
@@ -659,11 +659,7 @@ function App() {
         : [];
       const canAutoDownloadContentType = (contentType?: string): boolean => {
         const contentTypeKey =
-          String(contentType || '')
-            .trim()
-            .toLowerCase() === 'audiobook'
-            ? 'audiobook'
-            : 'book';
+          (contentType || '').trim().toLowerCase() === 'audiobook' ? 'audiobook' : 'book';
         return autoDownloadContentTypes.includes(contentTypeKey);
       };
 
@@ -888,7 +884,7 @@ function App() {
       resolvedMetadataSortOptions,
     ],
   );
-  const prevMetadataSortContextRef = useRef<string>('');
+  const prevMetadataSortContextRef = useRef('');
 
   // Non-admins in universal mode have nothing in the advanced panel
   const hasAdvancedContent = requestRoleIsAdmin || effectiveSearchMode === 'direct';
@@ -1090,11 +1086,9 @@ function App() {
         showAdvanced: true,
         advancedFilters: {
           ...(mergedFilters as typeof advancedFilters),
-          isbn: nextQueryTarget === 'isbn' ? String(parsedParams.advancedFilters.isbn || '') : '',
-          author:
-            nextQueryTarget === 'author' ? String(parsedParams.advancedFilters.author || '') : '',
-          title:
-            nextQueryTarget === 'title' ? String(parsedParams.advancedFilters.title || '') : '',
+          isbn: nextQueryTarget === 'isbn' ? parsedParams.advancedFilters.isbn || '' : '',
+          author: nextQueryTarget === 'author' ? parsedParams.advancedFilters.author || '' : '',
+          title: nextQueryTarget === 'title' ? parsedParams.advancedFilters.title || '' : '',
         },
         bookLanguages,
         defaultLanguage: defaultLanguageCodes,
@@ -1147,10 +1141,7 @@ function App() {
 
     if (metadataBook) {
       try {
-        const fullBook = await getMetadataBookInfo(
-          metadataBook.provider!,
-          metadataBook.provider_id!,
-        );
+        const fullBook = await getMetadataBookInfo(metadataBook.provider, metadataBook.provider_id);
         setSelectedBook({
           ...metadataBook,
           description: fullBook.description || metadataBook.description,
@@ -1628,7 +1619,7 @@ function App() {
     });
     try {
       const latestPolicy = await refreshRequestPolicy({ force: true });
-      const effectiveIsAdmin = latestPolicy ? Boolean(latestPolicy.is_admin) : requestRoleIsAdmin;
+      const effectiveIsAdmin = latestPolicy?.is_admin ?? requestRoleIsAdmin;
       mode = resolveSourceModeFromPolicy(latestPolicy, effectiveIsAdmin, source, directContentType);
       policyTrace('direct.action:resolved', {
         bookId: book.id,
@@ -1708,7 +1699,7 @@ function App() {
     });
     try {
       const latestPolicy = await refreshRequestPolicy({ force: true });
-      const effectiveIsAdmin = latestPolicy ? Boolean(latestPolicy.is_admin) : requestRoleIsAdmin;
+      const effectiveIsAdmin = latestPolicy?.is_admin ?? requestRoleIsAdmin;
       mode = resolveDefaultModeFromPolicy(latestPolicy, effectiveIsAdmin, contentType);
       policyTrace('universal.get:resolved', {
         bookId: book.id,
@@ -1737,9 +1728,7 @@ function App() {
     // Combined mode is only available when both default content types are accessible.
     if (combinedMode) {
       const latestPolicy2 = await refreshRequestPolicy({ force: true }).catch(() => null);
-      const effectiveIsAdmin2 = latestPolicy2
-        ? Boolean(latestPolicy2.is_admin)
-        : requestRoleIsAdmin;
+      const effectiveIsAdmin2 = latestPolicy2?.is_admin ?? requestRoleIsAdmin;
       const ebookMode = resolveDefaultModeFromPolicy(latestPolicy2, effectiveIsAdmin2, 'ebook');
       const audiobookMode = resolveDefaultModeFromPolicy(
         latestPolicy2,
@@ -2188,12 +2177,11 @@ function App() {
     activeQueryValue !== '' &&
     activeQueryValue !== false,
   );
-  const activeQueryUsesListBrowse = Boolean(
+  const activeQueryUsesListBrowse =
     activeQueryOption?.source === 'provider-field' &&
     activeQueryOption.field?.type === 'DynamicSelectSearchField' &&
     activeQueryValue !== '' &&
-    activeQueryValue !== false,
-  );
+    activeQueryValue !== false;
   const effectiveMetadataSort = getEffectiveMetadataSort({
     currentSort: advancedFilters.sort,
     defaultSort: resolvedMetadataDefaultSort,

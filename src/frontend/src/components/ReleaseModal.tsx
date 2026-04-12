@@ -700,7 +700,7 @@ export const ReleaseModal = ({
   const [sourcesError, setSourcesError] = useState<string | null>(null);
 
   // Active tab (source name)
-  const [activeTab, setActiveTab] = useState<string>('');
+  const [activeTab, setActiveTab] = useState('');
 
   // Track if book summary has scrolled out of view
   const [showHeaderThumb, setShowHeaderThumb] = useState(false);
@@ -718,21 +718,21 @@ export const ReleaseModal = ({
   // Search status from WebSocket (for showing progress during slow searches like IRC)
   const [searchStatus, setSearchStatus] = useState<SearchStatusData | null>(null);
   const { socket } = useSocket();
-  const lastStatusTimeRef = useRef<number>(0);
+  const lastStatusTimeRef = useRef(0);
   const pendingStatusRef = useRef<SearchStatusData | null>(null);
   const statusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Filters - initialized from config settings
   // Empty string means "show all supported formats" (filtered by supportedFormats)
   // A specific value means "show only that format"
-  const [formatFilter, setFormatFilter] = useState<string>('');
-  const [languageFilter, setLanguageFilter] = useState<string[]>([LANGUAGE_OPTION_DEFAULT]);
+  const [formatFilter, setFormatFilter] = useState('');
+  const [languageFilter, setLanguageFilter] = useState([LANGUAGE_OPTION_DEFAULT]);
   // Indexer filter - empty array means "show all", otherwise show only selected indexers
   const [indexerFilter, setIndexerFilter] = useState<string[]>([]);
   // Track which tabs have had indexer filter initialized (to avoid overriding user changes)
-  const indexerFilterInitializedRef = useRef<Set<string>>(new Set());
-  const [manualQuery, setManualQuery] = useState<string>('');
-  const [showManualQuery, setShowManualQuery] = useState<boolean>(false);
+  const indexerFilterInitializedRef = useRef(new Set<string>());
+  const [manualQuery, setManualQuery] = useState('');
+  const [showManualQuery, setShowManualQuery] = useState(false);
 
   // Sort state - keyed by source name, persisted to localStorage
   // null means "Default" (best title match), undefined means "not set yet"
@@ -1270,7 +1270,7 @@ export const ReleaseModal = ({
     const fromColumns = sortableColumns.map((col) => ({
       label: col.label,
       sortKey: col.sort_key || col.key,
-      defaultDirection: inferDefaultDirection(col.render_type) as 'asc' | 'desc',
+      defaultDirection: inferDefaultDirection(col.render_type),
     }));
     const fromExtra = (columnConfig.extra_sort_options || []).map((opt) => ({
       label: opt.label,
@@ -1373,7 +1373,7 @@ export const ReleaseModal = ({
 
       // Language filtering - use r.language when provided by enriched indexers
       // Releases with no language (null/undefined) always pass
-      const releaseLang = r.language as string | undefined;
+      const releaseLang = r.language;
       if (
         !releaseLanguageMatchesFilter(
           releaseLang,
@@ -2613,7 +2613,7 @@ export const ReleaseModal = ({
                       onClick={() => {
                         const picked = selectedRelease;
                         setSelectedRelease(stagedEbookRelease);
-                        onCombinedBack!(picked);
+                        onCombinedBack(picked);
                       }}
                       className="hover-surface rounded-lg px-3 py-1.5 text-sm font-medium text-(--text) transition-colors"
                     >

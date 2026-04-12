@@ -4,20 +4,8 @@ import {
   SettingsTab,
   SettingsField,
   ActionResult,
-  TextFieldConfig,
-  PasswordFieldConfig,
-  NumberFieldConfig,
-  CheckboxFieldConfig,
-  SelectFieldConfig,
-  MultiSelectFieldConfig,
-  TagListFieldConfig,
-  OrderableListFieldConfig,
   OrderableListItem,
-  ActionButtonConfig,
-  HeadingFieldConfig,
   ShowWhenCondition,
-  TableFieldConfig,
-  CustomComponentFieldConfig,
 } from '../../types/settings';
 import {
   CustomSettingsFieldLayout,
@@ -162,7 +150,7 @@ const renderField = (
     case 'TextField':
       return (
         <TextField
-          field={field as TextFieldConfig}
+          field={field}
           value={(value as string) ?? ''}
           onChange={onChange}
           disabled={isDisabled}
@@ -171,7 +159,7 @@ const renderField = (
     case 'PasswordField':
       return (
         <PasswordField
-          field={field as PasswordFieldConfig}
+          field={field}
           value={(value as string) ?? ''}
           onChange={onChange}
           disabled={isDisabled}
@@ -180,7 +168,7 @@ const renderField = (
     case 'NumberField':
       return (
         <NumberField
-          field={field as NumberFieldConfig}
+          field={field}
           value={(value as number) ?? 0}
           onChange={onChange}
           disabled={isDisabled}
@@ -189,25 +177,22 @@ const renderField = (
     case 'CheckboxField':
       return (
         <CheckboxField
-          field={field as CheckboxFieldConfig}
+          field={field}
           value={(value as boolean) ?? false}
           onChange={onChange}
           disabled={isDisabled}
         />
       );
     case 'SelectField': {
-      const selectConfig = field as SelectFieldConfig;
       // Get filter value for cascading dropdowns
-      const rawFilterValue = selectConfig.filterByField
-        ? allValues[selectConfig.filterByField]
-        : undefined;
+      const rawFilterValue = field.filterByField ? allValues[field.filterByField] : undefined;
       const filterValue =
         rawFilterValue === undefined || rawFilterValue === null || rawFilterValue === ''
           ? undefined
           : String(rawFilterValue);
       return (
         <SelectField
-          field={selectConfig}
+          field={field}
           value={(value as string) ?? ''}
           onChange={onChange}
           disabled={isDisabled}
@@ -218,7 +203,7 @@ const renderField = (
     case 'MultiSelectField':
       return (
         <MultiSelectField
-          field={field as MultiSelectFieldConfig}
+          field={field}
           value={(value as string[]) ?? []}
           onChange={onChange}
           disabled={isDisabled}
@@ -227,7 +212,7 @@ const renderField = (
     case 'TagListField':
       return (
         <TagListField
-          field={field as TagListFieldConfig}
+          field={field}
           value={(value as string[]) ?? []}
           onChange={(v) => onChange(v)}
           disabled={isDisabled}
@@ -236,32 +221,26 @@ const renderField = (
     case 'OrderableListField':
       return (
         <OrderableListField
-          field={field as OrderableListFieldConfig}
+          field={field}
           value={(value as OrderableListItem[]) ?? []}
           onChange={onChange}
           disabled={isDisabled}
         />
       );
     case 'ActionButton':
-      return (
-        <ActionButton
-          field={field as ActionButtonConfig}
-          onAction={onAction}
-          disabled={isDisabled}
-        />
-      );
+      return <ActionButton field={field} onAction={onAction} disabled={isDisabled} />;
     case 'TableField':
       return (
         <TableField
-          field={field as TableFieldConfig}
+          field={field}
           value={(value as Record<string, unknown>[]) ?? []}
           onChange={onChange}
           disabled={isDisabled}
         />
       );
     case 'HeadingField': {
-      const headingField = field as HeadingFieldConfig;
-      const normalizedAuthMode = String(authMode || '').toLowerCase();
+      const headingField = field;
+      const normalizedAuthMode = (authMode || '').toLowerCase();
       const dynamicDescription = headingField.descriptionByAuthMode
         ? (headingField.descriptionByAuthMode[normalizedAuthMode] ??
           headingField.descriptionByAuthMode.default ??
@@ -344,7 +323,7 @@ export const SettingsContent = ({
         return;
       }
       layouts[field.key] = getCustomSettingsFieldLayout({
-        field: field as CustomComponentFieldConfig,
+        field,
         tab,
         values,
         uiState: customFieldUiState[field.key] || {},
@@ -403,7 +382,7 @@ export const SettingsContent = ({
         const renderedField =
           field.type === 'CustomComponentField'
             ? renderCustomSettingsField({
-                field: field as CustomComponentFieldConfig,
+                field,
                 tab,
                 values,
                 onChange,
@@ -429,8 +408,7 @@ export const SettingsContent = ({
               );
 
         const shouldWrapInFieldWrapper = !(
-          field.type === 'CustomComponentField' &&
-          !(field as CustomComponentFieldConfig).wrapInFieldWrapper
+          field.type === 'CustomComponentField' && !field.wrapInFieldWrapper
         );
 
         if (!shouldWrapInFieldWrapper) {

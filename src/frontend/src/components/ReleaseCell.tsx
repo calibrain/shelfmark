@@ -45,7 +45,7 @@ export const ReleaseCell = ({
       // Build rich tooltip content for formats
       let tooltipContent: React.ReactNode = null;
       if (column.key === 'extra.formats_display') {
-        const formats = (release.extra as Record<string, unknown> | undefined)?.formats;
+        const formats = release.extra?.formats;
         if (Array.isArray(formats) && formats.length > 1) {
           tooltipContent = (
             <div className="flex flex-wrap gap-1.5">
@@ -168,7 +168,7 @@ export const ReleaseCell = ({
 
     case 'size': {
       // Build tooltip from extra metadata (torznab attrs, publish date, etc.)
-      const extra = release.extra as Record<string, unknown> | undefined;
+      const extra = release.extra;
       const torznabAttrs = extra?.torznab_attrs as Record<string, string> | undefined;
       const publishDate = extra?.publish_date as string | undefined;
       const postedDate = extra?.posted_date as string | undefined;
@@ -385,11 +385,9 @@ export const ReleaseCell = ({
     case 'format_content_type': {
       // Content type icon + format badge combined
       // Shows primary format as badge with colored dots for additional formats
-      const contentType = release.content_type as string | undefined;
+      const contentType = release.content_type;
       const isAudiobook = contentType === 'audiobook';
-      const formats = (release.extra as Record<string, unknown> | undefined)?.formats as
-        | string[]
-        | undefined;
+      const formats = release.extra?.formats as string[] | undefined;
       const primaryFormat = formats?.[0] || null;
       const additionalFormats = formats?.slice(1) || [];
 
@@ -405,13 +403,13 @@ export const ReleaseCell = ({
         tooltipContent = (
           <div className="flex flex-wrap gap-1.5">
             {formats.map((fmt) => {
-              const fmtColor = getFormatColor(String(fmt));
+              const fmtColor = getFormatColor(fmt);
               return (
                 <span
-                  key={String(fmt)}
+                  key={fmt}
                   className={`${fmtColor.bg} ${fmtColor.text} rounded-lg px-1.5 py-0.5 text-[10px] font-semibold tracking-wide sm:px-2 sm:text-[11px]`}
                 >
-                  {String(fmt).toUpperCase()}
+                  {fmt.toUpperCase()}
                 </span>
               );
             })}
@@ -466,7 +464,7 @@ export const ReleaseCell = ({
         // Simple text tooltip for compact mode
         const compactTooltip =
           formats && formats.length > 1
-            ? formats.map((fmt) => String(fmt).toUpperCase()).join(', ')
+            ? formats.map((fmt) => fmt.toUpperCase()).join(', ')
             : undefined;
         return (
           <span className={column.uppercase ? 'uppercase' : ''} title={compactTooltip}>

@@ -7,19 +7,7 @@ import {
   executeSettingsAction,
   OnboardingStep,
 } from '../services/api';
-import {
-  SettingsField,
-  TextFieldConfig,
-  PasswordFieldConfig,
-  CheckboxFieldConfig,
-  SelectFieldConfig,
-  MultiSelectFieldConfig,
-  TagListFieldConfig,
-  HeadingFieldConfig,
-  ActionButtonConfig,
-  ActionResult,
-  ShowWhenCondition,
-} from '../types/settings';
+import { SettingsField, ActionResult, ShowWhenCondition } from '../types/settings';
 import {
   TextField,
   PasswordField,
@@ -96,7 +84,7 @@ const renderField = (
     case 'TextField':
       return (
         <TextField
-          field={field as TextFieldConfig}
+          field={field}
           value={(value as string) ?? ''}
           onChange={onChange}
           disabled={isDisabled}
@@ -105,7 +93,7 @@ const renderField = (
     case 'PasswordField':
       return (
         <PasswordField
-          field={field as PasswordFieldConfig}
+          field={field}
           value={(value as string) ?? ''}
           onChange={onChange}
           disabled={isDisabled}
@@ -114,7 +102,7 @@ const renderField = (
     case 'CheckboxField':
       return (
         <CheckboxField
-          field={field as CheckboxFieldConfig}
+          field={field}
           value={(value as boolean) ?? false}
           onChange={onChange}
           disabled={isDisabled}
@@ -123,7 +111,7 @@ const renderField = (
     case 'SelectField':
       return (
         <SelectField
-          field={field as SelectFieldConfig}
+          field={field}
           value={(value as string) ?? ''}
           onChange={onChange}
           disabled={isDisabled}
@@ -132,7 +120,7 @@ const renderField = (
     case 'MultiSelectField':
       return (
         <MultiSelectField
-          field={field as MultiSelectFieldConfig}
+          field={field}
           value={(value as string[]) ?? []}
           onChange={onChange}
           disabled={isDisabled}
@@ -141,22 +129,16 @@ const renderField = (
     case 'TagListField':
       return (
         <TagListField
-          field={field as TagListFieldConfig}
+          field={field}
           value={(value as string[]) ?? []}
           onChange={(v) => onChange(v)}
           disabled={isDisabled}
         />
       );
     case 'ActionButton':
-      return (
-        <ActionButton
-          field={field as ActionButtonConfig}
-          onAction={onAction}
-          disabled={isDisabled}
-        />
-      );
+      return <ActionButton field={field} onAction={onAction} disabled={isDisabled} />;
     case 'HeadingField':
-      return <HeadingField field={field as HeadingFieldConfig} />;
+      return <HeadingField field={field} />;
     default:
       return <div>Unknown field type</div>;
   }
