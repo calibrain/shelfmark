@@ -294,10 +294,11 @@ def _apply_auto_selection_to_book_request(
     request_level = create_args.get("request_level")
     release_data = create_args.get("release_data")
     requested_level = str(request_level).strip().lower() if isinstance(request_level, str) else ""
+    request_title = _resolve_title_from_book_data(book_data)
 
     if requested_level != "book" or isinstance(release_data, dict):
         return resolved_mode, None
-    if resolved_mode not in {PolicyMode.DOWNLOAD, PolicyMode.REQUEST_RELEASE}:
+    if resolved_mode == PolicyMode.BLOCKED:
         return resolved_mode, None
 
     allowed_sources = tuple(
@@ -310,7 +311,16 @@ def _apply_auto_selection_to_book_request(
             global_settings=global_settings,
             user_settings=user_settings,
         )
-        in {PolicyMode.DOWNLOAD, PolicyMode.REQUEST_RELEASE}
+        != PolicyMode.BLOCKED
+    )
+
+    logger.info(
+        "Request auto-select evaluating title=%r baseline_mode=%s source_hint=%s content_type=%s eligible_sources=%s",
+        request_title,
+        resolved_mode.value,
+        source,
+        content_type,
+        len(allowed_sources),
     )
 
     selection_result = select_release_for_request(
@@ -325,6 +335,11 @@ def _apply_auto_selection_to_book_request(
         create_args["request_level"] = "book"
         create_args["release_data"] = None
         create_args["policy_mode"] = PolicyMode.REQUEST_BOOK.value
+        logger.info(
+            "Request auto-select falling back to request_book for title=%r: %s",
+            request_title,
+            selection_result.fallback_reason or "no acceptable release candidates found",
+        )
         return PolicyMode.REQUEST_BOOK, selection_result.fallback_reason
 
     selected_policy_mode = resolve_policy_mode(
@@ -337,27 +352,42 @@ def _apply_auto_selection_to_book_request(
     create_args["request_level"] = "release"
     create_args["release_data"] = selected.release_data
 
-    if selected_policy_mode in {PolicyMode.BLOCKED, PolicyMode.REQUEST_BOOK}:
+    if selected_policy_mode == PolicyMode.BLOCKED:
         create_args["request_level"] = "book"
         create_args["release_data"] = None
         create_args["policy_mode"] = PolicyMode.REQUEST_BOOK.value
+        fallback_reason = (
+            f"{selected.reason}; selected source requires "
+            f"{selected_policy_mode.value.replace('_', ' ')}"
+        )
+        logger.info(
+            "Request auto-select falling back to request_book for title=%r: %s",
+            request_title,
+            fallback_reason,
+        )
         return (
             PolicyMode.REQUEST_BOOK,
-            (
-                f"{selected.reason}; selected source requires "
-                f"{selected_policy_mode.value.replace('_', ' ')}"
-            ),
+            fallback_reason,
         )
 
-    if (
-        selected_policy_mode == PolicyMode.DOWNLOAD
-        and selection_result.settings.auto_approve_enabled
-    ):
-        create_args["policy_mode"] = PolicyMode.DOWNLOAD.value
-        return PolicyMode.DOWNLOAD, selected.reason
+    final_mode = PolicyMode.REQUEST_RELEASE
+    if selection_result.settings.auto_approve_enabled and selected_policy_mode in {
+        PolicyMode.DOWNLOAD,
+        PolicyMode.REQUEST_BOOK,
+    }:
+        final_mode = PolicyMode.DOWNLOAD
 
-    create_args["policy_mode"] = PolicyMode.REQUEST_RELEASE.value
-    return PolicyMode.REQUEST_RELEASE, selected.reason
+    create_args["policy_mode"] = final_mode.value
+    logger.info(
+        "Request auto-select upgraded title=%r selected_source=%s selected_mode=%s baseline_mode=%s final_mode=%s auto_approve=%s",
+        request_title,
+        selected.release.source,
+        selected_policy_mode.value,
+        resolved_mode.value,
+        final_mode.value,
+        selection_result.settings.auto_approve_enabled,
+    )
+    return final_mode, selected.reason
 
 
 def _prepare_request_create_arguments(

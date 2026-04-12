@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
+import re
 from typing import Any, Mapping
 
 from shelfmark.core.config import config as app_config
@@ -66,6 +67,60 @@ _AUDIOBOOK_FORMAT_HINTS = frozenset(
 )
 _AUDIOBOOK_CATEGORY_RANGE = (3030, 3049)
 _SOURCE_SEARCH_ERRORS = (AttributeError, OSError, RuntimeError, TypeError, ValueError)
+_TITLE_STOP_WORDS = frozenset(
+    {"a", "an", "the", "and", "or", "of", "in", "to", "for", "on", "at", "by", "is"}
+)
+_BUNDLE_HINT_PHRASES = (
+    "author collection",
+    "book bundle",
+    "book collection",
+    "book dump",
+    "box set",
+    "complete collection",
+    "complete series",
+    "series collection",
+)
+_BUNDLE_HINT_KEYWORDS = frozenset(
+    {
+        "anthology",
+        "anthologies",
+        "bundle",
+        "bundled",
+        "collection",
+        "collections",
+        "complete",
+        "compilation",
+        "compilations",
+        "dump",
+        "library",
+        "omnibus",
+    }
+)
+_MULTI_BOOK_RANGE_PATTERN = re.compile(
+    r"\b(?:books?|vol(?:ume)?s?|issues?)\s*\d+\s*(?:-|to|through)\s*\d+\b"
+)
+_MULTI_BOOK_COUNT_PATTERN = re.compile(
+    r"\b\d+\s+(?:book|books|volume|volumes|vols?|issues?)\b"
+)
+_TEXT_EBOOK_FORMAT_HINTS = frozenset(
+    {
+        "azw",
+        "azw3",
+        "doc",
+        "docx",
+        "djvu",
+        "epub",
+        "fb2",
+        "html",
+        "htm",
+        "lit",
+        "mobi",
+        "pdf",
+        "pdb",
+        "rtf",
+        "txt",
+    }
+)
 
 
 class RequestAutoSelectionPolicy(StrEnum):
@@ -128,6 +183,45 @@ class _SearchStage:
     key: str
     sources: tuple[str, ...]
     indexers: tuple[str, ...] | None = None
+
+
+@dataclass(frozen=True)
+class _ReleaseRank:
+    sort_key: tuple[Any, ...]
+    title_score: int
+    author_score: int
+    single_book_score: int
+    bundle_penalty: int
+    size_penalty: int
+    format_score: int
+    availability_score: int
+    seeders: int
+    newest_value: int
+
+    @property
+    def summary(self) -> str:
+        parts: list[str] = []
+        if self.title_score >= 10000:
+            parts.append("exact title")
+        elif self.title_score >= 6000:
+            parts.append("prefix title")
+        elif self.title_score > 0:
+            parts.append("partial title")
+        else:
+            parts.append("weak title")
+        if self.author_score > 0:
+            parts.append("author match")
+        if self.single_book_score > 0:
+            parts.append("single-book")
+        if self.bundle_penalty > 0:
+            parts.append("bundle penalty")
+        if self.size_penalty > 0:
+            parts.append("large-file penalty")
+        if self.format_score > 0:
+            parts.append("preferred format")
+        elif self.format_score < 0:
+            parts.append("unknown format")
+        return ", ".join(parts)
 
 
 def _normalize_bool(value: object, *, default: bool = False) -> bool:
@@ -244,6 +338,183 @@ def _split_authors(value: object) -> list[str]:
     if isinstance(value, str):
         return [part.strip() for part in value.split(",") if part.strip()]
     return []
+
+
+def _normalize_match_text(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    normalized = re.sub(r"[^a-z0-9]+", " ", value.lower())
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.strip()
+
+
+def _collect_normalized_strings(values: list[object]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    normalized_values: list[str] = []
+    for value in values:
+        normalized = _normalize_match_text(value)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        normalized_values.append(normalized)
+    return tuple(normalized_values)
+
+
+def _get_book_title_candidates(book: BookMetadata) -> tuple[str, ...]:
+    return _collect_normalized_strings(
+        [
+            book.search_title,
+            book.title,
+            *book.titles_by_language.values(),
+        ]
+    )
+
+
+def _get_book_author_candidates(book: BookMetadata) -> tuple[str, ...]:
+    split_authors: list[str] = []
+    if book.search_author:
+        split_authors.extend(_split_authors(book.search_author))
+    return _collect_normalized_strings(
+        [
+            book.search_author,
+            *book.authors,
+            *split_authors,
+        ]
+    )
+
+
+def _remove_stop_words(text: str) -> str:
+    return " ".join(word for word in text.split() if word not in _TITLE_STOP_WORDS)
+
+
+def _get_title_match_score(title: str, title_candidate: str) -> int:
+    normalized_title = _normalize_match_text(title)
+    if not normalized_title or not title_candidate:
+        return 0
+    if normalized_title == title_candidate:
+        return 10000
+
+    stripped_title = _remove_stop_words(normalized_title)
+    stripped_candidate = _remove_stop_words(title_candidate)
+
+    score = 0
+    if normalized_title.startswith(title_candidate) or (
+        stripped_title and stripped_candidate and stripped_title.startswith(stripped_candidate)
+    ):
+        score += 6000
+    elif title_candidate in normalized_title or (
+        stripped_title and stripped_candidate and stripped_candidate in stripped_title
+    ):
+        score += 3000
+
+    candidate_tokens = [token for token in stripped_candidate.split() if len(token) >= 3]
+    if candidate_tokens:
+        title_tokens = set(stripped_title.split())
+        matched_tokens = sum(1 for token in candidate_tokens if token in title_tokens)
+        score += round((matched_tokens / len(candidate_tokens)) * 2500)
+
+    score -= min(abs(len(normalized_title) - len(title_candidate)), 100)
+    return score
+
+
+def _get_release_author_for_match(release: Release) -> str | None:
+    extra = release.extra if isinstance(release.extra, Mapping) else {}
+    normalized = _normalize_match_text(extra.get("author"))
+    return normalized or None
+
+
+def _has_author_match(release: Release, author_candidates: tuple[str, ...]) -> bool:
+    if not author_candidates:
+        return False
+    release_author = _get_release_author_for_match(release)
+    if not release_author:
+        return False
+    release_tokens = set(release_author.split())
+    return any(
+        candidate_tokens
+        and all(token in release_tokens for token in candidate_tokens)
+        for candidate_tokens in (
+            [token for token in candidate.split() if token]
+            for candidate in author_candidates
+        )
+    )
+
+
+def _strip_best_title_candidate(
+    normalized_title: str,
+    title_candidates: tuple[str, ...],
+) -> tuple[str, bool]:
+    for candidate in sorted(title_candidates, key=len, reverse=True):
+        if not candidate:
+            continue
+        if normalized_title == candidate:
+            return "", True
+        if candidate in normalized_title:
+            before, _, after = normalized_title.partition(candidate)
+            context = " ".join(part for part in (before.strip(), after.strip()) if part)
+            return context, False
+    return normalized_title, False
+
+
+def _collection_penalty(release: Release, title_candidates: tuple[str, ...]) -> int:
+    normalized_title = _normalize_match_text(release.title)
+    if not normalized_title:
+        return 0
+
+    title_context, exact_match = _strip_best_title_candidate(normalized_title, title_candidates)
+    if exact_match:
+        return 0
+
+    penalty = 0
+    if any(phrase in title_context for phrase in _BUNDLE_HINT_PHRASES):
+        penalty += 2500
+
+    context_tokens = set(title_context.split())
+    if context_tokens.intersection(_BUNDLE_HINT_KEYWORDS):
+        penalty += 2000
+
+    if _MULTI_BOOK_RANGE_PATTERN.search(title_context):
+        penalty += 2000
+    elif _MULTI_BOOK_COUNT_PATTERN.search(title_context):
+        penalty += 1000
+
+    return penalty
+
+
+def _large_ebook_size_penalty(release: Release, content_type: str) -> int:
+    if content_type != "ebook":
+        return 0
+    if not isinstance(release.size_bytes, int) or release.size_bytes <= 0:
+        return 0
+    release_formats = set(_collect_release_formats(release))
+    if release_formats and not release_formats.intersection(_TEXT_EBOOK_FORMAT_HINTS):
+        return 0
+
+    if release.size_bytes >= 250 * 1024 * 1024:
+        return 2500
+    if release.size_bytes >= 100 * 1024 * 1024:
+        return 1500
+    if release.size_bytes >= 50 * 1024 * 1024:
+        return 750
+    return 0
+
+
+def _single_book_score(
+    release: Release,
+    *,
+    title_candidates: tuple[str, ...],
+    title_score: int,
+    content_type: str,
+) -> tuple[int, int, int]:
+    bonus = 0
+    if title_score >= 10000:
+        bonus += 1000
+    elif title_score >= 6000:
+        bonus += 500
+
+    bundle_penalty = _collection_penalty(release, title_candidates)
+    size_penalty = _large_ebook_size_penalty(release, content_type)
+    return bonus - bundle_penalty - size_penalty, bundle_penalty, size_penalty
 
 
 def get_available_request_auto_sources() -> set[str]:
@@ -717,22 +988,101 @@ def _rank_release(
     release: Release,
     *,
     settings: RequestAutoSelectionSettings,
-) -> tuple[int, int, int, int, str, str]:
+    title_candidates: tuple[str, ...],
+    author_candidates: tuple[str, ...],
+    content_type: str,
+) -> _ReleaseRank:
+    title_score = max(
+        (_get_title_match_score(release.title, candidate) for candidate in title_candidates),
+        default=0,
+    )
+    author_score = 1500 if _has_author_match(release, author_candidates) else 0
+    single_book_score, bundle_penalty, size_penalty = _single_book_score(
+        release,
+        title_candidates=title_candidates,
+        title_score=title_score,
+        content_type=content_type,
+    )
     format_score = _format_match_score(release, settings.preferred_formats)
     availability_score = _availability_score(release)
     seeders = release.seeders if isinstance(release.seeders, int) and release.seeders > 0 else -1
     newest_value = _parse_release_newest_value(release)
 
     if settings.selection_policy == RequestAutoSelectionPolicy.MOST_SEEDERS:
-        primary = (seeders, format_score, availability_score, newest_value)
+        primary = (
+            seeders,
+            availability_score,
+            title_score,
+            author_score,
+            single_book_score,
+            format_score,
+            newest_value,
+        )
     elif settings.selection_policy == RequestAutoSelectionPolicy.NEWEST:
-        primary = (newest_value, format_score, seeders, availability_score)
+        primary = (
+            newest_value,
+            title_score,
+            author_score,
+            single_book_score,
+            format_score,
+            availability_score,
+            seeders,
+        )
     elif settings.selection_policy == RequestAutoSelectionPolicy.BEST_AVAILABILITY:
-        primary = (availability_score, format_score, seeders, newest_value)
+        primary = (
+            availability_score,
+            seeders,
+            title_score,
+            author_score,
+            single_book_score,
+            format_score,
+            newest_value,
+        )
     else:
-        primary = (format_score, seeders, availability_score, newest_value)
+        primary = (
+            title_score,
+            author_score,
+            single_book_score,
+            format_score,
+            availability_score,
+            seeders,
+            newest_value,
+        )
 
-    return (*primary, release.title.lower(), release.source_id)
+    return _ReleaseRank(
+        sort_key=(*primary, release.title.lower(), release.source_id),
+        title_score=title_score,
+        author_score=author_score,
+        single_book_score=single_book_score,
+        bundle_penalty=bundle_penalty,
+        size_penalty=size_penalty,
+        format_score=format_score,
+        availability_score=availability_score,
+        seeders=seeders,
+        newest_value=newest_value,
+    )
+
+
+def _compare_rank_reasons(selected: _ReleaseRank, runner_up: _ReleaseRank | None) -> str:
+    if runner_up is None:
+        return selected.summary
+    if selected.title_score > runner_up.title_score:
+        return "stronger title match"
+    if selected.author_score > runner_up.author_score:
+        return "author match advantage"
+    if selected.single_book_score > runner_up.single_book_score:
+        if selected.bundle_penalty < runner_up.bundle_penalty:
+            return "exact single-book match outranked bundle/collection candidate"
+        if selected.size_penalty < runner_up.size_penalty:
+            return "sane single-book file size outranked oversized candidate"
+        return "single-book candidate outranked multi-book candidate"
+    if selected.format_score > runner_up.format_score:
+        return "preferred format tie-break"
+    if selected.availability_score > runner_up.availability_score:
+        return "availability tie-break"
+    if selected.newest_value > runner_up.newest_value:
+        return "newer release tie-break"
+    return selected.summary
 
 
 def _build_selection_reason(
@@ -824,6 +1174,8 @@ def select_release_for_request(
         )
 
     book = _build_book_metadata(book_data, content_type=normalized_content_type)
+    title_candidates = _get_book_title_candidates(book)
+    author_candidates = _get_book_author_candidates(book)
     stages = _build_search_stages(
         source_hint=normalize_source(source_hint),
         content_type=normalized_content_type,
@@ -837,6 +1189,15 @@ def select_release_for_request(
             attempted=True,
             fallback_reason="no eligible release sources are enabled",
         )
+
+    logger.info(
+        "Request auto-select search title=%r source_hint=%s content_type=%s policy=%s eligible_sources=%s",
+        book.title,
+        normalize_source(source_hint),
+        normalized_content_type,
+        settings.selection_policy.value,
+        len(allowed_sources) if allowed_sources is not None else "all",
+    )
 
     searched_sources: list[str] = []
     errors: list[str] = []
@@ -855,10 +1216,25 @@ def select_release_for_request(
         if not matching_results:
             continue
 
-        selected_release = max(
-            matching_results,
-            key=lambda release: _rank_release(release, settings=settings),
+        ranked_results = sorted(
+            (
+                (
+                    _rank_release(
+                        release,
+                        settings=settings,
+                        title_candidates=title_candidates,
+                        author_candidates=author_candidates,
+                        content_type=normalized_content_type,
+                    ),
+                    release,
+                )
+                for release in matching_results
+            ),
+            key=lambda item: item[0].sort_key,
+            reverse=True,
         )
+        selected_rank, selected_release = ranked_results[0]
+        runner_up_rank = ranked_results[1][0] if len(ranked_results) > 1 else None
         release_data = _build_release_data(
             book_data=book_data,
             release=selected_release,
@@ -870,6 +1246,27 @@ def select_release_for_request(
             selected_release,
             settings=settings,
             stage=stage.key,
+        )
+        if (
+            settings.selection_policy == RequestAutoSelectionPolicy.BEST_MATCH
+            and runner_up_rank is not None
+            and selected_rank.bundle_penalty < runner_up_rank.bundle_penalty
+        ):
+            logger.info(
+                "Release best-match favored exact single-book %s over collection candidate for %r",
+                (selected_release.format or "release").upper(),
+                book.title,
+            )
+        logger.info(
+            "Request auto-select chose title=%r release=%r source=%s indexer=%s stage=%s candidates=%s searched_sources=%s rationale=%s",
+            book.title,
+            selected_release.title,
+            selected_release.source,
+            selected_release.indexer or "-",
+            stage.key,
+            len(matching_results),
+            len(tuple(dict.fromkeys(searched_sources))),
+            _compare_rank_reasons(selected_rank, runner_up_rank),
         )
         return RequestAutoSelectionResult(
             settings=settings,
@@ -884,6 +1281,13 @@ def select_release_for_request(
             errors=tuple(errors),
         )
 
+    logger.info(
+        "Request auto-select found no acceptable releases title=%r searched_sources=%s errors=%s reason=%s",
+        book.title,
+        len(tuple(dict.fromkeys(searched_sources))),
+        len(errors),
+        "no matching release candidates found",
+    )
     return RequestAutoSelectionResult(
         settings=settings,
         attempted=True,

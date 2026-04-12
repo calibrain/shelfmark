@@ -1480,6 +1480,256 @@ class TestRequestCreationEdgeCases:
         assert rows[0]["policy_mode"] == "request_book"
         assert rows[0]["request_level"] == "book"
 
+    def test_request_book_policy_auto_select_queues_release_when_auto_approve_enabled(
+        self,
+        main_module,
+        client,
+    ):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(default_ebook="request_book")
+
+        payload = {
+            "book_data": {
+                "title": "Auto Queue From Request Book",
+                "author": "Shelfmark",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "auto-queue-request-book-1",
+            },
+            "context": {
+                "source": "*",
+                "content_type": "ebook",
+                "request_level": "book",
+            },
+        }
+
+        queued: list[tuple[str, int, int | None, str | None]] = []
+
+        def fake_queue_release(release_data, priority, user_id=None, username=None):
+            queued.append((release_data["source_id"], priority, user_id, username))
+            return True, None
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
+                    with patch(
+                        "shelfmark.core.request_routes.select_release_for_request",
+                        return_value=_selected_release_result(
+                            source="prowlarr",
+                            source_id="request-book-auto-1",
+                            title="Request Book Auto.epub",
+                            auto_approve_enabled=True,
+                        ),
+                    ) as mock_select:
+                        with patch.object(main_module.backend, "queue_release", side_effect=fake_queue_release):
+                            resp = client.post("/api/requests", json=payload)
+
+        assert resp.status_code == 200
+        assert resp.json["kind"] == "download"
+        assert resp.json["source"] == "prowlarr"
+        assert resp.json["source_id"] == "request-book-auto-1"
+        assert queued == [("request-book-auto-1", 0, user["id"], user["username"])]
+        mock_select.assert_called_once()
+        assert main_module.user_db.list_requests(user_id=user["id"]) == []
+
+    def test_request_book_policy_auto_select_creates_release_request_when_auto_approve_disabled(
+        self,
+        main_module,
+        client,
+    ):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(default_ebook="request_book")
+
+        payload = {
+            "book_data": {
+                "title": "Auto Release From Request Book",
+                "author": "Shelfmark",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "auto-release-request-book-1",
+            },
+            "context": {
+                "source": "*",
+                "content_type": "ebook",
+                "request_level": "book",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
+                    with patch(
+                        "shelfmark.core.request_routes.select_release_for_request",
+                        return_value=_selected_release_result(
+                            source="prowlarr",
+                            source_id="request-book-release-1",
+                            title="Request Book Release.epub",
+                            auto_approve_enabled=False,
+                        ),
+                    ) as mock_select:
+                        with patch.object(main_module.backend, "queue_release") as mock_queue_release:
+                            resp = client.post("/api/requests", json=payload)
+
+        assert resp.status_code == 201
+        assert resp.json["policy_mode"] == "request_release"
+        assert resp.json["request_level"] == "release"
+        assert resp.json["release_data"]["source"] == "prowlarr"
+        assert resp.json["release_data"]["source_id"] == "request-book-release-1"
+        mock_select.assert_called_once()
+        mock_queue_release.assert_not_called()
+
+    def test_request_book_policy_without_concrete_release_remains_book_request(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(default_ebook="request_book")
+
+        payload = {
+            "book_data": {
+                "title": "No Concrete Release Under Request Book",
+                "author": "Shelfmark",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "request-book-no-release-1",
+            },
+            "context": {
+                "source": "*",
+                "content_type": "ebook",
+                "request_level": "book",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
+                    with patch(
+                        "shelfmark.core.request_routes.select_release_for_request",
+                        return_value=RequestAutoSelectionResult(
+                            settings=RequestAutoSelectionSettings(enabled=True, auto_approve_enabled=True),
+                            attempted=True,
+                            selected=None,
+                            fallback_reason="no acceptable release candidates found",
+                        ),
+                    ) as mock_select:
+                        with patch.object(main_module.backend, "queue_release") as mock_queue_release:
+                            resp = client.post("/api/requests", json=payload)
+
+        assert resp.status_code == 201
+        assert resp.json["policy_mode"] == "request_book"
+        assert resp.json["request_level"] == "book"
+        assert resp.json["release_data"] is None
+        mock_select.assert_called_once()
+        mock_queue_release.assert_not_called()
+
+    def test_auto_selection_excludes_only_blocked_sources_from_allowed_sources(
+        self,
+        main_module,
+        client,
+    ):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(
+            default_ebook="request_book",
+            rules=[
+                {
+                    "source": "direct_download",
+                    "content_type": "ebook",
+                    "mode": "blocked",
+                }
+            ],
+        )
+
+        payload = {
+            "book_data": {
+                "title": "Allowed Source Capture",
+                "author": "Shelfmark",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "allowed-source-capture-1",
+            },
+            "context": {
+                "source": "*",
+                "content_type": "ebook",
+                "request_level": "book",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
+                    with patch(
+                        "shelfmark.core.request_routes.select_release_for_request",
+                        return_value=RequestAutoSelectionResult(
+                            settings=RequestAutoSelectionSettings(enabled=True),
+                            attempted=True,
+                            selected=None,
+                            fallback_reason="no acceptable release candidates found",
+                        ),
+                    ) as mock_select:
+                        resp = client.post("/api/requests", json=payload)
+
+        assert resp.status_code == 201
+        assert resp.json["policy_mode"] == "request_book"
+        assert mock_select.call_count == 1
+        allowed_sources = mock_select.call_args.kwargs["allowed_sources"]
+        assert "direct_download" not in allowed_sources
+        assert "prowlarr" in allowed_sources
+
+    def test_auto_selection_falls_back_to_book_request_when_selected_source_is_blocked(
+        self,
+        main_module,
+        client,
+    ):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(
+            default_ebook="request_book",
+            rules=[
+                {
+                    "source": "prowlarr",
+                    "content_type": "ebook",
+                    "mode": "blocked",
+                }
+            ],
+        )
+
+        payload = {
+            "book_data": {
+                "title": "Blocked Selected Source",
+                "author": "Shelfmark",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "blocked-selected-source-1",
+            },
+            "context": {
+                "source": "*",
+                "content_type": "ebook",
+                "request_level": "book",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module, "load_users_request_policy_settings", return_value=policy):
+                with patch("shelfmark.core.request_routes.load_users_request_policy_settings", return_value=policy):
+                    with patch(
+                        "shelfmark.core.request_routes.select_release_for_request",
+                        return_value=_selected_release_result(
+                            source="prowlarr",
+                            source_id="blocked-release-1",
+                            title="Blocked Release.epub",
+                            auto_approve_enabled=True,
+                        ),
+                    ):
+                        with patch.object(main_module.backend, "queue_release") as mock_queue_release:
+                            resp = client.post("/api/requests", json=payload)
+
+        assert resp.status_code == 201
+        assert resp.json["policy_mode"] == "request_book"
+        assert resp.json["request_level"] == "book"
+        assert resp.json["release_data"] is None
+        mock_queue_release.assert_not_called()
+
     def test_download_policy_auto_select_queues_release_when_auto_approve_enabled(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
