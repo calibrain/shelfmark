@@ -17,7 +17,7 @@ export function getFieldValue(field: SettingsField): unknown {
   }
 
   if (field.type === 'TableField') {
-    return (field as unknown as { value?: unknown }).value ?? [];
+    return field.value ?? [];
   }
 
   return field.value ?? '';
@@ -110,7 +110,7 @@ export function settingsTabMatchesSavedValues(
 }
 
 export function cloneSettingsValues(values: SettingsValues): SettingsValues {
-  return JSON.parse(JSON.stringify(values)) as SettingsValues;
+  return structuredClone(values);
 }
 
 export function mergeFetchedSettingsWithDirtyValues(

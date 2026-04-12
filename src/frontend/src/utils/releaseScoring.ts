@@ -1,4 +1,5 @@
 import { Book, Release, ReleasesResponse } from '../types';
+import { isRecord } from './objectHelpers';
 
 function normalizeMatchText(value: string): string {
   return value
@@ -24,12 +25,12 @@ function collectNormalizedStrings(values: Array<string | null | undefined>): str
 }
 
 function getLocalizedTitleValues(raw: unknown): string[] {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+  if (!isRecord(raw) || Array.isArray(raw)) {
     return [];
   }
 
   const values: string[] = [];
-  for (const value of Object.values(raw as Record<string, unknown>)) {
+  for (const value of Object.values(raw)) {
     if (typeof value === 'string' && value.trim()) {
       values.push(value);
     }

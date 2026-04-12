@@ -21,16 +21,17 @@ interface CustomFieldDefinition {
   getLayout?: CustomFieldLayoutResolver;
 }
 
+function isSaveHandler(value: unknown): value is () => void | Promise<void> {
+  return typeof value === 'function';
+}
+
 const CUSTOM_FIELD_DEFINITIONS: Record<string, CustomFieldDefinition> = {
   users_management: {
     renderer: UsersManagementField,
     getLayout: ({ uiState }) => {
       const routeKind = typeof uiState.routeKind === 'string' ? uiState.routeKind : 'list';
       const isSubpage = routeKind === 'edit-overrides';
-      const onSave =
-        typeof uiState.onSave === 'function'
-          ? (uiState.onSave as () => void | Promise<void>)
-          : undefined;
+      const onSave = isSaveHandler(uiState.onSave) ? uiState.onSave : undefined;
       return {
         takeOverTab: isSubpage,
         saveBar: isSubpage

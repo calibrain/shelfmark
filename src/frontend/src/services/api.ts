@@ -22,6 +22,7 @@ import {
   transformReleaseToDirectBook,
   transformSourceRecordToBook,
 } from '../utils/bookTransformers';
+import { isRecord, toStringValue } from '../utils/objectHelpers';
 import {
   buildAdminRequestActionUrl,
   buildFulfilAdminRequestBody,
@@ -162,9 +163,9 @@ async function fetchJSON<T>(
       let hasServerMessage = false;
       let errorData: Record<string, unknown> | null = null;
       try {
-        const parsed = await res.json();
-        if (parsed && typeof parsed === 'object') {
-          errorData = parsed as Record<string, unknown>;
+        const parsed: unknown = await res.json();
+        if (isRecord(parsed) && !Array.isArray(parsed)) {
+          errorData = parsed;
         }
         // Prefer user-friendly 'message' field, fall back to 'error'
         if (typeof errorData?.message === 'string') {
@@ -373,7 +374,7 @@ export const fetchFieldOptions = async (
 const parseBaseOption = (
   option: Record<string, unknown>,
 ): { value: string; label: string; group?: string; description?: string } => {
-  const value = typeof option.value === 'string' ? option.value : String(option.value ?? '');
+  const value = toStringValue(option.value) ?? '';
   const label = typeof option.label === 'string' ? option.label : value;
   const group = typeof option.group === 'string' ? option.group : undefined;
   const description = typeof option.description === 'string' ? option.description : undefined;
@@ -423,8 +424,8 @@ export const fetchBookTargetOptionsBatch = async (
   );
 
   const results = new Map<string, BookTargetOption[]>();
-  if (typeof response.results === 'object' && response.results !== null) {
-    for (const [bookId, options] of Object.entries(response.results as Record<string, unknown>)) {
+  if (isRecord(response.results) && !Array.isArray(response.results)) {
+    for (const [bookId, options] of Object.entries(response.results)) {
       results.set(bookId, parseBookTargetOptions(options));
     }
   }

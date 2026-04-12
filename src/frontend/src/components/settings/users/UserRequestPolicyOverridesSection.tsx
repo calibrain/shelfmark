@@ -12,6 +12,7 @@ import {
   normalizeRequestPolicyRules,
   normalizeExplicitRulesForPersistence,
   parseSourceCapabilitiesFromRulesField,
+  RequestPolicyRuleRow,
 } from './requestPolicyGridUtils';
 import { PerUserSettings } from './types';
 
@@ -56,6 +57,14 @@ const toBoolean = (value: unknown): boolean => {
     return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
   }
   return Boolean(value);
+};
+
+const toStoredRequestPolicyRule = (rule: RequestPolicyRuleRow): Record<string, unknown> => {
+  return {
+    source: rule.source,
+    content_type: rule.content_type,
+    mode: rule.mode,
+  };
 };
 
 export const UserRequestPolicyOverridesSection = ({
@@ -142,7 +151,7 @@ export const UserRequestPolicyOverridesSection = ({
       if (normalized.length === 0) {
         delete next.REQUEST_POLICY_RULES;
       } else {
-        next.REQUEST_POLICY_RULES = normalized as unknown as Array<Record<string, unknown>>;
+        next.REQUEST_POLICY_RULES = normalized.map(toStoredRequestPolicyRule);
       }
       return next;
     });

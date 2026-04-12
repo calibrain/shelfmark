@@ -50,6 +50,59 @@ interface SettingsContentProps {
   };
 }
 
+function toComparableString(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return undefined;
+}
+
+function toStringValue(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function toNumberValue(value: unknown, fallback = 0): number {
+  return typeof value === 'number' ? value : fallback;
+}
+
+function toBooleanValue(value: unknown, fallback = false): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+}
+
+function toStringArray(value: unknown, fallback: string[] = []): string[] {
+  return isStringArray(value) ? value : fallback;
+}
+
+function isOrderableListItem(value: unknown): value is OrderableListItem {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'id' in value &&
+    typeof value.id === 'string' &&
+    'enabled' in value &&
+    typeof value.enabled === 'boolean'
+  );
+}
+
+function isOrderableListItemArray(value: unknown): value is OrderableListItem[] {
+  return Array.isArray(value) && value.every(isOrderableListItem);
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isRecordArray(value: unknown): value is Record<string, unknown>[] {
+  return Array.isArray(value) && value.every(isRecordValue);
+}
+
 function evaluateShowWhenCondition(
   showWhen: ShowWhenCondition,
   values: Record<string, unknown>,
@@ -63,9 +116,12 @@ function evaluateShowWhenCondition(
     return currentValue !== undefined && currentValue !== null && currentValue !== '';
   }
 
-  return Array.isArray(showWhen.value)
-    ? showWhen.value.includes(currentValue as string)
-    : currentValue === showWhen.value;
+  if (Array.isArray(showWhen.value)) {
+    const comparableValue = toComparableString(currentValue);
+    return comparableValue !== undefined && showWhen.value.includes(comparableValue);
+  }
+
+  return currentValue === showWhen.value;
 }
 
 // Check if a field should be visible based on showWhen condition and search mode
@@ -127,7 +183,10 @@ function getDisabledState(
 
   // Check if condition is met (handles both array and single value)
   const isDisabled = Array.isArray(conditionValue)
-    ? conditionValue.includes(currentValue as string)
+    ? (() => {
+        const comparableValue = toComparableString(currentValue);
+        return comparableValue !== undefined && conditionValue.includes(comparableValue);
+      })()
     : currentValue === conditionValue;
 
   return {
@@ -151,7 +210,7 @@ const renderField = (
       return (
         <TextField
           field={field}
-          value={(value as string) ?? ''}
+          value={toStringValue(value, field.value)}
           onChange={onChange}
           disabled={isDisabled}
         />
@@ -160,7 +219,7 @@ const renderField = (
       return (
         <PasswordField
           field={field}
-          value={(value as string) ?? ''}
+          value={toStringValue(value, field.value)}
           onChange={onChange}
           disabled={isDisabled}
         />
@@ -169,7 +228,7 @@ const renderField = (
       return (
         <NumberField
           field={field}
-          value={(value as number) ?? 0}
+          value={toNumberValue(value, field.value)}
           onChange={onChange}
           disabled={isDisabled}
         />
@@ -178,7 +237,7 @@ const renderField = (
       return (
         <CheckboxField
           field={field}
-          value={(value as boolean) ?? false}
+          value={toBooleanValue(value, field.value)}
           onChange={onChange}
           disabled={isDisabled}
         />
@@ -186,14 +245,11 @@ const renderField = (
     case 'SelectField': {
       // Get filter value for cascading dropdowns
       const rawFilterValue = field.filterByField ? allValues[field.filterByField] : undefined;
-      const filterValue =
-        rawFilterValue === undefined || rawFilterValue === null || rawFilterValue === ''
-          ? undefined
-          : String(rawFilterValue);
+      const filterValue = toComparableString(rawFilterValue);
       return (
         <SelectField
           field={field}
-          value={(value as string) ?? ''}
+          value={toStringValue(value, field.value)}
           onChange={onChange}
           disabled={isDisabled}
           filterValue={filterValue}
@@ -204,7 +260,7 @@ const renderField = (
       return (
         <MultiSelectField
           field={field}
-          value={(value as string[]) ?? []}
+          value={toStringArray(value, field.value)}
           onChange={onChange}
           disabled={isDisabled}
         />
@@ -213,7 +269,7 @@ const renderField = (
       return (
         <TagListField
           field={field}
-          value={(value as string[]) ?? []}
+          value={toStringArray(value, field.value)}
           onChange={(v) => onChange(v)}
           disabled={isDisabled}
         />
@@ -222,7 +278,7 @@ const renderField = (
       return (
         <OrderableListField
           field={field}
-          value={(value as OrderableListItem[]) ?? []}
+          value={isOrderableListItemArray(value) ? value : field.value}
           onChange={onChange}
           disabled={isDisabled}
         />
@@ -233,7 +289,7 @@ const renderField = (
       return (
         <TableField
           field={field}
-          value={(value as Record<string, unknown>[]) ?? []}
+          value={isRecordArray(value) ? value : field.value}
           onChange={onChange}
           disabled={isDisabled}
         />

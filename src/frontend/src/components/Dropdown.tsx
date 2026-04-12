@@ -15,11 +15,14 @@ function getScrollableAncestor(element: HTMLElement | null): HTMLElement | null 
 }
 
 // Simple throttle function to limit how often a function can be called
-function throttle<T extends (...args: unknown[]) => void>(fn: T, delay: number): T {
+function throttle<Args extends unknown[]>(
+  fn: (...args: Args) => void,
+  delay: number,
+): (...args: Args) => void {
   let lastCall = 0;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-  return ((...args: unknown[]) => {
+  return (...args: Args) => {
     const now = Date.now();
     const timeSinceLastCall = now - lastCall;
 
@@ -34,7 +37,7 @@ function throttle<T extends (...args: unknown[]) => void>(fn: T, delay: number):
         fn(...args);
       }, delay - timeSinceLastCall);
     }
-  }) as T;
+  };
 }
 
 interface DropdownProps {
@@ -93,7 +96,10 @@ export const Dropdown = ({
     if (!isOpen) return;
 
     const handleClick = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      if (!(event.target instanceof Node)) {
+        return;
+      }
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
         close();
       }
     };

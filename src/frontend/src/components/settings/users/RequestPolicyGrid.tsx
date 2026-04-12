@@ -9,6 +9,8 @@ import {
   getInheritedCellMode,
   isMatrixConfigurable,
   normalizeExplicitRulesForPersistence,
+  normalizeRequestPolicyMatrixMode,
+  normalizeRequestPolicyMode,
   normalizeRequestPolicyRules,
   REQUEST_POLICY_DEFAULT_OPTIONS,
   REQUEST_POLICY_MODE_LABELS,
@@ -45,6 +47,10 @@ const formatSourceLabel = (source: string): string => {
 
 const toRuleKey = (source: string, contentType: RequestPolicyContentType) =>
   `${source}::${contentType}`;
+
+const getDropdownValue = (value: string | string[]): string => {
+  return Array.isArray(value) ? (value[0] ?? '') : value;
+};
 
 const modeDescriptions: Record<RequestPolicyMode, string> = {
   download: 'Users can download directly.',
@@ -113,10 +119,14 @@ export const RequestPolicyGrid = ({
     );
 
     if (nextMode !== inheritedMode) {
+      const matrixMode = normalizeRequestPolicyMatrixMode(nextMode);
+      if (!matrixMode) {
+        return;
+      }
       nextExplicitRules.push({
         source,
         content_type: contentType,
-        mode: nextMode as RequestPolicyRuleRow['mode'],
+        mode: matrixMode,
       });
     }
 
@@ -192,12 +202,13 @@ export const RequestPolicyGrid = ({
                     <DropdownList
                       options={REQUEST_POLICY_DEFAULT_OPTIONS}
                       value={mode}
-                      onChange={(value) =>
-                        onDefaultModeChange(
-                          contentType,
-                          (Array.isArray(value) ? value[0] : value) as RequestPolicyMode,
-                        )
-                      }
+                      onChange={(value) => {
+                        const nextMode = normalizeRequestPolicyMode(getDropdownValue(value));
+                        if (!nextMode) {
+                          return;
+                        }
+                        onDefaultModeChange(contentType, nextMode);
+                      }}
                       widthClassName="w-full"
                     />
                   </div>
@@ -275,17 +286,17 @@ export const RequestPolicyGrid = ({
                 // When the effective mode isn't an allowed matrix mode (e.g. request_book
                 // as a ceiling default), include it as the first option so the dropdown
                 // shows the current state and lets the user switch away from it.
-                const effectiveModeOption = !allowedModes.includes(
-                  effectiveMode as (typeof allowedModes)[number],
-                )
-                  ? [
-                      {
-                        value: effectiveMode,
-                        label: REQUEST_POLICY_MODE_LABELS[effectiveMode],
-                        description: modeDescriptions[effectiveMode],
-                      },
-                    ]
-                  : [];
+                const effectiveMatrixMode = normalizeRequestPolicyMatrixMode(effectiveMode);
+                const effectiveModeOption =
+                  !effectiveMatrixMode || !allowedModes.includes(effectiveMatrixMode)
+                    ? [
+                        {
+                          value: effectiveMode,
+                          label: REQUEST_POLICY_MODE_LABELS[effectiveMode],
+                          description: modeDescriptions[effectiveMode],
+                        },
+                      ]
+                    : [];
                 const options = [
                   ...effectiveModeOption,
                   ...allowedModes.map((mode) => ({
@@ -312,9 +323,10 @@ export const RequestPolicyGrid = ({
                           options={options}
                           value={effectiveMode}
                           onChange={(value) => {
-                            const nextMode = (
-                              Array.isArray(value) ? value[0] : value
-                            ) as RequestPolicyMode;
+                            const nextMode = normalizeRequestPolicyMode(getDropdownValue(value));
+                            if (!nextMode) {
+                              return;
+                            }
                             updateCellRule(sourceRow.source, contentType, nextMode);
                           }}
                           widthClassName="w-full"

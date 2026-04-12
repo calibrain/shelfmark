@@ -1,4 +1,5 @@
 import { Book, CreateRequestPayload } from '../types';
+import { toStringValue } from './objectHelpers';
 
 export const MAX_REQUEST_NOTE_LENGTH = 1000;
 
@@ -10,7 +11,7 @@ const toText = (value: unknown, fallback: string): string => {
 };
 
 export const formatSourceLabel = (value: unknown): string => {
-  const source = String(value || '').trim();
+  const source = (toStringValue(value) ?? '').trim();
   if (!source) {
     return 'Unknown source';
   }

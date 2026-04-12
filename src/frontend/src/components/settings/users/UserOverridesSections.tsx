@@ -3,6 +3,7 @@ import { Fragment, ReactElement } from 'react';
 import { DeliveryPreferencesResponse } from '../../../services/api';
 import { ActionResult } from '../../../types/settings';
 import { SettingsTab } from '../../../types/settings';
+import { toTrimmedTextValue } from './fieldHelpers';
 import { PerUserSettings } from './types';
 import { UserNotificationOverridesSection } from './UserNotificationOverridesSection';
 import { UserOverridesSection } from './UserOverridesSection';
@@ -46,7 +47,7 @@ const USER_OVERRIDE_SECTION_DEFINITIONS: UserOverrideSectionDefinition[] = [
 const USER_OVERRIDE_SECTION_ORDER: UserOverrideSectionId[] = USER_OVERRIDE_SECTION_DEFINITIONS.map(
   (section) => section.id,
 );
-const USER_OVERRIDE_SECTION_ID_SET = new Set<UserOverrideSectionId>(USER_OVERRIDE_SECTION_ORDER);
+const USER_OVERRIDE_SECTION_ID_SET = new Set<string>(USER_OVERRIDE_SECTION_ORDER);
 
 const USER_OVERRIDE_SECTION_META: Record<UserOverrideSectionId, UserOverrideSectionDefinition> = {
   delivery: { id: 'delivery', adminOnly: false },
@@ -61,7 +62,7 @@ export const DEFAULT_SELF_USER_OVERRIDE_SECTIONS: UserOverrideSectionId[] =
   );
 
 const isUserOverrideSectionId = (value: string): value is UserOverrideSectionId =>
-  USER_OVERRIDE_SECTION_ID_SET.has(value as UserOverrideSectionId);
+  USER_OVERRIDE_SECTION_ID_SET.has(value);
 
 export const normalizeUserOverrideSections = (
   sections: Iterable<unknown> | null | undefined,
@@ -81,7 +82,7 @@ export const normalizeUserOverrideSections = (
 
   const requestedIds = new Set<UserOverrideSectionId>();
   requestedValues.forEach((value) => {
-    const normalizedValue = String(value ?? '').trim();
+    const normalizedValue = toTrimmedTextValue(value);
     if (isUserOverrideSectionId(normalizedValue)) {
       requestedIds.add(normalizedValue);
     }

@@ -200,12 +200,8 @@ const ActionIcon = ({ icon }: { icon: 'cross' | 'check' | 'stop' | 'retry' }) =>
   );
 };
 
-const asRecord = (value: unknown): Record<string, unknown> => {
-  if (value && typeof value === 'object') {
-    return value as Record<string, unknown>;
-  }
-  return {};
-};
+const asRecord = (value: Record<string, unknown> | null | undefined): Record<string, unknown> =>
+  value ?? {};
 
 const toOptionalText = (value: unknown): string | undefined => {
   if (typeof value === 'string' && value.trim()) {

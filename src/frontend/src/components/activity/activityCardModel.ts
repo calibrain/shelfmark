@@ -79,8 +79,8 @@ const getRequestBadge = (item: ActivityItem, isAdmin: boolean): ActivityCardBadg
   let text = item.statusLabel;
   if (hasInFlightLinkedDownload) {
     text = 'Approved';
-  } else if (hasFailureReason) {
-    text = failureReason as string;
+  } else if (hasFailureReason && failureReason) {
+    text = failureReason;
   } else if (requestVisualStatus === 'pending') {
     text = getPendingRequestText(item, isAdmin);
   } else if (requestVisualStatus === 'fulfilled') {

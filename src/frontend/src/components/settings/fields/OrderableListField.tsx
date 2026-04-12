@@ -68,7 +68,7 @@ export const OrderableListField = ({
     return true;
   };
 
-  const handleDragStart = (e: React.DragEvent, index: number) => {
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
     const item = items[index];
     if (item?.isPinned) {
       e.preventDefault();
@@ -76,7 +76,7 @@ export const OrderableListField = ({
     }
 
     setDraggedIndex(index);
-    dragNodeRef.current = e.currentTarget as HTMLDivElement;
+    dragNodeRef.current = e.currentTarget;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(index));
     requestAnimationFrame(() => {
@@ -95,7 +95,7 @@ export const OrderableListField = ({
     dragNodeRef.current = null;
   };
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
     e.preventDefault();
     if (draggedIndex === null || draggedIndex === index) {
       setDropPosition(null);
@@ -115,14 +115,14 @@ export const OrderableListField = ({
     setDropPosition({ index, position });
   };
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    const relatedTarget = e.relatedTarget as Node | null;
-    if (!e.currentTarget.contains(relatedTarget)) {
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    const relatedTarget = e.relatedTarget;
+    if (!(relatedTarget instanceof Node) || !e.currentTarget.contains(relatedTarget)) {
       setDropPosition(null);
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (draggedIndex === null || dropPosition === null) {
       handleDragEnd();

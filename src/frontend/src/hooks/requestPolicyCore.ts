@@ -75,12 +75,16 @@ const normalizeRuleContentType = (value: unknown): ContentType | '*' | null => {
   return normalizeContentType(normalized);
 };
 
+const isMatrixMode = (value: string): value is RequestPolicyMode => {
+  return value === 'download' || value === 'request_release' || value === 'blocked';
+};
+
 const parseMatrixMode = (value: unknown): RequestPolicyMode | null => {
   if (typeof value !== 'string') {
     return null;
   }
-  const normalized = value.trim().toLowerCase() as RequestPolicyMode;
-  if (!MATRIX_MODES.has(normalized)) {
+  const normalized = value.trim().toLowerCase();
+  if (!isMatrixMode(normalized) || !MATRIX_MODES.has(normalized)) {
     return null;
   }
   return normalized;

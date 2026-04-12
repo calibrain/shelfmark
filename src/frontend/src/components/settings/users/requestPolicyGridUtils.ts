@@ -1,5 +1,6 @@
 import { RequestPolicyMode } from '../../../types';
 import { TableFieldConfig } from '../../../types/settings';
+import { isRecord, toNormalizedLowercaseTextValue } from './fieldHelpers';
 
 export type RequestPolicyContentType = 'ebook' | 'audiobook';
 export type RequestPolicyMatrixMode = Exclude<RequestPolicyMode, 'request_book'>;
@@ -57,6 +58,12 @@ export const REQUEST_POLICY_MODE_LABELS: Record<RequestPolicyMode, string> = {
 
 const MATRIX_MODES: RequestPolicyMatrixMode[] = ['download', 'request_release', 'blocked'];
 const CONTENT_TYPES: RequestPolicyContentType[] = ['ebook', 'audiobook'];
+const REQUEST_POLICY_MODES: RequestPolicyMode[] = [
+  'download',
+  'request_release',
+  'request_book',
+  'blocked',
+];
 const MODE_RANK: Record<RequestPolicyMode, number> = {
   download: 0,
   request_release: 1,
@@ -64,33 +71,25 @@ const MODE_RANK: Record<RequestPolicyMode, number> = {
   blocked: 3,
 };
 
-const normalizeSource = (value: unknown): string =>
-  String(value || '')
-    .trim()
-    .toLowerCase();
+const normalizeSource = (value: unknown): string => toNormalizedLowercaseTextValue(value);
 
 const normalizeContentType = (value: unknown): RequestPolicyContentType | null => {
-  const normalized = String(value || '')
-    .trim()
-    .toLowerCase();
+  const normalized = toNormalizedLowercaseTextValue(value);
   if (normalized === 'ebook') return 'ebook';
   if (normalized === 'audiobook') return 'audiobook';
   return null;
 };
 
-const normalizeMode = (
+export const normalizeRequestPolicyMode = (value: unknown): RequestPolicyMode | null => {
+  const normalized = toNormalizedLowercaseTextValue(value);
+  return REQUEST_POLICY_MODES.find((option) => option === normalized) ?? null;
+};
+
+export const normalizeRequestPolicyMatrixMode = (
   value: unknown,
-  options: readonly RequestPolicyMode[] = [
-    'download',
-    'request_release',
-    'request_book',
-    'blocked',
-  ],
-): RequestPolicyMode | null => {
-  const normalized = String(value || '')
-    .trim()
-    .toLowerCase() as RequestPolicyMode;
-  return options.includes(normalized) ? normalized : null;
+): RequestPolicyMatrixMode | null => {
+  const normalized = toNormalizedLowercaseTextValue(value);
+  return MATRIX_MODES.find((option) => option === normalized) ?? null;
 };
 
 const toRuleKey = (source: string, contentType: RequestPolicyContentType) =>
@@ -107,10 +106,10 @@ export const normalizeRequestPolicyDefaults = (
   raw: Partial<Record<RequestPolicyContentType, unknown>>,
   fallback: RequestPolicyMode = 'download',
 ): RequestPolicyDefaultsValue => {
-  const fallbackMode = normalizeMode(fallback) || 'download';
+  const fallbackMode = normalizeRequestPolicyMode(fallback) || 'download';
   return {
-    ebook: normalizeMode(raw.ebook) || fallbackMode,
-    audiobook: normalizeMode(raw.audiobook) || fallbackMode,
+    ebook: normalizeRequestPolicyMode(raw.ebook) || fallbackMode,
+    audiobook: normalizeRequestPolicyMode(raw.audiobook) || fallbackMode,
   };
 };
 
@@ -121,13 +120,12 @@ export const normalizeRequestPolicyRules = (rawRules: unknown): RequestPolicyRul
 
   const byKey = new Map<string, RequestPolicyRuleRow>();
   rawRules.forEach((rawRule) => {
-    if (!rawRule || typeof rawRule !== 'object') {
+    if (!isRecord(rawRule)) {
       return;
     }
-    const row = rawRule as Record<string, unknown>;
-    const source = normalizeSource(row.source);
-    const contentType = normalizeContentType(row.content_type);
-    const mode = normalizeMode(row.mode, MATRIX_MODES) as RequestPolicyMatrixMode | null;
+    const source = normalizeSource(rawRule.source);
+    const contentType = normalizeContentType(rawRule.content_type);
+    const mode = normalizeRequestPolicyMatrixMode(rawRule.mode);
     if (!source || !contentType || !mode) {
       return;
     }

@@ -18,6 +18,7 @@ import {
   listActivityHistory,
 } from '../services/api';
 import { Book, RequestRecord, StatusData } from '../types';
+import { isRecord } from '../utils/objectHelpers';
 import { getActivityErrorMessage } from './useActivity.helpers.js';
 
 const HISTORY_PAGE_SIZE = 50;
@@ -30,6 +31,160 @@ const parseTimestamp = (value: string | null | undefined, fallback: number = 0):
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const isRequestStatus = (value: unknown): value is RequestRecord['status'] => {
+  return (
+    value === 'pending' || value === 'fulfilled' || value === 'rejected' || value === 'cancelled'
+  );
+};
+
+const isRequestLevel = (value: unknown): value is RequestRecord['request_level'] => {
+  return value === 'book' || value === 'release';
+};
+
+const isPolicyMode = (value: unknown): value is RequestRecord['policy_mode'] => {
+  return (
+    value === 'download' ||
+    value === 'request_release' ||
+    value === 'request_book' ||
+    value === 'blocked'
+  );
+};
+
+const isNullableText = (value: unknown): value is string | null => {
+  return value === null || typeof value === 'string';
+};
+
+const isNullableNumber = (value: unknown): value is number | null => {
+  return value === null || (typeof value === 'number' && Number.isFinite(value));
+};
+
+const isDeliveryState = (value: unknown): value is RequestRecord['delivery_state'] => {
+  return (
+    value === undefined ||
+    value === 'none' ||
+    value === 'queued' ||
+    value === 'resolving' ||
+    value === 'locating' ||
+    value === 'downloading' ||
+    value === 'complete' ||
+    value === 'error' ||
+    value === 'cancelled'
+  );
+};
+
+const parseHistoryBook = (value: unknown): Book | null => {
+  if (!isRecord(value) || Array.isArray(value)) {
+    return null;
+  }
+
+  const { id, title, author } = value;
+  if (typeof id !== 'string' || typeof title !== 'string' || typeof author !== 'string') {
+    return null;
+  }
+
+  return {
+    id,
+    title,
+    author,
+    ...(typeof value.request_id === 'number' && Number.isFinite(value.request_id)
+      ? { request_id: value.request_id }
+      : {}),
+    ...(typeof value.format === 'string' ? { format: value.format } : {}),
+    ...(typeof value.size === 'string' ? { size: value.size } : {}),
+    ...(typeof value.preview === 'string' ? { preview: value.preview } : {}),
+    ...(typeof value.download_path === 'string' ? { download_path: value.download_path } : {}),
+    ...(typeof value.status_message === 'string' ? { status_message: value.status_message } : {}),
+    ...(typeof value.source === 'string' ? { source: value.source } : {}),
+    ...(typeof value.source_display_name === 'string'
+      ? { source_display_name: value.source_display_name }
+      : {}),
+    ...(typeof value.username === 'string' ? { username: value.username } : {}),
+    ...(typeof value.progress === 'number' && Number.isFinite(value.progress)
+      ? { progress: value.progress }
+      : {}),
+    ...(typeof value.added_time === 'number' && Number.isFinite(value.added_time)
+      ? { added_time: value.added_time }
+      : {}),
+    ...(typeof value.retry_available === 'boolean'
+      ? { retry_available: value.retry_available }
+      : {}),
+  };
+};
+
+const parseHistoryRequestRecord = (value: unknown): RequestRecord | null => {
+  if (!isRecord(value) || Array.isArray(value)) {
+    return null;
+  }
+
+  const { id, user_id, status, source_hint, content_type, request_level, policy_mode } = value;
+  const book_data = value.book_data;
+  const release_data = value.release_data;
+  const note = value.note;
+  const admin_note = value.admin_note;
+  const reviewed_by = value.reviewed_by;
+  const reviewed_at = value.reviewed_at;
+  const created_at = value.created_at;
+  const updated_at = value.updated_at;
+
+  if (
+    typeof id !== 'number' ||
+    !Number.isFinite(id) ||
+    typeof user_id !== 'number' ||
+    !Number.isFinite(user_id) ||
+    !isRequestStatus(status) ||
+    !isNullableText(source_hint) ||
+    (content_type !== 'ebook' && content_type !== 'audiobook') ||
+    !isRequestLevel(request_level) ||
+    !isPolicyMode(policy_mode) ||
+    book_data === undefined ||
+    release_data === undefined ||
+    (book_data !== null && (!isRecord(book_data) || Array.isArray(book_data))) ||
+    (release_data !== null && (!isRecord(release_data) || Array.isArray(release_data))) ||
+    !isNullableText(note) ||
+    !isNullableText(admin_note) ||
+    !isNullableNumber(reviewed_by) ||
+    !isNullableText(reviewed_at) ||
+    typeof created_at !== 'string' ||
+    typeof updated_at !== 'string' ||
+    (value.username !== undefined && typeof value.username !== 'string') ||
+    !isDeliveryState(value.delivery_state) ||
+    (value.delivery_updated_at !== undefined &&
+      value.delivery_updated_at !== null &&
+      typeof value.delivery_updated_at !== 'string') ||
+    (value.last_failure_reason !== undefined &&
+      value.last_failure_reason !== null &&
+      typeof value.last_failure_reason !== 'string')
+  ) {
+    return null;
+  }
+
+  return {
+    id,
+    user_id,
+    status,
+    source_hint,
+    content_type,
+    request_level,
+    policy_mode,
+    book_data,
+    release_data,
+    note,
+    admin_note,
+    reviewed_by,
+    reviewed_at,
+    created_at,
+    updated_at,
+    ...(value.username !== undefined ? { username: value.username } : {}),
+    ...(value.delivery_state !== undefined ? { delivery_state: value.delivery_state } : {}),
+    ...(value.delivery_updated_at !== undefined
+      ? { delivery_updated_at: value.delivery_updated_at }
+      : {}),
+    ...(value.last_failure_reason !== undefined
+      ? { last_failure_reason: value.last_failure_reason }
+      : {}),
+  };
+};
+
 const mapHistoryRowToActivityItem = (
   row: ActivityHistoryItem,
   viewerRole: 'user' | 'admin',
@@ -38,15 +193,16 @@ const mapHistoryRowToActivityItem = (
   const snapshot = row.snapshot;
   if (snapshot && typeof snapshot === 'object') {
     const payload = snapshot;
-    if (payload.kind === 'download' && payload.download && typeof payload.download === 'object') {
+    const historyBook = parseHistoryBook(payload.download);
+    if (payload.kind === 'download' && historyBook) {
       const statusKey =
         row.final_status === 'error' || row.final_status === 'cancelled'
           ? row.final_status
           : 'complete';
-      const downloadItem = downloadToActivityItem(payload.download as Book, statusKey);
+      const downloadItem = downloadToActivityItem(historyBook, statusKey);
       const requestPayload = payload.request;
-      if (requestPayload && typeof requestPayload === 'object') {
-        const requestRecord = requestPayload as RequestRecord;
+      const requestRecord = parseHistoryRequestRecord(requestPayload);
+      if (requestRecord) {
         return {
           ...downloadItem,
           id: `history-${row.id}`,
@@ -67,8 +223,9 @@ const mapHistoryRowToActivityItem = (
       };
     }
 
-    if (payload.kind === 'request' && payload.request && typeof payload.request === 'object') {
-      const requestItem = requestToActivityItem(payload.request as RequestRecord, viewerRole);
+    const requestRecord = parseHistoryRequestRecord(payload.request);
+    if (payload.kind === 'request' && requestRecord) {
+      const requestItem = requestToActivityItem(requestRecord, viewerRole);
       return {
         ...requestItem,
         id: `history-${row.id}`,

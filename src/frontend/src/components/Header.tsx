@@ -247,7 +247,10 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
     // Close dropdown when clicking outside or pressing ESC
     useEffect(() => {
       const handleClickOutside = (event: MouseEvent) => {
-        if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        if (!(event.target instanceof Node)) {
+          return;
+        }
+        if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
           closeDropdown();
         }
       };

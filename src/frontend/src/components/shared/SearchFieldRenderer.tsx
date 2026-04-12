@@ -1,6 +1,7 @@
 import { KeyboardEvent } from 'react';
 
 import { MetadataSearchField } from '../../types';
+import { toStringValue } from '../../utils/objectHelpers';
 import { DropdownList } from '../DropdownList';
 import { DynamicDropdown } from './DynamicDropdown';
 
@@ -34,7 +35,7 @@ export const SearchFieldRenderer = ({
       return (
         <input
           type="text"
-          value={(value as string) ?? ''}
+          value={toStringValue(value) ?? ''}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={field.placeholder}
@@ -64,7 +65,7 @@ export const SearchFieldRenderer = ({
       return (
         <input
           type="number"
-          value={value === '' ? '' : (value as number)}
+          value={typeof value === 'number' ? value : ''}
           onChange={handleNumberChange}
           onKeyDown={handleKeyDown}
           placeholder={field.placeholder}
@@ -86,7 +87,7 @@ export const SearchFieldRenderer = ({
       return (
         <DropdownList
           options={field.options}
-          value={(value as string) ?? ''}
+          value={toStringValue(value) ?? ''}
           onChange={(v) => onChange(Array.isArray(v) ? (v[0] ?? '') : v)}
           placeholder="All"
         />
@@ -109,7 +110,7 @@ export const SearchFieldRenderer = ({
       return (
         <DynamicDropdown
           endpoint={field.options_endpoint}
-          value={(value as string) ?? ''}
+          value={toStringValue(value) ?? ''}
           onChange={(v, label) => onChange(v, label)}
           placeholder={field.placeholder || 'Select...'}
         />

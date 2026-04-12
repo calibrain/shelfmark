@@ -77,6 +77,7 @@ import { buildSearchQuery } from './utils/buildSearchQuery';
 import { wasDownloadQueuedAfterResponseError } from './utils/downloadRecovery';
 import { getConfiguredMetadataProviderForContentType } from './utils/metadataProviders';
 import { getEffectiveMetadataSort } from './utils/metadataSort';
+import { isRecord } from './utils/objectHelpers';
 import { policyTrace } from './utils/policyTrace';
 import { buildQueryTargets, getDefaultQueryTargetKey } from './utils/queryTargets';
 import { applyRequestNoteToPayload } from './utils/requestConfirmation';
@@ -98,6 +99,13 @@ import {
 import './styles.css';
 
 const CONTENT_TYPE_STORAGE_KEY = 'preferred-content-type';
+const ADVANCED_FILTER_VISIBILITY_KEYS = ['content', 'lang', 'formats'] as const;
+
+declare global {
+  interface Window {
+    showOnboarding?: () => void;
+  }
+}
 
 const getInitialContentType = (): { contentType: ContentType; combinedMode: boolean } => {
   try {
@@ -154,12 +162,11 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 };
 
 const isQueuedDownloadResult = (value: unknown): value is QueuedDownloadResult => {
-  if (!value || typeof value !== 'object') {
+  if (!isRecord(value)) {
     return false;
   }
 
-  const row = value as Record<string, unknown>;
-  return row.kind === 'download' && row.status === 'queued';
+  return value.kind === 'download' && value.status === 'queued';
 };
 
 const getSubmissionSuccessMessage = (
@@ -584,10 +591,9 @@ function App() {
 
   // Expose debug function to trigger onboarding from browser console
   useEffect(() => {
-    (window as unknown as { showOnboarding: () => void }).showOnboarding = () =>
-      setOnboardingOpen(true);
+    window.showOnboarding = () => setOnboardingOpen(true);
     return () => {
-      delete (window as unknown as { showOnboarding?: () => void }).showOnboarding;
+      delete window.showOnboarding;
     };
   }, []);
 
@@ -1061,9 +1067,10 @@ function App() {
             : {}),
         }));
 
-        const hasAdvancedValues = ['content', 'lang', 'formats'].some(
-          (key) => parsedParams.advancedFilters[key as keyof typeof parsedParams.advancedFilters],
-        );
+        const hasAdvancedValues = ADVANCED_FILTER_VISIBILITY_KEYS.some((key) => {
+          const value = parsedParams.advancedFilters[key];
+          return Array.isArray(value) ? value.length > 0 : Boolean(value);
+        });
         if (hasAdvancedValues) {
           setShowAdvanced(true);
         }

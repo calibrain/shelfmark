@@ -1,4 +1,5 @@
 import { RequestRecord } from '../types';
+import { isRecord } from '../utils/objectHelpers';
 
 type RequestUpdateStatus = RequestRecord['status'];
 
@@ -16,11 +17,11 @@ const isValidRequestStatus = (value: unknown): value is RequestUpdateStatus => {
 export const normalizeRequestUpdatePayload = (
   payload: unknown,
 ): RequestUpdateEventPayload | null => {
-  if (!payload || typeof payload !== 'object') {
+  if (!isRecord(payload)) {
     return null;
   }
 
-  const row = payload as Record<string, unknown>;
+  const row = payload;
   const requestId = row.request_id;
   const status = row.status;
 

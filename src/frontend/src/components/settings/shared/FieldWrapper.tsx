@@ -133,10 +133,16 @@ const UserOverriddenBadge = ({
   const formatValue = (value: unknown): string => {
     if (value === null || value === undefined) return '(empty)';
     if (typeof value === 'string') return value || '(empty)';
-    try {
-      return JSON.stringify(value);
-    } catch {
+    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
       return String(value);
+    }
+    if (typeof value === 'symbol') {
+      return value.description ?? value.toString();
+    }
+    try {
+      return JSON.stringify(value) ?? '(empty)';
+    } catch {
+      return '[unserializable value]';
     }
   };
 

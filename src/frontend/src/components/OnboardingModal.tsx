@@ -8,6 +8,7 @@ import {
   OnboardingStep,
 } from '../services/api';
 import { SettingsField, ActionResult, ShowWhenCondition } from '../types/settings';
+import { toBooleanValue, toStringArray, toStringValue } from '../utils/objectHelpers';
 import {
   TextField,
   PasswordField,
@@ -41,7 +42,7 @@ function evaluateShowWhenCondition(
   }
 
   return Array.isArray(showWhen.value)
-    ? showWhen.value.includes(currentValue as string)
+    ? typeof currentValue === 'string' && showWhen.value.includes(currentValue)
     : currentValue === showWhen.value;
 }
 
@@ -85,7 +86,7 @@ const renderField = (
       return (
         <TextField
           field={field}
-          value={(value as string) ?? ''}
+          value={toStringValue(value) ?? ''}
           onChange={onChange}
           disabled={isDisabled}
         />
@@ -94,7 +95,7 @@ const renderField = (
       return (
         <PasswordField
           field={field}
-          value={(value as string) ?? ''}
+          value={toStringValue(value) ?? ''}
           onChange={onChange}
           disabled={isDisabled}
         />
@@ -103,7 +104,7 @@ const renderField = (
       return (
         <CheckboxField
           field={field}
-          value={(value as boolean) ?? false}
+          value={toBooleanValue(value) ?? false}
           onChange={onChange}
           disabled={isDisabled}
         />
@@ -112,7 +113,7 @@ const renderField = (
       return (
         <SelectField
           field={field}
-          value={(value as string) ?? ''}
+          value={toStringValue(value) ?? ''}
           onChange={onChange}
           disabled={isDisabled}
         />
@@ -121,7 +122,7 @@ const renderField = (
       return (
         <MultiSelectField
           field={field}
-          value={(value as string[]) ?? []}
+          value={toStringArray(value) ?? []}
           onChange={onChange}
           disabled={isDisabled}
         />
@@ -130,7 +131,7 @@ const renderField = (
       return (
         <TagListField
           field={field}
-          value={(value as string[]) ?? []}
+          value={toStringArray(value) ?? []}
           onChange={(v) => onChange(v)}
           disabled={isDisabled}
         />

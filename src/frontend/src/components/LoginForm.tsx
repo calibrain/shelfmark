@@ -246,8 +246,10 @@ export const LoginForm = ({
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const usernameValue = (formData.get('username') as string)?.trim() || '';
-    const passwordValue = (formData.get('password') as string) || '';
+    const usernameEntry = formData.get('username');
+    const passwordEntry = formData.get('password');
+    const usernameValue = typeof usernameEntry === 'string' ? usernameEntry.trim() : '';
+    const passwordValue = typeof passwordEntry === 'string' ? passwordEntry : '';
 
     if (usernameValue && passwordValue && !isLoading) {
       onSubmit({

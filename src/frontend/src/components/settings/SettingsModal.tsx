@@ -17,6 +17,18 @@ interface SettingsModalProps {
   onRefreshAuth?: () => Promise<void>;
 }
 
+function getStringValue(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function getStringArrayValue(value: unknown): string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string') ? value : [];
+}
+
+function getBooleanValue(value: unknown): boolean {
+  return typeof value === 'boolean' ? value : false;
+}
+
 export const SettingsModal = ({
   isOpen,
   authMode,
@@ -256,10 +268,10 @@ export const SettingsModal = ({
       // Auto-manage OIDC scopes when admin group settings change
       if (selectedTab === 'security') {
         const tabValues = values[selectedTab] || {};
-        const currentScopes = (tabValues['OIDC_SCOPES'] as string[]) || [];
+        const currentScopes = getStringArrayValue(tabValues['OIDC_SCOPES']);
 
         if (key === 'OIDC_USE_ADMIN_GROUP') {
-          const groupClaim = (tabValues['OIDC_GROUP_CLAIM'] as string) || 'groups';
+          const groupClaim = getStringValue(tabValues['OIDC_GROUP_CLAIM'], 'groups');
           if (value === true && !currentScopes.includes(groupClaim)) {
             updateValue(selectedTab, 'OIDC_SCOPES', [...currentScopes, groupClaim]);
           } else if (value === false && currentScopes.includes(groupClaim)) {
@@ -272,9 +284,9 @@ export const SettingsModal = ({
         }
 
         if (key === 'OIDC_GROUP_CLAIM' && typeof value === 'string') {
-          const useAdminGroup = tabValues['OIDC_USE_ADMIN_GROUP'] as boolean;
+          const useAdminGroup = getBooleanValue(tabValues['OIDC_USE_ADMIN_GROUP']);
           if (useAdminGroup) {
-            const oldClaim = (tabValues['OIDC_GROUP_CLAIM'] as string) || 'groups';
+            const oldClaim = getStringValue(tabValues['OIDC_GROUP_CLAIM'], 'groups');
             const newScopes = currentScopes.filter((s) => s !== oldClaim);
             if (value && !newScopes.includes(value)) {
               newScopes.push(value);

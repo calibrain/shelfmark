@@ -119,12 +119,9 @@ export const downloadToActivityItem = (book: Book, statusKey: DownloadStatusKey)
   };
 };
 
-const parseRecordData = (value: unknown): Record<string, unknown> => {
-  if (value && typeof value === 'object') {
-    return value as Record<string, unknown>;
-  }
-  return {};
-};
+const parseRecordData = (
+  value: Record<string, unknown> | null | undefined,
+): Record<string, unknown> => value ?? {};
 
 const requestStatusToVisualStatus = (status: RequestRecord['status']): ActivityVisualStatus => {
   if (status === 'pending') return 'pending';

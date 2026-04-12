@@ -2,7 +2,7 @@ import { DeliveryPreferencesResponse } from '../../../services/api';
 import { HeadingFieldConfig, SelectFieldConfig } from '../../../types/settings';
 import { HeadingField, SelectField } from '../fields';
 import { FieldWrapper } from '../shared';
-import { getFieldByKey } from './fieldHelpers';
+import { getFieldByKey, toNormalizedLowercaseTextValue, toTextValue } from './fieldHelpers';
 import { PerUserSettings } from './types';
 
 interface UserSearchPreferencesSectionProps {
@@ -77,17 +77,12 @@ const searchHeading: HeadingFieldConfig = {
 };
 
 const normalizeSearchMode = (value: unknown): 'direct' | 'universal' => {
-  const normalized = String(value || '')
-    .trim()
-    .toLowerCase();
+  const normalized = toNormalizedLowercaseTextValue(value);
   return normalized === 'universal' ? 'universal' : 'direct';
 };
 
 const toStringValue = (value: unknown): string => {
-  if (value === undefined || value === null) {
-    return '';
-  }
-  return String(value);
+  return toTextValue(value);
 };
 
 export const UserSearchPreferencesSection = ({

@@ -65,7 +65,10 @@ const useDismiss = (
     if (!isOpen) return;
 
     const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
+      const { target } = event;
+      if (!(target instanceof Node)) {
+        return;
+      }
       if (refsRef.current.some((r) => r.current?.contains(target))) return;
       onCloseRef.current();
     };
@@ -450,7 +453,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
           return;
         }
         onSubmit();
-        (e.target as HTMLInputElement).blur();
+        e.currentTarget.blur();
       }
     };
 

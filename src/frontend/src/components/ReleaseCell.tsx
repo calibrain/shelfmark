@@ -1,6 +1,13 @@
 import { ColumnSchema, Release } from '../types';
 import { getColorStyleFromHint, getProtocolDotColor, getFormatColor } from '../utils/colorMaps';
-import { getNestedValue } from '../utils/objectHelpers';
+import {
+  getNestedValue,
+  isRecord,
+  toComparableText,
+  toNumberValue,
+  toStringArray,
+  toStringValue,
+} from '../utils/objectHelpers';
 import { Tooltip } from './shared/Tooltip';
 
 interface ReleaseCellProps {
@@ -21,8 +28,9 @@ export const ReleaseCell = ({
   compact = false,
   onlineServers,
 }: ReleaseCellProps) => {
-  const rawValue = getNestedValue(release as unknown as Record<string, unknown>, column.key);
-  const value = rawValue !== undefined && rawValue !== null ? String(rawValue) : column.fallback;
+  const rawValue = getNestedValue(release, column.key);
+  const value =
+    rawValue !== undefined && rawValue !== null ? toComparableText(rawValue) : column.fallback;
 
   const displayValue = column.uppercase ? value.toUpperCase() : value;
 
@@ -94,9 +102,9 @@ export const ReleaseCell = ({
 
     case 'tags': {
       const tags = Array.isArray(rawValue)
-        ? rawValue.map((tag) => String(tag)).filter((tag) => tag.trim())
-        : rawValue !== undefined && rawValue !== null && String(rawValue).trim()
-          ? [String(rawValue)]
+        ? rawValue.map((tag) => toComparableText(tag)).filter((tag) => tag.trim())
+        : rawValue !== undefined && rawValue !== null && toComparableText(rawValue).trim()
+          ? [toComparableText(rawValue)]
           : [];
       const isFlags = column.color_hint?.type === 'map' && column.color_hint.value === 'flags';
 
@@ -169,10 +177,10 @@ export const ReleaseCell = ({
     case 'size': {
       // Build tooltip from extra metadata (torznab attrs, publish date, etc.)
       const extra = release.extra;
-      const torznabAttrs = extra?.torznab_attrs as Record<string, string> | undefined;
-      const publishDate = extra?.publish_date as string | undefined;
-      const postedDate = extra?.posted_date as string | undefined;
-      const bitrate = extra?.bitrate as string | undefined;
+      const torznabAttrs = isRecord(extra?.torznab_attrs) ? extra.torznab_attrs : undefined;
+      const publishDate = toStringValue(extra?.publish_date);
+      const postedDate = toStringValue(extra?.posted_date);
+      const bitrate = toStringValue(extra?.bitrate);
 
       // Helper to format age in days
       const formatRelativeTime = (dateStr: string): string | null => {
@@ -229,7 +237,7 @@ export const ReleaseCell = ({
         ];
 
         for (const attr of displayAttrs) {
-          const val = torznabAttrs[attr.key];
+          const val = toStringValue(torznabAttrs[attr.key]);
           if (val && val.trim()) {
             rows.push({ label: attr.label, value: val.trim() });
           }
@@ -237,8 +245,8 @@ export const ReleaseCell = ({
       }
 
       // Add files and grabs from extra
-      const files = extra?.files as number | undefined;
-      const grabs = extra?.grabs as number | undefined;
+      const files = toNumberValue(extra?.files);
+      const grabs = toNumberValue(extra?.grabs);
       if (files !== undefined && files !== null) {
         rows.push({ label: 'Files', value: String(files) });
       }
@@ -387,7 +395,7 @@ export const ReleaseCell = ({
       // Shows primary format as badge with colored dots for additional formats
       const contentType = release.content_type;
       const isAudiobook = contentType === 'audiobook';
-      const formats = release.extra?.formats as string[] | undefined;
+      const formats = toStringArray(release.extra?.formats);
       const primaryFormat = formats?.[0] || null;
       const additionalFormats = formats?.slice(1) || [];
 

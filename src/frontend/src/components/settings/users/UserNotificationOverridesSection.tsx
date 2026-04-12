@@ -7,7 +7,12 @@ import {
 } from '../../../types/settings';
 import { ActionButton, HeadingField, TableField } from '../fields';
 import { FieldWrapper } from '../shared';
-import { getFieldByKey } from './fieldHelpers';
+import {
+  getFieldByKey,
+  isRecord,
+  toNormalizedLowercaseTextValue,
+  toTrimmedTextValue,
+} from './fieldHelpers';
 import { PerUserSettings } from './types';
 
 interface UserNotificationOverridesSectionProps {
@@ -96,9 +101,7 @@ function normalizeRoutesValue(value: unknown): Array<Record<string, unknown>> {
 
     const deduped = new Set<string>();
     rawValues.forEach((rawEvent) => {
-      const event = String(rawEvent ?? '')
-        .trim()
-        .toLowerCase();
+      const event = toNormalizedLowercaseTextValue(rawEvent);
       if (!ALLOWED_ROUTE_EVENTS.has(event)) {
         return;
       }
@@ -118,16 +121,16 @@ function normalizeRoutesValue(value: unknown): Array<Record<string, unknown>> {
   };
 
   value.forEach((row) => {
-    if (!row || typeof row !== 'object') {
+    if (!isRecord(row)) {
       return;
     }
 
-    const events = normalizeRouteEvents((row as Record<string, unknown>).event);
+    const events = normalizeRouteEvents(row.event);
     if (events.length === 0) {
       return;
     }
 
-    const url = String((row as Record<string, unknown>).url ?? '').trim();
+    const url = toTrimmedTextValue(row.url);
     const key = `${events.join('|')}::${url}`;
     if (seen.has(key)) {
       return;

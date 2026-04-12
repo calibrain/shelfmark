@@ -7,7 +7,7 @@ import {
 } from '../../../types/settings';
 import { HeadingField, MultiSelectField, SelectField, TextField } from '../fields';
 import { FieldWrapper } from '../shared';
-import { getFieldByKey } from './fieldHelpers';
+import { getFieldByKey, toNormalizedLowercaseTextValue, toTextValue } from './fieldHelpers';
 import { PerUserSettings } from './types';
 
 interface UserOverridesSectionProps {
@@ -94,9 +94,7 @@ const fallbackBrowserDownloadField: MultiSelectFieldConfig = {
 type DeliverySettingKey = keyof PerUserSettings;
 
 function normalizeMode(value: unknown): 'folder' | 'booklore' | 'email' {
-  const mode = String(value || '')
-    .trim()
-    .toLowerCase();
+  const mode = toNormalizedLowercaseTextValue(value);
   if (mode === 'booklore' || mode === 'email') {
     return mode;
   }
@@ -104,8 +102,7 @@ function normalizeMode(value: unknown): 'folder' | 'booklore' | 'email' {
 }
 
 function toStringValue(value: unknown): string {
-  if (value === undefined || value === null) return '';
-  return String(value);
+  return toTextValue(value);
 }
 
 const deliveryHeading: HeadingFieldConfig = {
@@ -199,7 +196,7 @@ export const UserOverridesSection = ({
     }
 
     const userValue = toStringValue(userSettings[key]);
-    const globalValue = toStringValue(globalValues[key as string]);
+    const globalValue = toStringValue(globalValues[key]);
     return userValue !== globalValue;
   };
 

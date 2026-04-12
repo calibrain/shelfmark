@@ -81,6 +81,13 @@ export const UserListView = ({
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode);
   const isCwaMode = (authMode || 'none').toLowerCase() === 'cwa';
+  const isInteractiveHeaderTarget = (target: EventTarget | null): boolean => {
+    return (
+      target instanceof Element &&
+      Boolean(target.closest('button:not([data-card-toggle]), [role="listbox"], [data-dropdown]'))
+    );
+  };
+
   const handleDelete = async (userId: number) => {
     const ok = await onDelete(userId);
     if (ok) {
@@ -127,12 +134,7 @@ export const UserListView = ({
                   tabIndex={0}
                   onClick={(e) => {
                     // Don't toggle when clicking interactive elements inside the header (e.g. role dropdown)
-                    if (
-                      (e.target as HTMLElement).closest(
-                        'button:not([data-card-toggle]), [role="listbox"], [data-dropdown]',
-                      )
-                    )
-                      return;
+                    if (isInteractiveHeaderTarget(e.target)) return;
                     setConfirmDelete(null);
                     if (isEditingRow) {
                       onCancelEdit();

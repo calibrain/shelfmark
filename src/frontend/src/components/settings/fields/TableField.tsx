@@ -15,6 +15,25 @@ interface TableFieldProps {
   disabled?: boolean;
 }
 
+function toPrimitiveString(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return '';
+}
+
+function toOptionalPrimitiveString(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+
+  const normalizedValue = toPrimitiveString(value);
+  return normalizedValue || undefined;
+}
+
 function defaultCellValue(column: TableFieldColumn): unknown {
   if (column.defaultValue !== undefined) {
     return column.defaultValue;
@@ -30,7 +49,9 @@ function defaultCellValue(column: TableFieldColumn): unknown {
 
 function normalizeMultiValue(value: unknown): string[] {
   if (Array.isArray(value)) {
-    return value.map((entry) => String(entry ?? '').trim()).filter((entry) => entry.length > 0);
+    return value
+      .map((entry) => toPrimitiveString(entry).trim())
+      .filter((entry) => entry.length > 0);
   }
   if (typeof value === 'string') {
     const normalized = value.trim();
@@ -71,10 +92,7 @@ function getFilteredSelectOptions(
   }
 
   const rawFilterValue = row[filterByField];
-  const filterValue =
-    rawFilterValue === undefined || rawFilterValue === null || rawFilterValue === ''
-      ? undefined
-      : String(rawFilterValue);
+  const filterValue = toOptionalPrimitiveString(rawFilterValue);
 
   if (!filterValue) {
     return options.filter((opt) => !opt.childOf);
@@ -101,6 +119,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
     const colDefs = columns.map((_, idx) => (idx === 0 ? 'minmax(0,180px)' : 'minmax(0,1fr)'));
     return `${colDefs.join(' ')} 2rem`;
   }, [columns]);
+  const tableStyle: CSSProperties & { '--table-cols': string } = { '--table-cols': tableCols };
 
   const updateCell = (rowIndex: number, key: string, cellValue: unknown) => {
     const next = rows.map((row, idx) => (idx === rowIndex ? { ...row, [key]: cellValue } : row));
@@ -144,7 +163,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
         if (col.type !== 'select') return;
 
         const filteredOptions = getFilteredSelectOptions(col, row);
-        const currentValue = String(row[col.key] ?? '');
+        const currentValue = toPrimitiveString(row[col.key]);
         const currentValueIsValid = filteredOptions.some((opt) => opt.value === currentValue);
         const nonEmptyOptions = filteredOptions.filter((opt) => opt.value !== '');
 
@@ -186,7 +205,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
   }
 
   return (
-    <div className="min-w-0 space-y-3" style={{ '--table-cols': tableCols } as CSSProperties}>
+    <div className="min-w-0 space-y-3" style={tableStyle}>
       <div
         className={`hidden sm:grid ${gridTemplate} min-w-0 items-start gap-3 text-xs font-medium opacity-70`}
       >
@@ -241,13 +260,13 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
                     {mobileLabel}
                     {isDisabled ? (
                       <div className="w-full cursor-not-allowed rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 text-sm opacity-60 shadow-sm">
-                        {options.find((o) => o.value === String(cellValue ?? ''))?.label ||
+                        {options.find((o) => o.value === toPrimitiveString(cellValue))?.label ||
                           'Select...'}
                       </div>
                     ) : (
                       <DropdownList
                         options={options}
-                        value={String(cellValue ?? '')}
+                        value={toPrimitiveString(cellValue)}
                         onChange={(val) =>
                           updateCell(rowIndex, col.key, Array.isArray(val) ? val[0] : val)
                         }
@@ -303,7 +322,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
                   {mobileLabel}
                   <input
                     type="text"
-                    value={String(cellValue ?? '')}
+                    value={toPrimitiveString(cellValue)}
                     onChange={(e) => updateCell(rowIndex, col.key, e.target.value)}
                     placeholder={col.placeholder}
                     disabled={isDisabled}

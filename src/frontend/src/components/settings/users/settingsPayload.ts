@@ -1,18 +1,9 @@
 import { DeliveryPreferencesResponse } from '../../../services/api';
+import { toComparableValue } from './fieldHelpers';
 import { PerUserSettings } from './types';
 
 const normalizeComparableValue = (value: unknown): string => {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  if (typeof value === 'object') {
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return String(value);
-    }
-  }
-  return String(value);
+  return toComparableValue(value);
 };
 
 export const buildUserSettingsPayload = (

@@ -28,7 +28,7 @@ import {
   releaseLanguageMatchesFilter,
   buildLanguageNormalizer,
 } from '../utils/languageFilters';
-import { getNestedValue } from '../utils/objectHelpers';
+import { getNestedValue, toComparableText, toStringValue } from '../utils/objectHelpers';
 import {
   getCachedReleases,
   setCachedReleases,
@@ -229,16 +229,13 @@ const LeadingCell = ({ config, release }: { config?: LeadingCellConfig; release:
 
   if (cellType === 'thumbnail') {
     const key = config?.key || 'extra.preview';
-    const preview = getNestedValue(release as unknown as Record<string, unknown>, key) as
-      | string
-      | undefined;
+    const preview = toStringValue(getNestedValue(release, key));
     return <ReleaseThumbnail preview={preview} title={release.title} />;
   }
 
   // Badge type
   if (cellType === 'badge' && config?.key) {
-    const value = getNestedValue(release as unknown as Record<string, unknown>, config.key);
-    const displayValue = value ? String(value) : '';
+    const displayValue = toComparableText(getNestedValue(release, config.key));
     const colorStyle = getColorStyleFromHint(displayValue, config.color_hint);
     const text = config.uppercase ? displayValue.toUpperCase() : displayValue;
 
@@ -350,7 +347,7 @@ const ReleaseRow = ({
   isSelected?: boolean;
   onSelect?: () => void;
 }) => {
-  const author = release.extra?.author as string | undefined;
+  const author = toStringValue(release.extra?.author);
 
   // Filter columns visible on mobile
   const mobileColumns = columns.filter((c) => !c.hide_mobile);
@@ -462,12 +459,11 @@ const ReleaseRow = ({
               {(() => {
                 // Pre-filter columns that will render content to avoid orphan dots
                 const columnsWithContent = mobileColumns.filter((col) => {
-                  const rawValue = getNestedValue(
-                    release as unknown as Record<string, unknown>,
-                    col.key,
-                  );
+                  const rawValue = getNestedValue(release, col.key);
                   const value =
-                    rawValue !== undefined && rawValue !== null ? String(rawValue) : col.fallback;
+                    rawValue !== undefined && rawValue !== null
+                      ? toComparableText(rawValue)
+                      : col.fallback;
 
                   if (col.render_type === 'flag_icon') {
                     // flag_icon returns null in compact mode when empty

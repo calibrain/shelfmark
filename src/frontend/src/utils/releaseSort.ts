@@ -1,4 +1,5 @@
 import { Release } from '../types';
+import { isRecord, toComparableText } from './objectHelpers';
 import { getReleaseFormats } from './releaseFormats';
 
 export interface SortState {
@@ -12,13 +13,22 @@ export const FORMAT_SORT_KEY = '_format_priority';
 // LocalStorage helpers for persisting sort preferences per source
 const SORT_STORAGE_PREFIX = 'cwa-bd-release-sort-';
 
+const isSortState = (value: unknown): value is SortState => {
+  return (
+    isRecord(value) &&
+    typeof value.key === 'string' &&
+    (value.direction === 'asc' || value.direction === 'desc') &&
+    (value.value === undefined || typeof value.value === 'string')
+  );
+};
+
 export function getSavedSort(sourceName: string): SortState | null {
   try {
     const saved = localStorage.getItem(`${SORT_STORAGE_PREFIX}${sourceName}`);
     if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.key && parsed.direction) {
-        return parsed as SortState;
+      const parsed: unknown = JSON.parse(saved);
+      if (isSortState(parsed)) {
+        return parsed;
       }
     }
     return null;
@@ -44,10 +54,10 @@ export function clearSort(sourceName: string): void {
 }
 
 // Get nested value from an object using dot notation path
-function getNestedSortValue(obj: Record<string, unknown>, path: string): unknown {
+function getNestedSortValue(obj: unknown, path: string): unknown {
   return path.split('.').reduce<unknown>((current, key) => {
-    if (current && typeof current === 'object' && key in (current as Record<string, unknown>)) {
-      return (current as Record<string, unknown>)[key];
+    if (isRecord(current) && key in current) {
+      return current[key];
     }
     return undefined;
   }, obj);
@@ -88,8 +98,8 @@ export function sortReleases(
   direction: 'asc' | 'desc',
 ): Release[] {
   return [...releases].sort((a, b) => {
-    const aVal = getNestedSortValue(a as unknown as Record<string, unknown>, sortKey);
-    const bVal = getNestedSortValue(b as unknown as Record<string, unknown>, sortKey);
+    const aVal = getNestedSortValue(a, sortKey);
+    const bVal = getNestedSortValue(b, sortKey);
 
     // Handle null/undefined - sort them to the end
     if (aVal == null && bVal == null) return 0;
@@ -102,8 +112,8 @@ export function sortReleases(
     }
 
     // String comparison (case-insensitive)
-    const aStr = String(aVal).toLowerCase();
-    const bStr = String(bVal).toLowerCase();
+    const aStr = toComparableText(aVal).toLowerCase();
+    const bStr = toComparableText(bVal).toLowerCase();
     const cmp = aStr.localeCompare(bStr);
     return direction === 'asc' ? cmp : -cmp;
   });
