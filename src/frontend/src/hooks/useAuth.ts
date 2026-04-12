@@ -86,7 +86,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
         setAuthChecked(true);
       }
     };
-    verifyAuth();
+    void verifyAuth();
   }, [applyAuthResponse]);
 
   // Re-sync auth when returning to the tab, so role/session changes in
@@ -137,7 +137,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
           applyAuthResponse(await checkAuth());
           refreshSocketSession();
           setLoginError(null);
-          navigate(postLoginPath, { replace: true });
+          void navigate(postLoginPath, { replace: true });
         } else {
           setLoginError(response.error || 'Login failed');
         }
@@ -173,7 +173,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
       }
       refreshSocketSession();
       onLogoutSuccess?.();
-      navigate('/login', { replace: true });
+      void navigate('/login', { replace: true });
     } catch (error) {
       console.error('Logout failed:', error);
       showToast?.('Logout failed', 'error');

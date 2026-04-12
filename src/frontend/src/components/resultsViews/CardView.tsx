@@ -146,7 +146,7 @@ export const CardView = ({
             className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 shadow-lg backdrop-blur-xs transition-all duration-300 hover:scale-110 dark:bg-neutral-800/90"
             onClick={(e) => {
               e.stopPropagation();
-              handleDetails(book.id);
+              void handleDetails(book.id);
             }}
             disabled={isLoadingDetails}
             aria-label="Book details"

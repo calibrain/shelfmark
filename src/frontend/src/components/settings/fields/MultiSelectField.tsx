@@ -15,6 +15,7 @@ const COLLAPSE_THRESHOLD_OPTIONS = 12;
 // Approximate height for ~4 rows of pills (pills are ~32px + 8px gap)
 const COLLAPSED_HEIGHT = 156;
 const ALL_OPTION_VALUE = 'all';
+const EMPTY_SELECTION: string[] = [];
 
 /**
  * Sort options with selected items first, preserving relative order within each group
@@ -30,7 +31,7 @@ const sortOptionsWithSelectedFirst = (
 };
 
 export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSelectFieldProps) => {
-  const selected = value ?? [];
+  const selected = value ?? EMPTY_SELECTION;
   // disabled prop is already computed by SettingsContent.getDisabledState()
   const isDisabled = disabled ?? false;
 

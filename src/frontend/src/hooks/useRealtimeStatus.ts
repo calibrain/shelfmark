@@ -48,7 +48,7 @@ export const useRealtimeStatus = ({
     if (pollIntervalRef.current) return;
 
     console.log('Starting polling fallback');
-    pollStatus();
+    void pollStatus();
     pollIntervalRef.current = setInterval(pollStatus, pollInterval);
   }, [pollStatus, pollInterval]);
 
@@ -65,7 +65,7 @@ export const useRealtimeStatus = ({
   useEffect(() => {
     if (!socket) {
       startPolling();
-      return;
+      return undefined;
     }
 
     // Listen for status updates

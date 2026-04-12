@@ -129,7 +129,7 @@ export const SelfSettingsModal = ({
 
   useEffect(() => {
     if (!isOpen) {
-      return;
+      return undefined;
     }
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -151,7 +151,7 @@ export const SelfSettingsModal = ({
 
   useEffect(() => {
     if (!isOpen) {
-      return;
+      return undefined;
     }
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {

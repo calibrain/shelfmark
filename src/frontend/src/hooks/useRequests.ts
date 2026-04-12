@@ -121,21 +121,22 @@ export const useRequests = ({
       setError(null);
       setIsLoading(false);
       stopPolling();
-      return;
+      return undefined;
     }
 
     void refresh();
+    return undefined;
   }, [enabled, refresh, stopPolling]);
 
   useEffect(() => {
     if (!enabled) {
       stopPolling();
-      return;
+      return undefined;
     }
 
     if (!socket) {
       startPolling();
-      return;
+      return undefined;
     }
 
     const handleNewRequest = () => {
@@ -183,7 +184,7 @@ export const useRequests = ({
   useEffect(() => {
     if (!enabled) {
       stopPolling();
-      return;
+      return undefined;
     }
 
     if (connected) {
@@ -191,6 +192,7 @@ export const useRequests = ({
     } else {
       startPolling();
     }
+    return undefined;
   }, [enabled, connected, startPolling, stopPolling]);
 
   useEffect(() => {

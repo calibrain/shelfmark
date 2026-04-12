@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
 
 import { withBasePath } from '../utils/basePath';
@@ -19,6 +19,7 @@ interface SocketProviderProps {
 export const SocketProvider = ({ children }: SocketProviderProps) => {
   const [connected, setConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
+  const socket = socketRef.current;
 
   useEffect(() => {
     // Always connect via current origin so dev proxy and session cookies stay aligned.
@@ -27,39 +28,37 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
 
     console.log('SocketProvider: Connecting to', wsUrl);
 
-    const socket = io(wsUrl, {
+    const nextSocket = io(wsUrl, {
       path: socketPath,
       transports: ['polling', 'websocket'],
       withCredentials: true,
     });
 
-    socketRef.current = socket;
+    socketRef.current = nextSocket;
 
-    socket.on('connect', () => {
-      console.log('✅ Socket connected via', socket.io.engine.transport.name);
+    nextSocket.on('connect', () => {
+      console.log('✅ Socket connected via', nextSocket.io.engine.transport.name);
       setConnected(true);
     });
 
-    socket.on('disconnect', (reason) => {
+    nextSocket.on('disconnect', (reason) => {
       console.log('Socket disconnected:', reason);
       setConnected(false);
     });
 
-    socket.on('connect_error', (err) => {
+    nextSocket.on('connect_error', (err) => {
       console.error('Socket connection error:', err.message);
       setConnected(false);
     });
 
     return () => {
       console.log('SocketProvider: Disconnecting');
-      socket.disconnect();
+      nextSocket.disconnect();
       socketRef.current = null;
     };
   }, []);
 
-  return (
-    <SocketContext.Provider value={{ socket: socketRef.current, connected }}>
-      {children}
-    </SocketContext.Provider>
-  );
+  const contextValue = useMemo(() => ({ socket, connected }), [socket, connected]);
+
+  return <SocketContext.Provider value={contextValue}>{children}</SocketContext.Provider>;
 };

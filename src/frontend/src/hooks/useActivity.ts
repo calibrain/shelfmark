@@ -417,7 +417,7 @@ export const useActivity = ({
 
   useEffect(() => {
     if (!socket || !isAuthenticated) {
-      return;
+      return undefined;
     }
 
     const refreshFromSocketEvent = () => {

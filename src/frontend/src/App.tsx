@@ -838,7 +838,7 @@ function App() {
   // Fetch config when authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      loadConfig('initial');
+      void loadConfig('initial');
     }
   }, [isAuthenticated, loadConfig]);
 
@@ -1124,7 +1124,7 @@ function App() {
   ]);
 
   const handleSettingsSaved = useCallback(() => {
-    loadConfig('settings-saved');
+    void loadConfig('settings-saved');
   }, [loadConfig]);
 
   // Log WebSocket connection status
@@ -1138,7 +1138,7 @@ function App() {
 
   // Fetch status on startup
   useEffect(() => {
-    fetchStatus();
+    void fetchStatus();
   }, [fetchStatus]);
 
   // Show book details
@@ -2088,12 +2088,18 @@ function App() {
     ],
   );
 
-  const bookLanguages = config?.book_languages || DEFAULT_LANGUAGES;
+  const bookLanguages = useMemo(
+    () => config?.book_languages || DEFAULT_LANGUAGES,
+    [config?.book_languages],
+  );
   const supportedFormats = config?.supported_formats || DEFAULT_SUPPORTED_FORMATS;
-  const defaultLanguageCodes =
-    config?.default_language && config.default_language.length > 0
-      ? config.default_language
-      : [bookLanguages[0]?.code || 'en'];
+  const defaultLanguageCodes = useMemo(
+    () =>
+      config?.default_language && config.default_language.length > 0
+        ? config.default_language
+        : [bookLanguages[0]?.code || 'en'],
+    [config?.default_language, bookLanguages],
+  );
 
   const logoUrl = withBasePath('/logo.png');
 
@@ -2412,7 +2418,6 @@ function App() {
       effectiveMetadataProvider,
       effectiveSearchMode,
       runSearchWithPolicyRefresh,
-      setAdvancedFilters,
       setSearchInput,
       seriesBrowseCapability?.sort,
       seriesBrowseTarget,

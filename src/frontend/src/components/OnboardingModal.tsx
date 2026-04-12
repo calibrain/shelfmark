@@ -178,7 +178,7 @@ export const OnboardingModal = ({
       }
     };
 
-    fetchOnboarding();
+    void fetchOnboarding();
   }, [isOpen]);
 
   // Get visible steps based on current values
@@ -280,7 +280,9 @@ export const OnboardingModal = ({
 
   // Handle ESC key
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      return undefined;
+    }
 
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -294,13 +296,15 @@ export const OnboardingModal = ({
 
   // Prevent body scroll when open
   useEffect(() => {
-    if (isOpen) {
-      const previousOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = previousOverflow;
-      };
+    if (!isOpen) {
+      return undefined;
     }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, [isOpen]);
 
   if (!isOpen && !isClosing) return null;

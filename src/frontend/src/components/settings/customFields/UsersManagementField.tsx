@@ -128,7 +128,7 @@ export const UsersManagementField = ({
     const ok = await createUser();
     if (ok) {
       onRefreshOverrideSummary?.();
-      onRefreshAuth?.();
+      void onRefreshAuth?.();
       backToList();
     }
   };
@@ -218,7 +218,7 @@ export const UsersManagementField = ({
       const ok = await deleteUser(userId);
       if (ok) {
         onRefreshOverrideSummary?.();
-        onRefreshAuth?.();
+        void onRefreshAuth?.();
       }
       return ok;
     },

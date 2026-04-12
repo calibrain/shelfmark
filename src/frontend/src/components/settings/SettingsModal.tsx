@@ -93,7 +93,9 @@ export const SettingsModal = ({
 
   // Handle ESC key
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      return undefined;
+    }
 
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -111,13 +113,15 @@ export const SettingsModal = ({
 
   // Prevent body scroll when open
   useEffect(() => {
-    if (isOpen) {
-      const previousOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = previousOverflow;
-      };
+    if (!isOpen) {
+      return undefined;
     }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, [isOpen]);
 
   // Reset mobile detail view when modal opens
@@ -133,7 +137,7 @@ export const SettingsModal = ({
   useEffect(() => {
     if (!isOpen || selectedTab !== 'security') {
       setSecurityAccessError(null);
-      return;
+      return undefined;
     }
 
     let cancelled = false;
@@ -303,7 +307,7 @@ export const SettingsModal = ({
   // Must be before early returns to satisfy React's rules of hooks
   const currentTabHasChanges = useMemo(
     () => (selectedTab ? hasChanges(selectedTab) : false),
-    [selectedTab, hasChanges, values],
+    [selectedTab, hasChanges],
   );
 
   if (!isOpen && !isClosing) return null;

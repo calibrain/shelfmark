@@ -394,10 +394,10 @@ export const ActivityCard = ({
           }
           break;
         }
-        onRequestApprove?.(action.requestId, action.record);
+        void onRequestApprove?.(action.requestId, action.record);
         break;
       case 'request-reject':
-        onRequestReject?.(action.requestId);
+        void onRequestReject?.(action.requestId);
         break;
       case 'request-cancel':
         onRequestCancel?.(action.requestId);

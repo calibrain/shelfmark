@@ -62,7 +62,9 @@ const useDismiss = (
   refsRef.current = refs;
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      return undefined;
+    }
 
     const handleClickOutside = (event: MouseEvent) => {
       const { target } = event;
@@ -325,7 +327,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
     useEffect(() => {
       if (!dynamicEndpoint) {
         setDynamicOptions([]);
-        return;
+        return undefined;
       }
 
       let cancelled = false;
@@ -370,14 +372,14 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       if (!autocompleteEndpoint || !isAutocompleteOpen) {
         setAutocompleteOptions([]);
         setIsAutocompleteLoading(false);
-        return;
+        return undefined;
       }
 
       const normalizedQuery = deferredTextInputValue.trim();
       if (normalizedQuery.length < autocompleteMinQueryLength) {
         setAutocompleteOptions([]);
         setIsAutocompleteLoading(false);
-        return;
+        return undefined;
       }
 
       const cacheKey = `${autocompleteEndpoint}::${normalizedQuery.toLowerCase()}`;
@@ -386,7 +388,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
           setAutocompleteOptions(autocompleteOptionsCache.get(cacheKey) ?? []);
         });
         setIsAutocompleteLoading(false);
-        return;
+        return undefined;
       }
 
       let cancelled = false;

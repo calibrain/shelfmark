@@ -132,7 +132,7 @@ export function useSettings(): UseSettingsReturn {
   );
 
   useEffect(() => {
-    fetchSettings();
+    void fetchSettings();
   }, [fetchSettings]);
 
   const updateValue = useCallback((tabName: string, key: string, value: unknown) => {
@@ -257,7 +257,7 @@ export function useSettings(): UseSettingsReturn {
         setIsSaving(false);
       }
     },
-    [applySettingsResponse, originalValues, tabs, values],
+    [applySettingsResponse, fetchSettings, originalValues, tabs, values],
   );
 
   const executeAction = useCallback(

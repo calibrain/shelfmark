@@ -1,4 +1,4 @@
-import { createContext, useContext, ReactNode } from 'react';
+import { createContext, useContext, ReactNode, useMemo } from 'react';
 
 import { SearchMode } from '../types';
 
@@ -23,9 +23,10 @@ interface SearchModeProviderProps {
 }
 
 export function SearchModeProvider({ searchMode, children }: SearchModeProviderProps) {
-  return (
-    <SearchModeContext.Provider value={{ searchMode, isUniversalMode: searchMode === 'universal' }}>
-      {children}
-    </SearchModeContext.Provider>
+  const value = useMemo(
+    () => ({ searchMode, isUniversalMode: searchMode === 'universal' }),
+    [searchMode],
   );
+
+  return <SearchModeContext.Provider value={value}>{children}</SearchModeContext.Provider>;
 }

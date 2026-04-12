@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Toast } from '../types';
 
@@ -8,15 +8,27 @@ interface ToastContainerProps {
 
 export const ToastContainer = ({ toasts }: ToastContainerProps) => {
   const [visibleToasts, setVisibleToasts] = useState(new Set<string>());
+  const visibleToastsRef = useRef(visibleToasts);
 
   useEffect(() => {
+    visibleToastsRef.current = visibleToasts;
+  }, [visibleToasts]);
+
+  useEffect(() => {
+    const timeoutIds: number[] = [];
+
     toasts.forEach((toast) => {
-      if (!visibleToasts.has(toast.id)) {
-        setTimeout(() => {
+      if (!visibleToastsRef.current.has(toast.id)) {
+        const timeoutId = window.setTimeout(() => {
           setVisibleToasts((prev) => new Set([...prev, toast.id]));
         }, 10);
+        timeoutIds.push(timeoutId);
       }
     });
+
+    return () => {
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    };
   }, [toasts]);
 
   const toastTypeClasses: Record<Toast['type'], string> = {

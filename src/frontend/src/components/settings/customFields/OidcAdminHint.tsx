@@ -10,7 +10,11 @@ export const OidcAdminHint = ({ field }: CustomSettingsFieldRendererProps) => {
   const [visible, setVisible] = useState(!needsAdminCheck);
 
   useEffect(() => {
-    if (!needsAdminCheck) return;
+    if (!needsAdminCheck) {
+      setVisible(true);
+      return undefined;
+    }
+
     let cancelled = false;
     getAdminUsers()
       .then((users) => {
@@ -23,6 +27,7 @@ export const OidcAdminHint = ({ field }: CustomSettingsFieldRendererProps) => {
           setVisible(true);
         }
       });
+
     return () => {
       cancelled = true;
     };

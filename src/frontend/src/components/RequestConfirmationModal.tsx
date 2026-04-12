@@ -54,7 +54,9 @@ export const RequestConfirmationModal = ({
   }, [payload]);
 
   useEffect(() => {
-    if (!payload) return;
+    if (!payload) {
+      return undefined;
+    }
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
@@ -63,7 +65,9 @@ export const RequestConfirmationModal = ({
   }, [payload]);
 
   useEffect(() => {
-    if (!payload) return;
+    if (!payload) {
+      return undefined;
+    }
     const onEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         handleClose();

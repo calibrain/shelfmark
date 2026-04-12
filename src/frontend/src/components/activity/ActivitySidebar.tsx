@@ -309,7 +309,7 @@ export const ActivitySidebar = ({
 
   useEffect(() => {
     if (!isOpen || isPinnedOpen) {
-      return;
+      return undefined;
     }
 
     const onEscape = (event: KeyboardEvent) => {
@@ -319,7 +319,9 @@ export const ActivitySidebar = ({
     };
 
     document.addEventListener('keydown', onEscape);
-    return () => document.removeEventListener('keydown', onEscape);
+    return () => {
+      document.removeEventListener('keydown', onEscape);
+    };
   }, [isOpen, isPinnedOpen, onClose]);
 
   const downloadItems = useMemo(() => {

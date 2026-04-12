@@ -136,7 +136,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
       if (error instanceof AuthenticationError) {
         setIsAuthenticated(false);
         if (authRequired) {
-          navigate('/login', { replace: true });
+          void navigate('/login', { replace: true });
         }
         return;
       }
@@ -274,15 +274,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
         setIsSearching(false);
       }
     },
-    [
-      showToast,
-      setIsAuthenticated,
-      authRequired,
-      navigate,
-      searchFieldValues,
-      handleSearchError,
-      contentType,
-    ],
+    [showToast, searchFieldValues, handleSearchError, contentType],
   );
 
   const handleResetSearch = useCallback(

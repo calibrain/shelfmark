@@ -40,12 +40,14 @@ export const DetailsModal = ({
 
   // Clear queuing state and close modal once button state changes from download
   useEffect(() => {
-    if (isQueuing && buttonState.state !== 'download') {
-      setIsQueuing(false);
-      // Close modal after status has updated
-      const timer = setTimeout(handleClose, 500);
-      return () => clearTimeout(timer);
+    if (!isQueuing || buttonState.state === 'download') {
+      return undefined;
     }
+
+    setIsQueuing(false);
+    // Close modal after status has updated
+    const timer = setTimeout(handleClose, 500);
+    return () => clearTimeout(timer);
   }, [buttonState.state, isQueuing, handleClose]);
 
   // Handle ESC key to close modal
@@ -61,13 +63,15 @@ export const DetailsModal = ({
   }, [handleClose]);
 
   useEffect(() => {
-    if (book) {
-      const previousOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = previousOverflow;
-      };
+    if (!book) {
+      return undefined;
     }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, [book]);
 
   const hasBookTargets = Boolean(book && isMetadataBook(book) && bookSupportsTargets(book));

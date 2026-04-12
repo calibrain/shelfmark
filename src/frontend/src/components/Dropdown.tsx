@@ -87,13 +87,15 @@ export const Dropdown = ({
     });
   };
 
-  const close = () => {
+  const close = useCallback(() => {
     setIsOpen(false);
     onOpenChange?.(false);
-  };
+  }, [onOpenChange]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      return undefined;
+    }
 
     const handleClick = (event: MouseEvent) => {
       if (!(event.target instanceof Node)) {
@@ -117,7 +119,7 @@ export const Dropdown = ({
       document.removeEventListener('mousedown', handleClick);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [isOpen]);
+  }, [isOpen, close]);
 
   // Memoize the panel direction calculation
   const updatePanelDirection = useCallback(() => {
@@ -160,7 +162,9 @@ export const Dropdown = ({
   }, [align]);
 
   useLayoutEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      return undefined;
+    }
 
     // Throttle scroll/resize handlers to reduce layout thrashing
     const throttledUpdate = throttle(updatePanelDirection, 100);

@@ -739,11 +739,15 @@ export const ReleaseModal = ({
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [descriptionOverflows, setDescriptionOverflows] = useState(false);
   const descriptionRef = useRef<HTMLParagraphElement>(null);
+  const activeBookId = book?.id;
 
   useEffect(() => {
-    if (!book || !onPolicyRefresh) return;
+    if (!activeBookId || !onPolicyRefresh) {
+      return undefined;
+    }
     void onPolicyRefresh();
-  }, [book?.id, onPolicyRefresh]);
+    return undefined;
+  }, [activeBookId, onPolicyRefresh]);
 
   // Close handler with animation
   const handleClose = useCallback(() => {
@@ -778,13 +782,15 @@ export const ReleaseModal = ({
 
   // Body scroll lock
   useEffect(() => {
-    if (book) {
-      const previousOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = previousOverflow;
-      };
+    if (!book) {
+      return undefined;
     }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, [book]);
 
   // Restore staged selection when navigating between phases
@@ -811,9 +817,6 @@ export const ReleaseModal = ({
     indexerFilterInitializedRef.current = new Set();
     // Don't clear selectedRelease here — the combinedPhase effect handles it
     // (restoring the staged ebook selection when going back)
-    if (!isCombinedMode) {
-      setSelectedRelease(null);
-    }
     const baseTitle = book?.search_title || book?.title || '';
     const baseAuthor = book?.search_author || book?.author || '';
     const defaultQuery = `${baseTitle} ${baseAuthor}`.trim();
@@ -836,9 +839,19 @@ export const ReleaseModal = ({
     book?.author,
   ]);
 
+  useEffect(() => {
+    if (isCombinedMode) {
+      return;
+    }
+
+    setSelectedRelease(null);
+  }, [activeBookId, isCombinedMode]);
+
   // Set up WebSocket listener for search status updates
   useEffect(() => {
-    if (!book || !socket) return;
+    if (!book || !socket) {
+      return undefined;
+    }
 
     const MIN_DISPLAY_TIME = 1500; // Minimum ms to show each status message
 
@@ -924,7 +937,9 @@ export const ReleaseModal = ({
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current;
     const bookSummary = bookSummaryRef.current;
-    if (!scrollContainer || !bookSummary) return;
+    if (!scrollContainer || !bookSummary) {
+      return undefined;
+    }
 
     const handleScroll = () => {
       const summaryRect = bookSummary.getBoundingClientRect();
@@ -939,7 +954,9 @@ export const ReleaseModal = ({
 
   // Fetch available sources on mount (only when book changes, not content type)
   useEffect(() => {
-    if (!book) return;
+    if (!book) {
+      return undefined;
+    }
 
     const fetchSources = async () => {
       try {
@@ -956,7 +973,8 @@ export const ReleaseModal = ({
       }
     };
 
-    fetchSources();
+    void fetchSources();
+    return undefined;
   }, [book]);
 
   // Pick default active tab when sources or content type changes (synchronous, no flash)
@@ -1002,7 +1020,9 @@ export const ReleaseModal = ({
   // Fetch releases when active tab changes (with caching)
   // Initial fetch always uses ISBN-first search; expansion is handled by handleExpandSearch
   useEffect(() => {
-    if (!book || !activeTab || !book.provider || !book.provider_id) return;
+    if (!book || !activeTab || !book.provider || !book.provider_id) {
+      return undefined;
+    }
 
     // Extract to local variables for TypeScript narrowing
     const provider = book.provider;
@@ -1014,13 +1034,13 @@ export const ReleaseModal = ({
       loadingBySource[activeTab] ||
       errorBySource[activeTab]
     )
-      return;
+      return undefined;
 
     // Check module-level cache first
     const cached = getCachedReleases(provider, bookId, activeTab, contentType);
     if (cached) {
       setReleasesBySource((prev) => ({ ...prev, [activeTab]: cached }));
-      return;
+      return undefined;
     }
 
     const fetchReleases = async () => {
@@ -1049,7 +1069,8 @@ export const ReleaseModal = ({
       }
     };
 
-    fetchReleases();
+    void fetchReleases();
+    return undefined;
   }, [book, activeTab, releasesBySource, loadingBySource, errorBySource, contentType, manualQuery]);
 
   // Handler for expanding search (title+author instead of ISBN)
