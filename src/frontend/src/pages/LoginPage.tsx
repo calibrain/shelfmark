@@ -38,4 +38,3 @@ export const LoginPage = ({ onLogin, error, isLoading, authMode, oidcButtonLabel
     </div>
   );
 };
-

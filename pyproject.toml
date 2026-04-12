@@ -95,6 +95,11 @@ select = [
 ignore = ["D", "EM", "FBT", "PLR2004", "UP035", "TRY003", "E501", "TD002", "S104", "S603"]
 
 [tool.ruff.lint.per-file-ignores]
+"scripts/**/*.py" = [
+    "BLE001",
+    "S",
+    "TRY",
+]
 "tests/**/*.py" = [
     "ANN",
     "BLE001",

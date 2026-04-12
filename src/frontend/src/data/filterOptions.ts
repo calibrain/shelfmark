@@ -24,4 +24,3 @@ export const CONTENT_OPTIONS = [
   { value: 'other', label: 'Other' },
   { value: 'musical_score', label: 'Musical score' },
 ];
-

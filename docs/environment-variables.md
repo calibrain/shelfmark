@@ -331,7 +331,7 @@ Directory where downloaded files are saved. Use {User} for per-user folders (e.g
 
 **File Organization**
 
-Choose how downloaded book files are named and organized. 
+Choose how downloaded book files are named and organized.
 
 - **Type:** string (choice)
 - **Default:** `rename`

@@ -219,4 +219,3 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
     </article>
   );
 };
-

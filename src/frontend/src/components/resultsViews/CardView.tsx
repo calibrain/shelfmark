@@ -215,4 +215,3 @@ export const CardView = ({ book, onDetails, onDownload, onGetReleases, buttonSta
     </article>
   );
 };
-

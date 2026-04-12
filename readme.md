@@ -68,7 +68,7 @@ That's it! Configure settings through the web interface as needed.
 volumes:
   - /your/config/path:/config # Config, database, and artwork cache directory
   - /your/download/path:/books # Downloaded books
-  - /client/path:/client/path # Optional: For Torrent/Usenet downloads, match your client directory exactly. 
+  - /client/path:/client/path # Optional: For Torrent/Usenet downloads, match your client directory exactly.
 ```
 
 > **Tip**: Point the download volume to your CWA or Grimmory ingest folder for automatic import.
