@@ -462,6 +462,7 @@ export type DownloadReleasePayload = {
   source: string;
   source_id: string;
   title: string;
+  book_data?: CreateRequestPayload['book_data'];
   author?: string;   // Author from metadata provider
   year?: string;     // Year from metadata provider
   format?: string;

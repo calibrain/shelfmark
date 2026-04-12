@@ -151,6 +151,64 @@ class TestReleaseDownloadEndpointGuardrails:
         assert captured["release_data"] == {**payload, "content_type": "audiobook"}
         assert captured["priority"] == 1
 
+    def test_success_attaches_exact_metadata_provenance_from_book_data(self, main_module, client):
+        captured: dict[str, object] = {}
+
+        def fake_queue_release(release_data, priority, user_id=None, username=None):
+            captured.update(
+                {
+                    "release_data": release_data,
+                    "priority": priority,
+                    "user_id": user_id,
+                    "username": username,
+                }
+            )
+            return True, None
+
+        _set_authenticated_session(
+            client,
+            user_id="bookworm",
+            db_user_id=27,
+            is_admin=False,
+        )
+        payload = {
+            "source": "prowlarr",
+            "source_id": "release-hardcover-xyz",
+            "title": "Small Gods",
+            "format": "epub",
+            "content_type": "ebook",
+            "book_data": {
+                "title": "Small Gods",
+                "author": "Terry Pratchett",
+                "content_type": "ebook",
+                "provider": "hardcover",
+                "provider_id": "379631",
+                "source_url": "https://hardcover.app/books/small-gods",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_release", side_effect=fake_queue_release):
+                resp = client.post("/api/releases/download", json=payload)
+
+        assert resp.status_code == 200
+        assert resp.get_json() == {"status": "queued", "priority": 0}
+        assert captured["priority"] == 0
+        assert captured["user_id"] == 27
+        assert captured["username"] == "bookworm"
+        assert captured["release_data"] == {
+            "source": "prowlarr",
+            "source_id": "release-hardcover-xyz",
+            "title": "Small Gods",
+            "format": "epub",
+            "content_type": "ebook",
+            "_metadata_provenance": {
+                "provider": "hardcover",
+                "provider_id": "379631",
+                "source_url": "https://hardcover.app/books/small-gods",
+            },
+        }
+
     def test_non_json_payload_returns_400(self, main_module, client):
         with patch.object(main_module, "get_auth_mode", return_value="none"):
             with patch.object(main_module.backend, "queue_release") as mock_queue_release:

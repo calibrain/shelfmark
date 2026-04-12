@@ -10,6 +10,7 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download.outputs import StatusCallback, register_output
 from shelfmark.download.outputs.cwa_sidecar import (
+    cwa_sidecar_skip_reason,
     cwa_sidecar_manifest_enabled,
     write_cwa_sidecar,
 )
@@ -261,20 +262,44 @@ def process_folder_output(
     # Sidecars are optional CWA integration output. Delivery semantics remain the
     # same when emission is disabled or when sidecar writing fails.
     if sidecars_enabled:
-        for final_path in final_paths:
-            try:
-                sidecar_path = write_cwa_sidecar(final_path, task)
-            except Exception as exc:
-                logger.warning(
-                    "Task %s: failed to write CWA sidecar for %s: %s",
+        logger.info(
+            "Task %s: CWA sidecar emission enabled; evaluating %d transferred file(s) (request_id=%s metadata_provider=%s)",
+            task.task_id,
+            len(final_paths),
+            getattr(task, "request_id", None),
+            getattr(task, "metadata_provider", None),
+        )
+        skip_reason = cwa_sidecar_skip_reason(task)
+        if skip_reason is not None:
+            if len(final_paths) == 1:
+                logger.info(
+                    "Task %s: skipping CWA sidecar for %s because %s",
                     task.task_id,
-                    final_path,
-                    exc,
+                    final_paths[0],
+                    skip_reason,
                 )
-                continue
-            if sidecar_path is not None:
-                emitted_sidecars += 1
-                logger.info("Task %s: wrote CWA sidecar %s", task.task_id, sidecar_path)
+            else:
+                logger.info(
+                    "Task %s: skipping CWA sidecar for %d transferred file(s) because %s",
+                    task.task_id,
+                    len(final_paths),
+                    skip_reason,
+                )
+        else:
+            for final_path in final_paths:
+                try:
+                    sidecar_path = write_cwa_sidecar(final_path, task)
+                except Exception as exc:
+                    logger.warning(
+                        "Task %s: failed to write CWA sidecar for %s: %s",
+                        task.task_id,
+                        final_path,
+                        exc,
+                    )
+                    continue
+                if sidecar_path is not None:
+                    emitted_sidecars += 1
+                    logger.info("Task %s: wrote CWA sidecar %s", task.task_id, sidecar_path)
     else:
         logger.debug(
             "Task %s: CWA sidecar manifest emission disabled by configuration",

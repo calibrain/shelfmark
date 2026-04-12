@@ -58,16 +58,16 @@ def cwa_sidecar_manifest_enabled() -> bool:
     return bool(config.get(CWA_SIDECAR_MANIFEST_SETTING, False))
 
 
-def build_cwa_manifest(task: DownloadTask) -> Optional[dict[str, Any]]:
-    """Build a `.cwa.json` manifest from exact task provenance.
-
-    Only exact Hardcover provenance is emitted. If the task was not queued from a
-    trusted Hardcover-backed request flow, return ``None``.
-    """
+def _evaluate_cwa_manifest(task: DownloadTask) -> tuple[Optional[dict[str, Any]], str | None]:
+    """Build a manifest and an operator-facing skip reason for sidecar emission."""
     metadata_provider = _normalize_optional_text(getattr(task, "metadata_provider", None))
     metadata_provider_id = _normalize_identifier(getattr(task, "metadata_provider_id", None))
-    if metadata_provider != "hardcover" or metadata_provider_id is None:
-        return None
+    if metadata_provider is None:
+        return None, "no exact metadata provenance was attached"
+    if metadata_provider != "hardcover":
+        return None, f"metadata provider '{metadata_provider}' is not hardcover"
+    if metadata_provider_id is None:
+        return None, "hardcover provenance is missing provider_id"
 
     hardcover_edition = _normalize_identifier(getattr(task, "hardcover_edition", None))
     hardcover_slug = _normalize_optional_text(getattr(task, "hardcover_slug", None))
@@ -92,12 +92,28 @@ def build_cwa_manifest(task: DownloadTask) -> Optional[dict[str, Any]]:
     return {
         "provenance": provenance,
         "identifiers": identifiers,
-    }
+    }, None
+
+
+def build_cwa_manifest(task: DownloadTask) -> Optional[dict[str, Any]]:
+    """Build a `.cwa.json` manifest from exact task provenance.
+
+    Only exact Hardcover provenance is emitted. If the task was not queued from a
+    trusted Hardcover-backed request flow, return ``None``.
+    """
+    manifest, _skip_reason = _evaluate_cwa_manifest(task)
+    return manifest
+
+
+def cwa_sidecar_skip_reason(task: DownloadTask) -> str | None:
+    """Return a concise reason sidecar emission is being skipped for *task*."""
+    _manifest, skip_reason = _evaluate_cwa_manifest(task)
+    return skip_reason
 
 
 def write_cwa_sidecar(delivered_path: Path, task: DownloadTask) -> Path | None:
     """Write a `.cwa.json` sidecar next to *delivered_path* when provenance is exact."""
-    manifest = build_cwa_manifest(task)
+    manifest, _skip_reason = _evaluate_cwa_manifest(task)
     if manifest is None:
         return None
 

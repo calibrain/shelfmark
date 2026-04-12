@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+from io import StringIO
 from threading import Event
 from types import SimpleNamespace
 
@@ -335,3 +337,74 @@ def test_process_folder_output_logs_sidecar_failure_but_keeps_delivery(monkeypat
 
     assert result == str(delivered_path)
     assert not (destination / "Mort.epub.cwa.json").exists()
+
+
+def test_process_folder_output_logs_skip_reason_when_provenance_missing(monkeypatch, tmp_path):
+    import shelfmark.download.outputs.folder as folder_output
+    import shelfmark.download.postprocess.pipeline as pipeline
+
+    destination = tmp_path / "ingest"
+    destination.mkdir()
+    temp_file = tmp_path / "download.tmp"
+    temp_file.write_text("payload")
+    delivered_path = destination / "Small Gods.epub"
+    delivered_path.write_text("book")
+
+    task = DownloadTask(
+        task_id="task-7",
+        source="prowlarr",
+        title="Small Gods",
+    )
+
+    plan = _ProcessingPlan(
+        destination=destination,
+        organization_mode="rename",
+        use_hardlink=False,
+        allow_archive_extraction=True,
+        stage_action=STAGE_NONE,
+        staging_dir=tmp_path / "staging",
+        hardlink_source=None,
+    )
+
+    monkeypatch.setattr(folder_output, "_build_processing_plan", lambda *_args, **_kwargs: plan)
+    monkeypatch.setattr(folder_output, "cwa_sidecar_manifest_enabled", lambda: True)
+    monkeypatch.setattr(
+        pipeline,
+        "prepare_output_files",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            output_plan=SimpleNamespace(stage_action=STAGE_NONE),
+            working_path=temp_file,
+            files=[temp_file],
+            cleanup_paths=[],
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "transfer_book_files",
+        lambda *_args, **_kwargs: ([delivered_path], None, {"move": 1}),
+    )
+    monkeypatch.setattr(pipeline, "is_torrent_source", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(pipeline, "maybe_run_custom_script", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(pipeline, "cleanup_output_staging", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pipeline, "log_plan_steps", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(pipeline, "record_step", lambda *_args, **_kwargs: None)
+
+    log_stream = StringIO()
+    handler = logging.StreamHandler(log_stream)
+    handler.setLevel(logging.INFO)
+    folder_output.logger.addHandler(handler)
+    try:
+        result = process_folder_output(
+            temp_file,
+            task,
+            Event(),
+            lambda *_args, **_kwargs: None,
+        )
+    finally:
+        folder_output.logger.removeHandler(handler)
+
+    assert result == str(delivered_path)
+    assert not (destination / "Small Gods.epub.cwa.json").exists()
+    assert "CWA sidecar emission enabled; evaluating 1 transferred file(s)" in log_stream.getvalue()
+    assert "skipping CWA sidecar for" in log_stream.getvalue()
+    assert "no exact metadata provenance was attached" in log_stream.getvalue()

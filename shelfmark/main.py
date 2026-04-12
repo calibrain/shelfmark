@@ -60,6 +60,7 @@ from shelfmark.core.notifications import (
 )
 from shelfmark.core.prefix_middleware import PrefixMiddleware
 from shelfmark.core.request_helpers import (
+    attach_release_metadata_provenance,
     coerce_bool,
     emit_ws_event,
     get_session_db_user_id,
@@ -988,6 +989,8 @@ def api_download_release() -> Response | tuple[Response, int]:
         source (str): Release source (e.g., "direct_download")
         source_id (str): ID within the source (e.g., AA MD5 hash)
         title (str): Book title
+        book_data (dict, optional): Metadata-provider book context used to
+            preserve exact sidecar provenance for queued downloads
         format (str, optional): File format
         size (str, optional): Human-readable size
         extra (dict, optional): Additional metadata
@@ -1015,10 +1018,29 @@ def api_download_release() -> Response | tuple[Response, int]:
         if policy_mode is not None and policy_mode != PolicyMode.DOWNLOAD:
             return _policy_block_response(policy_mode)
 
-        release_payload = data
+        release_payload = dict(data)
+        book_data = release_payload.pop("book_data", None)
         if inferred_content_type and data.get("content_type") is None:
-            release_payload = dict(data)
             release_payload["content_type"] = resolved_content_type
+        release_payload = attach_release_metadata_provenance(
+            release_payload,
+            book_data=book_data,
+        )
+        attached_provenance = release_payload.get("_metadata_provenance")
+        if isinstance(attached_provenance, dict):
+            logger.info(
+                "Release download request attached metadata provenance source=%s source_id=%s provider=%s provider_id=%s",
+                source,
+                data["source_id"],
+                attached_provenance.get("provider"),
+                attached_provenance.get("provider_id"),
+            )
+        else:
+            logger.info(
+                "Release download request queued without exact metadata provenance source=%s source_id=%s",
+                source,
+                data["source_id"],
+            )
 
         priority = data.get("priority", 0)
         # Per-user download overrides

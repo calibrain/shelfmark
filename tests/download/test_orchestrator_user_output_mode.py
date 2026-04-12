@@ -241,3 +241,42 @@ def test_retry_payload_round_trips_metadata_provenance():
     assert restored.metadata_source_url == "https://hardcover.app/books/wyrd-sisters"
     assert restored.hardcover_edition == "20202"
     assert restored.hardcover_slug == "wyrd-sisters"
+
+
+def test_duplicate_queue_attempt_preserves_existing_hardcover_provenance(monkeypatch):
+    import shelfmark.download.orchestrator as orchestrator
+
+    added_tasks: list[object] = []
+
+    def fake_add(task):
+        if added_tasks:
+            return False
+        added_tasks.append(task)
+        return True
+
+    monkeypatch.setattr(orchestrator.book_queue, "add", fake_add)
+    monkeypatch.setattr(orchestrator, "ws_manager", None)
+
+    release_data = {
+        "source": "prowlarr",
+        "source_id": "release-hardcover-duplicate",
+        "title": "Small Gods",
+        "_metadata_provenance": {
+            "provider": "hardcover",
+            "provider_id": "379631",
+            "source_url": "https://hardcover.app/books/small-gods",
+        },
+    }
+
+    first_success, first_error = orchestrator.queue_release(release_data, user_id=42, username="alice")
+    second_success, second_error = orchestrator.queue_release(release_data, user_id=42, username="alice")
+
+    assert first_success is True
+    assert first_error is None
+    assert second_success is False
+    assert second_error == "Release is already in the download queue"
+    assert len(added_tasks) == 1
+    task = added_tasks[0]
+    assert task.metadata_provider == "hardcover"
+    assert task.metadata_provider_id == "379631"
+    assert task.metadata_source_url == "https://hardcover.app/books/small-gods"

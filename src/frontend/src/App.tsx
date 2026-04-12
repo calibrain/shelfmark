@@ -1219,6 +1219,7 @@ function App() {
         source: release.source,
         source_id: release.source_id,
         title: isManual ? release.title : book.title,
+        book_data: buildMetadataBookRequestData(book, releaseContentType),
         author: isManual ? (releaseAuthor || '') : book.author,
         year: book.year,
         format: release.format,
