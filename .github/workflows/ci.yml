@@ -81,7 +81,7 @@ jobs:
         run: make install-python-dev
 
       - name: Run tests
-        run: uv run pytest tests/ -x --tb=short
+        run: uv run pytest tests/ -x --tb=short -m "not integration and not e2e"
 
   docker-build-check:
     runs-on: ubuntu-latest

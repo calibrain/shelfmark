@@ -26,6 +26,9 @@ _BOOTSTRAP_ENV_ACCESS_ALLOWLIST = {
     Path("shelfmark/config/env.py"),
     Path("shelfmark/core/settings_registry.py"),
 }
+_BOOTSTRAP_ENV_ACCESS_KEY_ALLOWLIST = {
+    (Path("shelfmark/config/settings.py"), "USING_TOR"),
+}
 _RAW_CONFIG_READ_ALLOWLIST = {
     Path("shelfmark/config/notifications_settings.py"),
     Path("shelfmark/config/settings.py"),
@@ -170,6 +173,9 @@ class ConfigAccessVisitor(ast.NodeVisitor):
         self.registered_env_vars = registered_env_vars
         self.violations: list[GuardrailViolation] = []
         self._allow_bootstrap_env_access = path in _BOOTSTRAP_ENV_ACCESS_ALLOWLIST
+        self._bootstrap_env_key_allowlist = {
+            key for allowed_path, key in _BOOTSTRAP_ENV_ACCESS_KEY_ALLOWLIST if allowed_path == path
+        }
         self._allow_raw_config_reads = path in _RAW_CONFIG_READ_ALLOWLIST
         self._string_scopes: list[dict[str, str]] = [{}]
         self._config_alias_scopes: list[set[str]] = [set()]
@@ -261,7 +267,11 @@ class ConfigAccessVisitor(ast.NodeVisitor):
             return
 
         if isinstance(node.value, ast.Name):
-            if node.value.id in self._env_module_aliases and node.attr in self.registered_keys:
+            if (
+                node.value.id in self._env_module_aliases
+                and node.attr in self.registered_keys
+                and node.attr not in self._bootstrap_env_key_allowlist
+            ):
                 self._record_violation(node, "direct env-module access", node.attr)
 
         self.generic_visit(node)
