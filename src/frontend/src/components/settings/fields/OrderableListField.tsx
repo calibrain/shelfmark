@@ -307,7 +307,7 @@ export const OrderableListField = ({
               </div>
 
               {/* Toggle Switch */}
-              <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+              <div className="shrink-0">
                 <ToggleSwitch
                   checked={item.enabled && !item.isLocked}
                   onChange={() => toggleItem(index)}

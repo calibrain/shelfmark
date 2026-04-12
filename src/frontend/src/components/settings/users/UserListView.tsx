@@ -81,12 +81,6 @@ export const UserListView = ({
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode);
   const isCwaMode = (authMode || 'none').toLowerCase() === 'cwa';
-  const isInteractiveHeaderTarget = (target: EventTarget | null): boolean => {
-    return (
-      target instanceof Element &&
-      Boolean(target.closest('button:not([data-card-toggle]), [role="listbox"], [data-dropdown]'))
-    );
-  };
 
   const handleDelete = async (userId: number) => {
     const ok = await onDelete(userId);
@@ -124,54 +118,52 @@ export const UserListView = ({
             const active = user.is_active;
             const isEditingRow = showEditForm && activeEditUserId === user.id;
             const hasLoadedEditUser = isEditingRow && editingUser?.id === user.id;
+            const editorPanelId = `user-editor-${user.id}`;
+            const toggleUserEditor = () => {
+              setConfirmDelete(null);
+              if (isEditingRow) {
+                onCancelEdit();
+                return;
+              }
+
+              onEdit(user);
+            };
             return (
               <div
                 key={user.id}
                 className={`rounded-lg border border-(--border-muted) bg-(--bg-soft) transition-colors ${active ? '' : 'opacity-60'}`}
               >
                 <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    // Don't toggle when clicking interactive elements inside the header (e.g. role dropdown)
-                    if (isInteractiveHeaderTarget(e.target)) return;
-                    setConfirmDelete(null);
-                    if (isEditingRow) {
-                      onCancelEdit();
-                    } else {
-                      onEdit(user);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setConfirmDelete(null);
-                      if (isEditingRow) {
-                        onCancelEdit();
-                      } else {
-                        onEdit(user);
-                      }
-                    }
-                  }}
-                  className={`hover-surface flex cursor-pointer flex-col gap-3 rounded-t-lg p-3 sm:flex-row sm:items-center sm:justify-between ${isEditingRow ? 'border-b border-(--border-muted)' : 'rounded-b-lg'}`}
-                  aria-expanded={isEditingRow}
-                  aria-label={
-                    isEditingRow ? 'Collapse user editor' : `Expand ${user.username} editor`
-                  }
+                  className={`hover-surface relative flex cursor-pointer flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between ${isEditingRow ? 'rounded-t-lg border-b border-(--border-muted)' : 'rounded-lg'}`}
                 >
-                  <UserIdentityHeader user={user} />
+                  <button
+                    type="button"
+                    onClick={toggleUserEditor}
+                    aria-expanded={isEditingRow}
+                    aria-controls={editorPanelId}
+                    aria-label={
+                      isEditingRow ? 'Collapse user editor' : `Expand ${user.username} editor`
+                    }
+                    className={`absolute inset-0 appearance-none border-0 bg-transparent p-0 focus-visible:ring-2 focus-visible:ring-sky-500/50 focus-visible:outline-hidden ${isEditingRow ? 'rounded-t-lg' : 'rounded-lg'}`}
+                  />
 
-                  <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                    {hasLoadedEditUser && editingUser ? (
-                      <UserRoleControl
-                        user={editingUser}
-                        onUserChange={onEditingUserChange}
-                        oidcAdminGroup={downloadDefaults?.OIDC_ADMIN_GROUP}
-                        tooltipPosition="bottom"
-                      />
-                    ) : (
-                      <UserRoleControl user={user} />
-                    )}
+                  <div className="pointer-events-none relative z-10 min-w-0 flex-1">
+                    <UserIdentityHeader user={user} />
+                  </div>
+
+                  <div className="pointer-events-none relative z-10 flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                    <div className="pointer-events-auto">
+                      {hasLoadedEditUser && editingUser ? (
+                        <UserRoleControl
+                          user={editingUser}
+                          onUserChange={onEditingUserChange}
+                          oidcAdminGroup={downloadDefaults?.OIDC_ADMIN_GROUP}
+                          tooltipPosition="bottom"
+                        />
+                      ) : (
+                        <UserRoleControl user={user} />
+                      )}
+                    </div>
 
                     <div
                       className="rounded-full p-2 text-gray-500 dark:text-gray-400"
@@ -196,7 +188,7 @@ export const UserListView = ({
                 </div>
 
                 {isEditingRow && (
-                  <div className="space-y-5 rounded-b-lg bg-(--bg) p-4">
+                  <div id={editorPanelId} className="space-y-5 rounded-b-lg bg-(--bg) p-4">
                     {hasLoadedEditUser && editingUser ? (
                       <UserAccountCardContent
                         user={editingUser}

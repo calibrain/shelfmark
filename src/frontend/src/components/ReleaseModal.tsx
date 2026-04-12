@@ -1,4 +1,11 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  type KeyboardEventHandler,
+} from 'react';
 import { createPortal } from 'react-dom';
 
 import { useSocket } from '../contexts/SocketContext';
@@ -364,6 +371,25 @@ const ReleaseRow = ({
   const mobileGridTemplate = showLeadingCell ? 'auto 1fr auto' : '1fr auto';
 
   const handleRowClick = selectionMode && onSelect ? onSelect : undefined;
+  const handleRowKeyDown: KeyboardEventHandler<HTMLDivElement> | undefined =
+    selectionMode && onSelect
+      ? (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onSelect();
+          }
+        }
+      : undefined;
+  const selectionProps =
+    selectionMode && onSelect
+      ? {
+          onClick: handleRowClick,
+          onKeyDown: handleRowKeyDown,
+          role: 'option' as const,
+          'aria-selected': isSelected,
+          tabIndex: 0,
+        }
+      : undefined;
 
   return (
     <div
@@ -374,9 +400,7 @@ const ReleaseRow = ({
         animationDelay: `${index * 30}ms`,
         animationFillMode: 'both',
       }}
-      onClick={handleRowClick}
-      role={selectionMode ? 'option' : undefined}
-      aria-selected={selectionMode ? isSelected : undefined}
+      {...selectionProps}
     >
       {/* Desktop layout with dynamic grid */}
       <div
@@ -1573,14 +1597,15 @@ export const ReleaseModal = ({
     (currentTabLoading || (releasesBySource[activeTab] === undefined && !currentTabError));
 
   const modal = (
-    <div
-      className="modal-overlay active sm:px-6 sm:py-6"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) handleClose();
-      }}
-    >
+    <div className="modal-overlay active sm:px-6 sm:py-6">
+      <button
+        type="button"
+        className="absolute inset-0 border-0 bg-transparent p-0"
+        onClick={handleClose}
+        aria-label="Close release modal"
+      />
       <div
-        className={`details-container h-full w-full sm:h-auto ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`details-container relative z-10 h-full w-full sm:h-auto ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

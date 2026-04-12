@@ -54,11 +54,11 @@ const EyeSlashIcon = () => (
 const PasswordLoginForm = ({
   onSubmit,
   isLoading,
-  autoFocus,
+  shouldFocusOnMount,
 }: {
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
   isLoading: boolean;
-  autoFocus: boolean;
+  shouldFocusOnMount: boolean;
 }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -68,10 +68,10 @@ const PasswordLoginForm = ({
   const passwordRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (autoFocus) {
+    if (shouldFocusOnMount) {
       usernameRef.current?.focus();
     }
-  }, [autoFocus]);
+  }, [shouldFocusOnMount]);
 
   const handleUsernameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
@@ -296,7 +296,7 @@ export const LoginForm = ({
                   <PasswordLoginForm
                     onSubmit={handleSubmit}
                     isLoading={isLoading}
-                    autoFocus={true}
+                    shouldFocusOnMount={true}
                   />
                 </div>
               )}
@@ -304,7 +304,11 @@ export const LoginForm = ({
           )}
         </>
       ) : (
-        <PasswordLoginForm onSubmit={handleSubmit} isLoading={isLoading} autoFocus={autoFocus} />
+        <PasswordLoginForm
+          onSubmit={handleSubmit}
+          isLoading={isLoading}
+          shouldFocusOnMount={autoFocus}
+        />
       )}
     </div>
   );

@@ -1143,26 +1143,34 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
               )}
 
               {!isAutocompleteLoading &&
-                autocompleteOptions.map((option) => (
-                  <button
-                    type="button"
-                    key={option.value}
-                    role="option"
-                    onClick={() => {
-                      setTextInputValue(option.label);
-                      onChange(option.value, option.label);
-                      setIsAutocompleteOpen(false);
-                      setTimeout(() => onSubmitRef.current(), 0);
-                    }}
-                    className="hover-surface w-full px-5 py-3 text-left text-sm transition-colors"
-                    style={{ color: 'var(--text)' }}
-                  >
-                    <div className="truncate font-medium">{option.label}</div>
-                    {option.description && (
-                      <div className="mt-0.5 truncate text-xs opacity-70">{option.description}</div>
-                    )}
-                  </button>
-                ))}
+                autocompleteOptions.map((option) => {
+                  const currentValue = typeof value === 'string' ? value : String(value ?? '');
+                  const isSelected = option.value === currentValue;
+
+                  return (
+                    <button
+                      type="button"
+                      key={option.value}
+                      role="option"
+                      aria-selected={isSelected}
+                      onClick={() => {
+                        setTextInputValue(option.label);
+                        onChange(option.value, option.label);
+                        setIsAutocompleteOpen(false);
+                        setTimeout(() => onSubmitRef.current(), 0);
+                      }}
+                      className="hover-surface w-full px-5 py-3 text-left text-sm transition-colors"
+                      style={{ color: 'var(--text)' }}
+                    >
+                      <div className="truncate font-medium">{option.label}</div>
+                      {option.description && (
+                        <div className="mt-0.5 truncate text-xs opacity-70">
+                          {option.description}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
             </div>
           </div>
         )}

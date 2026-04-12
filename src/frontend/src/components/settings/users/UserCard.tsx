@@ -565,7 +565,7 @@ const renderPreferencesPanel = (panel: UserPreferencesPanelProps) => (
   <div className="space-y-3">
     {(!panel.hideTitle || panel.onAction) && (
       <div>
-        {!panel.hideTitle && <label className="text-sm font-medium">User Preferences</label>}
+        {!panel.hideTitle && <p className="text-sm font-medium">User Preferences</p>}
         {!panel.hideTitle && panel.description && (
           <p className="mt-0.5 text-xs opacity-60">{panel.description}</p>
         )}

@@ -738,14 +738,23 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
               {/* Logo + Icon buttons - appear first on mobile (above search), last on desktop (right side) */}
               <div className="flex w-full items-center justify-between lg:order-2 lg:w-auto lg:justify-end">
                 {/* Logo - visible on mobile only, aligned left */}
-                {logoUrl && (
-                  <img
-                    src={logoUrl}
-                    onClick={onLogoClick}
-                    alt="Logo"
-                    className="h-10 w-10 shrink-0 cursor-pointer lg:hidden"
-                  />
-                )}
+                {logoUrl &&
+                  (onLogoClick ? (
+                    <button
+                      type="button"
+                      onClick={onLogoClick}
+                      className="shrink-0 cursor-pointer border-0 bg-transparent p-0 lg:hidden"
+                      aria-label="Reset search"
+                    >
+                      <img src={logoUrl} alt="" className="h-10 w-10" />
+                    </button>
+                  ) : (
+                    <img
+                      src={logoUrl}
+                      alt="Shelfmark logo"
+                      className="h-10 w-10 shrink-0 lg:hidden"
+                    />
+                  ))}
 
                 <IconButtons />
               </div>
@@ -753,14 +762,23 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
               {/* Search bar - appear second on mobile (below logo+icons), first on desktop (left side) */}
               <div className="flex flex-1 items-center gap-4 lg:order-1">
                 {/* Logo - visible on desktop only, aligned with search */}
-                {logoUrl && (
-                  <img
-                    src={logoUrl}
-                    onClick={onLogoClick}
-                    alt="Logo"
-                    className="hidden h-12 w-12 shrink-0 cursor-pointer lg:block"
-                  />
-                )}
+                {logoUrl &&
+                  (onLogoClick ? (
+                    <button
+                      type="button"
+                      onClick={onLogoClick}
+                      className="hidden shrink-0 cursor-pointer border-0 bg-transparent p-0 lg:block"
+                      aria-label="Reset search"
+                    >
+                      <img src={logoUrl} alt="" className="h-12 w-12" />
+                    </button>
+                  ) : (
+                    <img
+                      src={logoUrl}
+                      alt="Shelfmark logo"
+                      className="hidden h-12 w-12 shrink-0 lg:block"
+                    />
+                  ))}
                 <SearchBar
                   ref={searchBarRef}
                   className="flex-1 lg:w-[calc(50vw+5rem)] lg:flex-none"

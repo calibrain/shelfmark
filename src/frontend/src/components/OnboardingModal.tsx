@@ -343,7 +343,13 @@ export const OnboardingModal = ({
   if (error) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center">
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-xs" onClick={handleClose} />
+        <button
+          type="button"
+          className="absolute inset-0 bg-black/50 backdrop-blur-xs"
+          onClick={handleClose}
+          tabIndex={-1}
+          aria-label="Close setup wizard"
+        />
         <div
           className="relative max-w-md rounded-xl p-8 shadow-2xl"
           style={{ background: 'var(--bg)' }}

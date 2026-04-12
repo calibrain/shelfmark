@@ -1105,11 +1105,14 @@ export const ActivitySidebar = ({
 
   return (
     <>
-      <div
+      <button
+        type="button"
         className={`fixed inset-0 z-45 bg-black/50 transition-opacity duration-300 ${
           isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
         onClick={onClose}
+        aria-label="Close activity sidebar"
+        tabIndex={-1}
       />
 
       <aside

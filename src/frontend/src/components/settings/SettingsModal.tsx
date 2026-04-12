@@ -347,10 +347,13 @@ export const SettingsModal = ({
   if (isLoading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center">
-        <div
+        <button
+          type="button"
           className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
           style={{ willChange: 'opacity', contain: 'strict' }}
           onClick={handleClose}
+          tabIndex={-1}
+          aria-label="Close settings"
         />
         <div
           className="relative rounded-xl bg-(--bg) p-8 shadow-2xl"
@@ -384,10 +387,13 @@ export const SettingsModal = ({
   if (error) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center">
-        <div
+        <button
+          type="button"
           className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
           style={{ willChange: 'opacity', contain: 'strict' }}
           onClick={handleClose}
+          tabIndex={-1}
+          aria-label="Close settings"
         />
         <div
           className="relative max-w-md rounded-xl bg-(--bg) p-8 shadow-2xl"
@@ -462,10 +468,13 @@ export const SettingsModal = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div
+      <button
+        type="button"
         className={`absolute inset-0 bg-black/50 backdrop-blur-[2px] transition-opacity duration-150 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
         style={{ willChange: 'opacity', contain: 'strict' }}
         onClick={handleClose}
+        tabIndex={-1}
+        aria-label="Close settings"
       />
 
       {/* Modal */}

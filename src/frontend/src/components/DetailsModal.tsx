@@ -156,14 +156,16 @@ export const DetailsModal = ({
   const infoValueClass = 'text-gray-900 dark:text-gray-100';
 
   const modal = (
-    <div
-      className="modal-overlay active sm:px-6 sm:py-6"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) handleClose();
-      }}
-    >
+    <div className="modal-overlay active sm:px-6 sm:py-6">
+      <button
+        type="button"
+        className="absolute inset-0 border-0 bg-transparent p-0"
+        onClick={handleClose}
+        tabIndex={-1}
+        aria-label="Close details"
+      />
       <div
-        className={`details-container h-full w-full sm:h-auto ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`details-container relative z-10 h-full w-full sm:h-auto ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

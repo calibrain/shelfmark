@@ -87,10 +87,6 @@ export const TagListField = ({
   return (
     <div
       className={`w-full rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 text-sm transition-colors focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-500/50 focus-within:outline-hidden ${isDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-text'}`}
-      onClick={() => {
-        if (isDisabled) return;
-        inputRef.current?.focus();
-      }}
     >
       <div className="flex min-h-5 flex-wrap items-center gap-1">
         {tags.map((tag, idx) => (
