@@ -447,14 +447,14 @@ export const useActivity = ({
     () =>
       activityRequests
         .map((record) => requestToActivityItem(record, isAdmin ? 'admin' : 'user'))
-        .sort((left, right) => right.timestamp - left.timestamp),
+        .toSorted((left, right) => right.timestamp - left.timestamp),
     [activityRequests, isAdmin],
   );
 
   const historyItems = useMemo(() => {
     const mappedItems = activityHistoryRows
       .map((row) => mapHistoryRowToActivityItem(row, isAdmin ? 'admin' : 'user'))
-      .sort((left, right) => right.timestamp - left.timestamp);
+      .toSorted((left, right) => right.timestamp - left.timestamp);
 
     return dedupeHistoryItems(mappedItems);
   }, [activityHistoryRows, isAdmin]);

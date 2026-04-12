@@ -72,7 +72,7 @@ export const toComparableText = (value: unknown): string => {
  * e.g., getNestedValue(obj, "extra.language") returns obj.extra.language
  */
 export function getNestedValue(obj: unknown, path: string): unknown {
-  return path.split('.').reduce<unknown>((current, key) => {
+  return path.split('.').reduce((current, key) => {
     if (isRecord(current)) {
       return current[key];
     }

@@ -55,7 +55,7 @@ export function clearSort(sourceName: string): void {
 
 // Get nested value from an object using dot notation path
 function getNestedSortValue(obj: unknown, path: string): unknown {
-  return path.split('.').reduce<unknown>((current, key) => {
+  return path.split('.').reduce((current, key) => {
     if (isRecord(current) && key in current) {
       return current[key];
     }
@@ -80,7 +80,7 @@ export function sortReleasesByFormat(
   direction: 'asc' | 'desc',
 ): Release[] {
   const target = targetFormat.toLowerCase();
-  return [...releases].sort((a, b) => {
+  return releases.toSorted((a, b) => {
     const aFormats = getReleaseFormats(a);
     const bFormats = getReleaseFormats(b);
     const aMatch = aFormats.includes(target) ? 1 : 0;
@@ -97,7 +97,7 @@ export function sortReleases(
   sortKey: string,
   direction: 'asc' | 'desc',
 ): Release[] {
-  return [...releases].sort((a, b) => {
+  return releases.toSorted((a, b) => {
     const aVal = getNestedSortValue(a, sortKey);
     const bVal = getNestedSortValue(b, sortKey);
 

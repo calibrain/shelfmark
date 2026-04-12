@@ -184,7 +184,7 @@ export function sortReleasesByBookMatch(
           0,
         ) + (hasAuthorMatch(release, authorCandidates) ? 1500 : 0),
     }))
-    .sort((a, b) => {
+    .toSorted((a, b) => {
       const scoreDiff = b.score - a.score;
       if (scoreDiff !== 0) {
         return scoreDiff;

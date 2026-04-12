@@ -96,6 +96,7 @@ import {
   applyUniversalPolicyModeToButtonState,
 } from './utils/requestPolicyUi';
 
+// eslint-disable-next-line import/no-unassigned-import -- global app stylesheet is loaded for side effects
 import './styles.css';
 
 const CONTENT_TYPE_STORAGE_KEY = 'preferred-content-type';
@@ -663,9 +664,9 @@ function App() {
       const autoDownloadContentTypes = Array.isArray(config?.download_to_browser_content_types)
         ? config.download_to_browser_content_types
         : [];
-      const canAutoDownloadContentType = (contentType?: string): boolean => {
+      const canAutoDownloadContentType = (downloadContentType?: string): boolean => {
         const contentTypeKey =
-          (contentType || '').trim().toLowerCase() === 'audiobook' ? 'audiobook' : 'book';
+          (downloadContentType || '').trim().toLowerCase() === 'audiobook' ? 'audiobook' : 'book';
         return autoDownloadContentTypes.includes(contentTypeKey);
       };
 

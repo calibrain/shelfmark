@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { useSearchMode } from '../../contexts/SearchModeContext';
-import { Book, ButtonStateInfo } from '../../types';
+import { Book, ButtonStateInfo, DisplayField } from '../../types';
 import { bookSupportsTargets } from '../../utils/bookTargetLoader';
 import { getFormatColor, getLanguageColor } from '../../utils/colorMaps';
 import { BookActionButton } from '../BookActionButton';
@@ -18,6 +18,21 @@ interface ListViewProps {
   showSeriesPosition?: boolean;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
+
+const getKeyedDisplayFields = (fields: DisplayField[]) => {
+  const signatureCounts = new Map<string, number>();
+
+  return fields.map((field) => {
+    const signature = [field.icon ?? 'none', field.label, field.value].join('|');
+    const nextCount = (signatureCounts.get(signature) ?? 0) + 1;
+    signatureCounts.set(signature, nextCount);
+
+    return {
+      field,
+      key: nextCount === 1 ? signature : `${signature}|${nextCount}`,
+    };
+  });
+};
 
 const ListViewThumbnail = ({
   preview,
@@ -117,6 +132,12 @@ export const ListView = ({
           const buttonState =
             searchMode === 'universal' ? getUniversalButtonState(book.id) : getButtonState(book.id);
           const isLoadingDetails = detailsLoadingId === book.id;
+          const mobileDisplayFields =
+            searchMode === 'universal' && book.display_fields
+              ? getKeyedDisplayFields(
+                  book.display_fields.filter((field) => field.icon !== 'editions').slice(0, 2),
+                )
+              : [];
 
           // Compute color styles for direct mode badges
           const languageColor = getLanguageColor(book.language);
@@ -178,18 +199,13 @@ export const ListView = ({
 
                 {/* Mobile universal mode info */}
                 <div className="flex flex-col items-end text-[10px] leading-tight opacity-70 sm:hidden">
-                  {searchMode === 'universal' &&
-                  book.display_fields &&
-                  book.display_fields.length > 0 ? (
-                    book.display_fields
-                      .filter((f) => f.icon !== 'editions')
-                      .slice(0, 2)
-                      .map((field, idx) => (
-                        <span key={idx} className="flex items-center gap-0.5" title={field.label}>
-                          <DisplayFieldIcon icon={field.icon} />
-                          <span>{field.value}</span>
-                        </span>
-                      ))
+                  {mobileDisplayFields.length > 0 ? (
+                    mobileDisplayFields.map(({ field, key }) => (
+                      <span key={key} className="flex items-center gap-0.5" title={field.label}>
+                        <DisplayFieldIcon icon={field.icon} />
+                        <span>{field.value}</span>
+                      </span>
+                    ))
                   ) : (
                     <>
                       <span>{book.format || '-'}</span>

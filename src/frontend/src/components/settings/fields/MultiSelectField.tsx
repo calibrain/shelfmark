@@ -30,8 +30,13 @@ const sortOptionsWithSelectedFirst = (
   return [...selectedOptions, ...unselectedOptions];
 };
 
-export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSelectFieldProps) => {
-  const selected = value ?? EMPTY_SELECTION;
+export const MultiSelectField = ({
+  field,
+  value: fieldValue,
+  onChange,
+  disabled,
+}: MultiSelectFieldProps) => {
+  const selected = fieldValue ?? EMPTY_SELECTION;
   // disabled prop is already computed by SettingsContent.getDisabledState()
   const isDisabled = disabled ?? false;
 
@@ -116,7 +121,7 @@ export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSele
           return;
         }
         if (allSelected && includesAll && nextValues.length < optionValues.length) {
-          onChange(nextValues.filter((value) => value !== ALL_OPTION_VALUE));
+          onChange(nextValues.filter((entry) => entry !== ALL_OPTION_VALUE));
           return;
         }
 

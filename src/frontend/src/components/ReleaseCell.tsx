@@ -17,6 +17,54 @@ interface ReleaseCellProps {
   onlineServers?: string[]; // For IRC: list of online server nicks to show status indicator
 }
 
+const normalizeFlagLabel = (tag: string): string => {
+  const normalized = tag.trim().toLowerCase();
+  if (!normalized) return tag;
+
+  switch (normalized) {
+    case 'freeleech':
+    case 'free leech':
+    case 'fl':
+      return 'FL';
+    case 'double upload':
+    case 'doubleupload':
+    case 'du':
+      return 'DU';
+    case 'vip':
+      return 'VIP';
+    case 'internal':
+    case 'int':
+      return 'INT';
+    default:
+      return tag;
+  }
+};
+
+const formatRelativeTime = (dateString: string): string | null => {
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return null;
+
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return '1 day';
+
+    return `${diffDays} days`;
+  } catch {
+    return null;
+  }
+};
+
+const getDuplicateAwareKey = (counts: Map<string, number>, keyBase: string): string => {
+  const nextCount = (counts.get(keyBase) ?? 0) + 1;
+  counts.set(keyBase, nextCount);
+
+  return nextCount === 1 ? keyBase : `${keyBase}-${nextCount}`;
+};
+
 /**
  * Generic cell renderer for release list columns.
  * Renders different column types (text, badge, size, number, seeders) based on schema.
@@ -29,10 +77,10 @@ export const ReleaseCell = ({
   onlineServers,
 }: ReleaseCellProps) => {
   const rawValue = getNestedValue(release, column.key);
-  const value =
+  const cellValue =
     rawValue !== undefined && rawValue !== null ? toComparableText(rawValue) : column.fallback;
 
-  const displayValue = column.uppercase ? value.toUpperCase() : value;
+  const displayValue = column.uppercase ? cellValue.toUpperCase() : cellValue;
 
   // Alignment classes
   const alignClass = {
@@ -48,7 +96,7 @@ export const ReleaseCell = ({
       if (compact) {
         return <span>{displayValue}</span>;
       }
-      const colorStyle = getColorStyleFromHint(value, column.color_hint);
+      const colorStyle = getColorStyleFromHint(cellValue, column.color_hint);
 
       // Build rich tooltip content for formats
       let tooltipContent: React.ReactNode = null;
@@ -83,7 +131,7 @@ export const ReleaseCell = ({
 
       return (
         <div className={`flex items-center ${alignClass}`}>
-          {value !== column.fallback ? (
+          {cellValue !== column.fallback ? (
             tooltipContent ? (
               <Tooltip content={tooltipContent} position="top">
                 {badge}
@@ -107,28 +155,6 @@ export const ReleaseCell = ({
           ? [toComparableText(rawValue)]
           : [];
       const isFlags = column.color_hint?.type === 'map' && column.color_hint.value === 'flags';
-
-      const normalizeFlagLabel = (tag: string): string => {
-        const normalized = tag.trim().toLowerCase();
-        if (!normalized) return tag;
-        switch (normalized) {
-          case 'freeleech':
-          case 'free leech':
-          case 'fl':
-            return 'FL';
-          case 'double upload':
-          case 'doubleupload':
-          case 'du':
-            return 'DU';
-          case 'vip':
-            return 'VIP';
-          case 'internal':
-          case 'int':
-            return 'INT';
-          default:
-            return tag;
-        }
-      };
 
       if (compact) {
         if (tags.length === 0) {
@@ -154,16 +180,19 @@ export const ReleaseCell = ({
         );
       }
 
+      const tagKeyCounts = new Map<string, number>();
+
       return (
         <div className={`flex flex-wrap items-center gap-1.5 ${alignClass}`}>
-          {tags.map((tag, idx) => {
+          {tags.map((tag) => {
             const normalized = isFlags ? normalizeFlagLabel(tag) : tag;
             const displayTag = column.uppercase ? normalized.toUpperCase() : normalized;
             const colorStyle = getColorStyleFromHint(tag, column.color_hint);
+            const tagKey = getDuplicateAwareKey(tagKeyCounts, `${column.key}|${displayTag}`);
 
             return (
               <span
-                key={`${tag}-${idx}`}
+                key={tagKey}
                 className={`${colorStyle.bg} ${colorStyle.text} rounded-lg px-1.5 py-0.5 text-[10px] font-semibold tracking-wide whitespace-nowrap sm:px-2 sm:text-[11px]`}
               >
                 {displayTag}
@@ -182,22 +211,6 @@ export const ReleaseCell = ({
       const postedDate = toStringValue(extra?.posted_date);
       const bitrate = toStringValue(extra?.bitrate);
 
-      // Helper to format age in days
-      const formatRelativeTime = (dateStr: string): string | null => {
-        try {
-          const date = new Date(dateStr);
-          if (isNaN(date.getTime())) return null;
-          const now = new Date();
-          const diffMs = now.getTime() - date.getTime();
-          const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-          if (diffDays === 0) return 'Today';
-          if (diffDays === 1) return '1 day';
-          return `${diffDays} days`;
-        } catch {
-          return null;
-        }
-      };
-
       const rows: Array<{ label: string; value: string }> = [];
 
       // Add publish date first if available
@@ -209,9 +222,9 @@ export const ReleaseCell = ({
       }
 
       if (postedDate) {
-        const value = postedDate.trim();
-        const relativeTime = formatRelativeTime(value);
-        rows.push({ label: 'Posted', value: relativeTime ?? value });
+        const postedDateValue = postedDate.trim();
+        const relativeTime = formatRelativeTime(postedDateValue);
+        rows.push({ label: 'Posted', value: relativeTime ?? postedDateValue });
       }
 
       if (bitrate) {
@@ -291,7 +304,7 @@ export const ReleaseCell = ({
       // Peers display: "S/L" string with badge colored by seeder count
       // Color logic: 0 = red, 1-10 = yellow, 10+ = blue
       const seeders = release.seeders;
-      const peersValue = value || column.fallback;
+      const peersValue = cellValue || column.fallback;
       const isFallback = seeders == null || peersValue === column.fallback;
 
       // If no data, show plain text like badge type does
@@ -369,22 +382,22 @@ export const ReleaseCell = ({
 
     case 'flag_icon': {
       // Colored badge showing FL, VIP, or both
-      if (!value || value === column.fallback) {
+      if (!cellValue || cellValue === column.fallback) {
         if (compact) return null;
         return <div className={`flex items-center ${alignClass}`} />;
       }
 
-      const flagColor = getColorStyleFromHint(value, { type: 'map', value: 'flags' });
+      const flagColor = getColorStyleFromHint(cellValue, { type: 'map', value: 'flags' });
 
       if (compact) {
-        return <span className={`${flagColor.text} font-medium`}>{value}</span>;
+        return <span className={`${flagColor.text} font-medium`}>{cellValue}</span>;
       }
       return (
         <div className={`flex items-center ${alignClass}`}>
           <span
             className={`${flagColor.bg} ${flagColor.text} rounded-lg px-1.5 py-0.5 text-[10px] font-semibold tracking-wide whitespace-nowrap sm:px-2 sm:text-[11px]`}
           >
-            {value}
+            {cellValue}
           </span>
         </div>
       );
@@ -541,7 +554,7 @@ export const ReleaseCell = ({
     default: {
       // Check if this is a server column with online status data
       const isServerColumn = column.key === 'extra.server' && onlineServers !== undefined;
-      const isOnline = isServerColumn && onlineServers?.includes(value);
+      const isOnline = isServerColumn && onlineServers?.includes(cellValue);
 
       if (compact) {
         if (isServerColumn) {

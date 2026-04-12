@@ -216,7 +216,7 @@ export const useRequests = ({
       setRequests(previous);
       const message = toErrorMessage(err, 'Failed to cancel request');
       setError(message);
-      throw new Error(message);
+      throw new Error(message, { cause: err });
     }
   }, []);
 
@@ -249,7 +249,7 @@ export const useRequests = ({
         setRequests(previous);
         const message = toErrorMessage(err, 'Failed to fulfil request');
         setError(message);
-        throw new Error(message);
+        throw new Error(message, { cause: err });
       }
     },
     [isAdmin],
@@ -277,7 +277,7 @@ export const useRequests = ({
         setRequests(previous);
         const message = toErrorMessage(err, 'Failed to reject request');
         setError(message);
-        throw new Error(message);
+        throw new Error(message, { cause: err });
       }
     },
     [isAdmin],

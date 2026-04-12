@@ -96,7 +96,7 @@ const toRuleKey = (source: string, contentType: RequestPolicyContentType) =>
   `${source}::${contentType}`;
 
 export const sortRules = (rules: RequestPolicyRuleRow[]): RequestPolicyRuleRow[] =>
-  [...rules].sort((a, b) => {
+  rules.toSorted((a, b) => {
     const sourceCmp = a.source.localeCompare(b.source);
     if (sourceCmp !== 0) return sourceCmp;
     return a.content_type.localeCompare(b.content_type);
@@ -136,7 +136,7 @@ export const normalizeRequestPolicyRules = (rawRules: unknown): RequestPolicyRul
     });
   });
 
-  return sortRules([...byKey.values()]);
+  return sortRules(Array.from(byKey.values()));
 };
 
 export const capPolicyMode = (
@@ -171,7 +171,7 @@ export const mergeRequestPolicyRuleLayers = (
   overrideRules.forEach((rule) => {
     merged.set(toRuleKey(rule.source, rule.content_type), rule);
   });
-  return sortRules([...merged.values()]);
+  return sortRules(Array.from(merged.values()));
 };
 
 const findRule = (
@@ -277,7 +277,9 @@ export const parseSourceCapabilitiesFromRulesField = (
   const orderedSources = sourceOptions
     .map((option) => normalizeSource(option.value))
     .filter((source) => source && bySource.has(source));
-  const extraSources = [...bySource.keys()].filter((source) => !orderedSources.includes(source));
+  const extraSources = Array.from(bySource.keys()).filter(
+    (source) => !orderedSources.includes(source),
+  );
 
   return [...orderedSources, ...extraSources].map((source) => {
     const row = bySource.get(source)!;
@@ -285,7 +287,8 @@ export const parseSourceCapabilitiesFromRulesField = (
       row.supportedContentTypes.includes(contentType),
     );
     return {
-      ...row,
+      source: row.source,
+      displayName: row.displayName,
       supportedContentTypes: supported,
     };
   });

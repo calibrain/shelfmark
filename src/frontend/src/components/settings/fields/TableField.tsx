@@ -64,8 +64,8 @@ function normalizeRows(
   rows: Record<string, unknown>[],
   columns: TableFieldColumn[],
 ): Record<string, unknown>[] {
-  return (rows ?? []).map((row) => {
-    const normalized: Record<string, unknown> = { ...row };
+  return rows.map((row) => {
+    const normalized: Record<string, unknown> = Object.assign({}, row);
     for (const col of columns) {
       if (!(col.key in normalized)) {
         normalized[col.key] = defaultCellValue(col);
@@ -101,11 +101,46 @@ function getFilteredSelectOptions(
   return options.filter((opt) => !opt.childOf || opt.childOf === filterValue);
 }
 
+function serializeRowKeyValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => serializeRowKeyValue(entry)).join('|');
+  }
+
+  try {
+    return JSON.stringify(value) ?? '';
+  } catch {
+    return '[unserializable]';
+  }
+}
+
 export const TableField = ({ field, value, onChange, disabled }: TableFieldProps) => {
   const isDisabled = disabled ?? false;
 
   const columns = useMemo(() => field.columns ?? [], [field.columns]);
   const rows = useMemo(() => normalizeRows(value ?? [], columns), [value, columns]);
+  const rowEntries = useMemo(() => {
+    const rowOccurrences = new Map<string, number>();
+
+    return rows.map((row) => {
+      const baseKey = columns
+        .map((col) => `${col.key}:${serializeRowKeyValue(row[col.key])}`)
+        .join('||');
+      const occurrence = rowOccurrences.get(baseKey) ?? 0;
+
+      rowOccurrences.set(baseKey, occurrence + 1);
+
+      return {
+        row,
+        key: `${baseKey}::${occurrence}`,
+      };
+    });
+  }, [rows, columns]);
 
   // Use minmax(0, ...) so the grid can shrink inside the settings modal.
   // Use fixed width for delete button column to ensure header/data alignment.
@@ -131,7 +166,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
     columns.forEach((col) => {
       newRow[col.key] = defaultCellValue(col);
     });
-    onChange([...(rows ?? []), newRow]);
+    onChange([...rows, newRow]);
   };
 
   const removeRow = (rowIndex: number) => {
@@ -218,9 +253,9 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
       </div>
 
       <div className="min-w-0 space-y-3">
-        {rows.map((row, rowIndex) => (
+        {rowEntries.map(({ row, key: rowKey }, rowIndex) => (
           <div
-            key={rowIndex}
+            key={rowKey}
             className={`grid grid-cols-1 ${gridTemplate} min-w-0 items-start gap-3`}
             style={{ overflow: 'visible' }}
           >

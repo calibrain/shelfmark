@@ -10,6 +10,21 @@ interface TagListFieldProps {
   requiredTags?: string[]; // Tags that cannot be removed
 }
 
+function createTagEntries(tags: string[]): Array<{ key: string; tag: string; tagIndex: number }> {
+  const tagCounts = new Map<string, number>();
+
+  return tags.map((tag, tagIndex) => {
+    const nextCount = (tagCounts.get(tag) ?? 0) + 1;
+    tagCounts.set(tag, nextCount);
+
+    return {
+      key: nextCount === 1 ? tag : `${tag}-${nextCount}`,
+      tag,
+      tagIndex,
+    };
+  });
+}
+
 function normalizeTag(raw: string, normalizeUrls: boolean): string {
   let s = raw.trim();
   if (!s) return '';
@@ -48,6 +63,7 @@ export const TagListField = ({
   const normalizeUrls = field.normalizeUrls ?? true;
 
   const tags = useMemo(() => (value ?? []).map(String).filter((t) => t.trim() !== ''), [value]);
+  const tagEntries = useMemo(() => createTagEntries(tags), [tags]);
 
   const addFromRaw = (raw: string) => {
     if (isDisabled) return;
@@ -89,9 +105,9 @@ export const TagListField = ({
       className={`w-full rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 text-sm transition-colors focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-500/50 focus-within:outline-hidden ${isDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-text'}`}
     >
       <div className="flex min-h-5 flex-wrap items-center gap-1">
-        {tags.map((tag, idx) => (
+        {tagEntries.map(({ key, tag, tagIndex }) => (
           <span
-            key={`${tag}-${idx}`}
+            key={key}
             className="inline-flex max-w-full items-center gap-1 rounded-md border border-(--border-muted) bg-(--bg) px-2.5 py-1"
             title={tag}
           >
@@ -101,7 +117,7 @@ export const TagListField = ({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  removeAt(idx);
+                  removeAt(tagIndex);
                 }}
                 className="rounded-sm p-0.5 hover:bg-(--hover-surface)"
                 aria-label={`Remove ${tag}`}

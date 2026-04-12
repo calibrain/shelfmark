@@ -8,6 +8,20 @@ interface ActionButtonProps {
   disabled?: boolean;
 }
 
+function createDetailEntries(details: string[]): Array<{ key: string; detail: string }> {
+  const detailCounts = new Map<string, number>();
+
+  return details.map((detail) => {
+    const nextCount = (detailCounts.get(detail) ?? 0) + 1;
+    detailCounts.set(detail, nextCount);
+
+    return {
+      key: nextCount === 1 ? detail : `${detail}-${nextCount}`,
+      detail,
+    };
+  });
+}
+
 export const ActionButton = ({ field, onAction, disabled }: ActionButtonProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<ActionResult | null>(null);
@@ -83,8 +97,8 @@ export const ActionButton = ({ field, onAction, disabled }: ActionButtonProps) =
           <p>{result.message}</p>
           {Array.isArray(result.details) && result.details.length > 0 && (
             <ul className="mt-2 list-disc space-y-1 pl-5 text-xs opacity-90">
-              {result.details.map((detail, index) => (
-                <li key={`${detail}-${index}`}>{detail}</li>
+              {createDetailEntries(result.details).map(({ key, detail }) => (
+                <li key={key}>{detail}</li>
               ))}
             </ul>
           )}

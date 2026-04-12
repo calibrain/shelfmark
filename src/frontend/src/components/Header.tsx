@@ -68,6 +68,18 @@ interface HeaderProps {
   activeQueryField?: MetadataSearchField | null;
 }
 
+const applyTheme = (preference: string): void => {
+  const effective =
+    preference === 'auto'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light'
+      : preference;
+
+  document.documentElement.setAttribute('data-theme', effective);
+  document.documentElement.style.colorScheme = effective;
+};
+
 export const Header = forwardRef<HeaderHandle, HeaderProps>(
   (
     {
@@ -271,17 +283,6 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
         document.removeEventListener('keydown', handleEscapeKey);
       };
     }, [isDropdownOpen, isClosing]);
-
-    const applyTheme = (pref: string) => {
-      const effective =
-        pref === 'auto'
-          ? window.matchMedia('(prefers-color-scheme: dark)').matches
-            ? 'dark'
-            : 'light'
-          : pref;
-      document.documentElement.setAttribute('data-theme', effective);
-      document.documentElement.style.colorScheme = effective;
-    };
 
     const handleLogout = () => {
       closeDropdown();

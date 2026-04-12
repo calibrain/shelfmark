@@ -49,10 +49,10 @@ export const CardView = ({
     }
   };
 
-  const handleGetReleases = async (book: Book) => {
+  const handleGetReleases = async (selectedBook: Book) => {
     setIsLoadingReleases(true);
     try {
-      await onGetReleases(book);
+      await onGetReleases(selectedBook);
     } finally {
       setIsLoadingReleases(false);
     }

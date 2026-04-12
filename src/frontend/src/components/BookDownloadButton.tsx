@@ -117,7 +117,7 @@ export const BookDownloadButton = ({
     setIsQueuing(true);
     try {
       await onDownload();
-    } catch (error) {
+    } catch {
       setIsQueuing(false);
       return;
     }

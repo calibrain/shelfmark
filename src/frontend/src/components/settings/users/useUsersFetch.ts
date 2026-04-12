@@ -143,9 +143,12 @@ export const useUsersFetch = ({ onShowToast }: UseUsersFetchParams) => {
     let deliveryPreferences: DeliveryPreferencesResponse | null = null;
     let searchPreferences: DeliveryPreferencesResponse | null = null;
     let notificationPreferences: DeliveryPreferencesResponse | null = null;
-    let userSettings = {
-      ...(fullUser.settings || {}),
-    } as PerUserSettings;
+    let userSettings = {} as PerUserSettings;
+    if (fullUser.settings) {
+      userSettings = {
+        ...fullUser.settings,
+      } as PerUserSettings;
+    }
     let userOverridableSettings = new Set<string>();
 
     const [deliveryResult, searchResult, notificationResult] = await Promise.allSettled([
@@ -156,28 +159,34 @@ export const useUsersFetch = ({ onShowToast }: UseUsersFetchParams) => {
 
     if (deliveryResult.status === 'fulfilled') {
       deliveryPreferences = deliveryResult.value;
-      userSettings = {
-        ...userSettings,
-        ...(deliveryResult.value.userOverrides || {}),
-      } as PerUserSettings;
+      if (deliveryResult.value.userOverrides) {
+        userSettings = {
+          ...userSettings,
+          ...deliveryResult.value.userOverrides,
+        } as PerUserSettings;
+      }
       deliveryResult.value.keys.forEach((key) => userOverridableSettings.add(key));
     }
 
     if (searchResult.status === 'fulfilled') {
       searchPreferences = searchResult.value;
-      userSettings = {
-        ...userSettings,
-        ...(searchResult.value.userOverrides || {}),
-      } as PerUserSettings;
+      if (searchResult.value.userOverrides) {
+        userSettings = {
+          ...userSettings,
+          ...searchResult.value.userOverrides,
+        } as PerUserSettings;
+      }
       searchResult.value.keys.forEach((key) => userOverridableSettings.add(key));
     }
 
     if (notificationResult.status === 'fulfilled') {
       notificationPreferences = notificationResult.value;
-      userSettings = {
-        ...userSettings,
-        ...(notificationResult.value.userOverrides || {}),
-      } as PerUserSettings;
+      if (notificationResult.value.userOverrides) {
+        userSettings = {
+          ...userSettings,
+          ...notificationResult.value.userOverrides,
+        } as PerUserSettings;
+      }
       notificationResult.value.keys.forEach((key) => userOverridableSettings.add(key));
     }
 

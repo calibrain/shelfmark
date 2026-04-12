@@ -84,6 +84,34 @@ const testNotificationActionField: ActionButtonConfig = {
   style: 'primary',
 };
 
+const normalizeRouteEvents = (rawEventValue: unknown): string[] => {
+  const rawValues = Array.isArray(rawEventValue)
+    ? rawEventValue
+    : rawEventValue === undefined || rawEventValue === null
+      ? []
+      : [rawEventValue];
+
+  const deduped = new Set<string>();
+  rawValues.forEach((rawEvent) => {
+    const event = toNormalizedLowercaseTextValue(rawEvent);
+    if (!ALLOWED_ROUTE_EVENTS.has(event)) {
+      return;
+    }
+    deduped.add(event);
+  });
+
+  if (deduped.has(ROUTE_EVENT_ALL)) {
+    return [ROUTE_EVENT_ALL];
+  }
+
+  return Array.from(deduped).toSorted((a, b) => {
+    return (
+      (ROUTE_EVENT_ORDER.get(a) ?? Number.MAX_SAFE_INTEGER) -
+      (ROUTE_EVENT_ORDER.get(b) ?? Number.MAX_SAFE_INTEGER)
+    );
+  });
+};
+
 function normalizeRoutesValue(value: unknown): Array<Record<string, unknown>> {
   if (!Array.isArray(value)) {
     return [{ event: [ROUTE_EVENT_ALL], url: '' }];
@@ -91,34 +119,6 @@ function normalizeRoutesValue(value: unknown): Array<Record<string, unknown>> {
 
   const normalized: Array<Record<string, unknown>> = [];
   const seen = new Set<string>();
-
-  const normalizeRouteEvents = (rawEventValue: unknown): string[] => {
-    const rawValues = Array.isArray(rawEventValue)
-      ? rawEventValue
-      : rawEventValue === undefined || rawEventValue === null
-        ? []
-        : [rawEventValue];
-
-    const deduped = new Set<string>();
-    rawValues.forEach((rawEvent) => {
-      const event = toNormalizedLowercaseTextValue(rawEvent);
-      if (!ALLOWED_ROUTE_EVENTS.has(event)) {
-        return;
-      }
-      deduped.add(event);
-    });
-
-    if (deduped.has(ROUTE_EVENT_ALL)) {
-      return [ROUTE_EVENT_ALL];
-    }
-
-    return Array.from(deduped).sort((a, b) => {
-      return (
-        (ROUTE_EVENT_ORDER.get(a) ?? Number.MAX_SAFE_INTEGER) -
-        (ROUTE_EVENT_ORDER.get(b) ?? Number.MAX_SAFE_INTEGER)
-      );
-    });
-  };
 
   value.forEach((row) => {
     if (!isRecord(row)) {

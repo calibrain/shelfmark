@@ -155,6 +155,8 @@ interface ReleaseModalProps {
   combinedMode?: CombinedModeConfig | null;
 }
 
+const STAR_POSITIONS = [0, 1, 2, 3, 4] as const;
+
 // 5-star rating display with partial fill support
 function StarRating({ rating, maxRating = 5 }: { rating: number; maxRating?: number }) {
   // Normalize rating to 0-5 scale if needed
@@ -162,11 +164,11 @@ function StarRating({ rating, maxRating = 5 }: { rating: number; maxRating?: num
 
   return (
     <div className="flex items-center gap-0.5" title={`${rating} out of ${maxRating}`}>
-      {[...Array(5)].map((_, index) => {
-        const fillPercentage = Math.min(Math.max((normalizedRating - index) * 100, 0), 100);
+      {STAR_POSITIONS.map((starPosition) => {
+        const fillPercentage = Math.min(Math.max((normalizedRating - starPosition) * 100, 0), 100);
 
         return (
-          <div key={index} className="relative h-4 w-4">
+          <div key={starPosition} className="relative h-4 w-4">
             {/* Empty star (gray background) */}
             <svg
               className="absolute inset-0 h-4 w-4 text-zinc-300 dark:text-zinc-600"
@@ -1250,7 +1252,7 @@ export const ReleaseModal = ({
         }
       });
     });
-    return Array.from(formats).sort();
+    return Array.from(formats).toSorted();
   }, [releasesBySource, activeTab, effectiveFormats]);
 
   // Build select options for format filter
@@ -1279,7 +1281,7 @@ export const ReleaseModal = ({
         indexers.add(r.indexer);
       }
     });
-    return Array.from(indexers).sort();
+    return Array.from(indexers).toSorted();
   }, [releasesBySource, activeTab]);
 
   // Resolve language filter to actual language codes for filtering
@@ -1510,11 +1512,11 @@ export const ReleaseModal = ({
       }
       // Check in-progress states
       if (currentStatus.downloading && currentStatus.downloading[releaseId]) {
-        const book = currentStatus.downloading[releaseId];
+        const downloadingBook = currentStatus.downloading[releaseId];
         return {
           text: 'Downloading',
           state: 'downloading',
-          progress: book.progress,
+          progress: downloadingBook.progress,
         };
       }
       if (currentStatus.locating && currentStatus.locating[releaseId]) {

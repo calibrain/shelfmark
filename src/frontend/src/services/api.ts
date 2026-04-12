@@ -145,16 +145,17 @@ async function fetchJSON<T>(
   const controller = new AbortController();
   const timeoutId =
     timeoutMs && timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  const headers = new Headers(opts.headers);
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
 
   try {
     const res = await fetch(url, {
       ...opts,
       credentials: 'include', // Enable cookies for session
       signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...opts.headers,
-      },
+      headers,
     });
 
     if (!res.ok) {
@@ -393,11 +394,17 @@ const parseBookTargetOptions = (raw: unknown): BookTargetOption[] => {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
-    .map((item) => ({
-      ...parseBaseOption(item),
-      checked: item.checked === true,
-      writable: item.writable !== false,
-    }))
+    .map((item) => {
+      const baseOption = parseBaseOption(item);
+      return {
+        value: baseOption.value,
+        label: baseOption.label,
+        group: baseOption.group,
+        description: baseOption.description,
+        checked: item.checked === true,
+        writable: item.writable !== false,
+      };
+    })
     .filter((option) => option.value !== '');
 };
 

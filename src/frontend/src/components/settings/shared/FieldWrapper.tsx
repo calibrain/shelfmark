@@ -123,6 +123,22 @@ const RestartRequiredBadge = () => (
   </span>
 );
 
+function formatUserOverrideValue(value: unknown): string {
+  if (value === null || value === undefined) return '(empty)';
+  if (typeof value === 'string') return value || '(empty)';
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+  if (typeof value === 'symbol') {
+    return value.description ?? value.toString();
+  }
+  try {
+    return JSON.stringify(value) ?? '(empty)';
+  } catch {
+    return '[unserializable value]';
+  }
+}
+
 const UserOverriddenBadge = ({
   count,
   details = [],
@@ -130,22 +146,6 @@ const UserOverriddenBadge = ({
   count: number;
   details?: Array<{ userId: number; username: string; value: unknown }>;
 }) => {
-  const formatValue = (value: unknown): string => {
-    if (value === null || value === undefined) return '(empty)';
-    if (typeof value === 'string') return value || '(empty)';
-    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
-      return String(value);
-    }
-    if (typeof value === 'symbol') {
-      return value.description ?? value.toString();
-    }
-    try {
-      return JSON.stringify(value) ?? '(empty)';
-    } catch {
-      return '[unserializable value]';
-    }
-  };
-
   const visibleDetails = details.slice(0, 10);
   const extraCount = Math.max(details.length - visibleDetails.length, 0);
 
@@ -154,7 +154,7 @@ const UserOverriddenBadge = ({
       {visibleDetails.map((entry) => (
         <div key={entry.userId} className="text-[11px] leading-snug">
           <span className="font-medium">{entry.username}</span>
-          <span className="opacity-70">: {formatValue(entry.value)}</span>
+          <span className="opacity-70">: {formatUserOverrideValue(entry.value)}</span>
         </div>
       ))}
       {extraCount > 0 && <div className="text-[11px] opacity-70">and {extraCount} more...</div>}

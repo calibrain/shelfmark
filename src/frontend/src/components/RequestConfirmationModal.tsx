@@ -23,6 +23,22 @@ interface RequestConfirmationModalProps {
   onClose: () => void;
 }
 
+const getRequestConfirmationPreviewSignature = (
+  preview: RequestConfirmationPreview,
+  payload: CreateRequestPayload,
+): string => {
+  return [
+    payload.context.request_level,
+    payload.context.content_type,
+    payload.context.source,
+    preview.title,
+    preview.author,
+    preview.year,
+    preview.seriesLine,
+    preview.releaseLine,
+  ].join('|');
+};
+
 export const RequestConfirmationModal = ({
   payload,
   extraPayloads = [],
@@ -81,8 +97,21 @@ export const RequestConfirmationModal = ({
     return payload ? buildRequestConfirmationPreview(payload) : null;
   }, [payload]);
 
-  const extraPreviews = useMemo(() => {
-    return extraPayloads.map(buildRequestConfirmationPreview);
+  const extraPreviewEntries = useMemo(() => {
+    const signatureCounts = new Map<string, number>();
+
+    return extraPayloads.map((extraPayload) => {
+      const preview = buildRequestConfirmationPreview(extraPayload);
+      const signature = getRequestConfirmationPreviewSignature(preview, extraPayload);
+      const nextCount = (signatureCounts.get(signature) ?? 0) + 1;
+      signatureCounts.set(signature, nextCount);
+
+      return {
+        key: nextCount === 1 ? signature : `${signature}|${nextCount}`,
+        payload: extraPayload,
+        preview,
+      };
+    });
   }, [extraPayloads]);
 
   const [enriched, setEnriched] = useState<RequestConfirmationPreview | null>(null);
@@ -221,11 +250,11 @@ export const RequestConfirmationModal = ({
                   </div>
                 )}
                 {/* Release lines — show all (primary + extras) with content type labels when combined */}
-                {(preview.releaseLine || extraPreviews.length > 0) && (
+                {(preview.releaseLine || extraPreviewEntries.length > 0) && (
                   <div className="mt-1.5 space-y-0.5">
                     {preview.releaseLine && (
                       <p className="text-xs opacity-60">
-                        {extraPreviews.length > 0 && (
+                        {extraPreviewEntries.length > 0 && (
                           <span className="font-medium opacity-80">
                             {payload.context.content_type === 'ebook' ? 'Book: ' : 'Audiobook: '}
                           </span>
@@ -233,16 +262,16 @@ export const RequestConfirmationModal = ({
                         {preview.releaseLine}
                       </p>
                     )}
-                    {extraPreviews.map(
-                      (ep, i) =>
-                        ep.releaseLine && (
-                          <p key={i} className="text-xs opacity-60">
+                    {extraPreviewEntries.map(
+                      ({ key, payload: extraPayload, preview: extraPreview }) =>
+                        extraPreview.releaseLine && (
+                          <p key={key} className="text-xs opacity-60">
                             <span className="font-medium opacity-80">
-                              {extraPayloads[i]?.context.content_type === 'ebook'
+                              {extraPayload.context.content_type === 'ebook'
                                 ? 'Book: '
                                 : 'Audiobook: '}
                             </span>
-                            {ep.releaseLine}
+                            {extraPreview.releaseLine}
                           </p>
                         ),
                     )}

@@ -93,6 +93,21 @@ interface DisplayFieldBadgeProps {
   className?: string;
 }
 
+const getKeyedDisplayFields = (fields: DisplayField[]) => {
+  const signatureCounts = new Map<string, number>();
+
+  return fields.map((field) => {
+    const signature = [field.icon ?? 'none', field.label, field.value].join('|');
+    const nextCount = (signatureCounts.get(signature) ?? 0) + 1;
+    signatureCounts.set(signature, nextCount);
+
+    return {
+      field,
+      key: nextCount === 1 ? signature : `${signature}|${nextCount}`,
+    };
+  });
+};
+
 export function DisplayFieldBadge({ field, className = '' }: DisplayFieldBadgeProps) {
   return (
     <span
@@ -113,10 +128,12 @@ interface DisplayFieldBadgesProps {
 export function DisplayFieldBadges({ fields, className = '' }: DisplayFieldBadgesProps) {
   if (!fields || fields.length === 0) return null;
 
+  const keyedFields = getKeyedDisplayFields(fields);
+
   return (
     <div className={`flex flex-wrap gap-1.5 ${className}`}>
-      {fields.map((field, idx) => (
-        <DisplayFieldBadge key={idx} field={field} />
+      {keyedFields.map(({ field, key }) => (
+        <DisplayFieldBadge key={key} field={field} />
       ))}
     </div>
   );

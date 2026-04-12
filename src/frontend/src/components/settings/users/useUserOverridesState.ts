@@ -16,7 +16,7 @@ interface ApplyUserOverridesContextParams {
 const normalizeUserSettings = (settings: PerUserSettings): PerUserSettings => {
   const normalized: PerUserSettings = {};
   Object.keys(settings)
-    .sort()
+    .toSorted()
     .forEach((key) => {
       const typedKey = key as keyof PerUserSettings;
       const value = settings[typedKey];

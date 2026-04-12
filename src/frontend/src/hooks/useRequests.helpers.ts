@@ -45,7 +45,7 @@ export const upsertRequestRecord = (
 ): RequestRecord[] => {
   const index = records.findIndex((record) => record.id === updated.id);
   if (index === -1) {
-    return [updated, ...records].sort(
+    return [updated, ...records].toSorted(
       (left, right) => Date.parse(right.created_at) - Date.parse(left.created_at),
     );
   }

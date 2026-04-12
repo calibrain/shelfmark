@@ -343,7 +343,7 @@ export const ActivitySidebar = ({
       });
     });
 
-    return items.sort((left, right) => right.timestamp - left.timestamp);
+    return items.toSorted((left, right) => right.timestamp - left.timestamp);
   }, [dismissedKeySet, status]);
 
   const visibleRequestItems = useMemo(
@@ -439,7 +439,7 @@ export const ActivitySidebar = ({
 
   const allItems = useMemo(() => {
     const combined = dedupeById([...mergedDownloadItems, ...mergedRequestItems]);
-    return combined.sort((a, b) => b.timestamp - a.timestamp);
+    return combined.toSorted((a, b) => b.timestamp - a.timestamp);
   }, [mergedDownloadItems, mergedRequestItems]);
 
   const baseVisibleItems =
@@ -475,7 +475,7 @@ export const ActivitySidebar = ({
       }
     });
 
-    return Array.from(userMap.values()).sort((left, right) => left.localeCompare(right));
+    return Array.from(userMap.values()).toSorted((left, right) => left.localeCompare(right));
   }, [baseVisibleItems]);
 
   useEffect(() => {
@@ -587,7 +587,7 @@ export const ActivitySidebar = ({
       .map((key) => ({
         key,
         label: getCategoryLabel(key, isAdmin),
-        items: (grouped.get(key) || []).sort((left, right) => right.timestamp - left.timestamp),
+        items: (grouped.get(key) ?? []).toSorted((left, right) => right.timestamp - left.timestamp),
       }))
       .filter((group) => group.items.length > 0);
   }, [activeTab, isAdmin, visibleItems, visibleCategoryOrder]);
@@ -673,12 +673,12 @@ export const ActivitySidebar = ({
                 align="right"
                 widthClassName="w-auto"
                 panelClassName="min-w-44"
-                renderTrigger={({ isOpen, toggle }) => (
+                renderTrigger={({ isOpen: isDropdownOpen, toggle }) => (
                   <button
                     type="button"
                     onClick={toggle}
                     className={`hover-action inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
-                      isOpen || selectedUser !== ALL_USERS_FILTER
+                      isDropdownOpen || selectedUser !== ALL_USERS_FILTER
                         ? 'text-sky-600 dark:text-sky-400'
                         : ''
                     }`}
@@ -692,7 +692,7 @@ export const ActivitySidebar = ({
                         ? 'Filter by user'
                         : `Filtered by user ${selectedUser}`
                     }
-                    aria-expanded={isOpen}
+                    aria-expanded={isDropdownOpen}
                   >
                     <svg
                       className="h-5 w-5"
@@ -975,9 +975,9 @@ export const ActivitySidebar = ({
                           onRequestDismiss={onRequestDismiss}
                           onRequestReject={
                             showRequestActions && onRequestReject
-                              ? (requestId) => {
+                              ? (nextRequestId) => {
                                   setReviewingRequestId(null);
-                                  setRejectingRequest({ requestId });
+                                  setRejectingRequest({ requestId: nextRequestId });
                                 }
                               : undefined
                           }
@@ -986,8 +986,8 @@ export const ActivitySidebar = ({
                           isSelected={shouldShowRequestReview || shouldShowRejectDialog}
                           onRequestReviewApprove={
                             onRequestApprove
-                              ? async (requestId, record, options) => {
-                                  await onRequestApprove(requestId, record, options);
+                              ? async (approvedRequestId, record, options) => {
+                                  await onRequestApprove(approvedRequestId, record, options);
                                   setReviewingRequestId(null);
                                 }
                               : undefined
@@ -996,8 +996,8 @@ export const ActivitySidebar = ({
                           onRequestRejectClose={() => setRejectingRequest(null)}
                           onRequestRejectConfirm={
                             onRequestReject
-                              ? async (requestId, adminNote) => {
-                                  await onRequestReject(requestId, adminNote);
+                              ? async (rejectedRequestId, adminNote) => {
+                                  await onRequestReject(rejectedRequestId, adminNote);
                                   setRejectingRequest(null);
                                 }
                               : undefined
