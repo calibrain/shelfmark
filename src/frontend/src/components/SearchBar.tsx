@@ -14,6 +14,7 @@ import {
 import { useSearchMode } from '../contexts/SearchModeContext';
 import { DynamicFieldOption, fetchFieldOptions } from '../services/api';
 import { ContentType, MetadataSearchField, QueryTargetOption, SortOption } from '../types';
+import { loadDynamicFieldOptions } from '../utils/dynamicFieldOptions';
 import { Tooltip } from './shared/Tooltip';
 
 interface SearchBarProps {
@@ -333,7 +334,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       let cancelled = false;
       setIsDynamicLoading(true);
 
-      fetchFieldOptions(dynamicEndpoint)
+      loadDynamicFieldOptions(dynamicEndpoint)
         .then((loaded) => {
           if (cancelled) return;
           setDynamicOptions(

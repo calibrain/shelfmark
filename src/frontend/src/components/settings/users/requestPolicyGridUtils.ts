@@ -95,7 +95,7 @@ export const normalizeRequestPolicyMatrixMode = (
 const toRuleKey = (source: string, contentType: RequestPolicyContentType) =>
   `${source}::${contentType}`;
 
-export const sortRules = (rules: RequestPolicyRuleRow[]): RequestPolicyRuleRow[] =>
+const sortRules = (rules: RequestPolicyRuleRow[]): RequestPolicyRuleRow[] =>
   rules.toSorted((a, b) => {
     const sourceCmp = a.source.localeCompare(b.source);
     if (sourceCmp !== 0) return sourceCmp;
@@ -139,10 +139,7 @@ export const normalizeRequestPolicyRules = (rawRules: unknown): RequestPolicyRul
   return sortRules(Array.from(byKey.values()));
 };
 
-export const capPolicyMode = (
-  mode: RequestPolicyMode,
-  ceiling: RequestPolicyMode,
-): RequestPolicyMode => {
+const capPolicyMode = (mode: RequestPolicyMode, ceiling: RequestPolicyMode): RequestPolicyMode => {
   return MODE_RANK[mode] < MODE_RANK[ceiling] ? ceiling : mode;
 };
 

@@ -6,10 +6,6 @@ export const isStringArray = (value: unknown): value is string[] => {
   return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
 };
 
-export const isRecordArray = (value: unknown): value is Record<string, unknown>[] => {
-  return Array.isArray(value) && value.every(isRecord);
-};
-
 export const toStringValue = (value: unknown): string | undefined => {
   if (typeof value === 'string') {
     return value;
@@ -33,10 +29,6 @@ export const toBooleanValue = (value: unknown): boolean | undefined => {
 
 export const toStringArray = (value: unknown): string[] | undefined => {
   return isStringArray(value) ? value : undefined;
-};
-
-export const toRecordArray = (value: unknown): Record<string, unknown>[] | undefined => {
-  return isRecordArray(value) ? value : undefined;
 };
 
 export const toComparableText = (value: unknown): string => {

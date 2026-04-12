@@ -18,7 +18,7 @@ export type ActivityCardAction =
       requestId: number;
     };
 
-export interface ActivityCardBadge {
+interface ActivityCardBadge {
   key: 'download' | 'request' | 'status';
   text: string;
   visualStatus: ActivityVisualStatus;
@@ -26,7 +26,7 @@ export interface ActivityCardBadge {
   progress?: number;
 }
 
-export interface ActivityCardModel {
+interface ActivityCardModel {
   badges: ActivityCardBadge[];
   noteLine?: string;
   actions: ActivityCardAction[];

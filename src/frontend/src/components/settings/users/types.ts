@@ -47,7 +47,7 @@ export type UsersPanelRoute =
   | { kind: 'edit'; userId: number }
   | { kind: 'edit-overrides'; userId: number };
 
-export type AuthSource = AdminUser['auth_source'];
+type AuthSource = AdminUser['auth_source'];
 
 export const AUTH_SOURCE_LABEL: Record<AuthSource, string> = {
   builtin: 'Local',
@@ -66,22 +66,4 @@ export const AUTH_SOURCE_BADGE_CLASSES: Record<AuthSource, string> = {
 export const canCreateLocalUsersForAuthMode = (authMode?: string): boolean => {
   const normalized = (authMode || 'none').toLowerCase();
   return normalized === 'none' || normalized === 'builtin' || normalized === 'oidc';
-};
-
-export const getUsersHeadingDescriptionForAuthMode = (authMode?: string): string => {
-  const normalized = (authMode || 'none').toLowerCase();
-
-  if (normalized === 'builtin') {
-    return 'Create and manage user accounts directly. Passwords are stored locally and users sign in with their username and password.';
-  }
-  if (normalized === 'oidc') {
-    return 'Users sign in through your identity provider. New accounts can be created automatically on first login when auto-provisioning is enabled, or you can pre-create users here and they\u2019ll be linked by email on first sign-in.';
-  }
-  if (normalized === 'proxy') {
-    return 'Users are authenticated by your reverse proxy. Accounts are automatically created on first sign-in. If a local user with a matching username already exists, it will be linked instead.';
-  }
-  if (normalized === 'cwa') {
-    return 'User accounts are synced from your Calibre-Web database. Users are matched by email, and new accounts are created here when new CWA users are found.';
-  }
-  return 'Authentication is disabled. Anyone can access Shelfmark without signing in.';
 };

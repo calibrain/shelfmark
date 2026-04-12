@@ -23,7 +23,7 @@ const normalizeHash = (hash: string | undefined): string => {
   return hash.startsWith('#') ? hash : `#${hash}`;
 };
 
-export const sanitizeReturnTo = (value: string | null | undefined): string | null => {
+const sanitizeReturnTo = (value: string | null | undefined): string | null => {
   if (!value) {
     return null;
   }
@@ -52,7 +52,7 @@ export const sanitizeReturnTo = (value: string | null | undefined): string | nul
   }
 };
 
-export const buildCurrentReturnTo = ({ pathname, search, hash }: LocationLike): string => {
+const buildCurrentReturnTo = ({ pathname, search, hash }: LocationLike): string => {
   return (
     sanitizeReturnTo(`${pathname}${normalizeSearch(search)}${normalizeHash(hash)}`) ||
     DEFAULT_RETURN_TO

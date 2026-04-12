@@ -53,7 +53,6 @@ const API = {
   requests: `${API_BASE}/requests`,
   requestsBatch: `${API_BASE}/requests/batch`,
   adminRequests: `${API_BASE}/admin/requests`,
-  adminRequestCounts: `${API_BASE}/admin/requests/count`,
   activitySnapshot: `${API_BASE}/activity/snapshot`,
   activityDismiss: `${API_BASE}/activity/dismiss`,
   activityDismissMany: `${API_BASE}/activity/dismiss-many`,
@@ -69,14 +68,21 @@ export class AuthenticationError extends Error {
 }
 
 // Custom error class for request timeouts
-export class TimeoutError extends Error {
+class TimeoutError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'TimeoutError';
   }
 }
 
-export class ApiResponseError extends Error {
+type ApiResponseErrorShape = Error & {
+  status: number;
+  code?: string;
+  requiredMode?: string;
+  payload?: Record<string, unknown>;
+};
+
+class ApiResponseError extends Error {
   status: number;
   code?: string;
   requiredMode?: string;
@@ -100,7 +106,7 @@ export class ApiResponseError extends Error {
   }
 }
 
-export const isApiResponseError = (error: unknown): error is ApiResponseError => {
+export const isApiResponseError = (error: unknown): error is ApiResponseErrorShape => {
   return error instanceof ApiResponseError;
 };
 
@@ -243,7 +249,7 @@ interface MetadataSearchResponse {
 }
 
 // Metadata search result with pagination info
-export interface MetadataSearchResult {
+interface MetadataSearchResult {
   books: Book[];
   page: number;
   totalFound: number;
@@ -268,7 +274,7 @@ export interface BookTargetOption {
   writable: boolean;
 }
 
-export interface BookTargetStateResult {
+interface BookTargetStateResult {
   changed: boolean;
   selected: boolean;
   deselectedTarget?: string;
@@ -406,16 +412,6 @@ const parseBookTargetOptions = (raw: unknown): BookTargetOption[] => {
       };
     })
     .filter((option) => option.value !== '');
-};
-
-export const fetchBookTargetOptions = async (
-  provider: string,
-  bookId: string,
-): Promise<BookTargetOption[]> => {
-  const response = await fetchJSON<{ options?: unknown }>(
-    `${API_BASE}/metadata/book/${encodeURIComponent(provider)}/${encodeURIComponent(bookId)}/targets`,
-  );
-  return parseBookTargetOptions(response.options);
 };
 
 export const fetchBookTargetOptionsBatch = async (
@@ -568,20 +564,14 @@ export const getConfig = async (): Promise<AppConfig> => {
   return fetchJSON<AppConfig>(API.config);
 };
 
-export type ListRequestsParams = RequestListParams;
+type ListRequestsParams = RequestListParams;
 
-export interface AdminRequestCounts {
-  pending: number;
-  total: number;
-  by_status: Record<string, number>;
-}
-
-export interface ActivityDismissedItem {
+interface ActivityDismissedItem {
   item_type: 'download' | 'request';
   item_key: string;
 }
 
-export interface ActivitySnapshotResponse {
+interface ActivitySnapshotResponse {
   status: StatusData;
   requests: RequestRecord[];
   dismissed: ActivityDismissedItem[];
@@ -610,15 +600,6 @@ export const fetchRequestPolicy = async (): Promise<RequestPolicyResponse> => {
   return fetchJSON<RequestPolicyResponse>(API.requestPolicy);
 };
 
-export const createRequest = async (
-  payload: CreateRequestPayload,
-): Promise<RequestSubmissionResult> => {
-  return fetchJSON<RequestSubmissionResult>(API.requests, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-};
-
 export const createRequests = async (
   payloads: CreateRequestPayload[],
 ): Promise<RequestSubmissionResult[]> => {
@@ -644,10 +625,6 @@ export const listAdminRequests = async (
 ): Promise<RequestRecord[]> => {
   const url = buildRequestListUrl(API.adminRequests, params);
   return fetchJSON<RequestRecord[]>(url);
-};
-
-export const getAdminRequestCounts = async (): Promise<AdminRequestCounts> => {
-  return fetchJSON<AdminRequestCounts>(API.adminRequestCounts);
 };
 
 export const fulfilAdminRequest = async (
@@ -742,7 +719,7 @@ export interface OnboardingStep {
   optional?: boolean;
 }
 
-export interface OnboardingConfig {
+interface OnboardingConfig {
   steps: OnboardingStep[];
   values: Record<string, unknown>;
   complete: boolean;
@@ -845,7 +822,7 @@ export interface AdminUser {
   settings?: Record<string, unknown>;
 }
 
-export interface SelfUserEditContext {
+interface SelfUserEditContext {
   user: AdminUser;
   deliveryPreferences: DeliveryPreferencesResponse | null;
   searchPreferences: DeliveryPreferencesResponse | null;
@@ -894,7 +871,7 @@ export const deleteAdminUser = async (userId: number): Promise<{ success: boolea
   });
 };
 
-export interface CwaUserSyncResult {
+interface CwaUserSyncResult {
   success: boolean;
   message: string;
   created: number;
@@ -922,21 +899,6 @@ export interface DownloadDefaults {
 
 export const getDownloadDefaults = async (): Promise<DownloadDefaults> => {
   return fetchJSON<DownloadDefaults>(`${API_BASE}/admin/download-defaults`);
-};
-
-export interface BookloreOption {
-  value: string;
-  label: string;
-  childOf?: string;
-}
-
-export interface BookloreOptions {
-  libraries: BookloreOption[];
-  paths: BookloreOption[];
-}
-
-export const getBookloreOptions = async (): Promise<BookloreOptions> => {
-  return fetchJSON<BookloreOptions>(`${API_BASE}/admin/booklore-options`);
 };
 
 export interface DeliveryPreferencesResponse {
@@ -1013,18 +975,18 @@ export const testSelfNotificationPreferences = async (
   }
 };
 
-export interface SettingsOverrideUserDetail {
+interface SettingsOverrideUserDetail {
   userId: number;
   username: string;
   value: unknown;
 }
 
-export interface SettingsOverrideKeySummary {
+interface SettingsOverrideKeySummary {
   count: number;
   users: SettingsOverrideUserDetail[];
 }
 
-export interface SettingsOverridesSummaryResponse {
+interface SettingsOverridesSummaryResponse {
   tab: string;
   keys: Record<string, SettingsOverrideKeySummary>;
 }

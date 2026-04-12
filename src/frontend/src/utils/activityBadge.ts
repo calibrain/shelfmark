@@ -5,7 +5,7 @@ export interface ActivityStatusCounts {
   pendingRequests: number;
 }
 
-export interface ActivityBadgeState {
+interface ActivityBadgeState {
   total: number;
   colorClass: string;
   title: string;

@@ -3,7 +3,7 @@ import { isRecord } from '../utils/objectHelpers';
 
 type RequestUpdateStatus = RequestRecord['status'];
 
-export interface RequestUpdateEventPayload {
+interface RequestUpdateEventPayload {
   request_id: number;
   status: RequestUpdateStatus;
 }

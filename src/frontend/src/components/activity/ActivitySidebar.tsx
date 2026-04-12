@@ -47,7 +47,7 @@ export interface ActivityDismissTarget {
   itemKey: string;
 }
 
-export const ACTIVITY_SIDEBAR_PINNED_STORAGE_KEY = 'activity-sidebar-pinned';
+const ACTIVITY_SIDEBAR_PINNED_STORAGE_KEY = 'activity-sidebar-pinned';
 
 const DOWNLOAD_STATUS_KEYS: DownloadStatusKey[] = [
   'downloading',

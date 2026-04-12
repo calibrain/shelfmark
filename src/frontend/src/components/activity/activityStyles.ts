@@ -26,7 +26,7 @@ export const STATUS_LABELS: Record<ActivityVisualStatus, string> = {
   cancelled: 'Cancelled',
 };
 
-export interface StatusBadgeStyle {
+interface StatusBadgeStyle {
   bg: string;
   text: string;
   waveColor?: string;

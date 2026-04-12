@@ -43,7 +43,7 @@ export const buildMetadataBookRequestData = (book: Book, contentType: ContentTyp
   };
 };
 
-export const buildDirectBookRequestData = (book: Book) => {
+const buildDirectBookRequestData = (book: Book) => {
   const source = getBrowseSource(book);
   return {
     title: book.title || 'Unknown title',

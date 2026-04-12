@@ -65,7 +65,7 @@ import { LanguageMultiSelect } from './LanguageMultiSelect';
 import { ReleaseCell } from './ReleaseCell';
 
 // Combined mode configuration for the ReleaseModal
-export interface CombinedModeConfig {
+interface CombinedModeConfig {
   phase: 'ebook' | 'audiobook';
   stepLabel: string;
   ebookMode: RequestPolicyMode;

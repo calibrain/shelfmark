@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src/",
     "lint:warn": "oxlint --deny warnings src/",
+    "knip": "knip",
+    "knip:prod": "knip --production",
     "format": "oxfmt src/",
     "format:check": "oxfmt --check src/",
     "test:unit": "vitest run"
@@ -22,15 +24,14 @@
     "socket.io-client": "^4.7.5"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.2.2",
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "knip": "^6.4.0",
     "oxfmt": "^0.44.0",
     "oxlint": "^1.59.0",
     "oxlint-tsgolint": "^0.20.0",
-    "postcss": "^8.5.9",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",
     "vite": "^8.0.8",

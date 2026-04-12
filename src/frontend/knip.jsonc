@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+
+  // Keep Knip strict about missing entry/config discovery so false positives
+  // are caught at the config level instead of papered over with ignores.
+  "treatConfigHintsAsErrors": true,
+
+  // This script is intentionally loaded from index.html as a classic script,
+  // so we need to declare it as an entry point manually.
+  "entry": ["public/theme-init.js"]
+}

@@ -220,5 +220,3 @@ export function Tooltip({
     </>
   );
 }
-
-export default Tooltip;

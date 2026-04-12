@@ -7,7 +7,7 @@ type ValueBearingField = Exclude<
   { type: 'ActionButton' } | { type: 'HeadingField' } | { type: 'CustomComponentField' }
 >;
 
-export function getFieldValue(field: SettingsField): unknown {
+function getFieldValue(field: SettingsField): unknown {
   if (
     field.type === 'ActionButton' ||
     field.type === 'HeadingField' ||

@@ -21,7 +21,7 @@ import { withBasePath } from '../utils/basePath';
 import { DropdownList } from './DropdownList';
 import { SearchBar, SearchBarHandle } from './SearchBar';
 
-export interface HeaderHandle {
+interface HeaderHandle {
   submitSearch: () => void;
 }
 

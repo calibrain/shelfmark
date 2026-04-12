@@ -10,8 +10,8 @@ import { UserOverridesSection } from './UserOverridesSection';
 import { UserRequestPolicyOverridesSection } from './UserRequestPolicyOverridesSection';
 import { UserSearchPreferencesSection } from './UserSearchPreferencesSection';
 
-export type UserOverrideScope = 'admin' | 'self';
-export type UserOverrideSectionId = 'delivery' | 'search' | 'notifications' | 'requestPolicy';
+type UserOverrideScope = 'admin' | 'self';
+type UserOverrideSectionId = 'delivery' | 'search' | 'notifications' | 'requestPolicy';
 
 interface UserOverridesSectionsProps {
   scope: UserOverrideScope;

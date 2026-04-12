@@ -81,8 +81,4 @@ export const getCustomSettingsFieldLayout = (
   return definition.getLayout(context);
 };
 
-export type {
-  CustomSettingsFieldLayout,
-  CustomSettingsFieldLayoutContext,
-  CustomSettingsFieldRendererProps,
-} from './types';
+export type { CustomSettingsFieldLayout } from './types';

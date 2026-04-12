@@ -81,27 +81,6 @@ export const getReleaseSearchLanguageParams = (
   return resolved === null ? undefined : resolved;
 };
 
-export const formatDefaultLanguageLabel = (
-  languageCodes: string[],
-  supportedLanguages: Language[],
-): string => {
-  if (!languageCodes || languageCodes.length === 0) {
-    return 'Default (env config)';
-  }
-
-  const languageNames = supportedLanguages
-    .filter((lang) => languageCodes.includes(lang.code))
-    .map((lang) => lang.language);
-
-  if (languageNames.length === 0) {
-    return 'Default (env config)';
-  }
-
-  const joined = languageNames.slice(0, 3).join(', ');
-  const suffix = languageNames.length > 3 ? '…' : '';
-  return `Default (${joined}${suffix})`;
-};
-
 /**
  * Build a mapping from language names to codes for normalization.
  * Handles both directions: "english" -> "en" and "en" -> "en"

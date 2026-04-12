@@ -587,5 +587,3 @@ export const ReleaseCell = ({
     }
   }
 };
-
-export default ReleaseCell;

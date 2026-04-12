@@ -69,10 +69,6 @@ export interface StatusData {
   cancelled?: Record<string, Book>;
 }
 
-export interface ActiveDownloadsResponse {
-  active_downloads: Book[];
-}
-
 // Button states
 export type ButtonState =
   | 'download'
@@ -121,7 +117,7 @@ export interface SortOption {
 }
 
 // Search field types (mirror backend search field types)
-export type SearchFieldType =
+type SearchFieldType =
   | 'TextSearchField'
   | 'NumberSearchField'
   | 'SelectSearchField'

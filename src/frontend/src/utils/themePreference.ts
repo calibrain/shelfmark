@@ -1,7 +1,7 @@
 import { SelectFieldConfig } from '../types/settings';
 
-export const THEME_PREFERENCE_KEY = 'preferred-theme';
-export const DEFAULT_THEME_PREFERENCE = 'auto';
+const THEME_PREFERENCE_KEY = 'preferred-theme';
+const DEFAULT_THEME_PREFERENCE = 'auto';
 
 export const THEME_FIELD: SelectFieldConfig = {
   type: 'SelectField',
@@ -24,7 +24,7 @@ export function getStoredThemePreference(): string {
   }
 }
 
-export function applyThemePreference(theme: string): void {
+function applyThemePreference(theme: string): void {
   const effectiveTheme =
     theme === 'auto'
       ? window.matchMedia('(prefers-color-scheme: dark)').matches

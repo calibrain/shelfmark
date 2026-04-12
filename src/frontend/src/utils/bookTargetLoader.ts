@@ -41,7 +41,7 @@ const setCache = (provider: string, bookId: string, options: BookTargetOption[])
   cache.set(cacheKey(provider, bookId), { options, expiresAt: Date.now() + CACHE_TTL_MS });
 };
 
-export const invalidateCache = (provider: string, bookId: string) => {
+const invalidateCache = (provider: string, bookId: string) => {
   cache.delete(cacheKey(provider, bookId));
 };
 

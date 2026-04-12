@@ -446,7 +446,7 @@ interface UserEditFieldsProps {
   deleting?: boolean;
 }
 
-export const UserEditFields = ({
+const UserEditFields = ({
   user,
   onUserChange,
   onSave,

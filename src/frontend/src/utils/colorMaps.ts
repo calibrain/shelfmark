@@ -106,7 +106,7 @@ export function getLanguageColor(language?: string): ColorStyle {
   return LANGUAGE_COLORS[language.toLowerCase()] || DEFAULT_LANGUAGE_COLOR;
 }
 
-export function getDownloadTypeColor(downloadType?: string): ColorStyle {
+function getDownloadTypeColor(downloadType?: string): ColorStyle {
   if (!downloadType || downloadType === '-') return FALLBACK_COLOR;
   return DOWNLOAD_TYPE_COLORS[downloadType.toLowerCase()] || DEFAULT_DOWNLOAD_TYPE_COLOR;
 }
@@ -120,12 +120,12 @@ export function getProtocolDotColor(protocol?: string): string {
   return 'bg-gray-400';
 }
 
-export function getContentTypeColor(contentType?: string): ColorStyle {
+function getContentTypeColor(contentType?: string): ColorStyle {
   if (!contentType || contentType === '-') return FALLBACK_COLOR;
   return CONTENT_TYPE_COLORS[contentType.toLowerCase()] || DEFAULT_CONTENT_TYPE_COLOR;
 }
 
-export function getFlagColor(flag?: string): ColorStyle {
+function getFlagColor(flag?: string): ColorStyle {
   if (!flag || flag === '-') return FALLBACK_COLOR;
   const normalized = flag.trim().toLowerCase();
   if (!normalized) return FALLBACK_COLOR;
@@ -173,5 +173,3 @@ export function getColorStyleFromHint(
 
   return FALLBACK_COLOR;
 }
-
-export type { ColorStyle };

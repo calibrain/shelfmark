@@ -18,17 +18,17 @@ const capModeToCeiling = (
   return MODE_RANK[mode] < MODE_RANK[ceiling] ? ceiling : mode;
 };
 
-export interface RefreshPolicyOptions {
+interface RefreshPolicyOptions {
   enabled: boolean;
   isAdmin: boolean;
   force?: boolean;
 }
 
-export const normalizeContentType = (value: string): ContentType => {
+const normalizeContentType = (value: string): ContentType => {
   return value.trim().toLowerCase() === 'audiobook' ? 'audiobook' : 'ebook';
 };
 
-export const normalizeSource = (value: string): string => {
+const normalizeSource = (value: string): string => {
   const source = value.trim().toLowerCase();
   return source || '*';
 };

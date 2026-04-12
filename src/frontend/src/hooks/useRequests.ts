@@ -15,7 +15,6 @@ import {
   normalizeRequestUpdatePayload,
   upsertRequestRecord,
 } from './useRequests.helpers';
-import type { RequestUpdateEventPayload } from './useRequests.helpers';
 
 interface UseRequestsOptions {
   isAdmin: boolean;
@@ -23,7 +22,7 @@ interface UseRequestsOptions {
   pollIntervalMs?: number;
 }
 
-export interface UseRequestsReturn {
+interface UseRequestsReturn {
   requests: RequestRecord[];
   pendingCount: number;
   isLoading: boolean;
@@ -299,6 +298,3 @@ export const useRequests = ({
     rejectRequest,
   };
 };
-
-export type { RequestUpdateEventPayload };
-export { upsertRequestRecord, applyRequestUpdateEvent };

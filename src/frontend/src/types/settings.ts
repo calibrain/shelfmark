@@ -230,6 +230,3 @@ export interface UpdateResult {
   requiresRestart?: boolean; // True if any updated setting requires a restart
   restartRequiredFor?: string[]; // Keys of settings that require restart
 }
-
-// Form values type - maps field keys to their values
-export type SettingsValues = Record<string, Record<string, unknown>>;

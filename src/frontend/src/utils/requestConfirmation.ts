@@ -10,7 +10,7 @@ const toText = (value: unknown, fallback: string): string => {
   return fallback;
 };
 
-export const formatSourceLabel = (value: unknown): string => {
+const formatSourceLabel = (value: unknown): string => {
   const source = (toStringValue(value) ?? '').trim();
   if (!source) {
     return 'Unknown source';
