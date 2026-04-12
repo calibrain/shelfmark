@@ -14,6 +14,7 @@ from shelfmark.core.notifications import (
     notify_user,
 )
 from shelfmark.core.request_helpers import (
+    attach_release_metadata_provenance,
     coerce_bool,
     coerce_int,
     emit_ws_event,
@@ -593,7 +594,10 @@ def _queue_prepared_download_submission(
         raise RequestServiceError(msg, status_code=404)
 
     success, error = queue_release(
-        dict(release_data),
+        attach_release_metadata_provenance(
+            dict(release_data),
+            book_data=create_args.get("book_data"),
+        ),
         0,
         user_id=create_args["user_id"],
         username=requester.get("username"),
