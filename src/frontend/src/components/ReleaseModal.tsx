@@ -718,6 +718,12 @@ export const ReleaseModal = ({
   const combinedAudiobookMode = combinedMode?.audiobookMode ?? null;
   const stagedEbookRelease = combinedMode?.stagedEbookRelease ?? null;
   const stagedAudiobookRelease = combinedMode?.stagedAudiobookRelease ?? null;
+  let stagedReleaseForPhase: Release | null = null;
+  if (combinedPhase === 'ebook') {
+    stagedReleaseForPhase = stagedEbookRelease;
+  } else if (combinedPhase === 'audiobook') {
+    stagedReleaseForPhase = stagedAudiobookRelease;
+  }
   const onCombinedNext = combinedMode?.onNext;
   const onCombinedBack = combinedMode?.onBack;
   const onCombinedDownload = combinedMode?.onDownload;
@@ -729,6 +735,47 @@ export const ReleaseModal = ({
 
   // Active tab (source name)
   const [activeTab, setActiveTab] = useState('');
+  const allTabs = useMemo(() => {
+    type TabInfo = { name: string; displayName: string; enabled: boolean };
+
+    const enabledTabs: TabInfo[] = [];
+    const providerContextSourceName =
+      availableSources.find(
+        (source) => source.name === book?.provider && source.browse_results_are_releases,
+      )?.name || null;
+
+    // Filter to only enabled sources that support this content type
+    availableSources.forEach((src) => {
+      if (providerContextSourceName && src.name !== providerContextSourceName) {
+        return;
+      }
+
+      const allowDisabledProviderContextTab = providerContextSourceName === src.name;
+      // Skip disabled sources entirely, except the source that owns the current browse record.
+      if (!src.enabled && !allowDisabledProviderContextTab) {
+        return;
+      }
+
+      // Check if source supports the current content type
+      const supportedTypes = src.supported_content_types || ['ebook', 'audiobook'];
+      if (!supportedTypes.includes(contentType)) {
+        return;
+      }
+
+      enabledTabs.push({ name: src.name, displayName: src.display_name, enabled: true });
+    });
+
+    // Sort so default source appears first
+    if (preferredDefaultReleaseSource) {
+      enabledTabs.sort((a, b) => {
+        if (a.name === preferredDefaultReleaseSource) return -1;
+        if (b.name === preferredDefaultReleaseSource) return 1;
+        return 0;
+      });
+    }
+
+    return enabledTabs;
+  }, [availableSources, book?.provider, preferredDefaultReleaseSource, contentType]);
 
   // Track if book summary has scrolled out of view
   const [showHeaderThumb, setShowHeaderThumb] = useState(false);
@@ -772,6 +819,36 @@ export const ReleaseModal = ({
   const [descriptionOverflows, setDescriptionOverflows] = useState(false);
   const descriptionRef = useRef<HTMLParagraphElement>(null);
   const activeBookId = book?.id;
+  const [appliedCombinedSelection, setAppliedCombinedSelection] = useState<{
+    bookId: Book['id'] | null;
+    phase: CombinedModeConfig['phase'] | null;
+    release: Release | null;
+  }>({
+    bookId: null,
+    phase: null,
+    release: null,
+  });
+  const nextActiveTab = allTabs.some((tab) => tab.name === activeTab)
+    ? activeTab
+    : (allTabs[0]?.name ?? '');
+
+  if (activeTab !== nextActiveTab) {
+    setActiveTab(nextActiveTab);
+  }
+
+  if (
+    isCombinedMode &&
+    (appliedCombinedSelection.bookId !== (activeBookId ?? null) ||
+      appliedCombinedSelection.phase !== combinedPhase ||
+      appliedCombinedSelection.release !== stagedReleaseForPhase)
+  ) {
+    setSelectedRelease(stagedReleaseForPhase);
+    setAppliedCombinedSelection({
+      bookId: activeBookId ?? null,
+      phase: combinedPhase,
+      release: stagedReleaseForPhase,
+    });
+  }
 
   useEffect(() => {
     if (!activeBookId || !onPolicyRefresh) {
@@ -806,15 +883,6 @@ export const ReleaseModal = ({
     }
   }, [book, onRequestBook, isRequestingBook, contentType, handleClose]);
 
-  // Restore staged selection when navigating between phases
-  useEffect(() => {
-    if (combinedPhase === 'ebook' && stagedEbookRelease) {
-      setSelectedRelease(stagedEbookRelease);
-    } else if (combinedPhase === 'audiobook' && stagedAudiobookRelease) {
-      setSelectedRelease(stagedAudiobookRelease);
-    }
-  }, [combinedPhase, stagedEbookRelease, stagedAudiobookRelease]);
-
   // Reset modal state when book changes to prevent stale data
   useEffect(() => {
     setDescriptionExpanded(false);
@@ -828,8 +896,8 @@ export const ReleaseModal = ({
     setLanguageFilter([LANGUAGE_OPTION_DEFAULT]);
     setIndexerFilter([]);
     indexerFilterInitializedRef.current = new Set();
-    // Don't clear selectedRelease here — the combinedPhase effect handles it
-    // (restoring the staged ebook selection when going back)
+    // Don't clear selectedRelease here — combined-mode selection is restored
+    // during render from the current staged phase release when needed.
     const baseTitle = book?.search_title || book?.title || '';
     const baseAuthor = book?.search_author || book?.author || '';
     const defaultQuery = `${baseTitle} ${baseAuthor}`.trim();
@@ -990,46 +1058,6 @@ export const ReleaseModal = ({
     return undefined;
   }, [book]);
 
-  // Pick default active tab when sources or content type changes (synchronous, no flash)
-  useEffect(() => {
-    if (availableSources.length === 0) return;
-
-    const providerContextSource = availableSources.find(
-      (source) => source.name === book?.provider && source.browse_results_are_releases,
-    );
-
-    if (providerContextSource) {
-      setActiveTab(providerContextSource.name);
-      return;
-    }
-
-    const supportedSources = availableSources.filter((s) => {
-      const types = s.supported_content_types || ['ebook', 'audiobook'];
-      return types.includes(contentType);
-    });
-
-    if (supportedSources.length > 0) {
-      const enabledSources = supportedSources.filter((s) => s.enabled);
-      const defaultIsEnabled =
-        preferredDefaultReleaseSource &&
-        enabledSources.some((s) => s.name === preferredDefaultReleaseSource);
-
-      let defaultSource: string;
-      if (defaultIsEnabled) {
-        defaultSource = preferredDefaultReleaseSource;
-      } else if (enabledSources.length > 0) {
-        defaultSource = enabledSources[0].name;
-      } else {
-        defaultSource = supportedSources[0].name;
-      }
-      setActiveTab(defaultSource);
-    } else if (availableSources.length > 0) {
-      setActiveTab(availableSources[0].name);
-    } else {
-      setActiveTab('');
-    }
-  }, [availableSources, book?.provider, preferredDefaultReleaseSource, contentType]);
-
   // Fetch releases when active tab changes (with caching)
   // Initial fetch always uses ISBN-first search; expansion is handled by handleExpandSearch
   useEffect(() => {
@@ -1161,51 +1189,6 @@ export const ReleaseModal = ({
     indexerFilter,
     releasesBySource,
   ]);
-
-  // Build list of tabs to show
-  // Only show enabled sources that support the current content type
-  // Order: default source first, then other enabled sources
-  const allTabs = useMemo(() => {
-    type TabInfo = { name: string; displayName: string; enabled: boolean };
-
-    const enabledTabs: TabInfo[] = [];
-    const providerContextSourceName =
-      availableSources.find(
-        (source) => source.name === book?.provider && source.browse_results_are_releases,
-      )?.name || null;
-
-    // Filter to only enabled sources that support this content type
-    availableSources.forEach((src) => {
-      if (providerContextSourceName && src.name !== providerContextSourceName) {
-        return;
-      }
-
-      const allowDisabledProviderContextTab = providerContextSourceName === src.name;
-      // Skip disabled sources entirely, except the source that owns the current browse record.
-      if (!src.enabled && !allowDisabledProviderContextTab) {
-        return;
-      }
-
-      // Check if source supports the current content type
-      const supportedTypes = src.supported_content_types || ['ebook', 'audiobook'];
-      if (!supportedTypes.includes(contentType)) {
-        return;
-      }
-
-      enabledTabs.push({ name: src.name, displayName: src.display_name, enabled: true });
-    });
-
-    // Sort so default source appears first
-    if (preferredDefaultReleaseSource) {
-      enabledTabs.sort((a, b) => {
-        if (a.name === preferredDefaultReleaseSource) return -1;
-        if (b.name === preferredDefaultReleaseSource) return 1;
-        return 0;
-      });
-    }
-
-    return enabledTabs;
-  }, [availableSources, book?.provider, preferredDefaultReleaseSource, contentType]);
 
   // Update tab indicator position when active tab changes
   useEffect(() => {

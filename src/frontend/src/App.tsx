@@ -41,6 +41,7 @@ import {
   retryDownload,
   getConfig,
   getStatus,
+  getAdminUsers,
   getMetadataProviders,
   getMetadataSearchConfig,
   createRequests,
@@ -314,13 +315,13 @@ function App() {
     return types.length > 0 ? types : ['ebook', 'audiobook'];
   }, [requestPolicy, requestRoleIsAdmin, requestsPolicyEnabled, getDefaultMode]);
 
-  // Auto-switch content type if the current selection is blocked
-  useEffect(() => {
-    if (allowedContentTypes.length > 0 && !allowedContentTypes.includes(contentType)) {
-      setContentType(allowedContentTypes[0]);
-      setCombinedMode(false);
-    }
-  }, [allowedContentTypes, contentType]);
+  const effectiveContentType = useMemo(
+    () =>
+      allowedContentTypes.includes(contentType)
+        ? contentType
+        : (allowedContentTypes[0] ?? contentType),
+    [allowedContentTypes, contentType],
+  );
 
   const {
     isLoading: isRequestsLoading,
@@ -468,7 +469,7 @@ function App() {
     setIsAuthenticated,
     authRequired,
     onSearchReset: clearTracking,
-    contentType,
+    contentType: effectiveContentType,
   });
 
   // When a book is removed from the Hardcover list currently being browsed, remove it from results
@@ -491,6 +492,10 @@ function App() {
     CreateRequestPayload[]
   >([]);
   const [actingAsUser, setActingAsUser] = useState<ActingAsUserSelection | null>(null);
+  const [adminUsers, setAdminUsers] = useState<ActingAsUserSelection[]>([]);
+  const [isAdminUsersLoading, setIsAdminUsersLoading] = useState(false);
+  const [adminUsersError, setAdminUsersError] = useState<string | null>(null);
+  const [hasLoadedAdminUsers, setHasLoadedAdminUsers] = useState(false);
   const [pendingOnBehalfDownload, setPendingOnBehalfDownload] =
     useState<PendingOnBehalfDownload | null>(null);
   const [fulfillingRequest, setFulfillingRequest] = useState<{
@@ -498,34 +503,111 @@ function App() {
     book: Book;
     contentType: ContentType;
   } | null>(null);
+  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  const [releaseBook, setReleaseBook] = useState<Book | null>(null);
+  const [activeResultsSort, setActiveResultsSort] = useState('');
+
+  const resetSearchResultsState = useCallback(() => {
+    setBooks([]);
+    setSelectedBook(null);
+    setReleaseBook(null);
+    setActiveResultsSort('');
+    clearTracking();
+  }, [clearTracking, setBooks]);
+
+  const loadAdminUsers = useCallback(async () => {
+    if (!isAuthenticated || !authIsAdmin || !requestRoleIsAdmin) {
+      return;
+    }
+
+    setIsAdminUsersLoading(true);
+    setAdminUsersError(null);
+    try {
+      const users = await getAdminUsers();
+      const nextAdminUsers = users.map((user) => ({
+        id: user.id,
+        username: user.username,
+        displayName: user.display_name,
+      }));
+      const availableNextAdminUsers = nextAdminUsers.filter((user) => {
+        return !username || user.username !== username;
+      });
+
+      setAdminUsers(nextAdminUsers);
+      setHasLoadedAdminUsers(true);
+
+      if (actingAsUser && !availableNextAdminUsers.some((user) => user.id === actingAsUser.id)) {
+        setActingAsUser(null);
+        setPendingOnBehalfDownload(null);
+      }
+    } catch (error) {
+      console.error('Failed to load admin users:', error);
+      setAdminUsersError('Failed to load users');
+    } finally {
+      setIsAdminUsersLoading(false);
+    }
+  }, [actingAsUser, authIsAdmin, isAuthenticated, requestRoleIsAdmin, username]);
+
+  const availableActingAsUsers = useMemo(() => {
+    return adminUsers.filter((user) => !username || user.username !== username);
+  }, [adminUsers, username]);
+
+  const effectiveActingAsUser = useMemo(() => {
+    if (!actingAsUser || !isAuthenticated || !authIsAdmin || !requestRoleIsAdmin) {
+      return null;
+    }
+    if (username && actingAsUser.username === username) {
+      return null;
+    }
+    if (hasLoadedAdminUsers && !isAdminUsersLoading) {
+      return availableActingAsUsers.some((user) => user.id === actingAsUser.id)
+        ? actingAsUser
+        : null;
+    }
+    return actingAsUser;
+  }, [
+    actingAsUser,
+    authIsAdmin,
+    availableActingAsUsers,
+    hasLoadedAdminUsers,
+    isAdminUsersLoading,
+    isAuthenticated,
+    requestRoleIsAdmin,
+    username,
+  ]);
+
+  const effectivePendingOnBehalfDownload = useMemo(() => {
+    if (!pendingOnBehalfDownload || !effectiveActingAsUser) {
+      return null;
+    }
+
+    if (pendingOnBehalfDownload.actingAsUser.id !== effectiveActingAsUser.id) {
+      return null;
+    }
+
+    return {
+      ...pendingOnBehalfDownload,
+      actingAsUser: effectiveActingAsUser,
+    };
+  }, [effectiveActingAsUser, pendingOnBehalfDownload]);
 
   // Wire up logout callback to clear search state
   const handleLogoutWithCleanup = useCallback(async () => {
     await handleLogout();
-    setBooks([]);
-    clearTracking();
+    resetSearchResultsState();
     setActiveQueryTarget('general');
     setPendingRequestPayload(null);
     setPendingRequestExtraPayloads([]);
     setActingAsUser(null);
+    setAdminUsers([]);
+    setAdminUsersError(null);
+    setHasLoadedAdminUsers(false);
     setPendingOnBehalfDownload(null);
     setFulfillingRequest(null);
     resetActivity();
     setSettingsOpen(false);
     setSelfSettingsOpen(false);
-  }, [handleLogout, setBooks, clearTracking, resetActivity]);
-
-  useEffect(() => {
-    if (isAuthenticated && authIsAdmin) {
-      return;
-    }
-    setActingAsUser(null);
-    setPendingOnBehalfDownload(null);
-  }, [isAuthenticated, authIsAdmin]);
-
-  // UI state
-  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-  const [releaseBook, setReleaseBook] = useState<Book | null>(null);
+  }, [handleLogout, resetActivity, resetSearchResultsState]);
 
   // Combined mode state (ebook + audiobook in one transaction)
   const [combinedMode, setCombinedMode] = useState(initialContentTypePref.combinedMode);
@@ -540,14 +622,6 @@ function App() {
     }
   }, [contentType, combinedMode]);
 
-  // Clear combined state when combined mode is turned off
-  // (combinedModeAllowed guard is in a separate effect below, after effectiveSearchMode is declared)
-  useEffect(() => {
-    if (!combinedMode) {
-      setCombinedState(null);
-    }
-  }, [combinedMode]);
-
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [metadataProviders, setMetadataProviders] = useState<MetadataProviderSummary[]>([]);
   const [configuredMetadataProvider, setConfiguredMetadataProvider] = useState<string | null>(null);
@@ -561,7 +635,6 @@ function App() {
     null,
   );
   const [activeQueryTarget, setActiveQueryTarget] = useState('general');
-  const [activeResultsSort, setActiveResultsSort] = useState('');
   const [downloadsSidebarOpen, setDownloadsSidebarOpen] = useState(false);
   const [sidebarPinnedOpen, setSidebarPinnedOpen] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(0);
@@ -753,11 +826,17 @@ function App() {
           getConfig(),
           getMetadataProviders(),
         ]);
+        const nextCombinedModeAllowed =
+          cfg.search_mode === 'universal' &&
+          (cfg.show_combined_selector ?? true) &&
+          getDefaultMode('ebook') !== 'blocked' &&
+          getDefaultMode('audiobook') !== 'blocked';
+        const nextEffectiveCombinedMode = combinedMode && nextCombinedModeAllowed;
         const activeConfiguredProvider =
-          combinedMode && metadataProviderState.configured_provider_combined
+          nextEffectiveCombinedMode && metadataProviderState.configured_provider_combined
             ? metadataProviderState.configured_provider_combined
             : getConfiguredMetadataProviderForContentType({
-                contentType,
+                contentType: effectiveContentType,
                 configuredMetadataProvider: metadataProviderState.configured_provider,
                 configuredAudiobookMetadataProvider:
                   metadataProviderState.configured_provider_audiobook,
@@ -767,7 +846,7 @@ function App() {
         if (cfg.search_mode === 'universal') {
           try {
             nextMetadataConfig = await getMetadataSearchConfig(
-              contentType,
+              effectiveContentType,
               activeConfiguredProvider ?? undefined,
             );
           } catch (metadataConfigError) {
@@ -786,9 +865,7 @@ function App() {
 
         // Check if search mode changed (only on settings save)
         if (mode === 'settings-saved' && prevSearchModeRef.current !== cfg.search_mode) {
-          setBooks([]);
-          setSelectedBook(null);
-          clearTracking();
+          resetSearchResultsState();
         }
 
         prevSearchModeRef.current = cfg.search_mode;
@@ -834,7 +911,13 @@ function App() {
         console.error('Failed to load config:', error);
       }
     },
-    [clearTracking, combinedMode, contentType, setAdvancedFilters, setBooks],
+    [
+      combinedMode,
+      effectiveContentType,
+      getDefaultMode,
+      resetSearchResultsState,
+      setAdvancedFilters,
+    ],
   );
 
   // Fetch config when authenticated
@@ -854,21 +937,14 @@ function App() {
     const audiobookMode = getDefaultMode('audiobook');
     return ebookMode !== 'blocked' && audiobookMode !== 'blocked';
   }, [effectiveSearchMode, config?.show_combined_selector, getDefaultMode]);
-
-  // Auto-disable combined mode if policy changes make it unavailable
-  // Skip while config is still loading to avoid resetting localStorage-restored state
-  useEffect(() => {
-    if (!config) return;
-    if (combinedMode && !combinedModeAllowed) {
-      setCombinedMode(false);
-    }
-  }, [config, combinedMode, combinedModeAllowed]);
+  const effectiveCombinedMode = combinedMode && combinedModeAllowed;
+  const effectiveCombinedState = effectiveCombinedMode ? combinedState : null;
 
   const defaultMetadataProviderForContentType =
-    combinedMode && configuredCombinedMetadataProvider
+    effectiveCombinedMode && configuredCombinedMetadataProvider
       ? configuredCombinedMetadataProvider
       : getConfiguredMetadataProviderForContentType({
-          contentType,
+          contentType: effectiveContentType,
           configuredMetadataProvider,
           configuredAudiobookMetadataProvider,
         });
@@ -892,16 +968,10 @@ function App() {
       resolvedMetadataSortOptions,
     ],
   );
-  const prevMetadataSortContextRef = useRef('');
 
   // Non-admins in universal mode have nothing in the advanced panel
   const hasAdvancedContent = requestRoleIsAdmin || effectiveSearchMode === 'direct';
-
-  useEffect(() => {
-    if (!hasAdvancedContent && showAdvanced) {
-      setShowAdvanced(false);
-    }
-  }, [hasAdvancedContent, showAdvanced, setShowAdvanced]);
+  const effectiveShowAdvanced = hasAdvancedContent ? showAdvanced : false;
 
   useEffect(() => {
     let isMounted = true;
@@ -916,7 +986,7 @@ function App() {
     const loadMetadataConfig = async () => {
       try {
         const nextConfig = await getMetadataSearchConfig(
-          contentType,
+          effectiveContentType,
           effectiveMetadataProvider ?? undefined,
         );
         if (isMounted) {
@@ -935,57 +1005,7 @@ function App() {
     return () => {
       isMounted = false;
     };
-  }, [isAuthenticated, effectiveSearchMode, contentType, effectiveMetadataProvider]);
-
-  useEffect(() => {
-    if (effectiveSearchMode !== 'universal') {
-      prevMetadataSortContextRef.current = '';
-      return;
-    }
-
-    const metadataSortContext = [
-      contentType,
-      effectiveMetadataProvider ?? '',
-      resolvedMetadataDefaultSort,
-      resolvedMetadataSortOptions.map((option) => option.value).join(','),
-    ].join('::');
-    const contextChanged =
-      prevMetadataSortContextRef.current !== '' &&
-      prevMetadataSortContextRef.current !== metadataSortContext;
-    const nextSort = contextChanged
-      ? resolvedMetadataDefaultSort
-      : getEffectiveMetadataSort({
-          currentSort: advancedFilters.sort,
-          defaultSort: resolvedMetadataDefaultSort,
-          sortOptions: resolvedMetadataSortOptions,
-        });
-
-    prevMetadataSortContextRef.current = metadataSortContext;
-
-    if (nextSort !== advancedFilters.sort) {
-      setAdvancedFilters((prev) => ({ ...prev, sort: nextSort }));
-    }
-  }, [
-    advancedFilters.sort,
-    contentType,
-    effectiveMetadataProvider,
-    effectiveSearchMode,
-    resolvedMetadataDefaultSort,
-    resolvedMetadataSortOptions,
-    setAdvancedFilters,
-  ]);
-
-  const prevEffectiveSearchModeRef = useRef<SearchMode>(effectiveSearchMode);
-  useEffect(() => {
-    if (prevEffectiveSearchModeRef.current !== effectiveSearchMode) {
-      setBooks([]);
-      setSelectedBook(null);
-      setReleaseBook(null);
-      setActiveResultsSort('');
-      clearTracking();
-      prevEffectiveSearchModeRef.current = effectiveSearchMode;
-    }
-  }, [effectiveSearchMode, setBooks, clearTracking]);
+  }, [isAuthenticated, effectiveSearchMode, effectiveContentType, effectiveMetadataProvider]);
 
   const runSearchWithPolicyRefresh = useCallback(
     (opts: {
@@ -1208,7 +1228,7 @@ function App() {
     (
       payload: CreateRequestPayload,
       extraPayloads: CreateRequestPayload[] = [],
-      onBehalfOfUserId: number | undefined = actingAsUser?.id,
+      onBehalfOfUserId: number | undefined = effectiveActingAsUser?.id,
     ) => {
       const applyOnBehalf = (requestPayload: CreateRequestPayload): CreateRequestPayload => {
         if (typeof onBehalfOfUserId !== 'number') {
@@ -1223,7 +1243,7 @@ function App() {
       setPendingRequestPayload(applyOnBehalf(payload));
       setPendingRequestExtraPayloads(extraPayloads.map(applyOnBehalf));
     },
-    [actingAsUser?.id],
+    [effectiveActingAsUser?.id],
   );
 
   const handleConfirmRequest = useCallback(
@@ -1258,8 +1278,8 @@ function App() {
   );
 
   const getUniversalDefaultPolicyMode = useCallback((): RequestPolicyMode => {
-    return getDefaultMode(contentType);
-  }, [getDefaultMode, contentType]);
+    return getDefaultMode(effectiveContentType);
+  }, [effectiveContentType, getDefaultMode]);
 
   const getCombinedSelectionPhases = useCallback(
     (state: Pick<CombinedSelectionState, 'ebookMode' | 'audiobookMode'>): ContentType[] => {
@@ -1599,25 +1619,25 @@ function App() {
   );
 
   const handleConfirmOnBehalfDownload = useCallback(async (): Promise<boolean> => {
-    if (!pendingOnBehalfDownload) {
+    if (!effectivePendingOnBehalfDownload) {
       return true;
     }
 
-    const onBehalfOfUserId = pendingOnBehalfDownload.actingAsUser.id;
+    const onBehalfOfUserId = effectivePendingOnBehalfDownload.actingAsUser.id;
     try {
-      if (pendingOnBehalfDownload.type === 'book') {
-        await executeBookDownload(pendingOnBehalfDownload.book, onBehalfOfUserId);
-      } else if (pendingOnBehalfDownload.type === 'combined') {
+      if (effectivePendingOnBehalfDownload.type === 'book') {
+        await executeBookDownload(effectivePendingOnBehalfDownload.book, onBehalfOfUserId);
+      } else if (effectivePendingOnBehalfDownload.type === 'combined') {
         await executeCombinedAction(
-          pendingOnBehalfDownload.book,
-          pendingOnBehalfDownload.combinedState,
+          effectivePendingOnBehalfDownload.book,
+          effectivePendingOnBehalfDownload.combinedState,
           onBehalfOfUserId,
         );
       } else {
         await executeReleaseDownload(
-          pendingOnBehalfDownload.book,
-          pendingOnBehalfDownload.release,
-          pendingOnBehalfDownload.releaseContentType,
+          effectivePendingOnBehalfDownload.book,
+          effectivePendingOnBehalfDownload.release,
+          effectivePendingOnBehalfDownload.releaseContentType,
           onBehalfOfUserId,
         );
       }
@@ -1626,7 +1646,12 @@ function App() {
     } catch {
       return false;
     }
-  }, [executeBookDownload, executeCombinedAction, executeReleaseDownload, pendingOnBehalfDownload]);
+  }, [
+    effectivePendingOnBehalfDownload,
+    executeBookDownload,
+    executeCombinedAction,
+    executeReleaseDownload,
+  ]);
 
   // Direct-mode action (download or release-level request based on policy).
   const handleDownload = async (book: Book): Promise<void> => {
@@ -1677,11 +1702,11 @@ function App() {
       return;
     }
 
-    if (actingAsUser) {
+    if (effectiveActingAsUser) {
       setPendingOnBehalfDownload({
         type: 'book',
         book,
-        actingAsUser,
+        actingAsUser: effectiveActingAsUser,
       });
       return;
     }
@@ -1713,7 +1738,7 @@ function App() {
   // Universal-mode "Get" action (open releases, request-book, or block by policy).
   const handleGetReleases = async (book: Book) => {
     let mode = getUniversalDefaultPolicyMode();
-    const normalizedContentType = toContentType(contentType);
+    const normalizedContentType = toContentType(effectiveContentType);
     policyTrace('universal.get:start', {
       bookId: book.id,
       contentType: normalizedContentType,
@@ -1723,7 +1748,7 @@ function App() {
     try {
       const latestPolicy = await refreshRequestPolicy({ force: true });
       const effectiveIsAdmin = latestPolicy?.is_admin ?? requestRoleIsAdmin;
-      mode = resolveDefaultModeFromPolicy(latestPolicy, effectiveIsAdmin, contentType);
+      mode = resolveDefaultModeFromPolicy(latestPolicy, effectiveIsAdmin, effectiveContentType);
       policyTrace('universal.get:resolved', {
         bookId: book.id,
         contentType: normalizedContentType,
@@ -1749,7 +1774,7 @@ function App() {
     }
 
     // Combined mode is only available when both default content types are accessible.
-    if (combinedMode) {
+    if (effectiveCombinedMode) {
       const latestPolicy2 = await refreshRequestPolicy({ force: true }).catch(() => null);
       const effectiveIsAdmin2 = latestPolicy2?.is_admin ?? requestRoleIsAdmin;
       const ebookMode = resolveDefaultModeFromPolicy(latestPolicy2, effectiveIsAdmin2, 'ebook');
@@ -1846,13 +1871,13 @@ function App() {
       contentType: toContentType(releaseContentType),
     });
 
-    if (actingAsUser) {
+    if (effectiveActingAsUser) {
       setPendingOnBehalfDownload({
         type: 'release',
         book,
         release,
         releaseContentType,
-        actingAsUser,
+        actingAsUser: effectiveActingAsUser,
       });
       return;
     }
@@ -1935,12 +1960,12 @@ function App() {
               stagedAudiobook: release,
             };
 
-      if (actingAsUser) {
+      if (effectiveActingAsUser) {
         setPendingOnBehalfDownload({
           type: 'combined',
           book: releaseBook,
           combinedState: nextCombinedState,
-          actingAsUser,
+          actingAsUser: effectiveActingAsUser,
         });
         setCombinedState(null);
         setReleaseBook(null);
@@ -1951,7 +1976,7 @@ function App() {
       setCombinedState(null);
       setReleaseBook(null);
     },
-    [actingAsUser, combinedState, executeCombinedAction, releaseBook],
+    [combinedState, effectiveActingAsUser, executeCombinedAction, releaseBook],
   );
 
   const handleRequestCancel = useCallback(
@@ -2134,17 +2159,17 @@ function App() {
       }),
     [effectiveSearchMode, activeMetadataConfig?.search_fields, manualSearchAllowed],
   );
-
-  useEffect(() => {
-    setActiveQueryTarget((prev) => {
-      if (queryTargets.some((target) => target.key === prev)) return prev;
-      return getDefaultQueryTargetKey(queryTargets);
-    });
-  }, [queryTargets]);
+  const effectiveActiveQueryTarget = useMemo(() => {
+    if (queryTargets.some((target) => target.key === activeQueryTarget)) {
+      return activeQueryTarget;
+    }
+    return getDefaultQueryTargetKey(queryTargets);
+  }, [queryTargets, activeQueryTarget]);
 
   const activeQueryOption = useMemo(
-    () => queryTargets.find((target) => target.key === activeQueryTarget) ?? queryTargets[0],
-    [queryTargets, activeQueryTarget],
+    () =>
+      queryTargets.find((target) => target.key === effectiveActiveQueryTarget) ?? queryTargets[0],
+    [queryTargets, effectiveActiveQueryTarget],
   );
 
   const activeQueryField = activeQueryOption?.field ?? null;
@@ -2266,6 +2291,7 @@ function App() {
 
   const handleSearchModeChange = useCallback(
     (nextMode: SearchMode) => {
+      resetSearchResultsState();
       setConfig((prev) => (prev ? { ...prev, search_mode: nextMode } : prev));
       if (nextMode !== 'universal') {
         setCombinedMode(false);
@@ -2274,29 +2300,29 @@ function App() {
         .then(() => loadConfig('settings-saved'))
         .catch((err) => console.error('Failed to save search mode:', err));
     },
-    [loadConfig],
+    [loadConfig, resetSearchResultsState],
   );
 
   const handleMetadataProviderChange = useCallback(
     (provider: string) => {
-      if (combinedMode) {
+      if (effectiveCombinedMode) {
         setConfiguredCombinedMetadataProvider(provider);
-      } else if (contentType === 'audiobook') {
+      } else if (effectiveContentType === 'audiobook') {
         setConfiguredAudiobookMetadataProvider(provider);
       } else {
         setConfiguredMetadataProvider(provider);
       }
       let key = 'METADATA_PROVIDER';
-      if (combinedMode) {
+      if (effectiveCombinedMode) {
         key = 'METADATA_PROVIDER_COMBINED';
-      } else if (contentType === 'audiobook') {
+      } else if (effectiveContentType === 'audiobook') {
         key = 'METADATA_PROVIDER_AUDIOBOOK';
       }
       updateSelfUser({ settings: { [key]: provider } })
         .then(() => loadConfig('settings-saved'))
         .catch((err) => console.error('Failed to save metadata provider:', err));
     },
-    [combinedMode, contentType, loadConfig],
+    [effectiveCombinedMode, effectiveContentType, loadConfig],
   );
 
   const buildCurrentSearchRequest = useCallback(
@@ -2476,12 +2502,6 @@ function App() {
     setReleaseBook(syntheticBook);
   }, [searchInput]);
 
-  useEffect(() => {
-    if (!manualSearchAllowed && activeQueryTarget === 'manual') {
-      setActiveQueryTarget(getDefaultQueryTargetKey(queryTargets));
-    }
-  }, [manualSearchAllowed, activeQueryTarget, queryTargets]);
-
   // Unified search dispatch: intercepts manual search mode, otherwise runs normal search
   const handleSearchDispatch = useCallback(() => {
     if (activeQueryOption?.source === 'manual') {
@@ -2520,16 +2540,18 @@ function App() {
   const isBrowseFulfilMode = fulfillingRequest !== null;
   const activeReleaseBook = fulfillingRequest?.book ?? releaseBook;
   const activeReleaseContentType =
-    fulfillingRequest?.contentType ?? combinedState?.phase ?? contentType;
-  const combinedSelectionPhases = combinedState ? getCombinedSelectionPhases(combinedState) : [];
-  const combinedCurrentStep = combinedState
-    ? combinedSelectionPhases.indexOf(combinedState.phase) + 1
+    fulfillingRequest?.contentType ?? effectiveCombinedState?.phase ?? effectiveContentType;
+  const combinedSelectionPhases = effectiveCombinedState
+    ? getCombinedSelectionPhases(effectiveCombinedState)
+    : [];
+  const combinedCurrentStep = effectiveCombinedState
+    ? combinedSelectionPhases.indexOf(effectiveCombinedState.phase) + 1
     : 0;
-  const combinedIsFinalStep = combinedState
-    ? combinedSelectionPhases[combinedSelectionPhases.length - 1] === combinedState.phase
+  const combinedIsFinalStep = effectiveCombinedState
+    ? combinedSelectionPhases[combinedSelectionPhases.length - 1] === effectiveCombinedState.phase
     : false;
-  const combinedHasPreviousStep = combinedState
-    ? combinedSelectionPhases.indexOf(combinedState.phase) > 0
+  const combinedHasPreviousStep = effectiveCombinedState
+    ? combinedSelectionPhases.indexOf(effectiveCombinedState.phase) > 0
     : false;
   const usePinnedMainScrollContainer = sidebarPinnedOpen;
 
@@ -2543,16 +2565,21 @@ function App() {
   }, [isBrowseFulfilMode]);
 
   let pendingOnBehalfTitle = '';
-  if (pendingOnBehalfDownload) {
-    if (pendingOnBehalfDownload.type === 'book' || pendingOnBehalfDownload.type === 'combined') {
-      pendingOnBehalfTitle = pendingOnBehalfDownload.book.title || 'Untitled';
+  if (effectivePendingOnBehalfDownload) {
+    if (
+      effectivePendingOnBehalfDownload.type === 'book' ||
+      effectivePendingOnBehalfDownload.type === 'combined'
+    ) {
+      pendingOnBehalfTitle = effectivePendingOnBehalfDownload.book.title || 'Untitled';
     } else {
       pendingOnBehalfTitle =
-        pendingOnBehalfDownload.release.title || pendingOnBehalfDownload.book.title || 'Untitled';
+        effectivePendingOnBehalfDownload.release.title ||
+        effectivePendingOnBehalfDownload.book.title ||
+        'Untitled';
     }
   }
-  const pendingOnBehalfUserName = pendingOnBehalfDownload
-    ? formatActingAsUserName(pendingOnBehalfDownload.actingAsUser)
+  const pendingOnBehalfUserName = effectivePendingOnBehalfDownload
+    ? formatActingAsUserName(effectivePendingOnBehalfDownload.actingAsUser)
     : '';
 
   const mainAppContent = (
@@ -2583,8 +2610,13 @@ function App() {
           canAccessSettings={isAuthenticated}
           username={username}
           displayName={displayName}
-          actingAsUser={actingAsUser}
+          actingAsUser={effectiveActingAsUser}
           onActingAsUserChange={setActingAsUser}
+          adminUsers={availableActingAsUsers}
+          isAdminUsersLoading={isAdminUsersLoading}
+          adminUsersError={adminUsersError}
+          hasLoadedAdminUsers={hasLoadedAdminUsers}
+          onLoadAdminUsers={loadAdminUsers}
           statusCounts={statusCounts}
           onLogoClick={() => {
             handleResetSearch(config);
@@ -2597,18 +2629,20 @@ function App() {
             void handleLogoutWithCleanup();
           }}
           onSearch={handleSearchDispatch}
-          onAdvancedToggle={hasAdvancedContent ? () => setShowAdvanced(!showAdvanced) : undefined}
-          isAdvancedActive={showAdvanced}
+          onAdvancedToggle={
+            hasAdvancedContent ? () => setShowAdvanced(!effectiveShowAdvanced) : undefined
+          }
+          isAdvancedActive={effectiveShowAdvanced}
           isLoading={isSearching}
           onShowToast={showToast}
           onRemoveToast={removeToast}
-          contentType={contentType}
+          contentType={effectiveContentType}
           onContentTypeChange={setContentType}
           allowedContentTypes={allowedContentTypes}
-          combinedMode={combinedMode}
+          combinedMode={effectiveCombinedMode}
           onCombinedModeChange={combinedModeAllowed ? setCombinedMode : undefined}
           queryTargets={queryTargets}
-          activeQueryTarget={activeQueryTarget}
+          activeQueryTarget={effectiveActiveQueryTarget}
           onQueryTargetChange={setActiveQueryTarget}
           activeQueryField={activeQueryField}
         />
@@ -2632,7 +2666,7 @@ function App() {
         }
       >
         <AdvancedFilters
-          visible={showAdvanced && !isInitialState}
+          visible={effectiveShowAdvanced && !isInitialState}
           bookLanguages={bookLanguages}
           defaultLanguage={defaultLanguageCodes}
           filters={advancedFilters}
@@ -2642,13 +2676,13 @@ function App() {
           metadataProviders={metadataProviders}
           activeMetadataProvider={effectiveMetadataProvider}
           onMetadataProviderChange={handleMetadataProviderChange}
-          contentType={contentType}
-          combinedMode={combinedMode}
+          contentType={effectiveContentType}
+          combinedMode={effectiveCombinedMode}
           isAdmin={requestRoleIsAdmin}
           onClose={() => setShowAdvanced(false)}
         />
 
-        {!isInitialState && activeQueryTarget === 'manual' && (
+        {!isInitialState && effectiveActiveQueryTarget === 'manual' && (
           <p className="px-4 pt-2 text-xs opacity-50 sm:px-6 lg:ml-16 lg:px-8">
             Manual search queries release sources directly. Some sources may return limited
             metadata, which can affect file naming templates.
@@ -2674,16 +2708,18 @@ function App() {
             queryValueLabel={activeQueryValueLabel}
             onQueryValueChange={handleActiveQueryValueChange}
             queryTargets={queryTargets}
-            activeQueryTarget={activeQueryTarget}
+            activeQueryTarget={effectiveActiveQueryTarget}
             onQueryTargetChange={setActiveQueryTarget}
-            showAdvanced={showAdvanced}
-            onAdvancedToggle={hasAdvancedContent ? () => setShowAdvanced(!showAdvanced) : undefined}
+            showAdvanced={effectiveShowAdvanced}
+            onAdvancedToggle={
+              hasAdvancedContent ? () => setShowAdvanced(!effectiveShowAdvanced) : undefined
+            }
             advancedFilters={advancedFilters}
             onAdvancedFiltersChange={updateAdvancedFilters}
-            contentType={contentType}
+            contentType={effectiveContentType}
             onContentTypeChange={setContentType}
             allowedContentTypes={allowedContentTypes}
-            combinedMode={combinedMode}
+            combinedMode={effectiveCombinedMode}
             onCombinedModeChange={combinedModeAllowed ? setCombinedMode : undefined}
             activeQueryField={activeQueryField}
             searchMode={effectiveSearchMode}
@@ -2788,14 +2824,14 @@ function App() {
               showReleaseSourceLinks={config?.show_release_source_links !== false}
               onShowToast={showToast}
               combinedMode={
-                combinedState
+                effectiveCombinedState
                   ? {
-                      phase: combinedState.phase,
-                      stepLabel: `Step ${combinedCurrentStep} of ${combinedSelectionPhases.length} — Select ${combinedState.phase === 'ebook' ? 'book' : 'audiobook'}`,
-                      ebookMode: combinedState.ebookMode,
-                      audiobookMode: combinedState.audiobookMode,
-                      stagedEbookRelease: combinedState.stagedEbook?.release ?? null,
-                      stagedAudiobookRelease: combinedState.stagedAudiobook ?? null,
+                      phase: effectiveCombinedState.phase,
+                      stepLabel: `Step ${combinedCurrentStep} of ${combinedSelectionPhases.length} — Select ${effectiveCombinedState.phase === 'ebook' ? 'book' : 'audiobook'}`,
+                      ebookMode: effectiveCombinedState.ebookMode,
+                      audiobookMode: effectiveCombinedState.audiobookMode,
+                      stagedEbookRelease: effectiveCombinedState.stagedEbook?.release ?? null,
+                      stagedAudiobookRelease: effectiveCombinedState.stagedAudiobook ?? null,
                       onNext: !combinedIsFinalStep ? handleCombinedNext : undefined,
                       onBack: combinedHasPreviousStep ? handleCombinedBack : undefined,
                       onDownload: combinedIsFinalStep
@@ -2822,9 +2858,9 @@ function App() {
             />
           )}
 
-          {pendingOnBehalfDownload && (
+          {effectivePendingOnBehalfDownload && (
             <OnBehalfConfirmationModal
-              isOpen={Boolean(pendingOnBehalfDownload)}
+              isOpen={Boolean(effectivePendingOnBehalfDownload)}
               actingAsName={pendingOnBehalfUserName}
               itemTitle={pendingOnBehalfTitle}
               onConfirm={handleConfirmOnBehalfDownload}

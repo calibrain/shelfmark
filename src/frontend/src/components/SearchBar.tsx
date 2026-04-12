@@ -53,6 +53,12 @@ export interface SearchBarHandle {
   submit: () => void;
 }
 
+interface AutocompleteTextState {
+  draftValue: string;
+  fieldKey: string | null;
+  syncedValue: string;
+}
+
 const autocompleteOptionsCache = new Map<string, DynamicFieldOption[]>();
 const AUTOCOMPLETE_CACHE_MAX = 100;
 
@@ -162,6 +168,17 @@ const getClearedValue = (field?: MetadataSearchField | null): string | boolean =
   return '';
 };
 
+const getAutocompleteDisplayValue = (
+  value: string | number | boolean,
+  valueLabel: string | undefined,
+): string => {
+  let nextValue = typeof value === 'string' ? value : String(value ?? '');
+  if (valueLabel && typeof value === 'string' && value.trim() !== '') {
+    nextValue = valueLabel;
+  }
+  return nextValue;
+};
+
 export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
   (
     {
@@ -210,12 +227,10 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
     const [autocompleteOptions, setAutocompleteOptions] = useState<DynamicFieldOption[]>([]);
     const [isAutocompleteLoading, setIsAutocompleteLoading] = useState(false);
     const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
-    const [textInputValue, setTextInputValue] = useState('');
     const selectTriggerRef = useRef<HTMLButtonElement>(null);
     const selectPanelRef = useRef<HTMLDivElement>(null);
     const autocompletePanelRef = useRef<HTMLDivElement>(null);
     const selectorHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const deferredTextInputValue = useDeferredValue(textInputValue);
 
     const hasMultipleContentTypes = !allowedContentTypes || allowedContentTypes.length !== 1;
     const showContentTypeSelector =
@@ -280,6 +295,33 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       activeQueryField?.type === 'TextSearchField'
         ? (activeQueryField.suggestions_min_query_length ?? 2)
         : 2;
+    const autocompleteFieldKey = autocompleteEndpoint ? (activeQueryField?.key ?? null) : null;
+    const externalAutocompleteValue = autocompleteEndpoint
+      ? getAutocompleteDisplayValue(value, valueLabel)
+      : '';
+    const [autocompleteTextState, setAutocompleteTextState] = useState<AutocompleteTextState>(
+      () => ({
+        draftValue: externalAutocompleteValue,
+        fieldKey: autocompleteFieldKey,
+        syncedValue: externalAutocompleteValue,
+      }),
+    );
+    if (
+      autocompleteTextState.fieldKey !== autocompleteFieldKey ||
+      (autocompleteFieldKey !== null &&
+        autocompleteTextState.syncedValue !== externalAutocompleteValue)
+    ) {
+      setAutocompleteTextState({
+        draftValue: externalAutocompleteValue,
+        fieldKey: autocompleteFieldKey,
+        syncedValue: externalAutocompleteValue,
+      });
+    }
+    let textInputValue = autocompleteTextState.draftValue;
+    if (!autocompleteEndpoint) {
+      textInputValue = typeof value === 'string' ? value : String(value ?? '');
+    }
+    const deferredTextInputValue = useDeferredValue(textInputValue);
     let autocompleteEmptyMessage = 'No suggestions found';
     if (activeQueryField?.key === 'author') {
       autocompleteEmptyMessage = 'No authors found';
@@ -316,20 +358,6 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
         cancelled = true;
       };
     }, [dynamicEndpoint]);
-
-    useEffect(() => {
-      if (!autocompleteEndpoint && activeQueryField?.type !== 'TextSearchField') {
-        setTextInputValue(typeof value === 'string' ? value : String(value ?? ''));
-        return;
-      }
-
-      let nextValue = typeof value === 'string' ? value : String(value ?? '');
-      if (autocompleteEndpoint && valueLabel && typeof value === 'string' && value.trim() !== '') {
-        nextValue = valueLabel;
-      }
-
-      setTextInputValue(nextValue);
-    }, [activeQueryField?.key, activeQueryField?.type, autocompleteEndpoint, value, valueLabel]);
 
     useEffect(() => {
       if (!autocompleteEndpoint || !isAutocompleteOpen) {
@@ -427,7 +455,11 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       setIsSelectOpen(false);
       setIsAutocompleteOpen(false);
       setAutocompleteOptions([]);
-      setTextInputValue('');
+      setAutocompleteTextState((current) => ({
+        ...current,
+        draftValue: '',
+        syncedValue: '',
+      }));
       inputRef.current?.focus();
     };
 
@@ -480,10 +512,6 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
     const renderActiveInput = () => {
       if (!activeQueryField || activeQueryField.type === 'TextSearchField') {
         const inputName = activeQueryField ? `${activeQueryField.key}-search` : 'search-input';
-        let resolvedInputValue = typeof value === 'string' ? value : String(value ?? '');
-        if (autocompleteEndpoint) {
-          resolvedInputValue = textInputValue;
-        }
         return (
           <input
             type="search"
@@ -502,11 +530,15 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
               .filter(Boolean)
               .join(' ')}
             style={{ color: 'var(--text)' }}
-            value={resolvedInputValue}
+            value={textInputValue}
             onChange={(e) => {
               const nextValue = e.target.value;
               if (autocompleteEndpoint) {
-                setTextInputValue(nextValue);
+                setAutocompleteTextState((current) => ({
+                  ...current,
+                  draftValue: nextValue,
+                  syncedValue: nextValue,
+                }));
                 setIsAutocompleteOpen(nextValue.trim().length >= autocompleteMinQueryLength);
                 setIsSelectOpen(false);
                 setIsSelectorOpen(false);
@@ -1121,7 +1153,11 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                       role="option"
                       aria-selected={isSelected}
                       onClick={() => {
-                        setTextInputValue(option.label);
+                        setAutocompleteTextState({
+                          draftValue: option.label,
+                          fieldKey: autocompleteFieldKey,
+                          syncedValue: option.label,
+                        });
                         onChange(option.value, option.label);
                         setIsAutocompleteOpen(false);
                         setTimeout(() => onSubmitRef.current(), 0);

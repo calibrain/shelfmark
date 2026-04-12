@@ -150,13 +150,6 @@ export function Tooltip({
   }, [coords, isVisible]);
 
   useEffect(() => {
-    if (!hasContent) {
-      setIsVisible(false);
-      setCoords(null);
-    }
-  }, [hasContent]);
-
-  useEffect(() => {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };

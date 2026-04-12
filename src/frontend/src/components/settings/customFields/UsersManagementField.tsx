@@ -110,6 +110,8 @@ export const UsersManagementField = ({
   };
 
   const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode || 'none');
+  const effectiveRouteKind = route.kind === 'create' && !canCreateLocalUsers ? 'list' : route.kind;
+  const activeEditUserId = route.kind === 'edit' ? route.userId : null;
   const needsLocalAdmin = !users.some((u) => u.role === 'admin' && u.auth_source === 'builtin');
 
   const handleBackToList = () => {
@@ -126,6 +128,9 @@ export const UsersManagementField = ({
   };
 
   const handleCreate = async () => {
+    if (!canCreateLocalUsers) {
+      return;
+    }
     const ok = await createUser();
     if (ok) {
       onRefreshOverrideSummary?.();
@@ -164,15 +169,9 @@ export const UsersManagementField = ({
     backToList();
   };
 
-  useEffect(() => {
-    if (route.kind === 'create' && !canCreateLocalUsers) {
-      backToList();
-    }
-  }, [backToList, canCreateLocalUsers, route.kind]);
-
   useLayoutEffect(() => {
-    onUiStateChange('routeKind', route.kind);
-  }, [onUiStateChange, route.kind]);
+    onUiStateChange('routeKind', effectiveRouteKind);
+  }, [effectiveRouteKind, onUiStateChange]);
 
   const handleSaveUserEdit = useCallback(async () => {
     const ok = await saveEditedUser({ includeSettings: false });
@@ -274,13 +273,16 @@ export const UsersManagementField = ({
       loadError={loadError}
       onRetryLoadUsers={() => void fetchUsers({ force: true })}
       onCreate={() => {
+        if (!canCreateLocalUsers) {
+          return;
+        }
         if (needsLocalAdmin) {
           setCreateForm({ ...createForm, role: 'admin' });
         }
         openCreate();
       }}
       needsLocalAdmin={needsLocalAdmin}
-      showCreateForm={route.kind === 'create'}
+      showCreateForm={effectiveRouteKind === 'create'}
       createForm={createForm}
       onCreateFormChange={setCreateForm}
       creating={creating}
@@ -289,9 +291,9 @@ export const UsersManagementField = ({
         void handleCreate();
       }}
       onCancelCreate={handleCancelCreate}
-      showEditForm={route.kind === 'edit'}
-      activeEditUserId={route.kind === 'edit' ? route.userId : null}
-      editingUser={route.kind === 'edit' ? editingUser : null}
+      showEditForm={effectiveRouteKind === 'edit'}
+      activeEditUserId={activeEditUserId}
+      editingUser={effectiveRouteKind === 'edit' ? editingUser : null}
       onEditingUserChange={setEditingUser}
       onEditSave={() => {
         void handleSaveUserEdit();

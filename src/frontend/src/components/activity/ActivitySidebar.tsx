@@ -270,12 +270,6 @@ export const ActivitySidebar = ({
   );
 
   useEffect(() => {
-    if (!showRequestsTab && activeTab === 'requests') {
-      handleTabChange('all');
-    }
-  }, [showRequestsTab, activeTab, handleTabChange]);
-
-  useEffect(() => {
     if (activeTab === 'downloads') {
       setRejectingRequest(null);
       setReviewingRequestId(null);
@@ -283,6 +277,10 @@ export const ActivitySidebar = ({
   }, [activeTab]);
 
   const isPinnedOpen = isOpen && isDesktop && isPinned;
+  const effectiveActiveTab = !showRequestsTab && activeTab === 'requests' ? 'all' : activeTab;
+  if (effectiveActiveTab !== activeTab) {
+    setActiveTab(effectiveActiveTab);
+  }
 
   useEffect(() => {
     onPinnedOpenChange?.(isPinnedOpen);
@@ -409,9 +407,9 @@ export const ActivitySidebar = ({
   }, [mergedDownloadItems, mergedRequestItems]);
 
   let baseVisibleItems = mergedDownloadItems;
-  if (activeTab === 'all') {
+  if (effectiveActiveTab === 'all') {
     baseVisibleItems = allItems;
-  } else if (activeTab === 'requests') {
+  } else if (effectiveActiveTab === 'requests') {
     baseVisibleItems = mergedRequestItems.filter((item) => {
       const requestStatus = item.requestRecord?.status;
       if (
@@ -423,17 +421,17 @@ export const ActivitySidebar = ({
       }
       return requestStatus === 'fulfilled' && item.kind === 'request';
     });
-  } else if (activeTab === 'history') {
+  } else if (effectiveActiveTab === 'history') {
     baseVisibleItems = historyItems;
   }
-  const isHistoryInitialLoad = activeTab === 'history' && !historyLoaded;
+  const isHistoryInitialLoad = effectiveActiveTab === 'history' && !historyLoaded;
   let emptyStateMessage = 'No activity';
-  if (activeTab === 'requests') {
+  if (effectiveActiveTab === 'requests') {
     emptyStateMessage = isRequestsLoading ? 'Loading requests...' : 'No requests';
-  } else if (activeTab === 'history') {
+  } else if (effectiveActiveTab === 'history') {
     emptyStateMessage =
       historyLoading || isHistoryInitialLoad ? 'Loading history...' : 'No history';
-  } else if (activeTab === 'downloads') {
+  } else if (effectiveActiveTab === 'downloads') {
     emptyStateMessage = 'No downloads';
   }
 
@@ -453,57 +451,49 @@ export const ActivitySidebar = ({
     return Array.from(userMap.values()).toSorted((left, right) => left.localeCompare(right));
   }, [baseVisibleItems]);
 
-  useEffect(() => {
-    if (selectedUser === ALL_USERS_FILTER) {
-      return;
-    }
-    if (!availableUsers.includes(selectedUser)) {
-      setSelectedUser(ALL_USERS_FILTER);
-    }
-  }, [availableUsers, selectedUser]);
+  const effectiveSelectedUser =
+    selectedUser === ALL_USERS_FILTER || availableUsers.includes(selectedUser)
+      ? selectedUser
+      : ALL_USERS_FILTER;
+  if (effectiveSelectedUser !== selectedUser) {
+    setSelectedUser(ALL_USERS_FILTER);
+  }
 
   const visibleItems = useMemo(() => {
-    if (selectedUser === ALL_USERS_FILTER) {
+    if (effectiveSelectedUser === ALL_USERS_FILTER) {
       return baseVisibleItems;
     }
-    return baseVisibleItems.filter((item) => getItemUsername(item) === selectedUser);
-  }, [baseVisibleItems, selectedUser]);
+    return baseVisibleItems.filter((item) => getItemUsername(item) === effectiveSelectedUser);
+  }, [baseVisibleItems, effectiveSelectedUser]);
 
-  useEffect(() => {
-    if (reviewingRequestId === null) {
-      return;
-    }
-
-    const hasMatchingPendingRequest = visibleItems.some((item) => {
-      return (
+  const visiblePendingRequestIds = useMemo(() => {
+    const ids = new Set<number>();
+    visibleItems.forEach((item) => {
+      if (
         item.kind === 'request' &&
-        item.requestId === reviewingRequestId &&
-        item.requestRecord?.status === 'pending'
-      );
+        item.requestRecord?.status === 'pending' &&
+        typeof item.requestId === 'number'
+      ) {
+        ids.add(item.requestId);
+      }
     });
+    return ids;
+  }, [visibleItems]);
 
-    if (!hasMatchingPendingRequest) {
-      setReviewingRequestId(null);
-    }
-  }, [reviewingRequestId, visibleItems]);
-
-  useEffect(() => {
-    if (rejectingRequest === null) {
-      return;
-    }
-
-    const hasMatchingPendingRequest = visibleItems.some((item) => {
-      return (
-        item.kind === 'request' &&
-        item.requestId === rejectingRequest.requestId &&
-        item.requestRecord?.status === 'pending'
-      );
-    });
-
-    if (!hasMatchingPendingRequest) {
-      setRejectingRequest(null);
-    }
-  }, [rejectingRequest, visibleItems]);
+  const effectiveReviewingRequestId =
+    reviewingRequestId !== null && visiblePendingRequestIds.has(reviewingRequestId)
+      ? reviewingRequestId
+      : null;
+  const effectiveRejectingRequest =
+    rejectingRequest !== null && visiblePendingRequestIds.has(rejectingRequest.requestId)
+      ? rejectingRequest
+      : null;
+  if (effectiveReviewingRequestId !== reviewingRequestId) {
+    setReviewingRequestId(null);
+  }
+  if (effectiveRejectingRequest === null && rejectingRequest !== null) {
+    setRejectingRequest(null);
+  }
 
   const hasUserFilter = isAdmin && availableUsers.length > 1;
 
@@ -540,10 +530,13 @@ export const ActivitySidebar = ({
     return targets;
   }, [visibleItems]);
 
-  const visibleCategoryOrder = useMemo(() => getVisibleCategoryOrder(activeTab), [activeTab]);
+  const visibleCategoryOrder = useMemo(
+    () => getVisibleCategoryOrder(effectiveActiveTab),
+    [effectiveActiveTab],
+  );
 
   const groupedVisibleItems = useMemo(() => {
-    if (activeTab === 'history') {
+    if (effectiveActiveTab === 'history') {
       return [];
     }
 
@@ -568,7 +561,7 @@ export const ActivitySidebar = ({
         items: (grouped.get(key) ?? []).toSorted((left, right) => right.timestamp - left.timestamp),
       }))
       .filter((group) => group.items.length > 0);
-  }, [activeTab, isAdmin, visibleItems, visibleCategoryOrder]);
+  }, [effectiveActiveTab, isAdmin, visibleItems, visibleCategoryOrder]);
 
   const handleTogglePinned = () => {
     const next = !isPinned;
@@ -585,7 +578,7 @@ export const ActivitySidebar = ({
   const [tabIndicatorStyle, setTabIndicatorStyle] = useState({ left: 0, width: 0 });
 
   useEffect(() => {
-    const activeButton = tabRefs.current[activeTab];
+    const activeButton = tabRefs.current[effectiveActiveTab];
     if (!activeButton) {
       setTabIndicatorStyle({ left: 0, width: 0 });
       return;
@@ -599,7 +592,7 @@ export const ActivitySidebar = ({
         width: buttonRect.width,
       });
     }
-  }, [activeTab, showRequestsTab]);
+  }, [effectiveActiveTab, showRequestsTab]);
 
   const panel = (
     <>
@@ -613,7 +606,7 @@ export const ActivitySidebar = ({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold">
-              {activeTab === 'history' ? 'History' : 'Activity'}
+              {effectiveActiveTab === 'history' ? 'History' : 'Activity'}
             </h2>
             <button
               type="button"
@@ -656,19 +649,19 @@ export const ActivitySidebar = ({
                     type="button"
                     onClick={toggle}
                     className={`hover-action inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
-                      isDropdownOpen || selectedUser !== ALL_USERS_FILTER
+                      isDropdownOpen || effectiveSelectedUser !== ALL_USERS_FILTER
                         ? 'text-sky-600 dark:text-sky-400'
                         : ''
                     }`}
                     title={
-                      selectedUser === ALL_USERS_FILTER
+                      effectiveSelectedUser === ALL_USERS_FILTER
                         ? 'Filter by user'
-                        : `Filtered: ${selectedUser}`
+                        : `Filtered: ${effectiveSelectedUser}`
                     }
                     aria-label={
-                      selectedUser === ALL_USERS_FILTER
+                      effectiveSelectedUser === ALL_USERS_FILTER
                         ? 'Filter by user'
-                        : `Filtered by user ${selectedUser}`
+                        : `Filtered by user ${effectiveSelectedUser}`
                     }
                     aria-expanded={isDropdownOpen}
                   >
@@ -692,7 +685,7 @@ export const ActivitySidebar = ({
                 {({ close }) => (
                   <div role="listbox">
                     {[ALL_USERS_FILTER, ...availableUsers].map((value) => {
-                      const isSelected = selectedUser === value;
+                      const isSelected = effectiveSelectedUser === value;
                       const label = value === ALL_USERS_FILTER ? 'All users' : value;
                       return (
                         <button
@@ -731,13 +724,13 @@ export const ActivitySidebar = ({
             )}
             <button
               type="button"
-              onClick={() => handleTabChange(activeTab === 'history' ? 'all' : 'history')}
+              onClick={() => handleTabChange(effectiveActiveTab === 'history' ? 'all' : 'history')}
               className={`hover-action relative inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
-                activeTab === 'history' ? 'text-sky-600 dark:text-sky-400' : ''
+                effectiveActiveTab === 'history' ? 'text-sky-600 dark:text-sky-400' : ''
               }`}
-              title={activeTab === 'history' ? 'Back to activity' : 'Open history'}
-              aria-label={activeTab === 'history' ? 'Back to activity' : 'Open history'}
-              aria-pressed={activeTab === 'history'}
+              title={effectiveActiveTab === 'history' ? 'Back to activity' : 'Open history'}
+              aria-label={effectiveActiveTab === 'history' ? 'Back to activity' : 'Open history'}
+              aria-pressed={effectiveActiveTab === 'history'}
             >
               <svg
                 className="h-5 w-5"
@@ -776,7 +769,7 @@ export const ActivitySidebar = ({
           </div>
         </div>
 
-        {activeTab !== 'history' && (
+        {effectiveActiveTab !== 'history' && (
           <div className="-mx-4 mt-2 border-b border-(--border-muted) px-4">
             <div className="relative flex gap-1">
               {/* Sliding indicator */}
@@ -794,11 +787,11 @@ export const ActivitySidebar = ({
                 }}
                 onClick={() => handleTabChange('all')}
                 className={`border-b-2 border-transparent px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
-                  activeTab === 'all'
+                  effectiveActiveTab === 'all'
                     ? 'text-sky-600 dark:text-sky-400'
                     : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
                 }`}
-                aria-current={activeTab === 'all' ? 'page' : undefined}
+                aria-current={effectiveActiveTab === 'all' ? 'page' : undefined}
               >
                 All
               </button>
@@ -809,11 +802,11 @@ export const ActivitySidebar = ({
                 }}
                 onClick={() => handleTabChange('downloads')}
                 className={`border-b-2 border-transparent px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
-                  activeTab === 'downloads'
+                  effectiveActiveTab === 'downloads'
                     ? 'text-sky-600 dark:text-sky-400'
                     : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
                 }`}
-                aria-current={activeTab === 'downloads' ? 'page' : undefined}
+                aria-current={effectiveActiveTab === 'downloads' ? 'page' : undefined}
               >
                 Downloads
                 {mergedDownloadItems.length > 0 && (
@@ -830,11 +823,11 @@ export const ActivitySidebar = ({
                   }}
                   onClick={() => handleTabChange('requests')}
                   className={`border-b-2 border-transparent px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
-                    activeTab === 'requests'
+                    effectiveActiveTab === 'requests'
                       ? 'text-sky-600 dark:text-sky-400'
                       : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
                   }`}
-                  aria-current={activeTab === 'requests' ? 'page' : undefined}
+                  aria-current={effectiveActiveTab === 'requests' ? 'page' : undefined}
                 >
                   Requests
                   {pendingRequestCount > 0 && (
@@ -859,7 +852,7 @@ export const ActivitySidebar = ({
             return <p className="mt-8 text-center text-sm opacity-70">{emptyStateMessage}</p>;
           }
 
-          if (activeTab === 'history') {
+          if (effectiveActiveTab === 'history') {
             return (
               <div className="divide-y divide-[color-mix(in_srgb,var(--border-muted)_60%,transparent)]">
                 {visibleItems.map((item) => (
@@ -883,7 +876,7 @@ export const ActivitySidebar = ({
 
           return groupedVisibleItems.map((group) => (
             <section key={group.key} className="mb-4 last:mb-0">
-              {activeTab !== 'downloads' && (
+              {effectiveActiveTab !== 'downloads' && (
                 <button
                   type="button"
                   onClick={() =>
@@ -915,12 +908,13 @@ export const ActivitySidebar = ({
               {!collapsedGroups[group.key] && (
                 <div className="divide-y divide-[color-mix(in_srgb,var(--border-muted)_60%,transparent)]">
                   {group.items.map((item) => {
-                    const showRequestActions = activeTab === 'requests' || activeTab === 'all';
+                    const showRequestActions =
+                      effectiveActiveTab === 'requests' || effectiveActiveTab === 'all';
                     const requestId = item.requestId;
                     const shouldShowRejectDialog =
                       showRequestActions &&
-                      rejectingRequest !== null &&
-                      requestId === rejectingRequest.requestId;
+                      effectiveRejectingRequest !== null &&
+                      requestId === effectiveRejectingRequest.requestId;
                     const requestRecord = item.requestRecord;
                     const canShowRequestReview =
                       showRequestActions &&
@@ -930,8 +924,8 @@ export const ActivitySidebar = ({
                       requestRecord?.status === 'pending';
                     const shouldShowRequestReview =
                       canShowRequestReview &&
-                      reviewingRequestId !== null &&
-                      requestId === reviewingRequestId &&
+                      effectiveReviewingRequestId !== null &&
+                      requestId === effectiveReviewingRequestId &&
                       requestRecord !== undefined;
 
                     return (
@@ -1013,7 +1007,7 @@ export const ActivitySidebar = ({
         })()}
       </div>
 
-      {(activeTab === 'downloads' || activeTab === 'all') &&
+      {(effectiveActiveTab === 'downloads' || effectiveActiveTab === 'all') &&
         hasTerminalDownloadItems &&
         clearCompletedTargets.length > 0 && (
           <div
@@ -1033,7 +1027,7 @@ export const ActivitySidebar = ({
           </div>
         )}
 
-      {activeTab === 'history' && historyItems.length > 0 && (
+      {effectiveActiveTab === 'history' && historyItems.length > 0 && (
         <div
           className="flex items-center justify-center border-t p-3"
           style={{

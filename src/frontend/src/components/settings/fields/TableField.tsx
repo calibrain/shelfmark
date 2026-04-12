@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useMemo, useEffect } from 'react';
+import { useMemo } from 'react';
 
 import type {
   MultiSelectFieldConfig,
@@ -76,6 +76,51 @@ function normalizeRows(
   });
 }
 
+function normalizeRowDependencies(
+  row: Record<string, unknown>,
+  columns: TableFieldColumn[],
+): Record<string, unknown> {
+  const normalizedRow: Record<string, unknown> = Object.assign({}, row);
+
+  columns.forEach((col) => {
+    if (col.type === 'multiselect') {
+      const filteredOptions = getFilteredSelectOptions(col, normalizedRow);
+      const validValues = new Set(filteredOptions.map((opt) => opt.value));
+      const currentValues = normalizeMultiValue(normalizedRow[col.key]);
+
+      normalizedRow[col.key] = currentValues.filter((entry) => validValues.has(entry));
+      return;
+    }
+
+    if (col.type !== 'select') {
+      return;
+    }
+
+    const filteredOptions = getFilteredSelectOptions(col, normalizedRow);
+    const currentValue = toPrimitiveString(normalizedRow[col.key]);
+    const currentValueIsValid = filteredOptions.some((opt) => opt.value === currentValue);
+    const nonEmptyOptions = filteredOptions.filter((opt) => opt.value !== '');
+
+    if (nonEmptyOptions.length === 1) {
+      normalizedRow[col.key] = nonEmptyOptions[0].value;
+      return;
+    }
+
+    if (currentValue && !currentValueIsValid) {
+      normalizedRow[col.key] = '';
+    }
+  });
+
+  return normalizedRow;
+}
+
+function normalizeTableRows(
+  rows: Record<string, unknown>[],
+  columns: TableFieldColumn[],
+): Record<string, unknown>[] {
+  return normalizeRows(rows, columns).map((row) => normalizeRowDependencies(row, columns));
+}
+
 function getFilteredSelectOptions(
   column: TableFieldColumn,
   row: Record<string, unknown>,
@@ -124,7 +169,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
   const isDisabled = disabled ?? false;
 
   const columns = useMemo(() => field.columns ?? [], [field.columns]);
-  const rows = useMemo(() => normalizeRows(value ?? [], columns), [value, columns]);
+  const rows = useMemo(() => normalizeTableRows(value ?? [], columns), [value, columns]);
   const rowEntries = useMemo(() => {
     const rowOccurrences = new Map<string, number>();
 
@@ -157,9 +202,13 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
   }, [columns]);
   const tableStyle: CSSProperties & { '--table-cols': string } = { '--table-cols': tableCols };
 
+  const commitRows = (nextRows: Record<string, unknown>[]) => {
+    onChange(normalizeTableRows(nextRows, columns));
+  };
+
   const updateCell = (rowIndex: number, key: string, cellValue: unknown) => {
     const next = rows.map((row, idx) => (idx === rowIndex ? { ...row, [key]: cellValue } : row));
-    onChange(next);
+    commitRows(next);
   };
 
   const addRow = () => {
@@ -167,62 +216,13 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
     columns.forEach((col) => {
       newRow[col.key] = defaultCellValue(col);
     });
-    onChange([...rows, newRow]);
+    commitRows([...rows, newRow]);
   };
 
   const removeRow = (rowIndex: number) => {
     const next = rows.filter((_, idx) => idx !== rowIndex);
-    onChange(next);
+    commitRows(next);
   };
-
-  useEffect(() => {
-    if (rows.length === 0) return;
-
-    const nextRows = rows.map((row) => ({ ...row }));
-    let hasChanges = false;
-
-    rows.forEach((row, rowIndex) => {
-      columns.forEach((col) => {
-        if (col.type === 'multiselect') {
-          const filteredOptions = getFilteredSelectOptions(col, row);
-          const validValues = new Set(filteredOptions.map((opt) => opt.value));
-          const currentValues = normalizeMultiValue(row[col.key]);
-          const normalizedValues = currentValues.filter((entry) => validValues.has(entry));
-
-          if (JSON.stringify(currentValues) !== JSON.stringify(normalizedValues)) {
-            nextRows[rowIndex][col.key] = normalizedValues;
-            hasChanges = true;
-          }
-          return;
-        }
-
-        if (col.type !== 'select') return;
-
-        const filteredOptions = getFilteredSelectOptions(col, row);
-        const currentValue = toPrimitiveString(row[col.key]);
-        const currentValueIsValid = filteredOptions.some((opt) => opt.value === currentValue);
-        const nonEmptyOptions = filteredOptions.filter((opt) => opt.value !== '');
-
-        if (nonEmptyOptions.length === 1) {
-          const onlyOption = nonEmptyOptions[0].value;
-          if (currentValue !== onlyOption) {
-            nextRows[rowIndex][col.key] = onlyOption;
-            hasChanges = true;
-          }
-          return;
-        }
-
-        if (currentValue && !currentValueIsValid) {
-          nextRows[rowIndex][col.key] = '';
-          hasChanges = true;
-        }
-      });
-    });
-
-    if (hasChanges) {
-      onChange(nextRows);
-    }
-  }, [rows, columns, onChange]);
 
   if (rows.length === 0) {
     return (

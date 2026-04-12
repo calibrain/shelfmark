@@ -17,6 +17,14 @@ const COLLAPSED_HEIGHT = 156;
 const ALL_OPTION_VALUE = 'all';
 const EMPTY_SELECTION: string[] = [];
 
+interface OptionOrderState {
+  fieldKey: string;
+  optionsIdentity: string;
+  selectionIdentity: string;
+  pendingInternalSelectionIdentity: string | null;
+  sortedOptions: MultiSelectFieldConfig['options'];
+}
+
 /**
  * Sort options with selected items first, preserving relative order within each group
  */
@@ -29,6 +37,12 @@ const sortOptionsWithSelectedFirst = (
   const unselectedOptions = options.filter((opt) => !selectedSet.has(opt.value));
   return [...selectedOptions, ...unselectedOptions];
 };
+
+const getOptionsIdentity = (options: MultiSelectFieldConfig['options']): string =>
+  options.map((opt) => `${opt.value}\u0000${opt.label}\u0000${opt.childOf ?? ''}`).join('\u0001');
+
+const getSelectionIdentity = (values: string[]): string =>
+  values.toSorted((left, right) => left.localeCompare(right)).join('\u0001');
 
 export const MultiSelectField = ({
   field,
@@ -192,43 +206,41 @@ export const MultiSelectField = ({
     () => field.options.length > COLLAPSE_THRESHOLD_OPTIONS,
   );
   const containerRef = useRef<HTMLDivElement>(null);
+  const optionsIdentity = getOptionsIdentity(field.options);
+  const selectionIdentity = getSelectionIdentity(selected);
+  const [optionOrderState, setOptionOrderState] = useState<OptionOrderState>(() => ({
+    fieldKey: field.key,
+    optionsIdentity,
+    selectionIdentity,
+    pendingInternalSelectionIdentity: null,
+    sortedOptions: sortOptionsWithSelectedFirst(field.options, selected),
+  }));
+  if (
+    optionOrderState.fieldKey !== field.key ||
+    optionOrderState.optionsIdentity !== optionsIdentity
+  ) {
+    setOptionOrderState({
+      fieldKey: field.key,
+      optionsIdentity,
+      selectionIdentity,
+      pendingInternalSelectionIdentity: null,
+      sortedOptions: sortOptionsWithSelectedFirst(field.options, selected),
+    });
+  } else if (optionOrderState.selectionIdentity !== selectionIdentity) {
+    const isInternalToggleConfirmation =
+      optionOrderState.pendingInternalSelectionIdentity !== null &&
+      optionOrderState.pendingInternalSelectionIdentity === selectionIdentity;
 
-  // Track the last value we set via onChange to detect external changes
-  const lastInternalValueRef = useRef<string[] | null>(null);
-
-  // Sorted options - initialized with selected items first, updated only on external changes
-  const [sortedOptions, setSortedOptions] = useState(() =>
-    sortOptionsWithSelectedFirst(field.options, selected),
-  );
-
-  // Detect external value changes (like after save or initial load) and re-sort
-  useEffect(() => {
-    // If the value changed and it's not from our own onChange call, re-sort
-    const lastInternal = lastInternalValueRef.current;
-    const isExternalChange =
-      lastInternal === null || // Initial mount
-      lastInternal.length !== selected.length ||
-      !lastInternal.every((v) => selected.includes(v));
-
-    // Only re-sort if the change wasn't triggered by user interaction
-    if (isExternalChange && lastInternal !== null) {
-      // Check if this is truly external (values differ in a way that suggests a save/reset)
-      const wasInternalToggle =
-        Math.abs(lastInternal.length - selected.length) === 1 &&
-        (lastInternal.every((v) => selected.includes(v)) ||
-          selected.every((v) => lastInternal.includes(v)));
-
-      if (!wasInternalToggle) {
-        setSortedOptions(sortOptionsWithSelectedFirst(field.options, selected));
-      }
-    }
-  }, [selected, field.options]);
-
-  // Update sortedOptions when field itself changes (different field or options refreshed)
-  useEffect(() => {
-    setSortedOptions(sortOptionsWithSelectedFirst(field.options, selected));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally omit 'selected' to avoid re-sorting on user toggle
-  }, [field.key, field.options]);
+    setOptionOrderState((current) => ({
+      ...current,
+      selectionIdentity,
+      pendingInternalSelectionIdentity: null,
+      sortedOptions: isInternalToggleConfirmation
+        ? current.sortedOptions
+        : sortOptionsWithSelectedFirst(field.options, selected),
+    }));
+  }
+  const sortedOptions = optionOrderState.sortedOptions;
 
   // Verify collapse need after render (handles edge cases where few options still fit)
   useEffect(() => {
@@ -250,8 +262,10 @@ export const MultiSelectField = ({
     } else {
       newValue = [...selected, optValue];
     }
-    // Track this as an internal change so we don't re-sort
-    lastInternalValueRef.current = newValue;
+    setOptionOrderState((current) => ({
+      ...current,
+      pendingInternalSelectionIdentity: getSelectionIdentity(newValue),
+    }));
     onChange(newValue);
   };
 

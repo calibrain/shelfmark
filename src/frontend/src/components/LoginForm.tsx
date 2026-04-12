@@ -226,16 +226,21 @@ export const LoginForm = ({
 }: LoginFormProps) => {
   const isOidc = authMode === 'oidc';
   const [showPasswordLogin, setShowPasswordLogin] = useState(false);
+  const [lastAutoExpandPasswordLoginKey, setLastAutoExpandPasswordLoginKey] = useState('');
   const [searchParams] = useSearchParams();
   const oidcError = searchParams.get('oidc_error');
   const oidcLoginUrl = buildOidcLoginUrl(searchParams.toString());
+  const autoExpandPasswordLoginKey = isOidc && error ? error : '';
 
-  // Auto-expand password form if there's an error (likely from a password attempt)
-  useEffect(() => {
-    if (error && isOidc) {
+  // React recommends adjusting state during render in rare cases like this,
+  // rather than mirroring props in an effect. This preserves the previous
+  // auto-open-on-new-error behavior while still letting the user hide the form.
+  if (autoExpandPasswordLoginKey !== lastAutoExpandPasswordLoginKey) {
+    setLastAutoExpandPasswordLoginKey(autoExpandPasswordLoginKey);
+    if (autoExpandPasswordLoginKey) {
       setShowPasswordLogin(true);
     }
-  }, [error, isOidc]);
+  }
 
   // Auto-redirect to OIDC provider when enabled and no errors present
   useEffect(() => {

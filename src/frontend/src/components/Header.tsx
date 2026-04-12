@@ -1,15 +1,6 @@
-import {
-  useState,
-  useEffect,
-  useRef,
-  useCallback,
-  useMemo,
-  forwardRef,
-  useImperativeHandle,
-} from 'react';
+import { useState, useEffect, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
 
 import { useDismiss } from '../hooks/useDismiss';
-import { getAdminUsers } from '../services/api';
 import type {
   ContentType,
   ActingAsUserSelection,
@@ -54,6 +45,11 @@ interface HeaderProps {
   displayName?: string | null;
   actingAsUser?: ActingAsUserSelection | null;
   onActingAsUserChange?: (user: ActingAsUserSelection | null) => void;
+  adminUsers?: ActingAsUserSelection[];
+  isAdminUsersLoading?: boolean;
+  adminUsersError?: string | null;
+  hasLoadedAdminUsers?: boolean;
+  onLoadAdminUsers?: () => Promise<void> | void;
   onLogout?: () => void;
   onShowToast?: (
     message: string,
@@ -109,6 +105,11 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
       displayName,
       actingAsUser = null,
       onActingAsUserChange,
+      adminUsers = [],
+      isAdminUsersLoading = false,
+      adminUsersError = null,
+      hasLoadedAdminUsers = false,
+      onLoadAdminUsers,
       onLogout,
       onShowToast,
       onRemoveToast,
@@ -143,41 +144,6 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
       dropdownAnimationClass = 'animate-fade-in-down';
     }
     const dropdownRef = useRef<HTMLDivElement>(null);
-    const [adminUsers, setAdminUsers] = useState<ActingAsUserSelection[]>([]);
-    const [isAdminUsersLoading, setIsAdminUsersLoading] = useState(false);
-    const [adminUsersError, setAdminUsersError] = useState<string | null>(null);
-    const [hasLoadedAdminUsers, setHasLoadedAdminUsers] = useState(false);
-
-    const loadAdminUsers = useCallback(async () => {
-      if (!isAdmin) {
-        return;
-      }
-
-      setIsAdminUsersLoading(true);
-      setAdminUsersError(null);
-      try {
-        const users = await getAdminUsers();
-        const filteredUsers = users.filter((user) => {
-          if (username && user.username === username) {
-            return false;
-          }
-          return true;
-        });
-        setAdminUsers(
-          filteredUsers.map((user) => ({
-            id: user.id,
-            username: user.username,
-            displayName: user.display_name,
-          })),
-        );
-        setHasLoadedAdminUsers(true);
-      } catch (error) {
-        console.error('Failed to load admin users:', error);
-        setAdminUsersError('Failed to load users');
-      } finally {
-        setIsAdminUsersLoading(false);
-      }
-    }, [isAdmin, username]);
 
     const actingAsOptions = useMemo(
       () => [
@@ -222,39 +188,6 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
       return () => mq.removeEventListener('change', handler);
     }, []);
 
-    useEffect(() => {
-      if (isAdmin) {
-        return;
-      }
-      setAdminUsers([]);
-      setAdminUsersError(null);
-      setIsAdminUsersLoading(false);
-      setHasLoadedAdminUsers(false);
-    }, [isAdmin]);
-
-    useEffect(() => {
-      if (!onActingAsUserChange || !actingAsUser) {
-        return;
-      }
-      if (username && actingAsUser.username === username) {
-        onActingAsUserChange(null);
-        return;
-      }
-      if (hasLoadedAdminUsers && !isAdminUsersLoading) {
-        const stillAvailable = adminUsers.some((user) => user.id === actingAsUser.id);
-        if (!stillAvailable) {
-          onActingAsUserChange(null);
-        }
-      }
-    }, [
-      onActingAsUserChange,
-      actingAsUser,
-      username,
-      hasLoadedAdminUsers,
-      isAdminUsersLoading,
-      adminUsers,
-    ]);
-
     // Helper function to close dropdown with animation
     const closeDropdown = () => {
       setIsClosing(true);
@@ -276,7 +209,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
         closeDropdown();
       } else {
         if (isAdmin && !hasLoadedAdminUsers && !isAdminUsersLoading) {
-          void loadAdminUsers();
+          void onLoadAdminUsers?.();
         }
         setShouldAnimateIn(true);
         setIsDropdownOpen(true);
@@ -694,7 +627,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
                         </div>
                         <button
                           type="button"
-                          onClick={() => void loadAdminUsers()}
+                          onClick={() => void onLoadAdminUsers?.()}
                           className="text-xs font-medium text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300"
                         >
                           Retry
