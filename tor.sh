@@ -31,18 +31,18 @@ set -e
 # Check if EXT_BYPASSER_URL is defined
 if [ -n "$EXT_BYPASSER_URL" ]; then
     echo "Extracting hostname and ip from bypasser into /etc/hosts"
-    
+
     # Extract hostname
     hostname=$(echo "$EXT_BYPASSER_URL" | cut -d'/' -f3 | cut -d':' -f1)
-    
+
     # Resolve to IP (using current DNS before switching to TOR)
     ip=$(getent hosts "$hostname" 2>/dev/null | awk '{print $1}')
-    
+
     # If getent fails, try dig
     if [ -z "$ip" ]; then
         ip=$(dig +short "$hostname" 2>/dev/null | head -n1)
     fi
-    
+
     # Only proceed if we got an IP and hostname is not already an IP
     if [ -n "$ip" ] && [ "$ip" != "$hostname" ]; then
         # Add to /etc/hosts (remove existing entry first to avoid duplicates)

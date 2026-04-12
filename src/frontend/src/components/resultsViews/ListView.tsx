@@ -274,4 +274,3 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
     </article>
   );
 };
-

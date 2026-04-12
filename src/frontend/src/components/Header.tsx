@@ -421,7 +421,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(({
             }}
           >
             <div className="py-1">
-              
+
               <a
                 href="https://github.com/calibrain/shelfmark/issues"
                 target="_blank"

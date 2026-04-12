@@ -36,7 +36,9 @@ browser = [
 [dependency-groups]
 dev = [
     "basedpyright>=1.39.0",
+    "prek",
     "pytest",
+    "pytest-cov",
     "pytest-xdist>=3.8.0",
     "ruff==0.15.10",
     "vulture>=2.14",
@@ -93,6 +95,11 @@ select = [
 ignore = ["D", "EM", "FBT", "PLR2004", "UP035", "TRY003", "E501", "TD002", "S104", "S603"]
 
 [tool.ruff.lint.per-file-ignores]
+"scripts/**/*.py" = [
+    "BLE001",
+    "S",
+    "TRY",
+]
 "tests/**/*.py" = [
     "ANN",
     "BLE001",
@@ -152,6 +159,14 @@ ignore_decorators = [
 ]
 min_confidence = 90
 sort_by_size = true
+
+[tool.coverage.run]
+source = ["shelfmark"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
 
 [tool.uv]
 package = false

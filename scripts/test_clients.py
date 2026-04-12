@@ -51,7 +51,8 @@ First-Time Setup:
 
 import sys
 import time
-from xmlrpc import client
+from pathlib import Path
+from typing import Any
 
 # Test configuration - matches docker-compose.test-clients.yml
 CONFIG = {
@@ -89,7 +90,7 @@ CONFIG = {
 TEST_MAGNET = "magnet:?xt=urn:btih:3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0&dn=ubuntu-22.04.3-live-server-amd64.iso"
 
 
-def test_nzbget():
+def test_nzbget() -> bool:
     """Test NZBGet connection."""
     import requests
 
@@ -138,7 +139,7 @@ def test_nzbget():
         return False
 
 
-def test_sabnzbd():
+def test_sabnzbd() -> bool:
     """Test SABnzbd connection."""
     import requests
 
@@ -152,10 +153,9 @@ def test_sabnzbd():
     # Try to get API key from config if not set
     if not api_key:
         try:
-            import os
-            ini_path = ".local/test-clients/sabnzbd/config/sabnzbd.ini"
-            if os.path.exists(ini_path):
-                with open(ini_path) as f:
+            ini_path = Path(".local/test-clients/sabnzbd/config/sabnzbd.ini")
+            if ini_path.exists():
+                with ini_path.open() as f:
                     for line in f:
                         if line.startswith("api_key"):
                             api_key = line.split("=")[1].strip()
@@ -204,7 +204,7 @@ def test_sabnzbd():
         return False
 
 
-def test_qbittorrent():
+def test_qbittorrent() -> bool:
     """Test qBittorrent connection."""
     print("\n" + "=" * 50)
     print("Testing qBittorrent")
@@ -219,6 +219,7 @@ def test_qbittorrent():
 
         # Parse URL for host/port
         from urllib.parse import urlparse
+
         parsed = urlparse(url)
 
         client = qbittorrentapi.Client(
@@ -271,15 +272,16 @@ def test_qbittorrent():
         return False
 
 
-def test_transmission():
+def test_transmission() -> bool:
     """Test Transmission connection."""
     print("\n" + "=" * 50)
     print("Testing Transmission")
     print("=" * 50)
 
     try:
-        from transmission_rpc import Client
         from urllib.parse import urlparse
+
+        from transmission_rpc import Client
 
         url = CONFIG["transmission"]["url"]
         parsed = urlparse(url)
@@ -324,7 +326,7 @@ def test_transmission():
         return False
 
 
-def test_deluge():
+def test_deluge() -> bool:
     """Test Deluge Web UI (JSON-RPC) connection."""
     import requests
 
@@ -336,7 +338,7 @@ def test_deluge():
     password = CONFIG["deluge"]["password"]
     rpc_url = f"{base_url}/json"
 
-    def rpc_call(session: requests.Session, rpc_id: int, method: str, *params):
+    def rpc_call(session: requests.Session, rpc_id: int, method: str, *params: Any) -> Any:
         payload = {"id": rpc_id, "method": method, "params": list(params)}
         resp = session.post(rpc_url, json=payload, timeout=10)
         resp.raise_for_status()
@@ -366,7 +368,11 @@ def test_deluge():
 
             host_id = hosts[0][0]
             for entry in hosts:
-                if isinstance(entry, list) and len(entry) >= 2 and entry[1] in {"127.0.0.1", "localhost"}:
+                if (
+                    isinstance(entry, list)
+                    and len(entry) >= 2
+                    and entry[1] in {"127.0.0.1", "localhost"}
+                ):
                     host_id = entry[0]
                     break
 
@@ -386,13 +392,18 @@ def test_deluge():
 
         # Test adding a torrent (then remove it)
         print("  Testing add/remove torrent...")
-        torrent_id = rpc_call(session, 8, "core.add_torrent_magnet", TEST_MAGNET, {"add_paused": True})
+        torrent_id = rpc_call(
+            session, 8, "core.add_torrent_magnet", TEST_MAGNET, {"add_paused": True}
+        )
 
         if torrent_id:
             torrent_id = str(torrent_id)
             print(f"  Added test torrent: {torrent_id[:20]}...")
 
-            status = rpc_call(session, 9, "core.get_torrent_status", torrent_id, ["state", "progress"]) or {}
+            status = (
+                rpc_call(session, 9, "core.get_torrent_status", torrent_id, ["state", "progress"])
+                or {}
+            )
             state = status.get("state", "unknown") if isinstance(status, dict) else "unknown"
             progress = status.get("progress", 0) if isinstance(status, dict) else 0
             print(f"  Status: {state} ({progress:.1f}%)")
@@ -418,7 +429,8 @@ def test_deluge():
             print("  Check Deluge Web UI password (default: deluge)")
         return False
 
-def test_rtorrent():
+
+def test_rtorrent() -> bool:
     """Test rTorrent connection."""
     print("\n" + "=" * 50)
     print("Testing rTorrent")
@@ -457,19 +469,18 @@ def test_rtorrent():
 
         # rtorrent is weird in that it doesn't return the torrent ID/hash on add
         client.load.start("", TEST_MAGNET, ";".join(commands))
-        
+
         # but we know that it is 3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0 from the magnet link
-        torrent_id = "3B245504CF5F11BBDBE1201CEA6A6BF45AEE1BC0" # rtorrent uses uppercase hashes
+        torrent_id = "3B245504CF5F11BBDBE1201CEA6A6BF45AEE1BC0"  # rtorrent uses uppercase hashes
         print(f"  Added test torrent: {torrent_id}")
 
         torrents = client.download_list()
-        print(f"  Active torrents: {len(torrents)}")        
+        print(f"  Active torrents: {len(torrents)}")
 
         torrent_list = client.d.multicall.filtered(
             "",
             "default",
-            f"equal={{d.hash=,cat={torrent_id}}}"
-            "d.hash=",
+            f"equal={{d.hash=,cat={torrent_id}}}d.hash=",
             "d.state=",
             "d.completed_bytes=",
             "d.size_bytes=",
@@ -483,7 +494,7 @@ def test_rtorrent():
         if not torrent:
             print("  ERROR: Could not find added torrent in list")
             return False
-        
+
         # let's test the base path call
         details = client.d.multicall.filtered(
             "",
@@ -511,7 +522,7 @@ def test_rtorrent():
         return False
 
 
-def main():
+def main() -> int:
     print("Download Client Test Suite")
     print("=" * 50)
     print("Make sure containers are running:")

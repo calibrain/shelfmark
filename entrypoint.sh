@@ -456,7 +456,7 @@ if [ "$DEBUG" = "true" ] && [ "$USING_EXTERNAL_BYPASSER" != "true" ]; then
             --enable-logging --v=1 --log-level=0 \
             --log-file=/tmp/chrome_entrypoint_test.log \
             --crash-dumps-dir=/tmp/chrome_crash_dumps \
-            < /dev/null 
+            < /dev/null
     EXIT_CODE=$?
     echo "Chrome exit code: $EXIT_CODE"
     ls -lh /tmp/chrome_entrypoint_test.log

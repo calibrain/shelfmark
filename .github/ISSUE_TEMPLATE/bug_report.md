@@ -11,9 +11,9 @@ assignees: ''
 
 ## Steps To Reproduce
 <!-- Steps to reproduce the behavior -->
-1. 
-2. 
-3. 
+1.
+2.
+3.
 
 ## Expected Behavior
 <!-- A clear and concise description of what you expected to happen -->
@@ -34,4 +34,4 @@ When running in debug mode, a DEBUG button will appear in the interface. Please 
 <!-- If applicable, please provide your full docker-compose (redacted from any secrets) -->
 
 ## Additional Context
-<!-- Add any other context about the problem here --> 
+<!-- Add any other context about the problem here -->

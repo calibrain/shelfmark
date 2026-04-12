@@ -8,4 +8,3 @@ export class UserCancelledError extends Error {
 export function isUserCancelledError(error: unknown): error is UserCancelledError {
   return error instanceof UserCancelledError;
 }
-
