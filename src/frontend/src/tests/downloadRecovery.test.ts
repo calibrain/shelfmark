@@ -1,7 +1,7 @@
-import * as assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
-import { StatusData } from '../types/index.js';
-import { wasDownloadQueuedAfterResponseError } from '../utils/downloadRecovery.js';
+import { describe, it, expect } from 'vitest';
+
+import { StatusData } from '../types/index';
+import { wasDownloadQueuedAfterResponseError } from '../utils/downloadRecovery';
 
 describe('wasDownloadQueuedAfterResponseError', () => {
   it('confirms a queued download immediately from active buckets', () => {
@@ -15,7 +15,7 @@ describe('wasDownloadQueuedAfterResponseError', () => {
       },
     };
 
-    assert.equal(wasDownloadQueuedAfterResponseError(status, 'book-1', 1_000), true);
+    expect(wasDownloadQueuedAfterResponseError(status, 'book-1', 1_000)).toBe(true);
   });
 
   it('confirms a recent terminal item for the same request window', () => {
@@ -30,7 +30,7 @@ describe('wasDownloadQueuedAfterResponseError', () => {
       },
     };
 
-    assert.equal(wasDownloadQueuedAfterResponseError(status, 'book-2', 1_006), true);
+    expect(wasDownloadQueuedAfterResponseError(status, 'book-2', 1_006)).toBe(true);
   });
 
   it('ignores stale terminal entries from older attempts', () => {
@@ -45,6 +45,6 @@ describe('wasDownloadQueuedAfterResponseError', () => {
       },
     };
 
-    assert.equal(wasDownloadQueuedAfterResponseError(status, 'book-3', 1_000), false);
+    expect(wasDownloadQueuedAfterResponseError(status, 'book-3', 1_000)).toBe(false);
   });
 });

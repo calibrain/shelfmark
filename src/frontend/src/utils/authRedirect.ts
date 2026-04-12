@@ -53,7 +53,10 @@ export const sanitizeReturnTo = (value: string | null | undefined): string | nul
 };
 
 export const buildCurrentReturnTo = ({ pathname, search, hash }: LocationLike): string => {
-  return sanitizeReturnTo(`${pathname}${normalizeSearch(search)}${normalizeHash(hash)}`) || DEFAULT_RETURN_TO;
+  return (
+    sanitizeReturnTo(`${pathname}${normalizeSearch(search)}${normalizeHash(hash)}`) ||
+    DEFAULT_RETURN_TO
+  );
 };
 
 export const getReturnToFromSearch = (search: string): string => {

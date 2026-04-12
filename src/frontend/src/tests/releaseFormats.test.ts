@@ -1,7 +1,7 @@
-import * as assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
-import { getReleaseFormats } from '../utils/releaseFormats.js';
+import { describe, it, expect } from 'vitest';
+
 import type { Release } from '../types';
+import { getReleaseFormats } from '../utils/releaseFormats';
 
 function buildRelease(overrides: Partial<Release>): Release {
   return {
@@ -19,7 +19,7 @@ describe('releaseFormats.getReleaseFormats', () => {
       extra: { formats: ['MOBI', 'EPUB', 'azw3', '  mobi  '] },
     });
 
-    assert.deepEqual(getReleaseFormats(release), ['azw3', 'mobi', 'epub']);
+    expect(getReleaseFormats(release)).toEqual(['azw3', 'mobi', 'epub']);
   });
 
   it('uses extra formats when primary format is missing', () => {
@@ -27,7 +27,7 @@ describe('releaseFormats.getReleaseFormats', () => {
       extra: { formats: ['EPUB', 'MOBI'] },
     });
 
-    assert.deepEqual(getReleaseFormats(release), ['epub', 'mobi']);
+    expect(getReleaseFormats(release)).toEqual(['epub', 'mobi']);
   });
 
   it('supports legacy string value in extra.formats', () => {
@@ -35,6 +35,6 @@ describe('releaseFormats.getReleaseFormats', () => {
       extra: { formats: 'PDF' },
     });
 
-    assert.deepEqual(getReleaseFormats(release), ['pdf']);
+    expect(getReleaseFormats(release)).toEqual(['pdf']);
   });
 });

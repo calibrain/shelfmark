@@ -48,13 +48,13 @@ export const getLanguageFilterValues = (
     return null;
   }
 
-  const supportedCodes = new Set(supportedLanguages.map(lang => lang.code));
-  const defaultCodes = defaultLanguageCodes.filter(code => supportedCodes.has(code));
+  const supportedCodes = new Set(supportedLanguages.map((lang) => lang.code));
+  const defaultCodes = defaultLanguageCodes.filter((code) => supportedCodes.has(code));
   const resolved = new Set<string>();
 
-  uniqueSelection.forEach(code => {
+  uniqueSelection.forEach((code) => {
     if (code === LANGUAGE_OPTION_DEFAULT) {
-      defaultCodes.forEach(defaultCode => resolved.add(defaultCode));
+      defaultCodes.forEach((defaultCode) => resolved.add(defaultCode));
       return;
     }
 
@@ -90,8 +90,8 @@ export const formatDefaultLanguageLabel = (
   }
 
   const languageNames = supportedLanguages
-    .filter(lang => languageCodes.includes(lang.code))
-    .map(lang => lang.language);
+    .filter((lang) => languageCodes.includes(lang.code))
+    .map((lang) => lang.language);
 
   if (languageNames.length === 0) {
     return 'Default (env config)';
@@ -138,16 +138,19 @@ export const releaseLanguageMatchesFilter = (
   }
 
   // Split by common multi-language separators: comma, slash, plus, ampersand
-  const releaseParts = releaseLang.split(/[,/+&]/).map(l => l.trim().toLowerCase()).filter(Boolean);
+  const releaseParts = releaseLang
+    .split(/[,/+&]/)
+    .map((l) => l.trim().toLowerCase())
+    .filter(Boolean);
 
   // Normalize release language parts to codes (handles both "en" and "english")
-  const releaseCodes = releaseParts.map(part => {
+  const releaseCodes = releaseParts.map((part) => {
     if (languageNormalizer) {
       return languageNormalizer.get(part) ?? part;
     }
     return part;
   });
 
-  const selectedSet = new Set(selectedCodes.map(c => c.toLowerCase()));
-  return releaseCodes.every(code => selectedSet.has(code));
+  const selectedSet = new Set(selectedCodes.map((c) => c.toLowerCase()));
+  return releaseCodes.every((code) => selectedSet.has(code));
 };

@@ -17,8 +17,8 @@ export type FieldType =
 export interface SelectOption {
   value: string;
   label: string;
-  description?: string;  // Optional description shown below the label in dropdowns
-  childOf?: string;  // Parent value - when parent is selected, this option is auto-selected and disabled
+  description?: string; // Optional description shown below the label in dropdowns
+  childOf?: string; // Parent value - when parent is selected, this option is auto-selected and disabled
 }
 
 // Conditional visibility configuration
@@ -94,7 +94,7 @@ export interface MultiSelectFieldConfig extends BaseField {
   type: 'MultiSelectField';
   value: string[];
   options: SelectOption[];
-  variant?: 'pills' | 'dropdown';  // 'pills' (default) or 'dropdown' for checkbox dropdown style
+  variant?: 'pills' | 'dropdown'; // 'pills' (default) or 'dropdown' for checkbox dropdown style
   placeholder?: string;
 }
 

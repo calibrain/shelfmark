@@ -1,38 +1,35 @@
-import * as assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
-import { getConfiguredMetadataProviderForContentType } from '../utils/metadataProviders.js';
+import { describe, it, expect } from 'vitest';
+
+import { getConfiguredMetadataProviderForContentType } from '../utils/metadataProviders';
 
 describe('metadataProviders', () => {
   it('uses the audiobook-specific provider when one is configured', () => {
-    assert.equal(
+    expect(
       getConfiguredMetadataProviderForContentType({
         contentType: 'audiobook',
         configuredMetadataProvider: 'openlibrary',
         configuredAudiobookMetadataProvider: 'hardcover',
       }),
-      'hardcover',
-    );
+    ).toBe('hardcover');
   });
 
   it('falls back to the main provider for audiobooks when needed', () => {
-    assert.equal(
+    expect(
       getConfiguredMetadataProviderForContentType({
         contentType: 'audiobook',
         configuredMetadataProvider: 'hardcover',
         configuredAudiobookMetadataProvider: null,
       }),
-      'hardcover',
-    );
+    ).toBe('hardcover');
   });
 
   it('uses the main provider for ebook searches', () => {
-    assert.equal(
+    expect(
       getConfiguredMetadataProviderForContentType({
         contentType: 'ebook',
         configuredMetadataProvider: 'hardcover',
         configuredAudiobookMetadataProvider: 'openlibrary',
       }),
-      'hardcover',
-    );
+    ).toBe('hardcover');
   });
 });

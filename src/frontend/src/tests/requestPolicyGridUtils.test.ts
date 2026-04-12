@@ -1,6 +1,5 @@
-import * as assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
-import type { TableFieldConfig } from '../types/settings.js';
+import { describe, it, expect } from 'vitest';
+
 import {
   getAllowedMatrixModes,
   getEffectiveCellMode,
@@ -10,7 +9,8 @@ import {
   normalizeRequestPolicyRules,
   parseSourceCapabilitiesFromRulesField,
   RequestPolicyRuleRow,
-} from '../components/settings/users/requestPolicyGridUtils.js';
+} from '../components/settings/users/requestPolicyGridUtils';
+import type { TableFieldConfig } from '../types/settings';
 
 const tableFieldFixture: TableFieldConfig = {
   type: 'TableField',
@@ -57,7 +57,7 @@ describe('requestPolicyGridUtils', () => {
   it('parses dynamic source capabilities from rules field metadata', () => {
     const capabilities = parseSourceCapabilitiesFromRulesField(tableFieldFixture);
 
-    assert.deepEqual(capabilities, [
+    expect(capabilities).toEqual([
       {
         source: 'direct_download',
         displayName: 'Direct Download',
@@ -77,10 +77,10 @@ describe('requestPolicyGridUtils', () => {
   });
 
   it('filters allowed matrix modes by default ceiling', () => {
-    assert.deepEqual(getAllowedMatrixModes('download'), ['download', 'request_release', 'blocked']);
-    assert.deepEqual(getAllowedMatrixModes('request_release'), ['request_release', 'blocked']);
-    assert.deepEqual(getAllowedMatrixModes('request_book'), ['blocked']);
-    assert.deepEqual(getAllowedMatrixModes('blocked'), []);
+    expect(getAllowedMatrixModes('download')).toEqual(['download', 'request_release', 'blocked']);
+    expect(getAllowedMatrixModes('request_release')).toEqual(['request_release', 'blocked']);
+    expect(getAllowedMatrixModes('request_book')).toEqual(['blocked']);
+    expect(getAllowedMatrixModes('blocked')).toEqual([]);
   });
 
   it('preserves explicit rules that match inherited values but removes unsupported pairs', () => {
@@ -108,7 +108,7 @@ describe('requestPolicyGridUtils', () => {
       sourceCapabilities,
     });
 
-    assert.deepEqual(persisted, [
+    expect(persisted).toEqual([
       { source: 'direct_download', content_type: 'ebook', mode: 'request_release' },
       { source: 'prowlarr', content_type: 'audiobook', mode: 'request_release' },
       { source: 'prowlarr', content_type: 'ebook', mode: 'blocked' },
@@ -129,16 +129,14 @@ describe('requestPolicyGridUtils', () => {
       audiobook: 'download',
     });
 
-    assert.equal(
-      getEffectiveCellMode('direct_download', 'ebook', defaults, globalRules, userRules),
-      'blocked'
+    expect(getEffectiveCellMode('direct_download', 'ebook', defaults, globalRules, userRules)).toBe(
+      'blocked',
     );
-    assert.equal(
-      getEffectiveCellMode('prowlarr', 'ebook', defaults, globalRules, userRules),
-      'blocked'
+    expect(getEffectiveCellMode('prowlarr', 'ebook', defaults, globalRules, userRules)).toBe(
+      'blocked',
     );
 
-    assert.deepEqual(mergedRules, [
+    expect(mergedRules).toEqual([
       { source: 'direct_download', content_type: 'ebook', mode: 'blocked' },
       { source: 'prowlarr', content_type: 'ebook', mode: 'blocked' },
     ]);

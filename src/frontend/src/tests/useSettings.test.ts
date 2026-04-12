@@ -1,11 +1,11 @@
-import * as assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, expect } from 'vitest';
+
+import { SettingsTab } from '../types/settings';
 import {
   getRestartRequiredFieldKeys,
   mergeFetchedSettingsWithDirtyValues,
   settingsTabMatchesSavedValues,
-} from '../utils/settingsValues.js';
-import { SettingsTab } from '../types/settings.js';
+} from '../utils/settingsValues';
 
 describe('mergeFetchedSettingsWithDirtyValues', () => {
   it('preserves unsaved dirty values while applying fresh fetched values', () => {
@@ -30,15 +30,14 @@ describe('mergeFetchedSettingsWithDirtyValues', () => {
       },
     };
 
-    assert.deepEqual(
+    expect(
       mergeFetchedSettingsWithDirtyValues(fetchedValues, currentValues, originalValues),
-      {
-        general: {
-          apiKey: 'unsaved-key',
-          endpoint: 'https://saved.example',
-        },
-      }
-    );
+    ).toEqual({
+      general: {
+        apiKey: 'unsaved-key',
+        endpoint: 'https://saved.example',
+      },
+    });
   });
 
   it('does not preserve values that are not dirty and ignores keys removed by backend', () => {
@@ -65,15 +64,14 @@ describe('mergeFetchedSettingsWithDirtyValues', () => {
       },
     };
 
-    assert.deepEqual(
+    expect(
       mergeFetchedSettingsWithDirtyValues(fetchedValues, currentValues, originalValues),
-      {
-        provider: {
-          host: 'new-host',
-          enabled: true,
-        },
-      }
-    );
+    ).toEqual({
+      provider: {
+        host: 'new-host',
+        enabled: true,
+      },
+    });
   });
 });
 
@@ -108,31 +106,28 @@ describe('settings save verification helpers', () => {
   ];
 
   it('confirms a saved tab when backend values match the expected non-password changes', () => {
-    assert.equal(
+    expect(
       settingsTabMatchesSavedValues('general', tabs, {
         API_URL: 'https://saved.example',
         API_KEY: 'secret',
       }),
-      true
-    );
+    ).toBe(true);
   });
 
   it('does not confirm a saved tab when a non-password field does not match', () => {
-    assert.equal(
+    expect(
       settingsTabMatchesSavedValues('general', tabs, {
         API_URL: 'https://different.example',
       }),
-      false
-    );
+    ).toBe(false);
   });
 
   it('collects restart-required keys for changed values', () => {
-    assert.deepEqual(
+    expect(
       getRestartRequiredFieldKeys(tabs[0].fields, {
         API_URL: 'https://saved.example',
         USE_SSL: true,
       }),
-      ['USE_SSL']
-    );
+    ).toEqual(['USE_SSL']);
   });
 });

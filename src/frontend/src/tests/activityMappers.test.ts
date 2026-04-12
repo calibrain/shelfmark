@@ -1,7 +1,10 @@
-import * as assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
-import type { Book, RequestRecord } from '../types/index.js';
-import { downloadToActivityItem, requestToActivityItem } from '../components/activity/activityMappers.js';
+import { describe, it, expect } from 'vitest';
+
+import {
+  downloadToActivityItem,
+  requestToActivityItem,
+} from '../components/activity/activityMappers';
+import type { Book, RequestRecord } from '../types/index';
 
 const makeBook = (overrides: Partial<Book> = {}): Book => ({
   id: 'book-1',
@@ -41,7 +44,14 @@ const makeRequest = (overrides: Partial<RequestRecord> = {}): RequestRecord => (
 describe('activityMappers.downloadToActivityItem', () => {
   it('maps every download status key to its visual status', () => {
     const statusExpectations: Array<{
-      statusKey: 'queued' | 'resolving' | 'locating' | 'downloading' | 'complete' | 'error' | 'cancelled';
+      statusKey:
+        | 'queued'
+        | 'resolving'
+        | 'locating'
+        | 'downloading'
+        | 'complete'
+        | 'error'
+        | 'cancelled';
       expectedVisualStatus: string;
     }> = [
       { statusKey: 'queued', expectedVisualStatus: 'queued' },
@@ -55,7 +65,7 @@ describe('activityMappers.downloadToActivityItem', () => {
 
     statusExpectations.forEach(({ statusKey, expectedVisualStatus }) => {
       const item = downloadToActivityItem(makeBook(), statusKey);
-      assert.equal(item.visualStatus, expectedVisualStatus);
+      expect(item.visualStatus).toBe(expectedVisualStatus);
     });
   });
 
@@ -68,16 +78,16 @@ describe('activityMappers.downloadToActivityItem', () => {
         username: 'alice',
         added_time: 123,
       }),
-      'queued'
+      'queued',
     );
 
-    assert.equal(item.kind, 'download');
-    assert.equal(item.visualStatus, 'queued');
-    assert.equal(item.statusLabel, 'Queued');
-    assert.equal(item.metaLine, 'EPUB · 3 MB · Direct Download · alice');
-    assert.equal(item.progress, 5);
-    assert.equal(item.progressAnimated, true);
-    assert.equal(item.timestamp, 123);
+    expect(item.kind).toBe('download');
+    expect(item.visualStatus).toBe('queued');
+    expect(item.statusLabel).toBe('Queued');
+    expect(item.metaLine).toBe('EPUB · 3 MB · Direct Download · alice');
+    expect(item.progress).toBe(5);
+    expect(item.progressAnimated).toBe(true);
+    expect(item.timestamp).toBe(123);
   });
 
   it('normalizes epoch-second added_time values to milliseconds', () => {
@@ -85,26 +95,26 @@ describe('activityMappers.downloadToActivityItem', () => {
       makeBook({
         added_time: 1700000000,
       }),
-      'complete'
+      'complete',
     );
 
-    assert.equal(item.timestamp, 1700000000000);
+    expect(item.timestamp).toBe(1700000000000);
   });
 
   it('maps downloading progress using 20 + progress*0.8', () => {
     const item = downloadToActivityItem(makeBook({ progress: 60 }), 'downloading');
-    assert.equal(item.visualStatus, 'downloading');
-    assert.equal(item.progress, 68);
+    expect(item.visualStatus).toBe('downloading');
+    expect(item.progress).toBe(68);
   });
 
   it('falls back to normalized source name when source_display_name is missing', () => {
     const item = downloadToActivityItem(makeBook({ source: 'direct_download' }), 'complete');
-    assert.equal(item.metaLine, 'Direct Download');
+    expect(item.metaLine).toBe('Direct Download');
   });
 
   it('omits empty meta parts cleanly', () => {
     const item = downloadToActivityItem(makeBook({ format: 'epub', size: undefined }), 'error');
-    assert.equal(item.metaLine, 'EPUB');
+    expect(item.metaLine).toBe('EPUB');
   });
 });
 
@@ -119,21 +129,21 @@ describe('activityMappers.requestToActivityItem', () => {
 
     statuses.forEach(({ input, expected }) => {
       const item = requestToActivityItem(makeRequest({ status: input }), 'user');
-      assert.equal(item.visualStatus, expected);
+      expect(item.visualStatus).toBe(expected);
     });
   });
 
   it('maps release-level admin request with release meta and username', () => {
     const item = requestToActivityItem(makeRequest(), 'admin');
 
-    assert.equal(item.kind, 'request');
-    assert.equal(item.visualStatus, 'pending');
-    assert.equal(item.metaLine, 'EPUB · 2 MB · Prowlarr · alice');
-    assert.equal(item.requestId, 42);
-    assert.equal(item.requestLevel, 'release');
-    assert.equal(item.requestNote, 'please add this');
-    assert.equal(item.statusLabel, 'Pending');
-    assert.ok(item.timestamp > 0);
+    expect(item.kind).toBe('request');
+    expect(item.visualStatus).toBe('pending');
+    expect(item.metaLine).toBe('EPUB · 2 MB · Prowlarr · alice');
+    expect(item.requestId).toBe(42);
+    expect(item.requestLevel).toBe('release');
+    expect(item.requestNote).toBe('please add this');
+    expect(item.statusLabel).toBe('Pending');
+    expect(item.timestamp > 0).toBeTruthy();
   });
 
   it('maps book-level user request without username in meta line', () => {
@@ -143,10 +153,10 @@ describe('activityMappers.requestToActivityItem', () => {
         release_data: null,
         source_hint: '*',
       }),
-      'user'
+      'user',
     );
 
-    assert.equal(item.metaLine, 'Book request');
+    expect(item.metaLine).toBe('Book request');
   });
 
   it('maps audiobook book-level request with audiobook label', () => {
@@ -157,10 +167,10 @@ describe('activityMappers.requestToActivityItem', () => {
         release_data: null,
         source_hint: '*',
       }),
-      'admin'
+      'admin',
     );
 
-    assert.equal(item.metaLine, 'Audiobook request · alice');
+    expect(item.metaLine).toBe('Audiobook request · alice');
   });
 
   it('maps rejected requests with admin note', () => {
@@ -169,15 +179,15 @@ describe('activityMappers.requestToActivityItem', () => {
         status: 'rejected',
         admin_note: 'Not available',
       }),
-      'user'
+      'user',
     );
 
-    assert.equal(item.visualStatus, 'rejected');
-    assert.equal(item.adminNote, 'Not available');
+    expect(item.visualStatus).toBe('rejected');
+    expect(item.adminNote).toBe('Not available');
   });
 
   it('does not append username to meta line for user viewer role', () => {
     const item = requestToActivityItem(makeRequest(), 'user');
-    assert.equal(item.metaLine, 'EPUB · 2 MB · Prowlarr');
+    expect(item.metaLine).toBe('EPUB · 2 MB · Prowlarr');
   });
 });

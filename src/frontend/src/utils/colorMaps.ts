@@ -53,7 +53,7 @@ const DOWNLOAD_TYPE_COLORS: Record<string, ColorStyle> = {
 
 const CONTENT_TYPE_COLORS: Record<string, ColorStyle> = {
   book: { bg: 'bg-blue-500/20', text: 'text-blue-700 dark:text-blue-300' },
-  ebook: { bg: 'bg-blue-500/20', text: 'text-blue-700 dark:text-blue-300' },  // Alias for backwards compatibility
+  ebook: { bg: 'bg-blue-500/20', text: 'text-blue-700 dark:text-blue-300' }, // Alias for backwards compatibility
   audiobook: { bg: 'bg-violet-500/20', text: 'text-violet-700 dark:text-violet-300' },
 };
 
@@ -67,12 +67,30 @@ const FLAG_COLORS: Record<string, ColorStyle> = {
   sticky: { bg: 'bg-yellow-500/20', text: 'text-yellow-700 dark:text-yellow-300' },
 };
 
-const DEFAULT_FORMAT_COLOR: ColorStyle = { bg: 'bg-cyan-500/20', text: 'text-cyan-700 dark:text-cyan-300' };
-const DEFAULT_LANGUAGE_COLOR: ColorStyle = { bg: 'bg-indigo-500/20', text: 'text-indigo-700 dark:text-indigo-300' };
-const DEFAULT_DOWNLOAD_TYPE_COLOR: ColorStyle = { bg: 'bg-violet-500/20', text: 'text-violet-700 dark:text-violet-300' };
-const DEFAULT_CONTENT_TYPE_COLOR: ColorStyle = { bg: 'bg-gray-500/20', text: 'text-gray-700 dark:text-gray-300' };
-const DEFAULT_FLAG_COLOR: ColorStyle = { bg: 'bg-gray-500/20', text: 'text-gray-700 dark:text-gray-300' };
-const FALLBACK_COLOR: ColorStyle = { bg: 'bg-gray-500/20', text: 'text-gray-700 dark:text-gray-300' };
+const DEFAULT_FORMAT_COLOR: ColorStyle = {
+  bg: 'bg-cyan-500/20',
+  text: 'text-cyan-700 dark:text-cyan-300',
+};
+const DEFAULT_LANGUAGE_COLOR: ColorStyle = {
+  bg: 'bg-indigo-500/20',
+  text: 'text-indigo-700 dark:text-indigo-300',
+};
+const DEFAULT_DOWNLOAD_TYPE_COLOR: ColorStyle = {
+  bg: 'bg-violet-500/20',
+  text: 'text-violet-700 dark:text-violet-300',
+};
+const DEFAULT_CONTENT_TYPE_COLOR: ColorStyle = {
+  bg: 'bg-gray-500/20',
+  text: 'text-gray-700 dark:text-gray-300',
+};
+const DEFAULT_FLAG_COLOR: ColorStyle = {
+  bg: 'bg-gray-500/20',
+  text: 'text-gray-700 dark:text-gray-300',
+};
+const FALLBACK_COLOR: ColorStyle = {
+  bg: 'bg-gray-500/20',
+  text: 'text-gray-700 dark:text-gray-300',
+};
 
 export function getFormatColor(format?: string): ColorStyle {
   if (!format || format === '-') return FALLBACK_COLOR;
@@ -126,7 +144,10 @@ interface ColumnColorHint {
  * Get the color style for a value based on a color hint.
  * Supports both static color classes and dynamic map lookups.
  */
-export function getColorStyleFromHint(value: string, colorHint?: ColumnColorHint | null): ColorStyle {
+export function getColorStyleFromHint(
+  value: string,
+  colorHint?: ColumnColorHint | null,
+): ColorStyle {
   if (!colorHint) return FALLBACK_COLOR;
 
   if (colorHint.type === 'static') {

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+
 import { parseUrlSearchParams, ParsedUrlSearch } from '../utils/parseUrlSearchParams';
 
 interface UseUrlSearchOptions {

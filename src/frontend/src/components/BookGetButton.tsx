@@ -1,4 +1,5 @@
 import { CSSProperties } from 'react';
+
 import { Book, ButtonStateInfo } from '../types';
 import { CircularProgress } from './shared';
 
@@ -57,8 +58,10 @@ export const BookGetButton = ({
   const isCompleted = buttonState?.state === 'complete';
   const hasError = buttonState?.state === 'error';
   const isBlocked = buttonState?.state === 'blocked';
-  const isInProgress = buttonState && ['queued', 'resolving', 'locating', 'downloading'].includes(buttonState.state);
-  const showCircularProgress = buttonState?.state === 'downloading' && buttonState.progress !== undefined;
+  const isInProgress =
+    buttonState && ['queued', 'resolving', 'locating', 'downloading'].includes(buttonState.state);
+  const showCircularProgress =
+    buttonState?.state === 'downloading' && buttonState.progress !== undefined;
   const showSpinner = (isInProgress && !showCircularProgress) || isLoading;
 
   // Disable button while loading metadata
@@ -67,14 +70,10 @@ export const BookGetButton = ({
   // Determine button styling based on state
   const getButtonClasses = () => {
     if (isCompleted) {
-      return isIconVariant
-        ? 'bg-green-600 text-white'
-        : 'bg-green-600 hover:bg-green-700';
+      return isIconVariant ? 'bg-green-600 text-white' : 'bg-green-600 hover:bg-green-700';
     }
     if (hasError) {
-      return isIconVariant
-        ? 'bg-red-600 text-white opacity-75'
-        : 'bg-red-600 hover:bg-red-700';
+      return isIconVariant ? 'bg-red-600 text-white opacity-75' : 'bg-red-600 hover:bg-red-700';
     }
     if (isBlocked) {
       return isIconVariant
@@ -83,15 +82,11 @@ export const BookGetButton = ({
     }
     if (isLoading) {
       // Show loading state (fetching metadata)
-      return isIconVariant
-        ? 'text-gray-400 dark:text-gray-500'
-        : 'bg-emerald-600/70';
+      return isIconVariant ? 'text-gray-400 dark:text-gray-500' : 'bg-emerald-600/70';
     }
     if (isInProgress) {
       // Show progress state but keep it clickable
-      return isIconVariant
-        ? 'bg-sky-600 text-white'
-        : 'bg-sky-600 hover:bg-sky-700';
+      return isIconVariant ? 'bg-sky-600 text-white' : 'bg-sky-600 hover:bg-sky-700';
     }
     // Default state - icon variant has no background
     return isIconVariant
@@ -131,7 +126,12 @@ export const BookGetButton = ({
     if (hasError) {
       return (
         <svg className={iconSize} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M6 18L18 6M6 6l12 12"
+          />
         </svg>
       );
     }
@@ -139,27 +139,38 @@ export const BookGetButton = ({
     if (isBlocked) {
       return (
         <svg className={iconSize} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 10.5V7.875a4.125 4.125 0 1 0-8.25 0V10.5m-.75 0h9a2.25 2.25 0 0 1 2.25 2.25v6A2.25 2.25 0 0 1 16.5 21h-9a2.25 2.25 0 0 1-2.25-2.25v-6a2.25 2.25 0 0 1 2.25-2.25Z" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M16.5 10.5V7.875a4.125 4.125 0 1 0-8.25 0V10.5m-.75 0h9a2.25 2.25 0 0 1 2.25 2.25v6A2.25 2.25 0 0 1 16.5 21h-9a2.25 2.25 0 0 1-2.25-2.25v-6a2.25 2.25 0 0 1 2.25-2.25Z"
+          />
         </svg>
       );
     }
 
     if (showCircularProgress) {
-      const progressSize = isIconVariant ? (size === 'sm' ? 16 : 20) : (size === 'sm' ? 12 : 16);
+      const progressSize = isIconVariant ? (size === 'sm' ? 16 : 20) : size === 'sm' ? 12 : 16;
       return <CircularProgress progress={buttonState?.progress} size={progressSize} />;
     }
 
     if (showSpinner) {
       return (
         <div
-          className={`${iconSize} border-2 border-current border-t-transparent rounded-full animate-spin`}
+          className={`${iconSize} animate-spin rounded-full border-2 border-current border-t-transparent`}
         />
       );
     }
 
     // Default "+" icon for Get action
     return (
-      <svg className={iconSize} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+      <svg
+        className={iconSize}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        strokeWidth={2}
+      >
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
       </svg>
     );
@@ -169,7 +180,7 @@ export const BookGetButton = ({
   if (isIconVariant) {
     return (
       <button
-        className={`flex items-center justify-center rounded-full transition-all duration-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-emerald-500 ${sizeClass} ${getButtonClasses()} ${className}`.trim()}
+        className={`flex items-center justify-center rounded-full transition-all duration-200 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-hidden ${sizeClass} ${getButtonClasses()} ${className}`.trim()}
         onClick={handleClick}
         disabled={isDisabled}
         style={style}
@@ -182,7 +193,7 @@ export const BookGetButton = ({
 
   return (
     <button
-      className={`inline-flex items-center justify-center gap-1.5 rounded-sm text-white transition-all duration-200 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-emerald-500 ${sizeClass} ${widthClasses} ${getButtonClasses()} ${className}`.trim()}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-sm text-white transition-all duration-200 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-hidden ${sizeClass} ${widthClasses} ${getButtonClasses()} ${className}`.trim()}
       onClick={handleClick}
       disabled={isDisabled}
       style={style}

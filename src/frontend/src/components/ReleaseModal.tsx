@@ -1,5 +1,8 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
+
+import { useSocket } from '../contexts/SocketContext';
+import { getReleases, getReleaseSources } from '../services/api';
 import {
   Book,
   Release,
@@ -16,17 +19,8 @@ import {
   RequestPolicyMode,
   isMetadataBook,
 } from '../types';
-import { getReleases, getReleaseSources } from '../services/api';
-import { useSocket } from '../contexts/SocketContext';
-import { Dropdown } from './Dropdown';
-import { DropdownList } from './DropdownList';
-import { BookDownloadButton } from './BookDownloadButton';
-import { BookTargetDropdown } from './BookTargetDropdown';
 import { bookSupportsTargets } from '../utils/bookTargetLoader';
-import { ReleaseCell } from './ReleaseCell';
 import { getColorStyleFromHint } from '../utils/colorMaps';
-import { getNestedValue } from '../utils/objectHelpers';
-import { LanguageMultiSelect } from './LanguageMultiSelect';
 import {
   LANGUAGE_OPTION_DEFAULT,
   getLanguageFilterValues,
@@ -34,11 +28,34 @@ import {
   releaseLanguageMatchesFilter,
   buildLanguageNormalizer,
 } from '../utils/languageFilters';
+import { getNestedValue } from '../utils/objectHelpers';
+import {
+  getCachedReleases,
+  setCachedReleases,
+  invalidateCachedReleases,
+} from '../utils/releaseCache';
 import { getReleaseFormats } from '../utils/releaseFormats';
-import { getBookTitleCandidates, getBookAuthorCandidates, sortReleasesByBookMatch } from '../utils/releaseScoring';
-import { getCachedReleases, setCachedReleases, invalidateCachedReleases } from '../utils/releaseCache';
-import { SortState, getSavedSort, saveSort, clearSort, inferDefaultDirection, sortReleases, FORMAT_SORT_KEY, sortReleasesByFormat } from '../utils/releaseSort';
-
+import {
+  getBookTitleCandidates,
+  getBookAuthorCandidates,
+  sortReleasesByBookMatch,
+} from '../utils/releaseScoring';
+import {
+  SortState,
+  getSavedSort,
+  saveSort,
+  clearSort,
+  inferDefaultDirection,
+  sortReleases,
+  FORMAT_SORT_KEY,
+  sortReleasesByFormat,
+} from '../utils/releaseSort';
+import { BookDownloadButton } from './BookDownloadButton';
+import { BookTargetDropdown } from './BookTargetDropdown';
+import { Dropdown } from './Dropdown';
+import { DropdownList } from './DropdownList';
+import { LanguageMultiSelect } from './LanguageMultiSelect';
+import { ReleaseCell } from './ReleaseCell';
 
 // Combined mode configuration for the ReleaseModal
 export interface CombinedModeConfig {
@@ -59,7 +76,8 @@ function getCombinedDownloadLabel(
   audiobookMode: RequestPolicyMode | null | undefined,
 ): string {
   const ebookIsRequest = ebookMode === 'request_release' || ebookMode === 'request_book';
-  const audiobookIsRequest = audiobookMode === 'request_release' || audiobookMode === 'request_book';
+  const audiobookIsRequest =
+    audiobookMode === 'request_release' || audiobookMode === 'request_book';
   if (ebookIsRequest && audiobookIsRequest) return 'Request Both';
   if (ebookIsRequest || audiobookIsRequest) return 'Download & Request';
   return 'Download Both';
@@ -74,7 +92,7 @@ const DEFAULT_COLUMN_CONFIG: ReleaseColumnConfig = {
       render_type: 'badge',
       align: 'center',
       width: '60px',
-      hide_mobile: false,  // Language shown on mobile
+      hide_mobile: false, // Language shown on mobile
       color_hint: { type: 'map', value: 'language' },
       fallback: '-',
       uppercase: true,
@@ -85,7 +103,7 @@ const DEFAULT_COLUMN_CONFIG: ReleaseColumnConfig = {
       render_type: 'badge',
       align: 'center',
       width: '80px',
-      hide_mobile: false,  // Format shown on mobile
+      hide_mobile: false, // Format shown on mobile
       color_hint: { type: 'map', value: 'format' },
       fallback: '-',
       uppercase: true,
@@ -96,13 +114,13 @@ const DEFAULT_COLUMN_CONFIG: ReleaseColumnConfig = {
       render_type: 'size',
       align: 'center',
       width: '80px',
-      hide_mobile: false,  // Size shown on mobile
+      hide_mobile: false, // Size shown on mobile
       fallback: '-',
       uppercase: false,
     },
   ],
   grid_template: 'minmax(0,2fr) 60px 80px 80px',
-  supported_filters: ['format', 'language'],  // Default: both filters available
+  supported_filters: ['format', 'language'], // Default: both filters available
 };
 
 interface ReleaseModalProps {
@@ -114,14 +132,14 @@ interface ReleaseModalProps {
   getPolicyModeForSource?: (source: string, contentType: ContentType) => RequestPolicyMode;
   onPolicyRefresh?: () => Promise<unknown>;
   supportedFormats: string[];
-  supportedAudiobookFormats?: string[];  // Audiobook formats (m4b, mp3)
-  contentType: ContentType;  // 'ebook' or 'audiobook'
+  supportedAudiobookFormats?: string[]; // Audiobook formats (m4b, mp3)
+  contentType: ContentType; // 'ebook' or 'audiobook'
   defaultLanguages: string[];
   bookLanguages: Language[];
   currentStatus: StatusData;
-  defaultReleaseSource?: string;  // Default book tab to show (e.g., 'direct_download')
-  defaultAudiobookReleaseSource?: string;  // Default audiobook tab to show
-  onSearchSeries?: (seriesName: string, seriesId?: string) => void;  // Callback to search for series
+  defaultReleaseSource?: string; // Default book tab to show (e.g., 'direct_download')
+  defaultAudiobookReleaseSource?: string; // Default audiobook tab to show
+  onSearchSeries?: (seriesName: string, seriesId?: string) => void; // Callback to search for series
   defaultShowManualQuery?: boolean;
   isRequestMode?: boolean;
   showReleaseSourceLinks?: boolean;
@@ -129,7 +147,6 @@ interface ReleaseModalProps {
   // Combined mode (ebook + audiobook in one transaction)
   combinedMode?: CombinedModeConfig | null;
 }
-
 
 // 5-star rating display with partial fill support
 function StarRating({ rating, maxRating = 5 }: { rating: number; maxRating?: number }) {
@@ -142,10 +159,10 @@ function StarRating({ rating, maxRating = 5 }: { rating: number; maxRating?: num
         const fillPercentage = Math.min(Math.max((normalizedRating - index) * 100, 0), 100);
 
         return (
-          <div key={index} className="relative w-4 h-4">
+          <div key={index} className="relative h-4 w-4">
             {/* Empty star (gray background) */}
             <svg
-              className="absolute inset-0 w-4 h-4 text-zinc-300 dark:text-zinc-600"
+              className="absolute inset-0 h-4 w-4 text-zinc-300 dark:text-zinc-600"
               fill="currentColor"
               viewBox="0 0 20 20"
             >
@@ -153,7 +170,7 @@ function StarRating({ rating, maxRating = 5 }: { rating: number; maxRating?: num
             </svg>
             {/* Filled star (gold, clipped to fill percentage) */}
             <svg
-              className="absolute inset-0 w-4 h-4 text-amber-400"
+              className="absolute inset-0 h-4 w-4 text-amber-400"
               fill="currentColor"
               viewBox="0 0 20 20"
               style={{ clipPath: `inset(0 ${100 - fillPercentage}% 0 0)` }}
@@ -175,7 +192,7 @@ const ReleaseThumbnail = ({ preview, title }: { preview?: string; title?: string
   if (!preview || imageError) {
     return (
       <div
-        className="w-7 h-10 sm:w-8 sm:h-12 rounded-sm bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center text-[7px] sm:text-[8px] font-medium text-zinc-500 dark:text-zinc-400 shrink-0"
+        className="flex h-10 w-7 shrink-0 items-center justify-center rounded-sm bg-zinc-200 text-[7px] font-medium text-zinc-500 sm:h-12 sm:w-8 sm:text-[8px] dark:bg-zinc-700 dark:text-zinc-400"
         aria-label="No cover available"
       >
         No Cover
@@ -184,14 +201,14 @@ const ReleaseThumbnail = ({ preview, title }: { preview?: string; title?: string
   }
 
   return (
-    <div className="relative w-7 h-10 sm:w-8 sm:h-12 rounded-sm overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-white/40 dark:border-zinc-700/70 shrink-0">
+    <div className="relative h-10 w-7 shrink-0 overflow-hidden rounded-sm border border-white/40 bg-zinc-100 sm:h-12 sm:w-8 dark:border-zinc-700/70 dark:bg-zinc-800">
       {!imageLoaded && (
-        <div className="absolute inset-0 bg-linear-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
+        <div className="absolute inset-0 animate-pulse bg-linear-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700" />
       )}
       <img
         src={preview}
         alt={title || 'Book cover'}
-        className="w-full h-full object-cover object-top"
+        className="h-full w-full object-cover object-top"
         loading="lazy"
         onLoad={() => setImageLoaded(true)}
         onError={() => setImageError(true)}
@@ -202,13 +219,7 @@ const ReleaseThumbnail = ({ preview, title }: { preview?: string; title?: string
 };
 
 // Leading cell component - shows thumbnail, badge, or nothing based on config
-const LeadingCell = ({
-  config,
-  release
-}: {
-  config?: LeadingCellConfig;
-  release: Release;
-}) => {
+const LeadingCell = ({ config, release }: { config?: LeadingCellConfig; release: Release }) => {
   // Default to thumbnail mode if no config
   const cellType = config?.type || 'thumbnail';
 
@@ -218,7 +229,9 @@ const LeadingCell = ({
 
   if (cellType === 'thumbnail') {
     const key = config?.key || 'extra.preview';
-    const preview = getNestedValue(release as unknown as Record<string, unknown>, key) as string | undefined;
+    const preview = getNestedValue(release as unknown as Record<string, unknown>, key) as
+      | string
+      | undefined;
     return <ReleaseThumbnail preview={preview} title={release.title} />;
   }
 
@@ -231,9 +244,11 @@ const LeadingCell = ({
 
     return (
       <div
-        className={`w-7 h-10 sm:w-8 sm:h-12 rounded-lg ${colorStyle.bg} flex items-center justify-center shrink-0`}
+        className={`h-10 w-7 rounded-lg sm:h-12 sm:w-8 ${colorStyle.bg} flex shrink-0 items-center justify-center`}
       >
-        <span className={`text-[8px] sm:text-[9px] font-bold ${colorStyle.text} text-center leading-tight px-0.5`}>
+        <span
+          className={`text-[8px] font-bold sm:text-[9px] ${colorStyle.text} px-0.5 text-center leading-tight`}
+        >
           {text}
         </span>
       </div>
@@ -246,16 +261,20 @@ const LeadingCell = ({
 
 // Radio indicator for selection mode
 const RadioIndicator = ({ selected }: { selected: boolean }) => (
-  <div className="flex items-center justify-center w-8 h-8 shrink-0">
+  <div className="flex h-8 w-8 shrink-0 items-center justify-center">
     <div
-      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-        selected
-          ? 'border-emerald-500 bg-emerald-500'
-          : 'border-zinc-300 dark:border-zinc-600'
+      className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition-colors ${
+        selected ? 'border-emerald-500 bg-emerald-500' : 'border-zinc-300 dark:border-zinc-600'
       }`}
     >
       {selected && (
-        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth="3" stroke="currentColor">
+        <svg
+          className="h-3 w-3 text-white"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth="3"
+          stroke="currentColor"
+        >
           <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
         </svg>
       )}
@@ -264,27 +283,41 @@ const RadioIndicator = ({ selected }: { selected: boolean }) => (
 );
 
 // Phase indicator chip for combined mode footer
-const PhaseChip = ({ release, isActive, label }: {
+const PhaseChip = ({
+  release,
+  isActive,
+  label,
+}: {
   release: Release | null;
   isActive: boolean;
   label: string;
 }) => (
-  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full ${
-    release
-      ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
-      : isActive
-        ? 'bg-zinc-100 dark:bg-zinc-800 text-(--text)'
-        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500'
-  }`}>
+  <span
+    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+      release
+        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
+        : isActive
+          ? 'bg-zinc-100 text-(--text) dark:bg-zinc-800'
+          : 'bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500'
+    }`}
+  >
     {release ? (
       <>
-        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor">
+        <svg
+          className="h-3 w-3"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth="2.5"
+          stroke="currentColor"
+        >
           <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
         </svg>
         {release.format?.toUpperCase() || label} · {release.size || '?'}
       </>
     ) : (
-      <>{isActive ? '\u25CF' : '\u25CB'} {label}</>
+      <>
+        {isActive ? '\u25CF' : '\u25CB'} {label}
+      </>
     )}
   </span>
 );
@@ -331,15 +364,13 @@ const ReleaseRow = ({
     ? `auto ${gridTemplate} auto`
     : `${gridTemplate} auto`;
 
-  const mobileGridTemplate = showLeadingCell
-    ? 'auto 1fr auto'
-    : '1fr auto';
+  const mobileGridTemplate = showLeadingCell ? 'auto 1fr auto' : '1fr auto';
 
   const handleRowClick = selectionMode && onSelect ? onSelect : undefined;
 
   return (
     <div
-      className={`pl-5 pr-4 sm:pr-5 py-2 transition-colors duration-200 hover-row animate-pop-up will-change-transform ${
+      className={`hover-row animate-pop-up py-2 pr-4 pl-5 transition-colors duration-200 will-change-transform sm:pr-5 ${
         selectionMode ? 'cursor-pointer' : ''
       } ${isSelected ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : ''}`}
       style={{
@@ -352,7 +383,7 @@ const ReleaseRow = ({
     >
       {/* Desktop layout with dynamic grid */}
       <div
-        className="hidden sm:grid items-center gap-3"
+        className="hidden items-center gap-3 sm:grid"
         style={{ gridTemplateColumns: desktopGridTemplate }}
       >
         {/* Leading cell: Thumbnail, Badge, or nothing */}
@@ -360,13 +391,13 @@ const ReleaseRow = ({
 
         {/* Fixed: Title and author */}
         <div className="min-w-0">
-          <p className="text-sm font-medium line-clamp-2" title={release.title}>
+          <p className="line-clamp-2 text-sm font-medium" title={release.title}>
             {showReleaseSourceLinks && release.info_url ? (
               <a
                 href={release.info_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline"
+                className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
                 onClick={(e) => e.stopPropagation()}
               >
                 {release.title}
@@ -375,11 +406,7 @@ const ReleaseRow = ({
               release.title
             )}
           </p>
-          {author && (
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
-              {author}
-            </p>
-          )}
+          {author && <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">{author}</p>}
         </div>
 
         {/* Dynamic columns from schema */}
@@ -403,7 +430,7 @@ const ReleaseRow = ({
 
       {/* Mobile layout - author inline with title, info line below */}
       <div
-        className="grid sm:hidden items-center gap-2"
+        className="grid items-center gap-2 sm:hidden"
         style={{ gridTemplateColumns: mobileGridTemplate }}
       >
         {/* Leading cell: Thumbnail, Badge, or nothing */}
@@ -411,13 +438,13 @@ const ReleaseRow = ({
 
         <div className="min-w-0">
           {/* Title and author on same line */}
-          <p className="text-sm leading-tight line-clamp-2" title={release.title}>
+          <p className="line-clamp-2 text-sm leading-tight" title={release.title}>
             {showReleaseSourceLinks && release.info_url ? (
               <a
                 href={release.info_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-medium hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline"
+                className="font-medium hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
                 onClick={(e) => e.stopPropagation()}
               >
                 {release.title}
@@ -426,17 +453,21 @@ const ReleaseRow = ({
               <span className="font-medium">{release.title}</span>
             )}
             {author && (
-              <span className="text-zinc-500 dark:text-zinc-400 font-normal"> — {author}</span>
+              <span className="font-normal text-zinc-500 dark:text-zinc-400"> — {author}</span>
             )}
           </p>
           {/* Plugin-provided info line (format, size, indexer, seeders, etc.) */}
           {mobileColumns.length > 0 && (
-            <div className="flex items-center gap-1.5 mt-1 text-[10px] text-zinc-500 dark:text-zinc-400">
+            <div className="mt-1 flex items-center gap-1.5 text-[10px] text-zinc-500 dark:text-zinc-400">
               {(() => {
                 // Pre-filter columns that will render content to avoid orphan dots
                 const columnsWithContent = mobileColumns.filter((col) => {
-                  const rawValue = getNestedValue(release as unknown as Record<string, unknown>, col.key);
-                  const value = rawValue !== undefined && rawValue !== null ? String(rawValue) : col.fallback;
+                  const rawValue = getNestedValue(
+                    release as unknown as Record<string, unknown>,
+                    col.key,
+                  );
+                  const value =
+                    rawValue !== undefined && rawValue !== null ? String(rawValue) : col.fallback;
 
                   if (col.render_type === 'flag_icon') {
                     // flag_icon returns null in compact mode when empty
@@ -460,7 +491,12 @@ const ReleaseRow = ({
                 return columnsWithContent.map((col, idx) => (
                   <span key={col.key} className="flex items-center gap-1.5">
                     {idx > 0 && <span className="text-zinc-300 dark:text-zinc-600">·</span>}
-                    <ReleaseCell column={col} release={release} compact onlineServers={onlineServers} />
+                    <ReleaseCell
+                      column={col}
+                      release={release}
+                      compact
+                      onlineServers={onlineServers}
+                    />
                   </span>
                 ));
               })()}
@@ -488,12 +524,13 @@ const ReleaseRow = ({
 function ShimmerBlock({ className }: { className: string }) {
   return (
     <div
-      className={`rounded-sm bg-zinc-200 dark:bg-zinc-800 relative overflow-hidden ${className}`}
+      className={`relative overflow-hidden rounded-sm bg-zinc-200 dark:bg-zinc-800 ${className}`}
     >
       <div
         className="absolute inset-0 dark:opacity-50"
         style={{
-          background: 'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.4) 50%, transparent 100%)',
+          background:
+            'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.4) 50%, transparent 100%)',
           backgroundSize: '200% 100%',
           animation: 'wave 2s ease-in-out infinite',
         }}
@@ -509,7 +546,7 @@ function ReleaseSkeleton() {
   const rows = 8;
   return (
     <div
-      className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60 overflow-hidden"
+      className="divide-y divide-zinc-200/60 overflow-hidden dark:divide-zinc-800/60"
       style={{
         maskImage: 'linear-gradient(to bottom, black 40%, transparent 100%)',
         WebkitMaskImage: 'linear-gradient(to bottom, black 40%, transparent 100%)',
@@ -517,9 +554,9 @@ function ReleaseSkeleton() {
     >
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} className="px-5 py-2">
-          <div className="grid grid-cols-[auto_1fr_auto] sm:grid-cols-[auto_minmax(0,2fr)_60px_80px_80px_auto] items-center gap-2 sm:gap-3">
+          <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 sm:grid-cols-[auto_minmax(0,2fr)_60px_80px_80px_auto] sm:gap-3">
             {/* Thumbnail skeleton */}
-            <ShimmerBlock className="w-7 h-10 sm:w-10 sm:h-14" />
+            <ShimmerBlock className="h-10 w-7 sm:h-14 sm:w-10" />
 
             {/* Title and author skeleton */}
             <div className="min-w-0 space-y-1.5">
@@ -528,30 +565,30 @@ function ReleaseSkeleton() {
             </div>
 
             {/* Language badge skeleton - desktop */}
-            <div className="hidden sm:flex justify-center">
-              <ShimmerBlock className="w-8 h-5" />
+            <div className="hidden justify-center sm:flex">
+              <ShimmerBlock className="h-5 w-8" />
             </div>
 
             {/* Format badge skeleton - desktop */}
-            <div className="hidden sm:flex justify-center">
-              <ShimmerBlock className="w-12 h-5" />
+            <div className="hidden justify-center sm:flex">
+              <ShimmerBlock className="h-5 w-12" />
             </div>
 
             {/* Size skeleton - desktop */}
-            <div className="hidden sm:flex justify-center">
-              <ShimmerBlock className="w-14 h-4" />
+            <div className="hidden justify-center sm:flex">
+              <ShimmerBlock className="h-4 w-14" />
             </div>
 
             {/* Mobile info + action skeleton */}
             <div className="flex items-center gap-2">
               {/* Mobile: format + size inline */}
-              <div className="flex sm:hidden flex-col items-end gap-1">
-                <ShimmerBlock className="w-10 h-3" />
-                <ShimmerBlock className="w-14 h-3" />
+              <div className="flex flex-col items-end gap-1 sm:hidden">
+                <ShimmerBlock className="h-3 w-10" />
+                <ShimmerBlock className="h-3 w-14" />
               </div>
 
               {/* Action button skeleton */}
-              <ShimmerBlock className="w-8 h-8 rounded-full!" />
+              <ShimmerBlock className="h-8 w-8 rounded-full!" />
             </div>
           </div>
         </div>
@@ -563,10 +600,10 @@ function ReleaseSkeleton() {
 // Empty state component
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="text-center py-12 px-4">
-      <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-zinc-100 dark:bg-zinc-800 mb-4">
+    <div className="px-4 py-12 text-center">
+      <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
         <svg
-          className="w-7 h-7 text-zinc-400"
+          className="h-7 w-7 text-zinc-400"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -587,10 +624,10 @@ function EmptyState({ message }: { message: string }) {
 // Error state component
 function ErrorState({ message }: { message: string }) {
   return (
-    <div className="text-center py-12 px-4">
-      <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-red-100 dark:bg-red-900/30 mb-4">
+    <div className="px-4 py-12 text-center">
+      <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
         <svg
-          className="w-7 h-7 text-red-600 dark:text-red-400"
+          className="h-7 w-7 text-red-600 dark:text-red-400"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -603,14 +640,13 @@ function ErrorState({ message }: { message: string }) {
           />
         </svg>
       </div>
-      <h4 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 mb-2">
+      <h4 className="mb-2 text-base font-semibold text-zinc-900 dark:text-zinc-100">
         Error Loading Releases
       </h4>
-      <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-xs mx-auto">{message}</p>
+      <p className="mx-auto max-w-xs text-sm text-zinc-500 dark:text-zinc-400">{message}</p>
     </div>
   );
 }
-
 
 export const ReleaseModal = ({
   book,
@@ -636,12 +672,14 @@ export const ReleaseModal = ({
   combinedMode = null,
 }: ReleaseModalProps) => {
   // Use audiobook formats when in audiobook mode
-  const effectiveFormats = contentType === 'audiobook' && supportedAudiobookFormats.length > 0
-    ? supportedAudiobookFormats
-    : supportedFormats;
-  const preferredDefaultReleaseSource = contentType === 'audiobook'
-    ? (defaultAudiobookReleaseSource || defaultReleaseSource)
-    : defaultReleaseSource;
+  const effectiveFormats =
+    contentType === 'audiobook' && supportedAudiobookFormats.length > 0
+      ? supportedAudiobookFormats
+      : supportedFormats;
+  const preferredDefaultReleaseSource =
+    contentType === 'audiobook'
+      ? defaultAudiobookReleaseSource || defaultReleaseSource
+      : defaultReleaseSource;
   const [isClosing, setIsClosing] = useState(false);
   const [isRequestingBook, setIsRequestingBook] = useState(false);
   const [selectedRelease, setSelectedRelease] = useState<Release | null>(null);
@@ -670,7 +708,9 @@ export const ReleaseModal = ({
   const bookSummaryRef = useRef<HTMLDivElement>(null);
 
   // Releases data per source
-  const [releasesBySource, setReleasesBySource] = useState<Record<string, ReleasesResponse | null>>({});
+  const [releasesBySource, setReleasesBySource] = useState<Record<string, ReleasesResponse | null>>(
+    {},
+  );
   const [loadingBySource, setLoadingBySource] = useState<Record<string, boolean>>({});
   const [errorBySource, setErrorBySource] = useState<Record<string, string | null>>({});
   const [expandedBySource, setExpandedBySource] = useState<Record<string, boolean>>({});
@@ -790,7 +830,15 @@ export const ReleaseModal = ({
       clearTimeout(statusTimeoutRef.current);
       statusTimeoutRef.current = null;
     }
-  }, [book?.id, contentType, defaultShowManualQuery, book?.search_title, book?.title, book?.search_author, book?.author]);
+  }, [
+    book?.id,
+    contentType,
+    defaultShowManualQuery,
+    book?.search_title,
+    book?.title,
+    book?.search_author,
+    book?.author,
+  ]);
 
   // Set up WebSocket listener for search status updates
   useEffect(() => {
@@ -919,24 +967,25 @@ export const ReleaseModal = ({
   useEffect(() => {
     if (availableSources.length === 0) return;
 
-    const providerContextSource = availableSources.find((source) => (
-      source.name === book?.provider && source.browse_results_are_releases
-    ));
+    const providerContextSource = availableSources.find(
+      (source) => source.name === book?.provider && source.browse_results_are_releases,
+    );
 
     if (providerContextSource) {
       setActiveTab(providerContextSource.name);
       return;
     }
 
-    const supportedSources = availableSources.filter(s => {
+    const supportedSources = availableSources.filter((s) => {
       const types = s.supported_content_types || ['ebook', 'audiobook'];
       return types.includes(contentType);
     });
 
     if (supportedSources.length > 0) {
-      const enabledSources = supportedSources.filter(s => s.enabled);
-      const defaultIsEnabled = preferredDefaultReleaseSource &&
-        enabledSources.some(s => s.name === preferredDefaultReleaseSource);
+      const enabledSources = supportedSources.filter((s) => s.enabled);
+      const defaultIsEnabled =
+        preferredDefaultReleaseSource &&
+        enabledSources.some((s) => s.name === preferredDefaultReleaseSource);
 
       let defaultSource: string;
       if (defaultIsEnabled) {
@@ -964,7 +1013,12 @@ export const ReleaseModal = ({
     const bookId = book.provider_id;
 
     // Skip if already loaded, currently loading, or has error (prevents retry loop)
-    if (releasesBySource[activeTab] !== undefined || loadingBySource[activeTab] || errorBySource[activeTab]) return;
+    if (
+      releasesBySource[activeTab] !== undefined ||
+      loadingBySource[activeTab] ||
+      errorBySource[activeTab]
+    )
+      return;
 
     // Check module-level cache first
     const cached = getCachedReleases(provider, bookId, activeTab, contentType);
@@ -978,7 +1032,17 @@ export const ReleaseModal = ({
       setErrorBySource((prev) => ({ ...prev, [activeTab]: null }));
 
       try {
-        const response = await getReleases(provider, bookId, activeTab, book.title, book.author, undefined, undefined, contentType, manualQuery.trim() || undefined);
+        const response = await getReleases(
+          provider,
+          bookId,
+          activeTab,
+          book.title,
+          book.author,
+          undefined,
+          undefined,
+          contentType,
+          manualQuery.trim() || undefined,
+        );
         setCachedReleases(provider, bookId, activeTab, contentType, response);
         setReleasesBySource((prev) => ({ ...prev, [activeTab]: response }));
       } catch (err) {
@@ -1006,15 +1070,30 @@ export const ReleaseModal = ({
 
     try {
       // Resolve language codes for the API call (same logic as Apply button)
-      const languagesParam = getReleaseSearchLanguageParams(languageFilter, bookLanguages, defaultLanguages);
+      const languagesParam = getReleaseSearchLanguageParams(
+        languageFilter,
+        bookLanguages,
+        defaultLanguages,
+      );
 
       // Pass indexer filter only if the source supports it (empty array = search all)
-      const supportsIndexerFilter = releasesBySource[activeTab]?.column_config?.supported_filters?.includes('indexer');
-      const indexersParam = supportsIndexerFilter && indexerFilter.length > 0 ? indexerFilter : undefined;
+      const supportsIndexerFilter =
+        releasesBySource[activeTab]?.column_config?.supported_filters?.includes('indexer');
+      const indexersParam =
+        supportsIndexerFilter && indexerFilter.length > 0 ? indexerFilter : undefined;
 
       // Fetch with expand_search=true (title+author search)
       const expandedResponse = await getReleases(
-        provider, bookId, activeTab, book.title, book.author, true, languagesParam, contentType, manualQuery.trim() || undefined, indexersParam
+        provider,
+        bookId,
+        activeTab,
+        book.title,
+        book.author,
+        true,
+        languagesParam,
+        contentType,
+        manualQuery.trim() || undefined,
+        indexersParam,
       );
 
       // Merge with existing results, deduplicating by source_id
@@ -1024,8 +1103,8 @@ export const ReleaseModal = ({
           return { ...prev, [activeTab]: expandedResponse };
         }
 
-        const seenIds = new Set(existing.releases.map(r => r.source_id));
-        const newReleases = expandedResponse.releases.filter(r => !seenIds.has(r.source_id));
+        const seenIds = new Set(existing.releases.map((r) => r.source_id));
+        const newReleases = expandedResponse.releases.filter((r) => !seenIds.has(r.source_id));
 
         return {
           ...prev,
@@ -1041,7 +1120,17 @@ export const ReleaseModal = ({
     } finally {
       setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
     }
-  }, [activeTab, book, languageFilter, bookLanguages, defaultLanguages, contentType, manualQuery, indexerFilter, releasesBySource]);
+  }, [
+    activeTab,
+    book,
+    languageFilter,
+    bookLanguages,
+    defaultLanguages,
+    contentType,
+    manualQuery,
+    indexerFilter,
+    releasesBySource,
+  ]);
 
   // Build list of tabs to show
   // Only show enabled sources that support the current content type
@@ -1050,11 +1139,10 @@ export const ReleaseModal = ({
     type TabInfo = { name: string; displayName: string; enabled: boolean };
 
     const enabledTabs: TabInfo[] = [];
-    const providerContextSourceName = (
-      availableSources.find((source) => (
-        source.name === book?.provider && source.browse_results_are_releases
-      ))?.name || null
-    );
+    const providerContextSourceName =
+      availableSources.find(
+        (source) => source.name === book?.provider && source.browse_results_are_releases,
+      )?.name || null;
 
     // Filter to only enabled sources that support this content type
     availableSources.forEach((src) => {
@@ -1174,33 +1262,36 @@ export const ReleaseModal = ({
 
   // Get sortable columns from column config
   const sortableColumns = useMemo(() => {
-    return columnConfig.columns.filter(col => col.sortable) || [];
+    return columnConfig.columns.filter((col) => col.sortable) || [];
   }, [columnConfig]);
 
   // Build unified list of all sort options (from sortable columns + extra_sort_options)
   const allSortOptions = useMemo(() => {
-    const fromColumns = sortableColumns.map(col => ({
+    const fromColumns = sortableColumns.map((col) => ({
       label: col.label,
       sortKey: col.sort_key || col.key,
       defaultDirection: inferDefaultDirection(col.render_type) as 'asc' | 'desc',
     }));
-    const fromExtra = (columnConfig.extra_sort_options || []).map(opt => ({
+    const fromExtra = (columnConfig.extra_sort_options || []).map((opt) => ({
       label: opt.label,
       sortKey: opt.sort_key,
-      defaultDirection: 'desc' as const,  // Extra sort options are typically numeric (e.g., peers)
+      defaultDirection: 'desc' as const, // Extra sort options are typically numeric (e.g., peers)
     }));
     return [...fromColumns, ...fromExtra];
   }, [sortableColumns, columnConfig.extra_sort_options]);
 
-  const isValidSortForCurrentResults = useCallback((sort: SortState | null): boolean => {
-    if (!sort) return false;
+  const isValidSortForCurrentResults = useCallback(
+    (sort: SortState | null): boolean => {
+      if (!sort) return false;
 
-    if (sort.key === FORMAT_SORT_KEY) {
-      return !!sort.value && availableFormats.includes(sort.value);
-    }
+      if (sort.key === FORMAT_SORT_KEY) {
+        return !!sort.value && availableFormats.includes(sort.value);
+      }
 
-    return allSortOptions.some(opt => opt.sortKey === sort.key);
-  }, [availableFormats, allSortOptions]);
+      return allSortOptions.some((opt) => opt.sortKey === sort.key);
+    },
+    [availableFormats, allSortOptions],
+  );
 
   // Get current sort state for active tab (from state, localStorage, or default to null = best match)
   const currentSort = useMemo((): SortState | null => {
@@ -1219,41 +1310,45 @@ export const ReleaseModal = ({
   }, [activeTab, sortBySource, isValidSortForCurrentResults]);
 
   // Handle sort change - null means "Default" (best title match), otherwise toggle direction or set new column
-  const handleSortChange = useCallback((sortKey: string | null, defaultDirection: 'asc' | 'desc', value?: string) => {
-    if (sortKey === null) {
-      // "Default" selected - use best-match sorting
-      setSortBySource(prev => {
-        const next = { ...prev };
-        delete next[activeTab];
-        return next;
-      });
-      clearSort(activeTab);
-      return;
-    }
+  const handleSortChange = useCallback(
+    (sortKey: string | null, defaultDirection: 'asc' | 'desc', value?: string) => {
+      if (sortKey === null) {
+        // "Default" selected - use best-match sorting
+        setSortBySource((prev) => {
+          const next = { ...prev };
+          delete next[activeTab];
+          return next;
+        });
+        clearSort(activeTab);
+        return;
+      }
 
-    const currentState = sortBySource[activeTab] ?? currentSort;
-    let newState: SortState;
+      const currentState = sortBySource[activeTab] ?? currentSort;
+      let newState: SortState;
 
-    const isSameSort = currentState && currentState.key === sortKey && currentState.value === value;
-    if (isSameSort) {
-      // Same key+value - toggle direction
-      newState = {
-        key: sortKey,
-        direction: currentState.direction === 'asc' ? 'desc' : 'asc',
-        ...(value !== undefined && { value }),
-      };
-    } else {
-      // New key or different value - use provided default direction
-      newState = {
-        key: sortKey,
-        direction: defaultDirection,
-        ...(value !== undefined && { value }),
-      };
-    }
+      const isSameSort =
+        currentState && currentState.key === sortKey && currentState.value === value;
+      if (isSameSort) {
+        // Same key+value - toggle direction
+        newState = {
+          key: sortKey,
+          direction: currentState.direction === 'asc' ? 'desc' : 'asc',
+          ...(value !== undefined && { value }),
+        };
+      } else {
+        // New key or different value - use provided default direction
+        newState = {
+          key: sortKey,
+          direction: defaultDirection,
+          ...(value !== undefined && { value }),
+        };
+      }
 
-    setSortBySource(prev => ({ ...prev, [activeTab]: newState }));
-    saveSort(activeTab, newState);
-  }, [activeTab, sortBySource, currentSort]);
+      setSortBySource((prev) => ({ ...prev, [activeTab]: newState }));
+      saveSort(activeTab, newState);
+    },
+    [activeTab, sortBySource, currentSort],
+  );
 
   // Filter and sort releases based on settings and user selection
   const filteredReleases = useMemo(() => {
@@ -1279,7 +1374,13 @@ export const ReleaseModal = ({
       // Language filtering - use r.language when provided by enriched indexers
       // Releases with no language (null/undefined) always pass
       const releaseLang = r.language as string | undefined;
-      if (!releaseLanguageMatchesFilter(releaseLang, resolvedLanguageCodes ?? defaultLanguages, languageNormalizer)) {
+      if (
+        !releaseLanguageMatchesFilter(
+          releaseLang,
+          resolvedLanguageCodes ?? defaultLanguages,
+          languageNormalizer,
+        )
+      ) {
         return false;
       }
 
@@ -1306,18 +1407,31 @@ export const ReleaseModal = ({
     }
 
     return filtered;
-  }, [releasesBySource, activeTab, formatFilter, resolvedLanguageCodes, effectiveFormats, defaultLanguages, languageNormalizer, indexerFilter, currentSort, allSortOptions, columnConfig, book]);
+  }, [
+    releasesBySource,
+    activeTab,
+    formatFilter,
+    resolvedLanguageCodes,
+    effectiveFormats,
+    defaultLanguages,
+    languageNormalizer,
+    indexerFilter,
+    currentSort,
+    allSortOptions,
+    columnConfig,
+    book,
+  ]);
 
   // Pre-compute display field lookups to avoid repeated .find() calls in JSX
   const displayFields = useMemo(() => {
     if (!book?.display_fields) return null;
 
-    const starField = book.display_fields.find(f => f.icon === 'star');
-    const ratingsField = book.display_fields.find(f => f.icon === 'ratings');
-    const usersField = book.display_fields.find(f => f.icon === 'users');
-    const pagesField = book.display_fields.find(f => f.icon === 'book');
-    const lengthField = book.display_fields.find(f => f.icon === 'clock');
-    const narratorField = book.display_fields.find(f => f.icon === 'microphone');
+    const starField = book.display_fields.find((f) => f.icon === 'star');
+    const ratingsField = book.display_fields.find((f) => f.icon === 'ratings');
+    const usersField = book.display_fields.find((f) => f.icon === 'users');
+    const pagesField = book.display_fields.find((f) => f.icon === 'book');
+    const lengthField = book.display_fields.find((f) => f.icon === 'clock');
+    const narratorField = book.display_fields.find((f) => f.icon === 'microphone');
 
     return { starField, ratingsField, usersField, pagesField, lengthField, narratorField };
   }, [book?.display_fields]);
@@ -1329,7 +1443,7 @@ export const ReleaseModal = ({
       }
       return getPolicyModeForSource(release.source, contentType);
     },
-    [getPolicyModeForSource, contentType]
+    [getPolicyModeForSource, contentType],
   );
 
   // Get button state for a release row (queue state + policy mode).
@@ -1379,7 +1493,7 @@ export const ReleaseModal = ({
       }
       return { text: 'Download', state: 'download' };
     },
-    [currentStatus, getReleaseActionMode]
+    [currentStatus, getReleaseActionMode],
   );
 
   // Handle row action based on resolved policy mode.
@@ -1413,7 +1527,15 @@ export const ReleaseModal = ({
         return;
       }
     },
-    [book, isCombinedMode, getReleaseActionMode, onDownload, onRequestRelease, contentType, handleClose]
+    [
+      book,
+      isCombinedMode,
+      getReleaseActionMode,
+      onDownload,
+      onRequestRelease,
+      contentType,
+      handleClose,
+    ],
   );
 
   if (!book && !isClosing) return null;
@@ -1423,14 +1545,15 @@ export const ReleaseModal = ({
   const providerDisplay =
     book.provider_display_name ||
     (book.provider ? book.provider.charAt(0).toUpperCase() + book.provider.slice(1) : 'Unknown');
-  const showBookSourceLink = Boolean(book.source_url) && (isMetadataBook(book) || showReleaseSourceLinks);
+  const showBookSourceLink =
+    Boolean(book.source_url) && (isMetadataBook(book) || showReleaseSourceLinks);
 
   const currentTabLoading = loadingBySource[activeTab] ?? false;
   const currentTabError = errorBySource[activeTab] ?? null;
   const hasActiveTab = activeTab.length > 0;
-  const isInitialLoading = hasActiveTab && (
-    currentTabLoading || (releasesBySource[activeTab] === undefined && !currentTabError)
-  );
+  const isInitialLoading =
+    hasActiveTab &&
+    (currentTabLoading || (releasesBySource[activeTab] === undefined && !currentTabError));
 
   const modal = (
     <div
@@ -1440,30 +1563,38 @@ export const ReleaseModal = ({
       }}
     >
       <div
-        className={`details-container w-full h-full sm:h-auto ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`details-container h-full w-full sm:h-auto ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
       >
-        <div className="flex h-full sm:h-[90vh] sm:max-h-[90vh] flex-col overflow-hidden rounded-none sm:rounded-2xl border-0 sm:border border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft) text-(--text) shadow-none sm:shadow-2xl">
+        <div className="flex h-full flex-col overflow-hidden rounded-none border-0 border-(--border-muted) bg-(--bg) text-(--text) shadow-none sm:h-[90vh] sm:max-h-[90vh] sm:rounded-2xl sm:border sm:bg-(--bg-soft) sm:shadow-2xl">
           {/* Header */}
           <header className="flex items-start gap-3 border-b border-(--border-muted) px-5 py-4">
             {/* Mobile: static thumbnail always visible */}
             {!isRequestMode && (
-              <div className="sm:hidden shrink-0">
+              <div className="shrink-0 sm:hidden">
                 {book.preview ? (
                   <img
                     src={book.preview}
                     alt=""
                     width={book.cover_aspect === 'square' ? 68 : 46}
                     height={68}
-                    className={`rounded-sm shadow-md object-cover ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'}`}
-                    style={{ width: book.cover_aspect === 'square' ? 68 : 46, height: 68, minWidth: book.cover_aspect === 'square' ? 68 : 46 }}
+                    className={`rounded-sm object-cover shadow-md ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'}`}
+                    style={{
+                      width: book.cover_aspect === 'square' ? 68 : 46,
+                      height: 68,
+                      minWidth: book.cover_aspect === 'square' ? 68 : 46,
+                    }}
                   />
                 ) : (
                   <div
-                    className="rounded-sm border border-dashed border-(--border-muted) bg-(--bg)/60 flex items-center justify-center text-[7px] text-zinc-500"
-                    style={{ width: book.cover_aspect === 'square' ? 68 : 46, height: 68, minWidth: book.cover_aspect === 'square' ? 68 : 46 }}
+                    className="flex items-center justify-center rounded-sm border border-dashed border-(--border-muted) bg-(--bg)/60 text-[7px] text-zinc-500"
+                    style={{
+                      width: book.cover_aspect === 'square' ? 68 : 46,
+                      height: 68,
+                      minWidth: book.cover_aspect === 'square' ? 68 : 46,
+                    }}
                   >
                     No cover
                   </div>
@@ -1473,7 +1604,7 @@ export const ReleaseModal = ({
             {/* Desktop: animated thumbnail that appears when scrolling */}
             {!isRequestMode && (
               <div
-                className="hidden sm:block shrink-0 overflow-hidden transition-[width,margin] duration-300 ease-out"
+                className="hidden shrink-0 overflow-hidden transition-[width,margin] duration-300 ease-out sm:block"
                 style={{
                   width: showHeaderThumb ? (book.cover_aspect === 'square' ? 68 : 46) : 0,
                   marginRight: showHeaderThumb ? 0 : -12,
@@ -1489,13 +1620,21 @@ export const ReleaseModal = ({
                       alt=""
                       width={book.cover_aspect === 'square' ? 68 : 46}
                       height={68}
-                      className={`rounded-sm shadow-md object-cover ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'}`}
-                      style={{ width: book.cover_aspect === 'square' ? 68 : 46, height: 68, minWidth: book.cover_aspect === 'square' ? 68 : 46 }}
+                      className={`rounded-sm object-cover shadow-md ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'}`}
+                      style={{
+                        width: book.cover_aspect === 'square' ? 68 : 46,
+                        height: 68,
+                        minWidth: book.cover_aspect === 'square' ? 68 : 46,
+                      }}
                     />
                   ) : (
                     <div
-                      className="rounded-sm border border-dashed border-(--border-muted) bg-(--bg)/60 flex items-center justify-center text-[7px] text-zinc-500"
-                      style={{ width: book.cover_aspect === 'square' ? 68 : 46, height: 68, minWidth: book.cover_aspect === 'square' ? 68 : 46 }}
+                      className="flex items-center justify-center rounded-sm border border-dashed border-(--border-muted) bg-(--bg)/60 text-[7px] text-zinc-500"
+                      style={{
+                        width: book.cover_aspect === 'square' ? 68 : 46,
+                        height: 68,
+                        minWidth: book.cover_aspect === 'square' ? 68 : 46,
+                      }}
                     >
                       No cover
                     </div>
@@ -1503,27 +1642,33 @@ export const ReleaseModal = ({
                 </div>
               </div>
             )}
-            <div className="flex-1 space-y-1 min-w-0">
-              <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="text-xs tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
                 {isCombinedMode ? combinedStepLabel : 'Find Releases'}
               </p>
-              <h3 id={titleId} className="text-lg font-semibold leading-snug truncate">
-                {book.provider === 'manual' ? 'Manual Query' : (book.title || 'Untitled')}
+              <h3 id={titleId} className="truncate text-lg leading-snug font-semibold">
+                {book.provider === 'manual' ? 'Manual Query' : book.title || 'Untitled'}
               </h3>
               {!isRequestMode && (
-                <p className="text-sm text-zinc-600 dark:text-zinc-300 truncate">
+                <p className="truncate text-sm text-zinc-600 dark:text-zinc-300">
                   {book.author || 'Unknown author'}
                 </p>
               )}
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
                 onClick={handleClose}
-                className="rounded-full p-2 text-zinc-500 transition-colors hover-action hover:text-zinc-900 dark:hover:text-zinc-100"
+                className="hover-action rounded-full p-2 text-zinc-500 transition-colors hover:text-zinc-900 dark:hover:text-zinc-100"
                 aria-label="Close"
               >
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth={1.5}
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -1531,22 +1676,27 @@ export const ReleaseModal = ({
           </header>
 
           {/* Scrollable content */}
-          <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto">
+          <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto">
             {/* Book summary - scrolls with content */}
             {!isRequestMode && (
-              <div ref={bookSummaryRef} className="flex gap-4 px-5 py-4 border-b border-(--border-muted)">
+              <div
+                ref={bookSummaryRef}
+                className="flex gap-4 border-b border-(--border-muted) px-5 py-4"
+              >
                 {book.preview ? (
                   <img
                     src={book.preview}
                     alt="Book cover"
-                    className={`hidden sm:block rounded-lg shadow-md object-cover shrink-0 ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'} ${book.cover_aspect === 'square' ? (book.series_name ? 'w-[144px] h-[144px]' : 'w-[120px] h-[120px]') : (book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]')}`}
+                    className={`hidden shrink-0 rounded-lg object-cover shadow-md sm:block ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'} ${book.cover_aspect === 'square' ? (book.series_name ? 'h-[144px] w-[144px]' : 'h-[120px] w-[120px]') : book.series_name ? 'h-[144px] w-24' : 'h-[120px] w-20'}`}
                   />
                 ) : (
-                  <div className={`hidden sm:flex rounded-lg border border-dashed border-(--border-muted) bg-(--bg)/60 items-center justify-center text-[10px] text-zinc-500 shrink-0 ${book.cover_aspect === 'square' ? (book.series_name ? 'w-[144px] h-[144px]' : 'w-[120px] h-[120px]') : (book.series_name ? 'w-24 h-[144px]' : 'w-20 h-[120px]')}`}>
+                  <div
+                    className={`hidden shrink-0 items-center justify-center rounded-lg border border-dashed border-(--border-muted) bg-(--bg)/60 text-[10px] text-zinc-500 sm:flex ${book.cover_aspect === 'square' ? (book.series_name ? 'h-[144px] w-[144px]' : 'h-[120px] w-[120px]') : book.series_name ? 'h-[144px] w-24' : 'h-[120px] w-20'}`}
+                  >
                     No cover
                   </div>
                 )}
-                <div className="flex-1 min-w-0 flex flex-col gap-2">
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
                   {/* Metadata row */}
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-zinc-600 dark:text-zinc-400">
                     {book.year && <span>{book.year}</span>}
@@ -1555,14 +1705,26 @@ export const ReleaseModal = ({
                         <StarRating rating={parseFloat(displayFields.starField.value || '0')} />
                         <span>{displayFields.starField.value}</span>
                         {displayFields.ratingsField && (
-                          <span className="text-zinc-400 dark:text-zinc-500">({displayFields.ratingsField.value})</span>
+                          <span className="text-zinc-400 dark:text-zinc-500">
+                            ({displayFields.ratingsField.value})
+                          </span>
                         )}
                       </span>
                     )}
                     {displayFields?.usersField && (
                       <span className="flex items-center gap-1">
-                        <svg className="h-3.5 w-3.5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
+                        <svg
+                          className="h-3.5 w-3.5 text-zinc-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          strokeWidth={1.5}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"
+                          />
                         </svg>
                         {displayFields.usersField.value} readers
                       </span>
@@ -1572,16 +1734,36 @@ export const ReleaseModal = ({
                     )}
                     {displayFields?.lengthField && (
                       <span className="flex items-center gap-1">
-                        <svg className="h-3.5 w-3.5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                        <svg
+                          className="h-3.5 w-3.5 text-zinc-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          strokeWidth={1.5}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+                          />
                         </svg>
                         {displayFields.lengthField.value}
                       </span>
                     )}
                     {displayFields?.narratorField && (
                       <span className="flex items-center gap-1">
-                        <svg className="h-3.5 w-3.5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
+                        <svg
+                          className="h-3.5 w-3.5 text-zinc-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          strokeWidth={1.5}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z"
+                          />
                         </svg>
                         {displayFields.narratorField.value}
                       </span>
@@ -1593,7 +1775,14 @@ export const ReleaseModal = ({
                     <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
                       <span>
                         {book.series_position != null ? (
-                          <>#{Number.isInteger(book.series_position) ? book.series_position : book.series_position}{book.series_count ? ` of ${book.series_count}` : ''} in {book.series_name}</>
+                          <>
+                            #
+                            {Number.isInteger(book.series_position)
+                              ? book.series_position
+                              : book.series_position}
+                            {book.series_count ? ` of ${book.series_count}` : ''} in{' '}
+                            {book.series_name}
+                          </>
                         ) : (
                           <>Part of {book.series_name}</>
                         )}
@@ -1605,10 +1794,20 @@ export const ReleaseModal = ({
                             onSearchSeries(book.series_name!, book.series_id);
                             handleClose();
                           }}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
+                          className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:hover:bg-emerald-900/40"
                         >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                          <svg
+                            className="h-3 w-3"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
+                            />
                           </svg>
                           View series
                         </button>
@@ -1618,7 +1817,7 @@ export const ReleaseModal = ({
 
                   {/* Description */}
                   {book.description && (
-                    <div className="text-sm text-zinc-600 dark:text-zinc-400 relative">
+                    <div className="relative text-sm text-zinc-600 dark:text-zinc-400">
                       <p ref={descriptionRef} className={descriptionExpanded ? '' : 'line-clamp-3'}>
                         {book.description}
                         {descriptionExpanded && descriptionOverflows && (
@@ -1627,7 +1826,7 @@ export const ReleaseModal = ({
                             <button
                               type="button"
                               onClick={() => setDescriptionExpanded(false)}
-                              className="text-emerald-600 dark:text-emerald-400 hover:underline font-medium inline"
+                              className="inline font-medium text-emerald-600 hover:underline dark:text-emerald-400"
                             >
                               Show less
                             </button>
@@ -1638,7 +1837,7 @@ export const ReleaseModal = ({
                         <button
                           type="button"
                           onClick={() => setDescriptionExpanded(true)}
-                          className="absolute bottom-0 right-0 text-emerald-600 dark:text-emerald-400 hover:underline font-medium pl-8 bg-linear-to-r from-transparent via-(--bg) to-(--bg) sm:via-(--bg-soft) sm:to-(--bg-soft)"
+                          className="absolute right-0 bottom-0 bg-linear-to-r from-transparent via-(--bg) to-(--bg) pl-8 font-medium text-emerald-600 hover:underline sm:via-(--bg-soft) sm:to-(--bg-soft) dark:text-emerald-400"
                         >
                           more
                         </button>
@@ -1647,7 +1846,7 @@ export const ReleaseModal = ({
                   )}
 
                   {/* Links row */}
-                  <div className="flex flex-wrap items-center gap-3 text-xs mt-auto">
+                  <div className="mt-auto flex flex-wrap items-center gap-3 text-xs">
                     {(book.isbn_13 || book.isbn_10) && (
                       <span className="text-zinc-500 dark:text-zinc-400">
                         ISBN: {book.isbn_13 || book.isbn_10}
@@ -1658,11 +1857,21 @@ export const ReleaseModal = ({
                         href={book.source_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 hover:underline"
+                        className="inline-flex items-center gap-1 text-emerald-600 hover:underline dark:text-emerald-400"
                       >
                         View on {providerDisplay}
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        <svg
+                          className="h-3 w-3"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                          />
                         </svg>
                       </a>
                     )}
@@ -1675,10 +1884,20 @@ export const ReleaseModal = ({
                               void handleRequestBook();
                             }}
                             disabled={isRequestingBook}
-                            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-full hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-emerald-900/20 dark:text-emerald-400 dark:hover:bg-emerald-900/40"
                           >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                            <svg
+                              className="h-3 w-3"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M12 4.5v15m7.5-7.5h-15"
+                              />
                             </svg>
                             {isRequestingBook ? 'Adding...' : 'Add to requests'}
                           </button>
@@ -1702,7 +1921,7 @@ export const ReleaseModal = ({
             <div className="sticky top-0 z-10 border-b border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft)">
               {sourcesLoading ? (
                 <div className="flex gap-1 px-5 py-2">
-                  <div className="h-10 w-32 animate-pulse bg-zinc-200 dark:bg-zinc-700 rounded-sm" />
+                  <div className="h-10 w-32 animate-pulse rounded-sm bg-zinc-200 dark:bg-zinc-700" />
                 </div>
               ) : allTabs.length === 0 ? (
                 <div className="px-5 py-3 text-sm text-zinc-500 dark:text-zinc-400">
@@ -1711,7 +1930,7 @@ export const ReleaseModal = ({
               ) : (
                 <div className="flex items-center justify-between px-5">
                   {/* Tabs - scrollable on narrow screens */}
-                  <div className="flex-1 min-w-0 overflow-x-auto scrollbar-hide">
+                  <div className="scrollbar-hide min-w-0 flex-1 overflow-x-auto">
                     <div className="relative flex gap-1">
                       {/* Sliding indicator */}
                       <div
@@ -1724,12 +1943,15 @@ export const ReleaseModal = ({
                       {allTabs.map((tab) => (
                         <button
                           key={tab.name}
-                          ref={(el) => { tabRefs.current[tab.name] = el; }}
+                          ref={(el) => {
+                            tabRefs.current[tab.name] = el;
+                          }}
                           onClick={() => setActiveTab(tab.name)}
-                          className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${activeTab === tab.name
+                          className={`border-b-2 border-transparent px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
+                            activeTab === tab.name
                               ? 'text-emerald-600 dark:text-emerald-400'
-                              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200'
-                            }`}
+                              : 'text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200'
+                          }`}
                         >
                           {tab.displayName}
                         </button>
@@ -1737,7 +1959,7 @@ export const ReleaseModal = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 pl-2 pr-1">
+                  <div className="flex items-center gap-3 pr-1 pl-2">
                     {/* Manual query button */}
                     <button
                       type="button"
@@ -1753,13 +1975,24 @@ export const ReleaseModal = ({
                           return next;
                         });
                       }}
-                      className={`p-2.5 rounded-full transition-colors hover-surface text-zinc-500 dark:text-zinc-400 ${manualQuery.trim() ? 'text-emerald-600 dark:text-emerald-400' : ''
-                        }`}
+                      className={`hover-surface rounded-full p-2.5 text-zinc-500 transition-colors dark:text-zinc-400 ${
+                        manualQuery.trim() ? 'text-emerald-600 dark:text-emerald-400' : ''
+                      }`}
                       aria-label="Manual search query"
                       title="Manual query"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 0 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        strokeWidth={1.5}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="m16.862 4.487 1.687-1.688a1.875 1.875 0 0 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
+                        />
                       </svg>
                     </button>
 
@@ -1773,15 +2006,26 @@ export const ReleaseModal = ({
                           <button
                             type="button"
                             onClick={toggle}
-                            className={`relative p-2.5 rounded-full transition-colors hover-surface text-zinc-500 dark:text-zinc-400 ${isOpen ? 'bg-(--hover-surface)' : ''
-                              }`}
+                            className={`hover-surface relative rounded-full p-2.5 text-zinc-500 transition-colors dark:text-zinc-400 ${
+                              isOpen ? 'bg-(--hover-surface)' : ''
+                            }`}
                             aria-label="Sort releases"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5 7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5" />
+                            <svg
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              strokeWidth={1.5}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M3 7.5 7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5"
+                              />
                             </svg>
                             {currentSort && (
-                              <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full" />
+                              <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-emerald-500" />
                             )}
                           </button>
                         )}
@@ -1796,15 +2040,26 @@ export const ReleaseModal = ({
                                 setFormatSortExpanded(false);
                                 close();
                               }}
-                              className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between hover-surface rounded ${!currentSort
-                                  ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                              className={`hover-surface flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm ${
+                                !currentSort
+                                  ? 'font-medium text-emerald-600 dark:text-emerald-400'
                                   : 'text-zinc-700 dark:text-zinc-300'
-                                }`}
+                              }`}
                             >
                               <span>Best Match (Default)</span>
                               {!currentSort && (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                                <svg
+                                  className="h-4 w-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                  strokeWidth={2}
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="m4.5 12.75 6 6 9-13.5"
+                                  />
                                 </svg>
                               )}
                             </button>
@@ -1821,18 +2076,33 @@ export const ReleaseModal = ({
                                     // Don't close - allow toggling direction
                                     if (!isSelected) close();
                                   }}
-                                  className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between hover-surface rounded ${isSelected
-                                      ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                                  className={`hover-surface flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm ${
+                                    isSelected
+                                      ? 'font-medium text-emerald-600 dark:text-emerald-400'
                                       : 'text-zinc-700 dark:text-zinc-300'
-                                    }`}
+                                  }`}
                                 >
                                   <span>{opt.label}</span>
                                   {isSelected && direction && (
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                    <svg
+                                      className="h-4 w-4"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                      strokeWidth={2}
+                                    >
                                       {direction === 'asc' ? (
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          d="M4.5 15.75l7.5-7.5 7.5 7.5"
+                                        />
                                       ) : (
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          d="M19.5 8.25l-7.5 7.5-7.5-7.5"
+                                        />
                                       )}
                                     </svg>
                                   )}
@@ -1848,56 +2118,80 @@ export const ReleaseModal = ({
                                 )}
                                 <button
                                   type="button"
-                                  onClick={() => setFormatSortExpanded(prev => !prev)}
-                                  className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between hover-surface rounded ${
+                                  onClick={() => setFormatSortExpanded((prev) => !prev)}
+                                  className={`hover-surface flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm ${
                                     currentSort?.key === FORMAT_SORT_KEY
-                                      ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                                      ? 'font-medium text-emerald-600 dark:text-emerald-400'
                                       : 'text-zinc-700 dark:text-zinc-300'
                                   }`}
                                 >
                                   <span>
-                                    Format{currentSort?.key === FORMAT_SORT_KEY && currentSort.value ? ` (${currentSort.value.toUpperCase()})` : ''}
+                                    Format
+                                    {currentSort?.key === FORMAT_SORT_KEY && currentSort.value
+                                      ? ` (${currentSort.value.toUpperCase()})`
+                                      : ''}
                                   </span>
                                   <svg
-                                    className={`w-4 h-4 transition-transform ${formatSortExpanded ? 'rotate-90' : ''}`}
+                                    className={`h-4 w-4 transition-transform ${formatSortExpanded ? 'rotate-90' : ''}`}
                                     fill="none"
                                     stroke="currentColor"
                                     viewBox="0 0 24 24"
                                     strokeWidth={2}
                                   >
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                                    />
                                   </svg>
                                 </button>
-                                {formatSortExpanded && availableFormats.map((fmt) => {
-                                  const isSelected = currentSort?.key === FORMAT_SORT_KEY && currentSort.value === fmt;
-                                  const direction = isSelected ? currentSort?.direction : null;
-                                  return (
-                                    <button
-                                      key={fmt}
-                                      type="button"
-                                      onClick={() => {
-                                        handleSortChange(FORMAT_SORT_KEY, 'asc', fmt);
-                                        if (!isSelected) close();
-                                      }}
-                                      className={`w-full pl-6 pr-3 py-1.5 text-left text-sm flex items-center justify-between hover-surface rounded ${
-                                        isSelected
-                                          ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                                          : 'text-zinc-700 dark:text-zinc-300'
-                                      }`}
-                                    >
-                                      <span>{fmt.toUpperCase()}</span>
-                                      {isSelected && direction && (
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                                          {direction === 'asc' ? (
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
-                                          ) : (
-                                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                                          )}
-                                        </svg>
-                                      )}
-                                    </button>
-                                  );
-                                })}
+                                {formatSortExpanded &&
+                                  availableFormats.map((fmt) => {
+                                    const isSelected =
+                                      currentSort?.key === FORMAT_SORT_KEY &&
+                                      currentSort.value === fmt;
+                                    const direction = isSelected ? currentSort?.direction : null;
+                                    return (
+                                      <button
+                                        key={fmt}
+                                        type="button"
+                                        onClick={() => {
+                                          handleSortChange(FORMAT_SORT_KEY, 'asc', fmt);
+                                          if (!isSelected) close();
+                                        }}
+                                        className={`hover-surface flex w-full items-center justify-between rounded py-1.5 pr-3 pl-6 text-left text-sm ${
+                                          isSelected
+                                            ? 'font-medium text-emerald-600 dark:text-emerald-400'
+                                            : 'text-zinc-700 dark:text-zinc-300'
+                                        }`}
+                                      >
+                                        <span>{fmt.toUpperCase()}</span>
+                                        {isSelected && direction && (
+                                          <svg
+                                            className="h-4 w-4"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                            strokeWidth={2}
+                                          >
+                                            {direction === 'asc' ? (
+                                              <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                d="M4.5 15.75l7.5-7.5 7.5 7.5"
+                                              />
+                                            ) : (
+                                              <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                d="M19.5 8.25l-7.5 7.5-7.5-7.5"
+                                              />
+                                            )}
+                                          </svg>
+                                        )}
+                                      </button>
+                                    );
+                                  })}
                               </>
                             )}
                           </div>
@@ -1907,9 +2201,12 @@ export const ReleaseModal = ({
 
                     {/* Filter funnel button - stays fixed */}
                     {/* Only show filter button if source supports at least one filter type */}
-                    {((columnConfig.supported_filters?.includes('format') && availableFormats.length > 0) ||
-                      (columnConfig.supported_filters?.includes('language') && bookLanguages.length > 0) ||
-                      (columnConfig.supported_filters?.includes('indexer') && availableIndexers.length > 1)) && (
+                    {((columnConfig.supported_filters?.includes('format') &&
+                      availableFormats.length > 0) ||
+                      (columnConfig.supported_filters?.includes('language') &&
+                        bookLanguages.length > 0) ||
+                      (columnConfig.supported_filters?.includes('indexer') &&
+                        availableIndexers.length > 1)) && (
                       <Dropdown
                         align="right"
                         widthClassName="w-auto shrink-0"
@@ -1917,49 +2214,70 @@ export const ReleaseModal = ({
                         noScrollLimit
                         renderTrigger={({ isOpen, toggle }) => {
                           // Active filter: format is set, language is not default, or indexers differ from defaults
-                          const hasLanguageFilter = !(languageFilter.length === 1 && languageFilter[0] === LANGUAGE_OPTION_DEFAULT);
-                          const supportsIndexerFilter = columnConfig.supported_filters?.includes('indexer');
+                          const hasLanguageFilter = !(
+                            languageFilter.length === 1 &&
+                            languageFilter[0] === LANGUAGE_OPTION_DEFAULT
+                          );
+                          const supportsIndexerFilter =
+                            columnConfig.supported_filters?.includes('indexer');
                           // Check if indexer filter differs from defaults (only after initialization)
                           // Don't show dot while loading or before filter is initialized from defaults
                           const hasResults = releasesBySource[activeTab]?.releases !== undefined;
                           const isInitialized = indexerFilterInitializedRef.current.has(activeTab);
                           const defaultIndexers = columnConfig.default_indexers ?? [];
-                          const indexersMatchDefault = (
+                          const indexersMatchDefault =
                             indexerFilter.length === defaultIndexers.length &&
-                            indexerFilter.every((idx) => defaultIndexers.includes(idx))
-                          );
-                          const hasIndexerFilter = supportsIndexerFilter && hasResults && isInitialized && !indexersMatchDefault;
-                          const hasActiveFilter = formatFilter !== '' || hasLanguageFilter || hasIndexerFilter;
+                            indexerFilter.every((idx) => defaultIndexers.includes(idx));
+                          const hasIndexerFilter =
+                            supportsIndexerFilter &&
+                            hasResults &&
+                            isInitialized &&
+                            !indexersMatchDefault;
+                          const hasActiveFilter =
+                            formatFilter !== '' || hasLanguageFilter || hasIndexerFilter;
                           return (
                             <button
                               type="button"
                               onClick={toggle}
-                              className={`relative p-2.5 rounded-full transition-colors hover-surface text-zinc-500 dark:text-zinc-400 ${
+                              className={`hover-surface relative rounded-full p-2.5 text-zinc-500 transition-colors dark:text-zinc-400 ${
                                 isOpen ? 'bg-(--hover-surface)' : ''
                               }`}
                               aria-label="Filter releases"
                             >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+                              <svg
+                                className="h-4 w-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                                strokeWidth={1.5}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"
+                                />
                               </svg>
                               {hasActiveFilter && (
-                                <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full" />
+                                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-emerald-500" />
                               )}
                             </button>
                           );
                         }}
                       >
                         {({ close }) => (
-                          <div className="p-4 space-y-4">
-                            {columnConfig.supported_filters?.includes('format') && availableFormats.length > 0 && (
-                              <DropdownList
-                                label="Format"
-                                options={formatOptions}
-                                value={formatFilter}
-                                onChange={(val) => setFormatFilter(typeof val === 'string' ? val : val[0] ?? '')}
-                                placeholder="All Formats"
-                              />
-                            )}
+                          <div className="space-y-4 p-4">
+                            {columnConfig.supported_filters?.includes('format') &&
+                              availableFormats.length > 0 && (
+                                <DropdownList
+                                  label="Format"
+                                  options={formatOptions}
+                                  value={formatFilter}
+                                  onChange={(val) =>
+                                    setFormatFilter(typeof val === 'string' ? val : (val[0] ?? ''))
+                                  }
+                                  placeholder="All Formats"
+                                />
+                              )}
                             {columnConfig.supported_filters?.includes('language') && (
                               <LanguageMultiSelect
                                 label="Language"
@@ -1969,16 +2287,22 @@ export const ReleaseModal = ({
                                 defaultLanguageCodes={defaultLanguages}
                               />
                             )}
-                            {columnConfig.supported_filters?.includes('indexer') && availableIndexers.length > 1 && (
-                              <DropdownList
-                                label="Indexers"
-                                options={availableIndexers.map((idx) => ({ value: idx, label: idx }))}
-                                multiple
-                                value={indexerFilter}
-                                onChange={(val) => setIndexerFilter(Array.isArray(val) ? val : val ? [val] : [])}
-                                placeholder="All Indexers"
-                              />
-                            )}
+                            {columnConfig.supported_filters?.includes('indexer') &&
+                              availableIndexers.length > 1 && (
+                                <DropdownList
+                                  label="Indexers"
+                                  options={availableIndexers.map((idx) => ({
+                                    value: idx,
+                                    label: idx,
+                                  }))}
+                                  multiple
+                                  value={indexerFilter}
+                                  onChange={(val) =>
+                                    setIndexerFilter(Array.isArray(val) ? val : val ? [val] : [])
+                                  }
+                                  placeholder="All Indexers"
+                                />
+                              )}
                             {/* Apply button - re-fetch when the source supports server-side filters */}
                             {(columnConfig.supported_filters?.includes('language') ||
                               columnConfig.supported_filters?.includes('indexer')) && (
@@ -1992,7 +2316,12 @@ export const ReleaseModal = ({
                                   const bookId = book.provider_id;
 
                                   // Clear cache and state
-                                  invalidateCachedReleases(provider, bookId, activeTab, contentType);
+                                  invalidateCachedReleases(
+                                    provider,
+                                    bookId,
+                                    activeTab,
+                                    contentType,
+                                  );
                                   setExpandedBySource((prev) => {
                                     const next = { ...prev };
                                     delete next[activeTab];
@@ -2008,25 +2337,54 @@ export const ReleaseModal = ({
                                   setLoadingBySource((prev) => ({ ...prev, [activeTab]: true }));
                                   try {
                                     // Resolve language codes for the API call
-                                    const languagesParam = getReleaseSearchLanguageParams(languageFilter, bookLanguages, defaultLanguages);
+                                    const languagesParam = getReleaseSearchLanguageParams(
+                                      languageFilter,
+                                      bookLanguages,
+                                      defaultLanguages,
+                                    );
 
                                     // Pass indexer filter only if the source supports it (empty array = search all)
-                                    const supportsIndexerFilter = columnConfig.supported_filters?.includes('indexer');
-                                    const indexersParam = supportsIndexerFilter && indexerFilter.length > 0 ? indexerFilter : undefined;
+                                    const supportsIndexerFilter =
+                                      columnConfig.supported_filters?.includes('indexer');
+                                    const indexersParam =
+                                      supportsIndexerFilter && indexerFilter.length > 0
+                                        ? indexerFilter
+                                        : undefined;
 
                                     const response = await getReleases(
-                                      provider, bookId, activeTab, book.title, book.author, false, languagesParam, contentType, manualQuery.trim() || undefined, indexersParam
+                                      provider,
+                                      bookId,
+                                      activeTab,
+                                      book.title,
+                                      book.author,
+                                      false,
+                                      languagesParam,
+                                      contentType,
+                                      manualQuery.trim() || undefined,
+                                      indexersParam,
                                     );
-                                    setCachedReleases(provider, bookId, activeTab, contentType, response);
-                                    setReleasesBySource((prev) => ({ ...prev, [activeTab]: response }));
+                                    setCachedReleases(
+                                      provider,
+                                      bookId,
+                                      activeTab,
+                                      contentType,
+                                      response,
+                                    );
+                                    setReleasesBySource((prev) => ({
+                                      ...prev,
+                                      [activeTab]: response,
+                                    }));
                                   } catch (err) {
-                                    const message = err instanceof Error ? err.message : 'Failed to fetch releases';
+                                    const message =
+                                      err instanceof Error
+                                        ? err.message
+                                        : 'Failed to fetch releases';
                                     setErrorBySource((prev) => ({ ...prev, [activeTab]: message }));
                                   } finally {
                                     setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
                                   }
                                 }}
-                                className="w-full px-3 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors"
+                                className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
                               >
                                 Apply
                               </button>
@@ -2042,7 +2400,7 @@ export const ReleaseModal = ({
 
             {/* Manual query panel (below source tabs) */}
             {showManualQuery && (
-              <div className="px-5 py-3 border-b border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft)">
+              <div className="border-b border-(--border-muted) bg-(--bg) px-5 py-3 sm:bg-(--bg-soft)">
                 <form
                   className="flex items-center gap-2"
                   onSubmit={async (e) => {
@@ -2080,12 +2438,13 @@ export const ReleaseModal = ({
                         false,
                         undefined,
                         contentType,
-                        q
+                        q,
                       );
                       setCachedReleases(provider, bookId, activeTab, contentType, response);
                       setReleasesBySource((prev) => ({ ...prev, [activeTab]: response }));
                     } catch (err) {
-                      const message = err instanceof Error ? err.message : 'Failed to fetch releases';
+                      const message =
+                        err instanceof Error ? err.message : 'Failed to fetch releases';
                       setErrorBySource((prev) => ({ ...prev, [activeTab]: message }));
                     } finally {
                       setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
@@ -2097,15 +2456,16 @@ export const ReleaseModal = ({
                     value={manualQuery}
                     onChange={(e) => setManualQuery(e.target.value)}
                     placeholder="Type a custom search query (overrides all sources)"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-(--border-muted) bg-(--bg) text-(--text)"
+                    className="w-full rounded-lg border border-(--border-muted) bg-(--bg) px-3 py-2 text-sm text-(--text)"
                   />
                   <button
                     type="submit"
                     disabled={currentTabLoading || !manualQuery.trim()}
-                    className={`px-3 py-2 text-sm font-medium text-white rounded-lg transition-colors ${currentTabLoading || !manualQuery.trim()
-                        ? 'bg-emerald-600/60 cursor-not-allowed'
+                    className={`rounded-lg px-3 py-2 text-sm font-medium text-white transition-colors ${
+                      currentTabLoading || !manualQuery.trim()
+                        ? 'cursor-not-allowed bg-emerald-600/60'
                         : 'bg-emerald-600 hover:bg-emerald-700'
-                      }`}
+                    }`}
                   >
                     {currentTabLoading ? 'Searching…' : 'Search'}
                   </button>
@@ -2138,28 +2498,30 @@ export const ReleaseModal = ({
                     }
                   />
                   {/* Action button - plugin-defined or default expand search */}
-                  {(columnConfig.action_button || (
-                    !expandedBySource[activeTab] &&
-                    releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type &&
-                    !['title_author', 'expanded'].includes(
-                      releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type ?? ''
-                    )
-                  )) && (
-                      <div className="py-3 text-center">
-                        <button
-                          type="button"
-                          onClick={handleExpandSearch}
-                          className="px-3 py-1.5 text-sm text-zinc-500 dark:text-zinc-400 rounded-full hover-action transition-all duration-200"
-                        >
-                          {columnConfig.action_button?.label ?? 'Expand search'}
-                        </button>
-                      </div>
-                    )}
+                  {(columnConfig.action_button ||
+                    (!expandedBySource[activeTab] &&
+                      releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type &&
+                      !['title_author', 'expanded'].includes(
+                        releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type ?? '',
+                      ))) && (
+                    <div className="py-3 text-center">
+                      <button
+                        type="button"
+                        onClick={handleExpandSearch}
+                        className="hover-action rounded-full px-3 py-1.5 text-sm text-zinc-500 transition-all duration-200 dark:text-zinc-400"
+                      >
+                        {columnConfig.action_button?.label ?? 'Expand search'}
+                      </button>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
                   {/* Key includes filter to force remount when filter changes */}
-                  <div key={`releases-${formatFilter}-${languageFilter.join(',')}`} className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60">
+                  <div
+                    key={`releases-${formatFilter}-${languageFilter.join(',')}`}
+                    className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60"
+                  >
                     {filteredReleases.map((release, index) => (
                       <ReleaseRow
                         key={`${release.source}-${release.source_id}`}
@@ -2173,21 +2535,23 @@ export const ReleaseModal = ({
                         onlineServers={columnConfig.online_servers}
                         showReleaseSourceLinks={showReleaseSourceLinks}
                         selectionMode={isCombinedMode}
-                        isSelected={isCombinedMode && selectedRelease?.source_id === release.source_id}
+                        isSelected={
+                          isCombinedMode && selectedRelease?.source_id === release.source_id
+                        }
                         onSelect={isCombinedMode ? () => setSelectedRelease(release) : undefined}
                       />
                     ))}
                   </div>
                   {/* Action button - plugin-defined or default expand search */}
-                  {!currentTabLoading && (columnConfig.action_button || (
-                    !expandedBySource[activeTab] &&
-                    releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type &&
-                    !['title_author', 'expanded'].includes(
-                      releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type ?? ''
-                    )
-                  )) && (
+                  {!currentTabLoading &&
+                    (columnConfig.action_button ||
+                      (!expandedBySource[activeTab] &&
+                        releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type &&
+                        !['title_author', 'expanded'].includes(
+                          releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type ?? '',
+                        ))) && (
                       <div
-                        className="py-3 text-center animate-pop-up will-change-transform"
+                        className="animate-pop-up py-3 text-center will-change-transform"
                         style={{
                           animationDelay: `${filteredReleases.length * 30}ms`,
                           animationFillMode: 'both',
@@ -2196,26 +2560,24 @@ export const ReleaseModal = ({
                         <button
                           type="button"
                           onClick={handleExpandSearch}
-                          className="px-3 py-1.5 text-sm text-zinc-500 dark:text-zinc-400 rounded-full hover-action transition-all duration-200"
+                          className="hover-action rounded-full px-3 py-1.5 text-sm text-zinc-500 transition-all duration-200 dark:text-zinc-400"
                         >
                           {columnConfig.action_button?.label ?? 'Expand search'}
                         </button>
                       </div>
                     )}
                   {/* Expanding search - show skeleton below existing results */}
-                  {currentTabLoading && filteredReleases.length > 0 && (
-                    <ReleaseSkeleton />
-                  )}
+                  {currentTabLoading && filteredReleases.length > 0 && <ReleaseSkeleton />}
                 </>
               )}
             </div>
 
             {/* Sticky search status indicator - stays at bottom of visible scroll area */}
             {searchStatus && searchStatus.source === activeTab && currentTabLoading && (
-              <div className="sticky bottom-0 z-10 flex items-center justify-center pointer-events-none pb-4 pt-2">
-                <div className="flex items-center gap-2.5 px-4 py-2 rounded-xl bg-(--bg-soft) border border-(--border-muted) text-zinc-500 dark:text-zinc-400 text-sm shadow-lg pointer-events-auto">
+              <div className="pointer-events-none sticky bottom-0 z-10 flex items-center justify-center pt-2 pb-4">
+                <div className="pointer-events-auto flex items-center gap-2.5 rounded-xl border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm text-zinc-500 shadow-lg dark:text-zinc-400">
                   {searchStatus.phase !== 'complete' && searchStatus.phase !== 'error' && (
-                    <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
                   )}
                   {searchStatus.message}
                 </div>
@@ -2225,29 +2587,35 @@ export const ReleaseModal = ({
 
           {/* Combined mode footer */}
           {isCombinedMode && (
-            <div className="border-t border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft) px-5 py-4">
+            <div className="border-t border-(--border-muted) bg-(--bg) px-5 py-4 sm:bg-(--bg-soft)">
               <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
                 {/* Phase indicators with live selection chips */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-3 text-sm min-w-0">
+                <div className="flex min-w-0 flex-col items-start gap-1 text-sm sm:flex-row sm:items-center sm:gap-3">
                   <PhaseChip
                     release={combinedPhase === 'ebook' ? selectedRelease : stagedEbookRelease}
                     isActive={combinedPhase === 'ebook'}
                     label="Book"
                   />
                   <PhaseChip
-                    release={combinedPhase === 'audiobook' ? selectedRelease : stagedAudiobookRelease}
+                    release={
+                      combinedPhase === 'audiobook' ? selectedRelease : stagedAudiobookRelease
+                    }
                     isActive={combinedPhase === 'audiobook'}
                     label="Audiobook"
                   />
                 </div>
 
                 {/* Action buttons */}
-                <div className="flex items-center justify-end gap-3 shrink-0">
+                <div className="flex shrink-0 items-center justify-end gap-3">
                   {onCombinedBack && (
                     <button
                       type="button"
-                      onClick={() => { const picked = selectedRelease; setSelectedRelease(stagedEbookRelease); onCombinedBack!(picked); }}
-                      className="px-3 py-1.5 text-sm font-medium rounded-lg transition-colors hover-surface text-(--text)"
+                      onClick={() => {
+                        const picked = selectedRelease;
+                        setSelectedRelease(stagedEbookRelease);
+                        onCombinedBack!(picked);
+                      }}
+                      className="hover-surface rounded-lg px-3 py-1.5 text-sm font-medium text-(--text) transition-colors"
                     >
                       &larr; Back
                     </button>
@@ -2256,9 +2624,15 @@ export const ReleaseModal = ({
                   {combinedPhase === 'ebook' && onCombinedNext && (
                     <button
                       type="button"
-                      onClick={() => { if (selectedRelease) { const picked = selectedRelease; setSelectedRelease(stagedAudiobookRelease); onCombinedNext(picked); } }}
+                      onClick={() => {
+                        if (selectedRelease) {
+                          const picked = selectedRelease;
+                          setSelectedRelease(stagedAudiobookRelease);
+                          onCombinedNext(picked);
+                        }
+                      }}
                       disabled={!selectedRelease}
-                      className="px-4 py-1.5 text-sm font-medium text-white rounded-lg transition-colors bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Select Audiobook &rarr;
                     </button>
@@ -2269,15 +2643,23 @@ export const ReleaseModal = ({
                       type="button"
                       onClick={() => selectedRelease && onCombinedDownload(selectedRelease)}
                       disabled={!selectedRelease}
-                      className="px-4 py-1.5 text-sm font-medium text-white rounded-lg transition-colors bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {getCombinedDownloadLabel(
                         combinedPhase === 'ebook'
-                          ? (selectedRelease ? getReleaseActionMode(selectedRelease) : combinedEbookMode)
-                          : (stagedEbookRelease ? getReleaseActionMode(stagedEbookRelease) : combinedEbookMode),
+                          ? selectedRelease
+                            ? getReleaseActionMode(selectedRelease)
+                            : combinedEbookMode
+                          : stagedEbookRelease
+                            ? getReleaseActionMode(stagedEbookRelease)
+                            : combinedEbookMode,
                         combinedPhase === 'audiobook'
-                          ? (selectedRelease ? getReleaseActionMode(selectedRelease) : combinedAudiobookMode)
-                          : (stagedAudiobookRelease ? getReleaseActionMode(stagedAudiobookRelease) : combinedAudiobookMode),
+                          ? selectedRelease
+                            ? getReleaseActionMode(selectedRelease)
+                            : combinedAudiobookMode
+                          : stagedAudiobookRelease
+                            ? getReleaseActionMode(stagedAudiobookRelease)
+                            : combinedAudiobookMode,
                       )}
                     </button>
                   )}

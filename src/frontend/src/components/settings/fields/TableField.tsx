@@ -1,5 +1,10 @@
 import { useMemo, useEffect, CSSProperties } from 'react';
-import { MultiSelectFieldConfig, TableFieldConfig, TableFieldColumn } from '../../../types/settings';
+
+import {
+  MultiSelectFieldConfig,
+  TableFieldConfig,
+  TableFieldColumn,
+} from '../../../types/settings';
 import { DropdownList } from '../../DropdownList';
 import { MultiSelectField } from './MultiSelectField';
 
@@ -25,9 +30,7 @@ function defaultCellValue(column: TableFieldColumn): unknown {
 
 function normalizeMultiValue(value: unknown): string[] {
   if (Array.isArray(value)) {
-    return value
-      .map((entry) => String(entry ?? '').trim())
-      .filter((entry) => entry.length > 0);
+    return value.map((entry) => String(entry ?? '').trim()).filter((entry) => entry.length > 0);
   }
   if (typeof value === 'string') {
     const normalized = value.trim();
@@ -36,7 +39,10 @@ function normalizeMultiValue(value: unknown): string[] {
   return [];
 }
 
-function normalizeRows(rows: Record<string, unknown>[], columns: TableFieldColumn[]): Record<string, unknown>[] {
+function normalizeRows(
+  rows: Record<string, unknown>[],
+  columns: TableFieldColumn[],
+): Record<string, unknown>[] {
   return (rows ?? []).map((row) => {
     const normalized: Record<string, unknown> = { ...row };
     for (const col of columns) {
@@ -50,16 +56,13 @@ function normalizeRows(rows: Record<string, unknown>[], columns: TableFieldColum
 
 function getFilteredSelectOptions(
   column: TableFieldColumn,
-  row: Record<string, unknown>
+  row: Record<string, unknown>,
 ): Array<{ value: string; label: string; description?: string; childOf?: string }> {
   const options = (column.options ?? []).map((opt) => ({
     value: String(opt.value),
     label: opt.label ?? String(opt.value),
     description: opt.description,
-    childOf:
-      opt.childOf === undefined || opt.childOf === null
-        ? undefined
-        : String(opt.childOf),
+    childOf: opt.childOf === undefined || opt.childOf === null ? undefined : String(opt.childOf),
   }));
 
   const filterByField = column.filterByField;
@@ -174,9 +177,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
           type="button"
           onClick={addRow}
           disabled={isDisabled}
-          className="px-3 py-2 rounded-lg text-sm font-medium
-                     bg-(--bg-soft) border border-(--border-muted)                     hover-action transition-colors
-                     disabled:opacity-60 disabled:cursor-not-allowed"
+          className="hover-action rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
         >
           {field.addLabel || 'Add'}
         </button>
@@ -185,8 +186,10 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
   }
 
   return (
-    <div className="space-y-3 min-w-0" style={{ '--table-cols': tableCols } as CSSProperties}>
-      <div className={`hidden sm:grid ${gridTemplate} gap-3 items-start min-w-0 text-xs font-medium opacity-70`}>
+    <div className="min-w-0 space-y-3" style={{ '--table-cols': tableCols } as CSSProperties}>
+      <div
+        className={`hidden sm:grid ${gridTemplate} min-w-0 items-start gap-3 text-xs font-medium opacity-70`}
+      >
         {columns.map((col) => (
           <div key={col.key} className="min-w-0 truncate">
             {col.label}
@@ -195,21 +198,23 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
         <div />
       </div>
 
-      <div className="space-y-3 min-w-0">
+      <div className="min-w-0 space-y-3">
         {rows.map((row, rowIndex) => (
           <div
             key={rowIndex}
-            className={`grid grid-cols-1 ${gridTemplate} gap-3 items-start min-w-0`}
+            className={`grid grid-cols-1 ${gridTemplate} min-w-0 items-start gap-3`}
             style={{ overflow: 'visible' }}
           >
             {columns.map((col) => {
               const cellValue = row[col.key];
 
-              const mobileLabel = <div className="sm:hidden text-xs font-medium opacity-70">{col.label}</div>;
+              const mobileLabel = (
+                <div className="text-xs font-medium opacity-70 sm:hidden">{col.label}</div>
+              );
 
               if (col.type === 'checkbox') {
                 return (
-                  <div key={col.key} className="flex flex-col gap-1 min-w-0">
+                  <div key={col.key} className="flex min-w-0 flex-col gap-1">
                     {mobileLabel}
                     <div className="pt-2">
                       <input
@@ -217,8 +222,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
                         checked={Boolean(cellValue)}
                         onChange={(e) => updateCell(rowIndex, col.key, e.target.checked)}
                         disabled={isDisabled}
-                        className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500
-                                   disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
                       />
                     </div>
                   </div>
@@ -233,17 +237,20 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
                 }));
 
                 return (
-                  <div key={col.key} className="flex flex-col gap-1 min-w-0">
+                  <div key={col.key} className="flex min-w-0 flex-col gap-1">
                     {mobileLabel}
                     {isDisabled ? (
-                      <div className="w-full px-3 py-2 rounded-lg border border-(--border-muted) shadow-sm bg-(--bg-soft) text-sm opacity-60 cursor-not-allowed">
-                        {options.find((o) => o.value === String(cellValue ?? ''))?.label || 'Select...'}
+                      <div className="w-full cursor-not-allowed rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 text-sm opacity-60 shadow-sm">
+                        {options.find((o) => o.value === String(cellValue ?? ''))?.label ||
+                          'Select...'}
                       </div>
                     ) : (
                       <DropdownList
                         options={options}
                         value={String(cellValue ?? '')}
-                        onChange={(val) => updateCell(rowIndex, col.key, Array.isArray(val) ? val[0] : val)}
+                        onChange={(val) =>
+                          updateCell(rowIndex, col.key, Array.isArray(val) ? val[0] : val)
+                        }
                         placeholder={col.placeholder || 'Select...'}
                         widthClassName="w-full"
                       />
@@ -260,7 +267,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
                   childOf: opt.childOf,
                 }));
                 const selectedValues = normalizeMultiValue(cellValue).filter((entry) =>
-                  options.some((option) => option.value === entry)
+                  options.some((option) => option.value === entry),
                 );
                 const multiSelectField: MultiSelectFieldConfig = {
                   type: 'MultiSelectField',
@@ -273,7 +280,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
                 };
 
                 return (
-                  <div key={col.key} className="flex flex-col gap-1 min-w-0">
+                  <div key={col.key} className="flex min-w-0 flex-col gap-1">
                     {mobileLabel}
                     <MultiSelectField
                       field={multiSelectField}
@@ -292,7 +299,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
 
               // text/path
               return (
-                <div key={col.key} className="flex flex-col gap-1 min-w-0">
+                <div key={col.key} className="flex min-w-0 flex-col gap-1">
                   {mobileLabel}
                   <input
                     type="text"
@@ -300,10 +307,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
                     onChange={(e) => updateCell(rowIndex, col.key, e.target.value)}
                     placeholder={col.placeholder}
                     disabled={isDisabled}
-                    className="w-full px-3 py-2 rounded-lg border border-(--border-muted)                               bg-(--bg-soft) text-sm
-                               focus:outline-hidden focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500
-                               disabled:opacity-60 disabled:cursor-not-allowed
-                               transition-colors"
+                    className="w-full rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 text-sm transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50 focus:outline-hidden disabled:cursor-not-allowed disabled:opacity-60"
                   />
                 </div>
               );
@@ -314,12 +318,11 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
                 type="button"
                 onClick={() => removeRow(rowIndex)}
                 disabled={isDisabled}
-                className="p-1.5 rounded-full hover-action
-                           disabled:opacity-60 disabled:cursor-not-allowed"
+                className="hover-action rounded-full p-1.5 disabled:cursor-not-allowed disabled:opacity-60"
                 aria-label="Remove row"
               >
                 <svg
-                  className="w-4 h-4"
+                  className="h-4 w-4"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -340,9 +343,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
         type="button"
         onClick={addRow}
         disabled={isDisabled}
-        className="px-3 py-2 rounded-lg text-sm font-medium
-                   bg-(--bg-soft) border border-(--border-muted)                   hover-action transition-colors
-                   disabled:opacity-60 disabled:cursor-not-allowed"
+        className="hover-action rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
       >
         {field.addLabel || 'Add'}
       </button>

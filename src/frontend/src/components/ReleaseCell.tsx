@@ -6,8 +6,8 @@ import { Tooltip } from './shared/Tooltip';
 interface ReleaseCellProps {
   column: ColumnSchema;
   release: Release;
-  compact?: boolean;  // When true, renders badges as plain text (for mobile info lines)
-  onlineServers?: string[];  // For IRC: list of online server nicks to show status indicator
+  compact?: boolean; // When true, renders badges as plain text (for mobile info lines)
+  onlineServers?: string[]; // For IRC: list of online server nicks to show status indicator
 }
 
 /**
@@ -15,11 +15,14 @@ interface ReleaseCellProps {
  * Renders different column types (text, badge, size, number, seeders) based on schema.
  * When compact=true, badges render as plain text for use in mobile info lines.
  */
-export const ReleaseCell = ({ column, release, compact = false, onlineServers }: ReleaseCellProps) => {
+export const ReleaseCell = ({
+  column,
+  release,
+  compact = false,
+  onlineServers,
+}: ReleaseCellProps) => {
   const rawValue = getNestedValue(release as unknown as Record<string, unknown>, column.key);
-  const value = rawValue !== undefined && rawValue !== null
-    ? String(rawValue)
-    : column.fallback;
+  const value = rawValue !== undefined && rawValue !== null ? String(rawValue) : column.fallback;
 
   const displayValue = column.uppercase ? value.toUpperCase() : value;
 
@@ -51,7 +54,7 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
                 return (
                   <span
                     key={String(fmt)}
-                    className={`${fmtColor.bg} ${fmtColor.text} text-[10px] sm:text-[11px] font-semibold px-1.5 sm:px-2 py-0.5 rounded-lg tracking-wide`}
+                    className={`${fmtColor.bg} ${fmtColor.text} rounded-lg px-1.5 py-0.5 text-[10px] font-semibold tracking-wide sm:px-2 sm:text-[11px]`}
                   >
                     {String(fmt).toUpperCase()}
                   </span>
@@ -64,7 +67,7 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
 
       const badge = (
         <span
-          className={`${colorStyle.bg} ${colorStyle.text} text-[10px] sm:text-[11px] font-semibold px-1.5 sm:px-2 py-0.5 rounded-lg tracking-wide`}
+          className={`${colorStyle.bg} ${colorStyle.text} rounded-lg px-1.5 py-0.5 text-[10px] font-semibold tracking-wide sm:px-2 sm:text-[11px]`}
         >
           {displayValue}
         </span>
@@ -81,7 +84,9 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
               badge
             )
           ) : (
-            <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">{column.fallback}</span>
+            <span className="text-[10px] text-gray-500 sm:text-xs dark:text-gray-400">
+              {column.fallback}
+            </span>
           )}
         </div>
       );
@@ -134,7 +139,9 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
         }
         return (
           <div className={`flex items-center ${alignClass}`}>
-            <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">{column.fallback}</span>
+            <span className="text-[10px] text-gray-500 sm:text-xs dark:text-gray-400">
+              {column.fallback}
+            </span>
           </div>
         );
       }
@@ -149,7 +156,7 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
             return (
               <span
                 key={`${tag}-${idx}`}
-                className={`${colorStyle.bg} ${colorStyle.text} text-[10px] sm:text-[11px] font-semibold px-1.5 sm:px-2 py-0.5 rounded-lg tracking-wide whitespace-nowrap`}
+                className={`${colorStyle.bg} ${colorStyle.text} rounded-lg px-1.5 py-0.5 text-[10px] font-semibold tracking-wide whitespace-nowrap sm:px-2 sm:text-[11px]`}
               >
                 {displayTag}
               </span>
@@ -242,10 +249,10 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
       let sizeTooltipContent: React.ReactNode = null;
       if (rows.length > 0) {
         sizeTooltipContent = (
-          <div className="flex flex-col gap-1 max-w-xs">
+          <div className="flex max-w-xs flex-col gap-1">
             {rows.map((row) => (
               <div key={row.label} className="flex gap-2">
-                <span className="text-gray-400 dark:text-gray-500 shrink-0">{row.label}:</span>
+                <span className="shrink-0 text-gray-400 dark:text-gray-500">{row.label}:</span>
                 <span className="truncate">{row.value}</span>
               </div>
             ))}
@@ -286,7 +293,9 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
         }
         return (
           <div className={`flex items-center ${alignClass}`}>
-            <span className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">{column.fallback}</span>
+            <span className="text-[10px] text-gray-500 sm:text-xs dark:text-gray-400">
+              {column.fallback}
+            </span>
           </div>
         );
       }
@@ -302,11 +311,17 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
       }
 
       if (compact) {
-        return <span className={`font-medium ${badgeColors.split(' ').slice(1).join(' ')}`}>{peersValue}</span>;
+        return (
+          <span className={`font-medium ${badgeColors.split(' ').slice(1).join(' ')}`}>
+            {peersValue}
+          </span>
+        );
       }
       return (
         <div className={`flex items-center ${alignClass}`}>
-          <span className={`${badgeColors} text-[10px] sm:text-[11px] font-semibold px-1.5 sm:px-2 py-0.5 rounded-lg tracking-wide`}>
+          <span
+            className={`${badgeColors} rounded-lg px-1.5 py-0.5 text-[10px] font-semibold tracking-wide sm:px-2 sm:text-[11px]`}
+          >
             {peersValue}
           </span>
         </div>
@@ -317,14 +332,15 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
       // Indexer name with colored dot indicating protocol (torrent/usenet) and peers count
       const protocol = release.protocol as string | undefined;
       const dotColor = getProtocolDotColor(protocol);
-      const protocolLabel = protocol === 'torrent' ? 'Torrent' : protocol === 'nzb' ? 'Usenet' : protocol || 'Unknown';
+      const protocolLabel =
+        protocol === 'torrent' ? 'Torrent' : protocol === 'nzb' ? 'Usenet' : protocol || 'Unknown';
       const peers = release.peers;
 
       if (compact) {
         return (
           <span className="inline-flex items-center gap-1">
             <span
-              className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`}
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotColor}`}
               title={protocolLabel}
             />
             {displayValue}
@@ -333,13 +349,12 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
         );
       }
       return (
-        <div className={`flex items-center ${alignClass} text-xs text-gray-600 dark:text-gray-300 truncate gap-1.5`}>
-          <span
-            className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`}
-            title={protocolLabel}
-          />
+        <div
+          className={`flex items-center ${alignClass} gap-1.5 truncate text-xs text-gray-600 dark:text-gray-300`}
+        >
+          <span className={`h-2 w-2 shrink-0 rounded-full ${dotColor}`} title={protocolLabel} />
           <span className="truncate">{displayValue}</span>
-          {peers && <span className="text-gray-400 dark:text-gray-500 shrink-0">{peers}</span>}
+          {peers && <span className="shrink-0 text-gray-400 dark:text-gray-500">{peers}</span>}
         </div>
       );
     }
@@ -358,7 +373,9 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
       }
       return (
         <div className={`flex items-center ${alignClass}`}>
-          <span className={`${flagColor.bg} ${flagColor.text} text-[10px] sm:text-[11px] font-semibold px-1.5 sm:px-2 py-0.5 rounded-lg tracking-wide whitespace-nowrap`}>
+          <span
+            className={`${flagColor.bg} ${flagColor.text} rounded-lg px-1.5 py-0.5 text-[10px] font-semibold tracking-wide whitespace-nowrap sm:px-2 sm:text-[11px]`}
+          >
             {value}
           </span>
         </div>
@@ -370,7 +387,9 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
       // Shows primary format as badge with colored dots for additional formats
       const contentType = release.content_type as string | undefined;
       const isAudiobook = contentType === 'audiobook';
-      const formats = (release.extra as Record<string, unknown> | undefined)?.formats as string[] | undefined;
+      const formats = (release.extra as Record<string, unknown> | undefined)?.formats as
+        | string[]
+        | undefined;
       const primaryFormat = formats?.[0] || null;
       const additionalFormats = formats?.slice(1) || [];
 
@@ -390,7 +409,7 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
               return (
                 <span
                   key={String(fmt)}
-                  className={`${fmtColor.bg} ${fmtColor.text} text-[10px] sm:text-[11px] font-semibold px-1.5 sm:px-2 py-0.5 rounded-lg tracking-wide`}
+                  className={`${fmtColor.bg} ${fmtColor.text} rounded-lg px-1.5 py-0.5 text-[10px] font-semibold tracking-wide sm:px-2 sm:text-[11px]`}
                 >
                   {String(fmt).toUpperCase()}
                 </span>
@@ -403,24 +422,52 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
       // Icon sized to match visual height of format text badges
       const icon = isAudiobook ? (
         // Headphones icon for audiobook
-        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z" />
+        <svg
+          className="h-4 w-4 shrink-0"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z"
+          />
         </svg>
       ) : (
         // Book icon for ebook
-        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+        <svg
+          className="h-4 w-4 shrink-0"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"
+          />
         </svg>
       );
 
       if (compact) {
         if (!primaryFormat) {
-          return <span className="inline-flex items-center text-gray-500" title={isAudiobook ? 'Audiobook' : 'Book'}>{icon}</span>;
+          return (
+            <span
+              className="inline-flex items-center text-gray-500"
+              title={isAudiobook ? 'Audiobook' : 'Book'}
+            >
+              {icon}
+            </span>
+          );
         }
         // Simple text tooltip for compact mode
-        const compactTooltip = formats && formats.length > 1
-          ? formats.map((fmt) => String(fmt).toUpperCase()).join(', ')
-          : undefined;
+        const compactTooltip =
+          formats && formats.length > 1
+            ? formats.map((fmt) => String(fmt).toUpperCase()).join(', ')
+            : undefined;
         return (
           <span className={column.uppercase ? 'uppercase' : ''} title={compactTooltip}>
             {primaryFormat.toUpperCase()}
@@ -432,8 +479,13 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
       // No format - just show icon with same width as format badges
       if (!primaryFormat) {
         return (
-          <div className="flex items-center justify-start" title={isAudiobook ? 'Audiobook' : 'Book'}>
-            <span className={`${colorStyle.bg} ${colorStyle.text} text-[10px] sm:text-[11px] font-semibold py-0.5 rounded-lg inline-flex items-center justify-center w-13`}>
+          <div
+            className="flex items-center justify-start"
+            title={isAudiobook ? 'Audiobook' : 'Book'}
+          >
+            <span
+              className={`${colorStyle.bg} ${colorStyle.text} inline-flex w-13 items-center justify-center rounded-lg py-0.5 text-[10px] font-semibold sm:text-[11px]`}
+            >
               {icon}
             </span>
           </div>
@@ -444,14 +496,12 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
       const formatBadge = (
         <span className="inline-flex items-center gap-1">
           <span
-            className={`${colorStyle.bg} ${colorStyle.text} text-[10px] sm:text-[11px] font-semibold py-0.5 rounded-lg tracking-wide whitespace-nowrap w-13 text-center`}
+            className={`${colorStyle.bg} ${colorStyle.text} w-13 rounded-lg py-0.5 text-center text-[10px] font-semibold tracking-wide whitespace-nowrap sm:text-[11px]`}
           >
             {column.uppercase ? primaryFormat.toUpperCase() : primaryFormat}
           </span>
           {additionalFormats.length > 0 && (
-            <span
-              className="bg-gray-500/20 text-gray-700 dark:text-gray-300 text-[10px] sm:text-[11px] font-semibold px-1.5 sm:px-2 py-0.5 rounded-lg tracking-wide"
-            >
+            <span className="rounded-lg bg-gray-500/20 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-gray-700 sm:px-2 sm:text-[11px] dark:text-gray-300">
               +{additionalFormats.length}
             </span>
           )}
@@ -492,7 +542,7 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
           return (
             <span className="inline-flex items-center gap-1">
               <span
-                className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOnline ? 'bg-emerald-500' : 'bg-gray-400'}`}
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-gray-400'}`}
                 title={isOnline ? 'Online' : 'Offline'}
               />
               {displayValue}
@@ -503,10 +553,12 @@ export const ReleaseCell = ({ column, release, compact = false, onlineServers }:
       }
 
       return (
-        <div className={`flex items-center ${alignClass} text-xs text-gray-600 dark:text-gray-300 truncate`}>
+        <div
+          className={`flex items-center ${alignClass} truncate text-xs text-gray-600 dark:text-gray-300`}
+        >
           {isServerColumn && (
             <span
-              className={`w-2 h-2 rounded-full mr-1.5 shrink-0 ${isOnline ? 'bg-emerald-500' : 'bg-gray-400'}`}
+              className={`mr-1.5 h-2 w-2 shrink-0 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-gray-400'}`}
               title={isOnline ? 'Online' : 'Offline'}
             />
           )}

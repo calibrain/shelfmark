@@ -1,15 +1,18 @@
 {
   "name": "cwad-frontend",
-  "private": true,
   "version": "1.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test:unit": "npm run test:unit:build && node --experimental-specifier-resolution=node --test ../../.local/frontend-test-dist/tests/*.node.test.js",
-    "test:unit:build": "rm -rf ../../.local/frontend-test-dist && tsc -p tsconfig.tests.json"
+    "lint": "oxlint src/",
+    "lint:warn": "oxlint --deny warnings src/",
+    "format": "oxfmt src/",
+    "format:check": "oxfmt --check src/",
+    "test:unit": "vitest run"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
@@ -24,9 +27,13 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "oxfmt": "^0.44.0",
+    "oxlint": "^1.59.0",
+    "oxlint-tsgolint": "^0.20.0",
     "postcss": "^8.5.9",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.2",
-    "vite": "^8.0.8"
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4"
   }
 }

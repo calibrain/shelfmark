@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { useSettings } from '../../hooks/useSettings';
+
 import { useSearchMode } from '../../contexts/SearchModeContext';
+import { useSettings } from '../../hooks/useSettings';
 import { getAdminSettingsOverridesSummary, getSettingsTab } from '../../services/api';
-import { primeUsersCache } from './users/useUsersFetch';
+import { SettingsContent } from './SettingsContent';
 import { SettingsHeader } from './SettingsHeader';
 import { SettingsSidebar } from './SettingsSidebar';
-import { SettingsContent } from './SettingsContent';
+import { primeUsersCache } from './users/useUsersFetch';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -16,7 +17,14 @@ interface SettingsModalProps {
   onRefreshAuth?: () => Promise<void>;
 }
 
-export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettingsSaved, onRefreshAuth }: SettingsModalProps) => {
+export const SettingsModal = ({
+  isOpen,
+  authMode,
+  onClose,
+  onShowToast,
+  onSettingsSaved,
+  onRefreshAuth,
+}: SettingsModalProps) => {
   const {
     tabs,
     groups,
@@ -40,7 +48,13 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
   const [isClosing, setIsClosing] = useState(false);
   const [securityAccessError, setSecurityAccessError] = useState<string | null>(null);
   const [tabOverrideSummaries, setTabOverrideSummaries] = useState<
-    Record<string, Record<string, { count: number; users: Array<{ userId: number; username: string; value: unknown }> }>>
+    Record<
+      string,
+      Record<
+        string,
+        { count: number; users: Array<{ userId: number; username: string; value: unknown }> }
+      >
+    >
   >({});
 
   // Track previous isOpen state to detect modal open transition
@@ -111,7 +125,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
     }
 
     let cancelled = false;
-    getSettingsTab("security")
+    getSettingsTab('security')
       .then(() => {
         if (cancelled) return;
         setSecurityAccessError(null);
@@ -178,7 +192,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
         setShowMobileDetail(true);
       }
     },
-    [isMobile, setSelectedTab]
+    [isMobile, setSelectedTab],
   );
 
   const handleBack = useCallback(() => {
@@ -230,7 +244,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
       }
       return result;
     },
-    [selectedTab, executeAction, isMobile, setSelectedTab, refreshOverrideSummaryForTab]
+    [selectedTab, executeAction, isMobile, setSelectedTab, refreshOverrideSummaryForTab],
   );
 
   // Memoize the field change handler to prevent creating new functions on every render
@@ -249,7 +263,11 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
           if (value === true && !currentScopes.includes(groupClaim)) {
             updateValue(selectedTab, 'OIDC_SCOPES', [...currentScopes, groupClaim]);
           } else if (value === false && currentScopes.includes(groupClaim)) {
-            updateValue(selectedTab, 'OIDC_SCOPES', currentScopes.filter(s => s !== groupClaim));
+            updateValue(
+              selectedTab,
+              'OIDC_SCOPES',
+              currentScopes.filter((s) => s !== groupClaim),
+            );
           }
         }
 
@@ -257,7 +275,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
           const useAdminGroup = tabValues['OIDC_USE_ADMIN_GROUP'] as boolean;
           if (useAdminGroup) {
             const oldClaim = (tabValues['OIDC_GROUP_CLAIM'] as string) || 'groups';
-            const newScopes = currentScopes.filter(s => s !== oldClaim);
+            const newScopes = currentScopes.filter((s) => s !== oldClaim);
             if (value && !newScopes.includes(value)) {
               newScopes.push(value);
             }
@@ -266,14 +284,14 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
         }
       }
     },
-    [selectedTab, updateValue, values]
+    [selectedTab, updateValue, values],
   );
 
   // Memoize hasChanges to avoid expensive JSON.stringify comparisons on every render
   // Must be before early returns to satisfy React's rules of hooks
   const currentTabHasChanges = useMemo(
     () => (selectedTab ? hasChanges(selectedTab) : false),
-    [selectedTab, hasChanges, values]
+    [selectedTab, hasChanges, values],
   );
 
   if (!isOpen && !isClosing) return null;
@@ -282,9 +300,9 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
   const currentTabDisplayName = currentTab?.displayName || 'Settings';
   const selectedAuthMethod = values.security?.AUTH_METHOD;
   const usersAuthMode = typeof selectedAuthMethod === 'string' ? selectedAuthMethod : authMode;
-  const currentTabContent = currentTab
-    ? ((selectedTab === 'security' && securityAccessError) ? (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 gap-3">
+  const currentTabContent = currentTab ? (
+    selectedTab === 'security' && securityAccessError ? (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8">
         <p className="text-sm opacity-60">{securityAccessError}</p>
       </div>
     ) : (
@@ -306,8 +324,8 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
           onSettingsSaved,
         }}
       />
-    ))
-    : null;
+    )
+  ) : null;
 
   // Loading state
   if (isLoading) {
@@ -319,11 +337,11 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
           onClick={handleClose}
         />
         <div
-          className="relative bg-(--bg) rounded-xl p-8 shadow-2xl"
+          className="relative rounded-xl bg-(--bg) p-8 shadow-2xl"
           style={{ background: 'var(--bg)' }}
         >
           <div className="flex items-center gap-3">
-            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+            <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24">
               <circle
                 className="opacity-25"
                 cx="12"
@@ -356,13 +374,13 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
           onClick={handleClose}
         />
         <div
-          className="relative bg-(--bg) rounded-xl p-8 shadow-2xl max-w-md"
+          className="relative max-w-md rounded-xl bg-(--bg) p-8 shadow-2xl"
           style={{ background: 'var(--bg)' }}
         >
-          <div className="text-center space-y-4">
+          <div className="space-y-4 text-center">
             <div className="text-red-500">
               <svg
-                className="w-12 h-12 mx-auto"
+                className="mx-auto h-12 w-12"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -379,8 +397,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
             <p className="text-sm">{error}</p>
             <button
               onClick={handleClose}
-              className="px-4 py-2 rounded-lg text-sm font-medium
-                         bg-(--bg-soft) border border-(--border-muted)                         hover:bg-(--hover-surface) transition-colors"
+              className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
             >
               Close
             </button>
@@ -394,8 +411,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
   if (isMobile) {
     return (
       <div
-        className={`fixed inset-0 z-50 flex flex-col
-                    ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+        className={`fixed inset-0 z-50 flex flex-col ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
         style={{ background: 'var(--bg)' }}
       >
         {!showMobileDetail ? (
@@ -431,29 +447,22 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className={`absolute inset-0 bg-black/50 backdrop-blur-[2px] transition-opacity duration-150
-                    ${isClosing ? 'opacity-0' : 'opacity-100'}`}
+        className={`absolute inset-0 bg-black/50 backdrop-blur-[2px] transition-opacity duration-150 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
         style={{ willChange: 'opacity', contain: 'strict' }}
         onClick={handleClose}
       />
 
       {/* Modal */}
       <div
-        className={`relative w-full max-w-4xl h-[85vh] max-h-[750px] rounded-xl
-                    border border-(--border-muted) shadow-2xl
-                    flex flex-col overflow-hidden
-                    ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`relative flex h-[85vh] max-h-[750px] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-(--border-muted) shadow-2xl ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         style={{ background: 'var(--bg)' }}
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
       >
-        <SettingsHeader
-          title="Settings"
-          onClose={handleClose}
-        />
+        <SettingsHeader title="Settings" onClose={handleClose} />
 
-        <div className="flex flex-1 min-h-0">
+        <div className="flex min-h-0 flex-1">
           <SettingsSidebar
             tabs={tabs}
             groups={groups}
@@ -463,7 +472,7 @@ export const SettingsModal = ({ isOpen, authMode, onClose, onShowToast, onSettin
           />
 
           {currentTabContent ?? (
-            <div className="flex-1 flex items-center justify-center text-sm opacity-60">
+            <div className="flex flex-1 items-center justify-center text-sm opacity-60">
               Select a category to configure
             </div>
           )}

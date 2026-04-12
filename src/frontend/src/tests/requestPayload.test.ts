@@ -1,6 +1,6 @@
-import * as assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
-import type { Book, CreateRequestPayload, Release } from '../types/index.js';
+import { describe, it, expect } from 'vitest';
+
+import type { Book, CreateRequestPayload, Release } from '../types/index';
 import {
   buildDirectRequestPayload,
   buildMetadataBookRequestData,
@@ -10,7 +10,7 @@ import {
   isSourceBackedRequestPayload,
   getRequestSuccessMessage,
   toContentType,
-} from '../utils/requestPayload.js';
+} from '../utils/requestPayload';
 
 const baseBook: Book = {
   id: 'book-1',
@@ -32,22 +32,22 @@ const baseRelease: Release = {
 
 describe('requestPayload utilities', () => {
   it('normalizes content type values', () => {
-    assert.equal(toContentType('audiobook'), 'audiobook');
-    assert.equal(toContentType('AUDIOBOOK'), 'audiobook');
-    assert.equal(toContentType('ebook'), 'ebook');
-    assert.equal(toContentType('something-else'), 'ebook');
+    expect(toContentType('audiobook')).toBe('audiobook');
+    expect(toContentType('AUDIOBOOK')).toBe('audiobook');
+    expect(toContentType('ebook')).toBe('ebook');
+    expect(toContentType('something-else')).toBe('ebook');
   });
 
   it('creates direct request payload as release-level with attached release data', () => {
     const payload = buildDirectRequestPayload(baseBook);
 
-    assert.equal(payload.context.request_level, 'release');
-    assert.equal(payload.context.source, 'direct_download');
-    assert.equal(payload.context.content_type, 'ebook');
-    assert.ok(payload.release_data);
-    assert.equal(payload.release_data?.source, 'direct_download');
-    assert.equal(payload.release_data?.search_mode, 'direct');
-    assert.equal(isSourceBackedRequestPayload(payload), true);
+    expect(payload.context.request_level).toBe('release');
+    expect(payload.context.source).toBe('direct_download');
+    expect(payload.context.content_type).toBe('ebook');
+    expect(payload.release_data).toBeTruthy();
+    expect(payload.release_data?.source).toBe('direct_download');
+    expect(payload.release_data?.search_mode).toBe('direct');
+    expect(isSourceBackedRequestPayload(payload)).toBe(true);
   });
 
   it('builds metadata book + release payload fragments', () => {
@@ -65,40 +65,38 @@ describe('requestPayload utilities', () => {
         ...baseRelease,
         source: 'direct_download',
       },
-      'ebook'
+      'ebook',
     );
 
-    assert.equal(bookData.provider, 'openlibrary');
-    assert.equal(bookData.provider_id, 'ol-1');
-    assert.equal(bookData.content_type, 'ebook');
-    assert.equal(releaseData.source, 'prowlarr');
-    assert.equal(releaseData.format, 'epub');
-    assert.equal(releaseData.content_type, 'ebook');
-    assert.equal(directReleaseData.search_mode, 'direct');
-    assert.equal(sourceBackedReleaseData.search_mode, 'direct');
+    expect(bookData.provider).toBe('openlibrary');
+    expect(bookData.provider_id).toBe('ol-1');
+    expect(bookData.content_type).toBe('ebook');
+    expect(releaseData.source).toBe('prowlarr');
+    expect(releaseData.format).toBe('epub');
+    expect(releaseData.content_type).toBe('ebook');
+    expect(directReleaseData.search_mode).toBe('direct');
+    expect(sourceBackedReleaseData.search_mode).toBe('direct');
   });
 
   it('resolves browse source from source-backed or provider-backed books', () => {
-    assert.equal(getBrowseSource(baseBook), 'direct_download');
-    assert.equal(
+    expect(getBrowseSource(baseBook)).toBe('direct_download');
+    expect(
       getBrowseSource({
         ...baseBook,
         source: undefined,
         provider: 'direct_download',
       }),
-      'direct_download'
-    );
+    ).toBe('direct_download');
   });
 
   it('throws when browse-source context is missing', () => {
-    assert.throws(
-      () => getBrowseSource({
+    expect(() =>
+      getBrowseSource({
         id: 'missing-source',
         title: 'Example',
         author: 'Author',
       }),
-      /missing source context/
-    );
+    ).toThrow(/missing source context/);
   });
 
   it('builds success toast message from payload title with fallback', () => {
@@ -132,8 +130,12 @@ describe('requestPayload utilities', () => {
       },
     };
 
-    assert.equal(getRequestSuccessMessage(payloadWithBookTitle), 'Request submitted: Book From Metadata');
-    assert.equal(getRequestSuccessMessage(payloadWithReleaseTitleOnly), 'Request submitted: Release Only Title');
-    assert.equal(getRequestSuccessMessage(payloadUntitled), 'Request submitted: Untitled');
+    expect(getRequestSuccessMessage(payloadWithBookTitle)).toBe(
+      'Request submitted: Book From Metadata',
+    );
+    expect(getRequestSuccessMessage(payloadWithReleaseTitleOnly)).toBe(
+      'Request submitted: Release Only Title',
+    );
+    expect(getRequestSuccessMessage(payloadUntitled)).toBe('Request submitted: Untitled');
   });
 });

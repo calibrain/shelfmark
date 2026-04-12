@@ -1,4 +1,5 @@
 import { useState } from 'react';
+
 import { ActionButtonConfig, ActionResult } from '../../../types/settings';
 
 interface ActionButtonProps {
@@ -30,8 +31,7 @@ export const ActionButton = ({ field, onAction, disabled }: ActionButtonProps) =
   };
 
   const styleClasses = {
-    default:
-      'bg-(--bg-soft) border border-(--border-muted) hover:bg-(--hover-surface)',
+    default: 'bg-(--bg-soft) border border-(--border-muted) hover:bg-(--hover-surface)',
     primary: 'bg-sky-600 text-white hover:bg-sky-700',
     danger: 'bg-red-600 text-white hover:bg-red-700',
   };
@@ -43,13 +43,11 @@ export const ActionButton = ({ field, onAction, disabled }: ActionButtonProps) =
           type="button"
           onClick={handleClick}
           disabled={isDisabled}
-          className={`px-4 py-2 rounded-lg text-sm font-medium
-                      transition-colors disabled:opacity-60 disabled:cursor-not-allowed
-                      ${styleClasses[field.style]}`}
+          className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${styleClasses[field.style]}`}
         >
           {isLoading ? (
             <span className="flex items-center gap-2">
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
                 <circle
                   className="opacity-25"
                   cx="12"
@@ -71,14 +69,12 @@ export const ActionButton = ({ field, onAction, disabled }: ActionButtonProps) =
             field.label
           )}
         </button>
-        {field.description && (
-          <span className="text-xs opacity-60 pt-2">{field.description}</span>
-        )}
+        {field.description && <span className="pt-2 text-xs opacity-60">{field.description}</span>}
       </div>
 
       {result && (
         <div
-          className={`text-sm px-3 py-2 rounded-lg ${
+          className={`rounded-lg px-3 py-2 text-sm ${
             result.success
               ? 'bg-green-500/20 text-green-700 dark:text-green-300'
               : 'bg-red-500/20 text-red-700 dark:text-red-300'
@@ -86,7 +82,7 @@ export const ActionButton = ({ field, onAction, disabled }: ActionButtonProps) =
         >
           <p>{result.message}</p>
           {Array.isArray(result.details) && result.details.length > 0 && (
-            <ul className="mt-2 list-disc pl-5 space-y-1 text-xs opacity-90">
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs opacity-90">
               {result.details.map((detail, index) => (
                 <li key={`${detail}-${index}`}>{detail}</li>
               ))}

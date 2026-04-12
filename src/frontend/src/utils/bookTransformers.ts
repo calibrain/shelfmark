@@ -165,7 +165,7 @@ export function transformReleaseToDirectBook(release: Release): Book {
     publisher: extra.publisher,
     info:
       typeof extra.info === 'object' && extra.info !== null
-        ? extra.info as Record<string, string | string[]>
+        ? (extra.info as Record<string, string | string[]>)
         : undefined,
     description: extra.description,
     source_url: release.info_url || release.download_url,

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import { useSocket } from '../contexts/SocketContext';
 import {
   cancelRequest as cancelUserRequest,
   fulfilAdminRequest,
@@ -8,7 +10,6 @@ import {
   rejectAdminRequest,
 } from '../services/api';
 import { RequestRecord } from '../types';
-import { useSocket } from '../contexts/SocketContext';
 import {
   applyRequestUpdateEvent,
   normalizeRequestUpdatePayload,
@@ -33,7 +34,7 @@ export interface UseRequestsReturn {
     id: number,
     releaseData?: Record<string, unknown>,
     adminNote?: string,
-    manualApproval?: boolean
+    manualApproval?: boolean,
   ) => Promise<void>;
   rejectRequest: (id: number, adminNote?: string) => Promise<void>;
 }
@@ -222,7 +223,7 @@ export const useRequests = ({
       id: number,
       releaseData?: Record<string, unknown>,
       adminNote?: string,
-      manualApproval?: boolean
+      manualApproval?: boolean,
     ) => {
       if (!isAdmin) {
         throw new Error('Admin access required');
@@ -249,7 +250,7 @@ export const useRequests = ({
         throw new Error(message);
       }
     },
-    [isAdmin]
+    [isAdmin],
   );
 
   const rejectRequest = useCallback(
@@ -277,12 +278,12 @@ export const useRequests = ({
         throw new Error(message);
       }
     },
-    [isAdmin]
+    [isAdmin],
   );
 
   const pendingCount = useMemo(
     () => requests.filter((record) => record.status === 'pending').length,
-    [requests]
+    [requests],
   );
 
   return {

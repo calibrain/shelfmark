@@ -1,15 +1,12 @@
-import * as assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
-import { buildQueryTargets, getDefaultQueryTargetKey } from '../utils/queryTargets.js';
+import { describe, it, expect } from 'vitest';
+
+import { buildQueryTargets, getDefaultQueryTargetKey } from '../utils/queryTargets';
 
 describe('queryTargets', () => {
   it('builds direct-mode query targets', () => {
     const targets = buildQueryTargets({ searchMode: 'direct' });
 
-    assert.deepEqual(
-      targets.map((target) => target.key),
-      ['general', 'isbn', 'author', 'title'],
-    );
+    expect(targets.map((target) => target.key)).toEqual(['general', 'isbn', 'author', 'title']);
   });
 
   it('builds universal query targets from provider fields', () => {
@@ -33,15 +30,17 @@ describe('queryTargets', () => {
       manualSearchAllowed: true,
     });
 
-    assert.deepEqual(
-      targets.map((target) => target.key),
-      ['general', 'author', 'hardcover_list', 'manual'],
-    );
-    assert.equal(targets[1]?.source, 'provider-field');
-    assert.equal(targets[3]?.source, 'manual');
+    expect(targets.map((target) => target.key)).toEqual([
+      'general',
+      'author',
+      'hardcover_list',
+      'manual',
+    ]);
+    expect(targets[1]?.source).toBe('provider-field');
+    expect(targets[3]?.source).toBe('manual');
   });
 
   it('falls back to general when choosing a default target', () => {
-    assert.equal(getDefaultQueryTargetKey([]), 'general');
+    expect(getDefaultQueryTargetKey([])).toBe('general');
   });
 });

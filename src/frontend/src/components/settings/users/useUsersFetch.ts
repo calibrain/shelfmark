@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+
 import {
   AdminUser,
   DeliveryPreferencesResponse,
@@ -32,7 +33,9 @@ interface LoadUsersOptions {
   force?: boolean;
 }
 
-const loadUsersIntoCache = async ({ force = false }: LoadUsersOptions = {}): Promise<AdminUser[]> => {
+const loadUsersIntoCache = async ({ force = false }: LoadUsersOptions = {}): Promise<
+  AdminUser[]
+> => {
   if (!force && cachedUsers !== null) {
     return cachedUsers;
   }
@@ -104,38 +107,38 @@ export const useUsersFetch = ({ onShowToast }: UseUsersFetchParams) => {
   const [loading, setLoading] = useState<boolean>(() => cachedUsers === null);
   const [loadError, setLoadError] = useState<string | null>(() => cachedLoadError);
 
-  const fetchUsers = useCallback(async ({ force = false }: LoadUsersOptions = {}): Promise<AdminUser[]> => {
-    const hasCachedResult = !force && cachedUsers !== null;
-    try {
-      if (!hasCachedResult) {
-        setLoading(true);
+  const fetchUsers = useCallback(
+    async ({ force = false }: LoadUsersOptions = {}): Promise<AdminUser[]> => {
+      const hasCachedResult = !force && cachedUsers !== null;
+      try {
+        if (!hasCachedResult) {
+          setLoading(true);
+        }
+        setLoadError(null);
+        const data = await loadUsersIntoCache({ force });
+        setUsers(data);
+        return data;
+      } catch (err) {
+        const message = toLoadErrorMessage(err);
+        cachedLoadError = message;
+        setLoadError(message);
+        if (!shouldSuppressAccessToast(message)) {
+          onShowToast?.(message, 'error');
+        }
+        return [];
+      } finally {
+        setLoading(false);
       }
-      setLoadError(null);
-      const data = await loadUsersIntoCache({ force });
-      setUsers(data);
-      return data;
-    } catch (err) {
-      const message = toLoadErrorMessage(err);
-      cachedLoadError = message;
-      setLoadError(message);
-      if (!shouldSuppressAccessToast(message)) {
-        onShowToast?.(message, 'error');
-      }
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, [onShowToast]);
+    },
+    [onShowToast],
+  );
 
   useEffect(() => {
     void fetchUsers();
   }, [fetchUsers]);
 
   const fetchUserEditContext = useCallback(async (userId: number): Promise<UserEditContext> => {
-    const [fullUser, defaults] = await Promise.all([
-      getAdminUser(userId),
-      getDownloadDefaults(),
-    ]);
+    const [fullUser, defaults] = await Promise.all([getAdminUser(userId), getDownloadDefaults()]);
 
     let deliveryPreferences: DeliveryPreferencesResponse | null = null;
     let searchPreferences: DeliveryPreferencesResponse | null = null;

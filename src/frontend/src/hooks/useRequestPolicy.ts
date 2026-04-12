@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+
 import { fetchRequestPolicy } from '../services/api';
 import { ContentType, RequestPolicyMode, RequestPolicyResponse } from '../types';
+import { policyTrace } from '../utils/policyTrace';
 import {
   DEFAULT_POLICY_TTL_MS,
   RequestPolicyCache,
   resolveDefaultModeFromPolicy,
   resolveSourceModeFromPolicy,
 } from './requestPolicyCore';
-import { policyTrace } from '../utils/policyTrace';
 
 interface UseRequestPolicyOptions {
   enabled: boolean;
@@ -80,7 +81,7 @@ export function useRequestPolicy({
         setIsLoading(false);
       }
     },
-    [enabled, isAdmin]
+    [enabled, isAdmin],
   );
 
   useEffect(() => {
@@ -97,7 +98,7 @@ export function useRequestPolicy({
       const effectiveIsAdmin = policy ? Boolean(policy.is_admin) : isAdmin;
       return resolveDefaultModeFromPolicy(policy, effectiveIsAdmin, contentType);
     },
-    [policy, isAdmin]
+    [policy, isAdmin],
   );
 
   const getSourceMode = useCallback(
@@ -105,12 +106,15 @@ export function useRequestPolicy({
       const effectiveIsAdmin = policy ? Boolean(policy.is_admin) : isAdmin;
       return resolveSourceModeFromPolicy(policy, effectiveIsAdmin, source, contentType);
     },
-    [policy, isAdmin]
+    [policy, isAdmin],
   );
 
-  const refresh = useCallback(async (options: { force?: boolean } = {}) => {
-    return fetchPolicy(Boolean(options.force));
-  }, [fetchPolicy]);
+  const refresh = useCallback(
+    async (options: { force?: boolean } = {}) => {
+      return fetchPolicy(Boolean(options.force));
+    },
+    [fetchPolicy],
+  );
 
   return {
     policy,

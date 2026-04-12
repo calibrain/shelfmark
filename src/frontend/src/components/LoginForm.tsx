@@ -1,8 +1,9 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+
 import { LoginCredentials } from '../types';
-import { withBasePath } from '../utils/basePath';
 import { buildOidcLoginUrl } from '../utils/authRedirect';
+import { withBasePath } from '../utils/basePath';
 
 interface LoginFormProps {
   onSubmit: (credentials: LoginCredentials) => void;
@@ -22,18 +23,14 @@ const EyeIcon = () => (
     viewBox="0 0 24 24"
     strokeWidth={1.5}
     stroke="currentColor"
-    className="w-5 h-5"
+    className="h-5 w-5"
   >
     <path
       strokeLinecap="round"
       strokeLinejoin="round"
       d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"
     />
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-    />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
   </svg>
 );
 
@@ -44,7 +41,7 @@ const EyeSlashIcon = () => (
     viewBox="0 0 24 24"
     strokeWidth={1.5}
     stroke="currentColor"
-    className="w-5 h-5"
+    className="h-5 w-5"
   >
     <path
       strokeLinecap="round"
@@ -94,7 +91,7 @@ const PasswordLoginForm = ({
       onSubmit={onSubmit}
     >
       <div className="mb-4">
-        <label htmlFor="username" className="block text-sm font-medium mb-2">
+        <label htmlFor="username" className="mb-2 block text-sm font-medium">
           Username
         </label>
         <input
@@ -112,7 +109,7 @@ const PasswordLoginForm = ({
           onChange={(event) => setUsername(event.target.value)}
           onKeyDown={handleUsernameKeyDown}
           disabled={isLoading}
-          className="w-full px-4 py-2.5 rounded-lg border focus:outline-hidden focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="w-full rounded-lg border px-4 py-2.5 transition-colors focus:ring-2 focus:ring-sky-500 focus:outline-hidden disabled:cursor-not-allowed disabled:opacity-50"
           style={{
             backgroundColor: 'var(--input-background)',
             borderColor: 'var(--border-color)',
@@ -123,7 +120,7 @@ const PasswordLoginForm = ({
       </div>
 
       <div className="mb-4">
-        <label htmlFor="password" className="block text-sm font-medium mb-2">
+        <label htmlFor="password" className="mb-2 block text-sm font-medium">
           Password
         </label>
         <div className="relative">
@@ -141,7 +138,7 @@ const PasswordLoginForm = ({
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             disabled={isLoading}
-            className="w-full px-4 py-2.5 rounded-lg border focus:outline-hidden focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed pr-10 transition-colors"
+            className="w-full rounded-lg border px-4 py-2.5 pr-10 transition-colors focus:ring-2 focus:ring-sky-500 focus:outline-hidden disabled:cursor-not-allowed disabled:opacity-50"
             style={{
               backgroundColor: 'var(--input-background)',
               borderColor: 'var(--border-color)',
@@ -153,7 +150,7 @@ const PasswordLoginForm = ({
             type="button"
             onClick={() => setShowPassword((current) => !current)}
             disabled={isLoading}
-            className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1.5 rounded-full hover-action disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="hover-action absolute top-1/2 right-2 -translate-y-1/2 transform rounded-full p-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             aria-label={showPassword ? 'Hide password' : 'Show password'}
           >
             {showPassword ? <EyeSlashIcon /> : <EyeIcon />}
@@ -169,7 +166,7 @@ const PasswordLoginForm = ({
           checked={rememberMe}
           onChange={(event) => setRememberMe(event.target.checked)}
           disabled={isLoading}
-          className="w-4 h-4 rounded-sm focus:ring-2 focus:ring-sky-500 disabled:opacity-50 disabled:cursor-not-allowed accent-sky-900"
+          className="h-4 w-4 rounded-sm accent-sky-900 focus:ring-2 focus:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
           style={{ borderColor: 'var(--border-color)' }}
         />
         <label htmlFor="remember-me" className="ml-2 text-sm">
@@ -181,13 +178,13 @@ const PasswordLoginForm = ({
         type="submit"
         name="submit"
         disabled={isLoading}
-        className="w-full py-2.5 px-4 rounded-lg font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-sky-700 hover:bg-sky-800 disabled:hover:bg-sky-700"
+        className="w-full rounded-lg bg-sky-700 px-4 py-2.5 font-medium text-white transition-colors hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-sky-700"
         aria-label="Sign in"
       >
         {isLoading ? (
           <span className="flex items-center justify-center">
             <svg
-              className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+              className="mr-3 -ml-1 h-5 w-5 animate-spin text-white"
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
@@ -266,28 +263,26 @@ export const LoginForm = ({
   return (
     <div>
       {displayError && (
-        <div className="mb-4 p-3 rounded-lg text-sm bg-red-600 text-white">
-          {displayError}
-        </div>
+        <div className="mb-4 rounded-lg bg-red-600 p-3 text-sm text-white">{displayError}</div>
       )}
 
       {isOidc ? (
         <>
           <a
             href={oidcLoginUrl}
-            className="w-full py-2.5 px-4 rounded-lg font-medium text-white text-center transition-colors block bg-sky-700 hover:bg-sky-800"
+            className="block w-full rounded-lg bg-sky-700 px-4 py-2.5 text-center font-medium text-white transition-colors hover:bg-sky-800"
           >
             {oidcButtonLabel || 'Sign in with OIDC'}
           </a>
 
           {!hideLocalAuth && (
             <>
-              <div className="flex items-center mt-5 mb-2">
+              <div className="mt-5 mb-2 flex items-center">
                 <div className="flex-1 border-t" style={{ borderColor: 'var(--border-color)' }} />
                 <button
                   type="button"
                   onClick={() => setShowPasswordLogin((prev) => !prev)}
-                  className="px-3 text-sm opacity-60 hover:opacity-100 transition-opacity"
+                  className="px-3 text-sm opacity-60 transition-opacity hover:opacity-100"
                 >
                   {showPasswordLogin ? 'Hide' : 'Use password'}
                 </button>
@@ -296,7 +291,11 @@ export const LoginForm = ({
 
               {showPasswordLogin && (
                 <div className="pt-2">
-                  <PasswordLoginForm onSubmit={handleSubmit} isLoading={isLoading} autoFocus={true} />
+                  <PasswordLoginForm
+                    onSubmit={handleSubmit}
+                    isLoading={isLoading}
+                    autoFocus={true}
+                  />
                 </div>
               )}
             </>

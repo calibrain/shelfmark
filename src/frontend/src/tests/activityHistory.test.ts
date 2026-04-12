@@ -1,7 +1,7 @@
-import * as assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
-import type { ActivityItem } from '../components/activity/activityTypes.js';
-import { dedupeHistoryItems } from '../components/activity/activityHistory.js';
+import { describe, it, expect } from 'vitest';
+
+import { dedupeHistoryItems } from '../components/activity/activityHistory';
+import type { ActivityItem } from '../components/activity/activityTypes';
 
 const makeRequestItem = (overrides: Partial<ActivityItem> = {}): ActivityItem => ({
   id: 'request-42',
@@ -66,7 +66,7 @@ describe('dedupeHistoryItems', () => {
 
     const items = dedupeHistoryItems([rejectedRequest]);
 
-    assert.deepEqual(items, [rejectedRequest]);
+    expect(items).toEqual([rejectedRequest]);
   });
 
   it('drops fulfilled request history rows when a linked download row is present', () => {
@@ -75,7 +75,7 @@ describe('dedupeHistoryItems', () => {
 
     const items = dedupeHistoryItems([requestItem, downloadItem]);
 
-    assert.deepEqual(items, [downloadItem]);
+    expect(items).toEqual([downloadItem]);
   });
 
   it('keeps fulfilled request history rows when no linked download row exists', () => {
@@ -83,6 +83,6 @@ describe('dedupeHistoryItems', () => {
 
     const items = dedupeHistoryItems([requestItem]);
 
-    assert.deepEqual(items, [requestItem]);
+    expect(items).toEqual([requestItem]);
   });
 });

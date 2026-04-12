@@ -106,11 +106,17 @@ export const OnBehalfConfirmationModal = ({
           <button
             type="button"
             onClick={handleClose}
-            className="p-1.5 rounded-lg hover:bg-(--hover-surface) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg p-1.5 transition-colors hover:bg-(--hover-surface) disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="Close download confirmation"
             disabled={isSubmitting}
           >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -118,11 +124,12 @@ export const OnBehalfConfirmationModal = ({
 
         <div className="space-y-3 px-6 py-5">
           <p className="text-sm opacity-90">
-            This download will use {actingAsName}&apos;s output preferences and destination settings.
+            This download will use {actingAsName}&apos;s output preferences and destination
+            settings.
           </p>
           <div className="rounded-xl border border-(--border-muted) bg-(--bg-soft) px-4 py-3">
-            <p className="text-xs uppercase tracking-wide opacity-60">Title</p>
-            <p className="text-sm font-medium mt-1 wrap-break-word">{itemTitle}</p>
+            <p className="text-xs tracking-wide uppercase opacity-60">Title</p>
+            <p className="mt-1 text-sm font-medium wrap-break-word">{itemTitle}</p>
           </div>
         </div>
 
@@ -131,7 +138,7 @@ export const OnBehalfConfirmationModal = ({
             type="button"
             onClick={handleClose}
             disabled={isSubmitting}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-(--bg-soft) border border-(--border-muted) hover:bg-(--hover-surface) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface) disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
           </button>
@@ -139,7 +146,7 @@ export const OnBehalfConfirmationModal = ({
             type="button"
             onClick={submit}
             disabled={confirmDisabled}
-            className="px-5 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+            className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? 'Queuing...' : 'Confirm'}
           </button>

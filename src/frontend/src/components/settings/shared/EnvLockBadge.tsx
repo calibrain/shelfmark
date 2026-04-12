@@ -4,15 +4,11 @@ interface EnvLockBadgeProps {
 
 export const EnvLockBadge = ({ className = '' }: EnvLockBadgeProps) => (
   <span
-    className={`inline-flex items-center gap-1 px-1.5 py-0.5
-                text-[10px] font-medium uppercase tracking-wide
-                bg-gray-200 dark:bg-gray-700
-                text-gray-600 dark:text-gray-400
-                rounded ${className}`}
+    className={`inline-flex items-center gap-1 rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-gray-600 uppercase dark:bg-gray-700 dark:text-gray-400 ${className}`}
     title="This setting is controlled by an environment variable"
   >
     <svg
-      className="w-3 h-3"
+      className="h-3 w-3"
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 20 20"
       fill="currentColor"

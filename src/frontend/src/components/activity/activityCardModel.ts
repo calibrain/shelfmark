@@ -65,12 +65,13 @@ const getRequestBadge = (item: ActivityItem, isAdmin: boolean): ActivityCardBadg
     : item.visualStatus;
   const failureReason = item.requestRecord?.last_failure_reason?.trim() || null;
   const hasFailureReason = requestVisualStatus === 'pending' && Boolean(failureReason);
-  const hasInFlightLinkedDownload = (
+  const hasInFlightLinkedDownload =
     item.kind === 'download' &&
     requestVisualStatus === 'fulfilled' &&
-    isActiveDownloadStatus(item.visualStatus)
-  );
-  let visualStatus: ActivityVisualStatus = hasInFlightLinkedDownload ? 'resolving' : requestVisualStatus;
+    isActiveDownloadStatus(item.visualStatus);
+  let visualStatus: ActivityVisualStatus = hasInFlightLinkedDownload
+    ? 'resolving'
+    : requestVisualStatus;
   if (hasFailureReason) {
     visualStatus = 'error';
   }
@@ -138,12 +139,10 @@ const buildRequestNoteLine = (item: ActivityItem): string | undefined => {
   }
   if (
     item.adminNote &&
-    (
-      requestStatus === 'rejected' ||
+    (requestStatus === 'rejected' ||
       requestStatus === 'fulfilled' ||
       item.visualStatus === 'rejected' ||
-      item.visualStatus === 'fulfilled'
-    )
+      item.visualStatus === 'fulfilled')
   ) {
     return `"${item.adminNote}"`;
   }
@@ -227,10 +226,7 @@ const buildActions = (item: ActivityItem, isAdmin: boolean): ActivityCardAction[
   return [];
 };
 
-export const buildActivityCardModel = (
-  item: ActivityItem,
-  isAdmin: boolean
-): ActivityCardModel => {
+export const buildActivityCardModel = (item: ActivityItem, isAdmin: boolean): ActivityCardModel => {
   return {
     badges: buildBadges(item, isAdmin),
     noteLine: buildRequestNoteLine(item),

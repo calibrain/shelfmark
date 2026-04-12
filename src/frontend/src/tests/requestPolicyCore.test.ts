@@ -1,11 +1,11 @@
-import * as assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, expect } from 'vitest';
+
 import {
   RequestPolicyCache,
   resolveDefaultModeFromPolicy,
   resolveSourceModeFromPolicy,
-} from '../hooks/requestPolicyCore.js';
-import type { RequestPolicyResponse } from '../types/index.js';
+} from '../hooks/requestPolicyCore';
+import type { RequestPolicyResponse } from '../types/index';
 
 const makePolicy = (overrides: Partial<RequestPolicyResponse> = {}): RequestPolicyResponse => ({
   requests_enabled: true,
@@ -46,10 +46,12 @@ describe('requestPolicyCore mode resolution', () => {
       },
     });
 
-    assert.equal(resolveDefaultModeFromPolicy(policy, false, 'ebook'), 'request_book');
-    assert.equal(resolveDefaultModeFromPolicy(policy, false, 'audiobook'), 'request_release');
-    assert.equal(resolveSourceModeFromPolicy(policy, false, 'prowlarr', 'audiobook'), 'blocked');
-    assert.equal(resolveSourceModeFromPolicy(policy, false, 'unknown', 'audiobook'), 'request_release');
+    expect(resolveDefaultModeFromPolicy(policy, false, 'ebook')).toBe('request_book');
+    expect(resolveDefaultModeFromPolicy(policy, false, 'audiobook')).toBe('request_release');
+    expect(resolveSourceModeFromPolicy(policy, false, 'prowlarr', 'audiobook')).toBe('blocked');
+    expect(resolveSourceModeFromPolicy(policy, false, 'unknown', 'audiobook')).toBe(
+      'request_release',
+    );
   });
 
   it('normalizes direct source request_book mode to request_release', () => {
@@ -69,7 +71,9 @@ describe('requestPolicyCore mode resolution', () => {
       rules: [],
     });
 
-    assert.equal(resolveSourceModeFromPolicy(policy, false, 'direct_download', 'ebook'), 'request_release');
+    expect(resolveSourceModeFromPolicy(policy, false, 'direct_download', 'ebook')).toBe(
+      'request_release',
+    );
   });
 
   it('short-circuits to download for admins and requests-disabled policy', () => {
@@ -81,10 +85,14 @@ describe('requestPolicyCore mode resolution', () => {
       },
     });
 
-    assert.equal(resolveDefaultModeFromPolicy(blockedPolicy, false, 'ebook'), 'download');
-    assert.equal(resolveSourceModeFromPolicy(blockedPolicy, false, 'prowlarr', 'audiobook'), 'download');
-    assert.equal(resolveDefaultModeFromPolicy(makePolicy(), true, 'ebook'), 'download');
-    assert.equal(resolveSourceModeFromPolicy(makePolicy(), true, 'prowlarr', 'audiobook'), 'download');
+    expect(resolveDefaultModeFromPolicy(blockedPolicy, false, 'ebook')).toBe('download');
+    expect(resolveSourceModeFromPolicy(blockedPolicy, false, 'prowlarr', 'audiobook')).toBe(
+      'download',
+    );
+    expect(resolveDefaultModeFromPolicy(makePolicy(), true, 'ebook')).toBe('download');
+    expect(resolveSourceModeFromPolicy(makePolicy(), true, 'prowlarr', 'audiobook')).toBe(
+      'download',
+    );
   });
 
   it('falls back to wildcard rules when source_modes entry is missing', () => {
@@ -97,7 +105,9 @@ describe('requestPolicyCore mode resolution', () => {
       rules: [{ source: '*', content_type: 'ebook', mode: 'request_release' }],
     });
 
-    assert.equal(resolveSourceModeFromPolicy(policy, false, 'mystery_source', 'ebook'), 'request_release');
+    expect(resolveSourceModeFromPolicy(policy, false, 'mystery_source', 'ebook')).toBe(
+      'request_release',
+    );
   });
 
   it('caps wildcard rule results to the content default ceiling', () => {
@@ -110,7 +120,9 @@ describe('requestPolicyCore mode resolution', () => {
       rules: [{ source: '*', content_type: 'ebook', mode: 'download' }],
     });
 
-    assert.equal(resolveSourceModeFromPolicy(policy, false, 'mystery_source', 'ebook'), 'request_release');
+    expect(resolveSourceModeFromPolicy(policy, false, 'mystery_source', 'ebook')).toBe(
+      'request_release',
+    );
   });
 });
 
@@ -139,21 +151,21 @@ describe('RequestPolicyCache', () => {
       const cache = new RequestPolicyCache(fetcher, 60_000);
 
       const initial = await cache.refresh({ enabled: true, isAdmin: false });
-      assert.deepEqual(initial, first);
-      assert.equal(fetchCount, 1);
+      expect(initial).toEqual(first);
+      expect(fetchCount).toBe(1);
 
       const cached = await cache.refresh({ enabled: true, isAdmin: false });
-      assert.deepEqual(cached, first);
-      assert.equal(fetchCount, 1);
+      expect(cached).toEqual(first);
+      expect(fetchCount).toBe(1);
 
       now += 60_001;
       const afterTtl = await cache.refresh({ enabled: true, isAdmin: false });
-      assert.deepEqual(afterTtl, second);
-      assert.equal(fetchCount, 2);
+      expect(afterTtl).toEqual(second);
+      expect(fetchCount).toBe(2);
 
       const forced = await cache.refresh({ enabled: true, isAdmin: false, force: true });
-      assert.deepEqual(forced, third);
-      assert.equal(fetchCount, 3);
+      expect(forced).toEqual(third);
+      expect(fetchCount).toBe(3);
     } finally {
       Date.now = originalNow;
     }
@@ -175,8 +187,8 @@ describe('RequestPolicyCache', () => {
 
     const firstPromise = cache.refresh({ enabled: true, isAdmin: false, force: true });
     const secondPromise = cache.refresh({ enabled: true, isAdmin: false, force: true });
-    assert.equal(fetchCount, 1);
-    assert.equal(pendingResolvers.length, 1);
+    expect(fetchCount).toBe(1);
+    expect(pendingResolvers.length).toBe(1);
     const firstResolver = pendingResolvers.shift();
     if (!firstResolver) {
       throw new Error('Missing first in-flight resolver');
@@ -184,14 +196,14 @@ describe('RequestPolicyCache', () => {
     firstResolver(inflightPolicy);
 
     const [firstResult, secondResult] = await Promise.all([firstPromise, secondPromise]);
-    assert.deepEqual(firstResult, inflightPolicy);
-    assert.deepEqual(secondResult, inflightPolicy);
+    expect(firstResult).toEqual(inflightPolicy);
+    expect(secondResult).toEqual(inflightPolicy);
 
     const noAuthResult = await cache.refresh({ enabled: false, isAdmin: false });
-    assert.equal(noAuthResult, null);
+    expect(noAuthResult).toBe(null);
 
     const postResetRefresh = cache.refresh({ enabled: true, isAdmin: false, force: true });
-    assert.equal(fetchCount, 2);
+    expect(fetchCount).toBe(2);
     const secondResolver = pendingResolvers.shift();
     if (!secondResolver) {
       throw new Error('Missing second in-flight resolver');
@@ -200,7 +212,7 @@ describe('RequestPolicyCache', () => {
     await postResetRefresh;
 
     const adminResult = await cache.refresh({ enabled: true, isAdmin: true });
-    assert.equal(adminResult, null);
+    expect(adminResult).toBe(null);
   });
 
   it('runs a fresh forced fetch when a non-forced refresh is already in flight', async () => {
@@ -226,7 +238,7 @@ describe('RequestPolicyCache', () => {
     const nonForcedPromise = cache.refresh({ enabled: true, isAdmin: false });
     const forcedPromise = cache.refresh({ enabled: true, isAdmin: false, force: true });
 
-    assert.equal(fetchCount, 1);
+    expect(fetchCount).toBe(1);
     const firstResolver = pendingResolvers.shift();
     if (!firstResolver) {
       throw new Error('Missing first in-flight resolver');
@@ -234,8 +246,8 @@ describe('RequestPolicyCache', () => {
     firstResolver();
 
     const nonForcedResult = await nonForcedPromise;
-    assert.deepEqual(nonForcedResult, firstPolicy);
-    assert.equal(fetchCount, 2);
+    expect(nonForcedResult).toEqual(firstPolicy);
+    expect(fetchCount).toBe(2);
 
     const secondResolver = pendingResolvers.shift();
     if (!secondResolver) {
@@ -244,6 +256,6 @@ describe('RequestPolicyCache', () => {
     secondResolver();
 
     const forcedResult = await forcedPromise;
-    assert.deepEqual(forcedResult, secondPolicy);
+    expect(forcedResult).toEqual(secondPolicy);
   });
 });

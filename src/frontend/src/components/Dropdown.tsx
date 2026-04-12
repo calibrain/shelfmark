@@ -71,11 +71,13 @@ export const Dropdown = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [panelDirection, setPanelDirection] = useState<'down' | 'up'>('down');
-  const [resolvedAlign, setResolvedAlign] = useState<'left' | 'right'>(align === 'right' ? 'right' : 'left');
+  const [resolvedAlign, setResolvedAlign] = useState<'left' | 'right'>(
+    align === 'right' ? 'right' : 'left',
+  );
 
   const toggleOpen = () => {
     if (disabled) return;
-    setIsOpen(prev => {
+    setIsOpen((prev) => {
       const next = !prev;
       onOpenChange?.(next);
       return next;
@@ -125,9 +127,7 @@ export const Dropdown = ({
     const containerBottom = scrollableAncestor
       ? scrollableAncestor.getBoundingClientRect().bottom
       : window.innerHeight;
-    const containerTop = scrollableAncestor
-      ? scrollableAncestor.getBoundingClientRect().top
-      : 0;
+    const containerTop = scrollableAncestor ? scrollableAncestor.getBoundingClientRect().top : 0;
 
     const spaceBelow = containerBottom - rect.bottom - 8;
     const spaceAbove = rect.top - containerTop - 8;
@@ -172,7 +172,10 @@ export const Dropdown = ({
   return (
     <div className={widthClassName} ref={containerRef}>
       {label && (
-        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5" onClick={toggleOpen}>
+        <label
+          className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400"
+          onClick={toggleOpen}
+        >
           {label}
         </label>
       )}
@@ -184,7 +187,7 @@ export const Dropdown = ({
             type="button"
             onClick={toggleOpen}
             disabled={disabled}
-            className={`w-full px-3 py-2 text-sm border flex items-center justify-between gap-2 text-left focus:outline-hidden focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 ${triggerChrome !== 'minimal' ? 'dropdown-trigger' : ''} ${buttonClassName}`}
+            className={`flex w-full items-center justify-between gap-2 border px-3 py-2 text-left text-sm focus:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-hidden ${triggerChrome !== 'minimal' ? 'dropdown-trigger' : ''} ${buttonClassName}`}
             style={{
               color: 'var(--text)',
               borderColor: triggerChrome === 'minimal' ? 'transparent' : 'var(--border-muted)',
@@ -220,9 +223,13 @@ export const Dropdown = ({
             ref={panelRef}
             className={`absolute ${resolvedAlign === 'right' ? 'right-0' : 'left-0'} ${
               panelDirection === 'down'
-                ? renderTrigger ? 'mt-2' : ''
-                : renderTrigger ? 'bottom-full mb-2' : 'bottom-full'
-            } border z-20 ${panelDirection === 'down' ? 'shadow-lg' : ''} ${panelClassName || widthClassName}`}
+                ? renderTrigger
+                  ? 'mt-2'
+                  : ''
+                : renderTrigger
+                  ? 'bottom-full mb-2'
+                  : 'bottom-full'
+            } z-20 border ${panelDirection === 'down' ? 'shadow-lg' : ''} ${panelClassName || widthClassName}`}
             style={{
               background: 'var(--bg)',
               borderColor: 'var(--border-muted)',

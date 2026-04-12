@@ -120,6 +120,14 @@ jobs:
         working-directory: src/frontend
         run: npm ci
 
+      - name: Lint
+        working-directory: src/frontend
+        run: npm run lint
+
+      - name: Check formatting
+        working-directory: src/frontend
+        run: npm run format:check
+
       - name: Typecheck
         working-directory: src/frontend
         run: npm run typecheck

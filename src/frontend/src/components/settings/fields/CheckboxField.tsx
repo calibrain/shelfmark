@@ -9,7 +9,5 @@ interface CheckboxFieldProps {
 }
 
 export const CheckboxField = ({ field: _field, value, onChange, disabled }: CheckboxFieldProps) => {
-  return (
-    <ToggleSwitch checked={value} onChange={onChange} disabled={disabled} />
-  );
+  return <ToggleSwitch checked={value} onChange={onChange} disabled={disabled} />;
 };

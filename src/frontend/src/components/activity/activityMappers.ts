@@ -1,6 +1,6 @@
 import { Book, RequestRecord, StatusData } from '../../types';
-import { ActivityItem, ActivityVisualStatus } from './activityTypes';
 import { STATUS_LABELS, isActiveDownloadStatus } from './activityStyles.js';
+import { ActivityItem, ActivityVisualStatus } from './activityTypes';
 
 export type DownloadStatusKey = Extract<
   keyof StatusData,
@@ -66,12 +66,16 @@ const statusKeyToVisualStatus = (statusKey: DownloadStatusKey): ActivityVisualSt
   return 'cancelled';
 };
 
-const getDownloadProgress = (status: ActivityVisualStatus, bookProgress: unknown): number | undefined => {
+const getDownloadProgress = (
+  status: ActivityVisualStatus,
+  bookProgress: unknown,
+): number | undefined => {
   if (status === 'queued') return 5;
   if (status === 'resolving') return 15;
   if (status === 'locating') return 90;
   if (status === 'downloading') {
-    const progress = typeof bookProgress === 'number' ? Math.max(0, Math.min(100, bookProgress)) : 0;
+    const progress =
+      typeof bookProgress === 'number' ? Math.max(0, Math.min(100, bookProgress)) : 0;
     return Math.max(0, Math.min(100, 20 + progress * 0.8));
   }
   return undefined;
@@ -79,13 +83,10 @@ const getDownloadProgress = (status: ActivityVisualStatus, bookProgress: unknown
 
 export const downloadToActivityItem = (book: Book, statusKey: DownloadStatusKey): ActivityItem => {
   const visualStatus = statusKeyToVisualStatus(statusKey);
-  const requestId = (
-    typeof book.request_id === 'number' &&
-    Number.isFinite(book.request_id) &&
-    book.request_id > 0
-  )
-    ? Math.trunc(book.request_id)
-    : undefined;
+  const requestId =
+    typeof book.request_id === 'number' && Number.isFinite(book.request_id) && book.request_id > 0
+      ? Math.trunc(book.request_id)
+      : undefined;
   const metaLine = joinMetaParts([
     toOptionalText(book.format)?.toUpperCase(),
     toOptionalText(book.size),
@@ -136,7 +137,7 @@ const buildRequestMetaLine = (
   record: RequestRecord,
   bookData: Record<string, unknown>,
   releaseData: Record<string, unknown>,
-  viewerRole: 'user' | 'admin'
+  viewerRole: 'user' | 'admin',
 ): string => {
   if (record.request_level === 'book') {
     const contentType = toOptionalText(record.content_type || bookData.content_type)?.toLowerCase();
@@ -156,7 +157,7 @@ const buildRequestMetaLine = (
 
 export const requestToActivityItem = (
   record: RequestRecord,
-  viewerRole: 'user' | 'admin'
+  viewerRole: 'user' | 'admin',
 ): ActivityItem => {
   const visualStatus = requestStatusToVisualStatus(record.status);
   const bookData = parseRecordData(record.book_data);

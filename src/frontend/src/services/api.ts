@@ -14,6 +14,7 @@ import {
   MetadataSearchConfig,
 } from '../types';
 import { SettingsResponse, ActionResult, UpdateResult, SettingsTab } from '../types/settings';
+import { getApiBase, withBasePath } from '../utils/basePath';
 import {
   MetadataBookData,
   SourceRecordData,
@@ -21,7 +22,6 @@ import {
   transformReleaseToDirectBook,
   transformSourceRecordToBook,
 } from '../utils/bookTransformers';
-import { getApiBase, withBasePath } from '../utils/basePath';
 import {
   buildAdminRequestActionUrl,
   buildFulfilAdminRequestBody,
@@ -88,7 +88,7 @@ export class ApiResponseError extends Error {
       code?: string;
       requiredMode?: string;
       payload?: Record<string, unknown>;
-    }
+    },
   ) {
     super(message);
     this.name = 'ApiResponseError';
@@ -112,13 +112,17 @@ const mapApiErrorToActionResult = (error: unknown): ActionResult | null => {
   const message =
     typeof payload.message === 'string'
       ? payload.message
-      : (typeof payload.error === 'string' ? payload.error : null);
+      : typeof payload.error === 'string'
+        ? payload.error
+        : null;
   if (!message) {
     return null;
   }
 
   const details = Array.isArray(payload.details)
-    ? payload.details.filter((detail): detail is string => typeof detail === 'string' && detail.trim().length > 0)
+    ? payload.details.filter(
+        (detail): detail is string => typeof detail === 'string' && detail.trim().length > 0,
+      )
     : undefined;
 
   return {
@@ -135,17 +139,16 @@ const DEFAULT_TIMEOUT_MS = 30000;
 async function fetchJSON<T>(
   url: string,
   opts: RequestInit = {},
-  timeoutMs: number | null = DEFAULT_TIMEOUT_MS
+  timeoutMs: number | null = DEFAULT_TIMEOUT_MS,
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = timeoutMs && timeoutMs > 0
-    ? setTimeout(() => controller.abort(), timeoutMs)
-    : null;
+  const timeoutId =
+    timeoutMs && timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
 
   try {
     const res = await fetch(url, {
       ...opts,
-      credentials: 'include',  // Enable cookies for session
+      credentials: 'include', // Enable cookies for session
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
@@ -173,7 +176,10 @@ async function fetchJSON<T>(
         }
       } catch (e) {
         // Log parse failure for debugging - server may have returned non-JSON (e.g., HTML error page)
-        console.warn(`Failed to parse error response from ${url}:`, e instanceof Error ? e.message : e);
+        console.warn(
+          `Failed to parse error response from ${url}:`,
+          e instanceof Error ? e.message : e,
+        );
       }
 
       // Provide helpful message for gateway/proxy errors
@@ -201,7 +207,9 @@ async function fetchJSON<T>(
   } catch (error) {
     // Handle abort/timeout errors
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new TimeoutError('Request timed out. Check your network connection or proxy configuration.');
+      throw new TimeoutError(
+        'Request timed out. Check your network connection or proxy configuration.',
+      );
     }
     throw error;
   } finally {
@@ -214,7 +222,9 @@ async function fetchJSON<T>(
 // API functions
 export const searchBooks = async (query: string): Promise<Book[]> => {
   if (!query) return [];
-  const response = await fetchJSON<ReleasesResponse>(`${API_BASE}/releases?source=direct_download&${query}`);
+  const response = await fetchJSON<ReleasesResponse>(
+    `${API_BASE}/releases?source=direct_download&${query}`,
+  );
   return response.releases.map(transformReleaseToDirectBook);
 };
 
@@ -270,9 +280,9 @@ export const searchMetadata = async (
   fields: Record<string, string | number | boolean> = {},
   page: number = 1,
   contentType: string = 'ebook',
-  provider?: string
+  provider?: string,
 ): Promise<MetadataSearchResult> => {
-  const hasFields = Object.values(fields).some(v => v !== '' && v !== false);
+  const hasFields = Object.values(fields).some((v) => v !== '' && v !== false);
 
   if (!query && !hasFields) {
     return { books: [], page: 1, totalFound: 0, hasMore: false };
@@ -297,7 +307,9 @@ export const searchMetadata = async (
     }
   });
 
-  const response = await fetchJSON<MetadataSearchResponse>(`${API.metadataSearch}?${params.toString()}`);
+  const response = await fetchJSON<MetadataSearchResponse>(
+    `${API.metadataSearch}?${params.toString()}`,
+  );
 
   return {
     books: response.books.map(transformMetadataToBook),
@@ -342,9 +354,8 @@ export const fetchFieldOptions = async (
     url.searchParams.set('query', query.trim());
   }
 
-  const requestUrl = url.origin === window.location.origin
-    ? `${url.pathname}${url.search}`
-    : url.toString();
+  const requestUrl =
+    url.origin === window.location.origin ? `${url.pathname}${url.search}` : url.toString();
 
   const response = await fetchJSON<{ options?: unknown }>(requestUrl);
   if (!Array.isArray(response.options)) {
@@ -394,7 +405,7 @@ export const fetchBookTargetOptions = async (
   bookId: string,
 ): Promise<BookTargetOption[]> => {
   const response = await fetchJSON<{ options?: unknown }>(
-    `${API_BASE}/metadata/book/${encodeURIComponent(provider)}/${encodeURIComponent(bookId)}/targets`
+    `${API_BASE}/metadata/book/${encodeURIComponent(provider)}/${encodeURIComponent(bookId)}/targets`,
   );
   return parseBookTargetOptions(response.options);
 };
@@ -408,7 +419,7 @@ export const fetchBookTargetOptionsBatch = async (
     {
       method: 'POST',
       body: JSON.stringify({ book_ids: bookIds }),
-    }
+    },
   );
 
   const results = new Map<string, BookTargetOption[]>();
@@ -426,24 +437,29 @@ export const setBookTargetState = async (
   target: string,
   selected: boolean,
 ): Promise<BookTargetStateResult> => {
-  const response = await fetchJSON<{ changed?: unknown; selected?: unknown; deselected_target?: unknown }>(
+  const response = await fetchJSON<{
+    changed?: unknown;
+    selected?: unknown;
+    deselected_target?: unknown;
+  }>(
     `${API_BASE}/metadata/book/${encodeURIComponent(provider)}/${encodeURIComponent(bookId)}/targets`,
     {
       method: 'PUT',
       body: JSON.stringify({ target, selected }),
-    }
+    },
   );
 
   return {
     changed: response.changed === true,
     selected: response.selected === true,
-    deselectedTarget: typeof response.deselected_target === 'string' ? response.deselected_target : undefined,
+    deselectedTarget:
+      typeof response.deselected_target === 'string' ? response.deselected_target : undefined,
   };
 };
 
 export const getSourceRecordInfo = async (source: string, id: string): Promise<Book> => {
   const response = await fetchJSON<SourceRecordData>(
-    `${API_BASE}/release-sources/${encodeURIComponent(source)}/records/${encodeURIComponent(id)}`
+    `${API_BASE}/release-sources/${encodeURIComponent(source)}/records/${encodeURIComponent(id)}`,
   );
   return transformSourceRecordToBook(response);
 };
@@ -451,7 +467,7 @@ export const getSourceRecordInfo = async (source: string, id: string): Promise<B
 // Get full book details from a metadata provider
 export const getMetadataBookInfo = async (provider: string, bookId: string): Promise<Book> => {
   const response = await fetchJSON<MetadataBookData>(
-    `${API_BASE}/metadata/book/${encodeURIComponent(provider)}/${encodeURIComponent(bookId)}`
+    `${API_BASE}/metadata/book/${encodeURIComponent(provider)}/${encodeURIComponent(bookId)}`,
   );
 
   return transformMetadataToBook(response);
@@ -462,8 +478,8 @@ export type DownloadReleasePayload = {
   source: string;
   source_id: string;
   title: string;
-  author?: string;   // Author from metadata provider
-  year?: string;     // Year from metadata provider
+  author?: string; // Author from metadata provider
+  year?: string; // Year from metadata provider
   format?: string;
   size?: string;
   size_bytes?: number;
@@ -472,8 +488,8 @@ export type DownloadReleasePayload = {
   indexer?: string;
   seeders?: number;
   extra?: Record<string, unknown>;
-  preview?: string;  // Book cover from metadata provider
-  content_type?: string;  // "ebook" or "audiobook" - for directory routing
+  preview?: string; // Book cover from metadata provider
+  content_type?: string; // "ebook" or "audiobook" - for directory routing
   series_name?: string;
   series_position?: number;
   subtitle?: string;
@@ -483,7 +499,7 @@ export type DownloadReleasePayload = {
 
 export const downloadRelease = async (
   release: DownloadReleasePayload,
-  onBehalfOfUserId?: number
+  onBehalfOfUserId?: number,
 ): Promise<void> => {
   const payload =
     typeof onBehalfOfUserId === 'number'
@@ -520,7 +536,7 @@ export const dismissManyActivityItems = async (items: ActivityDismissPayload[]):
 
 export const listActivityHistory = async (
   limit: number = 50,
-  offset: number = 0
+  offset: number = 0,
 ): Promise<ActivityHistoryItem[]> => {
   const params = new URLSearchParams();
   params.set('limit', String(limit));
@@ -586,14 +602,18 @@ export const fetchRequestPolicy = async (): Promise<RequestPolicyResponse> => {
   return fetchJSON<RequestPolicyResponse>(API.requestPolicy);
 };
 
-export const createRequest = async (payload: CreateRequestPayload): Promise<RequestSubmissionResult> => {
+export const createRequest = async (
+  payload: CreateRequestPayload,
+): Promise<RequestSubmissionResult> => {
   return fetchJSON<RequestSubmissionResult>(API.requests, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 };
 
-export const createRequests = async (payloads: CreateRequestPayload[]): Promise<RequestSubmissionResult[]> => {
+export const createRequests = async (
+  payloads: CreateRequestPayload[],
+): Promise<RequestSubmissionResult[]> => {
   return fetchJSON<RequestSubmissionResult[]>(API.requestsBatch, {
     method: 'POST',
     body: JSON.stringify({ requests: payloads }),
@@ -611,7 +631,9 @@ export const cancelRequest = async (id: number): Promise<RequestRecord> => {
   });
 };
 
-export const listAdminRequests = async (params: ListRequestsParams = {}): Promise<RequestRecord[]> => {
+export const listAdminRequests = async (
+  params: ListRequestsParams = {},
+): Promise<RequestRecord[]> => {
   const url = buildRequestListUrl(API.adminRequests, params);
   return fetchJSON<RequestRecord[]>(url);
 };
@@ -622,7 +644,7 @@ export const getAdminRequestCounts = async (): Promise<AdminRequestCounts> => {
 
 export const fulfilAdminRequest = async (
   id: number,
-  body: FulfilAdminRequestBody = {}
+  body: FulfilAdminRequestBody = {},
 ): Promise<RequestRecord> => {
   return fetchJSON<RequestRecord>(buildAdminRequestActionUrl(API.adminRequests, id, 'fulfil'), {
     method: 'POST',
@@ -632,7 +654,7 @@ export const fulfilAdminRequest = async (
 
 export const rejectAdminRequest = async (
   id: number,
-  body: RejectAdminRequestBody = {}
+  body: RejectAdminRequestBody = {},
 ): Promise<RequestRecord> => {
   return fetchJSON<RequestRecord>(buildAdminRequestActionUrl(API.adminRequests, id, 'reject'), {
     method: 'POST',
@@ -669,7 +691,7 @@ export const getSettingsTab = async (tabName: string): Promise<SettingsTab> => {
 
 export const updateSettings = async (
   tabName: string,
-  values: Record<string, unknown>
+  values: Record<string, unknown>,
 ): Promise<UpdateResult> => {
   return fetchJSON<UpdateResult>(`${API.settings}/${tabName}`, {
     method: 'PUT',
@@ -680,7 +702,7 @@ export const updateSettings = async (
 export const executeSettingsAction = async (
   tabName: string,
   actionKey: string,
-  currentValues?: Record<string, unknown>
+  currentValues?: Record<string, unknown>,
 ): Promise<ActionResult> => {
   try {
     return await fetchJSON<ActionResult>(`${API.settings}/${tabName}/action/${actionKey}`, {
@@ -708,7 +730,7 @@ export interface OnboardingStep {
   title: string;
   tab: string;
   fields: import('../types/settings').SettingsField[];
-  showWhen?: OnboardingStepCondition[];  // Array of conditions (all must be true)
+  showWhen?: OnboardingStepCondition[]; // Array of conditions (all must be true)
   optional?: boolean;
 }
 
@@ -723,7 +745,7 @@ export const getOnboarding = async (): Promise<OnboardingConfig> => {
 };
 
 export const saveOnboarding = async (
-  values: Record<string, unknown>
+  values: Record<string, unknown>,
 ): Promise<{ success: boolean; message: string }> => {
   return fetchJSON<{ success: boolean; message: string }>(`${API_BASE}/onboarding`, {
     method: 'POST',
@@ -755,7 +777,7 @@ export const getReleases = async (
   languages?: string[],
   contentType?: string,
   manualQuery?: string,
-  indexers?: string[]
+  indexers?: string[],
 ): Promise<ReleasesResponse> => {
   const params = new URLSearchParams({
     provider,
@@ -832,9 +854,13 @@ export const getAdminUser = async (userId: number): Promise<AdminUser> => {
   return fetchJSON<AdminUser>(`${API_BASE}/admin/users/${userId}`);
 };
 
-export const createAdminUser = async (
-  data: { username: string; password: string; email?: string; display_name?: string; role?: string }
-): Promise<AdminUser> => {
+export const createAdminUser = async (data: {
+  username: string;
+  password: string;
+  email?: string;
+  display_name?: string;
+  role?: string;
+}): Promise<AdminUser> => {
   return fetchJSON<AdminUser>(`${API_BASE}/admin/users`, {
     method: 'POST',
     body: JSON.stringify(data),
@@ -846,7 +872,7 @@ export const updateAdminUser = async (
   data: Partial<Pick<AdminUser, 'role' | 'email' | 'display_name'>> & {
     password?: string;
     settings?: Record<string, unknown>;
-  }
+  },
 ): Promise<AdminUser> => {
   return fetchJSON<AdminUser>(`${API_BASE}/admin/users/${userId}`, {
     method: 'PUT',
@@ -915,26 +941,32 @@ export interface DeliveryPreferencesResponse {
 }
 
 export const getAdminDeliveryPreferences = async (
-  userId: number
+  userId: number,
 ): Promise<DeliveryPreferencesResponse> => {
-  return fetchJSON<DeliveryPreferencesResponse>(`${API_BASE}/admin/users/${userId}/delivery-preferences`);
+  return fetchJSON<DeliveryPreferencesResponse>(
+    `${API_BASE}/admin/users/${userId}/delivery-preferences`,
+  );
 };
 
 export const getAdminSearchPreferences = async (
-  userId: number
+  userId: number,
 ): Promise<DeliveryPreferencesResponse> => {
-  return fetchJSON<DeliveryPreferencesResponse>(`${API_BASE}/admin/users/${userId}/search-preferences`);
+  return fetchJSON<DeliveryPreferencesResponse>(
+    `${API_BASE}/admin/users/${userId}/search-preferences`,
+  );
 };
 
 export const getAdminNotificationPreferences = async (
-  userId: number
+  userId: number,
 ): Promise<DeliveryPreferencesResponse> => {
-  return fetchJSON<DeliveryPreferencesResponse>(`${API_BASE}/admin/users/${userId}/notification-preferences`);
+  return fetchJSON<DeliveryPreferencesResponse>(
+    `${API_BASE}/admin/users/${userId}/notification-preferences`,
+  );
 };
 
 export const testAdminUserNotificationPreferences = async (
   userId: number,
-  routes: Array<Record<string, unknown>>
+  routes: Array<Record<string, unknown>>,
 ): Promise<import('../types/settings').ActionResult> => {
   try {
     return await fetchJSON<import('../types/settings').ActionResult>(
@@ -942,7 +974,7 @@ export const testAdminUserNotificationPreferences = async (
       {
         method: 'POST',
         body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
-      }
+      },
     );
   } catch (error) {
     const mapped = mapApiErrorToActionResult(error);
@@ -954,7 +986,7 @@ export const testAdminUserNotificationPreferences = async (
 };
 
 export const testSelfNotificationPreferences = async (
-  routes: Array<Record<string, unknown>>
+  routes: Array<Record<string, unknown>>,
 ): Promise<import('../types/settings').ActionResult> => {
   try {
     return await fetchJSON<import('../types/settings').ActionResult>(
@@ -962,7 +994,7 @@ export const testSelfNotificationPreferences = async (
       {
         method: 'POST',
         body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
-      }
+      },
     );
   } catch (error) {
     const mapped = mapApiErrorToActionResult(error);
@@ -990,9 +1022,11 @@ export interface SettingsOverridesSummaryResponse {
 }
 
 export const getAdminSettingsOverridesSummary = async (
-  tabName: string
+  tabName: string,
 ): Promise<SettingsOverridesSummaryResponse> => {
-  return fetchJSON<SettingsOverridesSummaryResponse>(`${API_BASE}/admin/settings/overrides-summary?tab=${encodeURIComponent(tabName)}`);
+  return fetchJSON<SettingsOverridesSummaryResponse>(
+    `${API_BASE}/admin/settings/overrides-summary?tab=${encodeURIComponent(tabName)}`,
+  );
 };
 
 export const getSelfUserEditContext = async (): Promise<SelfUserEditContext> => {
@@ -1003,7 +1037,7 @@ export const updateSelfUser = async (
   data: Partial<Pick<AdminUser, 'email' | 'display_name'>> & {
     password?: string;
     settings?: Record<string, unknown>;
-  }
+  },
 ): Promise<AdminUser> => {
   return fetchJSON<AdminUser>(`${API_BASE}/users/me`, {
     method: 'PUT',

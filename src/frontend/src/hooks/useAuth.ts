@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LoginCredentials } from '../types';
-import { login, logout, checkAuth } from '../services/api';
+
 import { useSocket } from '../contexts/SocketContext';
+import { login, logout, checkAuth } from '../services/api';
+import { LoginCredentials } from '../types';
 import { getReturnToFromSearch } from '../utils/authRedirect';
 
 interface UseAuthOptions {
@@ -125,30 +126,33 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
     }
   }, [applyAuthResponse]);
 
-  const handleLogin = useCallback(async (credentials: LoginCredentials) => {
-    setIsLoggingIn(true);
-    setLoginError(null);
-    try {
-      const response = await login(credentials);
-      if (response.success) {
-        // Re-check auth to get updated session state
-        applyAuthResponse(await checkAuth());
-        refreshSocketSession();
-        setLoginError(null);
-        navigate(postLoginPath, { replace: true });
-      } else {
-        setLoginError(response.error || 'Login failed');
+  const handleLogin = useCallback(
+    async (credentials: LoginCredentials) => {
+      setIsLoggingIn(true);
+      setLoginError(null);
+      try {
+        const response = await login(credentials);
+        if (response.success) {
+          // Re-check auth to get updated session state
+          applyAuthResponse(await checkAuth());
+          refreshSocketSession();
+          setLoginError(null);
+          navigate(postLoginPath, { replace: true });
+        } else {
+          setLoginError(response.error || 'Login failed');
+        }
+      } catch (error) {
+        if (error instanceof Error) {
+          setLoginError(error.message || 'Login failed');
+        } else {
+          setLoginError('Login failed');
+        }
+      } finally {
+        setIsLoggingIn(false);
       }
-    } catch (error) {
-      if (error instanceof Error) {
-        setLoginError(error.message || 'Login failed');
-      } else {
-        setLoginError('Login failed');
-      }
-    } finally {
-      setIsLoggingIn(false);
-    }
-  }, [navigate, applyAuthResponse, postLoginPath, refreshSocketSession]);
+    },
+    [navigate, applyAuthResponse, postLoginPath, refreshSocketSession],
+  );
 
   const handleLogout = useCallback(async () => {
     try {

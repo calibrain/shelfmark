@@ -1,15 +1,21 @@
 import { ReactNode } from 'react';
+
 import { AdminUser } from '../../../services/api';
-import { PasswordFieldConfig, SelectFieldConfig, SelectOption, TextFieldConfig } from '../../../types/settings';
+import {
+  PasswordFieldConfig,
+  SelectFieldConfig,
+  SelectOption,
+  TextFieldConfig,
+} from '../../../types/settings';
 import { DropdownList } from '../../DropdownList';
 import { Tooltip } from '../../shared/Tooltip';
-import { UserAuthSourceBadge } from './UserAuthSourceBadge';
 import { PasswordField, SelectField, TextField } from '../fields';
 import { FieldWrapper } from '../shared';
 import { CreateUserFormState } from './types';
+import { UserAuthSourceBadge } from './UserAuthSourceBadge';
 
 const UserCardShell = ({ title, children }: { title: string; children: ReactNode }) => (
-  <div className="space-y-5 p-4 rounded-lg border border-(--border-muted) bg-(--bg)">
+  <div className="space-y-5 rounded-lg border border-(--border-muted) bg-(--bg) p-4">
     <h3 className="text-sm font-medium">{title}</h3>
     {children}
   </div>
@@ -99,11 +105,10 @@ const renderPasswordField = (
 
 const getRoleLabel = (role: string) => role.charAt(0).toUpperCase() + role.slice(1);
 
-const getRoleBadgeClassName = (role: string, disabled = false) => (
+const getRoleBadgeClassName = (role: string, disabled = false) =>
   `inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium leading-none ${
     disabled ? 'cursor-not-allowed' : ''
-  } ${role === 'admin' ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400' : 'bg-zinc-500/10 opacity-70'}`
-);
+  } ${role === 'admin' ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400' : 'bg-zinc-500/10 opacity-70'}`;
 
 const getRoleDisabledReason = (user: AdminUser, oidcAdminGroup?: string): string => {
   if (user.edit_capabilities.authSource === 'oidc') {
@@ -143,7 +148,7 @@ export const UserRoleControl = ({
         options={EDIT_ROLE_OPTIONS}
         value={user.role}
         onChange={(value) => {
-          const nextRole = Array.isArray(value) ? value[0] ?? '' : value;
+          const nextRole = Array.isArray(value) ? (value[0] ?? '') : value;
           onUserChange({ ...user, role: nextRole });
         }}
         widthClassName="w-28"
@@ -159,18 +164,12 @@ export const UserRoleControl = ({
   if (onUserChange && !user.edit_capabilities.canEditRole) {
     return (
       <Tooltip content={roleDisabledReason || 'Role cannot be changed'} position={tooltipPosition}>
-        <span className={getRoleBadgeClassName(user.role, true)}>
-          {roleLabel}
-        </span>
+        <span className={getRoleBadgeClassName(user.role, true)}>{roleLabel}</span>
       </Tooltip>
     );
   }
 
-  return (
-    <span className={getRoleBadgeClassName(user.role)}>
-      {roleLabel}
-    </span>
-  );
+  return <span className={getRoleBadgeClassName(user.role)}>{roleLabel}</span>;
 };
 
 interface UserIdentityHeaderProps {
@@ -187,28 +186,23 @@ export const UserIdentityHeader = ({
   const active = user.is_active !== false;
 
   return (
-    <div className="flex items-center gap-3 min-w-0 flex-1">
+    <div className="flex min-w-0 flex-1 items-center gap-3">
       <div
-        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium shrink-0
-          ${user.role === 'admin' ? 'bg-sky-500/20 text-sky-600 dark:text-sky-400' : 'bg-zinc-500/20'}`}
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-medium ${user.role === 'admin' ? 'bg-sky-500/20 text-sky-600 dark:text-sky-400' : 'bg-zinc-500/20'}`}
       >
         {user.username.charAt(0).toUpperCase()}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm font-medium truncate">
-            {user.display_name || user.username}
-          </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-medium">{user.display_name || user.username}</span>
           {user.display_name && (
-            <span className="text-xs opacity-40 truncate">@{user.username}</span>
+            <span className="truncate text-xs opacity-40">@{user.username}</span>
           )}
           {showAuthSource && <UserAuthSourceBadge user={user} showInactive={false} />}
         </div>
-        <div className="text-xs opacity-50 truncate">
-          {user.email || 'No email'}
-        </div>
+        <div className="truncate text-xs opacity-50">{user.email || 'No email'}</div>
         {showInactiveState && !active && (
-          <div className="text-[11px] opacity-60 truncate">
+          <div className="truncate text-[11px] opacity-60">
             Inactive for current authentication mode
           </div>
         )}
@@ -251,7 +245,7 @@ export const UserEditActions = ({
           type="button"
           onClick={onCancel}
           disabled={cancelDisabled}
-          className="px-4 py-2 rounded-lg text-sm font-medium bg-(--bg-soft) border border-(--border-muted) shadow-sm hover-action transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="hover-action rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50"
         >
           Cancel
         </button>
@@ -259,13 +253,25 @@ export const UserEditActions = ({
           type="button"
           onClick={onSave}
           disabled={saveDisabled}
-          className="px-5 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+          className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {saving ? (
             <>
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                  fill="none"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
               </svg>
               Saving...
             </>
@@ -278,19 +284,19 @@ export const UserEditActions = ({
   }
 
   return (
-    <div className="flex flex-col gap-2 pt-3 border-t border-(--border-muted) sm:flex-row sm:items-center">
+    <div className="flex flex-col gap-2 border-t border-(--border-muted) pt-3 sm:flex-row sm:items-center">
       <div className="flex flex-wrap gap-2">
         <button
           onClick={onSave}
           disabled={saveDisabled}
-          className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
         <button
           onClick={onCancel}
           disabled={cancelDisabled}
-          className="px-4 py-2 rounded-lg text-sm font-medium border border-(--border-muted)                     bg-(--bg) hover:bg-(--hover-surface) transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          className="rounded-lg border border-(--border-muted) bg-(--bg) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface) disabled:cursor-not-allowed disabled:opacity-60"
         >
           Cancel
         </button>
@@ -302,15 +308,14 @@ export const UserEditActions = ({
               <button
                 onClick={onConfirmDelete}
                 disabled={deleting}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {deleting ? 'Deleting...' : 'Confirm Delete'}
               </button>
               <button
                 onClick={onCancelDelete}
                 disabled={deleting}
-                className="px-4 py-2 rounded-lg text-sm font-medium border border-(--border-muted)
-                           bg-(--bg) hover:bg-(--hover-surface) transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="rounded-lg border border-(--border-muted) bg-(--bg) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface) disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Cancel
               </button>
@@ -318,8 +323,7 @@ export const UserEditActions = ({
           ) : (
             <button
               onClick={onDelete}
-              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
-                         border border-red-500/40 text-red-600 hover:bg-red-500/10"
+              className="rounded-lg border border-red-500/40 px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-500/10"
             >
               Delete User
             </button>
@@ -351,9 +355,20 @@ export const UserCreateCard = ({
 }: UserCreateCardProps) => {
   const usernameField = createTextField('username', 'Username', form.username, 'username', true);
   const roleField = createRoleField(form.role, CREATE_ROLE_OPTIONS);
-  const displayNameField = createTextField('display_name', 'Display Name', form.display_name, 'Display name');
+  const displayNameField = createTextField(
+    'display_name',
+    'Display Name',
+    form.display_name,
+    'Display name',
+  );
   const emailField = createTextField('email', 'Email', form.email, 'user@example.com');
-  const passwordField = createPasswordField('password', 'Password', form.password, 'Min 4 characters', true);
+  const passwordField = createPasswordField(
+    'password',
+    'Password',
+    form.password,
+    'Min 4 characters',
+    true,
+  );
   const confirmPasswordField = createPasswordField(
     'confirm_password',
     'Confirm Password',
@@ -375,32 +390,36 @@ export const UserCreateCard = ({
         </p>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {renderTextField(usernameField, form.username, (value) => onChange({ ...form, username: value }))}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {renderTextField(usernameField, form.username, (value) =>
+          onChange({ ...form, username: value }),
+        )}
         {renderSelectField(roleField, form.role, (value) => onChange({ ...form, role: value }))}
-        {renderTextField(displayNameField, form.display_name, (value) => onChange({ ...form, display_name: value }))}
+        {renderTextField(displayNameField, form.display_name, (value) =>
+          onChange({ ...form, display_name: value }),
+        )}
         {renderTextField(emailField, form.email, (value) => onChange({ ...form, email: value }))}
       </div>
 
-      {renderPasswordField(passwordField, form.password, (value) => onChange({ ...form, password: value }))}
+      {renderPasswordField(passwordField, form.password, (value) =>
+        onChange({ ...form, password: value }),
+      )}
 
-      {renderPasswordField(
-        confirmPasswordField,
-        form.password_confirm,
-        (value) => onChange({ ...form, password_confirm: value }),
+      {renderPasswordField(confirmPasswordField, form.password_confirm, (value) =>
+        onChange({ ...form, password_confirm: value }),
       )}
 
       <div className="flex items-center gap-2 pt-1">
         <button
           onClick={onSubmit}
           disabled={creating}
-          className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {creating ? 'Creating...' : 'Create Local User'}
         </button>
         <button
           onClick={onCancel}
-          className="px-4 py-2 rounded-lg text-sm font-medium border border-(--border-muted)                     bg-(--bg) hover:bg-(--hover-surface) transition-colors"
+          className="rounded-lg border border-(--border-muted) bg-(--bg) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
         >
           Cancel
         </button>
@@ -447,24 +466,40 @@ export const UserEditFields = ({
   const capabilities = user.edit_capabilities;
   const { authSource, canSetPassword, canEditEmail, canEditDisplayName } = capabilities;
 
-  const displayNameField = createTextField('display_name', 'Display Name', user.display_name || '', 'Display name');
+  const displayNameField = createTextField(
+    'display_name',
+    'Display Name',
+    user.display_name || '',
+    'Display name',
+  );
   const emailField = createTextField('email', 'Email', user.email || '', 'user@example.com');
-  const newPasswordField = createPasswordField('new_password', 'New Password', editPassword, 'Leave empty to keep current');
-  const confirmPasswordField = createPasswordField('confirm_password', 'Confirm Password', editPasswordConfirm, 'Confirm new password', true);
+  const newPasswordField = createPasswordField(
+    'new_password',
+    'New Password',
+    editPassword,
+    'Leave empty to keep current',
+  );
+  const confirmPasswordField = createPasswordField(
+    'confirm_password',
+    'Confirm Password',
+    editPasswordConfirm,
+    'Confirm new password',
+    true,
+  );
 
   const displayNameDisabledReason = !canEditDisplayName
     ? 'Display name is managed by the identity provider.'
     : undefined;
 
   const emailDisabledReason = !canEditEmail
-    ? (authSource === 'cwa'
+    ? authSource === 'cwa'
       ? 'Email is synced from Calibre-Web.'
-      : 'Email is managed by your identity provider.')
+      : 'Email is managed by your identity provider.'
     : undefined;
 
   return (
     <>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {renderTextField(
           displayNameField,
           user.display_name || '',
@@ -486,7 +521,12 @@ export const UserEditFields = ({
         <>
           {renderPasswordField(newPasswordField, editPassword, onEditPasswordChange)}
 
-          {editPassword && renderPasswordField(confirmPasswordField, editPasswordConfirm, onEditPasswordConfirmChange)}
+          {editPassword &&
+            renderPasswordField(
+              confirmPasswordField,
+              editPasswordConfirm,
+              onEditPasswordConfirmChange,
+            )}
         </>
       )}
 
@@ -525,17 +565,14 @@ const renderPreferencesPanel = (panel: UserPreferencesPanelProps) => (
   <div className="space-y-3">
     {(!panel.hideTitle || panel.onAction) && (
       <div>
-        {!panel.hideTitle && (
-          <label className="text-sm font-medium">User Preferences</label>
-        )}
+        {!panel.hideTitle && <label className="text-sm font-medium">User Preferences</label>}
         {!panel.hideTitle && panel.description && (
-          <p className="text-xs opacity-60 mt-0.5">{panel.description}</p>
+          <p className="mt-0.5 text-xs opacity-60">{panel.description}</p>
         )}
         {panel.onAction && (
           <button
             onClick={panel.onAction}
-            className="mt-2 px-4 py-2 rounded-lg text-sm font-medium text-white
-                       bg-sky-600 hover:bg-sky-700 transition-colors"
+            className="mt-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700"
           >
             {panel.actionLabel || 'Open User Preferences'}
           </button>

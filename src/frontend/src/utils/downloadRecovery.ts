@@ -7,7 +7,7 @@ const TERMINAL_CONFIRMATION_WINDOW_SECONDS = 2;
 export function wasDownloadQueuedAfterResponseError(
   status: StatusData,
   taskId: string,
-  requestedAtSeconds: number
+  requestedAtSeconds: number,
 ): boolean {
   for (const bucket of ACTIVE_STATUS_BUCKETS) {
     if (status[bucket]?.[taskId]) {
@@ -22,8 +22,8 @@ export function wasDownloadQueuedAfterResponseError(
     }
 
     if (
-      typeof task.added_time === 'number'
-      && task.added_time >= requestedAtSeconds - TERMINAL_CONFIRMATION_WINDOW_SECONDS
+      typeof task.added_time === 'number' &&
+      task.added_time >= requestedAtSeconds - TERMINAL_CONFIRMATION_WINDOW_SECONDS
     ) {
       return true;
     }

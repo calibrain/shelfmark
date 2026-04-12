@@ -1,11 +1,11 @@
-import * as assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, expect } from 'vitest';
+
 import {
   buildAdminRequestActionUrl,
   buildFulfilAdminRequestBody,
   buildRejectAdminRequestBody,
   buildRequestListUrl,
-} from '../services/requestApiHelpers.js';
+} from '../services/requestApiHelpers';
 
 describe('admin request API client functions', () => {
   it('builds list URL query params correctly', () => {
@@ -14,12 +14,12 @@ describe('admin request API client functions', () => {
       limit: 10,
       offset: 5,
     });
-    assert.equal(url, '/api/admin/requests?status=pending&limit=10&offset=5');
+    expect(url).toBe('/api/admin/requests?status=pending&limit=10&offset=5');
   });
 
   it('returns bare list URL when no params are provided', () => {
     const url = buildRequestListUrl('/api/admin/requests');
-    assert.equal(url, '/api/admin/requests');
+    expect(url).toBe('/api/admin/requests');
   });
 
   it('builds fulfil endpoint URL and payload shape', () => {
@@ -29,8 +29,8 @@ describe('admin request API client functions', () => {
       admin_note: 'Approved',
     });
 
-    assert.equal(url, '/api/admin/requests/42/fulfil');
-    assert.deepEqual(body, {
+    expect(url).toBe('/api/admin/requests/42/fulfil');
+    expect(body).toEqual({
       release_data: { source: 'prowlarr', source_id: 'rel-42' },
       admin_note: 'Approved',
     });
@@ -42,7 +42,7 @@ describe('admin request API client functions', () => {
       admin_note: 'Handled manually',
     });
 
-    assert.deepEqual(body, {
+    expect(body).toEqual({
       manual_approval: true,
       admin_note: 'Handled manually',
     });
@@ -54,8 +54,8 @@ describe('admin request API client functions', () => {
       admin_note: 'No suitable release found',
     });
 
-    assert.equal(url, '/api/admin/requests/51/reject');
-    assert.deepEqual(body, {
+    expect(url).toBe('/api/admin/requests/51/reject');
+    expect(body).toEqual({
       admin_note: 'No suitable release found',
     });
   });

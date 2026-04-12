@@ -13,10 +13,11 @@ export interface ActivityBadgeState {
 
 export const getActivityBadgeState = (
   statusCounts: ActivityStatusCounts,
-  isAdmin: boolean
+  isAdmin: boolean,
 ): ActivityBadgeState | null => {
   const pendingRequests = isAdmin ? statusCounts.pendingRequests : 0;
-  const total = statusCounts.ongoing + statusCounts.completed + statusCounts.errored + pendingRequests;
+  const total =
+    statusCounts.ongoing + statusCounts.completed + statusCounts.errored + pendingRequests;
 
   if (total <= 0) {
     return null;

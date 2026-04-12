@@ -16,10 +16,7 @@ export interface RejectAdminRequestBody {
   admin_note?: string;
 }
 
-export const buildRequestListUrl = (
-  baseUrl: string,
-  params: RequestListParams = {}
-): string => {
+export const buildRequestListUrl = (baseUrl: string, params: RequestListParams = {}): string => {
   const query = new URLSearchParams();
   if (params.status) {
     query.set('status', params.status);
@@ -38,13 +35,13 @@ export const buildRequestListUrl = (
 export const buildAdminRequestActionUrl = (
   adminRequestsBaseUrl: string,
   id: number,
-  action: 'fulfil' | 'reject'
+  action: 'fulfil' | 'reject',
 ): string => {
   return `${adminRequestsBaseUrl}/${encodeURIComponent(String(id))}/${action}`;
 };
 
 export const buildFulfilAdminRequestBody = (
-  body: FulfilAdminRequestBody = {}
+  body: FulfilAdminRequestBody = {},
 ): FulfilAdminRequestBody => {
   const payload: FulfilAdminRequestBody = {};
   if (body.release_data !== undefined) {
@@ -60,7 +57,7 @@ export const buildFulfilAdminRequestBody = (
 };
 
 export const buildRejectAdminRequestBody = (
-  body: RejectAdminRequestBody = {}
+  body: RejectAdminRequestBody = {},
 ): RejectAdminRequestBody => {
   return {
     admin_note: body.admin_note,

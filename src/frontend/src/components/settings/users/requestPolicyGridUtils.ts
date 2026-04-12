@@ -64,10 +64,15 @@ const MODE_RANK: Record<RequestPolicyMode, number> = {
   blocked: 3,
 };
 
-const normalizeSource = (value: unknown): string => String(value || '').trim().toLowerCase();
+const normalizeSource = (value: unknown): string =>
+  String(value || '')
+    .trim()
+    .toLowerCase();
 
 const normalizeContentType = (value: unknown): RequestPolicyContentType | null => {
-  const normalized = String(value || '').trim().toLowerCase();
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase();
   if (normalized === 'ebook') return 'ebook';
   if (normalized === 'audiobook') return 'audiobook';
   return null;
@@ -75,13 +80,21 @@ const normalizeContentType = (value: unknown): RequestPolicyContentType | null =
 
 const normalizeMode = (
   value: unknown,
-  options: readonly RequestPolicyMode[] = ['download', 'request_release', 'request_book', 'blocked']
+  options: readonly RequestPolicyMode[] = [
+    'download',
+    'request_release',
+    'request_book',
+    'blocked',
+  ],
 ): RequestPolicyMode | null => {
-  const normalized = String(value || '').trim().toLowerCase() as RequestPolicyMode;
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase() as RequestPolicyMode;
   return options.includes(normalized) ? normalized : null;
 };
 
-const toRuleKey = (source: string, contentType: RequestPolicyContentType) => `${source}::${contentType}`;
+const toRuleKey = (source: string, contentType: RequestPolicyContentType) =>
+  `${source}::${contentType}`;
 
 export const sortRules = (rules: RequestPolicyRuleRow[]): RequestPolicyRuleRow[] =>
   [...rules].sort((a, b) => {
@@ -92,7 +105,7 @@ export const sortRules = (rules: RequestPolicyRuleRow[]): RequestPolicyRuleRow[]
 
 export const normalizeRequestPolicyDefaults = (
   raw: Partial<Record<RequestPolicyContentType, unknown>>,
-  fallback: RequestPolicyMode = 'download'
+  fallback: RequestPolicyMode = 'download',
 ): RequestPolicyDefaultsValue => {
   const fallbackMode = normalizeMode(fallback) || 'download';
   return {
@@ -128,7 +141,10 @@ export const normalizeRequestPolicyRules = (rawRules: unknown): RequestPolicyRul
   return sortRules([...byKey.values()]);
 };
 
-export const capPolicyMode = (mode: RequestPolicyMode, ceiling: RequestPolicyMode): RequestPolicyMode => {
+export const capPolicyMode = (
+  mode: RequestPolicyMode,
+  ceiling: RequestPolicyMode,
+): RequestPolicyMode => {
   return MODE_RANK[mode] < MODE_RANK[ceiling] ? ceiling : mode;
 };
 
@@ -136,7 +152,9 @@ export const isMatrixConfigurable = (defaultMode: RequestPolicyMode): boolean =>
   return defaultMode !== 'blocked';
 };
 
-export const getAllowedMatrixModes = (defaultMode: RequestPolicyMode): RequestPolicyMatrixMode[] => {
+export const getAllowedMatrixModes = (
+  defaultMode: RequestPolicyMode,
+): RequestPolicyMatrixMode[] => {
   if (!isMatrixConfigurable(defaultMode)) {
     return [];
   }
@@ -146,7 +164,7 @@ export const getAllowedMatrixModes = (defaultMode: RequestPolicyMode): RequestPo
 
 export const mergeRequestPolicyRuleLayers = (
   baseRules: RequestPolicyRuleRow[],
-  overrideRules: RequestPolicyRuleRow[]
+  overrideRules: RequestPolicyRuleRow[],
 ): RequestPolicyRuleRow[] => {
   const merged = new Map<string, RequestPolicyRuleRow>();
   baseRules.forEach((rule) => {
@@ -161,13 +179,12 @@ export const mergeRequestPolicyRuleLayers = (
 const findRule = (
   rules: RequestPolicyRuleRow[],
   source: string,
-  contentType: RequestPolicyContentType
+  contentType: RequestPolicyContentType,
 ): RequestPolicyRuleRow | null => {
   const normalizedSource = normalizeSource(source);
   return (
-    rules.find(
-      (rule) => rule.source === normalizedSource && rule.content_type === contentType
-    ) || null
+    rules.find((rule) => rule.source === normalizedSource && rule.content_type === contentType) ||
+    null
   );
 };
 
@@ -175,7 +192,7 @@ export const getInheritedCellMode = (
   source: string,
   contentType: RequestPolicyContentType,
   defaultModes: RequestPolicyDefaultsValue,
-  baseRules: RequestPolicyRuleRow[]
+  baseRules: RequestPolicyRuleRow[],
 ): RequestPolicyMode => {
   const ceiling = defaultModes[contentType];
   const fromRule = findRule(baseRules, source, contentType)?.mode;
@@ -187,7 +204,7 @@ export const getEffectiveCellMode = (
   contentType: RequestPolicyContentType,
   defaultModes: RequestPolicyDefaultsValue,
   baseRules: RequestPolicyRuleRow[],
-  explicitRules: RequestPolicyRuleRow[]
+  explicitRules: RequestPolicyRuleRow[],
 ): RequestPolicyMode => {
   const ceiling = defaultModes[contentType];
   const explicit = findRule(explicitRules, source, contentType)?.mode;
@@ -199,7 +216,7 @@ export const getEffectiveCellMode = (
 
 export const parseSourceCapabilitiesFromRulesField = (
   rulesField: TableFieldConfig | null | undefined,
-  fallbackSources: string[] = []
+  fallbackSources: string[] = [],
 ): RequestPolicySourceCapability[] => {
   if (!rulesField || !Array.isArray(rulesField.columns)) {
     return fallbackSources.map((source) => ({
@@ -267,7 +284,7 @@ export const parseSourceCapabilitiesFromRulesField = (
   return [...orderedSources, ...extraSources].map((source) => {
     const row = bySource.get(source)!;
     const supported = CONTENT_TYPES.filter((contentType) =>
-      row.supportedContentTypes.includes(contentType)
+      row.supportedContentTypes.includes(contentType),
     );
     return {
       ...row,
@@ -279,7 +296,7 @@ export const parseSourceCapabilitiesFromRulesField = (
 const isSourceContentTypeSupported = (
   sourceCapabilities: RequestPolicySourceCapability[],
   source: string,
-  contentType: RequestPolicyContentType
+  contentType: RequestPolicyContentType,
 ): boolean => {
   const normalizedSource = normalizeSource(source);
   const sourceCapability = sourceCapabilities.find((row) => row.source === normalizedSource);
@@ -316,7 +333,10 @@ export const normalizeExplicitRulesForPersistence = ({
   return sortRules(filtered);
 };
 
-export const areRuleSetsEqual = (left: RequestPolicyRuleRow[], right: RequestPolicyRuleRow[]): boolean => {
+export const areRuleSetsEqual = (
+  left: RequestPolicyRuleRow[],
+  right: RequestPolicyRuleRow[],
+): boolean => {
   const leftSorted = sortRules(left);
   const rightSorted = sortRules(right);
   return JSON.stringify(leftSorted) === JSON.stringify(rightSorted);

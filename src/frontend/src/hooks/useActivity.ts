@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Socket } from 'socket.io-client';
-import { Book, RequestRecord, StatusData } from '../types';
+
+import {
+  ActivityDismissTarget,
+  ActivityItem,
+  downloadToActivityItem,
+  requestToActivityItem,
+} from '../components/activity';
+import { dedupeHistoryItems } from '../components/activity/activityHistory.js';
 import {
   ActivityHistoryItem,
   ActivityDismissPayload,
@@ -10,13 +17,7 @@ import {
   getActivitySnapshot,
   listActivityHistory,
 } from '../services/api';
-import {
-  ActivityDismissTarget,
-  ActivityItem,
-  downloadToActivityItem,
-  requestToActivityItem,
-} from '../components/activity';
-import { dedupeHistoryItems } from '../components/activity/activityHistory.js';
+import { Book, RequestRecord, StatusData } from '../types';
 import { getActivityErrorMessage } from './useActivity.helpers.js';
 
 const HISTORY_PAGE_SIZE = 50;
@@ -31,16 +32,17 @@ const parseTimestamp = (value: string | null | undefined, fallback: number = 0):
 
 const mapHistoryRowToActivityItem = (
   row: ActivityHistoryItem,
-  viewerRole: 'user' | 'admin'
+  viewerRole: 'user' | 'admin',
 ): ActivityItem => {
   const dismissedAtTs = parseTimestamp(row.dismissed_at);
   const snapshot = row.snapshot;
   if (snapshot && typeof snapshot === 'object') {
     const payload = snapshot as Record<string, unknown>;
     if (payload.kind === 'download' && payload.download && typeof payload.download === 'object') {
-      const statusKey = row.final_status === 'error' || row.final_status === 'cancelled'
-        ? row.final_status
-        : 'complete';
+      const statusKey =
+        row.final_status === 'error' || row.final_status === 'cancelled'
+          ? row.final_status
+          : 'complete';
       const downloadItem = downloadToActivityItem(payload.download as Book, statusKey);
       const requestPayload = payload.request;
       if (requestPayload && typeof requestPayload === 'object') {
@@ -109,11 +111,7 @@ const mapHistoryRowToActivityItem = (
 interface UseActivityParams {
   isAuthenticated: boolean;
   isAdmin: boolean;
-  showToast: (
-    message: string,
-    type?: 'info' | 'success' | 'error',
-    persistent?: boolean
-  ) => string;
+  showToast: (message: string, type?: 'info' | 'success' | 'error', persistent?: boolean) => string;
   socket: Socket | null;
 }
 
@@ -214,12 +212,15 @@ export const useActivity = ({
     }
   }, [isAuthenticated, resetActivityHistory]);
 
-  const handleActivityTabChange = useCallback((tab: 'all' | 'downloads' | 'requests' | 'history') => {
-    if (tab !== 'history' || activityHistoryLoaded || activityHistoryLoading) {
-      return;
-    }
-    void refreshActivityHistory();
-  }, [activityHistoryLoaded, activityHistoryLoading, refreshActivityHistory]);
+  const handleActivityTabChange = useCallback(
+    (tab: 'all' | 'downloads' | 'requests' | 'history') => {
+      if (tab !== 'history' || activityHistoryLoaded || activityHistoryLoading) {
+        return;
+      }
+      void refreshActivityHistory();
+    },
+    [activityHistoryLoaded, activityHistoryLoading, refreshActivityHistory],
+  );
 
   const prefetchActivityHistory = useCallback(() => {
     if (activityHistoryLoaded || activityHistoryLoading) {
@@ -277,30 +278,33 @@ export const useActivity = ({
       socket.off('request_update', refreshFromSocketEvent);
       socket.off('new_request', refreshFromSocketEvent);
     };
-  }, [activityHistoryLoaded, isAuthenticated, refreshActivitySnapshot, refreshActivityHistory, socket]);
+  }, [
+    activityHistoryLoaded,
+    isAuthenticated,
+    refreshActivitySnapshot,
+    refreshActivityHistory,
+    socket,
+  ]);
 
   const requestItems = useMemo(
     () =>
       activityRequests
         .map((record) => requestToActivityItem(record, isAdmin ? 'admin' : 'user'))
         .sort((left, right) => right.timestamp - left.timestamp),
-    [activityRequests, isAdmin]
+    [activityRequests, isAdmin],
   );
 
-  const historyItems = useMemo(
-    () => {
-      const mappedItems = activityHistoryRows
-        .map((row) => mapHistoryRowToActivityItem(row, isAdmin ? 'admin' : 'user'))
-        .sort((left, right) => right.timestamp - left.timestamp);
+  const historyItems = useMemo(() => {
+    const mappedItems = activityHistoryRows
+      .map((row) => mapHistoryRowToActivityItem(row, isAdmin ? 'admin' : 'user'))
+      .sort((left, right) => right.timestamp - left.timestamp);
 
-      return dedupeHistoryItems(mappedItems);
-    },
-    [activityHistoryRows, isAdmin]
-  );
+    return dedupeHistoryItems(mappedItems);
+  }, [activityHistoryRows, isAdmin]);
 
   const pendingRequestCount = useMemo(
     () => activityRequests.filter((record) => record.status === 'pending').length,
-    [activityRequests]
+    [activityRequests],
   );
 
   const refreshHistoryIfLoaded = useCallback(() => {
@@ -310,71 +314,87 @@ export const useActivity = ({
     void refreshActivityHistory();
   }, [activityHistoryLoaded, refreshActivityHistory]);
 
-  const dismissItems = useCallback((items: ActivityDismissPayload[], optimisticKeys: string[], errorMessage: string) => {
-    setDismissedActivityKeys((current) => Array.from(new Set([...current, ...optimisticKeys])));
-    void dismissManyActivityItems(items)
-      .then(() => {
-        void refreshActivitySnapshot();
-        refreshHistoryIfLoaded();
+  const dismissItems = useCallback(
+    (items: ActivityDismissPayload[], optimisticKeys: string[], errorMessage: string) => {
+      setDismissedActivityKeys((current) => Array.from(new Set([...current, ...optimisticKeys])));
+      void dismissManyActivityItems(items)
+        .then(() => {
+          void refreshActivitySnapshot();
+          refreshHistoryIfLoaded();
+        })
+        .catch((error) => {
+          console.error('Activity dismiss failed:', error);
+          void refreshActivitySnapshot();
+          refreshHistoryIfLoaded();
+          showToast(getActivityErrorMessage(error, errorMessage), 'error');
+        });
+    },
+    [refreshActivitySnapshot, refreshHistoryIfLoaded, showToast],
+  );
+
+  const handleRequestDismiss = useCallback(
+    (requestId: number) => {
+      const requestKey = `request:${requestId}`;
+      setDismissedActivityKeys((current) =>
+        current.includes(requestKey) ? current : [...current, requestKey],
+      );
+
+      void dismissActivityItem({
+        item_type: 'request',
+        item_key: requestKey,
       })
-      .catch((error) => {
-        console.error('Activity dismiss failed:', error);
-        void refreshActivitySnapshot();
-        refreshHistoryIfLoaded();
-        showToast(getActivityErrorMessage(error, errorMessage), 'error');
-      });
-  }, [refreshActivitySnapshot, refreshHistoryIfLoaded, showToast]);
+        .then(() => {
+          void refreshActivitySnapshot();
+          refreshHistoryIfLoaded();
+        })
+        .catch((error) => {
+          console.error('Request dismiss failed:', error);
+          void refreshActivitySnapshot();
+          refreshHistoryIfLoaded();
+          showToast(getActivityErrorMessage(error, 'Failed to clear request'), 'error');
+        });
+    },
+    [refreshActivitySnapshot, refreshHistoryIfLoaded, showToast],
+  );
 
-  const handleRequestDismiss = useCallback((requestId: number) => {
-    const requestKey = `request:${requestId}`;
-    setDismissedActivityKeys((current) =>
-      current.includes(requestKey) ? current : [...current, requestKey]
-    );
+  const handleDownloadDismiss = useCallback(
+    (bookId: string, linkedRequestId?: number) => {
+      const items: ActivityDismissTarget[] = [
+        { itemType: 'download', itemKey: `download:${bookId}` },
+      ];
+      if (typeof linkedRequestId === 'number' && Number.isFinite(linkedRequestId)) {
+        items.push({ itemType: 'request', itemKey: `request:${linkedRequestId}` });
+      }
 
-    void dismissActivityItem({
-      item_type: 'request',
-      item_key: requestKey,
-    }).then(() => {
-      void refreshActivitySnapshot();
-      refreshHistoryIfLoaded();
-    }).catch((error) => {
-      console.error('Request dismiss failed:', error);
-      void refreshActivitySnapshot();
-      refreshHistoryIfLoaded();
-      showToast(getActivityErrorMessage(error, 'Failed to clear request'), 'error');
-    });
-  }, [refreshActivitySnapshot, refreshHistoryIfLoaded, showToast]);
+      dismissItems(
+        items.map((item) => ({
+          item_type: item.itemType,
+          item_key: item.itemKey,
+        })),
+        items.map((item) => item.itemKey),
+        'Failed to clear item',
+      );
+    },
+    [dismissItems],
+  );
 
-  const handleDownloadDismiss = useCallback((bookId: string, linkedRequestId?: number) => {
-    const items: ActivityDismissTarget[] = [{ itemType: 'download', itemKey: `download:${bookId}` }];
-    if (typeof linkedRequestId === 'number' && Number.isFinite(linkedRequestId)) {
-      items.push({ itemType: 'request', itemKey: `request:${linkedRequestId}` });
-    }
+  const handleClearCompleted = useCallback(
+    (items: ActivityDismissTarget[]) => {
+      if (!items.length) {
+        return;
+      }
 
-    dismissItems(
-      items.map((item) => ({
-        item_type: item.itemType,
-        item_key: item.itemKey,
-      })),
-      items.map((item) => item.itemKey),
-      'Failed to clear item'
-    );
-  }, [dismissItems]);
-
-  const handleClearCompleted = useCallback((items: ActivityDismissTarget[]) => {
-    if (!items.length) {
-      return;
-    }
-
-    dismissItems(
-      items.map((item) => ({
-        item_type: item.itemType,
-        item_key: item.itemKey,
-      })),
-      Array.from(new Set(items.map((item) => item.itemKey))),
-      'Failed to clear finished downloads'
-    );
-  }, [dismissItems]);
+      dismissItems(
+        items.map((item) => ({
+          item_type: item.itemType,
+          item_key: item.itemKey,
+        })),
+        Array.from(new Set(items.map((item) => item.itemKey))),
+        'Failed to clear finished downloads',
+      );
+    },
+    [dismissItems],
+  );
 
   const handleClearHistory = useCallback(() => {
     resetActivityHistory();

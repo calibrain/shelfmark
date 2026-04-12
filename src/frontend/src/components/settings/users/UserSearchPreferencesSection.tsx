@@ -72,11 +72,14 @@ const searchHeading: HeadingFieldConfig = {
   type: 'HeadingField',
   key: 'search_preferences_heading',
   title: 'Search Preferences',
-  description: 'Personal search settings for this user. Reset to inherit global defaults from Search Mode.',
+  description:
+    'Personal search settings for this user. Reset to inherit global defaults from Search Mode.',
 };
 
 const normalizeSearchMode = (value: unknown): 'direct' | 'universal' => {
-  const normalized = String(value || '').trim().toLowerCase();
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase();
   return normalized === 'universal' ? 'universal' : 'direct';
 };
 
@@ -104,34 +107,34 @@ export const UserSearchPreferencesSection = ({
   const searchModeField = getFieldByKey<SelectFieldConfig>(
     fields,
     'SEARCH_MODE',
-    fallbackSearchModeField
+    fallbackSearchModeField,
   );
   const metadataProviderField = getFieldByKey<SelectFieldConfig>(
     fields,
     'METADATA_PROVIDER',
-    fallbackMetadataProviderField
+    fallbackMetadataProviderField,
   );
   const metadataProviderAudiobookField = getFieldByKey<SelectFieldConfig>(
     fields,
     'METADATA_PROVIDER_AUDIOBOOK',
-    fallbackAudiobookMetadataProviderField
+    fallbackAudiobookMetadataProviderField,
   );
   const defaultReleaseSourceField = getFieldByKey<SelectFieldConfig>(
     fields,
     'DEFAULT_RELEASE_SOURCE',
-    fallbackDefaultReleaseSourceField
+    fallbackDefaultReleaseSourceField,
   );
   const defaultAudiobookReleaseSourceField = getFieldByKey<SelectFieldConfig>(
     fields,
     'DEFAULT_RELEASE_SOURCE_AUDIOBOOK',
-    fallbackDefaultAudiobookReleaseSourceField
+    fallbackDefaultAudiobookReleaseSourceField,
   );
 
   const isOverridden = (key: SearchSettingKey): boolean => {
     if (
-      !Object.prototype.hasOwnProperty.call(userSettings, key)
-      || userSettings[key] === null
-      || userSettings[key] === undefined
+      !Object.prototype.hasOwnProperty.call(userSettings, key) ||
+      userSettings[key] === null ||
+      userSettings[key] === undefined
     ) {
       return false;
     }
@@ -166,22 +169,25 @@ export const UserSearchPreferencesSection = ({
   const defaultReleaseSourceValue = readValue('DEFAULT_RELEASE_SOURCE', 'direct_download');
   const defaultAudiobookReleaseSourceValue = readValue('DEFAULT_RELEASE_SOURCE_AUDIOBOOK');
 
-  const canOverrideSearchMode = isUserOverridable('SEARCH_MODE') && preferenceKeySet.has('SEARCH_MODE');
-  const canOverrideMetadataProvider = isUserOverridable('METADATA_PROVIDER')
-    && preferenceKeySet.has('METADATA_PROVIDER');
-  const canOverrideAudiobookMetadataProvider = isUserOverridable('METADATA_PROVIDER_AUDIOBOOK')
-    && preferenceKeySet.has('METADATA_PROVIDER_AUDIOBOOK');
-  const canOverrideDefaultReleaseSource = isUserOverridable('DEFAULT_RELEASE_SOURCE')
-    && preferenceKeySet.has('DEFAULT_RELEASE_SOURCE');
-  const canOverrideDefaultAudiobookReleaseSource = isUserOverridable('DEFAULT_RELEASE_SOURCE_AUDIOBOOK')
-    && preferenceKeySet.has('DEFAULT_RELEASE_SOURCE_AUDIOBOOK');
+  const canOverrideSearchMode =
+    isUserOverridable('SEARCH_MODE') && preferenceKeySet.has('SEARCH_MODE');
+  const canOverrideMetadataProvider =
+    isUserOverridable('METADATA_PROVIDER') && preferenceKeySet.has('METADATA_PROVIDER');
+  const canOverrideAudiobookMetadataProvider =
+    isUserOverridable('METADATA_PROVIDER_AUDIOBOOK') &&
+    preferenceKeySet.has('METADATA_PROVIDER_AUDIOBOOK');
+  const canOverrideDefaultReleaseSource =
+    isUserOverridable('DEFAULT_RELEASE_SOURCE') && preferenceKeySet.has('DEFAULT_RELEASE_SOURCE');
+  const canOverrideDefaultAudiobookReleaseSource =
+    isUserOverridable('DEFAULT_RELEASE_SOURCE_AUDIOBOOK') &&
+    preferenceKeySet.has('DEFAULT_RELEASE_SOURCE_AUDIOBOOK');
 
   if (
-    !canOverrideSearchMode
-    && !canOverrideMetadataProvider
-    && !canOverrideAudiobookMetadataProvider
-    && !canOverrideDefaultReleaseSource
-    && !canOverrideDefaultAudiobookReleaseSource
+    !canOverrideSearchMode &&
+    !canOverrideMetadataProvider &&
+    !canOverrideAudiobookMetadataProvider &&
+    !canOverrideDefaultReleaseSource &&
+    !canOverrideDefaultAudiobookReleaseSource
   ) {
     return null;
   }
@@ -247,7 +253,9 @@ export const UserSearchPreferencesSection = ({
           <SelectField
             field={metadataProviderAudiobookField}
             value={metadataProviderAudiobookValue}
-            onChange={(value) => setUserSettings((prev) => ({ ...prev, METADATA_PROVIDER_AUDIOBOOK: value }))}
+            onChange={(value) =>
+              setUserSettings((prev) => ({ ...prev, METADATA_PROVIDER_AUDIOBOOK: value }))
+            }
             disabled={Boolean(metadataProviderAudiobookField.fromEnv)}
           />
         </FieldWrapper>
@@ -268,7 +276,9 @@ export const UserSearchPreferencesSection = ({
           <SelectField
             field={defaultReleaseSourceField}
             value={defaultReleaseSourceValue}
-            onChange={(value) => setUserSettings((prev) => ({ ...prev, DEFAULT_RELEASE_SOURCE: value }))}
+            onChange={(value) =>
+              setUserSettings((prev) => ({ ...prev, DEFAULT_RELEASE_SOURCE: value }))
+            }
             disabled={Boolean(defaultReleaseSourceField.fromEnv)}
           />
         </FieldWrapper>
@@ -289,10 +299,12 @@ export const UserSearchPreferencesSection = ({
           <SelectField
             field={defaultAudiobookReleaseSourceField}
             value={defaultAudiobookReleaseSourceValue}
-            onChange={(value) => setUserSettings((prev) => ({
-              ...prev,
-              DEFAULT_RELEASE_SOURCE_AUDIOBOOK: value,
-            }))}
+            onChange={(value) =>
+              setUserSettings((prev) => ({
+                ...prev,
+                DEFAULT_RELEASE_SOURCE_AUDIOBOOK: value,
+              }))
+            }
             disabled={Boolean(defaultAudiobookReleaseSourceField.fromEnv)}
           />
         </FieldWrapper>

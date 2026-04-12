@@ -20,17 +20,20 @@ export const buildUserSettingsPayload = (
   userOverridableSettings: Set<string>,
   preferenceGroups: Array<DeliveryPreferencesResponse | null>,
 ): Record<string, unknown> =>
-  Array.from(new Set([
-    ...preferenceGroups.flatMap((preferences) => preferences?.keys || []),
-    ...userOverridableSettings,
-  ]))
+  Array.from(
+    new Set([
+      ...preferenceGroups.flatMap((preferences) => preferences?.keys || []),
+      ...userOverridableSettings,
+    ]),
+  )
     .map(String)
     .sort()
     .reduce<Record<string, unknown>>((payload, key) => {
       const typedKey = key as keyof PerUserSettings;
-      const hasUserValue = Object.prototype.hasOwnProperty.call(userSettings, typedKey)
-        && userSettings[typedKey] !== null
-        && userSettings[typedKey] !== undefined;
+      const hasUserValue =
+        Object.prototype.hasOwnProperty.call(userSettings, typedKey) &&
+        userSettings[typedKey] !== null &&
+        userSettings[typedKey] !== undefined;
 
       if (!hasUserValue) {
         payload[key] = null;
@@ -39,11 +42,11 @@ export const buildUserSettingsPayload = (
 
       const userValue = userSettings[typedKey];
       const matchingPreferences = preferenceGroups.find((preferences) =>
-        preferences?.keys?.includes(key)
+        preferences?.keys?.includes(key),
       );
       const hasGlobalValue = Boolean(
-        matchingPreferences
-        && Object.prototype.hasOwnProperty.call(matchingPreferences.globalValues, key)
+        matchingPreferences &&
+        Object.prototype.hasOwnProperty.call(matchingPreferences.globalValues, key),
       );
       const globalValue = matchingPreferences?.globalValues?.[key];
       const isDifferentFromGlobal = hasGlobalValue

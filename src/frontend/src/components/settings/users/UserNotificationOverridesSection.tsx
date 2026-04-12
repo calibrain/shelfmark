@@ -30,17 +30,18 @@ const USER_ROUTE_EVENT_OPTIONS = [
   { value: 'download_failed', label: 'Download failed' },
 ];
 const ALLOWED_ROUTE_EVENTS = new Set(USER_ROUTE_EVENT_OPTIONS.map((option) => option.value));
-const ROUTE_EVENT_ORDER = new Map(USER_ROUTE_EVENT_OPTIONS.map((option, index) => [option.value, index]));
+const ROUTE_EVENT_ORDER = new Map(
+  USER_ROUTE_EVENT_OPTIONS.map((option, index) => [option.value, index]),
+);
 
 const fallbackRoutesField: TableFieldConfig = {
   type: 'TableField',
   key: 'USER_NOTIFICATION_ROUTES',
   label: '',
-  description: (
-    'Create one route per URL. Start with All, then add event-specific routes '
-    + 'for targeted delivery. Need format examples? '
-    + '[View Apprise URL formats](https://appriseit.com/services/).'
-  ),
+  description:
+    'Create one route per URL. Start with All, then add event-specific routes ' +
+    'for targeted delivery. Need format examples? ' +
+    '[View Apprise URL formats](https://appriseit.com/services/).',
   value: [{ event: [ROUTE_EVENT_ALL], url: '' }],
   columns: [
     {
@@ -66,7 +67,8 @@ const notificationHeading: HeadingFieldConfig = {
   type: 'HeadingField',
   key: 'notification_preferences_heading',
   title: 'Notifications',
-  description: 'Personal notification preferences for this user. Reset to inherit global defaults from the Notifications tab.',
+  description:
+    'Personal notification preferences for this user. Reset to inherit global defaults from the Notifications tab.',
 };
 
 const testNotificationActionField: ActionButtonConfig = {
@@ -88,11 +90,15 @@ function normalizeRoutesValue(value: unknown): Array<Record<string, unknown>> {
   const normalizeRouteEvents = (rawEventValue: unknown): string[] => {
     const rawValues = Array.isArray(rawEventValue)
       ? rawEventValue
-      : (rawEventValue === undefined || rawEventValue === null ? [] : [rawEventValue]);
+      : rawEventValue === undefined || rawEventValue === null
+        ? []
+        : [rawEventValue];
 
     const deduped = new Set<string>();
     rawValues.forEach((rawEvent) => {
-      const event = String(rawEvent ?? '').trim().toLowerCase();
+      const event = String(rawEvent ?? '')
+        .trim()
+        .toLowerCase();
       if (!ALLOWED_ROUTE_EVENTS.has(event)) {
         return;
       }
@@ -104,8 +110,10 @@ function normalizeRoutesValue(value: unknown): Array<Record<string, unknown>> {
     }
 
     return Array.from(deduped).sort((a, b) => {
-      return (ROUTE_EVENT_ORDER.get(a) ?? Number.MAX_SAFE_INTEGER)
-        - (ROUTE_EVENT_ORDER.get(b) ?? Number.MAX_SAFE_INTEGER);
+      return (
+        (ROUTE_EVENT_ORDER.get(a) ?? Number.MAX_SAFE_INTEGER) -
+        (ROUTE_EVENT_ORDER.get(b) ?? Number.MAX_SAFE_INTEGER)
+      );
     });
   };
 
@@ -149,20 +157,22 @@ export const UserNotificationOverridesSection = ({
   const routesField = getFieldByKey<TableFieldConfig>(
     fields,
     'USER_NOTIFICATION_ROUTES',
-    fallbackRoutesField
+    fallbackRoutesField,
   );
 
   const isOverridden = (key: NotificationSettingKey): boolean => {
     if (
-      !Object.prototype.hasOwnProperty.call(userSettings, key)
-      || userSettings[key] === null
-      || userSettings[key] === undefined
+      !Object.prototype.hasOwnProperty.call(userSettings, key) ||
+      userSettings[key] === null ||
+      userSettings[key] === undefined
     ) {
       return false;
     }
 
-    return JSON.stringify(normalizeRoutesValue(userSettings[key]))
-      !== JSON.stringify(normalizeRoutesValue(globalValues[key]));
+    return (
+      JSON.stringify(normalizeRoutesValue(userSettings[key])) !==
+      JSON.stringify(normalizeRoutesValue(globalValues[key]))
+    );
   };
 
   const resetKeys = (keys: NotificationSettingKey[]) => {
@@ -200,18 +210,20 @@ export const UserNotificationOverridesSection = ({
       <FieldWrapper
         field={routesField}
         resetAction={
-          isOverridden('USER_NOTIFICATION_ROUTES') ? (
-            {
-              disabled: Boolean(routesField.fromEnv),
-              onClick: () => resetKeys(['USER_NOTIFICATION_ROUTES']),
-            }
-          ) : undefined
+          isOverridden('USER_NOTIFICATION_ROUTES')
+            ? {
+                disabled: Boolean(routesField.fromEnv),
+                onClick: () => resetKeys(['USER_NOTIFICATION_ROUTES']),
+              }
+            : undefined
         }
       >
         <TableField
           field={routesField}
           value={routesValue}
-          onChange={(value) => setUserSettings((prev) => ({ ...prev, USER_NOTIFICATION_ROUTES: value }))}
+          onChange={(value) =>
+            setUserSettings((prev) => ({ ...prev, USER_NOTIFICATION_ROUTES: value }))
+          }
           disabled={Boolean(routesField.fromEnv)}
         />
       </FieldWrapper>

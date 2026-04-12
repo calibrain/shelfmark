@@ -1,4 +1,5 @@
 import { useState } from 'react';
+
 import {
   AdminUser,
   DeliveryPreferencesResponse,
@@ -7,8 +8,8 @@ import {
   syncAdminCwaUsers,
   updateAdminUser,
 } from '../../../services/api';
-import { CreateUserFormState, PerUserSettings } from './types';
 import { buildUserSettingsPayload } from './settingsPayload';
+import { CreateUserFormState, PerUserSettings } from './types';
 
 const MIN_PASSWORD_LENGTH = 4;
 interface UseUserMutationsParams {
@@ -36,7 +37,8 @@ interface SaveEditedUserOptions {
 
 const getPasswordError = (password: string, passwordConfirm: string) => {
   if (!password) return null;
-  if (password.length < MIN_PASSWORD_LENGTH) return `Password must be at least ${MIN_PASSWORD_LENGTH} characters`;
+  if (password.length < MIN_PASSWORD_LENGTH)
+    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters`;
   return password === passwordConfirm ? null : 'Passwords do not match';
 };
 
@@ -73,7 +75,8 @@ export const useUserMutations = ({
   const fail = (message: string) => (onShowToast?.(message, 'error'), false);
 
   const createUser = async () => {
-    if (!createForm.username || !createForm.password) return fail('Username and password are required');
+    if (!createForm.username || !createForm.password)
+      return fail('Username and password are required');
     const createPasswordError = getPasswordError(createForm.password, createForm.password_confirm);
     if (createPasswordError) return fail(createPasswordError);
 
@@ -103,17 +106,19 @@ export const useUserMutations = ({
     includeSettings = true,
   }: SaveEditedUserOptions = {}) => {
     if (!editingUser) return false;
-    const passwordError = includePassword ? getPasswordError(editPassword, editPasswordConfirm) : null;
+    const passwordError = includePassword
+      ? getPasswordError(editPassword, editPasswordConfirm)
+      : null;
     if (passwordError) return fail(passwordError);
     const localAdminsBeforeSave = includeProfile ? countLocalPasswordAdmins(users) : 0;
 
     const caps = editingUser.edit_capabilities;
     const settingsPayload = includeSettings
-      ? buildUserSettingsPayload(
-        userSettings,
-        userOverridableSettings,
-        [deliveryPreferences, searchPreferences, notificationPreferences]
-      )
+      ? buildUserSettingsPayload(userSettings, userOverridableSettings, [
+          deliveryPreferences,
+          searchPreferences,
+          notificationPreferences,
+        ])
       : null;
     const updatePayload: Partial<Pick<AdminUser, 'role' | 'email' | 'display_name'>> & {
       password?: string;
@@ -143,11 +148,17 @@ export const useUserMutations = ({
       await updateAdminUser(editingUser.id, updatePayload);
       onEditSaveSuccess?.();
       onShowToast?.(
-        includeSettings && !includeProfile && !includePassword ? 'User preferences updated' : 'User updated',
+        includeSettings && !includeProfile && !includePassword
+          ? 'User preferences updated'
+          : 'User updated',
         'success',
       );
       const refreshedUsers = await fetchUsers({ force: true });
-      if (includeProfile && localAdminsBeforeSave > 0 && countLocalPasswordAdmins(refreshedUsers) === 0) {
+      if (
+        includeProfile &&
+        localAdminsBeforeSave > 0 &&
+        countLocalPasswordAdmins(refreshedUsers) === 0
+      ) {
         onShowToast?.(
           "No local admin accounts remain. Authentication will fall back to 'No Authentication' until a local admin is created.",
           'info',

@@ -1,6 +1,6 @@
 import { fetchBookTargetOptionsBatch, type BookTargetOption } from '../services/api';
-import { onBookTargetChange } from './bookTargetEvents';
 import type { Book } from '../types';
+import { onBookTargetChange } from './bookTargetEvents';
 
 // Providers that support the book targets feature.
 // Centralised here so the check isn't hardcoded across every view component.
@@ -119,10 +119,7 @@ const flush = async () => {
  * batch API request per provider. Results are cached client-side to avoid
  * re-fetching on view mode switches and re-renders.
  */
-export const loadBookTargets = (
-  provider: string,
-  bookId: string,
-): Promise<BookTargetOption[]> => {
+export const loadBookTargets = (provider: string, bookId: string): Promise<BookTargetOption[]> => {
   const cached = getCached(provider, bookId);
   if (cached) {
     return Promise.resolve(cached);

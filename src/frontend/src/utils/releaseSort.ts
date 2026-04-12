@@ -67,7 +67,7 @@ export function inferDefaultDirection(renderType: string): 'asc' | 'desc' {
 export function sortReleasesByFormat(
   releases: Release[],
   targetFormat: string,
-  direction: 'asc' | 'desc'
+  direction: 'asc' | 'desc',
 ): Release[] {
   const target = targetFormat.toLowerCase();
   return [...releases].sort((a, b) => {
@@ -85,7 +85,7 @@ export function sortReleasesByFormat(
 export function sortReleases(
   releases: Release[],
   sortKey: string,
-  direction: 'asc' | 'desc'
+  direction: 'asc' | 'desc',
 ): Release[] {
   return [...releases].sort((a, b) => {
     const aVal = getNestedSortValue(a as unknown as Record<string, unknown>, sortKey);

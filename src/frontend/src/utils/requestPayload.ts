@@ -1,9 +1,4 @@
-import {
-  Book,
-  ContentType,
-  CreateRequestPayload,
-  Release,
-} from '../types';
+import { Book, ContentType, CreateRequestPayload, Release } from '../types';
 
 export const toContentType = (value: ContentType | string): ContentType => {
   return String(value).trim().toLowerCase() === 'audiobook' ? 'audiobook' : 'ebook';
@@ -17,19 +12,16 @@ export const getBrowseSource = (book: Book): string => {
   throw new Error(`Book ${book.id} is missing source context`);
 };
 
-export const isSourceBackedRequestPayload = (payload: CreateRequestPayload | null | undefined): boolean => {
+export const isSourceBackedRequestPayload = (
+  payload: CreateRequestPayload | null | undefined,
+): boolean => {
   if (!payload) {
     return false;
   }
 
   const provider =
-    typeof payload.book_data?.provider === 'string'
-      ? payload.book_data.provider.trim()
-      : '';
-  const source =
-    typeof payload.context?.source === 'string'
-      ? payload.context.source.trim()
-      : '';
+    typeof payload.book_data?.provider === 'string' ? payload.book_data.provider.trim() : '';
+  const source = typeof payload.context?.source === 'string' ? payload.context.source.trim() : '';
 
   return Boolean(provider) && Boolean(source) && source !== '*' && provider === source;
 };
@@ -71,7 +63,7 @@ export const buildDirectBookRequestData = (book: Book) => {
 export const buildReleaseDataFromMetadataRelease = (
   book: Book,
   release: Release,
-  contentType: ContentType
+  contentType: ContentType,
 ) => {
   const isSourceBackedReleaseContext =
     Boolean(book.provider) &&
@@ -118,9 +110,7 @@ export const buildReleaseDataFromDirectBook = (book: Book) => {
   };
 };
 
-export const buildDirectRequestPayload = (
-  book: Book
-): CreateRequestPayload => {
+export const buildDirectRequestPayload = (book: Book): CreateRequestPayload => {
   const bookData = buildDirectBookRequestData(book);
   const source = getBrowseSource(book);
 

@@ -11,3 +11,12 @@ repos:
       - id: ruff-check
         args: [--fix]
       - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: oxfmt
+        name: oxfmt
+        entry: npx --prefix src/frontend oxfmt --config src/frontend/.oxfmtrc.json
+        language: system
+        types_or: [javascript, jsx, ts, tsx, css, json]
+        files: ^src/frontend/

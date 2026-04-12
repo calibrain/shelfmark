@@ -1,4 +1,5 @@
 import { KeyboardEvent } from 'react';
+
 import { MetadataSearchField } from '../../types';
 import { DropdownList } from '../DropdownList';
 import { DynamicDropdown } from './DynamicDropdown';
@@ -16,7 +17,12 @@ const baseInputClass =
   'focus:outline-hidden focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 ' +
   'transition-colors';
 
-export const SearchFieldRenderer = ({ field, value, onChange, onSubmit }: SearchFieldRendererProps) => {
+export const SearchFieldRenderer = ({
+  field,
+  value,
+  onChange,
+  onSubmit,
+}: SearchFieldRendererProps) => {
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && onSubmit) {
       e.preventDefault();
@@ -81,19 +87,19 @@ export const SearchFieldRenderer = ({ field, value, onChange, onSubmit }: Search
         <DropdownList
           options={field.options}
           value={(value as string) ?? ''}
-          onChange={(v) => onChange(Array.isArray(v) ? v[0] ?? '' : v)}
+          onChange={(v) => onChange(Array.isArray(v) ? (v[0] ?? '') : v)}
           placeholder="All"
         />
       );
 
     case 'CheckboxSearchField':
       return (
-        <label className="flex items-center gap-2 cursor-pointer py-2">
+        <label className="flex cursor-pointer items-center gap-2 py-2">
           <input
             type="checkbox"
             checked={!!value}
             onChange={(e) => onChange(e.target.checked)}
-            className="w-4 h-4 rounded-sm border-(--border-muted) text-emerald-500 focus:ring-emerald-500/50"
+            className="h-4 w-4 rounded-sm border-(--border-muted) text-emerald-500 focus:ring-emerald-500/50"
           />
           <span className="text-sm">{field.label}</span>
         </label>

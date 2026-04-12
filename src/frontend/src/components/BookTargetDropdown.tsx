@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { DropdownList, type DropdownListOption } from './DropdownList';
-import {
-  setBookTargetState,
-  type BookTargetOption,
-} from '../services/api';
-import { loadBookTargets } from '../utils/bookTargetLoader';
+
+import { setBookTargetState, type BookTargetOption } from '../services/api';
 import { emitBookTargetChange, onBookTargetChange } from '../utils/bookTargetEvents';
+import { loadBookTargets } from '../utils/bookTargetLoader';
+import { DropdownList, type DropdownListOption } from './DropdownList';
 
 interface BookTargetDropdownProps {
   provider: string;
@@ -150,102 +148,113 @@ export const BookTargetDropdown = ({
     }));
   }, [isLoading, loadError, options, pendingTargets]);
 
-  const handleChange = useCallback((nextValue: string[] | string) => {
-    if (!Array.isArray(nextValue)) {
-      return;
-    }
+  const handleChange = useCallback(
+    (nextValue: string[] | string) => {
+      if (!Array.isArray(nextValue)) {
+        return;
+      }
 
-    const nextSelected = new Set(nextValue);
-    const currentSelected = new Set(selectedValues);
-    const toggledTarget =
-      nextValue.find((value) => !currentSelected.has(value))
-      ?? selectedValues.find((value) => !nextSelected.has(value));
+      const nextSelected = new Set(nextValue);
+      const currentSelected = new Set(selectedValues);
+      const toggledTarget =
+        nextValue.find((value) => !currentSelected.has(value)) ??
+        selectedValues.find((value) => !nextSelected.has(value));
 
-    if (!toggledTarget || pendingTargets.has(toggledTarget)) {
-      return;
-    }
+      if (!toggledTarget || pendingTargets.has(toggledTarget)) {
+        return;
+      }
 
-    const selected = nextSelected.has(toggledTarget);
-    const toggledOption = options.find((option) => option.value === toggledTarget);
-    if (!toggledOption) {
-      return;
-    }
+      const selected = nextSelected.has(toggledTarget);
+      const toggledOption = options.find((option) => option.value === toggledTarget);
+      if (!toggledOption) {
+        return;
+      }
 
-    setPendingTargets((prev) => new Set(prev).add(toggledTarget));
-    setOptions((prev) => updateOptionChecked(prev, toggledTarget, selected));
+      setPendingTargets((prev) => new Set(prev).add(toggledTarget));
+      setOptions((prev) => updateOptionChecked(prev, toggledTarget, selected));
 
-    void (async () => {
-      try {
-        const result = await setBookTargetState(provider, bookId, toggledTarget, selected);
-        setOptions((prev) => updateOptionChecked(prev, toggledTarget, result.selected));
+      void (async () => {
+        try {
+          const result = await setBookTargetState(provider, bookId, toggledTarget, selected);
+          setOptions((prev) => updateOptionChecked(prev, toggledTarget, result.selected));
 
-        if (result.changed) {
-          emitBookTargetChange({
-            provider,
-            bookId,
-            target: toggledTarget,
-            selected: result.selected,
-          });
-          // When a status was implicitly deselected, sync other instances
-          if (result.deselectedTarget) {
-            setOptions((prev) => updateOptionChecked(prev, result.deselectedTarget!, false));
+          if (result.changed) {
             emitBookTargetChange({
               provider,
               bookId,
-              target: result.deselectedTarget,
-              selected: false,
+              target: toggledTarget,
+              selected: result.selected,
             });
+            // When a status was implicitly deselected, sync other instances
+            if (result.deselectedTarget) {
+              setOptions((prev) => updateOptionChecked(prev, result.deselectedTarget!, false));
+              emitBookTargetChange({
+                provider,
+                bookId,
+                target: result.deselectedTarget,
+                selected: false,
+              });
+            }
+            const label = stripCountSuffix(toggledOption.label);
+            onShowToast?.(`${result.selected ? 'Added to' : 'Removed from'} ${label}`, 'success');
           }
-          const label = stripCountSuffix(toggledOption.label);
-          onShowToast?.(
-            `${result.selected ? 'Added to' : 'Removed from'} ${label}`,
-            'success',
+        } catch (error) {
+          setOptions((prev) => updateOptionChecked(prev, toggledTarget, !selected));
+          const message =
+            error instanceof Error ? error.message : 'Failed to update Hardcover list';
+          onShowToast?.(message, 'error');
+        } finally {
+          setPendingTargets((prev) => {
+            const nextPending = new Set(prev);
+            nextPending.delete(toggledTarget);
+            return nextPending;
+          });
+        }
+      })();
+    },
+    [bookId, onShowToast, options, pendingTargets, provider, selectedValues],
+  );
+
+  const customTrigger =
+    variant === 'pill'
+      ? ({ toggle }: { isOpen: boolean; toggle: () => void }) => {
+          const count = selectedValues.length;
+          return (
+            <button
+              type="button"
+              onClick={toggle}
+              className={`inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-100 focus:outline-hidden dark:bg-emerald-900/20 dark:text-emerald-400 dark:hover:bg-emerald-900/40`}
+            >
+              <BookmarkIcon className="h-3 w-3" />
+              Hardcover Lists{count > 0 ? ` (${count})` : ''}
+            </button>
           );
         }
-      } catch (error) {
-        setOptions((prev) => updateOptionChecked(prev, toggledTarget, !selected));
-        const message = error instanceof Error ? error.message : 'Failed to update Hardcover list';
-        onShowToast?.(message, 'error');
-      } finally {
-        setPendingTargets((prev) => {
-          const nextPending = new Set(prev);
-          nextPending.delete(toggledTarget);
-          return nextPending;
-        });
-      }
-    })();
-  }, [bookId, onShowToast, options, pendingTargets, provider, selectedValues]);
-
-  const customTrigger = variant === 'pill'
-    ? ({ toggle }: { isOpen: boolean; toggle: () => void }) => {
-        const count = selectedValues.length;
-        return (
-          <button
-            type="button"
-            onClick={toggle}
-            className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 focus:outline-hidden`}
-          >
-            <BookmarkIcon className="w-3 h-3" />
-            Hardcover Lists{count > 0 ? ` (${count})` : ''}
-          </button>
-        );
-      }
-    : variant === 'icon'
-    ? ({ toggle }: { isOpen: boolean; toggle: () => void }) => {
-        const count = selectedValues.length;
-        return (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); toggle(); }}
-            className={`flex items-center justify-center rounded-full transition-colors duration-200 focus:outline-hidden ${className ?? 'p-1.5 sm:p-2 text-gray-600 dark:text-gray-200 hover-action'}`}
-            aria-label="Hardcover Lists"
-            title={count > 0 ? `On ${count} Hardcover list${count > 1 ? 's' : ''}` : 'Hardcover Lists'}
-          >
-            <BookmarkIcon className={`w-4 h-4 sm:w-5 sm:h-5 ${count > 0 ? 'fill-current' : ''}`} />
-          </button>
-        );
-      }
-    : undefined;
+      : variant === 'icon'
+        ? ({ toggle }: { isOpen: boolean; toggle: () => void }) => {
+            const count = selectedValues.length;
+            return (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggle();
+                }}
+                className={`flex items-center justify-center rounded-full transition-colors duration-200 focus:outline-hidden ${className ?? 'hover-action p-1.5 text-gray-600 sm:p-2 dark:text-gray-200'}`}
+                aria-label="Hardcover Lists"
+                title={
+                  count > 0
+                    ? `On ${count} Hardcover list${count > 1 ? 's' : ''}`
+                    : 'Hardcover Lists'
+                }
+              >
+                <BookmarkIcon
+                  className={`h-4 w-4 sm:h-5 sm:w-5 ${count > 0 ? 'fill-current' : ''}`}
+                />
+              </button>
+            );
+          }
+        : undefined;
 
   return (
     <DropdownList

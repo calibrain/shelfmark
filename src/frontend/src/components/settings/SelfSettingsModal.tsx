@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+
 import {
   AdminUser,
   DeliveryPreferencesResponse,
@@ -6,9 +7,13 @@ import {
   testSelfNotificationPreferences,
   updateSelfUser,
 } from '../../services/api';
+import {
+  getStoredThemePreference,
+  setThemePreference,
+  THEME_FIELD,
+} from '../../utils/themePreference';
 import { SelectField } from './fields';
 import { FieldWrapper } from './shared';
-import { UserAccountCardContent, UserEditActions, UserIdentityHeader } from './users/UserCard';
 import {
   DEFAULT_SELF_USER_OVERRIDE_SECTIONS,
   normalizeUserOverrideSections,
@@ -16,8 +21,8 @@ import {
   type UserOverrideSectionId,
 } from './users';
 import { PerUserSettings } from './users/types';
+import { UserAccountCardContent, UserEditActions, UserIdentityHeader } from './users/UserCard';
 import { useUserOverridesState } from './users/useUserOverridesState';
-import { getStoredThemePreference, setThemePreference, THEME_FIELD } from '../../utils/themePreference';
 
 interface SelfSettingsModalProps {
   isOpen: boolean;
@@ -61,11 +66,15 @@ export const SelfSettingsModal = ({
 
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [originalUser, setOriginalUser] = useState<AdminUser | null>(null);
-  const [deliveryPreferences, setDeliveryPreferences] = useState<DeliveryPreferencesResponse | null>(null);
-  const [searchPreferences, setSearchPreferences] = useState<DeliveryPreferencesResponse | null>(null);
-  const [notificationPreferences, setNotificationPreferences] = useState<DeliveryPreferencesResponse | null>(null);
+  const [deliveryPreferences, setDeliveryPreferences] =
+    useState<DeliveryPreferencesResponse | null>(null);
+  const [searchPreferences, setSearchPreferences] = useState<DeliveryPreferencesResponse | null>(
+    null,
+  );
+  const [notificationPreferences, setNotificationPreferences] =
+    useState<DeliveryPreferencesResponse | null>(null);
   const [visibleSections, setVisibleSections] = useState<UserOverrideSectionId[]>(
-    DEFAULT_SELF_USER_OVERRIDE_SECTIONS
+    DEFAULT_SELF_USER_OVERRIDE_SECTIONS,
   );
 
   const [editPassword, setEditPassword] = useState('');
@@ -75,7 +84,7 @@ export const SelfSettingsModal = ({
 
   const preferenceGroups = useMemo(
     () => [deliveryPreferences, searchPreferences, notificationPreferences],
-    [deliveryPreferences, searchPreferences, notificationPreferences]
+    [deliveryPreferences, searchPreferences, notificationPreferences],
   );
   const {
     userSettings,
@@ -98,7 +107,7 @@ export const SelfSettingsModal = ({
       setSearchPreferences(context.searchPreferences || null);
       setNotificationPreferences(context.notificationPreferences || null);
       setVisibleSections(
-        normalizeUserOverrideSections(context.visibleUserSettingsSections, 'self')
+        normalizeUserOverrideSections(context.visibleUserSettingsSections, 'self'),
       );
       applyUserOverridesContext({
         settings: (context.user.settings || {}) as PerUserSettings,
@@ -157,12 +166,10 @@ export const SelfSettingsModal = ({
   }, [isOpen, handleClose]);
 
   const hasProfileChanges = Boolean(
-    editingUser
-    && originalUser
-    && (
-      editingUser.email !== originalUser.email
-      || editingUser.display_name !== originalUser.display_name
-    )
+    editingUser &&
+    originalUser &&
+    (editingUser.email !== originalUser.email ||
+      editingUser.display_name !== originalUser.display_name),
   );
 
   const hasPasswordChanges = editPassword.length > 0 || editPasswordConfirm.length > 0;
@@ -189,15 +196,12 @@ export const SelfSettingsModal = ({
       settings?: Record<string, unknown>;
     } = {};
 
-    if (
-      editingUser.edit_capabilities.canEditEmail
-      && editingUser.email !== originalUser.email
-    ) {
+    if (editingUser.edit_capabilities.canEditEmail && editingUser.email !== originalUser.email) {
       payload.email = editingUser.email;
     }
     if (
-      editingUser.edit_capabilities.canEditDisplayName
-      && editingUser.display_name !== originalUser.display_name
+      editingUser.edit_capabilities.canEditDisplayName &&
+      editingUser.display_name !== originalUser.display_name
     ) {
       payload.display_name = editingUser.display_name;
     }
@@ -252,20 +256,18 @@ export const SelfSettingsModal = ({
       />
 
       <div
-        className={`relative w-full max-w-3xl h-[85vh] max-h-[750px] rounded-xl border border-(--border-muted) shadow-2xl flex flex-col overflow-hidden ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`relative flex h-[85vh] max-h-[750px] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-(--border-muted) shadow-2xl ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         style={{ background: 'var(--bg)' }}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
       >
         <header className="flex items-center justify-between border-b border-(--border-muted) px-6 py-4">
-          <h3 id={titleId} className="sr-only">My Account</h3>
+          <h3 id={titleId} className="sr-only">
+            My Account
+          </h3>
           {editingUser ? (
-            <UserIdentityHeader
-              user={editingUser}
-              showAuthSource
-              showInactiveState={false}
-            />
+            <UserIdentityHeader user={editingUser} showAuthSource showInactiveState={false} />
           ) : (
             <div className="text-sm font-medium">My Account</div>
           )}
@@ -273,11 +275,17 @@ export const SelfSettingsModal = ({
             <button
               type="button"
               onClick={handleClose}
-              className="p-2 rounded-full hover-action transition-colors text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="hover-action rounded-full p-2 text-gray-500 transition-colors hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-100"
               aria-label="Close account settings"
               disabled={isSaving}
             >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -286,16 +294,18 @@ export const SelfSettingsModal = ({
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {showInitialLoadingState ? (
-            <div className="h-full flex items-center justify-center text-sm opacity-60">
+            <div className="flex h-full items-center justify-center text-sm opacity-60">
               Loading account settings...
             </div>
           ) : showInitialLoadErrorState ? (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
               <p className="text-sm opacity-70">{loadError}</p>
               <button
                 type="button"
-                onClick={() => { void loadEditContext(); }}
-                className="px-4 py-2 rounded-lg text-sm font-medium border border-(--border-muted) bg-(--bg-soft) hover:bg-(--hover-surface) transition-colors"
+                onClick={() => {
+                  void loadEditContext();
+                }}
+                className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
               >
                 Retry
               </button>
@@ -344,7 +354,7 @@ export const SelfSettingsModal = ({
               />
             </div>
           ) : (
-            <div className="h-full flex items-center justify-center text-sm opacity-60">
+            <div className="flex h-full items-center justify-center text-sm opacity-60">
               Unable to load account details.
             </div>
           )}

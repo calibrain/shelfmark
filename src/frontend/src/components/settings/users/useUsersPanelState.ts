@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+
 import { UsersPanelRoute } from './types';
 
 export const useUsersPanelState = () => {

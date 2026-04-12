@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CreateRequestPayload } from '../types';
+
 import { getMetadataBookInfo } from '../services/api';
-import { isSourceBackedRequestPayload } from '../utils/requestPayload';
+import { CreateRequestPayload } from '../types';
 import {
   applyRequestNoteToPayload,
   buildRequestConfirmationPreview,
@@ -10,12 +10,16 @@ import {
   RequestConfirmationPreview,
   truncateRequestNote,
 } from '../utils/requestConfirmation';
+import { isSourceBackedRequestPayload } from '../utils/requestPayload';
 
 interface RequestConfirmationModalProps {
   payload: CreateRequestPayload | null;
   extraPayloads?: CreateRequestPayload[];
   allowNotes: boolean;
-  onConfirm: (payload: CreateRequestPayload, extraPayloads?: CreateRequestPayload[]) => Promise<boolean>;
+  onConfirm: (
+    payload: CreateRequestPayload,
+    extraPayloads?: CreateRequestPayload[],
+  ) => Promise<boolean>;
   onClose: () => void;
 }
 
@@ -90,8 +94,10 @@ export const RequestConfirmationModal = ({
 
     // Only fetch for metadata providers, and skip if series info is already present
     if (
-      typeof provider !== 'string' || !provider ||
-      typeof providerId !== 'string' || !providerId ||
+      typeof provider !== 'string' ||
+      !provider ||
+      typeof providerId !== 'string' ||
+      !providerId ||
       isSourceBackedRequestPayload(payload) ||
       bookData.series_name
     ) {
@@ -128,7 +134,10 @@ export const RequestConfirmationModal = ({
     setIsSubmitting(true);
     try {
       const nextPayload = applyRequestNoteToPayload(payload, note, allowNotes);
-      const success = await onConfirm(nextPayload, extraPayloads.length > 0 ? extraPayloads : undefined);
+      const success = await onConfirm(
+        nextPayload,
+        extraPayloads.length > 0 ? extraPayloads : undefined,
+      );
       if (!success) {
         setIsSubmitting(false);
       }
@@ -158,11 +167,17 @@ export const RequestConfirmationModal = ({
           <button
             type="button"
             onClick={handleClose}
-            className="p-1.5 rounded-lg hover:bg-(--hover-surface) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg p-1.5 transition-colors hover:bg-(--hover-surface) disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="Close request confirmation"
             disabled={isSubmitting}
           >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -171,27 +186,25 @@ export const RequestConfirmationModal = ({
         <div className="space-y-4 px-6 py-5">
           <div className="rounded-xl border border-(--border-muted) bg-(--bg-soft) px-4 py-4">
             <div className="flex gap-4">
-              <div className="w-16 h-24 shrink-0 rounded-lg overflow-hidden border border-(--border-muted) bg-(--bg)">
+              <div className="h-24 w-16 shrink-0 overflow-hidden rounded-lg border border-(--border-muted) bg-(--bg)">
                 {preview.preview ? (
                   <img
                     src={preview.preview}
                     alt={`${preview.title} cover`}
-                    className="w-full h-full object-cover object-top"
+                    className="h-full w-full object-cover object-top"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-[10px] opacity-60">
+                  <div className="flex h-full w-full items-center justify-center text-[10px] opacity-60">
                     No cover
                   </div>
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold leading-snug">{preview.title}</p>
-                <p className="text-sm opacity-80 mt-1">{preview.author}</p>
+                <p className="text-sm leading-snug font-semibold">{preview.title}</p>
+                <p className="mt-1 text-sm opacity-80">{preview.author}</p>
                 {(preview.year || preview.seriesLine) && (
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5">
-                    {preview.year && (
-                      <span className="text-xs opacity-60">{preview.year}</span>
-                    )}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    {preview.year && <span className="text-xs opacity-60">{preview.year}</span>}
                     {preview.year && preview.seriesLine && (
                       <span className="text-xs opacity-40">·</span>
                     )}
@@ -206,17 +219,26 @@ export const RequestConfirmationModal = ({
                     {preview.releaseLine && (
                       <p className="text-xs opacity-60">
                         {extraPreviews.length > 0 && (
-                          <span className="font-medium opacity-80">{payload.context.content_type === 'ebook' ? 'Book: ' : 'Audiobook: '}</span>
+                          <span className="font-medium opacity-80">
+                            {payload.context.content_type === 'ebook' ? 'Book: ' : 'Audiobook: '}
+                          </span>
                         )}
                         {preview.releaseLine}
                       </p>
                     )}
-                    {extraPreviews.map((ep, i) => ep.releaseLine && (
-                      <p key={i} className="text-xs opacity-60">
-                        <span className="font-medium opacity-80">{extraPayloads[i]?.context.content_type === 'ebook' ? 'Book: ' : 'Audiobook: '}</span>
-                        {ep.releaseLine}
-                      </p>
-                    ))}
+                    {extraPreviews.map(
+                      (ep, i) =>
+                        ep.releaseLine && (
+                          <p key={i} className="text-xs opacity-60">
+                            <span className="font-medium opacity-80">
+                              {extraPayloads[i]?.context.content_type === 'ebook'
+                                ? 'Book: '
+                                : 'Audiobook: '}
+                            </span>
+                            {ep.releaseLine}
+                          </p>
+                        ),
+                    )}
                   </div>
                 )}
               </div>
@@ -234,11 +256,11 @@ export const RequestConfirmationModal = ({
                 onChange={(event) => setNote(truncateRequestNote(event.target.value))}
                 maxLength={MAX_REQUEST_NOTE_LENGTH}
                 rows={4}
-                className="w-full px-3 py-2 rounded-lg border border-(--border-muted) bg-(--bg) text-sm resize-y min-h-[96px] focus:outline-hidden focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500"
+                className="min-h-[96px] w-full resize-y rounded-lg border border-(--border-muted) bg-(--bg) px-3 py-2 text-sm focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50 focus:outline-hidden"
                 placeholder="Add context for admins reviewing this request..."
                 disabled={isSubmitting}
               />
-              <p className="text-xs opacity-60 text-right">
+              <p className="text-right text-xs opacity-60">
                 {note.length}/{MAX_REQUEST_NOTE_LENGTH}
               </p>
             </div>
@@ -250,7 +272,7 @@ export const RequestConfirmationModal = ({
             type="button"
             onClick={handleClose}
             disabled={isSubmitting}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-(--bg-soft) border border-(--border-muted) hover:bg-(--hover-surface) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface) disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
           </button>
@@ -258,13 +280,25 @@ export const RequestConfirmationModal = ({
             type="button"
             onClick={submit}
             disabled={confirmDisabled}
-            className="px-5 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+            className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? (
               <>
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                    fill="none"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
                 </svg>
                 Requesting...
               </>

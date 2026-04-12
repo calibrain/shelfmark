@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { DropdownList, type DropdownListOption } from '../DropdownList';
+
 import { DynamicFieldOption, fetchFieldOptions } from '../../services/api';
+import { DropdownList, type DropdownListOption } from '../DropdownList';
 
 const optionsCache = new Map<string, DynamicFieldOption[]>();
 const OPTIONS_CACHE_MAX = 50;
@@ -15,9 +16,7 @@ interface DynamicDropdownProps {
   triggerChrome?: 'default' | 'minimal';
 }
 
-const buildOptions = (
-  options: DynamicFieldOption[],
-): DropdownListOption[] => {
+const buildOptions = (options: DynamicFieldOption[]): DropdownListOption[] => {
   return options.map((option) => ({
     value: option.value,
     label: option.label,
@@ -112,7 +111,7 @@ export const DynamicDropdown = ({
       options={dropdownOptions}
       value={value}
       onChange={(nextValue) => {
-        const normalized = Array.isArray(nextValue) ? nextValue[0] ?? '' : nextValue;
+        const normalized = Array.isArray(nextValue) ? (nextValue[0] ?? '') : nextValue;
         const match = options.find((option) => option.value === normalized);
         onChange(normalized, match?.label);
       }}

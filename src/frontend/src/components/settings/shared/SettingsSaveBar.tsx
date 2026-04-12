@@ -5,19 +5,19 @@ interface SettingsSaveBarProps {
 
 export const SettingsSaveBar = ({ onSave, isSaving }: SettingsSaveBarProps) => (
   <div
-    className="shrink-0 px-6 py-4 border-t border-(--border-muted) bg-(--bg) animate-slide-up"
+    className="animate-slide-up shrink-0 border-t border-(--border-muted) bg-(--bg) px-6 py-4"
     style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
   >
     <button
-      onClick={() => { void onSave(); }}
+      onClick={() => {
+        void onSave();
+      }}
       disabled={isSaving}
-      className="w-full py-2.5 px-4 rounded-lg font-medium transition-colors
-                 bg-sky-600 text-white hover:bg-sky-700
-                 disabled:opacity-50 disabled:cursor-not-allowed"
+      className="w-full rounded-lg bg-sky-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
     >
       {isSaving ? (
         <span className="flex items-center justify-center gap-2">
-          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+          <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
             <circle
               className="opacity-25"
               cx="12"

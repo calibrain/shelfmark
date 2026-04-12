@@ -1,7 +1,7 @@
-import * as assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
-import { RequestRecord } from '../types/index.js';
-import { applyRequestUpdateEvent, upsertRequestRecord } from '../hooks/useRequests.helpers.js';
+import { describe, it, expect } from 'vitest';
+
+import { applyRequestUpdateEvent, upsertRequestRecord } from '../hooks/useRequests.helpers';
+import { RequestRecord } from '../types/index';
 
 const makeRequest = (overrides: Partial<RequestRecord> = {}): RequestRecord => ({
   id: 1,
@@ -29,7 +29,7 @@ describe('useRequests helpers', () => {
 
     const result = upsertRequestRecord([older], newer);
 
-    assert.deepEqual(result.map((row) => row.id), [2, 1]);
+    expect(result.map((row) => row.id)).toEqual([2, 1]);
   });
 
   it('upsertRequestRecord replaces existing items by id', () => {
@@ -38,9 +38,9 @@ describe('useRequests helpers', () => {
 
     const result = upsertRequestRecord([base], updated);
 
-    assert.equal(result.length, 1);
-    assert.equal(result[0].id, 8);
-    assert.equal(result[0].status, 'fulfilled');
+    expect(result.length).toBe(1);
+    expect(result[0].id).toBe(8);
+    expect(result[0].status).toBe('fulfilled');
   });
 
   it('applyRequestUpdateEvent updates matching request status', () => {
@@ -51,8 +51,8 @@ describe('useRequests helpers', () => {
       status: 'rejected',
     });
 
-    assert.equal(result.found, true);
-    assert.equal(result.records[0].status, 'rejected');
+    expect(result.found).toBe(true);
+    expect(result.records[0].status).toBe('rejected');
   });
 
   it('applyRequestUpdateEvent no-ops when request is missing', () => {
@@ -63,8 +63,8 @@ describe('useRequests helpers', () => {
       status: 'cancelled',
     });
 
-    assert.equal(result.found, false);
-    assert.equal(result.records.length, 1);
-    assert.equal(result.records[0].status, 'pending');
+    expect(result.found).toBe(false);
+    expect(result.records.length).toBe(1);
+    expect(result.records[0].status).toBe('pending');
   });
 });

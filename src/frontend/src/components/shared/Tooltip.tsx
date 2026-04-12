@@ -121,7 +121,7 @@ export function Tooltip({
       if (tooltipRect.left < viewportPadding) {
         deltaX = viewportPadding - tooltipRect.left;
       } else if (tooltipRect.right > window.innerWidth - viewportPadding) {
-        deltaX = (window.innerWidth - viewportPadding) - tooltipRect.right;
+        deltaX = window.innerWidth - viewportPadding - tooltipRect.right;
       }
     }
 
@@ -131,7 +131,7 @@ export function Tooltip({
       if (tooltipRect.top < viewportPadding) {
         deltaY = viewportPadding - tooltipRect.top;
       } else if (tooltipRect.bottom > window.innerHeight - viewportPadding) {
-        deltaY = (window.innerHeight - viewportPadding) - tooltipRect.bottom;
+        deltaY = window.innerHeight - viewportPadding - tooltipRect.bottom;
       }
     }
 
@@ -188,30 +188,35 @@ export function Tooltip({
       >
         {children}
       </div>
-      {hasContent && isVisible && coords && createPortal(
-        <div
-          ref={tooltipRef}
-          role="tooltip"
-          onMouseEnter={interactive ? handleTooltipMouseEnter : undefined}
-          onMouseLeave={interactive ? handleTooltipMouseLeave : undefined}
-          className={`fixed z-9999 ${interactive ? 'select-text cursor-auto' : 'pointer-events-none'} ${tooltipSizeClass} ${transformClass} ${className}`}
-          style={{
-            top: coords.top,
-            left: coords.left,
-            ...(unstyled ? {} : {
-              background: 'var(--bg)',
-              color: 'var(--text)',
-              border: isPlainTextContent ? 'none' : '1px solid var(--border-muted)',
-              boxShadow: isPlainTextContent
-                ? '0 8px 18px rgba(0, 0, 0, 0.28)'
-                : '0 10px 22px rgba(0, 0, 0, 0.28)',
-            }),
-          }}
-        >
-          {content}
-        </div>,
-        document.body
-      )}
+      {hasContent &&
+        isVisible &&
+        coords &&
+        createPortal(
+          <div
+            ref={tooltipRef}
+            role="tooltip"
+            onMouseEnter={interactive ? handleTooltipMouseEnter : undefined}
+            onMouseLeave={interactive ? handleTooltipMouseLeave : undefined}
+            className={`fixed z-9999 ${interactive ? 'cursor-auto select-text' : 'pointer-events-none'} ${tooltipSizeClass} ${transformClass} ${className}`}
+            style={{
+              top: coords.top,
+              left: coords.left,
+              ...(unstyled
+                ? {}
+                : {
+                    background: 'var(--bg)',
+                    color: 'var(--text)',
+                    border: isPlainTextContent ? 'none' : '1px solid var(--border-muted)',
+                    boxShadow: isPlainTextContent
+                      ? '0 8px 18px rgba(0, 0, 0, 0.28)'
+                      : '0 10px 22px rgba(0, 0, 0, 0.28)',
+                  }),
+            }}
+          >
+            {content}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

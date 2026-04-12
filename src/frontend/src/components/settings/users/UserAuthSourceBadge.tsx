@@ -1,8 +1,5 @@
 import { AdminUser } from '../../../services/api';
-import {
-  AUTH_SOURCE_BADGE_CLASSES,
-  AUTH_SOURCE_LABEL,
-} from './types';
+import { AUTH_SOURCE_BADGE_CLASSES, AUTH_SOURCE_LABEL } from './types';
 
 interface UserAuthSourceBadgeProps {
   user: AdminUser;
@@ -12,7 +9,8 @@ interface UserAuthSourceBadgeProps {
 export const UserAuthSourceBadge = ({ user, showInactive = true }: UserAuthSourceBadgeProps) => {
   const authSource = user.auth_source;
   const active = user.is_active !== false;
-  const badgeBase = 'inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium leading-none';
+  const badgeBase =
+    'inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium leading-none';
 
   return (
     <>
@@ -20,9 +18,7 @@ export const UserAuthSourceBadge = ({ user, showInactive = true }: UserAuthSourc
         {AUTH_SOURCE_LABEL[authSource]}
       </span>
       {showInactive && !active && (
-        <span className={`${badgeBase} bg-zinc-500/10 opacity-80`}>
-          Inactive
-        </span>
+        <span className={`${badgeBase} bg-zinc-500/10 opacity-80`}>Inactive</span>
       )}
     </>
   );

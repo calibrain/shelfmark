@@ -46,7 +46,7 @@ function splitAuthorString(author: string): string[] {
 
 export function getBookTitleCandidates(
   uiBook: Book | null,
-  responseBook: ReleasesResponse['book'] | undefined
+  responseBook: ReleasesResponse['book'] | undefined,
 ): string[] {
   return collectNormalizedStrings([
     responseBook?.search_title,
@@ -60,7 +60,7 @@ export function getBookTitleCandidates(
 
 export function getBookAuthorCandidates(
   uiBook: Book | null,
-  responseBook: ReleasesResponse['book'] | undefined
+  responseBook: ReleasesResponse['book'] | undefined,
 ): string[] {
   const responseAuthors = responseBook?.authors ?? [];
   const uiAuthors = uiBook?.authors ?? [];
@@ -101,10 +101,27 @@ function hasAuthorMatch(release: Release, authorCandidates: string[]): boolean {
   });
 }
 
-const STOP_WORDS = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'in', 'to', 'for', 'on', 'at', 'by', 'is']);
+const STOP_WORDS = new Set([
+  'a',
+  'an',
+  'the',
+  'and',
+  'or',
+  'of',
+  'in',
+  'to',
+  'for',
+  'on',
+  'at',
+  'by',
+  'is',
+]);
 
 function removeStopWords(text: string): string {
-  return text.split(' ').filter((w) => !STOP_WORDS.has(w)).join(' ');
+  return text
+    .split(' ')
+    .filter((w) => !STOP_WORDS.has(w))
+    .join(' ');
 }
 
 function getTitleMatchScore(title: string, titleCandidate: string): number {
@@ -126,7 +143,10 @@ function getTitleMatchScore(title: string, titleCandidate: string): number {
 
   if (normalizedTitle.startsWith(titleCandidate) || strippedTitle.startsWith(strippedCandidate)) {
     score += 6000;
-  } else if (normalizedTitle.includes(titleCandidate) || strippedTitle.includes(strippedCandidate)) {
+  } else if (
+    normalizedTitle.includes(titleCandidate) ||
+    strippedTitle.includes(strippedCandidate)
+  ) {
     score += 3000;
   }
 
@@ -147,7 +167,7 @@ function getTitleMatchScore(title: string, titleCandidate: string): number {
 export function sortReleasesByBookMatch(
   releases: Release[],
   titleCandidates: string[],
-  authorCandidates: string[]
+  authorCandidates: string[],
 ): Release[] {
   if (titleCandidates.length === 0) {
     return releases;
@@ -157,9 +177,11 @@ export function sortReleasesByBookMatch(
     .map((release, index) => ({
       release,
       index,
-      score: titleCandidates.reduce((best, candidate) => (
-        Math.max(best, getTitleMatchScore(release.title, candidate))
-      ), 0) + (hasAuthorMatch(release, authorCandidates) ? 1500 : 0),
+      score:
+        titleCandidates.reduce(
+          (best, candidate) => Math.max(best, getTitleMatchScore(release.title, candidate)),
+          0,
+        ) + (hasAuthorMatch(release, authorCandidates) ? 1500 : 0),
     }))
     .sort((a, b) => {
       const scoreDiff = b.score - a.score;

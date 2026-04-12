@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
+
 import { AdminUser, DeliveryPreferencesResponse, DownloadDefaults } from '../../../services/api';
 import { CreateUserFormState, INITIAL_CREATE_FORM } from './types';
-import { UserEditContext } from './useUsersFetch';
 import { useUserOverridesState } from './useUserOverridesState';
+import { UserEditContext } from './useUsersFetch';
 
 export const useUserForm = () => {
   const [createForm, setCreateForm] = useState<CreateUserFormState>({ ...INITIAL_CREATE_FORM });
@@ -10,12 +11,16 @@ export const useUserForm = () => {
   const [editPassword, setEditPassword] = useState('');
   const [editPasswordConfirm, setEditPasswordConfirm] = useState('');
   const [downloadDefaults, setDownloadDefaults] = useState<DownloadDefaults | null>(null);
-  const [deliveryPreferences, setDeliveryPreferences] = useState<DeliveryPreferencesResponse | null>(null);
-  const [searchPreferences, setSearchPreferences] = useState<DeliveryPreferencesResponse | null>(null);
-  const [notificationPreferences, setNotificationPreferences] = useState<DeliveryPreferencesResponse | null>(null);
+  const [deliveryPreferences, setDeliveryPreferences] =
+    useState<DeliveryPreferencesResponse | null>(null);
+  const [searchPreferences, setSearchPreferences] = useState<DeliveryPreferencesResponse | null>(
+    null,
+  );
+  const [notificationPreferences, setNotificationPreferences] =
+    useState<DeliveryPreferencesResponse | null>(null);
   const preferenceGroups = useMemo(
     () => [deliveryPreferences, searchPreferences, notificationPreferences],
-    [deliveryPreferences, searchPreferences, notificationPreferences]
+    [deliveryPreferences, searchPreferences, notificationPreferences],
   );
   const {
     userSettings,

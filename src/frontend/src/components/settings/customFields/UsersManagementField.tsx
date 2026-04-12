@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import {
-  AdminUser,
-  testAdminUserNotificationPreferences,
-} from '../../../services/api';
-import { CustomSettingsFieldRendererProps } from './types';
+
+import { AdminUser, testAdminUserNotificationPreferences } from '../../../services/api';
 import {
   canCreateLocalUsersForAuthMode,
   UserListView,
@@ -13,6 +10,7 @@ import {
   useUsersFetch,
   useUsersPanelState,
 } from '../users';
+import { CustomSettingsFieldRendererProps } from './types';
 
 export const UsersManagementField = ({
   tab: usersTab,
@@ -27,13 +25,9 @@ export const UsersManagementField = ({
   const { route, openCreate, openEdit, openEditOverrides, backToList } = useUsersPanelState();
   const activeEditRequestIdRef = useRef(0);
 
-  const {
-    users,
-    loading,
-    loadError,
-    fetchUsers,
-    fetchUserEditContext,
-  } = useUsersFetch({ onShowToast });
+  const { users, loading, loadError, fetchUsers, fetchUserEditContext } = useUsersFetch({
+    onShowToast,
+  });
 
   const {
     createForm,
@@ -115,7 +109,7 @@ export const UsersManagementField = ({
   };
 
   const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode || 'none');
-  const needsLocalAdmin = !users.some(u => u.role === 'admin' && u.auth_source === 'builtin');
+  const needsLocalAdmin = !users.some((u) => u.role === 'admin' && u.auth_source === 'builtin');
 
   const handleBackToList = () => {
     onUiStateChange('routeKind', 'list');
@@ -209,21 +203,27 @@ export const UsersManagementField = ({
     await handleSaveUserOverridesRef.current();
   }, []);
 
-  const handleTestNotificationRoutes = useCallback(async (routes: Array<Record<string, unknown>>) => {
-    if (!editingUser) {
-      return { success: false, message: 'No user selected for notification test.' };
-    }
-    return testAdminUserNotificationPreferences(editingUser.id, routes);
-  }, [editingUser]);
+  const handleTestNotificationRoutes = useCallback(
+    async (routes: Array<Record<string, unknown>>) => {
+      if (!editingUser) {
+        return { success: false, message: 'No user selected for notification test.' };
+      }
+      return testAdminUserNotificationPreferences(editingUser.id, routes);
+    },
+    [editingUser],
+  );
 
-  const handleDeleteUser = useCallback(async (userId: number) => {
-    const ok = await deleteUser(userId);
-    if (ok) {
-      onRefreshOverrideSummary?.();
-      onRefreshAuth?.();
-    }
-    return ok;
-  }, [deleteUser, onRefreshAuth, onRefreshOverrideSummary]);
+  const handleDeleteUser = useCallback(
+    async (userId: number) => {
+      const ok = await deleteUser(userId);
+      if (ok) {
+        onRefreshOverrideSummary?.();
+        onRefreshAuth?.();
+      }
+      return ok;
+    },
+    [deleteUser, onRefreshAuth, onRefreshOverrideSummary],
+  );
 
   useEffect(() => {
     if (route.kind !== 'edit-overrides') {
@@ -241,7 +241,7 @@ export const UsersManagementField = ({
   if (route.kind === 'edit-overrides') {
     if (!editingUser || editingUser.id !== route.userId) {
       return (
-        <div className="flex items-center justify-center text-sm opacity-60 py-8">
+        <div className="flex items-center justify-center py-8 text-sm opacity-60">
           Loading user details...
         </div>
       );

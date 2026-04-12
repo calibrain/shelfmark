@@ -1,7 +1,7 @@
 import { DeliveryPreferencesResponse } from '../../../services/api';
-import { PerUserSettings } from './types';
-import { SettingsSubpage } from '../shared';
 import { ActionResult, SettingsTab } from '../../../types/settings';
+import { SettingsSubpage } from '../shared';
+import { PerUserSettings } from './types';
 import { UserOverridesSections } from './UserOverridesSections';
 
 interface UserOverridesViewProps {
@@ -38,10 +38,10 @@ export const UserOverridesView = ({
       <div>
         <button
           onClick={onBack}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-(--border-muted)                     bg-(--bg) hover:bg-(--hover-surface) transition-colors"
+          className="inline-flex items-center gap-2 rounded-lg border border-(--border-muted) bg-(--bg) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
         >
           <svg
-            className="w-4 h-4"
+            className="h-4 w-4"
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"
@@ -73,9 +73,5 @@ export const UserOverridesView = ({
     return content;
   }
 
-  return (
-    <SettingsSubpage hasBottomSaveBar={hasChanges}>
-      {content}
-    </SettingsSubpage>
-  );
+  return <SettingsSubpage hasBottomSaveBar={hasChanges}>{content}</SettingsSubpage>;
 };

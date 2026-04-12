@@ -9,9 +9,9 @@ type ValueBearingField = Exclude<
 
 export function getFieldValue(field: SettingsField): unknown {
   if (
-    field.type === 'ActionButton'
-    || field.type === 'HeadingField'
-    || field.type === 'CustomComponentField'
+    field.type === 'ActionButton' ||
+    field.type === 'HeadingField' ||
+    field.type === 'CustomComponentField'
   ) {
     return undefined;
   }
@@ -67,17 +67,20 @@ export function extractSettingsValues(tabs: SettingsTab[]): SettingsValues {
 
 export function getRestartRequiredFieldKeys(
   fields: SettingsField[],
-  changedValues: Record<string, unknown>
+  changedValues: Record<string, unknown>,
 ): string[] {
   return getValueBearingFields(fields)
-    .filter((field) => field.requiresRestart && Object.prototype.hasOwnProperty.call(changedValues, field.key))
+    .filter(
+      (field) =>
+        field.requiresRestart && Object.prototype.hasOwnProperty.call(changedValues, field.key),
+    )
     .map((field) => field.key);
 }
 
 export function settingsTabMatchesSavedValues(
   tabName: string,
   tabs: SettingsTab[],
-  expectedValues: Record<string, unknown>
+  expectedValues: Record<string, unknown>,
 ): boolean {
   const tab = tabs.find((entry) => entry.name === tabName);
   if (!tab) {
@@ -113,7 +116,7 @@ export function cloneSettingsValues(values: SettingsValues): SettingsValues {
 export function mergeFetchedSettingsWithDirtyValues(
   fetchedValues: SettingsValues,
   currentValues: SettingsValues,
-  originalValues: SettingsValues
+  originalValues: SettingsValues,
 ): SettingsValues {
   const mergedValues: SettingsValues = {};
 

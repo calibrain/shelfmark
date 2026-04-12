@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+
 import { getSettings, updateSettings, executeSettingsAction } from '../services/api';
 import {
   SettingsResponse,
@@ -8,11 +9,6 @@ import {
   UpdateResult,
 } from '../types/settings';
 import {
-  getStoredThemePreference,
-  setThemePreference,
-  THEME_FIELD,
-} from '../utils/themePreference';
-import {
   cloneSettingsValues,
   extractSettingsValues,
   getRestartRequiredFieldKeys,
@@ -21,12 +17,16 @@ import {
   settingsTabMatchesSavedValues,
   type SettingsValues,
 } from '../utils/settingsValues';
+import {
+  getStoredThemePreference,
+  setThemePreference,
+  THEME_FIELD,
+} from '../utils/themePreference';
 
 interface FetchSettingsOptions {
   silent?: boolean;
   preserveDirtyValues?: boolean;
 }
-
 
 interface UseSettingsReturn {
   tabs: SettingsTab[];
@@ -82,12 +82,19 @@ export function useSettings(): UseSettingsReturn {
       setGroups(response.groups || []);
 
       const initialValues = extractSettingsValues(tabsWithTheme);
-      if (initialValues.general && Object.prototype.hasOwnProperty.call(initialValues.general, '_THEME')) {
+      if (
+        initialValues.general &&
+        Object.prototype.hasOwnProperty.call(initialValues.general, '_THEME')
+      ) {
         initialValues.general._THEME = getStoredThemePreference();
       }
 
       const nextValues = preserveDirtyValues
-        ? mergeFetchedSettingsWithDirtyValues(initialValues, valuesRef.current, originalValuesRef.current)
+        ? mergeFetchedSettingsWithDirtyValues(
+            initialValues,
+            valuesRef.current,
+            originalValuesRef.current,
+          )
         : initialValues;
 
       setValues(nextValues);
@@ -97,29 +104,32 @@ export function useSettings(): UseSettingsReturn {
         setSelectedTab((current) => current ?? tabsWithTheme[0].name);
       }
     },
-    []
+    [],
   );
 
-  const fetchSettings = useCallback(async (options: FetchSettingsOptions = {}) => {
-    const { silent = false, preserveDirtyValues = false } = options;
-    if (!silent) {
-      setIsLoading(true);
-      setError(null);
-    }
-    try {
-      const response = await getSettings();
-      applySettingsResponse(response, { preserveDirtyValues });
-    } catch (err) {
-      console.error('Failed to fetch settings:', err);
+  const fetchSettings = useCallback(
+    async (options: FetchSettingsOptions = {}) => {
+      const { silent = false, preserveDirtyValues = false } = options;
       if (!silent) {
-        setError(err instanceof Error ? err.message : 'Failed to load settings');
+        setIsLoading(true);
+        setError(null);
       }
-    } finally {
-      if (!silent) {
-        setIsLoading(false);
+      try {
+        const response = await getSettings();
+        applySettingsResponse(response, { preserveDirtyValues });
+      } catch (err) {
+        console.error('Failed to fetch settings:', err);
+        if (!silent) {
+          setError(err instanceof Error ? err.message : 'Failed to load settings');
+        }
+      } finally {
+        if (!silent) {
+          setIsLoading(false);
+        }
       }
-    }
-  }, [applySettingsResponse]);
+    },
+    [applySettingsResponse],
+  );
 
   useEffect(() => {
     fetchSettings();
@@ -169,7 +179,7 @@ export function useSettings(): UseSettingsReturn {
 
       return false;
     },
-    [values, originalValues, tabs]
+    [values, originalValues, tabs],
   );
 
   const saveTab = useCallback(
@@ -225,7 +235,8 @@ export function useSettings(): UseSettingsReturn {
               applySettingsResponse(response);
               return {
                 success: true,
-                message: 'Settings saved, but the proxy interrupted the response. Latest values were confirmed.',
+                message:
+                  'Settings saved, but the proxy interrupted the response. Latest values were confirmed.',
                 updated: Object.keys(valuesToSave),
                 requiresRestart: restartRequiredFor.length > 0,
                 restartRequiredFor,
@@ -246,7 +257,7 @@ export function useSettings(): UseSettingsReturn {
         setIsSaving(false);
       }
     },
-    [applySettingsResponse, originalValues, tabs, values]
+    [applySettingsResponse, originalValues, tabs, values],
   );
 
   const executeAction = useCallback(
@@ -271,7 +282,7 @@ export function useSettings(): UseSettingsReturn {
         };
       }
     },
-    [values, fetchSettings]
+    [values, fetchSettings],
   );
 
   return {

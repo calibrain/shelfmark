@@ -20,11 +20,7 @@ export const formatSourceLabel = (value: unknown): string => {
     .join(' ');
 };
 
-const buildSeriesLine = (
-  name: string,
-  position: number | null,
-  count: number | null,
-): string => {
+const buildSeriesLine = (name: string, position: number | null, count: number | null): string => {
   if (!name) return '';
   if (position != null) {
     return `#${position}${count ? ` of ${count}` : ''} in ${name}`;
@@ -42,7 +38,7 @@ export interface RequestConfirmationPreview {
 }
 
 export const buildRequestConfirmationPreview = (
-  payload: CreateRequestPayload
+  payload: CreateRequestPayload,
 ): RequestConfirmationPreview => {
   const bookData = payload.book_data || {};
   const releaseData = payload.release_data || {};
@@ -82,7 +78,7 @@ export const buildRequestConfirmationPreview = (
 
 export const truncateRequestNote = (
   value: string,
-  maxLength: number = MAX_REQUEST_NOTE_LENGTH
+  maxLength: number = MAX_REQUEST_NOTE_LENGTH,
 ): string => value.slice(0, maxLength);
 
 export const enrichPreviewFromBook = (
@@ -99,14 +95,14 @@ export const enrichPreviewFromBook = (
   return {
     ...base,
     seriesLine: seriesLine || base.seriesLine,
-    year: (book.year && !base.year) ? book.year : base.year,
+    year: book.year && !base.year ? book.year : base.year,
   };
 };
 
 export const applyRequestNoteToPayload = (
   payload: CreateRequestPayload,
   note: string,
-  allowNotes: boolean
+  allowNotes: boolean,
 ): CreateRequestPayload => {
   const trimmedNote = note.trim();
   const nextPayload: CreateRequestPayload = {

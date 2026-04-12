@@ -10,15 +10,11 @@ import {
   useRef,
   useState,
 } from 'react';
+
 import { useSearchMode } from '../contexts/SearchModeContext';
-import { Tooltip } from './shared/Tooltip';
-import {
-  ContentType,
-  MetadataSearchField,
-  QueryTargetOption,
-  SortOption,
-} from '../types';
 import { DynamicFieldOption, fetchFieldOptions } from '../services/api';
+import { ContentType, MetadataSearchField, QueryTargetOption, SortOption } from '../types';
+import { Tooltip } from './shared/Tooltip';
 
 interface SearchBarProps {
   value: string | number | boolean;
@@ -91,25 +87,65 @@ const autocompleteOptionsCache = new Map<string, DynamicFieldOption[]>();
 const AUTOCOMPLETE_CACHE_MAX = 100;
 
 const BookIcon = () => (
-  <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" aria-hidden="true">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+  <svg
+    className="h-5 w-5 shrink-0"
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth="1.5"
+    stroke="currentColor"
+    aria-hidden="true"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"
+    />
   </svg>
 );
 
 const AudiobookIcon = () => (
-  <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" aria-hidden="true">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z" />
+  <svg
+    className="h-5 w-5 shrink-0"
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth="1.5"
+    stroke="currentColor"
+    aria-hidden="true"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M19.114 5.636a9 9 0 0 1 0 12.728M16.463 8.288a5.25 5.25 0 0 1 0 7.424M6.75 8.25l4.72-4.72a.75.75 0 0 1 1.28.53v15.88a.75.75 0 0 1-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.009 9.009 0 0 1 2.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75Z"
+    />
   </svg>
 );
 
 const BothIcon = () => (
-  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" aria-hidden="true">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+  <svg
+    className="h-5 w-5"
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth="1.5"
+    stroke="currentColor"
+    aria-hidden="true"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
+    />
   </svg>
 );
 
 const CheckIcon = ({ className = 'w-3.5 h-3.5' }: { className?: string }) => (
-  <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" aria-hidden="true">
+  <svg
+    className={className}
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth="2.5"
+    stroke="currentColor"
+    aria-hidden="true"
+  >
     <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
   </svg>
 );
@@ -156,462 +192,496 @@ const getClearedValue = (field?: MetadataSearchField | null): string | boolean =
   return '';
 };
 
-export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
-  value,
-  valueLabel,
-  onChange,
-  onSubmit,
-  isLoading = false,
-  onAdvancedToggle,
-  isAdvancedActive = false,
-  placeholder,
-  inputAriaLabel = 'Search books',
-  className = '',
-  inputClassName = '',
-  controlsClassName = '',
-  clearButtonLabel = 'Clear search input',
-  clearButtonTitle = 'Clear search',
-  searchButtonLabel = 'Search books',
-  searchButtonTitle = 'Search',
-  autoComplete = 'off',
-  enterKeyHint = 'search',
-  contentType = 'ebook',
-  onContentTypeChange,
-  allowedContentTypes,
-  combinedMode = false,
-  onCombinedModeChange,
-  queryTargets = [],
-  activeQueryTarget = 'general',
-  onQueryTargetChange,
-  activeQueryField,
-  disabled = false,
-}, ref) => {
-  const { searchMode } = useSearchMode();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const onSubmitRef = useRef(onSubmit);
-  onSubmitRef.current = onSubmit;
-  const selectorRef = useRef<HTMLDivElement>(null);
-  const hasSearchQuery = hasActiveValue(value);
-  const [isSelectorOpen, setIsSelectorOpen] = useState(false);
-  const [dynamicOptions, setDynamicOptions] = useState<SortOption[]>([]);
-  const [isDynamicLoading, setIsDynamicLoading] = useState(false);
-  const [isSelectOpen, setIsSelectOpen] = useState(false);
-  const [autocompleteOptions, setAutocompleteOptions] = useState<DynamicFieldOption[]>([]);
-  const [isAutocompleteLoading, setIsAutocompleteLoading] = useState(false);
-  const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
-  const [textInputValue, setTextInputValue] = useState('');
-  const selectTriggerRef = useRef<HTMLButtonElement>(null);
-  const selectPanelRef = useRef<HTMLDivElement>(null);
-  const autocompletePanelRef = useRef<HTMLDivElement>(null);
-  const selectorHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const deferredTextInputValue = useDeferredValue(textInputValue);
+export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
+  (
+    {
+      value,
+      valueLabel,
+      onChange,
+      onSubmit,
+      isLoading = false,
+      onAdvancedToggle,
+      isAdvancedActive = false,
+      placeholder,
+      inputAriaLabel = 'Search books',
+      className = '',
+      inputClassName = '',
+      controlsClassName = '',
+      clearButtonLabel = 'Clear search input',
+      clearButtonTitle = 'Clear search',
+      searchButtonLabel = 'Search books',
+      searchButtonTitle = 'Search',
+      autoComplete = 'off',
+      enterKeyHint = 'search',
+      contentType = 'ebook',
+      onContentTypeChange,
+      allowedContentTypes,
+      combinedMode = false,
+      onCombinedModeChange,
+      queryTargets = [],
+      activeQueryTarget = 'general',
+      onQueryTargetChange,
+      activeQueryField,
+      disabled = false,
+    },
+    ref,
+  ) => {
+    const { searchMode } = useSearchMode();
+    const inputRef = useRef<HTMLInputElement>(null);
+    const buttonRef = useRef<HTMLButtonElement>(null);
+    const onSubmitRef = useRef(onSubmit);
+    onSubmitRef.current = onSubmit;
+    const selectorRef = useRef<HTMLDivElement>(null);
+    const hasSearchQuery = hasActiveValue(value);
+    const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+    const [dynamicOptions, setDynamicOptions] = useState<SortOption[]>([]);
+    const [isDynamicLoading, setIsDynamicLoading] = useState(false);
+    const [isSelectOpen, setIsSelectOpen] = useState(false);
+    const [autocompleteOptions, setAutocompleteOptions] = useState<DynamicFieldOption[]>([]);
+    const [isAutocompleteLoading, setIsAutocompleteLoading] = useState(false);
+    const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
+    const [textInputValue, setTextInputValue] = useState('');
+    const selectTriggerRef = useRef<HTMLButtonElement>(null);
+    const selectPanelRef = useRef<HTMLDivElement>(null);
+    const autocompletePanelRef = useRef<HTMLDivElement>(null);
+    const selectorHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const deferredTextInputValue = useDeferredValue(textInputValue);
 
-  const hasMultipleContentTypes = !allowedContentTypes || allowedContentTypes.length !== 1;
-  const showContentTypeSelector = searchMode !== 'direct' && !!onContentTypeChange && hasMultipleContentTypes;
-  const showQueryTargetSelector = showContentTypeSelector || queryTargets.length > 1;
-  const inputPaddingClass = showQueryTargetSelector
-    ? 'pl-3 rounded-r-full'
-    : 'pl-4 rounded-full';
-  const searchInputClass = [
-    'w-full min-w-0 py-3 border-0 outline-hidden search-input bg-transparent',
-    inputPaddingClass,
-  ].join(' ');
+    const hasMultipleContentTypes = !allowedContentTypes || allowedContentTypes.length !== 1;
+    const showContentTypeSelector =
+      searchMode !== 'direct' && !!onContentTypeChange && hasMultipleContentTypes;
+    const showQueryTargetSelector = showContentTypeSelector || queryTargets.length > 1;
+    const inputPaddingClass = showQueryTargetSelector ? 'pl-3 rounded-r-full' : 'pl-4 rounded-full';
+    const searchInputClass = [
+      'w-full min-w-0 py-3 border-0 outline-hidden search-input bg-transparent',
+      inputPaddingClass,
+    ].join(' ');
 
-  const activeTarget = useMemo(
-    () => queryTargets.find((target) => target.key === activeQueryTarget) ?? queryTargets[0],
-    [queryTargets, activeQueryTarget],
-  );
-  const showActiveTargetLabel = Boolean(activeTarget && activeTarget.source !== 'general');
+    const activeTarget = useMemo(
+      () => queryTargets.find((target) => target.key === activeQueryTarget) ?? queryTargets[0],
+      [queryTargets, activeQueryTarget],
+    );
+    const showActiveTargetLabel = Boolean(activeTarget && activeTarget.source !== 'general');
 
-  useDismiss(isSelectorOpen, [selectorRef], () => setIsSelectorOpen(false));
-  useDismiss(isSelectOpen, [selectPanelRef, selectTriggerRef], () => setIsSelectOpen(false));
-  useDismiss(isAutocompleteOpen, [autocompletePanelRef, inputRef], () => setIsAutocompleteOpen(false));
+    useDismiss(isSelectorOpen, [selectorRef], () => setIsSelectorOpen(false));
+    useDismiss(isSelectOpen, [selectPanelRef, selectTriggerRef], () => setIsSelectOpen(false));
+    useDismiss(isAutocompleteOpen, [autocompletePanelRef, inputRef], () =>
+      setIsAutocompleteOpen(false),
+    );
 
-  // Clean up hover timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (selectorHoverTimeout.current) clearTimeout(selectorHoverTimeout.current);
-    };
-  }, []);
+    // Clean up hover timeout on unmount
+    useEffect(() => {
+      return () => {
+        if (selectorHoverTimeout.current) clearTimeout(selectorHoverTimeout.current);
+      };
+    }, []);
 
-  // Auto-open select dropdown only when transitioning into a select field.
-  // Initialise the ref to the current key so that mounting with an already-
-  // active select field (e.g. the Header SearchBar after first search)
-  // doesn't count as a field change. Using `if (fieldChanged)` instead of
-  // always calling setIsSelectOpen avoids StrictMode's second effect
-  // invocation resetting the state set by the first.
-  const prevFieldKeyRef = useRef<string | undefined>(activeQueryField?.key);
-  useEffect(() => {
-    const isSelect = activeQueryField?.type === 'SelectSearchField' || activeQueryField?.type === 'DynamicSelectSearchField';
-    const fieldChanged = activeQueryField?.key !== prevFieldKeyRef.current;
-    prevFieldKeyRef.current = activeQueryField?.key;
+    // Auto-open select dropdown only when transitioning into a select field.
+    // Initialise the ref to the current key so that mounting with an already-
+    // active select field (e.g. the Header SearchBar after first search)
+    // doesn't count as a field change. Using `if (fieldChanged)` instead of
+    // always calling setIsSelectOpen avoids StrictMode's second effect
+    // invocation resetting the state set by the first.
+    const prevFieldKeyRef = useRef<string | undefined>(activeQueryField?.key);
+    useEffect(() => {
+      const isSelect =
+        activeQueryField?.type === 'SelectSearchField' ||
+        activeQueryField?.type === 'DynamicSelectSearchField';
+      const fieldChanged = activeQueryField?.key !== prevFieldKeyRef.current;
+      prevFieldKeyRef.current = activeQueryField?.key;
 
-    if (fieldChanged) {
-      setIsSelectOpen(isSelect);
-    }
-    setIsAutocompleteOpen(false);
-    setAutocompleteOptions([]);
-  }, [activeQueryField?.key, activeQueryField?.type]);
-
-  // Load dynamic options when a DynamicSelectSearchField is active
-  const dynamicEndpoint =
-    activeQueryField?.type === 'DynamicSelectSearchField'
-      ? activeQueryField.options_endpoint
-      : null;
-  const autocompleteEndpoint =
-    activeQueryField?.type === 'TextSearchField'
-      ? activeQueryField.suggestions_endpoint ?? null
-      : null;
-  const autocompleteMinQueryLength =
-    activeQueryField?.type === 'TextSearchField'
-      ? activeQueryField.suggestions_min_query_length ?? 2
-      : 2;
-  const autocompleteEmptyMessage =
-    activeQueryField?.key === 'author'
-      ? 'No authors found'
-      : activeQueryField?.key === 'title'
-        ? 'No titles found'
-        : activeQueryField?.key === 'series'
-          ? 'No series found'
-          : 'No suggestions found';
-
-  useEffect(() => {
-    if (!dynamicEndpoint) {
-      setDynamicOptions([]);
-      return;
-    }
-
-    let cancelled = false;
-    setIsDynamicLoading(true);
-
-    fetchFieldOptions(dynamicEndpoint).then((loaded) => {
-      if (cancelled) return;
-      setDynamicOptions(loaded.map((o) => ({ value: o.value, label: o.label, group: o.group })));
-      setIsDynamicLoading(false);
-    }).catch(() => {
-      if (cancelled) return;
-      setDynamicOptions([]);
-      setIsDynamicLoading(false);
-    });
-
-    return () => { cancelled = true; };
-  }, [dynamicEndpoint]);
-
-  useEffect(() => {
-    if (!autocompleteEndpoint && activeQueryField?.type !== 'TextSearchField') {
-      setTextInputValue(typeof value === 'string' ? value : String(value ?? ''));
-      return;
-    }
-
-    const nextValue =
-      autocompleteEndpoint && valueLabel && typeof value === 'string' && value.trim() !== ''
-        ? valueLabel
-        : typeof value === 'string'
-          ? value
-          : String(value ?? '');
-
-    setTextInputValue(nextValue);
-  }, [activeQueryField?.key, activeQueryField?.type, autocompleteEndpoint, value, valueLabel]);
-
-  useEffect(() => {
-    if (!autocompleteEndpoint || !isAutocompleteOpen) {
+      if (fieldChanged) {
+        setIsSelectOpen(isSelect);
+      }
+      setIsAutocompleteOpen(false);
       setAutocompleteOptions([]);
-      setIsAutocompleteLoading(false);
-      return;
-    }
+    }, [activeQueryField?.key, activeQueryField?.type]);
 
-    const normalizedQuery = deferredTextInputValue.trim();
-    if (normalizedQuery.length < autocompleteMinQueryLength) {
-      setAutocompleteOptions([]);
-      setIsAutocompleteLoading(false);
-      return;
-    }
+    // Load dynamic options when a DynamicSelectSearchField is active
+    const dynamicEndpoint =
+      activeQueryField?.type === 'DynamicSelectSearchField'
+        ? activeQueryField.options_endpoint
+        : null;
+    const autocompleteEndpoint =
+      activeQueryField?.type === 'TextSearchField'
+        ? (activeQueryField.suggestions_endpoint ?? null)
+        : null;
+    const autocompleteMinQueryLength =
+      activeQueryField?.type === 'TextSearchField'
+        ? (activeQueryField.suggestions_min_query_length ?? 2)
+        : 2;
+    const autocompleteEmptyMessage =
+      activeQueryField?.key === 'author'
+        ? 'No authors found'
+        : activeQueryField?.key === 'title'
+          ? 'No titles found'
+          : activeQueryField?.key === 'series'
+            ? 'No series found'
+            : 'No suggestions found';
 
-    const cacheKey = `${autocompleteEndpoint}::${normalizedQuery.toLowerCase()}`;
-    if (autocompleteOptionsCache.has(cacheKey)) {
-      startTransition(() => {
-        setAutocompleteOptions(autocompleteOptionsCache.get(cacheKey) ?? []);
-      });
-      setIsAutocompleteLoading(false);
-      return;
-    }
+    useEffect(() => {
+      if (!dynamicEndpoint) {
+        setDynamicOptions([]);
+        return;
+      }
 
-    let cancelled = false;
-    const timeoutId = window.setTimeout(() => {
-      setIsAutocompleteLoading(true);
-      fetchFieldOptions(autocompleteEndpoint, normalizedQuery)
+      let cancelled = false;
+      setIsDynamicLoading(true);
+
+      fetchFieldOptions(dynamicEndpoint)
         .then((loaded) => {
           if (cancelled) return;
-          if (autocompleteOptionsCache.size >= AUTOCOMPLETE_CACHE_MAX) {
-            const oldest = autocompleteOptionsCache.keys().next().value;
-            if (oldest !== undefined) autocompleteOptionsCache.delete(oldest);
-          }
-          autocompleteOptionsCache.set(cacheKey, loaded);
-          startTransition(() => {
-            setAutocompleteOptions(loaded);
-          });
-          setIsAutocompleteLoading(false);
+          setDynamicOptions(
+            loaded.map((o) => ({ value: o.value, label: o.label, group: o.group })),
+          );
+          setIsDynamicLoading(false);
         })
         .catch(() => {
           if (cancelled) return;
-          startTransition(() => {
-            setAutocompleteOptions([]);
-          });
-          setIsAutocompleteLoading(false);
+          setDynamicOptions([]);
+          setIsDynamicLoading(false);
         });
-    }, 260);
 
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeoutId);
-    };
-  }, [autocompleteEndpoint, autocompleteMinQueryLength, deferredTextInputValue, isAutocompleteOpen]);
+      return () => {
+        cancelled = true;
+      };
+    }, [dynamicEndpoint]);
 
-  // Resolve options for any select-type field
-  const selectOptions: SortOption[] = useMemo(() => {
-    if (activeQueryField?.type === 'SelectSearchField') {
-      return activeQueryField.options;
-    }
-    if (activeQueryField?.type === 'DynamicSelectSearchField') {
-      return dynamicOptions;
-    }
-    return [];
-  }, [activeQueryField, dynamicOptions]);
-
-  const isSelectField = activeQueryField?.type === 'SelectSearchField' || activeQueryField?.type === 'DynamicSelectSearchField';
-
-  useImperativeHandle(ref, () => ({
-    submit: () => {
-      buttonRef.current?.click();
-    },
-  }));
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      if (disabled) {
-        e.preventDefault();
+    useEffect(() => {
+      if (!autocompleteEndpoint && activeQueryField?.type !== 'TextSearchField') {
+        setTextInputValue(typeof value === 'string' ? value : String(value ?? ''));
         return;
       }
-      onSubmit();
-      (e.target as HTMLInputElement).blur();
-    }
-  };
 
-  const handleClearSearch = () => {
-    onChange(getClearedValue(activeQueryField));
-    setIsSelectOpen(false);
-    setIsAutocompleteOpen(false);
-    setAutocompleteOptions([]);
-    setTextInputValue('');
-    inputRef.current?.focus();
-  };
+      const nextValue =
+        autocompleteEndpoint && valueLabel && typeof value === 'string' && value.trim() !== ''
+          ? valueLabel
+          : typeof value === 'string'
+            ? value
+            : String(value ?? '');
 
-  const handleContentTypeSelect = (type: ContentType) => {
-    onContentTypeChange?.(type);
-    onCombinedModeChange?.(false);
-    setIsSelectorOpen(false);
-  };
+      setTextInputValue(nextValue);
+    }, [activeQueryField?.key, activeQueryField?.type, autocompleteEndpoint, value, valueLabel]);
 
-  const handleCombinedModeSelect = () => {
-    if (combinedMode) {
-      // Toggle off — revert to ebook-only
+    useEffect(() => {
+      if (!autocompleteEndpoint || !isAutocompleteOpen) {
+        setAutocompleteOptions([]);
+        setIsAutocompleteLoading(false);
+        return;
+      }
+
+      const normalizedQuery = deferredTextInputValue.trim();
+      if (normalizedQuery.length < autocompleteMinQueryLength) {
+        setAutocompleteOptions([]);
+        setIsAutocompleteLoading(false);
+        return;
+      }
+
+      const cacheKey = `${autocompleteEndpoint}::${normalizedQuery.toLowerCase()}`;
+      if (autocompleteOptionsCache.has(cacheKey)) {
+        startTransition(() => {
+          setAutocompleteOptions(autocompleteOptionsCache.get(cacheKey) ?? []);
+        });
+        setIsAutocompleteLoading(false);
+        return;
+      }
+
+      let cancelled = false;
+      const timeoutId = window.setTimeout(() => {
+        setIsAutocompleteLoading(true);
+        fetchFieldOptions(autocompleteEndpoint, normalizedQuery)
+          .then((loaded) => {
+            if (cancelled) return;
+            if (autocompleteOptionsCache.size >= AUTOCOMPLETE_CACHE_MAX) {
+              const oldest = autocompleteOptionsCache.keys().next().value;
+              if (oldest !== undefined) autocompleteOptionsCache.delete(oldest);
+            }
+            autocompleteOptionsCache.set(cacheKey, loaded);
+            startTransition(() => {
+              setAutocompleteOptions(loaded);
+            });
+            setIsAutocompleteLoading(false);
+          })
+          .catch(() => {
+            if (cancelled) return;
+            startTransition(() => {
+              setAutocompleteOptions([]);
+            });
+            setIsAutocompleteLoading(false);
+          });
+      }, 260);
+
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timeoutId);
+      };
+    }, [
+      autocompleteEndpoint,
+      autocompleteMinQueryLength,
+      deferredTextInputValue,
+      isAutocompleteOpen,
+    ]);
+
+    // Resolve options for any select-type field
+    const selectOptions: SortOption[] = useMemo(() => {
+      if (activeQueryField?.type === 'SelectSearchField') {
+        return activeQueryField.options;
+      }
+      if (activeQueryField?.type === 'DynamicSelectSearchField') {
+        return dynamicOptions;
+      }
+      return [];
+    }, [activeQueryField, dynamicOptions]);
+
+    const isSelectField =
+      activeQueryField?.type === 'SelectSearchField' ||
+      activeQueryField?.type === 'DynamicSelectSearchField';
+
+    useImperativeHandle(ref, () => ({
+      submit: () => {
+        buttonRef.current?.click();
+      },
+    }));
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        if (disabled) {
+          e.preventDefault();
+          return;
+        }
+        onSubmit();
+        (e.target as HTMLInputElement).blur();
+      }
+    };
+
+    const handleClearSearch = () => {
+      onChange(getClearedValue(activeQueryField));
+      setIsSelectOpen(false);
+      setIsAutocompleteOpen(false);
+      setAutocompleteOptions([]);
+      setTextInputValue('');
+      inputRef.current?.focus();
+    };
+
+    const handleContentTypeSelect = (type: ContentType) => {
+      onContentTypeChange?.(type);
       onCombinedModeChange?.(false);
-    } else {
-      onContentTypeChange?.('ebook');
-      onCombinedModeChange?.(true);
-    }
-    setIsSelectorOpen(false);
-  };
+      setIsSelectorOpen(false);
+    };
 
-  const handleQueryTargetSelect = (targetKey: string) => {
-    onQueryTargetChange?.(targetKey);
-    setIsSelectorOpen(false);
-  };
+    const handleCombinedModeSelect = () => {
+      if (combinedMode) {
+        // Toggle off — revert to ebook-only
+        onCombinedModeChange?.(false);
+      } else {
+        onContentTypeChange?.('ebook');
+        onCombinedModeChange?.(true);
+      }
+      setIsSelectorOpen(false);
+    };
 
-  const effectivePlaceholder = getDefaultPlaceholder(contentType, activeTarget, placeholder, combinedMode);
-  const effectiveInputAriaLabel = activeTarget
-    ? `${inputAriaLabel}: ${activeTarget.label}`
-    : inputAriaLabel;
+    const handleQueryTargetSelect = (targetKey: string) => {
+      onQueryTargetChange?.(targetKey);
+      setIsSelectorOpen(false);
+    };
 
-  const selectDropdownOpen = isSelectField && isSelectOpen && selectOptions.length > 0;
-  const autocompleteDropdownOpen =
-    Boolean(autocompleteEndpoint)
-    && isAutocompleteOpen
-    && textInputValue.trim().length >= autocompleteMinQueryLength;
-  const wrapperClasses = ['relative flex items-center rounded-full border', className].filter(Boolean).join(' ').trim();
-  const controlsClasses = [
-    'flex items-center gap-1 pr-2 shrink-0',
-    controlsClassName,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .trim();
+    const effectivePlaceholder = getDefaultPlaceholder(
+      contentType,
+      activeTarget,
+      placeholder,
+      combinedMode,
+    );
+    const effectiveInputAriaLabel = activeTarget
+      ? `${inputAriaLabel}: ${activeTarget.label}`
+      : inputAriaLabel;
 
-  const renderActiveInput = () => {
-    if (!activeQueryField || activeQueryField.type === 'TextSearchField') {
-      const inputName = activeQueryField ? `${activeQueryField.key}-search` : 'search-input';
-      return (
-        <input
-          type="search"
-          name={inputName}
-          placeholder={effectivePlaceholder}
-          aria-label={effectiveInputAriaLabel}
-          disabled={disabled}
-          autoComplete={autoComplete}
-          enterKeyHint={enterKeyHint}
-          className={[
-            searchInputClass,
-            'search-input',
-            disabled ? 'opacity-60 cursor-not-allowed' : '',
-            inputClassName,
-          ].filter(Boolean).join(' ')}
-          style={{ color: 'var(--text)' }}
-          value={autocompleteEndpoint ? textInputValue : (typeof value === 'string' ? value : String(value ?? ''))}
-          onChange={(e) => {
-            const nextValue = e.target.value;
-            if (autocompleteEndpoint) {
-              setTextInputValue(nextValue);
-              setIsAutocompleteOpen(nextValue.trim().length >= autocompleteMinQueryLength);
-              setIsSelectOpen(false);
-              setIsSelectorOpen(false);
-              onChange(nextValue);
-              return;
-            }
-            onChange(nextValue);
-          }}
-          onFocus={() => {
-            if (autocompleteEndpoint && textInputValue.trim().length >= autocompleteMinQueryLength) {
-              setIsAutocompleteOpen(true);
-              setIsSelectorOpen(false);
-            }
-          }}
-          onKeyDown={handleKeyDown}
-          ref={inputRef}
-        />
-      );
-    }
+    const selectDropdownOpen = isSelectField && isSelectOpen && selectOptions.length > 0;
+    const autocompleteDropdownOpen =
+      Boolean(autocompleteEndpoint) &&
+      isAutocompleteOpen &&
+      textInputValue.trim().length >= autocompleteMinQueryLength;
+    const wrapperClasses = ['relative flex items-center rounded-full border', className]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    const controlsClasses = ['flex items-center gap-1 pr-2 shrink-0', controlsClassName]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
 
-    switch (activeQueryField.type) {
-      case 'NumberSearchField':
+    const renderActiveInput = () => {
+      if (!activeQueryField || activeQueryField.type === 'TextSearchField') {
+        const inputName = activeQueryField ? `${activeQueryField.key}-search` : 'search-input';
         return (
           <input
-            type="number"
-            name={`${activeQueryField.key}-search`}
+            type="search"
+            name={inputName}
             placeholder={effectivePlaceholder}
             aria-label={effectiveInputAriaLabel}
             disabled={disabled}
+            autoComplete={autoComplete}
             enterKeyHint={enterKeyHint}
-            min={activeQueryField.min}
-            max={activeQueryField.max}
-            step={activeQueryField.step}
             className={[
               searchInputClass,
+              'search-input',
               disabled ? 'opacity-60 cursor-not-allowed' : '',
               inputClassName,
-            ].filter(Boolean).join(' ')}
+            ]
+              .filter(Boolean)
+              .join(' ')}
             style={{ color: 'var(--text)' }}
             value={
-              typeof value === 'number'
-                ? value
+              autocompleteEndpoint
+                ? textInputValue
                 : typeof value === 'string'
                   ? value
-                  : ''
+                  : String(value ?? '')
             }
             onChange={(e) => {
-              const raw = e.target.value;
-              if (!raw) {
-                onChange('');
+              const nextValue = e.target.value;
+              if (autocompleteEndpoint) {
+                setTextInputValue(nextValue);
+                setIsAutocompleteOpen(nextValue.trim().length >= autocompleteMinQueryLength);
+                setIsSelectOpen(false);
+                setIsSelectorOpen(false);
+                onChange(nextValue);
                 return;
               }
-              const nextValue = Number.parseInt(raw, 10);
-              if (!Number.isNaN(nextValue)) {
-                onChange(nextValue);
+              onChange(nextValue);
+            }}
+            onFocus={() => {
+              if (
+                autocompleteEndpoint &&
+                textInputValue.trim().length >= autocompleteMinQueryLength
+              ) {
+                setIsAutocompleteOpen(true);
+                setIsSelectorOpen(false);
               }
             }}
             onKeyDown={handleKeyDown}
             ref={inputRef}
           />
         );
-
-      case 'SelectSearchField':
-      case 'DynamicSelectSearchField': {
-        const currentValue = typeof value === 'string' ? value : String(value ?? '');
-        const selectedOption = selectOptions.find((o) => o.value === currentValue);
-        return (
-          <button
-            ref={selectTriggerRef}
-            type="button"
-            onClick={() => {
-              if (!disabled && !isDynamicLoading) {
-                setIsSelectOpen((prev) => !prev);
-                setIsSelectorOpen(false);
-                setIsAutocompleteOpen(false);
-              }
-            }}
-            disabled={disabled}
-            className={[
-              'w-full text-left py-3 flex items-center gap-2',
-              showQueryTargetSelector ? 'pl-3' : 'pl-4',
-              'pr-2',
-              disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
-            ].filter(Boolean).join(' ')}
-            style={{ color: 'var(--text)' }}
-            aria-haspopup="listbox"
-            aria-expanded={isSelectOpen}
-          >
-            {isDynamicLoading ? (
-              <span className="opacity-50 truncate">Loading…</span>
-            ) : selectedOption ? (
-              <span className="truncate">{selectedOption.label}</span>
-            ) : (
-              <span className="opacity-50 truncate">{effectivePlaceholder}</span>
-            )}
-            <svg
-              className={`w-3.5 h-3.5 opacity-40 shrink-0 transition-transform duration-200 ${isSelectOpen ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              strokeWidth="2"
-              aria-hidden="true"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-            </svg>
-          </button>
-        );
       }
 
-      case 'CheckboxSearchField':
-        return (
-          <label className="flex min-w-0 items-center gap-3 px-4 py-3">
+      switch (activeQueryField.type) {
+        case 'NumberSearchField':
+          return (
             <input
-              type="checkbox"
-              checked={Boolean(value)}
-              onChange={(e) => onChange(e.target.checked)}
-              className="h-4 w-4 rounded-sm border-(--border-muted) text-emerald-500 focus:ring-emerald-500/50"
+              type="number"
+              name={`${activeQueryField.key}-search`}
+              placeholder={effectivePlaceholder}
+              aria-label={effectiveInputAriaLabel}
+              disabled={disabled}
+              enterKeyHint={enterKeyHint}
+              min={activeQueryField.min}
+              max={activeQueryField.max}
+              step={activeQueryField.step}
+              className={[
+                searchInputClass,
+                disabled ? 'opacity-60 cursor-not-allowed' : '',
+                inputClassName,
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              style={{ color: 'var(--text)' }}
+              value={typeof value === 'number' ? value : typeof value === 'string' ? value : ''}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (!raw) {
+                  onChange('');
+                  return;
+                }
+                const nextValue = Number.parseInt(raw, 10);
+                if (!Number.isNaN(nextValue)) {
+                  onChange(nextValue);
+                }
+              }}
+              onKeyDown={handleKeyDown}
+              ref={inputRef}
             />
-            <span className="truncate text-sm" style={{ color: 'var(--text)' }}>
-              {activeQueryField.label}
-            </span>
-          </label>
-        );
+          );
 
-      default:
-        return null;
-    }
-  };
+        case 'SelectSearchField':
+        case 'DynamicSelectSearchField': {
+          const currentValue = typeof value === 'string' ? value : String(value ?? '');
+          const selectedOption = selectOptions.find((o) => o.value === currentValue);
+          return (
+            <button
+              ref={selectTriggerRef}
+              type="button"
+              onClick={() => {
+                if (!disabled && !isDynamicLoading) {
+                  setIsSelectOpen((prev) => !prev);
+                  setIsSelectorOpen(false);
+                  setIsAutocompleteOpen(false);
+                }
+              }}
+              disabled={disabled}
+              className={[
+                'w-full text-left py-3 flex items-center gap-2',
+                showQueryTargetSelector ? 'pl-3' : 'pl-4',
+                'pr-2',
+                disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              style={{ color: 'var(--text)' }}
+              aria-haspopup="listbox"
+              aria-expanded={isSelectOpen}
+            >
+              {isDynamicLoading ? (
+                <span className="truncate opacity-50">Loading…</span>
+              ) : selectedOption ? (
+                <span className="truncate">{selectedOption.label}</span>
+              ) : (
+                <span className="truncate opacity-50">{effectivePlaceholder}</span>
+              )}
+              <svg
+                className={`h-3.5 w-3.5 shrink-0 opacity-40 transition-transform duration-200 ${isSelectOpen ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+              </svg>
+            </button>
+          );
+        }
 
-  return (
-    <div
-      className={wrapperClasses}
-      style={{
-        background: disabled ? 'var(--bg)' : 'var(--bg-soft)',
-        borderColor: 'var(--border-muted)',
-      }}
-    >
+        case 'CheckboxSearchField':
+          return (
+            <label className="flex min-w-0 items-center gap-3 px-4 py-3">
+              <input
+                type="checkbox"
+                checked={Boolean(value)}
+                onChange={(e) => onChange(e.target.checked)}
+                className="h-4 w-4 rounded-sm border-(--border-muted) text-emerald-500 focus:ring-emerald-500/50"
+              />
+              <span className="truncate text-sm" style={{ color: 'var(--text)' }}>
+                {activeQueryField.label}
+              </span>
+            </label>
+          );
+
+        default:
+          return null;
+      }
+    };
+
+    return (
+      <div
+        className={wrapperClasses}
+        style={{
+          background: disabled ? 'var(--bg)' : 'var(--bg-soft)',
+          borderColor: 'var(--border-muted)',
+        }}
+      >
         {showQueryTargetSelector && (
           <div
-            className="relative shrink-0 flex self-stretch"
+            className="relative flex shrink-0 self-stretch"
             ref={selectorRef}
             onPointerEnter={(e) => {
               if (e.pointerType !== 'mouse') return;
@@ -633,21 +703,31 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
           >
             <button
               type="button"
-              onClick={() => { setIsSelectorOpen((prev) => !prev); setIsSelectOpen(false); setIsAutocompleteOpen(false); }}
-              className="flex items-center gap-1.5 pl-5 pr-2 rounded-l-full transition-colors hover-action"
+              onClick={() => {
+                setIsSelectorOpen((prev) => !prev);
+                setIsSelectOpen(false);
+                setIsAutocompleteOpen(false);
+              }}
+              className="hover-action flex items-center gap-1.5 rounded-l-full pr-2 pl-5 transition-colors"
               style={{ color: 'var(--text)' }}
               aria-label={`Searching ${combinedMode ? 'books and audiobooks' : contentType === 'ebook' ? 'books' : 'audiobooks'} by ${activeTarget?.label ?? 'general'}. Click to change.`}
               aria-expanded={isSelectorOpen}
               aria-haspopup="dialog"
             >
-              {combinedMode ? <BothIcon /> : contentType === 'ebook' ? <BookIcon /> : <AudiobookIcon />}
+              {combinedMode ? (
+                <BothIcon />
+              ) : contentType === 'ebook' ? (
+                <BookIcon />
+              ) : (
+                <AudiobookIcon />
+              )}
               {showActiveTargetLabel && (
                 <span className="hidden max-w-24 truncate text-sm font-medium sm:inline">
                   {activeTarget?.label}
                 </span>
               )}
               <svg
-                className={`w-3 h-3 opacity-50 transition-transform duration-200 ${isSelectorOpen ? 'rotate-180' : ''}`}
+                className={`h-3 w-3 opacity-50 transition-transform duration-200 ${isSelectorOpen ? 'rotate-180' : ''}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -659,13 +739,13 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
             </button>
 
             <div
-              className="absolute right-0 top-1/2 -translate-y-1/2 w-px h-6"
+              className="absolute top-1/2 right-0 h-6 w-px -translate-y-1/2"
               style={{ background: 'var(--border-muted)' }}
             />
 
             {isSelectorOpen && (
               <div
-                className="absolute left-0 top-full z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border shadow-2xl animate-fade-in-down"
+                className="animate-fade-in-down absolute top-full left-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border shadow-2xl"
                 style={{
                   background: 'var(--bg)',
                   borderColor: 'var(--border-muted)',
@@ -675,9 +755,14 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
               >
                 <div className="max-h-[min(24rem,calc(100vh-8rem))] overflow-y-auto p-3">
                   {showContentTypeSelector && (
-                    <div className={`border-b ${onCombinedModeChange ? 'pb-0' : 'pb-3'}`} style={{ borderColor: 'var(--border-muted)' }}>
+                    <div
+                      className={`border-b ${onCombinedModeChange ? 'pb-0' : 'pb-3'}`}
+                      style={{ borderColor: 'var(--border-muted)' }}
+                    >
                       <div className="flex items-center justify-between px-1 pb-2">
-                        <span className="text-xs font-medium uppercase tracking-wide opacity-60">Content</span>
+                        <span className="text-xs font-medium tracking-wide uppercase opacity-60">
+                          Content
+                        </span>
                         {onAdvancedToggle && (
                           <button
                             type="button"
@@ -685,17 +770,17 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                               setIsSelectorOpen(false);
                               onAdvancedToggle();
                             }}
-                            className={`flex items-center gap-1.5 px-4 py-2.5 -mt-1.5 -mb-0.5 -mr-1 text-xs font-medium rounded-xl transition-colors ${
-                              isAdvancedActive
-                                ? 'bg-emerald-600 text-white'
-                                : 'hover-surface'
+                            className={`-mt-1.5 -mr-1 -mb-0.5 flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-medium transition-colors ${
+                              isAdvancedActive ? 'bg-emerald-600 text-white' : 'hover-surface'
                             }`}
-                            style={isAdvancedActive
-                              ? { borderColor: 'rgb(16 185 129 / 0.7)' }
-                              : { color: 'var(--text-muted)' }}
+                            style={
+                              isAdvancedActive
+                                ? { borderColor: 'rgb(16 185 129 / 0.7)' }
+                                : { color: 'var(--text-muted)' }
+                            }
                           >
                             <svg
-                              className="w-3.5 h-3.5"
+                              className="h-3.5 w-3.5"
                               xmlns="http://www.w3.org/2000/svg"
                               fill="none"
                               viewBox="0 0 24 24"
@@ -718,11 +803,15 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                           type="button"
                           onClick={() => handleContentTypeSelect('ebook')}
                           className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                            contentType === 'ebook' || combinedMode ? 'bg-emerald-600 text-white' : 'hover-surface'
+                            contentType === 'ebook' || combinedMode
+                              ? 'bg-emerald-600 text-white'
+                              : 'hover-surface'
                           }`}
-                          style={contentType === 'ebook' || combinedMode
-                            ? { borderColor: 'rgb(16 185 129 / 0.7)' }
-                            : { color: 'var(--text)', borderColor: 'var(--border-muted)' }}
+                          style={
+                            contentType === 'ebook' || combinedMode
+                              ? { borderColor: 'rgb(16 185 129 / 0.7)' }
+                              : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
+                          }
                         >
                           {contentType === 'ebook' || combinedMode ? <CheckIcon /> : <BookIcon />}
                           <span>Books</span>
@@ -731,57 +820,97 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                           type="button"
                           onClick={() => handleContentTypeSelect('audiobook')}
                           className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                            contentType === 'audiobook' || combinedMode ? 'bg-emerald-600 text-white' : 'hover-surface'
+                            contentType === 'audiobook' || combinedMode
+                              ? 'bg-emerald-600 text-white'
+                              : 'hover-surface'
                           }`}
-                          style={contentType === 'audiobook' || combinedMode
-                            ? { borderColor: 'rgb(16 185 129 / 0.7)' }
-                            : { color: 'var(--text)', borderColor: 'var(--border-muted)' }}
+                          style={
+                            contentType === 'audiobook' || combinedMode
+                              ? { borderColor: 'rgb(16 185 129 / 0.7)' }
+                              : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
+                          }
                         >
-                          {contentType === 'audiobook' || combinedMode ? <CheckIcon /> : <AudiobookIcon />}
+                          {contentType === 'audiobook' || combinedMode ? (
+                            <CheckIcon />
+                          ) : (
+                            <AudiobookIcon />
+                          )}
                           <span>Audiobooks</span>
                         </button>
                       </div>
-                      {onCombinedModeChange && (() => {
-                        const lineColor = combinedMode ? 'bg-emerald-500' : 'bg-(--border-muted) group-hover:bg-zinc-400 dark:group-hover:bg-zinc-500';
-                        return (
-                          <Tooltip content="Combined search" position="bottom" triggerClassName="w-full">
-                          <button
-                            type="button"
-                            onClick={handleCombinedModeSelect}
-                            className="group w-full"
-                            aria-label="Combined search"
-                          >
-                            {/* Bracket connector: vertical drops + horizontal bar with icon */}
-                            <div className="relative flex items-end h-7">
-                              {/* Left vertical */}
-                              <div className={`absolute left-[25%] top-1.5 bottom-[11px] w-px transition-colors ${lineColor}`} />
-                              {/* Right vertical */}
-                              <div className={`absolute right-[25%] top-1.5 bottom-[11px] w-px transition-colors ${lineColor}`} />
-                              {/* Horizontal bar – left segment */}
-                              <div className={`absolute left-[25%] bottom-[11px] h-px transition-colors ${lineColor}`} style={{ width: 'calc(25% - 16px)' }} />
-                              {/* Horizontal bar – right segment */}
-                              <div className={`absolute right-[25%] bottom-[11px] h-px transition-colors ${lineColor}`} style={{ width: 'calc(25% - 16px)' }} />
-                              {/* Chain icon centered at bottom */}
-                              <div className={`mx-auto relative z-10 p-1 rounded-full transition-colors ${
-                                combinedMode
-                                  ? 'bg-emerald-600 text-white'
-                                  : 'bg-(--bg) text-zinc-400 dark:text-zinc-500 group-hover:bg-zinc-200 dark:group-hover:bg-zinc-700 group-hover:text-zinc-600 dark:group-hover:text-zinc-300'
-                              }`}>
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" aria-hidden="true">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
-                                </svg>
-                              </div>
-                            </div>
-                          </button>
-                          </Tooltip>
-                        );
-                      })()}
+                      {onCombinedModeChange &&
+                        (() => {
+                          const lineColor = combinedMode
+                            ? 'bg-emerald-500'
+                            : 'bg-(--border-muted) group-hover:bg-zinc-400 dark:group-hover:bg-zinc-500';
+                          return (
+                            <Tooltip
+                              content="Combined search"
+                              position="bottom"
+                              triggerClassName="w-full"
+                            >
+                              <button
+                                type="button"
+                                onClick={handleCombinedModeSelect}
+                                className="group w-full"
+                                aria-label="Combined search"
+                              >
+                                {/* Bracket connector: vertical drops + horizontal bar with icon */}
+                                <div className="relative flex h-7 items-end">
+                                  {/* Left vertical */}
+                                  <div
+                                    className={`absolute top-1.5 bottom-[11px] left-[25%] w-px transition-colors ${lineColor}`}
+                                  />
+                                  {/* Right vertical */}
+                                  <div
+                                    className={`absolute top-1.5 right-[25%] bottom-[11px] w-px transition-colors ${lineColor}`}
+                                  />
+                                  {/* Horizontal bar – left segment */}
+                                  <div
+                                    className={`absolute bottom-[11px] left-[25%] h-px transition-colors ${lineColor}`}
+                                    style={{ width: 'calc(25% - 16px)' }}
+                                  />
+                                  {/* Horizontal bar – right segment */}
+                                  <div
+                                    className={`absolute right-[25%] bottom-[11px] h-px transition-colors ${lineColor}`}
+                                    style={{ width: 'calc(25% - 16px)' }}
+                                  />
+                                  {/* Chain icon centered at bottom */}
+                                  <div
+                                    className={`relative z-10 mx-auto rounded-full p-1 transition-colors ${
+                                      combinedMode
+                                        ? 'bg-emerald-600 text-white'
+                                        : 'bg-(--bg) text-zinc-400 group-hover:bg-zinc-200 group-hover:text-zinc-600 dark:text-zinc-500 dark:group-hover:bg-zinc-700 dark:group-hover:text-zinc-300'
+                                    }`}
+                                  >
+                                    <svg
+                                      className="h-3.5 w-3.5"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      strokeWidth="2"
+                                      stroke="currentColor"
+                                      aria-hidden="true"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
+                                      />
+                                    </svg>
+                                  </div>
+                                </div>
+                              </button>
+                            </Tooltip>
+                          );
+                        })()}
                     </div>
                   )}
 
                   <div className={showContentTypeSelector ? 'pt-2' : ''}>
                     <div className="flex items-center justify-between px-1 pb-1.5">
-                      <span className="text-xs font-medium uppercase tracking-wide opacity-60">Search By</span>
+                      <span className="text-xs font-medium tracking-wide uppercase opacity-60">
+                        Search By
+                      </span>
                       {!showContentTypeSelector && onAdvancedToggle && (
                         <button
                           type="button"
@@ -789,17 +918,24 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                             setIsSelectorOpen(false);
                             onAdvancedToggle();
                           }}
-                          className={`flex items-center gap-1.5 px-4 py-2.5 -mt-1.5 -mb-0.5 -mr-1 text-xs font-medium rounded-xl transition-colors ${
+                          className={`-mt-1.5 -mr-1 -mb-0.5 flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-medium transition-colors ${
                             isAdvancedActive
                               ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
                               : 'hover-surface'
                           }`}
-                          style={isAdvancedActive
-                            ? { borderColor: searchMode === 'direct' ? 'rgb(3 105 161 / 0.7)' : 'rgb(16 185 129 / 0.7)' }
-                            : { color: 'var(--text-muted)' }}
+                          style={
+                            isAdvancedActive
+                              ? {
+                                  borderColor:
+                                    searchMode === 'direct'
+                                      ? 'rgb(3 105 161 / 0.7)'
+                                      : 'rgb(16 185 129 / 0.7)',
+                                }
+                              : { color: 'var(--text-muted)' }
+                          }
                         >
                           <svg
-                            className="w-3.5 h-3.5"
+                            className="h-3.5 w-3.5"
                             xmlns="http://www.w3.org/2000/svg"
                             fill="none"
                             viewBox="0 0 24 24"
@@ -827,12 +963,21 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                             onClick={() => handleQueryTargetSelect(target.key)}
                             title={target.description || target.label}
                             aria-label={target.label}
-                            className={`min-w-0 rounded-xl border px-3 py-2 text-sm font-medium transition-colors flex items-center gap-2 ${
-                              isActive ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white` : 'hover-surface'
+                            className={`flex min-w-0 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                              isActive
+                                ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
+                                : 'hover-surface'
                             }`}
-                            style={isActive
-                              ? { borderColor: searchMode === 'direct' ? 'rgb(3 105 161 / 0.7)' : 'rgb(16 185 129 / 0.7)' }
-                              : { color: 'var(--text)', borderColor: 'var(--border-muted)' }}
+                            style={
+                              isActive
+                                ? {
+                                    borderColor:
+                                      searchMode === 'direct'
+                                        ? 'rgb(3 105 161 / 0.7)'
+                                        : 'rgb(16 185 129 / 0.7)',
+                                  }
+                                : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
+                            }
                           >
                             {isActive && <CheckIcon />}
                             <span className="block truncate">{target.label}</span>
@@ -841,170 +986,182 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(({
                       })}
                     </div>
                   </div>
-
                 </div>
               </div>
             )}
           </div>
         )}
 
-        <div className="min-w-0 flex-1">
-          {renderActiveInput()}
+        <div className="min-w-0 flex-1">{renderActiveInput()}</div>
+
+        <div className={controlsClasses}>
+          {hasSearchQuery && (
+            <button
+              type="button"
+              onClick={handleClearSearch}
+              className="hover-action flex items-center justify-center rounded-full p-2 transition-colors"
+              aria-label={clearButtonLabel}
+              title={clearButtonTitle}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth="1.5"
+                stroke="currentColor"
+                className="h-5 w-5"
+                style={{ color: 'var(--text)' }}
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+          <button
+            ref={buttonRef}
+            type="button"
+            onClick={onSubmit}
+            className={`search-bar-button my-2 flex items-center justify-center rounded-full p-2 text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              searchMode === 'universal'
+                ? 'bg-emerald-600 hover:bg-emerald-700'
+                : 'bg-sky-700 hover:bg-sky-800'
+            }`}
+            aria-label={searchButtonLabel}
+            title={searchButtonTitle}
+            disabled={isLoading}
+          >
+            {!isLoading && (
+              <svg
+                className="search-bar-icon h-5 w-5"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth="2"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
+                />
+              </svg>
+            )}
+            {isLoading && (
+              <div className="spinner search-bar-spinner h-5 w-5 border-2 border-white border-t-transparent" />
+            )}
+          </button>
         </div>
 
-      <div className={controlsClasses}>
-        {hasSearchQuery && (
-          <button
-            type="button"
-            onClick={handleClearSearch}
-            className="p-2 rounded-full hover-action flex items-center justify-center transition-colors"
-            aria-label={clearButtonLabel}
-            title={clearButtonTitle}
+        {selectDropdownOpen && (
+          <div
+            ref={selectPanelRef}
+            className="animate-fade-in-down absolute top-full right-0 left-0 z-50 mt-2 overflow-hidden rounded-2xl border shadow-xl"
+            style={{ background: 'var(--bg)', borderColor: 'var(--border-muted)' }}
+            role="listbox"
+            aria-label={effectiveInputAriaLabel}
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth="1.5"
-              stroke="currentColor"
-              className="w-5 h-5"
-              style={{ color: 'var(--text)' }}
-              aria-hidden="true"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-          </button>
+            <div className="max-h-64 overflow-y-auto py-1.5">
+              {selectOptions.map((option, index) => {
+                const currentValue = typeof value === 'string' ? value : String(value ?? '');
+                const isSelected = option.value === currentValue;
+                const showGroupHeader =
+                  option.group != null &&
+                  (index === 0 || option.group !== selectOptions[index - 1]?.group);
+                return (
+                  <div key={option.value}>
+                    {showGroupHeader && (
+                      <div className="px-5 pt-2 pb-1 text-xs font-medium tracking-wide uppercase opacity-60 select-none">
+                        {option.group}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      onClick={() => {
+                        onChange(option.value, option.label);
+                        setIsSelectOpen(false);
+                        setTimeout(() => onSubmitRef.current(), 0);
+                      }}
+                      className={`flex w-full items-center gap-3 px-5 py-2.5 text-left text-sm transition-colors ${
+                        isSelected ? '' : 'hover-surface'
+                      }`}
+                      style={{ color: 'var(--text)' }}
+                    >
+                      <span className={`flex-1 truncate ${isSelected ? 'font-medium' : ''}`}>
+                        {option.label}
+                      </span>
+                      {isSelected && (
+                        <svg
+                          className="h-4 w-4 shrink-0 text-emerald-500"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          strokeWidth="2.5"
+                          stroke="currentColor"
+                          aria-hidden="true"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="m4.5 12.75 6 6 9-13.5"
+                          />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
-        <button
-          ref={buttonRef}
-          type="button"
-          onClick={onSubmit}
-          className={`p-2 my-2 rounded-full text-white disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center transition-colors search-bar-button ${
-            searchMode === 'universal'
-              ? 'bg-emerald-600 hover:bg-emerald-700'
-              : 'bg-sky-700 hover:bg-sky-800'
-          }`}
-          aria-label={searchButtonLabel}
-          title={searchButtonTitle}
-          disabled={isLoading}
-        >
-          {!isLoading && (
-            <svg
-              className="w-5 h-5 search-bar-icon"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth="2"
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
-              />
-            </svg>
-          )}
-          {isLoading && (
-            <div className="spinner w-5 h-5 border-2 border-white border-t-transparent search-bar-spinner" />
-          )}
-        </button>
-      </div>
 
-      {selectDropdownOpen && (
-        <div
-          ref={selectPanelRef}
-          className="absolute top-full left-0 right-0 z-50 mt-2 rounded-2xl border shadow-xl overflow-hidden animate-fade-in-down"
-          style={{ background: 'var(--bg)', borderColor: 'var(--border-muted)' }}
-          role="listbox"
-          aria-label={effectiveInputAriaLabel}
-        >
-          <div className="max-h-64 overflow-y-auto py-1.5">
-            {selectOptions.map((option, index) => {
-              const currentValue = typeof value === 'string' ? value : String(value ?? '');
-              const isSelected = option.value === currentValue;
-              const showGroupHeader = option.group != null && (index === 0 || option.group !== selectOptions[index - 1]?.group);
-              return (
-                <div key={option.value}>
-                  {showGroupHeader && (
-                    <div className="px-5 pt-2 pb-1 text-xs font-medium uppercase tracking-wide opacity-60 select-none">
-                      {option.group}
-                    </div>
-                  )}
+        {autocompleteDropdownOpen && (
+          <div
+            ref={autocompletePanelRef}
+            className="animate-fade-in-down absolute top-full right-0 left-0 z-50 mt-2 overflow-hidden rounded-2xl border shadow-xl"
+            style={{ background: 'var(--bg)', borderColor: 'var(--border-muted)' }}
+            role="listbox"
+            aria-label={`${effectiveInputAriaLabel} suggestions`}
+          >
+            <div className="max-h-72 overflow-y-auto py-1.5">
+              {isAutocompleteLoading && (
+                <div className="px-5 py-3 text-sm opacity-70" style={{ color: 'var(--text)' }}>
+                  Searching…
+                </div>
+              )}
+
+              {!isAutocompleteLoading && autocompleteOptions.length === 0 && (
+                <div className="px-5 py-3 text-sm opacity-70" style={{ color: 'var(--text)' }}>
+                  {autocompleteEmptyMessage}
+                </div>
+              )}
+
+              {!isAutocompleteLoading &&
+                autocompleteOptions.map((option) => (
                   <button
                     type="button"
+                    key={option.value}
                     role="option"
-                    aria-selected={isSelected}
                     onClick={() => {
+                      setTextInputValue(option.label);
                       onChange(option.value, option.label);
-                      setIsSelectOpen(false);
+                      setIsAutocompleteOpen(false);
                       setTimeout(() => onSubmitRef.current(), 0);
                     }}
-                    className={`w-full px-5 py-2.5 text-left text-sm flex items-center gap-3 transition-colors ${
-                      isSelected ? '' : 'hover-surface'
-                    }`}
+                    className="hover-surface w-full px-5 py-3 text-left text-sm transition-colors"
                     style={{ color: 'var(--text)' }}
                   >
-                    <span className={`flex-1 truncate ${isSelected ? 'font-medium' : ''}`}>
-                      {option.label}
-                    </span>
-                    {isSelected && (
-                      <svg className="w-4 h-4 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                      </svg>
+                    <div className="truncate font-medium">{option.label}</div>
+                    {option.description && (
+                      <div className="mt-0.5 truncate text-xs opacity-70">{option.description}</div>
                     )}
                   </button>
-                </div>
-              );
-            })}
+                ))}
+            </div>
           </div>
-        </div>
-      )}
-
-      {autocompleteDropdownOpen && (
-        <div
-          ref={autocompletePanelRef}
-          className="absolute top-full left-0 right-0 z-50 mt-2 rounded-2xl border shadow-xl overflow-hidden animate-fade-in-down"
-          style={{ background: 'var(--bg)', borderColor: 'var(--border-muted)' }}
-          role="listbox"
-          aria-label={`${effectiveInputAriaLabel} suggestions`}
-        >
-          <div className="max-h-72 overflow-y-auto py-1.5">
-            {isAutocompleteLoading && (
-              <div className="px-5 py-3 text-sm opacity-70" style={{ color: 'var(--text)' }}>
-                Searching…
-              </div>
-            )}
-
-            {!isAutocompleteLoading && autocompleteOptions.length === 0 && (
-              <div className="px-5 py-3 text-sm opacity-70" style={{ color: 'var(--text)' }}>
-                {autocompleteEmptyMessage}
-              </div>
-            )}
-
-            {!isAutocompleteLoading && autocompleteOptions.map((option) => (
-              <button
-                type="button"
-                key={option.value}
-                role="option"
-                onClick={() => {
-                  setTextInputValue(option.label);
-                  onChange(option.value, option.label);
-                  setIsAutocompleteOpen(false);
-                  setTimeout(() => onSubmitRef.current(), 0);
-                }}
-                className="w-full px-5 py-3 text-left text-sm transition-colors hover-surface"
-                style={{ color: 'var(--text)' }}
-              >
-                <div className="truncate font-medium">{option.label}</div>
-                {option.description && (
-                  <div className="truncate text-xs opacity-70 mt-0.5">{option.description}</div>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-});
+        )}
+      </div>
+    );
+  },
+);

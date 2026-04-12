@@ -25,9 +25,12 @@ export function getStoredThemePreference(): string {
 }
 
 export function applyThemePreference(theme: string): void {
-  const effectiveTheme = theme === 'auto'
-    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-    : theme;
+  const effectiveTheme =
+    theme === 'auto'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light'
+      : theme;
   document.documentElement.setAttribute('data-theme', effectiveTheme);
   document.documentElement.style.colorScheme = effectiveTheme;
 }

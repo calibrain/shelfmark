@@ -1,7 +1,7 @@
-import * as assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
-import type { ActivityItem } from '../components/activity/activityTypes.js';
-import { buildActivityCardModel } from '../components/activity/activityCardModel.js';
+import { describe, it, expect } from 'vitest';
+
+import { buildActivityCardModel } from '../components/activity/activityCardModel';
+import type { ActivityItem } from '../components/activity/activityTypes';
 
 const makeItem = (overrides: Partial<ActivityItem> = {}): ActivityItem => ({
   id: 'book-1',
@@ -26,11 +26,11 @@ describe('activityCardModel', () => {
         requestId: 42,
         username: 'testuser',
       }),
-      true
+      true,
     );
 
-    assert.equal(model.badges.length, 1);
-    assert.equal(model.badges[0]?.text, 'Needs review · testuser');
+    expect(model.badges.length).toBe(1);
+    expect(model.badges[0]?.text).toBe('Needs review · testuser');
   });
 
   it('keeps pending label for requester-side pending requests', () => {
@@ -41,11 +41,11 @@ describe('activityCardModel', () => {
         statusLabel: 'Pending',
         requestId: 42,
       }),
-      false
+      false,
     );
 
-    assert.equal(model.badges.length, 1);
-    assert.equal(model.badges[0]?.text, 'Awaiting review');
+    expect(model.badges.length).toBe(1);
+    expect(model.badges[0]?.text).toBe('Awaiting review');
   });
 
   it('uses requester-friendly approved wording for fulfilled requests', () => {
@@ -56,11 +56,11 @@ describe('activityCardModel', () => {
         statusLabel: 'Fulfilled',
         requestId: 42,
       }),
-      false
+      false,
     );
 
-    assert.equal(model.badges.length, 1);
-    assert.equal(model.badges[0]?.text, 'Approved');
+    expect(model.badges.length).toBe(1);
+    expect(model.badges[0]?.text).toBe('Approved');
   });
 
   it('shows approved in-progress request badge while linked download is active', () => {
@@ -89,13 +89,13 @@ describe('activityCardModel', () => {
           username: 'testuser',
         },
       }),
-      false
+      false,
     );
 
-    assert.equal(model.badges.length, 2);
-    assert.equal(model.badges[0]?.key, 'request');
-    assert.equal(model.badges[0]?.text, 'Approved');
-    assert.equal(model.badges[0]?.visualStatus, 'resolving');
+    expect(model.badges.length).toBe(2);
+    expect(model.badges[0]?.key).toBe('request');
+    expect(model.badges[0]?.text).toBe('Approved');
+    expect(model.badges[0]?.visualStatus).toBe('resolving');
   });
 
   it('shows a single download completion badge for completed merged request downloads', () => {
@@ -124,13 +124,13 @@ describe('activityCardModel', () => {
           username: 'testuser',
         },
       }),
-      true
+      true,
     );
 
-    assert.equal(model.badges.length, 1);
-    assert.equal(model.badges[0]?.key, 'download');
-    assert.equal(model.badges[0]?.text, 'Sent to Kindle');
-    assert.equal(model.badges[0]?.visualStatus, 'complete');
+    expect(model.badges.length).toBe(1);
+    expect(model.badges[0]?.key).toBe('download');
+    expect(model.badges[0]?.text).toBe('Sent to Kindle');
+    expect(model.badges[0]?.visualStatus).toBe('complete');
   });
 
   it('does not render a special note for fulfilled requests with terminal delivery state', () => {
@@ -159,10 +159,10 @@ describe('activityCardModel', () => {
           username: 'testuser',
         },
       }),
-      false
+      false,
     );
 
-    assert.equal(model.noteLine, undefined);
+    expect(model.noteLine).toBe(undefined);
   });
 
   it('builds pending admin request actions from one normalized source', () => {
@@ -190,12 +190,12 @@ describe('activityCardModel', () => {
           username: 'testuser',
         },
       }),
-      true
+      true,
     );
 
-    assert.equal(model.actions.length, 2);
-    assert.equal(model.actions[0]?.kind, 'request-approve');
-    assert.equal(model.actions[1]?.kind, 'request-reject');
+    expect(model.actions.length).toBe(2);
+    expect(model.actions[0]?.kind).toBe('request-approve');
+    expect(model.actions[1]?.kind).toBe('request-reject');
   });
 
   it('attaches linked request id when dismissing merged download cards', () => {
@@ -203,15 +203,14 @@ describe('activityCardModel', () => {
       makeItem({
         requestId: 42,
       }),
-      false
+      false,
     );
 
-    assert.equal(model.actions.length, 1);
-    assert.equal(model.actions[0]?.kind, 'download-dismiss');
-    assert.equal(
+    expect(model.actions.length).toBe(1);
+    expect(model.actions[0]?.kind).toBe('download-dismiss');
+    expect(
       model.actions[0]?.kind === 'download-dismiss' ? model.actions[0].linkedRequestId : undefined,
-      42
-    );
+    ).toBe(42);
   });
 
   it('shows retry for request-linked downloads when the backend marks them retryable', () => {
@@ -222,12 +221,12 @@ describe('activityCardModel', () => {
         requestId: 42,
         downloadRetryAvailable: true,
       }),
-      false
+      false,
     );
 
-    assert.equal(model.actions.length, 2);
-    assert.equal(model.actions[0]?.kind, 'download-retry');
-    assert.equal(model.actions[1]?.kind, 'download-dismiss');
+    expect(model.actions.length).toBe(2);
+    expect(model.actions[0]?.kind).toBe('download-retry');
+    expect(model.actions[1]?.kind).toBe('download-dismiss');
   });
 
   it('does not show retry for error downloads without a live retry path', () => {
@@ -236,10 +235,10 @@ describe('activityCardModel', () => {
         visualStatus: 'error',
         statusLabel: 'Failed',
       }),
-      false
+      false,
     );
 
-    assert.equal(model.actions.length, 1);
-    assert.equal(model.actions[0]?.kind, 'download-dismiss');
+    expect(model.actions.length).toBe(1);
+    expect(model.actions[0]?.kind).toBe('download-dismiss');
   });
 });

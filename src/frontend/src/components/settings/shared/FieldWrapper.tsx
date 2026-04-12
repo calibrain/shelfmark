@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+
 import { SettingsField } from '../../../types/settings';
 import { Tooltip } from '../../shared/Tooltip';
 import { EnvLockBadge } from './EnvLockBadge';
@@ -19,7 +20,7 @@ const renderDescriptionWithLinks = (description: string): ReactNode => {
       parts.push(
         <span key={`text-${lastIndex}-${matchIndex}`} className="opacity-60">
           {description.slice(lastIndex, matchIndex)}
-        </span>
+        </span>,
       );
     }
 
@@ -29,10 +30,10 @@ const renderDescriptionWithLinks = (description: string): ReactNode => {
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className="underline text-sky-600 dark:text-sky-400"
+        className="text-sky-600 underline dark:text-sky-400"
       >
         {label}
-      </a>
+      </a>,
     );
 
     lastIndex = matchIndex + fullMatch.length;
@@ -43,7 +44,7 @@ const renderDescriptionWithLinks = (description: string): ReactNode => {
     parts.push(
       <span key={`text-${lastIndex}-end`} className="opacity-60">
         {description.slice(lastIndex)}
-      </span>
+      </span>,
     );
   }
 
@@ -77,12 +78,11 @@ interface FieldWrapperProps {
 // Badge shown when a field is disabled
 const DisabledBadge = ({ reason }: { reason?: string }) => (
   <span
-    className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded
-               bg-zinc-500/20 text-zinc-400 border border-zinc-500/30"
+    className="inline-flex items-center gap-1 rounded border border-zinc-500/30 bg-zinc-500/20 px-1.5 py-0.5 text-xs text-zinc-400"
     title={reason || 'This setting is not available'}
   >
     <svg
-      className="w-3 h-3"
+      className="h-3 w-3"
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"
@@ -102,12 +102,11 @@ const DisabledBadge = ({ reason }: { reason?: string }) => (
 // Badge shown when changing a field requires a container restart
 const RestartRequiredBadge = () => (
   <span
-    className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded
-               bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+    className="inline-flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-600 dark:text-amber-400"
     title="Changing this setting requires a container restart to take effect"
   >
     <svg
-      className="w-3 h-3"
+      className="h-3 w-3"
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"
@@ -145,25 +144,20 @@ const UserOverriddenBadge = ({
   const extraCount = Math.max(details.length - visibleDetails.length, 0);
 
   const content = (
-    <div className="space-y-1 max-w-xs">
+    <div className="max-w-xs space-y-1">
       {visibleDetails.map((entry) => (
         <div key={entry.userId} className="text-[11px] leading-snug">
           <span className="font-medium">{entry.username}</span>
           <span className="opacity-70">: {formatValue(entry.value)}</span>
         </div>
       ))}
-      {extraCount > 0 && (
-        <div className="text-[11px] opacity-70">and {extraCount} more...</div>
-      )}
+      {extraCount > 0 && <div className="text-[11px] opacity-70">and {extraCount} more...</div>}
     </div>
   );
 
   return (
     <Tooltip content={content} position="top">
-      <span
-        className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded
-                   bg-sky-500/15 text-sky-500 dark:text-sky-400 border border-sky-500/30"
-      >
+      <span className="inline-flex items-center gap-1 rounded border border-sky-500/30 bg-sky-500/15 px-1.5 py-0.5 text-xs text-sky-500 dark:text-sky-400">
         User overridden{count > 1 ? ` (${count})` : ''}
       </span>
     </Tooltip>
@@ -183,8 +177,7 @@ const ResetActionButton = ({
     type="button"
     onClick={onClick}
     disabled={disabled}
-    className="text-xs font-medium text-sky-500 hover:text-sky-400 transition-colors shrink-0
-               disabled:opacity-50 disabled:cursor-not-allowed"
+    className="shrink-0 text-xs font-medium text-sky-500 transition-colors hover:text-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
   >
     {label}
   </button>
@@ -213,8 +206,12 @@ export const FieldWrapper = ({
   const hasUserOverrides = Boolean(userOverrideCount) && (userOverrideCount || 0) > 0;
   const hasLabel = Boolean(field.label && field.label.trim().length > 0);
   const hasResetAction = Boolean(resetAction);
-  const showHeaderLeft = hasLabel || field.fromEnv || (requiresRestart && !isDisabled && !field.fromEnv)
-    || (isDisabled && !field.fromEnv) || hasUserOverrides;
+  const showHeaderLeft =
+    hasLabel ||
+    field.fromEnv ||
+    (requiresRestart && !isDisabled && !field.fromEnv) ||
+    (isDisabled && !field.fromEnv) ||
+    hasUserOverrides;
   const showHeader = showHeaderLeft || hasResetAction || Boolean(headerRight);
 
   // ENV-locked fields should only dim the control, not the label/description
@@ -223,25 +220,22 @@ export const FieldWrapper = ({
     <div className="space-y-1.5">
       {showHeader && (
         <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             {hasLabel && (
               <label className={`text-sm font-medium ${isFullyDimmed ? 'text-zinc-500' : ''}`}>
                 {field.label}
-                {field.required && !isDisabled && <span className="text-red-500 ml-0.5">*</span>}
+                {field.required && !isDisabled && <span className="ml-0.5 text-red-500">*</span>}
               </label>
             )}
             {field.fromEnv && <EnvLockBadge />}
             {requiresRestart && !isDisabled && !field.fromEnv && <RestartRequiredBadge />}
             {isDisabled && !field.fromEnv && <DisabledBadge reason={disabledReason} />}
             {hasUserOverrides && (
-              <UserOverriddenBadge
-                count={userOverrideCount || 0}
-                details={userOverrideDetails}
-              />
+              <UserOverriddenBadge count={userOverrideCount || 0} details={userOverrideDetails} />
             )}
           </div>
           {(hasResetAction || headerRight) && (
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex shrink-0 items-center gap-2">
               {hasResetAction && resetAction && (
                 <ResetActionButton
                   label={resetAction.label}

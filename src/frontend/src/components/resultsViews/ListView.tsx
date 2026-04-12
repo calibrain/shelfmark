@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Book, ButtonStateInfo } from '../../types';
+
 import { useSearchMode } from '../../contexts/SearchModeContext';
+import { Book, ButtonStateInfo } from '../../types';
+import { bookSupportsTargets } from '../../utils/bookTargetLoader';
+import { getFormatColor, getLanguageColor } from '../../utils/colorMaps';
 import { BookActionButton } from '../BookActionButton';
 import { BookTargetDropdown } from '../BookTargetDropdown';
-import { bookSupportsTargets } from '../../utils/bookTargetLoader';
 import { DisplayFieldIcon, DisplayFieldBadge } from '../shared';
-import { getFormatColor, getLanguageColor } from '../../utils/colorMaps';
 
 interface ListViewProps {
   books: Book[];
@@ -18,7 +19,15 @@ interface ListViewProps {
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
-const ListViewThumbnail = ({ preview, title, coverAspect }: { preview?: string; title?: string; coverAspect?: string }) => {
+const ListViewThumbnail = ({
+  preview,
+  title,
+  coverAspect,
+}: {
+  preview?: string;
+  title?: string;
+  coverAspect?: string;
+}) => {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const isSquare = coverAspect === 'square';
@@ -27,7 +36,7 @@ const ListViewThumbnail = ({ preview, title, coverAspect }: { preview?: string; 
   if (!preview || imageError) {
     return (
       <div
-        className={`${sizeClass} rounded-sm bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[8px] sm:text-[9px] font-medium text-gray-500 dark:text-gray-300`}
+        className={`${sizeClass} flex items-center justify-center rounded-sm bg-gray-200 text-[8px] font-medium text-gray-500 sm:text-[9px] dark:bg-gray-700 dark:text-gray-300`}
         aria-label="No cover available"
       >
         No Cover
@@ -36,14 +45,16 @@ const ListViewThumbnail = ({ preview, title, coverAspect }: { preview?: string; 
   }
 
   return (
-    <div className={`relative ${sizeClass} rounded-sm overflow-hidden bg-gray-100 dark:bg-gray-800 border border-white/40 dark:border-gray-700/70`}>
+    <div
+      className={`relative ${sizeClass} overflow-hidden rounded-sm border border-white/40 bg-gray-100 dark:border-gray-700/70 dark:bg-gray-800`}
+    >
       {!imageLoaded && (
-        <div className="absolute inset-0 bg-linear-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
+        <div className="absolute inset-0 animate-pulse bg-linear-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700" />
       )}
       <img
         src={preview}
         alt={title || 'Book cover'}
-        className={`w-full h-full object-cover ${isSquare ? 'object-center' : 'object-top'}`}
+        className={`h-full w-full object-cover ${isSquare ? 'object-center' : 'object-top'}`}
         loading="lazy"
         onLoad={() => setImageLoaded(true)}
         onError={() => setImageError(true)}
@@ -53,7 +64,16 @@ const ListViewThumbnail = ({ preview, title, coverAspect }: { preview?: string; 
   );
 };
 
-export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButtonState, getUniversalButtonState, showSeriesPosition = false, onShowToast }: ListViewProps) => {
+export const ListView = ({
+  books,
+  onDetails,
+  onDownload,
+  onGetReleases,
+  getButtonState,
+  getUniversalButtonState,
+  showSeriesPosition = false,
+  onShowToast,
+}: ListViewProps) => {
   const { searchMode } = useSearchMode();
   const [detailsLoadingId, setDetailsLoadingId] = useState<string | null>(null);
   const [releasesLoadingId, setReleasesLoadingId] = useState<string | null>(null);
@@ -91,12 +111,11 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
       role="region"
       aria-label="List view of books"
     >
-      <div className="divide-y divide-gray-200/60 dark:divide-gray-800/60 w-full">
+      <div className="w-full divide-y divide-gray-200/60 dark:divide-gray-800/60">
         {books.map((book, index) => {
           // Use appropriate button state function based on search mode
-          const buttonState = searchMode === 'universal'
-            ? getUniversalButtonState(book.id)
-            : getButtonState(book.id);
+          const buttonState =
+            searchMode === 'universal' ? getUniversalButtonState(book.id) : getButtonState(book.id);
           const isLoadingDetails = detailsLoadingId === book.id;
 
           // Compute color styles for direct mode badges
@@ -106,7 +125,7 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
           return (
             <div
               key={book.id}
-              className="px-1.5 sm:px-2 py-1.5 sm:py-2 transition-colors duration-200 hover-row w-full animate-pop-up will-change-transform relative"
+              className="hover-row animate-pop-up relative w-full px-1.5 py-1.5 transition-colors duration-200 will-change-transform sm:px-2 sm:py-2"
               style={{
                 zIndex: openDropdownBookId === book.id ? 30 : undefined,
                 animationDelay: `${index * 50}ms`,
@@ -116,22 +135,31 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
             >
               {/* Mobile and Desktop: Single row layout */}
               {/* Universal mode uses separate columns for each display field, direct mode uses language/format/size */}
-              <div className={`grid items-center gap-2 sm:gap-y-1 sm:gap-x-0.5 w-full ${
-                searchMode === 'universal'
-                  ? 'grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:grid-cols-[auto_minmax(0,2fr)_minmax(50px,0.25fr)_minmax(90px,0.5fr)_minmax(90px,0.5fr)_minmax(120px,0.7fr)_auto]'
-                  : 'grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:grid-cols-[auto_minmax(0,2fr)_minmax(50px,0.25fr)_minmax(60px,0.3fr)_minmax(60px,0.3fr)_minmax(60px,0.3fr)_auto]'
-              }`}>
+              <div
+                className={`grid w-full items-center gap-2 sm:gap-x-0.5 sm:gap-y-1 ${
+                  searchMode === 'universal'
+                    ? 'grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:grid-cols-[auto_minmax(0,2fr)_minmax(50px,0.25fr)_minmax(90px,0.5fr)_minmax(90px,0.5fr)_minmax(120px,0.7fr)_auto]'
+                    : 'grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:grid-cols-[auto_minmax(0,2fr)_minmax(50px,0.25fr)_minmax(60px,0.3fr)_minmax(60px,0.3fr)_minmax(60px,0.3fr)_auto]'
+                }`}
+              >
                 {/* Thumbnail */}
                 <div className="flex items-center pl-1 sm:pl-3">
-                  <ListViewThumbnail preview={book.preview} title={book.title} coverAspect={book.cover_aspect} />
+                  <ListViewThumbnail
+                    preview={book.preview}
+                    title={book.title}
+                    coverAspect={book.cover_aspect}
+                  />
                 </div>
 
                 {/* Title and Author */}
-                <div className="min-w-0 flex flex-col justify-center sm:pl-3">
-                  <h3 className="font-semibold text-xs min-[400px]:text-sm sm:text-base leading-tight line-clamp-1 sm:line-clamp-2 flex items-center gap-2" title={book.title || 'Untitled'}>
+                <div className="flex min-w-0 flex-col justify-center sm:pl-3">
+                  <h3
+                    className="line-clamp-1 flex items-center gap-2 text-xs leading-tight font-semibold min-[400px]:text-sm sm:line-clamp-2 sm:text-base"
+                    title={book.title || 'Untitled'}
+                  >
                     {showSeriesPosition && book.series_position != null && (
                       <span
-                        className="inline-flex mr-1.5 px-1.5 py-0.5 text-[10px] sm:text-xs font-bold text-white bg-emerald-600 rounded-sm border border-emerald-700 shrink-0"
+                        className="mr-1.5 inline-flex shrink-0 rounded-sm border border-emerald-700 bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white sm:text-xs"
                         style={{
                           boxShadow: '0 1px 4px rgba(0, 0, 0, 0.3)',
                           textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
@@ -142,21 +170,26 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
                     )}
                     <span className="truncate">{book.title || 'Untitled'}</span>
                   </h3>
-                  <p className="text-[10px] min-[400px]:text-xs sm:text-sm text-gray-600 dark:text-gray-300 truncate">
+                  <p className="truncate text-[10px] text-gray-600 min-[400px]:text-xs sm:text-sm dark:text-gray-300">
                     {book.author || 'Unknown author'}
                     {book.year && <span className="sm:hidden"> • {book.year}</span>}
                   </p>
                 </div>
 
                 {/* Mobile universal mode info */}
-                <div className="flex sm:hidden flex-col items-end text-[10px] opacity-70 leading-tight">
-                  {searchMode === 'universal' && book.display_fields && book.display_fields.length > 0 ? (
-                    book.display_fields.filter(f => f.icon !== 'editions').slice(0, 2).map((field, idx) => (
-                      <span key={idx} className="flex items-center gap-0.5" title={field.label}>
-                        <DisplayFieldIcon icon={field.icon} />
-                        <span>{field.value}</span>
-                      </span>
-                    ))
+                <div className="flex flex-col items-end text-[10px] leading-tight opacity-70 sm:hidden">
+                  {searchMode === 'universal' &&
+                  book.display_fields &&
+                  book.display_fields.length > 0 ? (
+                    book.display_fields
+                      .filter((f) => f.icon !== 'editions')
+                      .slice(0, 2)
+                      .map((field, idx) => (
+                        <span key={idx} className="flex items-center gap-0.5" title={field.label}>
+                          <DisplayFieldIcon icon={field.icon} />
+                          <span>{field.value}</span>
+                        </span>
+                      ))
                   ) : (
                     <>
                       <span>{book.format || '-'}</span>
@@ -166,7 +199,7 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
                 </div>
 
                 {/* Year - Desktop only */}
-                <div className="hidden sm:flex text-xs text-gray-700 dark:text-gray-200 justify-center">
+                <div className="hidden justify-center text-xs text-gray-700 sm:flex dark:text-gray-200">
                   {book.year || '-'}
                 </div>
 
@@ -174,25 +207,35 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
                 {searchMode === 'universal' && (
                   <>
                     {/* Rating column */}
-                    <div className="hidden sm:flex justify-start">
-                      {book.display_fields?.find(f => f.icon === 'star') ? (
-                        <DisplayFieldBadge field={book.display_fields.find(f => f.icon === 'star')!} />
+                    <div className="hidden justify-start sm:flex">
+                      {book.display_fields?.find((f) => f.icon === 'star') ? (
+                        <DisplayFieldBadge
+                          field={book.display_fields.find((f) => f.icon === 'star')!}
+                        />
                       ) : (
                         <span className="text-xs text-gray-500">-</span>
                       )}
                     </div>
                     {/* Length column */}
-                    <div className="hidden sm:flex justify-start">
-                      {book.display_fields?.find(f => f.icon === 'clock' || f.icon === 'book') ? (
-                        <DisplayFieldBadge field={book.display_fields.find(f => f.icon === 'clock' || f.icon === 'book')!} />
+                    <div className="hidden justify-start sm:flex">
+                      {book.display_fields?.find((f) => f.icon === 'clock' || f.icon === 'book') ? (
+                        <DisplayFieldBadge
+                          field={
+                            book.display_fields.find(
+                              (f) => f.icon === 'clock' || f.icon === 'book',
+                            )!
+                          }
+                        />
                       ) : (
                         <span className="text-xs text-gray-500">-</span>
                       )}
                     </div>
                     {/* Narrator column */}
-                    <div className="hidden sm:flex justify-start">
-                      {book.display_fields?.find(f => f.icon === 'microphone') ? (
-                        <DisplayFieldBadge field={book.display_fields.find(f => f.icon === 'microphone')!} />
+                    <div className="hidden justify-start sm:flex">
+                      {book.display_fields?.find((f) => f.icon === 'microphone') ? (
+                        <DisplayFieldBadge
+                          field={book.display_fields.find((f) => f.icon === 'microphone')!}
+                        />
                       ) : (
                         <span className="text-xs text-gray-500">-</span>
                       )}
@@ -202,9 +245,9 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
 
                 {/* Direct mode: Language Badge - Desktop only */}
                 {searchMode !== 'universal' && (
-                  <div className="hidden sm:flex justify-center">
+                  <div className="hidden justify-center sm:flex">
                     <span
-                      className={`${languageColor.bg} ${languageColor.text} text-[11px] font-semibold px-2 py-0.5 rounded-lg uppercase tracking-wide`}
+                      className={`${languageColor.bg} ${languageColor.text} rounded-lg px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase`}
                       title={book.language || 'Unknown'}
                     >
                       {book.language || '-'}
@@ -214,9 +257,9 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
 
                 {/* Direct mode: Format Badge - Desktop only */}
                 {searchMode !== 'universal' && (
-                  <div className="hidden sm:flex justify-center">
+                  <div className="hidden justify-center sm:flex">
                     <span
-                      className={`${formatColor.bg} ${formatColor.text} text-[11px] font-semibold px-2 py-0.5 rounded-lg uppercase tracking-wide`}
+                      className={`${formatColor.bg} ${formatColor.text} rounded-lg px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase`}
                       title={book.format || 'Unknown'}
                     >
                       {book.format || '-'}
@@ -226,7 +269,7 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
 
                 {/* Direct mode: Size - Desktop only */}
                 {searchMode !== 'universal' && (
-                  <div className="hidden sm:flex text-xs text-gray-700 dark:text-gray-200 justify-center">
+                  <div className="hidden justify-center text-xs text-gray-700 sm:flex dark:text-gray-200">
                     {book.size || '-'}
                   </div>
                 )}
@@ -243,16 +286,26 @@ export const ListView = ({ books, onDetails, onDownload, onGetReleases, getButto
                     />
                   )}
                   <button
-                    className="flex items-center justify-center p-1.5 sm:p-2 rounded-full text-gray-600 dark:text-gray-200 hover-action transition-all duration-200"
+                    className="hover-action flex items-center justify-center rounded-full p-1.5 text-gray-600 transition-all duration-200 sm:p-2 dark:text-gray-200"
                     onClick={() => handleDetails(book.id)}
                     disabled={isLoadingDetails}
                     aria-label={`View details for ${book.title || 'this book'}`}
                   >
                     {isLoadingDetails ? (
-                      <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent sm:h-5 sm:w-5" />
                     ) : (
-                      <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 20a8 8 0 100-16 8 8 0 000 16z" />
+                      <svg
+                        className="h-4 w-4 sm:h-5 sm:w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        strokeWidth="1.5"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M13 16h-1v-4h-1m1-4h.01M12 20a8 8 0 100-16 8 8 0 000 16z"
+                        />
                       </svg>
                     )}
                   </button>

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { StatusData } from '../types';
-import { getStatus } from '../services/api';
+
 import { useSocket } from '../contexts/SocketContext';
+import { getStatus } from '../services/api';
+import { StatusData } from '../types';
 
 interface UseRealtimeStatusOptions {
   pollInterval?: number;
@@ -75,9 +76,13 @@ export const useRealtimeStatus = ({
     };
 
     // Listen for download progress
-    const handleDownloadProgress = (data: { book_id: string; progress: number; status: string }) => {
+    const handleDownloadProgress = (data: {
+      book_id: string;
+      progress: number;
+      status: string;
+    }) => {
       console.debug('[WS] download_progress:', data.book_id, `${data.progress.toFixed(1)}%`);
-      setStatus(prev => {
+      setStatus((prev) => {
         const newStatus = { ...prev };
 
         if (newStatus.downloading?.[data.book_id]) {

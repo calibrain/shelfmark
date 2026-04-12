@@ -1,4 +1,5 @@
 import { useState } from 'react';
+
 import { PasswordFieldConfig } from '../../../types/settings';
 
 interface PasswordFieldProps {
@@ -21,24 +22,19 @@ export const PasswordField = ({ field, value, onChange, disabled }: PasswordFiel
         onChange={(e) => onChange(e.target.value)}
         placeholder={field.placeholder}
         disabled={isDisabled}
-        className="w-full px-3 py-2 pr-10 rounded-lg border border-(--border-muted)                   bg-(--bg-soft) text-sm
-                   focus:outline-hidden focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500
-                   disabled:opacity-60 disabled:cursor-not-allowed
-                   transition-colors"
+        className="w-full rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 pr-10 text-sm transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50 focus:outline-hidden disabled:cursor-not-allowed disabled:opacity-60"
       />
       <button
         type="button"
         onClick={() => setShowPassword(!showPassword)}
         disabled={isDisabled}
-        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded
-                   hover:bg-(--hover-action) transition-colors
-                   disabled:opacity-60 disabled:cursor-not-allowed"
+        className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 transition-colors hover:bg-(--hover-action) disabled:cursor-not-allowed disabled:opacity-60"
         tabIndex={-1}
         aria-label={showPassword ? 'Hide password' : 'Show password'}
       >
         {showPassword ? (
           <svg
-            className="w-4 h-4 opacity-60"
+            className="h-4 w-4 opacity-60"
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"
@@ -53,7 +49,7 @@ export const PasswordField = ({ field, value, onChange, disabled }: PasswordFiel
           </svg>
         ) : (
           <svg
-            className="w-4 h-4 opacity-60"
+            className="h-4 w-4 opacity-60"
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"

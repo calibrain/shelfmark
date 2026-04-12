@@ -28,8 +28,6 @@ export {
   normalizeRequestPolicyRules,
   parseSourceCapabilitiesFromRulesField,
 } from './requestPolicyGridUtils';
-export type {
-  RequestPolicyContentType,
-} from './requestPolicyGridUtils';
+export type { RequestPolicyContentType } from './requestPolicyGridUtils';
 export type { UserOverrideSectionId } from './UserOverridesSections';
 export type { RequestPolicyMode } from '../../../types';

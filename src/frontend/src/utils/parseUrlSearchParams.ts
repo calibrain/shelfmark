@@ -34,7 +34,7 @@ const parseContentType = (value: string | null): ContentType | undefined => {
  */
 export function parseUrlSearchParams(searchParams: URLSearchParams): ParsedUrlSearch {
   const parsedContentType = parseContentType(
-    searchParams.get('content_type') || searchParams.get('contentType')
+    searchParams.get('content_type') || searchParams.get('contentType'),
   );
 
   const result: ParsedUrlSearch = {

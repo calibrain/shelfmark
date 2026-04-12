@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+
 import { SelectFieldConfig, TableFieldConfig } from '../../../types/settings';
 import type { RequestPolicyContentType, RequestPolicyMode } from '../users';
 import {
@@ -19,34 +20,31 @@ export const RequestPolicyGridField = ({
     () =>
       field.boundFields?.find(
         (boundField): boundField is TableFieldConfig =>
-          boundField.key === 'REQUEST_POLICY_RULES' && boundField.type === 'TableField'
+          boundField.key === 'REQUEST_POLICY_RULES' && boundField.type === 'TableField',
       ),
-    [field.boundFields]
+    [field.boundFields],
   );
 
   const defaultEbookField = useMemo(
     () =>
       field.boundFields?.find(
         (boundField): boundField is SelectFieldConfig =>
-          boundField.key === 'REQUEST_POLICY_DEFAULT_EBOOK' && boundField.type === 'SelectField'
+          boundField.key === 'REQUEST_POLICY_DEFAULT_EBOOK' && boundField.type === 'SelectField',
       ),
-    [field.boundFields]
+    [field.boundFields],
   );
   const defaultAudioField = useMemo(
     () =>
       field.boundFields?.find(
         (boundField): boundField is SelectFieldConfig =>
-          boundField.key === 'REQUEST_POLICY_DEFAULT_AUDIOBOOK' && boundField.type === 'SelectField'
+          boundField.key === 'REQUEST_POLICY_DEFAULT_AUDIOBOOK' &&
+          boundField.type === 'SelectField',
       ),
-    [field.boundFields]
+    [field.boundFields],
   );
 
   if (!requestRulesField) {
-    return (
-      <p className="text-xs opacity-60">
-        Request policy schema is unavailable for this tab.
-      </p>
-    );
+    return <p className="text-xs opacity-60">Request policy schema is unavailable for this tab.</p>;
   }
 
   const globalRequestDefaults = useMemo(
@@ -55,24 +53,27 @@ export const RequestPolicyGridField = ({
         ebook: values.REQUEST_POLICY_DEFAULT_EBOOK,
         audiobook: values.REQUEST_POLICY_DEFAULT_AUDIOBOOK,
       }),
-    [values.REQUEST_POLICY_DEFAULT_EBOOK, values.REQUEST_POLICY_DEFAULT_AUDIOBOOK]
+    [values.REQUEST_POLICY_DEFAULT_EBOOK, values.REQUEST_POLICY_DEFAULT_AUDIOBOOK],
   );
 
   const explicitGlobalRules = useMemo(
     () => normalizeRequestPolicyRules(values.REQUEST_POLICY_RULES),
-    [values.REQUEST_POLICY_RULES]
+    [values.REQUEST_POLICY_RULES],
   );
 
   const requestSourceCapabilities = useMemo(
     () =>
       parseSourceCapabilitiesFromRulesField(
         requestRulesField,
-        explicitGlobalRules.map((row) => row.source)
+        explicitGlobalRules.map((row) => row.source),
       ),
-    [requestRulesField, explicitGlobalRules]
+    [requestRulesField, explicitGlobalRules],
   );
 
-  const onGlobalDefaultModeChange = (contentType: RequestPolicyContentType, mode: RequestPolicyMode) => {
+  const onGlobalDefaultModeChange = (
+    contentType: RequestPolicyContentType,
+    mode: RequestPolicyMode,
+  ) => {
     const key =
       contentType === 'ebook' ? 'REQUEST_POLICY_DEFAULT_EBOOK' : 'REQUEST_POLICY_DEFAULT_AUDIOBOOK';
     onChange(key, mode);
@@ -83,7 +84,7 @@ export const RequestPolicyGridField = ({
       source: string;
       content_type: 'ebook' | 'audiobook';
       mode: 'download' | 'request_release' | 'blocked';
-    }>
+    }>,
   ) => {
     onChange('REQUEST_POLICY_RULES', rules);
   };

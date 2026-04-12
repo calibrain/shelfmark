@@ -1,4 +1,4 @@
-.PHONY: help install install-python-dev dev build preview typecheck frontend-test clean up up down docker-build refresh restart build-serve python-lint python-lint-fix python-format python-format-check python-typecheck python-dead-code python-checks python-test-lint python-test-lint-fix python-test-format python-test-format-check python-test-typecheck python-test-checks python-coverage prek-install
+.PHONY: help install install-python-dev dev build preview typecheck frontend-lint frontend-format frontend-format-check frontend-checks frontend-test clean up up down docker-build refresh restart build-serve python-lint python-lint-fix python-format python-format-check python-typecheck python-dead-code python-checks python-test-lint python-test-lint-fix python-test-format python-test-format-check python-test-typecheck python-test-checks python-coverage prek-install
 
 # Frontend directory
 FRONTEND_DIR := src/frontend
@@ -17,6 +17,10 @@ help:
 	@echo "  build-serve - Build and serve via Flask (test prod build without Docker)"
 	@echo "  preview    - Preview production build"
 	@echo "  typecheck  - Run TypeScript type checking"
+	@echo "  frontend-lint - Run Oxlint against frontend code"
+	@echo "  frontend-format - Format frontend code with Oxfmt"
+	@echo "  frontend-format-check - Check frontend formatting with Oxfmt"
+	@echo "  frontend-checks - Run all frontend static analysis checks"
 	@echo "  frontend-test - Run frontend unit tests"
 	@echo "  install-python-dev - Sync Python runtime + dev tooling with uv"
 	@echo "  python-lint - Run Ruff against Python backend code"
@@ -52,6 +56,8 @@ install:
 install-python-dev:
 	@echo "Syncing Python runtime and dev tooling with uv..."
 	uv sync --locked --extra browser
+	@echo "Installing prek git hooks..."
+	uv run prek install
 
 # Start development server
 dev:
@@ -136,6 +142,23 @@ python-coverage:
 prek-install:
 	@echo "Installing prek git hooks..."
 	uv run prek install
+
+# Frontend linting
+frontend-lint:
+	@echo "Running Oxlint..."
+	cd $(FRONTEND_DIR) && npm run lint
+
+# Frontend formatting
+frontend-format:
+	@echo "Formatting frontend code with Oxfmt..."
+	cd $(FRONTEND_DIR) && npm run format
+
+frontend-format-check:
+	@echo "Checking frontend formatting with Oxfmt..."
+	cd $(FRONTEND_DIR) && npm run format:check
+
+# All frontend static analysis
+frontend-checks: frontend-lint frontend-format-check typecheck
 
 # Run frontend unit tests
 frontend-test:

@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
-import { DropdownList } from '../../DropdownList';
+
 import { RequestPolicyMode } from '../../../types';
+import { DropdownList } from '../../DropdownList';
 import {
   areRuleSetsEqual,
   getAllowedMatrixModes,
@@ -42,7 +43,8 @@ const formatSourceLabel = (source: string): string => {
     .join(' ');
 };
 
-const toRuleKey = (source: string, contentType: RequestPolicyContentType) => `${source}::${contentType}`;
+const toRuleKey = (source: string, contentType: RequestPolicyContentType) =>
+  `${source}::${contentType}`;
 
 const modeDescriptions: Record<RequestPolicyMode, string> = {
   download: 'Users can download directly.',
@@ -74,7 +76,7 @@ export const RequestPolicyGrid = ({
         defaultModes,
         sourceCapabilities,
       }),
-    [explicitRules, baseRules, defaultModes, sourceCapabilities]
+    [explicitRules, baseRules, defaultModes, sourceCapabilities],
   );
 
   useEffect(() => {
@@ -97,17 +99,17 @@ export const RequestPolicyGrid = ({
   }));
 
   const hasConfigurableColumn = CONTENT_TYPES.some((contentType) =>
-    isMatrixConfigurable(defaultModes[contentType])
+    isMatrixConfigurable(defaultModes[contentType]),
   );
 
   const updateCellRule = (
     source: string,
     contentType: RequestPolicyContentType,
-    nextMode: RequestPolicyMode
+    nextMode: RequestPolicyMode,
   ) => {
     const inheritedMode = getInheritedCellMode(source, contentType, defaultModes, baseRules);
     const nextExplicitRules = normalizedExplicitRules.filter(
-      (rule) => !(rule.source === source && rule.content_type === contentType)
+      (rule) => !(rule.source === source && rule.content_type === contentType),
     );
 
     if (nextMode !== inheritedMode) {
@@ -129,7 +131,7 @@ export const RequestPolicyGrid = ({
 
   const resetCellRule = (source: string, contentType: RequestPolicyContentType) => {
     const nextRules = normalizedExplicitRules.filter(
-      (rule) => !(rule.source === source && rule.content_type === contentType)
+      (rule) => !(rule.source === source && rule.content_type === contentType),
     );
     onExplicitRulesChange(nextRules);
   };
@@ -142,7 +144,7 @@ export const RequestPolicyGrid = ({
             type="button"
             onClick={onClearOverrides}
             disabled={clearOverridesDisabled}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-(--border-muted) bg-(--bg) hover:bg-(--hover-surface) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg border border-(--border-muted) bg-(--bg) px-3 py-1.5 text-xs font-medium transition-colors hover:bg-(--hover-surface) disabled:cursor-not-allowed disabled:opacity-50"
           >
             Clear all overrides
           </button>
@@ -151,16 +153,16 @@ export const RequestPolicyGrid = ({
 
       <div className="rounded-lg border border-(--border-muted)">
         {/* Header */}
-        <div className="hidden sm:grid sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 px-3 py-2 bg-(--bg-soft) text-xs font-medium opacity-60 border-b border-(--border-muted) rounded-t-lg">
+        <div className="hidden gap-3 rounded-t-lg border-b border-(--border-muted) bg-(--bg-soft) px-3 py-2 text-xs font-medium opacity-60 sm:grid sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)]">
           <span>Source</span>
           <span>Ebook</span>
           <span>Audiobook</span>
         </div>
 
         {/* Default row */}
-        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 px-3 py-2.5 items-center bg-(--bg-soft) border-b-2 border-(--border-muted)">
+        <div className="grid grid-cols-1 items-center gap-3 border-b-2 border-(--border-muted) bg-(--bg-soft) px-3 py-2.5 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)]">
           <div className="min-w-0">
-            <p className="text-sm font-semibold truncate">Default</p>
+            <p className="truncate text-sm font-semibold">Default</p>
           </div>
 
           {CONTENT_TYPES.map((contentType) => {
@@ -169,7 +171,7 @@ export const RequestPolicyGrid = ({
             const isDisabled = Boolean(defaultModeDisabled?.[contentType]);
 
             const mobileLabel = (
-              <span className="sm:hidden text-xs font-medium opacity-50 mr-2">
+              <span className="mr-2 text-xs font-medium opacity-50 sm:hidden">
                 {contentType === 'ebook' ? 'Ebook:' : 'Audiobook:'}
               </span>
             );
@@ -178,7 +180,7 @@ export const RequestPolicyGrid = ({
               <div key={contentType} className="flex items-center gap-1.5">
                 {mobileLabel}
                 {isDisabled ? (
-                  <div className="w-full px-3 py-2 rounded-lg border border-(--border-muted) bg-(--bg) text-sm opacity-60 cursor-not-allowed">
+                  <div className="w-full cursor-not-allowed rounded-lg border border-(--border-muted) bg-(--bg) px-3 py-2 text-sm opacity-60">
                     {REQUEST_POLICY_MODE_LABELS[mode]}
                   </div>
                 ) : (
@@ -193,7 +195,7 @@ export const RequestPolicyGrid = ({
                       onChange={(value) =>
                         onDefaultModeChange(
                           contentType,
-                          (Array.isArray(value) ? value[0] : value) as RequestPolicyMode
+                          (Array.isArray(value) ? value[0] : value) as RequestPolicyMode,
                         )
                       }
                       widthClassName="w-full"
@@ -205,7 +207,7 @@ export const RequestPolicyGrid = ({
                     type="button"
                     onClick={() => onDefaultModeReset(contentType)}
                     disabled={isDisabled}
-                    className="text-xs text-sky-500 hover:text-sky-400 transition-colors shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="shrink-0 text-xs text-sky-500 transition-colors hover:text-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Reset
                   </button>
@@ -220,12 +222,12 @@ export const RequestPolicyGrid = ({
           sourceRows.map((sourceRow, index) => (
             <div
               key={sourceRow.source}
-              className={`grid grid-cols-1 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 px-3 py-2.5 items-center ${
+              className={`grid grid-cols-1 items-center gap-3 px-3 py-2.5 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)] ${
                 index > 0 ? 'border-t border-(--border-muted)' : ''
               }`}
             >
               <div className="min-w-0">
-                <p className="text-sm font-medium truncate">{sourceRow.displayName}</p>
+                <p className="truncate text-sm font-medium">{sourceRow.displayName}</p>
               </div>
 
               {CONTENT_TYPES.map((contentType) => {
@@ -238,20 +240,20 @@ export const RequestPolicyGrid = ({
                   contentType,
                   defaultModes,
                   baseRules,
-                  normalizedExplicitRules
+                  normalizedExplicitRules,
                 );
                 const explicitRule = explicitRuleMap.get(key);
                 const isOverridden = Boolean(explicitRule);
 
                 const mobileLabel = (
-                  <span className="sm:hidden text-xs font-medium opacity-50 mr-2">
+                  <span className="mr-2 text-xs font-medium opacity-50 sm:hidden">
                     {contentType === 'ebook' ? 'Ebook:' : 'Audiobook:'}
                   </span>
                 );
 
                 if (!isSupported) {
                   return (
-                    <div key={key} className="flex items-center justify-center min-h-[36px]">
+                    <div key={key} className="flex min-h-[36px] items-center justify-center">
                       {mobileLabel}
                       <span className="text-xs opacity-40">Not supported</span>
                     </div>
@@ -260,7 +262,7 @@ export const RequestPolicyGrid = ({
 
                 if (!isConfigurable) {
                   return (
-                    <div key={key} className="flex items-center justify-center min-h-[36px]">
+                    <div key={key} className="flex min-h-[36px] items-center justify-center">
                       {mobileLabel}
                       <span className="text-xs opacity-40">
                         {REQUEST_POLICY_MODE_LABELS[effectiveMode]}
@@ -273,10 +275,17 @@ export const RequestPolicyGrid = ({
                 // When the effective mode isn't an allowed matrix mode (e.g. request_book
                 // as a ceiling default), include it as the first option so the dropdown
                 // shows the current state and lets the user switch away from it.
-                const effectiveModeOption =
-                  !allowedModes.includes(effectiveMode as typeof allowedModes[number])
-                    ? [{ value: effectiveMode, label: REQUEST_POLICY_MODE_LABELS[effectiveMode], description: modeDescriptions[effectiveMode] }]
-                    : [];
+                const effectiveModeOption = !allowedModes.includes(
+                  effectiveMode as (typeof allowedModes)[number],
+                )
+                  ? [
+                      {
+                        value: effectiveMode,
+                        label: REQUEST_POLICY_MODE_LABELS[effectiveMode],
+                        description: modeDescriptions[effectiveMode],
+                      },
+                    ]
+                  : [];
                 const options = [
                   ...effectiveModeOption,
                   ...allowedModes.map((mode) => ({
@@ -295,7 +304,7 @@ export const RequestPolicyGrid = ({
                       }`}
                     >
                       {rulesDisabled ? (
-                        <div className="w-full px-3 py-2 rounded-lg border border-(--border-muted) bg-(--bg-soft) text-sm opacity-60 cursor-not-allowed">
+                        <div className="w-full cursor-not-allowed rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 text-sm opacity-60">
                           {REQUEST_POLICY_MODE_LABELS[effectiveMode]}
                         </div>
                       ) : (
@@ -303,7 +312,9 @@ export const RequestPolicyGrid = ({
                           options={options}
                           value={effectiveMode}
                           onChange={(value) => {
-                            const nextMode = (Array.isArray(value) ? value[0] : value) as RequestPolicyMode;
+                            const nextMode = (
+                              Array.isArray(value) ? value[0] : value
+                            ) as RequestPolicyMode;
                             updateCellRule(sourceRow.source, contentType, nextMode);
                           }}
                           widthClassName="w-full"
@@ -314,7 +325,7 @@ export const RequestPolicyGrid = ({
                       <button
                         type="button"
                         onClick={() => resetCellRule(sourceRow.source, contentType)}
-                        className="text-xs text-sky-500 hover:text-sky-400 transition-colors shrink-0"
+                        className="shrink-0 text-xs text-sky-500 transition-colors hover:text-sky-400"
                         aria-label={`Reset ${sourceRow.displayName} ${contentType} override`}
                       >
                         Reset
@@ -328,7 +339,8 @@ export const RequestPolicyGrid = ({
         ) : (
           <div className="px-3 py-3">
             <p className="text-xs opacity-60">
-              Per-source settings become available when a default is set to Download or Request Release.
+              Per-source settings become available when a default is set to Download or Request
+              Release.
             </p>
           </div>
         )}

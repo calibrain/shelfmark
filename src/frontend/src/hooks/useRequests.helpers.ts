@@ -8,10 +8,14 @@ export interface RequestUpdateEventPayload {
 }
 
 const isValidRequestStatus = (value: unknown): value is RequestUpdateStatus => {
-  return value === 'pending' || value === 'fulfilled' || value === 'rejected' || value === 'cancelled';
+  return (
+    value === 'pending' || value === 'fulfilled' || value === 'rejected' || value === 'cancelled'
+  );
 };
 
-export const normalizeRequestUpdatePayload = (payload: unknown): RequestUpdateEventPayload | null => {
+export const normalizeRequestUpdatePayload = (
+  payload: unknown,
+): RequestUpdateEventPayload | null => {
   if (!payload || typeof payload !== 'object') {
     return null;
   }
@@ -20,7 +24,11 @@ export const normalizeRequestUpdatePayload = (payload: unknown): RequestUpdateEv
   const requestId = row.request_id;
   const status = row.status;
 
-  if (typeof requestId !== 'number' || !Number.isFinite(requestId) || !isValidRequestStatus(status)) {
+  if (
+    typeof requestId !== 'number' ||
+    !Number.isFinite(requestId) ||
+    !isValidRequestStatus(status)
+  ) {
     return null;
   }
 
@@ -32,12 +40,12 @@ export const normalizeRequestUpdatePayload = (payload: unknown): RequestUpdateEv
 
 export const upsertRequestRecord = (
   records: RequestRecord[],
-  updated: RequestRecord
+  updated: RequestRecord,
 ): RequestRecord[] => {
   const index = records.findIndex((record) => record.id === updated.id);
   if (index === -1) {
     return [updated, ...records].sort(
-      (left, right) => Date.parse(right.created_at) - Date.parse(left.created_at)
+      (left, right) => Date.parse(right.created_at) - Date.parse(left.created_at),
     );
   }
 
@@ -48,7 +56,7 @@ export const upsertRequestRecord = (
 
 export const applyRequestUpdateEvent = (
   records: RequestRecord[],
-  payload: RequestUpdateEventPayload
+  payload: RequestUpdateEventPayload,
 ): { records: RequestRecord[]; found: boolean } => {
   let found = false;
   const next = records.map((record) => {
