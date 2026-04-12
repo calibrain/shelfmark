@@ -590,7 +590,10 @@ export const ActivitySidebar = ({
       if (!grouped.has(category)) {
         grouped.set(category, []);
       }
-      grouped.get(category)!.push(item);
+      const bucket = grouped.get(category);
+      if (bucket) {
+        bucket.push(item);
+      }
     });
 
     return visibleCategoryOrder
@@ -901,7 +904,7 @@ export const ActivitySidebar = ({
                   <div className="pt-3 text-center">
                     <button
                       type="button"
-                      onClick={onHistoryLoadMore}
+                      onClick={() => void onHistoryLoadMore?.()}
                       disabled={historyLoading}
                       className="text-sm text-sky-600 hover:underline disabled:opacity-60 dark:text-sky-400"
                     >
@@ -974,7 +977,13 @@ export const ActivitySidebar = ({
                           onDownloadCancel={onCancel}
                           onDownloadRetry={onRetry}
                           onDownloadDismiss={onDownloadDismiss}
-                          onRequestCancel={onRequestCancel}
+                          onRequestCancel={
+                            onRequestCancel
+                              ? (nextRequestId) => {
+                                  void onRequestCancel(nextRequestId);
+                                }
+                              : undefined
+                          }
                           onRequestApprove={onRequestApprove}
                           onRequestDismiss={onRequestDismiss}
                           onRequestReject={

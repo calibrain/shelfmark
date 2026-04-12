@@ -122,6 +122,10 @@ export const RequestConfirmationModal = ({
     if (!payload) return;
 
     const bookData = payload.book_data || {};
+    const currentBasePreview = basePreview;
+    if (!currentBasePreview) {
+      return;
+    }
     const provider = bookData.provider;
     const providerId = bookData.provider_id;
 
@@ -142,7 +146,7 @@ export const RequestConfirmationModal = ({
       .then((book) => {
         if (id !== enrichRef.current) return;
         if (book.series_name) {
-          setEnriched((prev) => enrichPreviewFromBook(prev ?? basePreview!, book));
+          setEnriched((prev) => enrichPreviewFromBook(prev ?? currentBasePreview, book));
         }
       })
       .catch(() => {
@@ -314,7 +318,9 @@ export const RequestConfirmationModal = ({
           </button>
           <button
             type="button"
-            onClick={submit}
+            onClick={() => {
+              void submit();
+            }}
             disabled={confirmDisabled}
             className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
           >

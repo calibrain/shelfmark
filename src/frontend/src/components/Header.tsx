@@ -336,6 +336,63 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
       onActingAsUserChange?.(selectedUser);
     };
 
+    const handleDebugDownload = async () => {
+      closeDropdown();
+      // Show persistent toast while gathering logs
+      const loadingToastId = onShowToast?.(
+        'Gathering debug logs... This may take a minute.',
+        'info',
+        true,
+      );
+      try {
+        const response = await fetch(withBasePath('/api/debug'), {
+          method: 'GET',
+          credentials: 'include',
+        });
+
+        // Remove the loading toast
+        if (loadingToastId) onRemoveToast?.(loadingToastId);
+
+        if (!response.ok) {
+          const errorData: unknown = await response.json().catch(() => null);
+          const errorMessage =
+            isRecord(errorData) && typeof errorData.error === 'string'
+              ? errorData.error
+              : response.statusText;
+          onShowToast?.(`Debug download failed: ${errorMessage}`, 'error');
+          return;
+        }
+
+        // Get the filename from Content-Disposition header or use default
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = 'debug.zip';
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+          if (filenameMatch && filenameMatch[1]) {
+            filename = filenameMatch[1].replace(/['"]/g, '');
+          }
+        }
+
+        // Create blob and trigger download
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+
+        onShowToast?.('Debug logs downloaded successfully', 'success');
+      } catch (error) {
+        // Remove the loading toast on error too
+        if (loadingToastId) onRemoveToast?.(loadingToastId);
+        console.error('Debug download error:', error);
+        onShowToast?.('Debug download failed. Check console for details.', 'error');
+      }
+    };
+
     // Determine if we should show icons only (both URLs configured)
     const showIconsOnly = Boolean(calibreWebUrl && audiobookLibraryUrl);
 
@@ -401,6 +458,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
         {/* Activity Button */}
         {onDownloadsClick && (
           <button
+            type="button"
             onClick={onDownloadsClick}
             className="hover-action relative flex items-center gap-2 rounded-full px-3 py-2 text-gray-900 transition-all duration-200 dark:text-gray-100"
             aria-label="View activity"
@@ -437,6 +495,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
         {/* User Menu Dropdown */}
         <div className="relative" ref={dropdownRef}>
           <button
+            type="button"
             onClick={toggleDropdown}
             className={`hover-action relative rounded-full p-2 transition-colors ${
               isDropdownOpen ? 'bg-(--hover-action)' : ''
@@ -547,68 +606,9 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
                 {debug && (
                   <>
                     <button
+                      type="button"
                       className="hover-surface flex w-full items-center gap-3 px-4 py-2 text-left text-orange-600 transition-colors dark:text-orange-400"
-                      onClick={async () => {
-                        closeDropdown();
-                        // Show persistent toast while gathering logs
-                        const loadingToastId = onShowToast?.(
-                          'Gathering debug logs... This may take a minute.',
-                          'info',
-                          true,
-                        );
-                        try {
-                          const response = await fetch(withBasePath('/api/debug'), {
-                            method: 'GET',
-                            credentials: 'include',
-                          });
-
-                          // Remove the loading toast
-                          if (loadingToastId) onRemoveToast?.(loadingToastId);
-
-                          if (!response.ok) {
-                            const errorData: unknown = await response.json().catch(() => null);
-                            const errorMessage =
-                              isRecord(errorData) && typeof errorData.error === 'string'
-                                ? errorData.error
-                                : response.statusText;
-                            onShowToast?.(`Debug download failed: ${errorMessage}`, 'error');
-                            return;
-                          }
-
-                          // Get the filename from Content-Disposition header or use default
-                          const contentDisposition = response.headers.get('Content-Disposition');
-                          let filename = 'debug.zip';
-                          if (contentDisposition) {
-                            const filenameMatch = contentDisposition.match(
-                              /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/,
-                            );
-                            if (filenameMatch && filenameMatch[1]) {
-                              filename = filenameMatch[1].replace(/['"]/g, '');
-                            }
-                          }
-
-                          // Create blob and trigger download
-                          const blob = await response.blob();
-                          const url = window.URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = filename;
-                          document.body.appendChild(a);
-                          a.click();
-                          window.URL.revokeObjectURL(url);
-                          a.remove();
-
-                          onShowToast?.('Debug logs downloaded successfully', 'success');
-                        } catch (error) {
-                          // Remove the loading toast on error too
-                          if (loadingToastId) onRemoveToast?.(loadingToastId);
-                          console.error('Debug download error:', error);
-                          onShowToast?.(
-                            'Debug download failed. Check console for details.',
-                            'error',
-                          );
-                        }
-                      }}
+                      onClick={() => void handleDebugDownload()}
                     >
                       <svg
                         className="h-5 w-5"

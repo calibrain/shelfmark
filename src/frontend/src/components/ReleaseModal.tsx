@@ -1864,7 +1864,11 @@ export const ReleaseModal = ({
                         <button
                           type="button"
                           onClick={() => {
-                            onSearchSeries(book.series_name!, book.series_id);
+                            const seriesName = book.series_name;
+                            if (!seriesName) {
+                              return;
+                            }
+                            onSearchSeries(seriesName, book.series_id);
                             handleClose();
                           }}
                           className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:hover:bg-emerald-900/40"
@@ -1975,10 +1979,10 @@ export const ReleaseModal = ({
                             {isRequestingBook ? 'Adding...' : 'Add to requests'}
                           </button>
                         )}
-                        {bookSupportsTargets(book) && (
+                        {bookSupportsTargets(book) && book.provider && book.provider_id && (
                           <BookTargetDropdown
-                            provider={book.provider!}
-                            bookId={book.provider_id!}
+                            provider={book.provider}
+                            bookId={book.provider_id}
                             onShowToast={onShowToast}
                             variant="pill"
                           />
@@ -2018,6 +2022,7 @@ export const ReleaseModal = ({
                       {allTabs.map((tab) => (
                         <button
                           key={tab.name}
+                          type="button"
                           ref={(el) => {
                             tabRefs.current[tab.name] = el;
                           }}
@@ -2389,81 +2394,89 @@ export const ReleaseModal = ({
                               columnConfig.supported_filters?.includes('indexer')) && (
                               <button
                                 type="button"
-                                onClick={async () => {
-                                  close();
-                                  if (!book?.provider || !book?.provider_id) return;
+                                onClick={() => {
+                                  void (async () => {
+                                    close();
+                                    if (!book?.provider || !book?.provider_id) return;
 
-                                  const provider = book.provider;
-                                  const bookId = book.provider_id;
+                                    const provider = book.provider;
+                                    const bookId = book.provider_id;
 
-                                  // Clear cache and state
-                                  invalidateCachedReleases(
-                                    provider,
-                                    bookId,
-                                    activeTab,
-                                    contentType,
-                                  );
-                                  setExpandedBySource((prev) => {
-                                    const next = { ...prev };
-                                    delete next[activeTab];
-                                    return next;
-                                  });
-                                  setErrorBySource((prev) => {
-                                    const next = { ...prev };
-                                    delete next[activeTab];
-                                    return next;
-                                  });
-
-                                  // Fetch with language filter
-                                  setLoadingBySource((prev) => ({ ...prev, [activeTab]: true }));
-                                  try {
-                                    // Resolve language codes for the API call
-                                    const languagesParam = getReleaseSearchLanguageParams(
-                                      languageFilter,
-                                      bookLanguages,
-                                      defaultLanguages,
-                                    );
-
-                                    // Pass indexer filter only if the source supports it (empty array = search all)
-                                    const supportsIndexerFilter =
-                                      columnConfig.supported_filters?.includes('indexer');
-                                    const indexersParam =
-                                      supportsIndexerFilter && indexerFilter.length > 0
-                                        ? indexerFilter
-                                        : undefined;
-
-                                    const response = await getReleases(
-                                      provider,
-                                      bookId,
-                                      activeTab,
-                                      book.title,
-                                      book.author,
-                                      false,
-                                      languagesParam,
-                                      contentType,
-                                      manualQuery.trim() || undefined,
-                                      indexersParam,
-                                    );
-                                    setCachedReleases(
+                                    // Clear cache and state
+                                    invalidateCachedReleases(
                                       provider,
                                       bookId,
                                       activeTab,
                                       contentType,
-                                      response,
                                     );
-                                    setReleasesBySource((prev) => ({
-                                      ...prev,
-                                      [activeTab]: response,
-                                    }));
-                                  } catch (err) {
-                                    const message =
-                                      err instanceof Error
-                                        ? err.message
-                                        : 'Failed to fetch releases';
-                                    setErrorBySource((prev) => ({ ...prev, [activeTab]: message }));
-                                  } finally {
-                                    setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
-                                  }
+                                    setExpandedBySource((prev) => {
+                                      const next = { ...prev };
+                                      delete next[activeTab];
+                                      return next;
+                                    });
+                                    setErrorBySource((prev) => {
+                                      const next = { ...prev };
+                                      delete next[activeTab];
+                                      return next;
+                                    });
+
+                                    // Fetch with language filter
+                                    setLoadingBySource((prev) => ({ ...prev, [activeTab]: true }));
+                                    try {
+                                      // Resolve language codes for the API call
+                                      const languagesParam = getReleaseSearchLanguageParams(
+                                        languageFilter,
+                                        bookLanguages,
+                                        defaultLanguages,
+                                      );
+
+                                      // Pass indexer filter only if the source supports it (empty array = search all)
+                                      const supportsIndexerFilter =
+                                        columnConfig.supported_filters?.includes('indexer');
+                                      const indexersParam =
+                                        supportsIndexerFilter && indexerFilter.length > 0
+                                          ? indexerFilter
+                                          : undefined;
+
+                                      const response = await getReleases(
+                                        provider,
+                                        bookId,
+                                        activeTab,
+                                        book.title,
+                                        book.author,
+                                        false,
+                                        languagesParam,
+                                        contentType,
+                                        manualQuery.trim() || undefined,
+                                        indexersParam,
+                                      );
+                                      setCachedReleases(
+                                        provider,
+                                        bookId,
+                                        activeTab,
+                                        contentType,
+                                        response,
+                                      );
+                                      setReleasesBySource((prev) => ({
+                                        ...prev,
+                                        [activeTab]: response,
+                                      }));
+                                    } catch (err) {
+                                      const message =
+                                        err instanceof Error
+                                          ? err.message
+                                          : 'Failed to fetch releases';
+                                      setErrorBySource((prev) => ({
+                                        ...prev,
+                                        [activeTab]: message,
+                                      }));
+                                    } finally {
+                                      setLoadingBySource((prev) => ({
+                                        ...prev,
+                                        [activeTab]: false,
+                                      }));
+                                    }
+                                  })();
                                 }}
                                 className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
                               >
@@ -2484,52 +2497,54 @@ export const ReleaseModal = ({
               <div className="border-b border-(--border-muted) bg-(--bg) px-5 py-3 sm:bg-(--bg-soft)">
                 <form
                   className="flex items-center gap-2"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-                    if (!book?.provider || !book?.provider_id) return;
+                  onSubmit={(e) => {
+                    void (async () => {
+                      e.preventDefault();
+                      if (!book?.provider || !book?.provider_id) return;
 
-                    const q = manualQuery.trim();
-                    if (!q) return;
+                      const q = manualQuery.trim();
+                      if (!q) return;
 
-                    const provider = book.provider;
-                    const bookId = book.provider_id;
+                      const provider = book.provider;
+                      const bookId = book.provider_id;
 
-                    // Clear cache + results for ALL tabs so tab switches re-fetch with the new query
-                    for (const tab of allTabs) {
-                      invalidateCachedReleases(provider, bookId, tab.name, contentType);
-                    }
-                    setExpandedBySource({});
-                    setErrorBySource({});
-                    // null for active tab triggers immediate re-fetch; omitting others
-                    // means they'll re-fetch when switched to
-                    setReleasesBySource((prev) => {
-                      const cleared: typeof prev = {};
-                      cleared[activeTab] = null;
-                      return cleared;
-                    });
+                      // Clear cache + results for ALL tabs so tab switches re-fetch with the new query
+                      for (const tab of allTabs) {
+                        invalidateCachedReleases(provider, bookId, tab.name, contentType);
+                      }
+                      setExpandedBySource({});
+                      setErrorBySource({});
+                      // null for active tab triggers immediate re-fetch; omitting others
+                      // means they'll re-fetch when switched to
+                      setReleasesBySource((prev) => {
+                        const cleared: typeof prev = {};
+                        cleared[activeTab] = null;
+                        return cleared;
+                      });
 
-                    setLoadingBySource((prev) => ({ ...prev, [activeTab]: true }));
-                    try {
-                      const response = await getReleases(
-                        provider,
-                        bookId,
-                        activeTab,
-                        book.title,
-                        book.author,
-                        false,
-                        undefined,
-                        contentType,
-                        q,
-                      );
-                      setCachedReleases(provider, bookId, activeTab, contentType, response);
-                      setReleasesBySource((prev) => ({ ...prev, [activeTab]: response }));
-                    } catch (err) {
-                      const message =
-                        err instanceof Error ? err.message : 'Failed to fetch releases';
-                      setErrorBySource((prev) => ({ ...prev, [activeTab]: message }));
-                    } finally {
-                      setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
-                    }
+                      setLoadingBySource((prev) => ({ ...prev, [activeTab]: true }));
+                      try {
+                        const response = await getReleases(
+                          provider,
+                          bookId,
+                          activeTab,
+                          book.title,
+                          book.author,
+                          false,
+                          undefined,
+                          contentType,
+                          q,
+                        );
+                        setCachedReleases(provider, bookId, activeTab, contentType, response);
+                        setReleasesBySource((prev) => ({ ...prev, [activeTab]: response }));
+                      } catch (err) {
+                        const message =
+                          err instanceof Error ? err.message : 'Failed to fetch releases';
+                        setErrorBySource((prev) => ({ ...prev, [activeTab]: message }));
+                      } finally {
+                        setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
+                      }
+                    })();
                   }}
                 >
                   <input
@@ -2596,7 +2611,9 @@ export const ReleaseModal = ({
                         <div className="py-3 text-center">
                           <button
                             type="button"
-                            onClick={handleExpandSearch}
+                            onClick={() => {
+                              void handleExpandSearch();
+                            }}
                             className="hover-action rounded-full px-3 py-1.5 text-sm text-zinc-500 transition-all duration-200 dark:text-zinc-400"
                           >
                             {columnConfig.action_button?.label ?? 'Expand search'}
@@ -2652,7 +2669,9 @@ export const ReleaseModal = ({
                         >
                           <button
                             type="button"
-                            onClick={handleExpandSearch}
+                            onClick={() => {
+                              void handleExpandSearch();
+                            }}
                             className="hover-action rounded-full px-3 py-1.5 text-sm text-zinc-500 transition-all duration-200 dark:text-zinc-400"
                           >
                             {columnConfig.action_button?.label ?? 'Expand search'}

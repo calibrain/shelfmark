@@ -187,12 +187,13 @@ export const BookTargetDropdown = ({
               selected: result.selected,
             });
             // When a status was implicitly deselected, sync other instances
-            if (result.deselectedTarget) {
-              setOptions((prev) => updateOptionChecked(prev, result.deselectedTarget!, false));
+            const deselectedTarget = result.deselectedTarget;
+            if (deselectedTarget) {
+              setOptions((prev) => updateOptionChecked(prev, deselectedTarget, false));
               emitBookTargetChange({
                 provider,
                 bookId,
-                target: result.deselectedTarget,
+                target: deselectedTarget,
                 selected: false,
               });
             }

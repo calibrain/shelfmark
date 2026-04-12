@@ -55,7 +55,9 @@ export const ActionButton = ({ field, onAction, disabled }: ActionButtonProps) =
       <div className="flex items-start gap-3">
         <button
           type="button"
-          onClick={handleClick}
+          onClick={() => {
+            void handleClick();
+          }}
           disabled={isDisabled}
           className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${styleClasses[field.style]}`}
         >

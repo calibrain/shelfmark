@@ -111,6 +111,8 @@ export const DetailsModal = ({
     return isMetadata ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-sky-700 hover:bg-sky-800';
   })();
   const publisherInfo = { label: 'Publisher', value: book.publisher || '-' };
+  const bookProvider = book.provider;
+  const bookProviderId = book.provider_id;
 
   // Build metadata grid based on mode
   // Universal mode: Year, Genres (no language, no publisher - often blank from providers)
@@ -333,7 +335,11 @@ export const DetailsModal = ({
                         <button
                           type="button"
                           onClick={() => {
-                            onSearchSeries(book.series_name!, book.series_id);
+                            const seriesName = book.series_name;
+                            if (!seriesName) {
+                              return;
+                            }
+                            onSearchSeries(seriesName, book.series_id);
                             handleClose();
                           }}
                           className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-100 dark:bg-emerald-900/20 dark:text-emerald-400 dark:hover:bg-emerald-900/40"
@@ -399,17 +405,24 @@ export const DetailsModal = ({
                 </a>
               )}
               <div className="flex w-full flex-col gap-3 sm:ml-auto sm:w-auto sm:flex-row sm:items-center">
-                {hasBookTargets && book.provider_id && (
+                {hasBookTargets && bookProvider && bookProviderId && (
                   <BookTargetDropdown
-                    provider={book.provider!}
-                    bookId={book.provider_id}
+                    provider={bookProvider}
+                    bookId={bookProviderId}
                     onShowToast={onShowToast}
                     widthClassName="w-full sm:w-56"
                   />
                 )}
                 {/* Action button - mirrors search result action state/flow */}
                 <button
-                  onClick={isMetadata ? () => onFindDownloads?.(book) : handleDownload}
+                  type="button"
+                  onClick={() => {
+                    if (isMetadata) {
+                      onFindDownloads?.(book);
+                      return;
+                    }
+                    void handleDownload();
+                  }}
                   disabled={
                     isMetadata ? buttonState.state === 'blocked' : buttonState.state !== 'download'
                   }

@@ -106,6 +106,7 @@ export const UserListView = ({
             <div className="space-y-3 py-8 text-center">
               <p className="text-sm opacity-60">{loadError}</p>
               <button
+                type="button"
                 onClick={onRetryLoadUsers}
                 className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
               >
@@ -215,7 +216,9 @@ export const UserListView = ({
                           editPasswordConfirm={editPasswordConfirm}
                           onEditPasswordConfirmChange={onEditPasswordConfirmChange}
                           onDelete={() => setConfirmDelete(user.id)}
-                          onConfirmDelete={() => handleDelete(user.id)}
+                          onConfirmDelete={() => {
+                            void handleDelete(user.id);
+                          }}
                           onCancelDelete={() => setConfirmDelete(null)}
                           isDeletePending={confirmDelete === user.id}
                           deleting={deletingUserId === user.id}
@@ -251,6 +254,7 @@ export const UserListView = ({
             />
           ) : (
             <button
+              type="button"
               onClick={onCreate}
               className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700"
             >
@@ -263,7 +267,10 @@ export const UserListView = ({
       {!canCreateLocalUsers && isCwaMode && (
         <div>
           <button
-            onClick={onSyncCwa}
+            type="button"
+            onClick={() => {
+              void onSyncCwa();
+            }}
             disabled={syncingCwa}
             className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
           >

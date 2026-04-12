@@ -132,6 +132,13 @@ export const ListView = ({
           const buttonState =
             searchMode === 'universal' ? getUniversalButtonState(book.id) : getButtonState(book.id);
           const isLoadingDetails = detailsLoadingId === book.id;
+          const ratingField = book.display_fields?.find((field) => field.icon === 'star');
+          const lengthField = book.display_fields?.find(
+            (field) => field.icon === 'clock' || field.icon === 'book',
+          );
+          const narratorField = book.display_fields?.find((field) => field.icon === 'microphone');
+          const targetProvider = book.provider;
+          const targetBookId = book.provider_id;
           const mobileDisplayFields =
             searchMode === 'universal' && book.display_fields
               ? getKeyedDisplayFields(
@@ -224,34 +231,24 @@ export const ListView = ({
                   <>
                     {/* Rating column */}
                     <div className="hidden justify-start sm:flex">
-                      {book.display_fields?.find((f) => f.icon === 'star') ? (
-                        <DisplayFieldBadge
-                          field={book.display_fields.find((f) => f.icon === 'star')!}
-                        />
+                      {ratingField ? (
+                        <DisplayFieldBadge field={ratingField} />
                       ) : (
                         <span className="text-xs text-gray-500">-</span>
                       )}
                     </div>
                     {/* Length column */}
                     <div className="hidden justify-start sm:flex">
-                      {book.display_fields?.find((f) => f.icon === 'clock' || f.icon === 'book') ? (
-                        <DisplayFieldBadge
-                          field={
-                            book.display_fields.find(
-                              (f) => f.icon === 'clock' || f.icon === 'book',
-                            )!
-                          }
-                        />
+                      {lengthField ? (
+                        <DisplayFieldBadge field={lengthField} />
                       ) : (
                         <span className="text-xs text-gray-500">-</span>
                       )}
                     </div>
                     {/* Narrator column */}
                     <div className="hidden justify-start sm:flex">
-                      {book.display_fields?.find((f) => f.icon === 'microphone') ? (
-                        <DisplayFieldBadge
-                          field={book.display_fields.find((f) => f.icon === 'microphone')!}
-                        />
+                      {narratorField ? (
+                        <DisplayFieldBadge field={narratorField} />
                       ) : (
                         <span className="text-xs text-gray-500">-</span>
                       )}
@@ -292,18 +289,21 @@ export const ListView = ({
 
                 {/* Action Buttons */}
                 <div className="flex flex-row justify-end gap-0.5 sm:gap-1 sm:pr-3">
-                  {bookSupportsTargets(book) && (
+                  {bookSupportsTargets(book) && targetProvider && targetBookId && (
                     <BookTargetDropdown
-                      provider={book.provider!}
-                      bookId={book.provider_id!}
+                      provider={targetProvider}
+                      bookId={targetBookId}
                       onShowToast={onShowToast}
                       variant="icon"
                       onOpenChange={(isOpen) => setOpenDropdownBookId(isOpen ? book.id : null)}
                     />
                   )}
                   <button
+                    type="button"
                     className="hover-action flex items-center justify-center rounded-full p-1.5 text-gray-600 transition-all duration-200 sm:p-2 dark:text-gray-200"
-                    onClick={() => handleDetails(book.id)}
+                    onClick={() => {
+                      void handleDetails(book.id);
+                    }}
                     disabled={isLoadingDetails}
                     aria-label={`View details for ${book.title || 'this book'}`}
                   >
@@ -329,7 +329,9 @@ export const ListView = ({
                     book={book}
                     buttonState={buttonState}
                     onDownload={onDownload}
-                    onGetReleases={handleGetReleases}
+                    onGetReleases={(selectedBook) => {
+                      void handleGetReleases(selectedBook);
+                    }}
                     isLoadingReleases={releasesLoadingId === book.id}
                     variant="icon"
                     size="md"

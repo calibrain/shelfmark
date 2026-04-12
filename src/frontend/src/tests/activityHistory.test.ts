@@ -57,7 +57,13 @@ describe('dedupeHistoryItems', () => {
       statusLabel: 'Rejected',
       requestId: 7,
       requestRecord: {
-        ...makeRequestItem().requestRecord!,
+        ...(() => {
+          const baseRequestRecord = makeRequestItem().requestRecord;
+          if (!baseRequestRecord) {
+            throw new Error('Expected a request record');
+          }
+          return baseRequestRecord;
+        })(),
         id: 7,
         status: 'rejected',
         release_data: { source: 'prowlarr', source_id: 'release-7' },

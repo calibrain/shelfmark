@@ -41,6 +41,9 @@ export const CompactView = ({
   const [imageError, setImageError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const targetProvider = book.provider;
+  const targetBookId = book.provider_id;
+  const microphoneField = book.display_fields?.find((field) => field.icon === 'microphone');
   let zIndex: number | undefined;
   if (dropdownOpen) {
     zIndex = 20;
@@ -138,10 +141,10 @@ export const CompactView = ({
               pointerEvents: isHovered || dropdownOpen || isLoadingDetails ? 'auto' : 'none',
             }}
           >
-            {bookSupportsTargets(book) && (
+            {bookSupportsTargets(book) && targetProvider && targetBookId && (
               <BookTargetDropdown
-                provider={book.provider!}
-                bookId={book.provider_id!}
+                provider={targetProvider}
+                bookId={targetBookId}
                 onShowToast={onShowToast}
                 variant="icon"
                 className="h-8 w-8 bg-white/90 shadow-lg backdrop-blur-xs hover:scale-110 dark:bg-neutral-800/90"
@@ -149,6 +152,7 @@ export const CompactView = ({
               />
             )}
             <button
+              type="button"
               className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 shadow-lg backdrop-blur-xs transition-all duration-300 hover:scale-110 dark:bg-neutral-800/90"
               onClick={(e) => {
                 e.stopPropagation();
@@ -197,10 +201,10 @@ export const CompactView = ({
                 )}
                 className="text-xs opacity-70"
               />
-              {book.display_fields.find((f) => f.icon === 'microphone') && (
+              {microphoneField && (
                 <div className="flex items-center gap-0.5 text-xs opacity-70">
                   <DisplayFieldIcon icon="microphone" />
-                  <span>{book.display_fields.find((f) => f.icon === 'microphone')!.value}</span>
+                  <span>{microphoneField.value}</span>
                 </div>
               )}
             </>
@@ -221,8 +225,11 @@ export const CompactView = ({
           {showDetailsButton ? (
             <div className="flex gap-1.5">
               <button
+                type="button"
                 className="flex shrink-0 items-center justify-center gap-1 rounded-sm border px-2 py-1.5 text-xs"
-                onClick={() => handleDetails(book.id)}
+                onClick={() => {
+                  void handleDetails(book.id);
+                }}
                 style={{ borderColor: 'var(--border-muted)' }}
                 disabled={isLoadingDetails}
               >
@@ -237,7 +244,9 @@ export const CompactView = ({
                 book={book}
                 buttonState={buttonState}
                 onDownload={onDownload}
-                onGetReleases={handleGetReleases}
+                onGetReleases={(selectedBook) => {
+                  void handleGetReleases(selectedBook);
+                }}
                 isLoadingReleases={isLoadingReleases}
                 size="sm"
                 className="flex-1"
@@ -248,7 +257,9 @@ export const CompactView = ({
               book={book}
               buttonState={buttonState}
               onDownload={onDownload}
-              onGetReleases={handleGetReleases}
+              onGetReleases={(selectedBook) => {
+                void handleGetReleases(selectedBook);
+              }}
               isLoadingReleases={isLoadingReleases}
               size="sm"
               fullWidth

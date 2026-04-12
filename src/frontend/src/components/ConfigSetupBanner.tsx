@@ -85,6 +85,7 @@ export const ConfigSetupBanner = ({
             {showContinueButton ? 'Config Volume Required' : 'New Feature: Settings Page'}
           </h2>
           <button
+            type="button"
             onClick={handleClose}
             className="rounded-lg p-1.5 transition-colors hover:bg-(--hover-surface)"
             aria-label="Close"
@@ -146,12 +147,14 @@ export const ConfigSetupBanner = ({
           {showContinueButton ? (
             <>
               <button
+                type="button"
                 onClick={handleClose}
                 className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
               >
                 Close
               </button>
               <button
+                type="button"
                 onClick={handleContinue}
                 className="rounded-lg bg-(--primary-color) px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-(--primary-dark)"
               >
@@ -160,6 +163,7 @@ export const ConfigSetupBanner = ({
             </>
           ) : (
             <button
+              type="button"
               onClick={handleClose}
               className="rounded-lg bg-(--primary-color) px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-(--primary-dark)"
             >

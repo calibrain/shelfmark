@@ -334,8 +334,9 @@ export const BookDownloadButton = ({
 
   return (
     <button
+      type="button"
       className={`${baseClasses} ${sizeClass} ${stateClasses} ${widthClasses} ${className}`.trim()}
-      onClick={handleDownload}
+      onClick={() => void handleDownload()}
       disabled={isDisabled || isInProgress}
       data-action="download"
       style={style}

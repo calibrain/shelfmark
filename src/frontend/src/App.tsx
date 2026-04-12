@@ -1321,6 +1321,9 @@ function App() {
       const activeList = searchFieldValuesRef.current.hardcover_list;
       if (!activeList) return;
       const target = String(activeList);
+      const provider = book.provider;
+      const bookId = book.provider_id;
+      if (!provider || !bookId) return;
 
       // Only auto-remove from lists the user owns (Reading Status / My Lists)
       const listField = metadataConfigRef.current?.search_fields.find(
@@ -1331,12 +1334,12 @@ function App() {
         if (group && group !== 'Reading Status' && group !== 'My Lists') return;
       }
 
-      void setBookTargetState(book.provider!, book.provider_id!, target, false)
+      void setBookTargetState(provider, bookId, target, false)
         .then((result) => {
           if (result.changed) {
             emitBookTargetChange({
-              provider: book.provider!,
-              bookId: book.provider_id!,
+              provider,
+              bookId,
               target,
               selected: false,
             });
@@ -1530,19 +1533,24 @@ function App() {
       ): CreateRequestPayload => {
         const payload =
           mode === 'request_release'
-            ? {
-                book_data: buildMetadataBookRequestData(book, releaseContentType),
-                release_data: buildReleaseDataFromMetadataRelease(
-                  book,
-                  release!,
-                  releaseContentType,
-                ),
-                context: {
-                  source: release!.source,
-                  content_type: releaseContentType,
-                  request_level: 'release' as const,
-                },
-              }
+            ? (() => {
+                if (!release) {
+                  throw new Error('Missing release for combined request payload');
+                }
+                return {
+                  book_data: buildMetadataBookRequestData(book, releaseContentType),
+                  release_data: buildReleaseDataFromMetadataRelease(
+                    book,
+                    release,
+                    releaseContentType,
+                  ),
+                  context: {
+                    source: release.source,
+                    content_type: releaseContentType,
+                    request_level: 'release' as const,
+                  },
+                };
+              })()
             : {
                 book_data: buildMetadataBookRequestData(book, releaseContentType),
                 release_data: null,
@@ -1566,13 +1574,19 @@ function App() {
       const requestPayloads: CreateRequestPayload[] = [];
 
       if (ebookMode === 'download') {
-        await executeReleaseDownload(book, ebookRelease!, 'ebook', onBehalfOfUserId);
+        if (!ebookRelease) {
+          throw new Error('Missing ebook release for combined download');
+        }
+        await executeReleaseDownload(book, ebookRelease, 'ebook', onBehalfOfUserId);
       } else {
         requestPayloads.push(buildRequestPayload(ebookRelease, 'ebook', ebookMode));
       }
 
       if (audiobookMode === 'download') {
-        await executeReleaseDownload(book, audiobookRelease!, 'audiobook', onBehalfOfUserId);
+        if (!audiobookRelease) {
+          throw new Error('Missing audiobook release for combined download');
+        }
+        await executeReleaseDownload(book, audiobookRelease, 'audiobook', onBehalfOfUserId);
       } else {
         requestPayloads.push(buildRequestPayload(audiobookRelease, 'audiobook', audiobookMode));
       }
@@ -2579,7 +2593,9 @@ function App() {
           }}
           authRequired={authRequired}
           isAuthenticated={isAuthenticated}
-          onLogout={handleLogoutWithCleanup}
+          onLogout={() => {
+            void handleLogoutWithCleanup();
+          }}
           onSearch={handleSearchDispatch}
           onAdvancedToggle={hasAdvancedContent ? () => setShowAdvanced(!showAdvanced) : undefined}
           isAdvancedActive={showAdvanced}
@@ -2711,7 +2727,9 @@ function App() {
             metadataSortOptions={resolvedMetadataSortOptions}
             hasMore={hasMore}
             isLoadingMore={isLoadingMore}
-            onLoadMore={() => loadMore(config, effectiveSearchMode)}
+            onLoadMore={() => {
+              void loadMore(config, effectiveSearchMode);
+            }}
             totalFound={totalFound}
             onShowToast={showToast}
             resultsSourceUrl={resultsSourceUrl}
@@ -2780,7 +2798,11 @@ function App() {
                       stagedAudiobookRelease: combinedState.stagedAudiobook ?? null,
                       onNext: !combinedIsFinalStep ? handleCombinedNext : undefined,
                       onBack: combinedHasPreviousStep ? handleCombinedBack : undefined,
-                      onDownload: combinedIsFinalStep ? handleCombinedDownload : undefined,
+                      onDownload: combinedIsFinalStep
+                        ? (release) => {
+                            void handleCombinedDownload(release);
+                          }
+                        : undefined,
                     }
                   : null
               }
@@ -2826,8 +2848,12 @@ function App() {
         status={activitySidebarStatus}
         isAdmin={requestRoleIsAdmin}
         onClearCompleted={handleClearCompleted}
-        onCancel={handleCancel}
-        onRetry={handleRetry}
+        onCancel={(id) => {
+          void handleCancel(id);
+        }}
+        onRetry={(id) => {
+          void handleRetry(id);
+        }}
         onDownloadDismiss={handleDownloadDismiss}
         requestItems={requestItems}
         dismissedItemKeys={dismissedActivityKeys}
@@ -2888,7 +2914,9 @@ function App() {
       <OnboardingModal
         isOpen={onboardingOpen}
         onClose={() => setOnboardingOpen(false)}
-        onComplete={() => loadConfig('settings-saved')}
+        onComplete={() => {
+          void loadConfig('settings-saved');
+        }}
         onShowToast={showToast}
       />
     </SearchModeProvider>
@@ -2938,7 +2966,9 @@ function App() {
             <Navigate to={postLoginPath} replace />
           ) : (
             <LoginPage
-              onLogin={handleLogin}
+              onLogin={(credentials) => {
+                void handleLogin(credentials);
+              }}
               error={loginError}
               isLoading={isLoggingIn}
               authMode={authMode}

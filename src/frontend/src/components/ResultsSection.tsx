@@ -127,6 +127,7 @@ export const ResultsSection = ({
         <div className="ml-auto flex items-center gap-2">
           {isDesktop && (
             <button
+              type="button"
               onClick={() => setViewMode('card')}
               className={`rounded-full p-2 transition-all duration-200 ${
                 viewMode === 'card'
@@ -153,6 +154,7 @@ export const ResultsSection = ({
             </button>
           )}
           <button
+            type="button"
             onClick={() => setViewMode('compact')}
             className={`rounded-full p-2 transition-all duration-200 ${
               viewMode === 'compact'
@@ -177,6 +179,7 @@ export const ResultsSection = ({
             </svg>
           </button>
           <button
+            type="button"
             onClick={() => setViewMode('list')}
             className={`rounded-full p-2 transition-all duration-200 ${
               viewMode === 'list'
@@ -263,6 +266,7 @@ export const ResultsSection = ({
       {searchMode === 'universal' && hasMore && onLoadMore && (
         <div className="mt-12 flex flex-col items-center gap-2">
           <button
+            type="button"
             onClick={onLoadMore}
             disabled={isLoadingMore}
             className={`rounded-full px-3 py-2 text-sm font-medium transition-all duration-200 ${

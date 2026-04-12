@@ -387,6 +387,7 @@ export const OnboardingModal = ({
             </div>
             <p className="text-sm">{error}</p>
             <button
+              type="button"
               onClick={handleClose}
               className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
             >
@@ -431,6 +432,7 @@ export const OnboardingModal = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={handleClose}
             className="rounded-lg p-1.5 transition-colors hover:bg-(--hover-surface)"
             aria-label="Close"
@@ -478,7 +480,10 @@ export const OnboardingModal = ({
         <div className="flex h-[68px] items-center justify-between border-t border-(--border-muted) px-6 py-4">
           <div>
             <button
-              onClick={handleSkip}
+              type="button"
+              onClick={() => {
+                void handleSkip();
+              }}
               disabled={isSaving || !isFirstStep}
               className={`rounded-lg px-4 py-2 text-sm font-medium ${isFirstStep ? 'opacity-60 transition-opacity hover:opacity-100' : 'invisible'}`}
             >
@@ -489,6 +494,7 @@ export const OnboardingModal = ({
           <div className="flex gap-3">
             {!isFirstStep && (
               <button
+                type="button"
                 onClick={handleBack}
                 disabled={isSaving}
                 className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface) disabled:cursor-not-allowed disabled:opacity-50"
@@ -499,7 +505,10 @@ export const OnboardingModal = ({
 
             {isLastStep ? (
               <button
-                onClick={handleFinish}
+                type="button"
+                onClick={() => {
+                  void handleFinish();
+                }}
                 disabled={isSaving}
                 className="flex items-center gap-2 rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -529,6 +538,7 @@ export const OnboardingModal = ({
               </button>
             ) : (
               <button
+                type="button"
                 onClick={handleNext}
                 disabled={isSaving}
                 className="flex items-center gap-1 rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"

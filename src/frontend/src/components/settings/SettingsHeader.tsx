@@ -17,6 +17,7 @@ export const SettingsHeader = ({
   >
     {showBack && (
       <button
+        type="button"
         onClick={onBack}
         className="hover-action -ml-2 rounded-full p-2 transition-colors"
         aria-label="Go back"
@@ -35,6 +36,7 @@ export const SettingsHeader = ({
     )}
     <h2 className="flex-1 text-lg font-semibold">{title}</h2>
     <button
+      type="button"
       onClick={onClose}
       className="hover-action rounded-full p-2 transition-colors"
       aria-label="Close settings"

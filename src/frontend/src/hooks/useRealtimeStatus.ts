@@ -32,15 +32,17 @@ export const useRealtimeStatus = ({
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Polling function
-  const pollStatus = useCallback(async () => {
-    try {
-      const data = await getStatus();
-      setStatus(data);
-      setError(null);
-    } catch (err) {
-      console.error('Error polling status:', err);
-      setError('Failed to fetch status');
-    }
+  const pollStatus = useCallback(() => {
+    void (async () => {
+      try {
+        const data = await getStatus();
+        setStatus(data);
+        setError(null);
+      } catch (err) {
+        console.error('Error polling status:', err);
+        setError('Failed to fetch status');
+      }
+    })();
   }, []);
 
   // Start polling
@@ -48,7 +50,7 @@ export const useRealtimeStatus = ({
     if (pollIntervalRef.current) return;
 
     console.log('Starting polling fallback');
-    void pollStatus();
+    pollStatus();
     pollIntervalRef.current = setInterval(pollStatus, pollInterval);
   }, [pollStatus, pollInterval]);
 
@@ -130,7 +132,7 @@ export const useRealtimeStatus = ({
     if (socket?.connected) {
       socket.emit('request_status');
     } else {
-      await pollStatus();
+      pollStatus();
     }
   }, [socket, pollStatus]);
 

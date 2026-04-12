@@ -279,7 +279,14 @@ export const parseSourceCapabilitiesFromRulesField = (
   );
 
   return [...orderedSources, ...extraSources].map((source) => {
-    const row = bySource.get(source)!;
+    const row = bySource.get(source);
+    if (!row) {
+      return {
+        source,
+        displayName: source,
+        supportedContentTypes: [],
+      };
+    }
     const supported = CONTENT_TYPES.filter((contentType) =>
       row.supportedContentTypes.includes(contentType),
     );

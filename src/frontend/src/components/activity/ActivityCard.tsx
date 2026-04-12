@@ -745,7 +745,7 @@ export const ActivityCard = ({
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleReviewApprove}
+                  onClick={() => void handleReviewApprove()}
                   disabled={isReviewSubmitting}
                   className="rounded-md bg-green-600 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-60"
                 >
@@ -754,7 +754,7 @@ export const ActivityCard = ({
                 {canMarkAsApprovedWithoutRelease && (
                   <button
                     type="button"
-                    onClick={handleReviewManualApproval}
+                    onClick={() => void handleReviewManualApproval()}
                     disabled={isReviewSubmitting}
                     className="rounded-md border border-(--border-muted) px-2.5 py-1.5 text-xs transition-colors hover:bg-(--hover-surface) disabled:opacity-50"
                   >
@@ -764,7 +764,7 @@ export const ActivityCard = ({
                 {canBrowseAlternatives && hasAttachedRelease && (
                   <button
                     type="button"
-                    onClick={handleReviewBrowseAlternatives}
+                    onClick={() => void handleReviewBrowseAlternatives()}
                     disabled={isReviewSubmitting}
                     className="rounded-md border border-(--border-muted) px-2.5 py-1.5 text-xs transition-colors hover:bg-(--hover-surface) disabled:opacity-50"
                   >
@@ -807,7 +807,7 @@ export const ActivityCard = ({
                   </button>
                   <button
                     type="button"
-                    onClick={handleInlineRejectConfirm}
+                    onClick={() => void handleInlineRejectConfirm()}
                     disabled={isRejectSubmitting}
                     className="rounded-md bg-red-600 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-60"
                   >

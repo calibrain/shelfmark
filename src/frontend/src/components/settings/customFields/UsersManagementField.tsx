@@ -285,13 +285,17 @@ export const UsersManagementField = ({
       onCreateFormChange={setCreateForm}
       creating={creating}
       isFirstUser={users.length === 0}
-      onCreateSubmit={handleCreate}
+      onCreateSubmit={() => {
+        void handleCreate();
+      }}
       onCancelCreate={handleCancelCreate}
       showEditForm={route.kind === 'edit'}
       activeEditUserId={route.kind === 'edit' ? route.userId : null}
       editingUser={route.kind === 'edit' ? editingUser : null}
       onEditingUserChange={setEditingUser}
-      onEditSave={handleSaveUserEdit}
+      onEditSave={() => {
+        void handleSaveUserEdit();
+      }}
       saving={saving}
       onCancelEdit={handleBackToList}
       editPassword={editPassword}
@@ -300,7 +304,9 @@ export const UsersManagementField = ({
       onEditPasswordConfirmChange={setEditPasswordConfirm}
       downloadDefaults={downloadDefaults}
       onOpenOverrides={handleOpenOverrides}
-      onEdit={handleEdit}
+      onEdit={(user) => {
+        void handleEdit(user);
+      }}
       onDelete={handleDeleteUser}
       deletingUserId={deletingUserId}
       onSyncCwa={handleSyncCwa}

@@ -39,6 +39,8 @@ export const CardView = ({
   const [imageError, setImageError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const targetProvider = book.provider;
+  const targetBookId = book.provider_id;
   let zIndex: number | undefined;
   if (dropdownOpen) {
     zIndex = 20;
@@ -138,10 +140,10 @@ export const CardView = ({
             pointerEvents: isHovered || dropdownOpen || isLoadingDetails ? 'auto' : 'none',
           }}
         >
-          {bookSupportsTargets(book) && (
+          {bookSupportsTargets(book) && targetProvider && targetBookId && (
             <BookTargetDropdown
-              provider={book.provider!}
-              bookId={book.provider_id!}
+              provider={targetProvider}
+              bookId={targetBookId}
               onShowToast={onShowToast}
               variant="icon"
               className="h-8 w-8 bg-white/90 shadow-lg backdrop-blur-xs hover:scale-110 dark:bg-neutral-800/90"
@@ -149,6 +151,7 @@ export const CardView = ({
             />
           )}
           <button
+            type="button"
             className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 shadow-lg backdrop-blur-xs transition-all duration-300 hover:scale-110 dark:bg-neutral-800/90"
             onClick={(e) => {
               e.stopPropagation();
@@ -211,8 +214,11 @@ export const CardView = ({
 
         <div className="flex gap-1.5 sm:hidden">
           <button
+            type="button"
             className="flex flex-1 items-center justify-center gap-1 rounded-sm border px-2 py-1.5 text-xs"
-            onClick={() => handleDetails(book.id)}
+            onClick={() => {
+              void handleDetails(book.id);
+            }}
             style={{ borderColor: 'var(--border-muted)' }}
             disabled={isLoadingDetails}
           >
@@ -225,7 +231,9 @@ export const CardView = ({
             book={book}
             buttonState={buttonState}
             onDownload={onDownload}
-            onGetReleases={handleGetReleases}
+            onGetReleases={(selectedBook) => {
+              void handleGetReleases(selectedBook);
+            }}
             isLoadingReleases={isLoadingReleases}
             size="sm"
             className="flex-1"
@@ -237,7 +245,9 @@ export const CardView = ({
         book={book}
         buttonState={buttonState}
         onDownload={onDownload}
-        onGetReleases={handleGetReleases}
+        onGetReleases={(selectedBook) => {
+          void handleGetReleases(selectedBook);
+        }}
         isLoadingReleases={isLoadingReleases}
         className="hidden rounded-none sm:flex"
         fullWidth

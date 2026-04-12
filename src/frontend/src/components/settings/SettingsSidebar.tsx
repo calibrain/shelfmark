@@ -359,6 +359,7 @@ export const SettingsSidebar = ({
             return (
               <div key={item.tab.name}>
                 <button
+                  type="button"
                   onClick={() => onSelectTab(item.tab.name)}
                   className="flex w-full items-center gap-4 px-5 py-4 text-left transition-colors active:bg-(--hover-surface)"
                 >
@@ -377,6 +378,7 @@ export const SettingsSidebar = ({
           return (
             <div key={item.group.name}>
               <button
+                type="button"
                 onClick={() => toggleGroup(item.group.name)}
                 className="flex w-full items-center gap-4 px-5 py-4 text-left transition-colors active:bg-(--hover-surface)"
               >
@@ -390,6 +392,7 @@ export const SettingsSidebar = ({
                   {item.tabs.map((tab, index) => (
                     <div key={tab.name}>
                       <button
+                        type="button"
                         onClick={() => onSelectTab(tab.name)}
                         className="flex w-full items-center gap-4 py-3.5 pr-5 pl-14 text-left transition-colors active:bg-(--hover-surface)"
                       >
@@ -431,6 +434,7 @@ export const SettingsSidebar = ({
           return (
             <button
               key={item.tab.name}
+              type="button"
               onClick={() => onSelectTab(item.tab.name)}
               className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
                 selectedTab === item.tab.name
@@ -451,6 +455,7 @@ export const SettingsSidebar = ({
         return (
           <div key={item.group.name}>
             <button
+              type="button"
               onClick={() => toggleGroup(item.group.name)}
               className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-(--hover-surface) ${hasSelectedTab && !isExpanded ? 'bg-(--hover-action)/50' : ''}`}
             >
@@ -464,6 +469,7 @@ export const SettingsSidebar = ({
                 {item.tabs.map((tab) => (
                   <button
                     key={tab.name}
+                    type="button"
                     onClick={() => onSelectTab(tab.name)}
                     className={`flex w-full items-center py-2 pr-4 pl-3 text-left text-sm transition-colors ${
                       selectedTab === tab.name

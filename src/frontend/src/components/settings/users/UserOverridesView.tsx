@@ -37,6 +37,7 @@ export const UserOverridesView = ({
     <div className="space-y-5">
       <div>
         <button
+          type="button"
           onClick={onBack}
           className="inline-flex items-center gap-2 rounded-lg border border-(--border-muted) bg-(--bg) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
         >

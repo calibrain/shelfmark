@@ -9,6 +9,7 @@ export const SettingsSaveBar = ({ onSave, isSaving }: SettingsSaveBarProps) => (
     style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
   >
     <button
+      type="button"
       onClick={() => {
         void onSave();
       }}

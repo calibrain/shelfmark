@@ -489,6 +489,7 @@ export const SettingsContent = ({
   const saveButton =
     saveBarHasChanges && saveBarOnSave ? (
       <button
+        type="button"
         onClick={() => {
           void saveBarOnSave();
         }}

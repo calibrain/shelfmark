@@ -287,6 +287,7 @@ export const UserEditActions = ({
     <div className="flex flex-col gap-2 border-t border-(--border-muted) pt-3 sm:flex-row sm:items-center">
       <div className="flex flex-wrap gap-2">
         <button
+          type="button"
           onClick={onSave}
           disabled={saveDisabled}
           className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
@@ -294,6 +295,7 @@ export const UserEditActions = ({
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
         <button
+          type="button"
           onClick={onCancel}
           disabled={cancelDisabled}
           className="rounded-lg border border-(--border-muted) bg-(--bg) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface) disabled:cursor-not-allowed disabled:opacity-60"
@@ -306,6 +308,7 @@ export const UserEditActions = ({
           {isDeletePending ? (
             <>
               <button
+                type="button"
                 onClick={onConfirmDelete}
                 disabled={deleting}
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
@@ -313,6 +316,7 @@ export const UserEditActions = ({
                 {deleting ? 'Deleting...' : 'Confirm Delete'}
               </button>
               <button
+                type="button"
                 onClick={onCancelDelete}
                 disabled={deleting}
                 className="rounded-lg border border-(--border-muted) bg-(--bg) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface) disabled:cursor-not-allowed disabled:opacity-60"
@@ -322,6 +326,7 @@ export const UserEditActions = ({
             </>
           ) : (
             <button
+              type="button"
               onClick={onDelete}
               className="rounded-lg border border-red-500/40 px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-500/10"
             >
@@ -411,6 +416,7 @@ export const UserCreateCard = ({
 
       <div className="flex items-center gap-2 pt-1">
         <button
+          type="button"
           onClick={onSubmit}
           disabled={creating}
           className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
@@ -418,6 +424,7 @@ export const UserCreateCard = ({
           {creating ? 'Creating...' : 'Create Local User'}
         </button>
         <button
+          type="button"
           onClick={onCancel}
           className="rounded-lg border border-(--border-muted) bg-(--bg) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
         >
@@ -573,6 +580,7 @@ const renderPreferencesPanel = (panel: UserPreferencesPanelProps) => (
         )}
         {panel.onAction && (
           <button
+            type="button"
             onClick={panel.onAction}
             className="mt-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700"
           >
