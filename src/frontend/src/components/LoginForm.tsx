@@ -1,7 +1,8 @@
 import type { FormEvent, KeyboardEvent } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
+import { useMountEffect } from '../hooks/useMountEffect';
 import type { LoginCredentials } from '../types';
 import { buildOidcLoginUrl } from '../utils/authRedirect';
 import { withBasePath } from '../utils/basePath';
@@ -68,11 +69,11 @@ const PasswordLoginForm = ({
   const usernameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
+  useMountEffect(() => {
     if (shouldFocusOnMount) {
       usernameRef.current?.focus();
     }
-  }, [shouldFocusOnMount]);
+  });
 
   const handleUsernameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
@@ -242,12 +243,11 @@ export const LoginForm = ({
     }
   }
 
-  // Auto-redirect to OIDC provider when enabled and no errors present
-  useEffect(() => {
+  useMountEffect(() => {
     if (oidcAutoRedirect && isOidc && !error && !oidcError) {
       window.location.href = oidcLoginUrl;
     }
-  }, [oidcAutoRedirect, isOidc, error, oidcError, oidcLoginUrl]);
+  });
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();

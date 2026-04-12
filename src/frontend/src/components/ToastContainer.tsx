@@ -1,5 +1,3 @@
-import { useEffect, useRef, useState } from 'react';
-
 import type { Toast } from '../types';
 
 interface ToastContainerProps {
@@ -7,30 +5,6 @@ interface ToastContainerProps {
 }
 
 export const ToastContainer = ({ toasts }: ToastContainerProps) => {
-  const [visibleToasts, setVisibleToasts] = useState(new Set<string>());
-  const visibleToastsRef = useRef(visibleToasts);
-
-  useEffect(() => {
-    visibleToastsRef.current = visibleToasts;
-  }, [visibleToasts]);
-
-  useEffect(() => {
-    const timeoutIds: number[] = [];
-
-    toasts.forEach((toast) => {
-      if (!visibleToastsRef.current.has(toast.id)) {
-        const timeoutId = window.setTimeout(() => {
-          setVisibleToasts((prev) => new Set([...prev, toast.id]));
-        }, 10);
-        timeoutIds.push(timeoutId);
-      }
-    });
-
-    return () => {
-      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
-    };
-  }, [toasts]);
-
   const toastTypeClasses: Record<Toast['type'], string> = {
     success: 'bg-green-600 text-white',
     error: 'bg-red-600 text-white',
@@ -42,9 +16,7 @@ export const ToastContainer = ({ toasts }: ToastContainerProps) => {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`toast-notification rounded-md px-4 py-3 text-sm font-medium shadow-lg transition-all duration-300 ${
-            toastTypeClasses[toast.type]
-          } ${visibleToasts.has(toast.id) ? 'toast-visible' : ''}`}
+          className={`toast-notification toast-visible animate-pop-up rounded-md px-4 py-3 text-sm font-medium shadow-lg transition-all duration-300 ${toastTypeClasses[toast.type]}`}
         >
           {toast.message}
         </div>

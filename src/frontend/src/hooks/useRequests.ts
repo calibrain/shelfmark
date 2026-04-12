@@ -59,12 +59,7 @@ export const useRequests = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const requestsRef = useRef<RequestRecord[]>([]);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    requestsRef.current = requests;
-  }, [requests]);
 
   const refresh = useCallback(async () => {
     if (!enabled) {
@@ -200,24 +195,27 @@ export const useRequests = ({
     };
   }, [stopPolling]);
 
-  const cancelRequest = useCallback(async (id: number) => {
-    const previous = requestsRef.current;
-    setRequests((prev) => {
-      const result = applyRequestUpdateEvent(prev, { request_id: id, status: 'cancelled' });
-      return result.records;
-    });
+  const cancelRequest = useCallback(
+    async (id: number) => {
+      const previous = requests;
+      setRequests((prev) => {
+        const result = applyRequestUpdateEvent(prev, { request_id: id, status: 'cancelled' });
+        return result.records;
+      });
 
-    try {
-      const updated = await cancelUserRequest(id);
-      setRequests((prev) => upsertRequestRecord(prev, updated));
-      setError(null);
-    } catch (err) {
-      setRequests(previous);
-      const message = toErrorMessage(err, 'Failed to cancel request');
-      setError(message);
-      throw new Error(message, { cause: err });
-    }
-  }, []);
+      try {
+        const updated = await cancelUserRequest(id);
+        setRequests((prev) => upsertRequestRecord(prev, updated));
+        setError(null);
+      } catch (err) {
+        setRequests(previous);
+        const message = toErrorMessage(err, 'Failed to cancel request');
+        setError(message);
+        throw new Error(message, { cause: err });
+      }
+    },
+    [requests],
+  );
 
   const fulfilRequest = useCallback(
     async (
@@ -230,7 +228,7 @@ export const useRequests = ({
         throw new Error('Admin access required');
       }
 
-      const previous = requestsRef.current;
+      const previous = requests;
       setRequests((prev) => {
         const result = applyRequestUpdateEvent(prev, { request_id: id, status: 'fulfilled' });
         return result.records;
@@ -251,7 +249,7 @@ export const useRequests = ({
         throw new Error(message, { cause: err });
       }
     },
-    [isAdmin],
+    [isAdmin, requests],
   );
 
   const rejectRequest = useCallback(
@@ -260,7 +258,7 @@ export const useRequests = ({
         throw new Error('Admin access required');
       }
 
-      const previous = requestsRef.current;
+      const previous = requests;
       setRequests((prev) => {
         const result = applyRequestUpdateEvent(prev, { request_id: id, status: 'rejected' });
         return result.records;
@@ -279,7 +277,7 @@ export const useRequests = ({
         throw new Error(message, { cause: err });
       }
     },
-    [isAdmin],
+    [isAdmin, requests],
   );
 
   const pendingCount = useMemo(

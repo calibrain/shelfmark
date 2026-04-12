@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { fetchRequestPolicy } from '../services/api';
 import type { RequestPolicyMode, RequestPolicyResponse } from '../types';
@@ -34,23 +34,10 @@ export function useRequestPolicy({
 }: UseRequestPolicyOptions): UseRequestPolicyReturn {
   const [policy, setPolicy] = useState<RequestPolicyResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const cacheRef = useRef<RequestPolicyCache | null>(null);
-
-  if (!cacheRef.current) {
-    cacheRef.current = new RequestPolicyCache(fetchRequestPolicy, ttlMs);
-  }
-
-  useEffect(() => {
-    cacheRef.current?.setTtlMs(ttlMs);
-  }, [ttlMs]);
+  const cache = useMemo(() => new RequestPolicyCache(fetchRequestPolicy, ttlMs), [ttlMs]);
 
   const fetchPolicy = useCallback(
     async (force: boolean): Promise<RequestPolicyResponse | null> => {
-      const cache = cacheRef.current;
-      if (!cache) {
-        return null;
-      }
-
       if (!enabled) {
         cache.reset();
         setPolicy(null);
@@ -81,17 +68,17 @@ export function useRequestPolicy({
         setIsLoading(false);
       }
     },
-    [enabled, isAdmin],
+    [cache, enabled, isAdmin],
   );
 
   useEffect(() => {
     if (!enabled) {
-      cacheRef.current?.reset();
+      cache.reset();
       setPolicy(null);
       return;
     }
     void fetchPolicy(true);
-  }, [enabled, fetchPolicy]);
+  }, [cache, enabled, fetchPolicy]);
 
   const getDefaultMode = useCallback(
     (contentType: string): RequestPolicyMode => {

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
+import { useMountEffect } from '../../../hooks/useMountEffect';
 import { getAdminUsers } from '../../../services/api';
 import type { CustomSettingsFieldRendererProps } from './types';
 
@@ -9,29 +10,20 @@ export const OidcAdminHint = ({ field }: CustomSettingsFieldRendererProps) => {
   const needsAdminCheck = ADMIN_CHECK_KEYS.has(field.key);
   const [visible, setVisible] = useState(!needsAdminCheck);
 
-  useEffect(() => {
+  useMountEffect(() => {
     if (!needsAdminCheck) {
       setVisible(true);
-      return undefined;
+      return;
     }
 
-    let cancelled = false;
-    getAdminUsers()
+    void getAdminUsers()
       .then((users) => {
-        if (!cancelled) {
-          setVisible(!users.some((u) => u.role === 'admin' && u.auth_source === 'builtin'));
-        }
+        setVisible(!users.some((u) => u.role === 'admin' && u.auth_source === 'builtin'));
       })
       .catch(() => {
-        if (!cancelled) {
-          setVisible(true);
-        }
+        setVisible(true);
       });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [needsAdminCheck]);
+  });
 
   if (!visible) return null;
 

@@ -1,21 +1,12 @@
 import type { InputHTMLAttributes } from 'react';
-import {
-  forwardRef,
-  startTransition,
-  useDeferredValue,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
 
 import { useSearchMode } from '../contexts/SearchModeContext';
+import { useSearchBarAutocomplete } from '../hooks/searchBar/useSearchBarAutocomplete';
+import { useSearchBarDynamicOptions } from '../hooks/searchBar/useSearchBarDynamicOptions';
+import { useSearchBarHoverTimeout } from '../hooks/searchBar/useSearchBarHoverTimeout';
 import { useDismiss } from '../hooks/useDismiss';
-import type { DynamicFieldOption } from '../services/api';
-import { fetchFieldOptions } from '../services/api';
 import type { ContentType, MetadataSearchField, QueryTargetOption, SortOption } from '../types';
-import { loadDynamicFieldOptions } from '../utils/dynamicFieldOptions';
 import { Tooltip } from './shared/Tooltip';
 
 interface SearchBarProps {
@@ -52,15 +43,6 @@ interface SearchBarProps {
 export interface SearchBarHandle {
   submit: () => void;
 }
-
-interface AutocompleteTextState {
-  draftValue: string;
-  fieldKey: string | null;
-  syncedValue: string;
-}
-
-const autocompleteOptionsCache = new Map<string, DynamicFieldOption[]>();
-const AUTOCOMPLETE_CACHE_MAX = 100;
 
 const BookIcon = () => (
   <svg
@@ -168,17 +150,6 @@ const getClearedValue = (field?: MetadataSearchField | null): string | boolean =
   return '';
 };
 
-const getAutocompleteDisplayValue = (
-  value: string | number | boolean,
-  valueLabel: string | undefined,
-): string => {
-  let nextValue = typeof value === 'string' ? value : String(value ?? '');
-  if (valueLabel && typeof value === 'string' && value.trim() !== '') {
-    nextValue = valueLabel;
-  }
-  return nextValue;
-};
-
 export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
   (
     {
@@ -221,16 +192,12 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
     const selectorRef = useRef<HTMLDivElement>(null);
     const hasSearchQuery = hasActiveValue(value);
     const [isSelectorOpen, setIsSelectorOpen] = useState(false);
-    const [dynamicOptions, setDynamicOptions] = useState<SortOption[]>([]);
-    const [isDynamicLoading, setIsDynamicLoading] = useState(false);
     const [isSelectOpen, setIsSelectOpen] = useState(false);
-    const [autocompleteOptions, setAutocompleteOptions] = useState<DynamicFieldOption[]>([]);
-    const [isAutocompleteLoading, setIsAutocompleteLoading] = useState(false);
     const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
     const selectTriggerRef = useRef<HTMLButtonElement>(null);
     const selectPanelRef = useRef<HTMLDivElement>(null);
     const autocompletePanelRef = useRef<HTMLDivElement>(null);
-    const selectorHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const { hoverTimeoutRef: selectorHoverTimeout, clearHoverTimeout } = useSearchBarHoverTimeout();
 
     const hasMultipleContentTypes = !allowedContentTypes || allowedContentTypes.length !== 1;
     const showContentTypeSelector =
@@ -254,148 +221,32 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       setIsAutocompleteOpen(false),
     );
 
-    // Clean up hover timeout on unmount
-    useEffect(() => {
-      return () => {
-        if (selectorHoverTimeout.current) clearTimeout(selectorHoverTimeout.current);
-      };
-    }, []);
-
-    // Load dynamic options when a DynamicSelectSearchField is active
     const dynamicEndpoint =
       activeQueryField?.type === 'DynamicSelectSearchField'
         ? activeQueryField.options_endpoint
         : null;
-    const autocompleteEndpoint =
-      activeQueryField?.type === 'TextSearchField'
-        ? (activeQueryField.suggestions_endpoint ?? null)
-        : null;
-    const autocompleteMinQueryLength =
-      activeQueryField?.type === 'TextSearchField'
-        ? (activeQueryField.suggestions_min_query_length ?? 2)
-        : 2;
-    const autocompleteFieldKey = autocompleteEndpoint ? (activeQueryField?.key ?? null) : null;
-    const externalAutocompleteValue = autocompleteEndpoint
-      ? getAutocompleteDisplayValue(value, valueLabel)
-      : '';
-    const [autocompleteTextState, setAutocompleteTextState] = useState<AutocompleteTextState>(
-      () => ({
-        draftValue: externalAutocompleteValue,
-        fieldKey: autocompleteFieldKey,
-        syncedValue: externalAutocompleteValue,
-      }),
-    );
-    if (
-      autocompleteTextState.fieldKey !== autocompleteFieldKey ||
-      (autocompleteFieldKey !== null &&
-        autocompleteTextState.syncedValue !== externalAutocompleteValue)
-    ) {
-      setAutocompleteTextState({
-        draftValue: externalAutocompleteValue,
-        fieldKey: autocompleteFieldKey,
-        syncedValue: externalAutocompleteValue,
-      });
-    }
-    let textInputValue = autocompleteTextState.draftValue;
+    const textSearchField = activeQueryField?.type === 'TextSearchField' ? activeQueryField : null;
+    const {
+      autocompleteEndpoint,
+      autocompleteMinQueryLength,
+      textInputValue: autocompleteTextInputValue,
+      autocompleteOptions,
+      isAutocompleteLoading,
+      autocompleteEmptyMessage,
+      setAutocompleteDraftValue,
+      setAutocompleteSelection,
+      resetAutocomplete,
+    } = useSearchBarAutocomplete({
+      field: textSearchField,
+      value,
+      valueLabel,
+      isOpen: isAutocompleteOpen,
+    });
+    const { dynamicOptions, isDynamicLoading } = useSearchBarDynamicOptions(dynamicEndpoint);
+    let textInputValue = autocompleteTextInputValue;
     if (!autocompleteEndpoint) {
       textInputValue = typeof value === 'string' ? value : String(value ?? '');
     }
-    const deferredTextInputValue = useDeferredValue(textInputValue);
-    let autocompleteEmptyMessage = 'No suggestions found';
-    if (activeQueryField?.key === 'author') {
-      autocompleteEmptyMessage = 'No authors found';
-    } else if (activeQueryField?.key === 'title') {
-      autocompleteEmptyMessage = 'No titles found';
-    } else if (activeQueryField?.key === 'series') {
-      autocompleteEmptyMessage = 'No series found';
-    }
-
-    useEffect(() => {
-      if (!dynamicEndpoint) {
-        setDynamicOptions([]);
-        return undefined;
-      }
-
-      let cancelled = false;
-      setIsDynamicLoading(true);
-
-      loadDynamicFieldOptions(dynamicEndpoint)
-        .then((loaded) => {
-          if (cancelled) return;
-          setDynamicOptions(
-            loaded.map((o) => ({ value: o.value, label: o.label, group: o.group })),
-          );
-          setIsDynamicLoading(false);
-        })
-        .catch(() => {
-          if (cancelled) return;
-          setDynamicOptions([]);
-          setIsDynamicLoading(false);
-        });
-
-      return () => {
-        cancelled = true;
-      };
-    }, [dynamicEndpoint]);
-
-    useEffect(() => {
-      if (!autocompleteEndpoint || !isAutocompleteOpen) {
-        setAutocompleteOptions([]);
-        setIsAutocompleteLoading(false);
-        return undefined;
-      }
-
-      const normalizedQuery = deferredTextInputValue.trim();
-      if (normalizedQuery.length < autocompleteMinQueryLength) {
-        setAutocompleteOptions([]);
-        setIsAutocompleteLoading(false);
-        return undefined;
-      }
-
-      const cacheKey = `${autocompleteEndpoint}::${normalizedQuery.toLowerCase()}`;
-      if (autocompleteOptionsCache.has(cacheKey)) {
-        startTransition(() => {
-          setAutocompleteOptions(autocompleteOptionsCache.get(cacheKey) ?? []);
-        });
-        setIsAutocompleteLoading(false);
-        return undefined;
-      }
-
-      let cancelled = false;
-      const timeoutId = window.setTimeout(() => {
-        setIsAutocompleteLoading(true);
-        fetchFieldOptions(autocompleteEndpoint, normalizedQuery)
-          .then((loaded) => {
-            if (cancelled) return;
-            if (autocompleteOptionsCache.size >= AUTOCOMPLETE_CACHE_MAX) {
-              const oldest = autocompleteOptionsCache.keys().next().value;
-              if (oldest !== undefined) autocompleteOptionsCache.delete(oldest);
-            }
-            autocompleteOptionsCache.set(cacheKey, loaded);
-            startTransition(() => {
-              setAutocompleteOptions(loaded);
-            });
-            setIsAutocompleteLoading(false);
-          })
-          .catch(() => {
-            if (cancelled) return;
-            startTransition(() => {
-              setAutocompleteOptions([]);
-            });
-            setIsAutocompleteLoading(false);
-          });
-      }, 260);
-
-      return () => {
-        cancelled = true;
-        window.clearTimeout(timeoutId);
-      };
-    }, [
-      autocompleteEndpoint,
-      autocompleteMinQueryLength,
-      deferredTextInputValue,
-      isAutocompleteOpen,
-    ]);
 
     // Resolve options for any select-type field
     const selectOptions: SortOption[] = useMemo(() => {
@@ -433,12 +284,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       onChange(getClearedValue(activeQueryField));
       setIsSelectOpen(false);
       setIsAutocompleteOpen(false);
-      setAutocompleteOptions([]);
-      setAutocompleteTextState((current) => ({
-        ...current,
-        draftValue: '',
-        syncedValue: '',
-      }));
+      resetAutocomplete();
       inputRef.current?.focus();
     };
 
@@ -468,7 +314,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       onQueryTargetChange?.(targetKey);
       setIsSelectOpen(shouldOpenSelect);
       setIsAutocompleteOpen(false);
-      setAutocompleteOptions([]);
+      resetAutocomplete();
       setIsSelectorOpen(false);
     };
 
@@ -521,11 +367,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
             onChange={(e) => {
               const nextValue = e.target.value;
               if (autocompleteEndpoint) {
-                setAutocompleteTextState((current) => ({
-                  ...current,
-                  draftValue: nextValue,
-                  syncedValue: nextValue,
-                }));
+                setAutocompleteDraftValue(nextValue);
                 setIsAutocompleteOpen(nextValue.trim().length >= autocompleteMinQueryLength);
                 setIsSelectOpen(false);
                 setIsSelectorOpen(false);
@@ -682,16 +524,14 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
             ref={selectorRef}
             onPointerEnter={(e) => {
               if (e.pointerType !== 'mouse') return;
-              if (selectorHoverTimeout.current) {
-                clearTimeout(selectorHoverTimeout.current);
-                selectorHoverTimeout.current = null;
-              }
+              clearHoverTimeout();
               setIsSelectorOpen(true);
               setIsSelectOpen(false);
               setIsAutocompleteOpen(false);
             }}
             onPointerLeave={(e) => {
               if (e.pointerType !== 'mouse') return;
+              clearHoverTimeout();
               selectorHoverTimeout.current = setTimeout(() => {
                 setIsSelectorOpen(false);
                 selectorHoverTimeout.current = null;
@@ -1140,11 +980,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                       role="option"
                       aria-selected={isSelected}
                       onClick={() => {
-                        setAutocompleteTextState({
-                          draftValue: option.label,
-                          fieldKey: autocompleteFieldKey,
-                          syncedValue: option.label,
-                        });
+                        setAutocompleteSelection(option.value, option.label);
                         onChange(option.value, option.label);
                         setIsAutocompleteOpen(false);
                         setTimeout(() => onSubmitRef.current(), 0);

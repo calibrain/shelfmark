@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 
 const STORAGE_KEY = 'cwa-config-banner-dismissed';
 
@@ -19,20 +19,23 @@ export const ConfigSetupBanner = ({
   onContinue,
   settingsEnabled,
 }: ConfigSetupBannerProps) => {
-  const [autoShowVisible, setAutoShowVisible] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
-
-  // Auto-show mode: check localStorage on mount
-  useEffect(() => {
-    if (settingsEnabled !== undefined) {
-      const dismissed = localStorage.getItem(STORAGE_KEY);
-      setAutoShowVisible(!settingsEnabled && dismissed !== 'true');
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
     }
-  }, [settingsEnabled]);
+
+    try {
+      return window.localStorage.getItem(STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   // Determine if we should show based on controlled or auto-show mode
   const isControlledMode = controlledOpen !== undefined;
-  const isVisible = isControlledMode ? controlledOpen : autoShowVisible;
+  const isAutoShowVisible = settingsEnabled !== undefined ? !settingsEnabled && !dismissed : false;
+  const isVisible = isControlledMode ? controlledOpen : isAutoShowVisible;
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
@@ -41,12 +44,15 @@ export const ConfigSetupBanner = ({
       if (isControlledMode) {
         onClose?.();
       } else {
-        // Auto-show mode: save to localStorage
-        localStorage.setItem(STORAGE_KEY, 'true');
-        setAutoShowVisible(false);
+        try {
+          window.localStorage.setItem(STORAGE_KEY, 'true');
+        } catch {
+          // Best effort only.
+        }
+        setDismissed(true);
       }
     }, 150);
-  }, [isControlledMode, onClose]);
+  }, [isControlledMode, onClose, setDismissed]);
 
   const handleContinue = useCallback(() => {
     setIsClosing(true);

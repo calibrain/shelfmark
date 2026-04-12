@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import type { ButtonStateInfo } from '../types';
 import { CircularProgress } from './shared';
@@ -56,12 +56,7 @@ export const BookDownloadButton = ({
   ariaLabel,
 }: BookDownloadButtonProps) => {
   const [isQueuing, setIsQueuing] = useState(false);
-
-  useEffect(() => {
-    if (isQueuing && buttonState.state !== 'download') {
-      setIsQueuing(false);
-    }
-  }, [buttonState.state, isQueuing]);
+  const isQueuingVisible = isQueuing && buttonState.state === 'download';
 
   const isCompleted = buttonState.state === 'complete';
   const hasError = buttonState.state === 'error';
@@ -69,11 +64,12 @@ export const BookDownloadButton = ({
   const isInProgress = ['queued', 'resolving', 'locating', 'downloading'].includes(
     buttonState.state,
   );
-  const isDisabled = buttonState.state !== 'download' || isQueuing || isCompleted || isBlocked;
-  const displayText = isQueuing ? 'Queuing...' : buttonState.text;
+  const isDisabled =
+    buttonState.state !== 'download' || isQueuingVisible || isCompleted || isBlocked;
+  const displayText = isQueuingVisible ? 'Queuing...' : buttonState.text;
   const showCircularProgress =
     buttonState.state === 'downloading' && buttonState.progress !== undefined;
-  const showSpinner = (isInProgress && !showCircularProgress) || isQueuing;
+  const showSpinner = (isInProgress && !showCircularProgress) || isQueuingVisible;
   const isRequestAction = buttonState.state === 'download' && buttonState.text === 'Request';
   const iconVariantActionIconPath = isRequestAction
     ? 'M12 4.5v15m7.5-7.5h-15'

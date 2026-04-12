@@ -57,9 +57,55 @@
     "import/no-duplicates": "error",
     "react/jsx-no-useless-fragment": "error",
     "react/self-closing-comp": "error",
-    "typescript/switch-exhaustiveness-check": "error"
+    "typescript/switch-exhaustiveness-check": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "react",
+            "importNames": ["useEffect"],
+            "message": "Import useMountEffect or a named sync hook instead of useEffect."
+          }
+        ]
+      }
+    ]
   },
   "overrides": [
+    {
+      "files": [
+        "src/hooks/useMountEffect.ts",
+        "src/hooks/useBodyScrollLock.ts",
+        "src/hooks/useEscapeKey.ts",
+        "src/hooks/useDismiss.ts",
+        "src/hooks/useMediaQuery.ts",
+        "src/hooks/useUrlSearch.ts",
+        "src/hooks/app/**",
+        "src/hooks/searchBar/**",
+        "src/contexts/SocketContext.tsx",
+        "src/hooks/useRequests.ts",
+        "src/hooks/useRealtimeStatus.ts",
+        "src/hooks/useRequestPolicy.ts",
+        "src/hooks/useActivity.ts",
+        "src/hooks/useAuth.ts",
+        "src/hooks/useSettings.ts",
+        "src/components/settings/users/useUsersFetch.ts",
+        "src/components/BookTargetDropdown.tsx",
+        "src/components/DetailsModal.tsx",
+        "src/components/Header.tsx",
+        "src/components/OnboardingModal.tsx",
+        "src/components/RequestConfirmationModal.tsx",
+        "src/components/activity/ActivitySidebar.tsx",
+        "src/components/shared/Tooltip.tsx",
+        "src/components/settings/SettingsModal.tsx",
+        "src/components/settings/SelfSettingsModal.tsx",
+        "src/components/settings/customFields/UsersManagementField.tsx",
+        "src/components/settings/fields/MultiSelectField.tsx"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
     {
       "files": ["src/tests/**"],
       "rules": {

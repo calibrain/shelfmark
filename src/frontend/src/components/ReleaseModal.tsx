@@ -1,29 +1,21 @@
-import {
-  useEffect,
-  useState,
-  useCallback,
-  useMemo,
-  useRef,
-  type KeyboardEventHandler,
-} from 'react';
+import { useState, useCallback, useMemo, useRef, type KeyboardEventHandler } from 'react';
 import { createPortal } from 'react-dom';
 
-import { useSocket } from '../contexts/SocketContext';
+import { useDescriptionOverflow } from '../hooks/releaseModal/useDescriptionOverflow';
+import { useHeaderThumbOnScroll } from '../hooks/releaseModal/useHeaderThumbOnScroll';
+import { useReleaseSearchSession } from '../hooks/releaseModal/useReleaseSearchSession';
+import { useTabIndicator } from '../hooks/releaseModal/useTabIndicator';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { useEscapeKey } from '../hooks/useEscapeKey';
-import { getReleases, getReleaseSources } from '../services/api';
 import type {
   Book,
   Release,
-  ReleaseSource,
-  ReleasesResponse,
   Language,
   StatusData,
   ButtonStateInfo,
   ColumnSchema,
   ReleaseColumnConfig,
   LeadingCellConfig,
-  SearchStatusData,
   ContentType,
   RequestPolicyMode,
 } from '../types';
@@ -33,16 +25,10 @@ import { getColorStyleFromHint } from '../utils/colorMaps';
 import {
   LANGUAGE_OPTION_DEFAULT,
   getLanguageFilterValues,
-  getReleaseSearchLanguageParams,
   releaseLanguageMatchesFilter,
   buildLanguageNormalizer,
 } from '../utils/languageFilters';
 import { getNestedValue, toComparableText, toStringValue } from '../utils/objectHelpers';
-import {
-  getCachedReleases,
-  setCachedReleases,
-  invalidateCachedReleases,
-} from '../utils/releaseCache';
 import { getReleaseFormats } from '../utils/releaseFormats';
 import {
   getBookTitleCandidates,
@@ -157,12 +143,6 @@ interface ReleaseModalProps {
 }
 
 const STAR_POSITIONS = [0, 1, 2, 3, 4] as const;
-
-function getDefaultManualQuery(book: Book): string {
-  const baseTitle = book.search_title || book.title || '';
-  const baseAuthor = book.search_author || book.author || '';
-  return `${baseTitle} ${baseAuthor}`.trim();
-}
 
 interface ReleaseModalSessionProps extends Omit<ReleaseModalProps, 'book' | 'onClose'> {
   book: Book;
@@ -715,10 +695,6 @@ const ReleaseModalSession = ({
     contentType === 'audiobook' && supportedAudiobookFormats.length > 0
       ? supportedAudiobookFormats
       : supportedFormats;
-  const preferredDefaultReleaseSource =
-    contentType === 'audiobook'
-      ? defaultAudiobookReleaseSource || defaultReleaseSource
-      : defaultReleaseSource;
   const [isRequestingBook, setIsRequestingBook] = useState(false);
   const [selectedRelease, setSelectedRelease] = useState<Release | null>(null);
   const isCombinedMode = combinedMode != null;
@@ -740,87 +716,44 @@ const ReleaseModalSession = ({
 
   const handleClose = onClose;
 
-  // Available sources from plugin registry
-  const [availableSources, setAvailableSources] = useState<ReleaseSource[]>([]);
-  const [sourcesLoading, setSourcesLoading] = useState(true);
-  const [sourcesError, setSourcesError] = useState<string | null>(null);
+  const {
+    sourcesLoading,
+    sourcesError,
+    activeTab,
+    setActiveTab,
+    allTabs,
+    releasesBySource,
+    loadingBySource,
+    errorBySource,
+    expandedBySource,
+    searchStatus,
+    formatFilter,
+    setFormatFilter,
+    languageFilter,
+    setLanguageFilter,
+    indexerFilter,
+    setIndexerFilter,
+    manualQuery,
+    setManualQuery,
+    showManualQuery,
+    toggleManualQuery,
+    applyCurrentFilters,
+    runManualSearch,
+    expandSearch,
+    isIndexerFilterInitialized,
+  } = useReleaseSearchSession({
+    book,
+    contentType,
+    defaultReleaseSource,
+    defaultAudiobookReleaseSource,
+    defaultShowManualQuery,
+    bookLanguages,
+    defaultLanguages,
+  });
 
-  // Active tab (source name)
-  const [activeTab, setActiveTab] = useState('');
-  const allTabs = useMemo(() => {
-    type TabInfo = { name: string; displayName: string; enabled: boolean };
-
-    const enabledTabs: TabInfo[] = [];
-    const providerContextSourceName =
-      availableSources.find(
-        (source) => source.name === book?.provider && source.browse_results_are_releases,
-      )?.name || null;
-
-    // Filter to only enabled sources that support this content type
-    availableSources.forEach((src) => {
-      if (providerContextSourceName && src.name !== providerContextSourceName) {
-        return;
-      }
-
-      const allowDisabledProviderContextTab = providerContextSourceName === src.name;
-      // Skip disabled sources entirely, except the source that owns the current browse record.
-      if (!src.enabled && !allowDisabledProviderContextTab) {
-        return;
-      }
-
-      // Check if source supports the current content type
-      const supportedTypes = src.supported_content_types || ['ebook', 'audiobook'];
-      if (!supportedTypes.includes(contentType)) {
-        return;
-      }
-
-      enabledTabs.push({ name: src.name, displayName: src.display_name, enabled: true });
-    });
-
-    // Sort so default source appears first
-    if (preferredDefaultReleaseSource) {
-      enabledTabs.sort((a, b) => {
-        if (a.name === preferredDefaultReleaseSource) return -1;
-        if (b.name === preferredDefaultReleaseSource) return 1;
-        return 0;
-      });
-    }
-
-    return enabledTabs;
-  }, [availableSources, book?.provider, preferredDefaultReleaseSource, contentType]);
-
-  // Track if book summary has scrolled out of view
-  const [showHeaderThumb, setShowHeaderThumb] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const bookSummaryRef = useRef<HTMLDivElement>(null);
-
-  // Releases data per source
-  const [releasesBySource, setReleasesBySource] = useState<Record<string, ReleasesResponse | null>>(
-    {},
-  );
-  const [loadingBySource, setLoadingBySource] = useState<Record<string, boolean>>({});
-  const [errorBySource, setErrorBySource] = useState<Record<string, string | null>>({});
-  const [expandedBySource, setExpandedBySource] = useState<Record<string, boolean>>({});
-
-  // Search status from WebSocket (for showing progress during slow searches like IRC)
-  const [searchStatus, setSearchStatus] = useState<SearchStatusData | null>(null);
-  const { socket } = useSocket();
-  const lastStatusTimeRef = useRef(0);
-  const pendingStatusRef = useRef<SearchStatusData | null>(null);
-  const statusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Filters - initialized from config settings
-  // Empty string means "show all supported formats" (filtered by supportedFormats)
-  // A specific value means "show only that format"
-  const [formatFilter, setFormatFilter] = useState('');
-  const [languageFilter, setLanguageFilter] = useState([LANGUAGE_OPTION_DEFAULT]);
-  // Indexer filter - empty array means "show all", otherwise show only selected indexers
-  const [indexerFilter, setIndexerFilter] = useState<string[]>([]);
-  // Track which tabs have had indexer filter initialized (to avoid overriding user changes)
-  const indexerFilterInitializedRef = useRef(new Set<string>());
-  const defaultManualQuery = getDefaultManualQuery(book);
-  const [manualQuery, setManualQuery] = useState(defaultShowManualQuery ? defaultManualQuery : '');
-  const [showManualQuery, setShowManualQuery] = useState(defaultShowManualQuery);
+  const showHeaderThumb = useHeaderThumbOnScroll({ scrollContainerRef, bookSummaryRef });
 
   // Sort state - keyed by source name, persisted to localStorage
   // null means "Default" (best title match), undefined means "not set yet"
@@ -829,8 +762,12 @@ const ReleaseModalSession = ({
 
   // Description expansion
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
-  const [descriptionOverflows, setDescriptionOverflows] = useState(false);
   const descriptionRef = useRef<HTMLParagraphElement>(null);
+  const descriptionOverflows = useDescriptionOverflow({
+    descriptionRef,
+    descriptionExpanded,
+    descriptionKey: book.description,
+  });
   const activeBookId = book?.id;
   const [appliedCombinedSelection, setAppliedCombinedSelection] = useState<{
     bookId: Book['id'] | null;
@@ -841,14 +778,6 @@ const ReleaseModalSession = ({
     phase: null,
     release: null,
   });
-  const nextActiveTab = allTabs.some((tab) => tab.name === activeTab)
-    ? activeTab
-    : (allTabs[0]?.name ?? '');
-
-  if (activeTab !== nextActiveTab) {
-    setActiveTab(nextActiveTab);
-  }
-
   if (
     isCombinedMode &&
     (appliedCombinedSelection.bookId !== (activeBookId ?? null) ||
@@ -863,38 +792,6 @@ const ReleaseModalSession = ({
     });
   }
 
-  const clearSearchStatusForTab = useCallback((tabName: string) => {
-    setSearchStatus((current) => (current?.source === tabName ? null : current));
-  }, []);
-
-  const initializeIndexerFilterForTab = useCallback(
-    (tabName: string, response: ReleasesResponse | null | undefined) => {
-      if (!response?.column_config) {
-        return;
-      }
-
-      if (indexerFilterInitializedRef.current.has(tabName)) {
-        return;
-      }
-
-      const defaultIndexers = response.column_config.default_indexers;
-      if (defaultIndexers && defaultIndexers.length > 0) {
-        setIndexerFilter(defaultIndexers);
-      }
-      indexerFilterInitializedRef.current.add(tabName);
-    },
-    [],
-  );
-
-  const acceptReleasesResponse = useCallback(
-    (tabName: string, provider: string, bookId: string, response: ReleasesResponse) => {
-      setCachedReleases(provider, bookId, tabName, contentType, response);
-      setReleasesBySource((prev) => ({ ...prev, [tabName]: response }));
-      initializeIndexerFilterForTab(tabName, response);
-    },
-    [contentType, initializeIndexerFilterForTab],
-  );
-
   const handleRequestBook = useCallback(async (): Promise<void> => {
     if (!book || !onRequestBook || isRequestingBook) {
       return;
@@ -908,277 +805,8 @@ const ReleaseModalSession = ({
     }
   }, [book, onRequestBook, isRequestingBook, contentType, handleClose]);
 
-  // Set up WebSocket listener for search status updates
-  useEffect(() => {
-    if (!book || !socket) {
-      return undefined;
-    }
-
-    const MIN_DISPLAY_TIME = 1500; // Minimum ms to show each status message
-
-    const handleSearchStatus = (data: SearchStatusData) => {
-      // Only handle status for the current active tab
-      if (data.source !== activeTab) return;
-
-      const now = Date.now();
-      const elapsed = now - lastStatusTimeRef.current;
-
-      // If enough time has passed, update immediately
-      if (elapsed >= MIN_DISPLAY_TIME) {
-        setSearchStatus(data);
-        lastStatusTimeRef.current = now;
-        pendingStatusRef.current = null;
-      } else {
-        // Queue the update for later
-        pendingStatusRef.current = data;
-
-        // Clear any existing timeout
-        if (statusTimeoutRef.current) {
-          clearTimeout(statusTimeoutRef.current);
-        }
-
-        // Schedule update after remaining time
-        statusTimeoutRef.current = setTimeout(() => {
-          if (pendingStatusRef.current) {
-            setSearchStatus(pendingStatusRef.current);
-            lastStatusTimeRef.current = Date.now();
-            pendingStatusRef.current = null;
-          }
-        }, MIN_DISPLAY_TIME - elapsed);
-      }
-    };
-
-    socket.on('search_status', handleSearchStatus);
-
-    return () => {
-      socket.off('search_status', handleSearchStatus);
-      if (statusTimeoutRef.current) {
-        clearTimeout(statusTimeoutRef.current);
-      }
-    };
-  }, [book, socket, activeTab]);
-
-  // Check if description text overflows (needs "more" button)
-  useEffect(() => {
-    const el = descriptionRef.current;
-    if (el && !descriptionExpanded) {
-      // Compare scrollHeight to clientHeight to detect overflow
-      setDescriptionOverflows(el.scrollHeight > el.clientHeight);
-    }
-  }, [book?.description, descriptionExpanded]);
-
-  // Tab indicator refs and state for sliding animation
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const [tabIndicatorStyle, setTabIndicatorStyle] = useState({ left: 0, width: 0 });
-
-  // Track scroll to show/hide header thumbnail
-  useEffect(() => {
-    const scrollContainer = scrollContainerRef.current;
-    const bookSummary = bookSummaryRef.current;
-    if (!scrollContainer || !bookSummary) {
-      return undefined;
-    }
-
-    const handleScroll = () => {
-      const summaryRect = bookSummary.getBoundingClientRect();
-      const containerRect = scrollContainer.getBoundingClientRect();
-      // Show header thumb when the book summary section has scrolled past the top
-      setShowHeaderThumb(summaryRect.bottom < containerRect.top + 20);
-    };
-
-    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
-    return () => scrollContainer.removeEventListener('scroll', handleScroll);
-  }, [book]);
-
-  // Fetch available sources on mount (only when book changes, not content type)
-  useEffect(() => {
-    if (!book) {
-      return undefined;
-    }
-
-    const fetchSources = async () => {
-      try {
-        setSourcesLoading(true);
-        setSourcesError(null);
-        const sources = await getReleaseSources();
-        setAvailableSources(sources);
-      } catch (err) {
-        console.error('Failed to fetch release sources:', err);
-        setAvailableSources([]);
-        setSourcesError(err instanceof Error ? err.message : 'Failed to load release sources');
-      } finally {
-        setSourcesLoading(false);
-      }
-    };
-
-    void fetchSources();
-    return undefined;
-  }, [book]);
-
-  // Fetch releases when active tab changes (with caching)
-  // Initial fetch always uses ISBN-first search; expansion is handled by handleExpandSearch
-  useEffect(() => {
-    if (!book || !activeTab || !book.provider || !book.provider_id) {
-      return undefined;
-    }
-
-    // Extract to local variables for TypeScript narrowing
-    const provider = book.provider;
-    const bookId = book.provider_id;
-
-    // Skip if already loaded, currently loading, or has error (prevents retry loop)
-    if (
-      releasesBySource[activeTab] !== undefined ||
-      loadingBySource[activeTab] ||
-      errorBySource[activeTab]
-    )
-      return undefined;
-
-    // Check module-level cache first
-    const cached = getCachedReleases(provider, bookId, activeTab, contentType);
-    if (cached) {
-      setReleasesBySource((prev) => ({ ...prev, [activeTab]: cached }));
-      initializeIndexerFilterForTab(activeTab, cached);
-      clearSearchStatusForTab(activeTab);
-      return undefined;
-    }
-
-    const fetchReleases = async () => {
-      setLoadingBySource((prev) => ({ ...prev, [activeTab]: true }));
-      setErrorBySource((prev) => ({ ...prev, [activeTab]: null }));
-
-      try {
-        const response = await getReleases(
-          provider,
-          bookId,
-          activeTab,
-          book.title,
-          book.author,
-          undefined,
-          undefined,
-          contentType,
-          manualQuery.trim() || undefined,
-        );
-        acceptReleasesResponse(activeTab, provider, bookId, response);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to fetch releases';
-        setErrorBySource((prev) => ({ ...prev, [activeTab]: message }));
-      } finally {
-        setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
-        clearSearchStatusForTab(activeTab);
-      }
-    };
-
-    void fetchReleases();
-    return undefined;
-  }, [
-    acceptReleasesResponse,
-    activeTab,
-    book,
-    clearSearchStatusForTab,
-    contentType,
-    errorBySource,
-    initializeIndexerFilterForTab,
-    loadingBySource,
-    manualQuery,
-    releasesBySource,
-  ]);
-
-  // Handler for expanding search (title+author instead of ISBN)
-  // Fetches additional results and merges with existing ISBN results
-  const handleExpandSearch = useCallback(async () => {
-    if (!activeTab || !book?.provider || !book?.provider_id) return;
-
-    const provider = book.provider;
-    const bookId = book.provider_id;
-
-    // Mark as loading and expanded
-    setLoadingBySource((prev) => ({ ...prev, [activeTab]: true }));
-    setExpandedBySource((prev) => ({ ...prev, [activeTab]: true }));
-
-    try {
-      // Resolve language codes for the API call (same logic as Apply button)
-      const languagesParam = getReleaseSearchLanguageParams(
-        languageFilter,
-        bookLanguages,
-        defaultLanguages,
-      );
-
-      // Pass indexer filter only if the source supports it (empty array = search all)
-      const supportsIndexerFilter =
-        releasesBySource[activeTab]?.column_config?.supported_filters?.includes('indexer');
-      const indexersParam =
-        supportsIndexerFilter && indexerFilter.length > 0 ? indexerFilter : undefined;
-
-      // Fetch with expand_search=true (title+author search)
-      const expandedResponse = await getReleases(
-        provider,
-        bookId,
-        activeTab,
-        book.title,
-        book.author,
-        true,
-        languagesParam,
-        contentType,
-        manualQuery.trim() || undefined,
-        indexersParam,
-      );
-
-      // Merge with existing results, deduplicating by source_id
-      setReleasesBySource((prev) => {
-        const existing = prev[activeTab];
-        if (!existing) {
-          return { ...prev, [activeTab]: expandedResponse };
-        }
-
-        const seenIds = new Set(existing.releases.map((r) => r.source_id));
-        const newReleases = expandedResponse.releases.filter((r) => !seenIds.has(r.source_id));
-
-        return {
-          ...prev,
-          [activeTab]: {
-            ...existing,
-            releases: [...existing.releases, ...newReleases],
-          },
-        };
-      });
-      initializeIndexerFilterForTab(activeTab, expandedResponse);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to expand search';
-      setErrorBySource((prev) => ({ ...prev, [activeTab]: message }));
-    } finally {
-      setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
-      clearSearchStatusForTab(activeTab);
-    }
-  }, [
-    activeTab,
-    book,
-    clearSearchStatusForTab,
-    languageFilter,
-    bookLanguages,
-    defaultLanguages,
-    contentType,
-    manualQuery,
-    indexerFilter,
-    initializeIndexerFilterForTab,
-    releasesBySource,
-  ]);
-
-  // Update tab indicator position when active tab changes
-  useEffect(() => {
-    const activeButton = tabRefs.current[activeTab];
-    if (activeButton) {
-      // Get position relative to parent container
-      const containerRect = activeButton.parentElement?.getBoundingClientRect();
-      const buttonRect = activeButton.getBoundingClientRect();
-      if (containerRect) {
-        setTabIndicatorStyle({
-          left: buttonRect.left - containerRect.left,
-          width: buttonRect.width,
-        });
-      }
-    }
-  }, [activeTab, allTabs]);
+  const tabIndicatorStyle = useTabIndicator(tabRefs, activeTab, allTabs);
 
   // Get unique formats from current releases for filter dropdown
   // Only show formats that are in the supported list
@@ -1980,15 +1608,7 @@ const ReleaseModalSession = ({
                     {/* Manual query button */}
                     <button
                       type="button"
-                      onClick={() => {
-                        setShowManualQuery((prev) => {
-                          const next = !prev;
-                          if (next && !manualQuery.trim()) {
-                            setManualQuery(defaultManualQuery);
-                          }
-                          return next;
-                        });
-                      }}
+                      onClick={toggleManualQuery}
                       className={`hover-surface rounded-full p-2.5 text-zinc-500 transition-colors dark:text-zinc-400 ${
                         manualQuery.trim() ? 'text-emerald-600 dark:text-emerald-400' : ''
                       }`}
@@ -2237,7 +1857,7 @@ const ReleaseModalSession = ({
                           // Check if indexer filter differs from defaults (only after initialization)
                           // Don't show dot while loading or before filter is initialized from defaults
                           const hasResults = releasesBySource[activeTab]?.releases !== undefined;
-                          const isInitialized = indexerFilterInitializedRef.current.has(activeTab);
+                          const isInitialized = isIndexerFilterInitialized(activeTab);
                           const defaultIndexers = columnConfig.default_indexers ?? [];
                           const indexersMatchDefault =
                             indexerFilter.length === defaultIndexers.length &&
@@ -2329,90 +1949,8 @@ const ReleaseModalSession = ({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  void (async () => {
-                                    close();
-                                    if (!book?.provider || !book?.provider_id) return;
-
-                                    const provider = book.provider;
-                                    const bookId = book.provider_id;
-
-                                    // Clear cache and state
-                                    invalidateCachedReleases(
-                                      provider,
-                                      bookId,
-                                      activeTab,
-                                      contentType,
-                                    );
-                                    setExpandedBySource((prev) => {
-                                      const next = { ...prev };
-                                      delete next[activeTab];
-                                      return next;
-                                    });
-                                    setErrorBySource((prev) => {
-                                      const next = { ...prev };
-                                      delete next[activeTab];
-                                      return next;
-                                    });
-
-                                    // Fetch with language filter
-                                    setLoadingBySource((prev) => ({ ...prev, [activeTab]: true }));
-                                    try {
-                                      // Resolve language codes for the API call
-                                      const languagesParam = getReleaseSearchLanguageParams(
-                                        languageFilter,
-                                        bookLanguages,
-                                        defaultLanguages,
-                                      );
-
-                                      // Pass indexer filter only if the source supports it (empty array = search all)
-                                      const supportsIndexerFilter =
-                                        columnConfig.supported_filters?.includes('indexer');
-                                      const indexersParam =
-                                        supportsIndexerFilter && indexerFilter.length > 0
-                                          ? indexerFilter
-                                          : undefined;
-
-                                      const response = await getReleases(
-                                        provider,
-                                        bookId,
-                                        activeTab,
-                                        book.title,
-                                        book.author,
-                                        false,
-                                        languagesParam,
-                                        contentType,
-                                        manualQuery.trim() || undefined,
-                                        indexersParam,
-                                      );
-                                      setCachedReleases(
-                                        provider,
-                                        bookId,
-                                        activeTab,
-                                        contentType,
-                                        response,
-                                      );
-                                      setReleasesBySource((prev) => ({
-                                        ...prev,
-                                        [activeTab]: response,
-                                      }));
-                                      initializeIndexerFilterForTab(activeTab, response);
-                                    } catch (err) {
-                                      const message =
-                                        err instanceof Error
-                                          ? err.message
-                                          : 'Failed to fetch releases';
-                                      setErrorBySource((prev) => ({
-                                        ...prev,
-                                        [activeTab]: message,
-                                      }));
-                                    } finally {
-                                      setLoadingBySource((prev) => ({
-                                        ...prev,
-                                        [activeTab]: false,
-                                      }));
-                                      clearSearchStatusForTab(activeTab);
-                                    }
-                                  })();
+                                  close();
+                                  applyCurrentFilters();
                                 }}
                                 className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
                               >
@@ -2434,53 +1972,8 @@ const ReleaseModalSession = ({
                 <form
                   className="flex items-center gap-2"
                   onSubmit={(e) => {
-                    void (async () => {
-                      e.preventDefault();
-                      if (!book?.provider || !book?.provider_id) return;
-
-                      const q = manualQuery.trim();
-                      if (!q) return;
-
-                      const provider = book.provider;
-                      const bookId = book.provider_id;
-
-                      // Clear cache + results for ALL tabs so tab switches re-fetch with the new query
-                      for (const tab of allTabs) {
-                        invalidateCachedReleases(provider, bookId, tab.name, contentType);
-                      }
-                      setExpandedBySource({});
-                      setErrorBySource({});
-                      // null for active tab triggers immediate re-fetch; omitting others
-                      // means they'll re-fetch when switched to
-                      setReleasesBySource((prev) => {
-                        const cleared: typeof prev = {};
-                        cleared[activeTab] = null;
-                        return cleared;
-                      });
-
-                      setLoadingBySource((prev) => ({ ...prev, [activeTab]: true }));
-                      try {
-                        const response = await getReleases(
-                          provider,
-                          bookId,
-                          activeTab,
-                          book.title,
-                          book.author,
-                          false,
-                          undefined,
-                          contentType,
-                          q,
-                        );
-                        acceptReleasesResponse(activeTab, provider, bookId, response);
-                      } catch (err) {
-                        const message =
-                          err instanceof Error ? err.message : 'Failed to fetch releases';
-                        setErrorBySource((prev) => ({ ...prev, [activeTab]: message }));
-                      } finally {
-                        setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
-                        clearSearchStatusForTab(activeTab);
-                      }
-                    })();
+                    e.preventDefault();
+                    runManualSearch();
                   }}
                 >
                   <input
@@ -2548,7 +2041,7 @@ const ReleaseModalSession = ({
                           <button
                             type="button"
                             onClick={() => {
-                              void handleExpandSearch();
+                              void expandSearch();
                             }}
                             className="hover-action rounded-full px-3 py-1.5 text-sm text-zinc-500 transition-all duration-200 dark:text-zinc-400"
                           >
@@ -2606,7 +2099,7 @@ const ReleaseModalSession = ({
                           <button
                             type="button"
                             onClick={() => {
-                              void handleExpandSearch();
+                              void expandSearch();
                             }}
                             className="hover-action rounded-full px-3 py-1.5 text-sm text-zinc-500 transition-all duration-200 dark:text-zinc-400"
                           >

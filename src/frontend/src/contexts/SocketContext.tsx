@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { io } from 'socket.io-client';
 
@@ -20,8 +20,7 @@ interface SocketProviderProps {
 
 export const SocketProvider = ({ children }: SocketProviderProps) => {
   const [connected, setConnected] = useState(false);
-  const socketRef = useRef<Socket | null>(null);
-  const socket = socketRef.current;
+  const [socket, setSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
     // Always connect via current origin so dev proxy and session cookies stay aligned.
@@ -36,7 +35,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
       withCredentials: true,
     });
 
-    socketRef.current = nextSocket;
+    setSocket(nextSocket);
 
     nextSocket.on('connect', () => {
       console.log('✅ Socket connected via', nextSocket.io.engine.transport.name);
@@ -56,7 +55,6 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
     return () => {
       console.log('SocketProvider: Disconnecting');
       nextSocket.disconnect();
-      socketRef.current = null;
     };
   }, []);
 

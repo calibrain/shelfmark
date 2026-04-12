@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { ActivitySidebar } from './components/activity';
@@ -20,6 +20,16 @@ import { ToastContainer } from './components/ToastContainer';
 import { SearchModeProvider } from './contexts/SearchModeContext';
 import { useSocket } from './contexts/SocketContext';
 import { DEFAULT_LANGUAGES, DEFAULT_SUPPORTED_FORMATS } from './data/languages';
+import { useActiveMetadataConfigLoader } from './hooks/app/useActiveMetadataConfigLoader';
+import { useAppStartupStatusFetch } from './hooks/app/useAppStartupStatusFetch';
+import { useAuthEstablishedStatusRefresh } from './hooks/app/useAuthEstablishedStatusRefresh';
+import { useBookTargetDeselectSync } from './hooks/app/useBookTargetDeselectSync';
+import { useConfigBootstrapOnAuth } from './hooks/app/useConfigBootstrapOnAuth';
+import { useContentTypePreferences } from './hooks/app/useContentTypePreferences';
+import { useRealtimeTransportLog } from './hooks/app/useRealtimeTransportLog';
+import { useShowOnboardingDebug } from './hooks/app/useShowOnboardingDebug';
+import { useStatusChangeNotifications } from './hooks/app/useStatusChangeNotifications';
+import { useUrlSearchBootstrap } from './hooks/app/useUrlSearchBootstrap';
 import {
   resolveDefaultModeFromPolicy,
   resolveSourceModeFromPolicy,
@@ -74,7 +84,7 @@ import { isMetadataBook } from './types';
 import { formatActingAsUserName } from './utils/actingAsUser';
 import { buildLoginRedirectPath, getReturnToFromSearch } from './utils/authRedirect';
 import { withBasePath } from './utils/basePath';
-import { emitBookTargetChange, onBookTargetChange } from './utils/bookTargetEvents';
+import { emitBookTargetChange } from './utils/bookTargetEvents';
 import { bookSupportsTargets } from './utils/bookTargetLoader';
 import { buildSearchQuery } from './utils/buildSearchQuery';
 import { wasDownloadQueuedAfterResponseError } from './utils/downloadRecovery';
@@ -103,31 +113,7 @@ import {
 // eslint-disable-next-line import/no-unassigned-import -- global app stylesheet is loaded for side effects
 import './styles.css';
 
-const CONTENT_TYPE_STORAGE_KEY = 'preferred-content-type';
 const ACTIVITY_SIDEBAR_PINNED_STORAGE_KEY = 'activity-sidebar-pinned';
-const ADVANCED_FILTER_VISIBILITY_KEYS = ['content', 'lang', 'formats'] as const;
-
-declare global {
-  interface Window {
-    showOnboarding?: () => void;
-  }
-}
-
-const getInitialContentType = (): { contentType: ContentType; combinedMode: boolean } => {
-  try {
-    const saved = localStorage.getItem(CONTENT_TYPE_STORAGE_KEY);
-    if (saved === 'combined') {
-      return { contentType: 'ebook', combinedMode: true };
-    }
-    if (saved === 'ebook' || saved === 'audiobook') {
-      return { contentType: saved, combinedMode: false };
-    }
-  } catch {
-    // localStorage may be unavailable in private browsing
-  }
-  return { contentType: 'ebook', combinedMode: false };
-};
-
 const getInitialPinnedPreference = (): boolean => {
   if (typeof window === 'undefined') {
     return false;
@@ -256,6 +242,8 @@ function App() {
   } = useRealtimeStatus({
     pollInterval: 5000,
   });
+  useAppStartupStatusFetch(fetchStatus);
+  useRealtimeTransportLog(isUsingWebSocket);
 
   // Download tracking for universal mode
   const {
@@ -290,18 +278,17 @@ function App() {
     showToast,
   });
 
-  // Re-request status after auth is established so the server can re-scope socket room membership.
-  useEffect(() => {
-    if (!authChecked || !isAuthenticated) {
-      return;
-    }
-    policyTrace('auth.status', { authChecked, isAuthenticated, isAdmin: authIsAdmin, username });
-    void fetchStatus();
-  }, [authChecked, isAuthenticated, authIsAdmin, username, fetchStatus]);
+  useAuthEstablishedStatusRefresh({
+    authChecked,
+    isAuthenticated,
+    isAdmin: authIsAdmin,
+    username,
+    refreshStatus: fetchStatus,
+  });
 
   // Content type state (ebook vs audiobook) - defined before useSearch since it's passed to it
-  const initialContentTypePref = useMemo(() => getInitialContentType(), []);
-  const [contentType, setContentType] = useState<ContentType>(initialContentTypePref.contentType);
+  const { contentType, setContentType, combinedMode, setCombinedMode } =
+    useContentTypePreferences();
 
   const {
     policy: requestPolicy,
@@ -491,15 +478,10 @@ function App() {
   // When a book is removed from the Hardcover list currently being browsed, remove it from results
   const searchFieldValuesRef = useRef(searchFieldValues);
   searchFieldValuesRef.current = searchFieldValues;
-
-  useEffect(() => {
-    return onBookTargetChange((event) => {
-      if (event.selected) return;
-      const activeListValue = searchFieldValuesRef.current.hardcover_list;
-      if (!activeListValue || String(activeListValue) !== event.target) return;
-      setBooks((prev) => prev.filter((book) => book.provider_id !== event.bookId));
-    });
-  }, [setBooks]);
+  useBookTargetDeselectSync({
+    activeListValue: searchFieldValues.hardcover_list,
+    setBooks,
+  });
 
   const [pendingRequestPayload, setPendingRequestPayload] = useState<CreateRequestPayload | null>(
     null,
@@ -626,17 +608,7 @@ function App() {
   }, [handleLogout, resetActivity, resetSearchResultsState]);
 
   // Combined mode state (ebook + audiobook in one transaction)
-  const [combinedMode, setCombinedMode] = useState(initialContentTypePref.combinedMode);
   const [combinedState, setCombinedState] = useState<CombinedSelectionState | null>(null);
-
-  // Persist content type + combined mode to localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(CONTENT_TYPE_STORAGE_KEY, combinedMode ? 'combined' : contentType);
-    } catch {
-      // localStorage may be unavailable in private browsing
-    }
-  }, [contentType, combinedMode]);
 
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [metadataProviders, setMetadataProviders] = useState<MetadataProviderSummary[]>([]);
@@ -647,9 +619,6 @@ function App() {
   const [configuredCombinedMetadataProvider, setConfiguredCombinedMetadataProvider] = useState<
     string | null
   >(null);
-  const [activeMetadataConfig, setActiveMetadataConfig] = useState<MetadataSearchConfig | null>(
-    null,
-  );
   const [activeQueryTarget, setActiveQueryTarget] = useState('general');
   const [downloadsSidebarOpen, setDownloadsSidebarOpen] = useState(false);
   const [sidebarPinnedOpen, setSidebarPinnedOpen] = useState<boolean>(() =>
@@ -700,22 +669,14 @@ function App() {
   const [selfSettingsOpen, setSelfSettingsOpen] = useState(false);
   const [configBannerOpen, setConfigBannerOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
-
-  // Expose debug function to trigger onboarding from browser console
-  useEffect(() => {
-    window.showOnboarding = () => setOnboardingOpen(true);
-    return () => {
-      delete window.showOnboarding;
-    };
-  }, []);
+  useShowOnboardingDebug({
+    setOnboardingOpen,
+  });
 
   // URL-based search: parse URL params for automatic search on page load
   const urlSearchEnabled = isAuthenticated && config !== null;
   const { parsedParams, wasProcessed } = useUrlSearch({ enabled: urlSearchEnabled });
-  const urlSearchExecutedRef = useRef(false);
 
-  // Track previous status and search mode for change detection
-  const prevStatusRef = useRef<StatusData>({});
   const prevSearchModeRef = useRef<string | undefined>(undefined);
 
   // Calculate status counts for header badges (memoized)
@@ -767,97 +728,14 @@ function App() {
   const hasResults = books.length > 0;
   const isInitialState = !hasResults;
 
-  // Detect status changes and show notifications
-  const detectChanges = useCallback(
-    (prev: StatusData, curr: StatusData) => {
-      if (!prev || Object.keys(prev).length === 0) return;
-
-      const autoDownloadContentTypes = Array.isArray(config?.download_to_browser_content_types)
-        ? config.download_to_browser_content_types
-        : [];
-      const canAutoDownloadContentType = (downloadContentType?: string): boolean => {
-        const contentTypeKey =
-          (downloadContentType || '').trim().toLowerCase() === 'audiobook' ? 'audiobook' : 'book';
-        return autoDownloadContentTypes.includes(contentTypeKey);
-      };
-
-      // Check for new items in queue
-      const prevQueued = prev.queued || {};
-      const currQueued = curr.queued || {};
-      let shouldOpenDownloadsSidebar = false;
-      Object.keys(currQueued).forEach((bookId) => {
-        if (!prevQueued[bookId]) {
-          const book = currQueued[bookId];
-          showToast(`${book.title || 'Book'} added to queue`, 'info');
-          // Auto-open downloads sidebar if enabled
-          if (config?.auto_open_downloads_sidebar !== false) {
-            shouldOpenDownloadsSidebar = true;
-          }
-        }
-      });
-      if (shouldOpenDownloadsSidebar) {
-        openDownloadsSidebar();
-      }
-
-      // Check for items that started downloading
-      const prevDownloading = prev.downloading || {};
-      const currDownloading = curr.downloading || {};
-      Object.keys(currDownloading).forEach((bookId) => {
-        if (!prevDownloading[bookId]) {
-          const book = currDownloading[bookId];
-          showToast(`${book.title || 'Book'} started downloading`, 'info');
-        }
-      });
-
-      // Check for completed items
-      const prevComplete = prev.complete || {};
-      const currComplete = curr.complete || {};
-
-      Object.keys(currComplete).forEach((bookId) => {
-        if (!prevComplete[bookId]) {
-          const book = currComplete[bookId];
-          showToast(`${book.title || 'Book'} completed`, 'success');
-
-          // Auto-download to browser if enabled
-          if (book.download_path && canAutoDownloadContentType(book.content_type)) {
-            const link = document.createElement('a');
-            link.href = withBasePath(`/api/localdownload?id=${encodeURIComponent(bookId)}`);
-            link.download = '';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          }
-
-          // Track completed release IDs in session state for universal mode
-          Object.entries(bookToReleaseMap).forEach(([metadataBookId, releaseIds]) => {
-            if (releaseIds.includes(bookId)) {
-              markBookCompleted(metadataBookId);
-            }
-          });
-        }
-      });
-
-      // Check for failed items
-      const prevError = prev.error || {};
-      const currError = curr.error || {};
-      Object.keys(currError).forEach((bookId) => {
-        if (!prevError[bookId]) {
-          const book = currError[bookId];
-          const errorMsg = book.status_message || 'Download failed';
-          showToast(`${book.title || 'Book'}: ${errorMsg}`, 'error');
-        }
-      });
-    },
-    [showToast, bookToReleaseMap, markBookCompleted, config, openDownloadsSidebar],
-  );
-
-  // Detect status changes when currentStatus updates
-  useEffect(() => {
-    if (prevStatusRef.current && Object.keys(prevStatusRef.current).length > 0) {
-      detectChanges(prevStatusRef.current, currentStatus);
-    }
-    prevStatusRef.current = currentStatus;
-  }, [currentStatus, detectChanges]);
+  useStatusChangeNotifications({
+    currentStatus,
+    config,
+    showToast,
+    openDownloadsSidebar,
+    bookToReleaseMap,
+    markBookCompleted,
+  });
 
   // Load config function
   const loadConfig = useCallback(
@@ -919,7 +797,6 @@ function App() {
         setConfiguredMetadataProvider(metadataProviderState.configured_provider);
         setConfiguredAudiobookMetadataProvider(metadataProviderState.configured_provider_audiobook);
         setConfiguredCombinedMetadataProvider(metadataProviderState.configured_provider_combined);
-        setActiveMetadataConfig(nextMetadataConfig);
 
         // Show onboarding modal on first run (settings enabled but not completed yet)
         if (mode === 'initial' && cfg.settings_enabled && !cfg.onboarding_complete) {
@@ -961,12 +838,10 @@ function App() {
     ],
   );
 
-  // Fetch config when authenticated
-  useEffect(() => {
-    if (isAuthenticated) {
-      void loadConfig('initial');
-    }
-  }, [isAuthenticated, loadConfig]);
+  useConfigBootstrapOnAuth({
+    isAuthenticated,
+    loadConfig,
+  });
 
   const effectiveSearchMode: SearchMode = config?.search_mode ?? 'direct';
 
@@ -991,6 +866,12 @@ function App() {
         });
   const effectiveMetadataProvider =
     effectiveSearchMode === 'universal' ? defaultMetadataProviderForContentType || null : null;
+  const activeMetadataConfig = useActiveMetadataConfigLoader({
+    isAuthenticated,
+    effectiveSearchMode,
+    effectiveContentType,
+    effectiveMetadataProvider,
+  });
   const resolvedMetadataSortOptions = useMemo(
     () => activeMetadataConfig?.sort_options ?? config?.metadata_sort_options ?? [],
     [activeMetadataConfig?.sort_options, config?.metadata_sort_options],
@@ -1014,40 +895,6 @@ function App() {
   const hasAdvancedContent = requestRoleIsAdmin || effectiveSearchMode === 'direct';
   const effectiveShowAdvanced = hasAdvancedContent ? showAdvanced : false;
 
-  useEffect(() => {
-    let isMounted = true;
-
-    if (!isAuthenticated || effectiveSearchMode !== 'universal') {
-      setActiveMetadataConfig(null);
-      return () => {
-        isMounted = false;
-      };
-    }
-
-    const loadMetadataConfig = async () => {
-      try {
-        const nextConfig = await getMetadataSearchConfig(
-          effectiveContentType,
-          effectiveMetadataProvider ?? undefined,
-        );
-        if (isMounted) {
-          setActiveMetadataConfig(nextConfig);
-        }
-      } catch (error) {
-        console.error('Failed to load metadata search config:', error);
-        if (isMounted) {
-          setActiveMetadataConfig(null);
-        }
-      }
-    };
-
-    void loadMetadataConfig();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [isAuthenticated, effectiveSearchMode, effectiveContentType, effectiveMetadataProvider]);
-
   const runSearchWithPolicyRefresh = useCallback(
     (opts: {
       query: string;
@@ -1069,140 +916,25 @@ function App() {
     [refreshRequestPolicy, handleSearch, config],
   );
 
-  // Execute URL-based search when params are present
-  useEffect(() => {
-    if (wasProcessed && parsedParams && !urlSearchExecutedRef.current && config) {
-      urlSearchExecutedRef.current = true;
-
-      const parsedSearchMode = config.search_mode || 'direct';
-      const urlContentTypeOverride =
-        parsedSearchMode === 'universal' ? parsedParams.contentType : undefined;
-
-      if (urlContentTypeOverride && urlContentTypeOverride !== contentType) {
-        setContentType(urlContentTypeOverride);
-      }
-
-      if (!parsedParams.hasSearchParams) {
-        return;
-      }
-      const bookLanguages = config.book_languages || [];
-      const defaultLanguageCodes =
-        config.default_language && config.default_language.length > 0
-          ? config.default_language
-          : [bookLanguages[0]?.code || 'en'];
-
-      // Populate search input from URL
-      if (parsedParams.searchInput) {
-        setSearchInput(parsedParams.searchInput);
-      }
-
-      let nextQueryTarget = 'general';
-      if (parsedSearchMode === 'direct') {
-        if (parsedParams.advancedFilters.isbn) {
-          nextQueryTarget = 'isbn';
-        } else if (parsedParams.advancedFilters.author) {
-          nextQueryTarget = 'author';
-        } else if (parsedParams.advancedFilters.title) {
-          nextQueryTarget = 'title';
-        }
-      }
-      setActiveQueryTarget(nextQueryTarget);
-
-      const resolvedUrlMetadataSort =
-        parsedSearchMode === 'universal'
-          ? getEffectiveMetadataSort({
-              currentSort:
-                typeof parsedParams.advancedFilters.sort === 'string'
-                  ? parsedParams.advancedFilters.sort
-                  : '',
-              defaultSort: resolvedMetadataDefaultSort,
-              sortOptions: resolvedMetadataSortOptions,
-            })
-          : parsedParams.advancedFilters.sort;
-
-      // Apply advanced filters from URL
-      if (Object.keys(parsedParams.advancedFilters).length > 0) {
-        setAdvancedFilters((prev) => ({
-          ...prev,
-          ...parsedParams.advancedFilters,
-          ...(parsedSearchMode === 'universal' && resolvedUrlMetadataSort
-            ? { sort: resolvedUrlMetadataSort }
-            : {}),
-        }));
-
-        const hasAdvancedValues = ADVANCED_FILTER_VISIBILITY_KEYS.some((key) => {
-          const value = parsedParams.advancedFilters[key];
-          return Array.isArray(value) ? value.length > 0 : Boolean(value);
-        });
-        if (hasAdvancedValues) {
-          setShowAdvanced(true);
-        }
-      }
-
-      // Build query and trigger search
-      const mergedFilters = {
-        ...advancedFilters,
-        ...parsedParams.advancedFilters,
-        ...(parsedSearchMode === 'universal' && resolvedUrlMetadataSort
-          ? { sort: resolvedUrlMetadataSort }
-          : {}),
-      };
-
-      const query = buildSearchQuery({
-        searchInput:
-          parsedSearchMode === 'direct' && nextQueryTarget !== 'general'
-            ? ''
-            : parsedParams.searchInput,
-        showAdvanced: true,
-        advancedFilters: {
-          ...(mergedFilters as typeof advancedFilters),
-          isbn: nextQueryTarget === 'isbn' ? parsedParams.advancedFilters.isbn || '' : '',
-          author: nextQueryTarget === 'author' ? parsedParams.advancedFilters.author || '' : '',
-          title: nextQueryTarget === 'title' ? parsedParams.advancedFilters.title || '' : '',
-        },
-        bookLanguages,
-        defaultLanguage: defaultLanguageCodes,
-        searchMode: parsedSearchMode,
-      });
-
-      runSearchWithPolicyRefresh({
-        query,
-        contentTypeOverride: urlContentTypeOverride,
-        searchModeOverride: parsedSearchMode,
-      });
-    }
-  }, [
-    wasProcessed,
+  useUrlSearchBootstrap({
     parsedParams,
-    contentType,
+    wasProcessed,
     config,
+    contentType,
     advancedFilters,
     resolvedMetadataDefaultSort,
     resolvedMetadataSortOptions,
-    runSearchWithPolicyRefresh,
+    setContentType,
     setSearchInput,
     setAdvancedFilters,
     setShowAdvanced,
     setActiveQueryTarget,
-  ]);
+    runSearchWithPolicyRefresh,
+  });
 
   const handleSettingsSaved = useCallback(() => {
     void loadConfig('settings-saved');
   }, [loadConfig]);
-
-  // Log WebSocket connection status
-  useEffect(() => {
-    if (isUsingWebSocket) {
-      console.log('✅ Using WebSocket for real-time updates');
-    } else {
-      console.log('⏳ Using polling fallback (5s interval)');
-    }
-  }, [isUsingWebSocket]);
-
-  // Fetch status on startup
-  useEffect(() => {
-    void fetchStatus();
-  }, [fetchStatus]);
 
   // Show book details
   const handleShowDetails = async (id: string): Promise<void> => {
@@ -2345,7 +2077,7 @@ function App() {
         .then(() => loadConfig('settings-saved'))
         .catch((err) => console.error('Failed to save search mode:', err));
     },
-    [loadConfig, resetSearchResultsState],
+    [loadConfig, resetSearchResultsState, setCombinedMode],
   );
 
   const handleMetadataProviderChange = useCallback(

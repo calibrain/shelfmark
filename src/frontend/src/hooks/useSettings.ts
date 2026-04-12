@@ -57,13 +57,8 @@ export function useSettings(): UseSettingsReturn {
   const valuesRef = useRef<SettingsValues>({});
   const originalValuesRef = useRef<SettingsValues>({});
 
-  useEffect(() => {
-    valuesRef.current = values;
-  }, [values]);
-
-  useEffect(() => {
-    originalValuesRef.current = originalValues;
-  }, [originalValues]);
+  valuesRef.current = values;
+  originalValuesRef.current = originalValues;
 
   const applySettingsResponse = useCallback(
     (response: SettingsResponse, options: { preserveDirtyValues?: boolean } = {}) => {

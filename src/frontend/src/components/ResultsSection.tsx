@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { useSearchMode } from '../contexts/SearchModeContext';
 import { SORT_OPTIONS } from '../data/filterOptions';
@@ -62,14 +62,27 @@ export const ResultsSection = ({
       ? 'bg-emerald-600 text-white hover:bg-emerald-700'
       : 'bg-sky-700 text-white hover:bg-sky-800';
   const [viewMode, setViewMode] = useState<'card' | 'compact' | 'list'>(() => {
-    const saved = localStorage.getItem('bookViewMode');
-    return saved === 'card' || saved === 'compact' || saved === 'list' ? saved : 'compact';
+    if (typeof window === 'undefined') {
+      return 'compact';
+    }
+
+    try {
+      const saved = window.localStorage.getItem('bookViewMode');
+      return saved === 'card' || saved === 'compact' || saved === 'list' ? saved : 'compact';
+    } catch {
+      return 'compact';
+    }
   });
   const isDesktop = useMediaQuery('(min-width: 640px)');
 
-  useEffect(() => {
-    localStorage.setItem('bookViewMode', viewMode);
-  }, [viewMode]);
+  const updateViewMode = (nextViewMode: 'card' | 'compact' | 'list') => {
+    setViewMode(nextViewMode);
+    try {
+      window.localStorage.setItem('bookViewMode', nextViewMode);
+    } catch {
+      // Best effort only.
+    }
+  };
 
   if (!visible) return null;
 
@@ -107,7 +120,7 @@ export const ResultsSection = ({
           {isDesktop && (
             <button
               type="button"
-              onClick={() => setViewMode('card')}
+              onClick={() => updateViewMode('card')}
               className={`rounded-full p-2 transition-all duration-200 ${
                 viewMode === 'card'
                   ? activeViewClasses
@@ -134,7 +147,7 @@ export const ResultsSection = ({
           )}
           <button
             type="button"
-            onClick={() => setViewMode('compact')}
+            onClick={() => updateViewMode('compact')}
             className={`rounded-full p-2 transition-all duration-200 ${
               viewMode === 'compact'
                 ? activeViewClasses
@@ -159,7 +172,7 @@ export const ResultsSection = ({
           </button>
           <button
             type="button"
-            onClick={() => setViewMode('list')}
+            onClick={() => updateViewMode('list')}
             className={`rounded-full p-2 transition-all duration-200 ${
               viewMode === 'list'
                 ? activeViewClasses
