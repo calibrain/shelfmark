@@ -111,11 +111,11 @@ def test_download_settings_destination_test_buttons_exist():
 
 
 def test_test_books_destination_uses_current_values(tmp_path):
-    from shelfmark.config.download_settings_handlers import test_books_destination
+    from shelfmark.config.download_settings_handlers import check_books_destination
 
     destination = tmp_path / "books"
 
-    result = test_books_destination({"DESTINATION": str(destination)})
+    result = check_books_destination({"DESTINATION": str(destination)})
 
     assert result["success"] is True
     assert result["message"] == f"Books destination is writable: {destination}"
@@ -123,11 +123,11 @@ def test_test_books_destination_uses_current_values(tmp_path):
 
 
 def test_test_audiobook_destination_falls_back_to_books_destination(tmp_path):
-    from shelfmark.config.download_settings_handlers import test_audiobook_destination
+    from shelfmark.config.download_settings_handlers import check_audiobook_destination
 
     destination = tmp_path / "books"
 
-    result = test_audiobook_destination(
+    result = check_audiobook_destination(
         {
             "DESTINATION": str(destination),
             "DESTINATION_AUDIOBOOK": "",
@@ -141,11 +141,11 @@ def test_test_audiobook_destination_falls_back_to_books_destination(tmp_path):
 
 
 def test_test_books_destination_uses_base_path_for_user_placeholder(tmp_path):
-    from shelfmark.config.download_settings_handlers import test_books_destination
+    from shelfmark.config.download_settings_handlers import check_books_destination
 
     destination = tmp_path / "books"
 
-    result = test_books_destination({"DESTINATION": f"{destination}/{{User}}"})
+    result = check_books_destination({"DESTINATION": f"{destination}/{{User}}"})
 
     assert result["success"] is True
     assert result["message"] == (
@@ -156,11 +156,11 @@ def test_test_books_destination_uses_base_path_for_user_placeholder(tmp_path):
 
 
 def test_test_books_destination_uses_base_path_for_lowercase_user_placeholder(tmp_path):
-    from shelfmark.config.download_settings_handlers import test_books_destination
+    from shelfmark.config.download_settings_handlers import check_books_destination
 
     destination = tmp_path / "books"
 
-    result = test_books_destination({"DESTINATION": f"{destination}/{{user}}"})
+    result = check_books_destination({"DESTINATION": f"{destination}/{{user}}"})
 
     assert result["success"] is True
     assert result["message"] == (
@@ -171,9 +171,9 @@ def test_test_books_destination_uses_base_path_for_lowercase_user_placeholder(tm
 
 
 def test_test_books_destination_rejects_relative_user_placeholder_path():
-    from shelfmark.config.download_settings_handlers import test_books_destination
+    from shelfmark.config.download_settings_handlers import check_books_destination
 
-    result = test_books_destination({"DESTINATION": "{User}/books"})
+    result = check_books_destination({"DESTINATION": "{User}/books"})
 
     assert result["success"] is False
     assert result["message"] == "Destination must be absolute: {User}/books"

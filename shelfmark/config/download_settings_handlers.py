@@ -100,11 +100,11 @@ def _test_folder_destination(
     }
 
 
-def test_books_destination(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
+def check_books_destination(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     """Validate the configured books destination."""
     return _test_folder_destination(current_values=current_values, is_audiobook=False)
 
 
-def test_audiobook_destination(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
+def check_audiobook_destination(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     """Validate the configured audiobook destination."""
     return _test_folder_destination(current_values=current_values, is_audiobook=True)

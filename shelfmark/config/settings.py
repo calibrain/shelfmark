@@ -11,8 +11,8 @@ from shelfmark.config.booklore_settings import (
     get_booklore_path_options,
 )
 from shelfmark.config.download_settings_handlers import (
-    test_audiobook_destination,
-    test_books_destination,
+    check_audiobook_destination,
+    check_books_destination,
 )
 from shelfmark.config.email_settings import check_email_connection
 from shelfmark.core.logger import setup_logger
@@ -928,7 +928,7 @@ def download_settings() -> list[SettingsField]:
             label="Test Destination",
             description="Check that Shelfmark can create and write to this destination.",
             style="primary",
-            callback=test_books_destination,
+            callback=check_books_destination,
             show_when={
                 "field": "BOOKS_OUTPUT_MODE",
                 "value": "folder",
@@ -1204,7 +1204,7 @@ def download_settings() -> list[SettingsField]:
             label="Test Destination",
             description="Check that Shelfmark can create and write to this audiobook destination.",
             style="primary",
-            callback=test_audiobook_destination,
+            callback=check_audiobook_destination,
             universal_only=True,
         ),
         SelectField(
