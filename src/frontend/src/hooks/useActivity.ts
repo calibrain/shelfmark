@@ -37,7 +37,7 @@ const mapHistoryRowToActivityItem = (
   const dismissedAtTs = parseTimestamp(row.dismissed_at);
   const snapshot = row.snapshot;
   if (snapshot && typeof snapshot === 'object') {
-    const payload = snapshot as Record<string, unknown>;
+    const payload = snapshot;
     if (payload.kind === 'download' && payload.download && typeof payload.download === 'object') {
       const statusKey =
         row.final_status === 'error' || row.final_status === 'cancelled'

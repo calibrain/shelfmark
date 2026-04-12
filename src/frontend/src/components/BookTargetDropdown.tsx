@@ -80,7 +80,7 @@ export const BookTargetDropdown = ({
   const [options, setOptions] = useState<BookTargetOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [pendingTargets, setPendingTargets] = useState<Set<string>>(new Set());
+  const [pendingTargets, setPendingTargets] = useState(new Set<string>());
 
   useEffect(() => {
     let isMounted = true;

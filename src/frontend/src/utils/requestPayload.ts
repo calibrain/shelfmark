@@ -1,7 +1,7 @@
 import { Book, ContentType, CreateRequestPayload, Release } from '../types';
 
-export const toContentType = (value: ContentType | string): ContentType => {
-  return String(value).trim().toLowerCase() === 'audiobook' ? 'audiobook' : 'ebook';
+export const toContentType = (value: string): ContentType => {
+  return value.trim().toLowerCase() === 'audiobook' ? 'audiobook' : 'ebook';
 };
 
 export const getBrowseSource = (book: Book): string => {

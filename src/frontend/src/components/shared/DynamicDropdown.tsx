@@ -42,7 +42,7 @@ export const DynamicDropdown = ({
   triggerChrome = 'default',
 }: DynamicDropdownProps) => {
   const cachedOptions = optionsCache.get(endpoint) ?? [];
-  const [options, setOptions] = useState<DynamicFieldOption[]>(cachedOptions);
+  const [options, setOptions] = useState(cachedOptions);
   const [isLoading, setIsLoading] = useState(cachedOptions.length === 0);
   const [loadError, setLoadError] = useState<string | null>(null);
 

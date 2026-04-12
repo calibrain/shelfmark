@@ -104,27 +104,23 @@ export const UserSearchPreferencesSection = ({
   const globalValues = searchPreferences.globalValues ?? {};
   const preferenceKeySet = new Set(searchPreferences.keys ?? []);
 
-  const searchModeField = getFieldByKey<SelectFieldConfig>(
-    fields,
-    'SEARCH_MODE',
-    fallbackSearchModeField,
-  );
-  const metadataProviderField = getFieldByKey<SelectFieldConfig>(
+  const searchModeField = getFieldByKey(fields, 'SEARCH_MODE', fallbackSearchModeField);
+  const metadataProviderField = getFieldByKey(
     fields,
     'METADATA_PROVIDER',
     fallbackMetadataProviderField,
   );
-  const metadataProviderAudiobookField = getFieldByKey<SelectFieldConfig>(
+  const metadataProviderAudiobookField = getFieldByKey(
     fields,
     'METADATA_PROVIDER_AUDIOBOOK',
     fallbackAudiobookMetadataProviderField,
   );
-  const defaultReleaseSourceField = getFieldByKey<SelectFieldConfig>(
+  const defaultReleaseSourceField = getFieldByKey(
     fields,
     'DEFAULT_RELEASE_SOURCE',
     fallbackDefaultReleaseSourceField,
   );
-  const defaultAudiobookReleaseSourceField = getFieldByKey<SelectFieldConfig>(
+  const defaultAudiobookReleaseSourceField = getFieldByKey(
     fields,
     'DEFAULT_RELEASE_SOURCE_AUDIOBOOK',
     fallbackDefaultAudiobookReleaseSourceField,

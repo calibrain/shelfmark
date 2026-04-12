@@ -52,7 +52,7 @@ export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSele
     const normalizeValues = (values: string[]): string[] => {
       const deduped = new Set(
         values
-          .map((entry) => String(entry ?? '').trim())
+          .map((entry) => entry.trim())
           .filter((entry) => entry.length > 0 && optionSet.has(entry)),
       );
       return orderedOptions.map((opt) => opt.value).filter((optValue) => deduped.has(optValue));

@@ -150,37 +150,25 @@ export const UserOverridesSection = ({
   const globalValues = deliveryPreferences?.globalValues ?? {};
   const preferenceKeys = deliveryPreferences?.keys ?? [];
 
-  const outputModeField = getFieldByKey<SelectFieldConfig>(
-    fields,
-    'BOOKS_OUTPUT_MODE',
-    fallbackOutputModeField,
-  );
-  const destinationField = getFieldByKey<TextFieldConfig>(
-    fields,
-    'DESTINATION',
-    fallbackDestinationField,
-  );
-  const destinationAudiobookField = getFieldByKey<TextFieldConfig>(
+  const outputModeField = getFieldByKey(fields, 'BOOKS_OUTPUT_MODE', fallbackOutputModeField);
+  const destinationField = getFieldByKey(fields, 'DESTINATION', fallbackDestinationField);
+  const destinationAudiobookField = getFieldByKey(
     fields,
     'DESTINATION_AUDIOBOOK',
     fallbackDestinationAudiobookField,
   );
-  const bookloreLibraryField = getFieldByKey<SelectFieldConfig>(
+  const bookloreLibraryField = getFieldByKey(
     fields,
     'BOOKLORE_LIBRARY_ID',
     fallbackBookloreLibraryField,
   );
-  const booklorePathField = getFieldByKey<SelectFieldConfig>(
-    fields,
-    'BOOKLORE_PATH_ID',
-    fallbackBooklorePathField,
-  );
-  const emailRecipientFieldSource = getFieldByKey<TextFieldConfig>(
+  const booklorePathField = getFieldByKey(fields, 'BOOKLORE_PATH_ID', fallbackBooklorePathField);
+  const emailRecipientFieldSource = getFieldByKey(
     fields,
     'EMAIL_RECIPIENT',
     fallbackEmailRecipientField,
   );
-  const browserDownloadField = getFieldByKey<MultiSelectFieldConfig>(
+  const browserDownloadField = getFieldByKey(
     fields,
     'DOWNLOAD_TO_BROWSER_CONTENT_TYPES',
     fallbackBrowserDownloadField,
@@ -196,7 +184,7 @@ export const UserOverridesSection = ({
       )
     : [];
   const browserDownloadUserValue = Array.isArray(userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES)
-    ? userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES.map((entry) => String(entry).trim()).filter(
+    ? userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES.map((entry) => entry.trim()).filter(
         (entry) => entry.length > 0,
       )
     : [];

@@ -80,7 +80,7 @@ export const UserListView = ({
 }: UserListViewProps) => {
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode);
-  const isCwaMode = String(authMode || 'none').toLowerCase() === 'cwa';
+  const isCwaMode = (authMode || 'none').toLowerCase() === 'cwa';
   const handleDelete = async (userId: number) => {
     const ok = await onDelete(userId);
     if (ok) {
@@ -114,7 +114,7 @@ export const UserListView = ({
       ) : (
         <div className="space-y-2">
           {users.map((user) => {
-            const active = user.is_active !== false;
+            const active = user.is_active;
             const isEditingRow = showEditForm && activeEditUserId === user.id;
             const hasLoadedEditUser = isEditingRow && editingUser?.id === user.id;
             return (

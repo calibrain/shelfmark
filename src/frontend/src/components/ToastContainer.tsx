@@ -7,7 +7,7 @@ interface ToastContainerProps {
 }
 
 export const ToastContainer = ({ toasts }: ToastContainerProps) => {
-  const [visibleToasts, setVisibleToasts] = useState<Set<string>>(new Set());
+  const [visibleToasts, setVisibleToasts] = useState(new Set<string>());
 
   useEffect(() => {
     toasts.forEach((toast) => {

@@ -64,12 +64,12 @@ export const AUTH_SOURCE_BADGE_CLASSES: Record<AuthSource, string> = {
 };
 
 export const canCreateLocalUsersForAuthMode = (authMode?: string): boolean => {
-  const normalized = String(authMode || 'none').toLowerCase();
+  const normalized = (authMode || 'none').toLowerCase();
   return normalized === 'none' || normalized === 'builtin' || normalized === 'oidc';
 };
 
 export const getUsersHeadingDescriptionForAuthMode = (authMode?: string): string => {
-  const normalized = String(authMode || 'none').toLowerCase();
+  const normalized = (authMode || 'none').toLowerCase();
 
   if (normalized === 'builtin') {
     return 'Create and manage user accounts directly. Passwords are stored locally and users sign in with their username and password.';

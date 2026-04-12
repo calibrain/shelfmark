@@ -37,18 +37,18 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
   const { socket } = useSocket();
   const postLoginPath = getReturnToFromSearch(location.search);
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [authRequired, setAuthRequired] = useState<boolean>(true);
-  const [authChecked, setAuthChecked] = useState<boolean>(false);
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [authMode, setAuthMode] = useState<string>('none');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authRequired, setAuthRequired] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [authMode, setAuthMode] = useState('none');
   const [username, setUsername] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [oidcButtonLabel, setOidcButtonLabel] = useState<string | null>(null);
-  const [hideLocalAuth, setHideLocalAuth] = useState<boolean>(false);
-  const [oidcAutoRedirect, setOidcAutoRedirect] = useState<boolean>(false);
+  const [hideLocalAuth, setHideLocalAuth] = useState(false);
+  const [oidcAutoRedirect, setOidcAutoRedirect] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const applyAuthResponse = useCallback((response: Awaited<ReturnType<typeof checkAuth>>) => {
     setAuthRequired(response.auth_required !== false);

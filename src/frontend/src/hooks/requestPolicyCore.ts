@@ -24,14 +24,12 @@ export interface RefreshPolicyOptions {
   force?: boolean;
 }
 
-export const normalizeContentType = (value: ContentType | string): ContentType => {
-  return String(value).trim().toLowerCase() === 'audiobook' ? 'audiobook' : 'ebook';
+export const normalizeContentType = (value: string): ContentType => {
+  return value.trim().toLowerCase() === 'audiobook' ? 'audiobook' : 'ebook';
 };
 
 export const normalizeSource = (value: string): string => {
-  const source = String(value || '')
-    .trim()
-    .toLowerCase();
+  const source = value.trim().toLowerCase();
   return source || '*';
 };
 
@@ -91,7 +89,7 @@ const parseMatrixMode = (value: unknown): RequestPolicyMode | null => {
 export const resolveDefaultModeFromPolicy = (
   policy: RequestPolicyResponse | null,
   isAdmin: boolean,
-  contentType: ContentType | string,
+  contentType: string,
 ): RequestPolicyMode => {
   if (isAdmin || policy?.is_admin) {
     return 'download';
@@ -107,7 +105,7 @@ export const resolveSourceModeFromPolicy = (
   policy: RequestPolicyResponse | null,
   isAdmin: boolean,
   source: string,
-  contentType: ContentType | string,
+  contentType: string,
 ): RequestPolicyMode => {
   const normalizedSource = normalizeSource(source);
   const defaultMode = resolveDefaultModeFromPolicy(policy, isAdmin, contentType);
@@ -141,10 +139,8 @@ export const resolveSourceModeFromPolicy = (
       if (!rule || typeof rule !== 'object') {
         return false;
       }
-      const ruleSource = normalizeRuleSource((rule as Record<string, unknown>).source);
-      const ruleContentType = normalizeRuleContentType(
-        (rule as Record<string, unknown>).content_type,
-      );
+      const ruleSource = normalizeRuleSource(rule.source);
+      const ruleContentType = normalizeRuleContentType(rule.content_type);
       return ruleSource === sourceMatch && ruleContentType === contentTypeMatch;
     });
 
@@ -152,7 +148,7 @@ export const resolveSourceModeFromPolicy = (
       continue;
     }
 
-    const parsedMode = parseMatrixMode((matchedRule as Record<string, unknown>).mode);
+    const parsedMode = parseMatrixMode(matchedRule.mode);
     if (!parsedMode) {
       continue;
     }

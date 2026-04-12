@@ -16,7 +16,7 @@ export function useDownloadTracking(currentStatus: StatusData): UseDownloadTrack
   // Track mapping of metadata book IDs to release source IDs for universal mode
   const [bookToReleaseMap, setBookToReleaseMap] = useState<Record<string, string[]>>({});
   // Session-only tracking of completed book IDs (survives clearCompleted, resets on refresh)
-  const [sessionCompletedBookIds, setSessionCompletedBookIds] = useState<Set<string>>(new Set());
+  const [sessionCompletedBookIds, setSessionCompletedBookIds] = useState(new Set<string>());
 
   const trackRelease = useCallback((bookId: string, releaseId: string) => {
     setBookToReleaseMap((prev) => ({

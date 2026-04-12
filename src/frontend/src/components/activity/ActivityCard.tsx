@@ -729,7 +729,7 @@ export const ActivityCard = ({
                   </div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                     <DetailField label="Size" value={fileSize} />
-                    <DetailField label="Format" value={String(fileFormat).toUpperCase()} />
+                    <DetailField label="Format" value={fileFormat.toUpperCase()} />
                   </div>
                 </div>
               ) : (

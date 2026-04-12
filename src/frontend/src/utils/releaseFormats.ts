@@ -24,7 +24,7 @@ export function getReleaseFormats(release: Release): string[] {
 
   addFormat(release.format);
 
-  const extraFormats = (release.extra as Record<string, unknown> | undefined)?.formats;
+  const extraFormats = release.extra?.formats;
   if (Array.isArray(extraFormats)) {
     extraFormats.forEach(addFormat);
   } else {

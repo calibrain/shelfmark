@@ -8,7 +8,7 @@ interface UserAuthSourceBadgeProps {
 
 export const UserAuthSourceBadge = ({ user, showInactive = true }: UserAuthSourceBadgeProps) => {
   const authSource = user.auth_source;
-  const active = user.is_active !== false;
+  const active = user.is_active;
   const badgeBase =
     'inline-flex items-center rounded-md px-2.5 py-1 text-xs font-medium leading-none';
 

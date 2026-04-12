@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { fetchRequestPolicy } from '../services/api';
-import { ContentType, RequestPolicyMode, RequestPolicyResponse } from '../types';
+import { RequestPolicyMode, RequestPolicyResponse } from '../types';
 import { policyTrace } from '../utils/policyTrace';
 import {
   DEFAULT_POLICY_TTL_MS,
@@ -22,8 +22,8 @@ interface UseRequestPolicyReturn {
   isAdmin: boolean;
   requestsEnabled: boolean;
   allowNotes: boolean;
-  getDefaultMode: (contentType: ContentType | string) => RequestPolicyMode;
-  getSourceMode: (source: string, contentType: ContentType | string) => RequestPolicyMode;
+  getDefaultMode: (contentType: string) => RequestPolicyMode;
+  getSourceMode: (source: string, contentType: string) => RequestPolicyMode;
   refresh: (options?: { force?: boolean }) => Promise<RequestPolicyResponse | null>;
 }
 
@@ -94,16 +94,16 @@ export function useRequestPolicy({
   }, [enabled, fetchPolicy]);
 
   const getDefaultMode = useCallback(
-    (contentType: ContentType | string): RequestPolicyMode => {
-      const effectiveIsAdmin = policy ? Boolean(policy.is_admin) : isAdmin;
+    (contentType: string): RequestPolicyMode => {
+      const effectiveIsAdmin = policy ? policy.is_admin : isAdmin;
       return resolveDefaultModeFromPolicy(policy, effectiveIsAdmin, contentType);
     },
     [policy, isAdmin],
   );
 
   const getSourceMode = useCallback(
-    (source: string, contentType: ContentType | string): RequestPolicyMode => {
-      const effectiveIsAdmin = policy ? Boolean(policy.is_admin) : isAdmin;
+    (source: string, contentType: string): RequestPolicyMode => {
+      const effectiveIsAdmin = policy ? policy.is_admin : isAdmin;
       return resolveSourceModeFromPolicy(policy, effectiveIsAdmin, source, contentType);
     },
     [policy, isAdmin],
@@ -111,7 +111,7 @@ export function useRequestPolicy({
 
   const refresh = useCallback(
     async (options: { force?: boolean } = {}) => {
-      return fetchPolicy(Boolean(options.force));
+      return fetchPolicy(options.force === true);
     },
     [fetchPolicy],
   );
@@ -119,8 +119,8 @@ export function useRequestPolicy({
   return {
     policy,
     isLoading,
-    isAdmin: policy ? Boolean(policy.is_admin) : isAdmin,
-    requestsEnabled: Boolean(policy?.requests_enabled),
+    isAdmin: policy ? policy.is_admin : isAdmin,
+    requestsEnabled: policy?.requests_enabled ?? false,
     allowNotes: policy?.allow_notes ?? true,
     getDefaultMode,
     getSourceMode,

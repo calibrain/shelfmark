@@ -70,7 +70,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
   const [lastSearchQuery, setLastSearchQuery] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilterState>({
+  const [advancedFilters, setAdvancedFilters] = useState({
     isbn: '',
     author: '',
     title: '',

@@ -183,7 +183,7 @@ export const UserIdentityHeader = ({
   showAuthSource = true,
   showInactiveState = true,
 }: UserIdentityHeaderProps) => {
-  const active = user.is_active !== false;
+  const active = user.is_active;
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-3">

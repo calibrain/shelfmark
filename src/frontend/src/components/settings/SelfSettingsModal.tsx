@@ -18,7 +18,6 @@ import {
   DEFAULT_SELF_USER_OVERRIDE_SECTIONS,
   normalizeUserOverrideSections,
   UserOverridesSections,
-  type UserOverrideSectionId,
 } from './users';
 import { PerUserSettings } from './users/types';
 import { UserAccountCardContent, UserEditActions, UserIdentityHeader } from './users/UserCard';
@@ -73,14 +72,12 @@ export const SelfSettingsModal = ({
   );
   const [notificationPreferences, setNotificationPreferences] =
     useState<DeliveryPreferencesResponse | null>(null);
-  const [visibleSections, setVisibleSections] = useState<UserOverrideSectionId[]>(
-    DEFAULT_SELF_USER_OVERRIDE_SECTIONS,
-  );
+  const [visibleSections, setVisibleSections] = useState(DEFAULT_SELF_USER_OVERRIDE_SECTIONS);
 
   const [editPassword, setEditPassword] = useState('');
   const [editPasswordConfirm, setEditPasswordConfirm] = useState('');
 
-  const [themeValue, setThemeValue] = useState<string>(getStoredThemePreference());
+  const [themeValue, setThemeValue] = useState(getStoredThemePreference());
 
   const preferenceGroups = useMemo(
     () => [deliveryPreferences, searchPreferences, notificationPreferences],

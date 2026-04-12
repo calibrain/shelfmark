@@ -154,11 +154,7 @@ export const UserNotificationOverridesSection = ({
   const fields = notificationPreferences.fields ?? [];
   const globalValues = notificationPreferences.globalValues ?? {};
 
-  const routesField = getFieldByKey<TableFieldConfig>(
-    fields,
-    'USER_NOTIFICATION_ROUTES',
-    fallbackRoutesField,
-  );
+  const routesField = getFieldByKey(fields, 'USER_NOTIFICATION_ROUTES', fallbackRoutesField);
 
   const isOverridden = (key: NotificationSettingKey): boolean => {
     if (

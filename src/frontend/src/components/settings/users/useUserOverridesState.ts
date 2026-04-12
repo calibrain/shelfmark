@@ -30,7 +30,7 @@ const normalizeUserSettings = (settings: PerUserSettings): PerUserSettings => {
 export const useUserOverridesState = ({ preferenceGroups }: UseUserOverridesStateParams) => {
   const [userSettings, setUserSettings] = useState<PerUserSettings>({});
   const [originalUserSettings, setOriginalUserSettings] = useState<PerUserSettings>({});
-  const [userOverridableSettings, setUserOverridableSettings] = useState<Set<string>>(new Set());
+  const [userOverridableSettings, setUserOverridableSettings] = useState(new Set<string>());
 
   const applyUserOverridesContext = useCallback(
     ({ settings, userOverridableKeys }: ApplyUserOverridesContextParams) => {

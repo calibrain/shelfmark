@@ -261,7 +261,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       () => queryTargets.find((target) => target.key === activeQueryTarget) ?? queryTargets[0],
       [queryTargets, activeQueryTarget],
     );
-    const showActiveTargetLabel = Boolean(activeTarget && activeTarget.source !== 'general');
+    const showActiveTargetLabel = queryTargets.length > 0 && activeTarget.source !== 'general';
 
     useDismiss(isSelectorOpen, [selectorRef], () => setIsSelectorOpen(false));
     useDismiss(isSelectOpen, [selectPanelRef, selectTriggerRef], () => setIsSelectOpen(false));
@@ -282,7 +282,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
     // doesn't count as a field change. Using `if (fieldChanged)` instead of
     // always calling setIsSelectOpen avoids StrictMode's second effect
     // invocation resetting the state set by the first.
-    const prevFieldKeyRef = useRef<string | undefined>(activeQueryField?.key);
+    const prevFieldKeyRef = useRef(activeQueryField?.key);
     useEffect(() => {
       const isSelect =
         activeQueryField?.type === 'SelectSearchField' ||

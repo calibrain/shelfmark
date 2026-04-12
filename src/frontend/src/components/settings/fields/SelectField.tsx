@@ -26,10 +26,9 @@ export const SelectField = ({
     () =>
       field.options.map((opt) => ({
         ...opt,
-        value: String(opt.value),
-        childOf:
-          opt.childOf === undefined || opt.childOf === null ? undefined : String(opt.childOf),
-        label: opt.label ?? String(opt.value),
+        value: opt.value,
+        childOf: opt.childOf,
+        label: opt.label ?? opt.value,
       })),
     [field.options],
   );

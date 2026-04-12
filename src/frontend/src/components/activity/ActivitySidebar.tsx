@@ -152,7 +152,7 @@ const getLinkedDownloadIdFromRequestItem = (item: ActivityItem): string | null =
     return null;
   }
 
-  const sourceId = (releaseData as Record<string, unknown>).source_id;
+  const sourceId = releaseData.source_id;
   if (typeof sourceId !== 'string') {
     return null;
   }
@@ -259,7 +259,7 @@ export const ActivitySidebar = ({
   const [isPinned, setIsPinned] = useState<boolean>(() => getInitialPinnedPreference());
   const [isDesktop, setIsDesktop] = useState<boolean>(() => getInitialDesktopState());
   const [activeTab, setActiveTab] = useState<ActivityTabKey>('all');
-  const [selectedUser, setSelectedUser] = useState<string>(ALL_USERS_FILTER);
+  const [selectedUser, setSelectedUser] = useState(ALL_USERS_FILTER);
   const [rejectingRequest, setRejectingRequest] = useState<{ requestId: number } | null>(null);
   const [reviewingRequestId, setReviewingRequestId] = useState<number | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});

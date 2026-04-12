@@ -59,10 +59,10 @@ function getFilteredSelectOptions(
   row: Record<string, unknown>,
 ): Array<{ value: string; label: string; description?: string; childOf?: string }> {
   const options = (column.options ?? []).map((opt) => ({
-    value: String(opt.value),
-    label: opt.label ?? String(opt.value),
+    value: opt.value,
+    label: opt.label ?? opt.value,
     description: opt.description,
-    childOf: opt.childOf === undefined || opt.childOf === null ? undefined : String(opt.childOf),
+    childOf: opt.childOf,
   }));
 
   const filterByField = column.filterByField;
@@ -287,7 +287,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
                       value={selectedValues}
                       onChange={(nextValues) => {
                         const normalizedValues = (nextValues ?? [])
-                          .map((entry) => String(entry ?? '').trim())
+                          .map((entry) => entry.trim())
                           .filter((entry) => entry.length > 0);
                         updateCell(rowIndex, col.key, normalizedValues);
                       }}
