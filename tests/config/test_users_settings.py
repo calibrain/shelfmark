@@ -26,6 +26,15 @@ def test_users_tab_registers_request_policy_fields():
         "request_policy_editor",
         "MAX_PENDING_REQUESTS_PER_USER",
         "REQUESTS_ALLOW_NOTES",
+        "request_auto_selection_heading",
+        "REQUEST_AUTO_SELECT_ENABLED",
+        "REQUEST_AUTO_APPROVE_ENABLED",
+        "REQUEST_AUTO_PREFERRED_SOURCE",
+        "REQUEST_AUTO_PREFERRED_INDEXER",
+        "REQUEST_AUTO_CONTENT_TYPES",
+        "REQUEST_AUTO_FORMATS",
+        "REQUEST_AUTO_SELECTION_POLICY",
+        "REQUEST_AUTO_FALLBACK_STRATEGY",
     }
     assert expected_keys.issubset(set(fields))
     assert "REQUEST_POLICY_DEFAULT_EBOOK" not in fields
@@ -68,6 +77,14 @@ def test_request_policy_fields_are_user_overridable():
         "REQUEST_POLICY_RULES",
         "MAX_PENDING_REQUESTS_PER_USER",
         "REQUESTS_ALLOW_NOTES",
+        "REQUEST_AUTO_SELECT_ENABLED",
+        "REQUEST_AUTO_APPROVE_ENABLED",
+        "REQUEST_AUTO_PREFERRED_SOURCE",
+        "REQUEST_AUTO_PREFERRED_INDEXER",
+        "REQUEST_AUTO_CONTENT_TYPES",
+        "REQUEST_AUTO_FORMATS",
+        "REQUEST_AUTO_SELECTION_POLICY",
+        "REQUEST_AUTO_FALLBACK_STRATEGY",
     }
     assert expected_keys.issubset(set(overridable_map))
     assert "RESTRICT_SETTINGS_TO_ADMIN" not in overridable_map
@@ -162,6 +179,23 @@ def test_request_workflow_dependent_fields_are_gated_by_toggle():
         "field": "REQUESTS_ENABLED",
         "value": True,
     }
+    assert fields["request_auto_selection_heading"].show_when == {
+        "field": "REQUESTS_ENABLED",
+        "value": True,
+    }
+    assert fields["REQUEST_AUTO_SELECT_ENABLED"].show_when == {
+        "field": "REQUESTS_ENABLED",
+        "value": True,
+    }
+    assert fields["REQUEST_AUTO_APPROVE_ENABLED"].show_when == [
+        {"field": "REQUESTS_ENABLED", "value": True},
+        {"field": "REQUEST_AUTO_SELECT_ENABLED", "value": True},
+    ]
+    assert fields["REQUEST_AUTO_PREFERRED_INDEXER"].show_when == [
+        {"field": "REQUESTS_ENABLED", "value": True},
+        {"field": "REQUEST_AUTO_SELECT_ENABLED", "value": True},
+        {"field": "REQUEST_AUTO_PREFERRED_SOURCE", "value": "prowlarr"},
+    ]
 
 
 def test_users_tab_serialization_scopes_request_policy_to_bound_fields():
@@ -185,6 +219,47 @@ def test_users_tab_serialization_scopes_request_policy_to_bound_fields():
     ]
     assert all(field.get("hiddenInUi") is True for field in bound_fields)
     assert serialized_fields["users_heading"].get("descriptionByAuthMode", {}).get("builtin")
+    assert serialized_fields["REQUEST_AUTO_SELECT_ENABLED"]["userOverridable"] is True
+    assert serialized_fields["REQUEST_AUTO_SELECTION_POLICY"]["default"] == "best_match"
+
+
+def test_request_auto_selection_options_are_dynamic(monkeypatch):
+    monkeypatch.setattr(
+        "shelfmark.release_sources.list_available_sources",
+        lambda: [
+            {"name": "direct_download", "display_name": "Direct Download", "enabled": True},
+            {"name": "prowlarr", "display_name": "Prowlarr", "enabled": True},
+        ],
+    )
+    monkeypatch.setattr(
+        "shelfmark.config.users_settings.get_available_request_auto_indexers",
+        lambda: ["MyAnonamouse", "Readarr"],
+    )
+
+    assert users_settings_module._get_request_auto_source_options() == [
+        {
+            "value": "",
+            "label": "Use request/default source",
+            "description": (
+                "Prefer the request source first, then the default release source for that content type."
+            ),
+        },
+        {"value": "direct_download", "label": "Direct Download"},
+        {"value": "prowlarr", "label": "Prowlarr"},
+    ]
+    assert users_settings_module._get_request_auto_indexer_options() == [
+        {
+            "value": "",
+            "label": "Any indexer",
+            "description": "Use any enabled indexer within the preferred source.",
+        },
+        {"value": "MyAnonamouse", "label": "MyAnonamouse"},
+        {"value": "Readarr", "label": "Readarr"},
+    ]
+    assert users_settings_module._get_request_auto_format_options()[0] == {
+        "value": "epub",
+        "label": "EPUB",
+    }
 
 
 def test_request_policy_rules_source_options_are_dynamic(monkeypatch):
@@ -344,6 +419,57 @@ def test_on_save_users_normalizes_rules(monkeypatch):
     assert result["values"]["REQUEST_POLICY_RULES"] == [
         {"source": "direct_download", "content_type": "ebook", "mode": "request_release"},
     ]
+
+
+def test_on_save_users_normalizes_request_auto_selection_settings(monkeypatch):
+    monkeypatch.setattr(
+        "shelfmark.core.request_auto_selection.get_available_request_auto_sources",
+        lambda: {"prowlarr", "direct_download"},
+    )
+    monkeypatch.setattr(
+        "shelfmark.core.request_auto_selection.get_available_request_auto_indexers",
+        lambda: ["MyAnonamouse"],
+    )
+
+    result = users_settings_module._on_save_users(
+        {
+            "REQUEST_AUTO_SELECT_ENABLED": "true",
+            "REQUEST_AUTO_APPROVE_ENABLED": "1",
+            "REQUEST_AUTO_PREFERRED_SOURCE": " Prowlarr ",
+            "REQUEST_AUTO_PREFERRED_INDEXER": "MyAnonamouse",
+            "REQUEST_AUTO_CONTENT_TYPES": ["ebook", "Audiobook"],
+            "REQUEST_AUTO_FORMATS": ["EPUB", "pdf"],
+            "REQUEST_AUTO_SELECTION_POLICY": "MOST_SEEDERS",
+            "REQUEST_AUTO_FALLBACK_STRATEGY": "SAME_SOURCE_THEN_ANY_SOURCE",
+        }
+    )
+
+    assert result["error"] is False
+    assert result["values"]["REQUEST_AUTO_SELECT_ENABLED"] is True
+    assert result["values"]["REQUEST_AUTO_APPROVE_ENABLED"] is True
+    assert result["values"]["REQUEST_AUTO_PREFERRED_SOURCE"] == "prowlarr"
+    assert result["values"]["REQUEST_AUTO_PREFERRED_INDEXER"] == "MyAnonamouse"
+    assert result["values"]["REQUEST_AUTO_CONTENT_TYPES"] == ["ebook", "audiobook"]
+    assert result["values"]["REQUEST_AUTO_FORMATS"] == ["epub", "pdf"]
+    assert result["values"]["REQUEST_AUTO_SELECTION_POLICY"] == "most_seeders"
+    assert result["values"]["REQUEST_AUTO_FALLBACK_STRATEGY"] == "same_source_then_any_source"
+
+
+def test_on_save_users_rejects_request_auto_indexer_without_prowlarr(monkeypatch):
+    monkeypatch.setattr(
+        "shelfmark.core.request_auto_selection.get_available_request_auto_sources",
+        lambda: {"prowlarr", "direct_download"},
+    )
+
+    result = users_settings_module._on_save_users(
+        {
+            "REQUEST_AUTO_PREFERRED_SOURCE": "direct_download",
+            "REQUEST_AUTO_PREFERRED_INDEXER": "MyAnonamouse",
+        }
+    )
+
+    assert result["error"] is True
+    assert "only supported when REQUEST_AUTO_PREFERRED_SOURCE is Prowlarr" in result["message"]
 
 
 def test_on_save_users_normalizes_search_mode_override():

@@ -22,6 +22,7 @@ from shelfmark.core.request_helpers import (
     normalize_positive_int,
     populate_request_usernames,
 )
+from shelfmark.core.request_auto_selection import select_release_for_request
 from shelfmark.core.request_policy import (
     REQUEST_POLICY_DEFAULT_FALLBACK_MODE,
     PolicyMode,
@@ -278,6 +279,87 @@ def _resolve_request_user_context(
     return target_user_id, target_username, f"{actor_label} on behalf of {target_label}"
 
 
+def _apply_auto_selection_to_book_request(
+    *,
+    target_user_id: int,
+    source: str,
+    content_type: str,
+    global_settings: dict[str, Any],
+    user_settings: dict[str, Any],
+    book_data: dict[str, Any],
+    create_args: dict[str, Any],
+) -> tuple[PolicyMode, str | None]:
+    """Resolve book-level automation into download, release-request, or book-request flow."""
+    resolved_mode = parse_policy_mode(create_args.get("policy_mode")) or PolicyMode.REQUEST_BOOK
+    request_level = create_args.get("request_level")
+    release_data = create_args.get("release_data")
+    requested_level = str(request_level).strip().lower() if isinstance(request_level, str) else ""
+
+    if requested_level != "book" or isinstance(release_data, dict):
+        return resolved_mode, None
+    if resolved_mode not in {PolicyMode.DOWNLOAD, PolicyMode.REQUEST_RELEASE}:
+        return resolved_mode, None
+
+    allowed_sources = tuple(
+        source_name
+        for source_name, supported_content_types in get_source_content_type_capabilities().items()
+        if content_type in supported_content_types
+        and resolve_policy_mode(
+            source=source_name,
+            content_type=content_type,
+            global_settings=global_settings,
+            user_settings=user_settings,
+        )
+        in {PolicyMode.DOWNLOAD, PolicyMode.REQUEST_RELEASE}
+    )
+
+    selection_result = select_release_for_request(
+        book_data=book_data,
+        source_hint=source,
+        content_type=content_type,
+        user_id=target_user_id,
+        allowed_sources=allowed_sources,
+    )
+    selected = selection_result.selected
+    if selected is None:
+        create_args["request_level"] = "book"
+        create_args["release_data"] = None
+        create_args["policy_mode"] = PolicyMode.REQUEST_BOOK.value
+        return PolicyMode.REQUEST_BOOK, selection_result.fallback_reason
+
+    selected_policy_mode = resolve_policy_mode(
+        source=selected.release.source,
+        content_type=content_type,
+        global_settings=global_settings,
+        user_settings=user_settings,
+    )
+
+    create_args["request_level"] = "release"
+    create_args["release_data"] = selected.release_data
+
+    if selected_policy_mode in {PolicyMode.BLOCKED, PolicyMode.REQUEST_BOOK}:
+        create_args["request_level"] = "book"
+        create_args["release_data"] = None
+        create_args["policy_mode"] = PolicyMode.REQUEST_BOOK.value
+        return (
+            PolicyMode.REQUEST_BOOK,
+            (
+                f"{selected.reason}; selected source requires "
+                f"{selected_policy_mode.value.replace('_', ' ')}"
+            ),
+        )
+
+    if (
+        selected_policy_mode == PolicyMode.DOWNLOAD
+        and selection_result.settings.auto_approve_enabled
+    ):
+        create_args["policy_mode"] = PolicyMode.DOWNLOAD.value
+        return PolicyMode.DOWNLOAD, selected.reason
+
+    create_args["policy_mode"] = PolicyMode.REQUEST_RELEASE.value
+    return PolicyMode.REQUEST_RELEASE, selected.reason
+
+
 def _prepare_request_create_arguments(
     user_db: UserDB,
     data: dict[str, Any],
@@ -383,21 +465,34 @@ def _prepare_request_create_arguments(
             required_mode=PolicyMode.REQUEST_BOOK.value,
         )
 
+    create_args = {
+        "user_id": target_user_id,
+        "source_hint": source,
+        "content_type": content_type,
+        "request_level": request_level,
+        "policy_mode": resolved_mode.value,
+        "book_data": book_data,
+        "release_data": release_data,
+        "note": note_value,
+        "max_pending_per_user": max_pending,
+    }
+    submission_mode, automation_reason = _apply_auto_selection_to_book_request(
+        target_user_id=target_user_id,
+        source=source,
+        content_type=content_type,
+        global_settings=global_settings,
+        user_settings=user_settings,
+        book_data=book_data,
+        create_args=create_args,
+    )
+
     return {
-        "create_args": {
-            "user_id": target_user_id,
-            "source_hint": source,
-            "content_type": content_type,
-            "request_level": request_level,
-            "policy_mode": resolved_mode.value,
-            "book_data": book_data,
-            "release_data": release_data,
-            "note": note_value,
-            "max_pending_per_user": max_pending,
-        },
+        "create_args": create_args,
         "actor_label": actor_label,
         "request_title": request_title,
         "resolved_mode": resolved_mode,
+        "submission_mode": submission_mode,
+        "automation_reason": automation_reason,
     }
 
 
@@ -420,6 +515,7 @@ def _build_queued_download_result(
     *,
     create_args: dict[str, Any],
     request_title: str,
+    selection_reason: str | None = None,
 ) -> dict[str, Any]:
     release_data = create_args.get("release_data")
     source = create_args.get("source_hint")
@@ -429,7 +525,7 @@ def _build_queued_download_result(
         source = release_data.get("source") or source
         source_id = _normalize_optional_source_id(release_data.get("source_id"))
 
-    return {
+    payload = {
         "kind": "download",
         "status": "queued",
         "priority": 0,
@@ -438,6 +534,9 @@ def _build_queued_download_result(
         "source_id": source_id,
         "content_type": create_args.get("content_type"),
     }
+    if selection_reason is not None:
+        payload["selection_reason"] = selection_reason
+    return payload
 
 
 def _queue_prepared_download_submission(
@@ -446,6 +545,7 @@ def _queue_prepared_download_submission(
     queue_release: Callable[..., tuple[bool, str | None]],
     create_args: dict[str, Any],
     request_title: str,
+    selection_reason: str | None = None,
 ) -> dict[str, Any]:
     release_data = create_args.get("release_data")
     if not isinstance(release_data, dict):
@@ -478,6 +578,7 @@ def _queue_prepared_download_submission(
     return _build_queued_download_result(
         create_args=create_args,
         request_title=request_title,
+        selection_reason=selection_reason,
     )
 
 
@@ -627,17 +728,23 @@ def register_request_routes(
 
         try:
             prepared = _prepare_request_create_arguments(user_db, data)
-            if prepared["resolved_mode"] == PolicyMode.DOWNLOAD:
+            if prepared["submission_mode"] == PolicyMode.DOWNLOAD:
                 queued = _queue_prepared_download_submission(
                     user_db,
                     queue_release=queue_release,
                     create_args=prepared["create_args"],
                     request_title=prepared["request_title"],
+                    selection_reason=prepared["automation_reason"],
                 )
                 logger.info(
-                    "Policy download queued for '%s' by %s",
+                    "Policy download queued for '%s' by %s%s",
                     prepared["request_title"],
                     prepared["actor_label"],
+                    (
+                        f" ({prepared['automation_reason']})"
+                        if prepared["automation_reason"]
+                        else ""
+                    ),
                 )
                 return jsonify(queued), 200
             created = create_request(user_db, **prepared["create_args"])
@@ -655,10 +762,15 @@ def register_request_routes(
             "title": _resolve_request_title(created),
         }
         logger.info(
-            "Request created #%s for '%s' by %s",
+            "Request created #%s for '%s' by %s%s",
             created["id"],
             event_payload["title"],
             prepared["actor_label"],
+            (
+                f" ({prepared['automation_reason']})"
+                if prepared["automation_reason"]
+                else ""
+            ),
         )
         emit_ws_event(
             ws_manager,
@@ -712,7 +824,7 @@ def register_request_routes(
         download_prepared_items: list[tuple[int, dict[str, Any]]] = []
 
         for index, prepared in enumerate(prepared_requests):
-            if prepared["resolved_mode"] == PolicyMode.DOWNLOAD:
+            if prepared["submission_mode"] == PolicyMode.DOWNLOAD:
                 download_prepared_items.append((index, prepared))
                 continue
 
@@ -746,10 +858,15 @@ def register_request_routes(
                 "title": _resolve_request_title(created),
             }
             logger.info(
-                "Request created #%s for '%s' by %s",
+                "Request created #%s for '%s' by %s%s",
                 created["id"],
                 event_payload["title"],
                 prepared["actor_label"],
+                (
+                    f" ({prepared['automation_reason']})"
+                    if prepared["automation_reason"]
+                    else ""
+                ),
             )
             emit_ws_event(
                 ws_manager,
@@ -777,6 +894,7 @@ def register_request_routes(
                     queue_release=queue_release,
                     create_args=prepared["create_args"],
                     request_title=prepared["request_title"],
+                    selection_reason=prepared["automation_reason"],
                 )
             except RequestServiceError as exc:
                 return _error_response(
@@ -786,9 +904,14 @@ def register_request_routes(
                     required_mode=exc.required_mode,
                 )
             logger.info(
-                "Policy download queued for '%s' by %s",
+                "Policy download queued for '%s' by %s%s",
                 prepared["request_title"],
                 prepared["actor_label"],
+                (
+                    f" ({prepared['automation_reason']})"
+                    if prepared["automation_reason"]
+                    else ""
+                ),
             )
 
         ordered_results = [results_by_index[index] for index in range(len(prepared_requests))]

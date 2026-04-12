@@ -582,6 +582,75 @@ class TestAdminUserUpdateEndpoint:
             for msg in resp.json["details"]
         )
 
+    def test_update_user_settings_accepts_request_auto_selection_fields(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+
+        with (
+            patch(
+                "shelfmark.core.request_auto_selection.get_available_request_auto_sources",
+                return_value={"prowlarr", "direct_download"},
+            ),
+            patch(
+                "shelfmark.core.request_auto_selection.get_available_request_auto_indexers",
+                return_value=["MyAnonamouse"],
+            ),
+        ):
+            resp = admin_client.put(
+                f"/api/admin/users/{user['id']}",
+                json={
+                    "settings": {
+                        "REQUEST_AUTO_SELECT_ENABLED": True,
+                        "REQUEST_AUTO_APPROVE_ENABLED": False,
+                        "REQUEST_AUTO_PREFERRED_SOURCE": "prowlarr",
+                        "REQUEST_AUTO_PREFERRED_INDEXER": "MyAnonamouse",
+                        "REQUEST_AUTO_CONTENT_TYPES": ["ebook"],
+                        "REQUEST_AUTO_FORMATS": ["epub", "pdf"],
+                        "REQUEST_AUTO_SELECTION_POLICY": "most_seeders",
+                        "REQUEST_AUTO_FALLBACK_STRATEGY": "same_source_then_any_source",
+                    }
+                },
+            )
+
+        assert resp.status_code == 200
+        settings = user_db.get_user_settings(user["id"])
+        assert settings["REQUEST_AUTO_SELECT_ENABLED"] is True
+        assert settings["REQUEST_AUTO_APPROVE_ENABLED"] is False
+        assert settings["REQUEST_AUTO_PREFERRED_SOURCE"] == "prowlarr"
+        assert settings["REQUEST_AUTO_PREFERRED_INDEXER"] == "MyAnonamouse"
+        assert settings["REQUEST_AUTO_CONTENT_TYPES"] == ["ebook"]
+        assert settings["REQUEST_AUTO_FORMATS"] == ["epub", "pdf"]
+        assert settings["REQUEST_AUTO_SELECTION_POLICY"] == "most_seeders"
+        assert settings["REQUEST_AUTO_FALLBACK_STRATEGY"] == "same_source_then_any_source"
+
+    def test_update_user_settings_rejects_request_auto_indexer_without_prowlarr(
+        self,
+        admin_client,
+        user_db,
+    ):
+        user = user_db.create_user(username="alice")
+
+        with patch(
+            "shelfmark.core.request_auto_selection.get_available_request_auto_sources",
+            return_value={"prowlarr", "direct_download"},
+        ):
+            resp = admin_client.put(
+                f"/api/admin/users/{user['id']}",
+                json={
+                    "settings": {
+                        "REQUEST_AUTO_PREFERRED_SOURCE": "direct_download",
+                        "REQUEST_AUTO_PREFERRED_INDEXER": "MyAnonamouse",
+                    }
+                },
+            )
+
+        assert resp.status_code == 400
+        assert resp.json["error"] == "Invalid settings payload"
+        assert any(
+            "REQUEST_AUTO_PREFERRED_INDEXER is only supported when REQUEST_AUTO_PREFERRED_SOURCE is Prowlarr"
+            in msg
+            for msg in resp.json["details"]
+        )
+
     def test_update_settings_merges(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
         user_db.set_user_settings(user["id"], {"DESTINATION": "/books/alice"})

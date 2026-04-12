@@ -21,6 +21,14 @@ export interface PerUserSettings {
   REQUEST_POLICY_RULES?: Array<Record<string, unknown>>;
   MAX_PENDING_REQUESTS_PER_USER?: number;
   REQUESTS_ALLOW_NOTES?: boolean;
+  REQUEST_AUTO_SELECT_ENABLED?: boolean;
+  REQUEST_AUTO_APPROVE_ENABLED?: boolean;
+  REQUEST_AUTO_PREFERRED_SOURCE?: string;
+  REQUEST_AUTO_PREFERRED_INDEXER?: string;
+  REQUEST_AUTO_CONTENT_TYPES?: string[];
+  REQUEST_AUTO_FORMATS?: string[];
+  REQUEST_AUTO_SELECTION_POLICY?: string;
+  REQUEST_AUTO_FALLBACK_STRATEGY?: string;
 }
 
 export interface CreateUserFormState {

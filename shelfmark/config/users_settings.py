@@ -7,6 +7,13 @@ that talks to /api/admin/users endpoints.
 
 from typing import Any
 
+from shelfmark.core.request_auto_selection import (
+    REQUEST_AUTO_KNOWN_FORMATS,
+    RequestAutoFallbackStrategy,
+    RequestAutoSelectionPolicy,
+    get_available_request_auto_indexers,
+    validate_request_auto_selection_settings,
+)
 from shelfmark.core.request_policy import (
     get_source_content_type_capabilities,
     parse_policy_mode,
@@ -84,6 +91,52 @@ _SEARCH_PREFERENCE_VALIDATABLE_KEYS = {
     "SHOW_COMBINED_SELECTOR",
     *_SEARCH_PREFERENCE_PROVIDER_KEYS,
 }
+_REQUEST_AUTO_CONTENT_TYPE_OPTIONS = [
+    {
+        "value": "ebook",
+        "label": "Ebook",
+        "description": "Allow automatic release selection for ebook requests.",
+    },
+    {
+        "value": "audiobook",
+        "label": "Audiobook",
+        "description": "Allow automatic release selection for audiobook requests.",
+    },
+]
+_REQUEST_AUTO_SELECTION_POLICY_OPTIONS = [
+    {
+        "value": RequestAutoSelectionPolicy.BEST_MATCH.value,
+        "label": "Best Match",
+        "description": "Prefer preferred formats first, then the strongest release candidate.",
+    },
+    {
+        "value": RequestAutoSelectionPolicy.MOST_SEEDERS.value,
+        "label": "Most Seeders",
+        "description": "Choose the matching release with the highest seeder count.",
+    },
+    {
+        "value": RequestAutoSelectionPolicy.BEST_AVAILABILITY.value,
+        "label": "Best Availability",
+        "description": "Prefer releases with the healthiest download signals overall.",
+    },
+    {
+        "value": RequestAutoSelectionPolicy.NEWEST.value,
+        "label": "Newest",
+        "description": "Prefer the most recently published or posted release.",
+    },
+]
+_REQUEST_AUTO_FALLBACK_STRATEGY_OPTIONS = [
+    {
+        "value": RequestAutoFallbackStrategy.SAME_SOURCE.value,
+        "label": "Same Source Only",
+        "description": "Stay inside the preferred or requested source before falling back to a book request.",
+    },
+    {
+        "value": RequestAutoFallbackStrategy.SAME_SOURCE_THEN_ANY_SOURCE.value,
+        "label": "Same Source, Then Any",
+        "description": "Try the preferred source first, then widen to any enabled source for that content type.",
+    },
+]
 
 _USERS_HEADING_DESCRIPTION_BY_AUTH_MODE = {
     "builtin": (
@@ -119,6 +172,41 @@ def _get_request_source_options() -> list[dict[str, str]]:
         }
         for source in list_available_sources()
     ]
+
+
+def _get_request_auto_source_options() -> list[dict[str, str]]:
+    """Build source-preference options for request auto-selection."""
+    return [
+        {
+            "value": "",
+            "label": "Use request/default source",
+            "description": "Prefer the request source first, then the default release source for that content type.",
+        },
+        *_get_request_source_options(),
+    ]
+
+
+def _get_request_auto_indexer_options() -> list[dict[str, str]]:
+    """Build optional provider/indexer options for source-aware auto-selection."""
+    return [
+        {
+            "value": "",
+            "label": "Any indexer",
+            "description": "Use any enabled indexer within the preferred source.",
+        },
+        *[
+            {
+                "value": indexer,
+                "label": indexer,
+            }
+            for indexer in get_available_request_auto_indexers()
+        ],
+    ]
+
+
+def _get_request_auto_format_options() -> list[dict[str, str]]:
+    """Build supported file-format options for auto-selection preferences."""
+    return [{"value": fmt, "label": fmt.upper()} for fmt in REQUEST_AUTO_KNOWN_FORMATS]
 
 
 def _get_valid_release_source_names_for_content_type(content_type: str) -> set[str]:
@@ -304,6 +392,15 @@ def _on_save_users(values: dict[str, object]) -> dict[str, object]:
             }
         values[key] = normalized_value
 
+    normalized_auto_selection, auto_selection_errors = validate_request_auto_selection_settings(values)
+    if auto_selection_errors:
+        return {
+            "error": True,
+            "message": "; ".join(auto_selection_errors),
+            "values": values,
+        }
+    values.update(normalized_auto_selection)
+
     return {"error": False, "values": values}
 
 
@@ -407,5 +504,119 @@ def users_settings() -> list[SettingsField]:
             default=True,
             user_overridable=True,
             show_when={"field": "REQUESTS_ENABLED", "value": True},
+        ),
+        HeadingField(
+            key="request_auto_selection_heading",
+            title="Automatic Release Selection",
+            description=(
+                "Choose when Shelfmark should pick a release for a book request, and whether a matching release can be queued automatically."
+            ),
+            show_when={"field": "REQUESTS_ENABLED", "value": True},
+        ),
+        CheckboxField(
+            key="REQUEST_AUTO_SELECT_ENABLED",
+            label="Enable Automatic Release Selection",
+            description=(
+                "When a user submits a book-level request, let Shelfmark search release sources and pick the best matching release automatically."
+            ),
+            default=False,
+            user_overridable=True,
+            show_when={"field": "REQUESTS_ENABLED", "value": True},
+        ),
+        CheckboxField(
+            key="REQUEST_AUTO_APPROVE_ENABLED",
+            label="Allow Automatic Queueing",
+            description=(
+                "If a selected release lands in Download mode, queue it immediately. When off, Shelfmark still creates a specific release request for admin approval."
+            ),
+            default=False,
+            user_overridable=True,
+            show_when=[
+                {"field": "REQUESTS_ENABLED", "value": True},
+                {"field": "REQUEST_AUTO_SELECT_ENABLED", "value": True},
+            ],
+        ),
+        SelectField(
+            key="REQUEST_AUTO_PREFERRED_SOURCE",
+            label="Preferred Release Source",
+            description=(
+                "Optional source to search first for automatic selection. Leave empty to use the request source or the default release source for that content type."
+            ),
+            options=_get_request_auto_source_options,
+            default="",
+            user_overridable=True,
+            show_when=[
+                {"field": "REQUESTS_ENABLED", "value": True},
+                {"field": "REQUEST_AUTO_SELECT_ENABLED", "value": True},
+            ],
+        ),
+        SelectField(
+            key="REQUEST_AUTO_PREFERRED_INDEXER",
+            label="Preferred Prowlarr Indexer",
+            description=(
+                "Optional tracker/indexer preference inside Prowlarr. Only used when the preferred release source is Prowlarr."
+            ),
+            options=_get_request_auto_indexer_options,
+            default="",
+            user_overridable=True,
+            show_when=[
+                {"field": "REQUESTS_ENABLED", "value": True},
+                {"field": "REQUEST_AUTO_SELECT_ENABLED", "value": True},
+                {"field": "REQUEST_AUTO_PREFERRED_SOURCE", "value": "prowlarr"},
+            ],
+        ),
+        MultiSelectField(
+            key="REQUEST_AUTO_CONTENT_TYPES",
+            label="Automatic Selection Content Types",
+            description=(
+                "Choose which request content types are eligible for automatic release selection."
+            ),
+            options=_REQUEST_AUTO_CONTENT_TYPE_OPTIONS,
+            default=["ebook", "audiobook"],
+            variant="dropdown",
+            user_overridable=True,
+            show_when=[
+                {"field": "REQUESTS_ENABLED", "value": True},
+                {"field": "REQUEST_AUTO_SELECT_ENABLED", "value": True},
+            ],
+        ),
+        MultiSelectField(
+            key="REQUEST_AUTO_FORMATS",
+            label="Preferred File Formats",
+            description=(
+                "Optional format preference order for automatic selection. Leave empty to accept any supported format."
+            ),
+            options=_get_request_auto_format_options,
+            default=[],
+            variant="dropdown",
+            user_overridable=True,
+            show_when=[
+                {"field": "REQUESTS_ENABLED", "value": True},
+                {"field": "REQUEST_AUTO_SELECT_ENABLED", "value": True},
+            ],
+        ),
+        SelectField(
+            key="REQUEST_AUTO_SELECTION_POLICY",
+            label="Selection Policy",
+            description="How Shelfmark ranks matching releases inside each fallback stage.",
+            options=_REQUEST_AUTO_SELECTION_POLICY_OPTIONS,
+            default=RequestAutoSelectionPolicy.BEST_MATCH.value,
+            user_overridable=True,
+            show_when=[
+                {"field": "REQUESTS_ENABLED", "value": True},
+                {"field": "REQUEST_AUTO_SELECT_ENABLED", "value": True},
+            ],
+        ),
+        SelectField(
+            key="REQUEST_AUTO_FALLBACK_STRATEGY",
+            label="Fallback Strategy",
+            description="How far Shelfmark can widen the search when the preferred source does not return a matching release.",
+            options=_REQUEST_AUTO_FALLBACK_STRATEGY_OPTIONS,
+            default=RequestAutoFallbackStrategy.SAME_SOURCE.value,
+            user_overridable=True,
+            show_when=[
+                {"field": "REQUESTS_ENABLED", "value": True},
+                {"field": "REQUEST_AUTO_SELECT_ENABLED", "value": True},
+            ],
         ),
     ]

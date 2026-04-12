@@ -50,6 +50,17 @@ Users can configure personal notification routes, separate from the global notif
 
 Admins can override the default ebook/audiobook modes and request rules for individual users. See [Per-User Overrides](#per-user-overrides) below.
 
+### Automatic Release Selection (admin-only)
+
+Admins can also configure global defaults and per-user overrides for Shelfmark's automatic release selection workflow. These settings control whether Shelfmark should:
+
+- search for a release automatically when a user submits a book-level request
+- queue the selected release immediately when the resolved source policy allows direct download
+- prefer a specific release source first (and, for Prowlarr, an optional indexer)
+- limit automatic selection to specific content types or preferred file formats
+- rank candidates by an explicit policy such as **Best Match**, **Most Seeders**, **Best Availability**, or **Newest**
+- widen the search only within the preferred source, or fall back to any enabled source before creating a plain book request
+
 ---
 
 ## Requests
@@ -77,6 +88,14 @@ Each content type (ebook, audiobook) has a default mode that sets the baseline:
 | Request Rules | Per-source overrides (see below) | None |
 | Max Pending Requests Per User | Open request limit per user | 20 |
 | Allow Notes on Requests | Let users attach a note when submitting | On |
+| Enable Automatic Release Selection | Let Shelfmark search for and choose a release for book-level requests | Off |
+| Allow Automatic Queueing | Queue an auto-selected release immediately when the chosen source resolves to Download mode | Off |
+| Preferred Release Source | Optional source to try first during automatic selection | Empty |
+| Preferred Prowlarr Indexer | Optional tracker/indexer preference inside Prowlarr | Empty |
+| Automatic Selection Content Types | Which request content types are eligible for auto-selection | Ebook, Audiobook |
+| Preferred File Formats | Optional preferred file format order for ranking | Any |
+| Selection Policy | Ranking strategy for matching releases | Best Match |
+| Fallback Strategy | Stay in the preferred source, or widen to any enabled source | Same Source Only |
 
 ### Request Rules
 
@@ -86,13 +105,23 @@ For example, if the default ebook mode is "Download", a rule can restrict a spec
 
 ### Per-User Overrides
 
-Admins can override the default ebook/audiobook modes and request rules for individual users. Per-user rules are overlaid on the global rules, not replacing them.
+Admins can override the default ebook/audiobook modes, request rules, request limits, notes toggle, and automatic release-selection settings for individual users. Per-user request rules are overlaid on the global rules, not replacing them. Any per-user override can be reset back to the global default.
 
 ### Request Lifecycle
 
-1. User submits a request (book or release level, depending on the resolved policy mode)
+1. User submits a request
 2. Request appears in the admin request queue as **pending**
 3. Admin either **fulfils** (queues a download) or **rejects** the request
 4. For fulfilled requests, delivery state is tracked through the download pipeline
 5. If delivery fails, an admin can reopen the request to try a different release
 6. Users can cancel their own pending requests
+
+When automatic release selection is enabled for that user/content type, Shelfmark first tries to find a matching release itself:
+
+1. Try the preferred source or request source first
+2. Apply content-type and format preferences
+3. Rank matches using the configured selection policy
+4. If a match is found:
+   - queue it immediately when the selected source resolves to **Download** and automatic queueing is enabled
+   - otherwise create a **release-level request** for admin approval
+5. If no suitable match is found, Shelfmark falls back to a **book-level request**

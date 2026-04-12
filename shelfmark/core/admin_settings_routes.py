@@ -11,6 +11,10 @@ from shelfmark.config.notifications_settings import (
 )
 from shelfmark.config.users_settings import validate_search_preference_value
 from shelfmark.core.config import config as app_config
+from shelfmark.core.request_auto_selection import (
+    REQUEST_AUTO_SELECTION_KEYS,
+    validate_request_auto_selection_settings,
+)
 from shelfmark.core.request_policy import parse_policy_mode, validate_policy_rules
 from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_settings_overrides import (
@@ -39,6 +43,7 @@ def validate_user_settings(
 
     valid: dict[str, Any] = {}
     errors: list[str] = []
+    pending_auto_selection_settings: dict[str, Any] = {}
     for key, value in settings.items():
         if key not in field_map:
             errors.append(f"Unknown setting: {key}")
@@ -87,6 +92,9 @@ def validate_user_settings(
             if search_validation_error:
                 errors.append(search_validation_error)
                 continue
+            if key in REQUEST_AUTO_SELECTION_KEYS:
+                pending_auto_selection_settings[key] = value
+                continue
             if key in {
                 "SEARCH_MODE",
                 "METADATA_PROVIDER",
@@ -124,6 +132,15 @@ def validate_user_settings(
                 continue
 
             valid[key] = value
+
+    if pending_auto_selection_settings:
+        normalized_auto_values, auto_selection_errors = validate_request_auto_selection_settings(
+            pending_auto_selection_settings
+        )
+        if auto_selection_errors:
+            errors.extend(auto_selection_errors)
+        else:
+            valid.update(normalized_auto_values)
 
     return valid, errors
 
